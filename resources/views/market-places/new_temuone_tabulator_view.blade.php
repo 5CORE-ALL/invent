@@ -223,7 +223,7 @@
             height: 14px;
         }
         #column-dropdown-menu .col-vis-item > label:hover { background: #e9ecef; }
-        @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'css'])
+        @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'css', 'channelPromoChannel' => 'newtemuone'])
         @include('partials.ebay-sprc-dil', [
             'ebaySprcDilPart' => 'css',
             'ebaySprcDilChannel' => 'temu',
@@ -533,7 +533,7 @@
                         <option value="l30_gt_l60">CVR30 &gt; CVR60</option>
                         <option value="equal">CVR60 = CVR30</option>
                     </select>
-                    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'buttons'])
+                    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'buttons', 'channelPromoChannel' => 'newtemuone'])
                     @include('partials.ebay-sprc-dil', [
                         'ebaySprcDilPart' => 'buttons',
                         'ebaySprcDilChannel' => 'temu',
@@ -1209,7 +1209,7 @@
         if (typeof ntoSaveSpriceChunks !== 'function') return $.Deferred().resolve().promise();
         return ntoSaveSpriceChunks(updates || []);
     }
-    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'script'])
+    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'script', 'channelPromoChannel' => 'newtemuone'])
     // Save and Apply (Std prc vs dil) writes S PRC through this route in a background server process.
     window.CH_BG_SPRICE_URL = '{{ route("newtemuone.save.sprice") }}';
     // After Save and Apply succeeds, reload the page so S PRC, S Promo Prc, SNROI% and Push show the new rules.

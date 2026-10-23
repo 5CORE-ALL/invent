@@ -1748,12 +1748,81 @@ class GoogleAdsSbidService
             );
         } catch (\Throwable $e) {
             Log::error('Failed to set Shopping Item ID state', ['campaign_id' => $campaignId, 'item' => $itemId, 'action' => $action, 'error' => $e->getMessage()]);
+            if ($action === 'pause') {
+                return $this->excludeShoppingItem($customerId, $campaignId, $itemId, 'Google rejected pausing this listing ('.self::briefGoogleError($e).')');
+            }
 
             return $fail(self::briefGoogleError($e));
         }
         Log::info('Set Shopping Item ID state', ['campaign_id' => $campaignId, 'item' => $itemId, 'action' => $action]);
 
+        // Do not trust the mutate response alone: read the listing back and make sure the ad really changed.
+        $expectedState = $action === 'remove' ? 'NOT_ATTACHED' : $state;
+        $live = $this->listShoppingItemStates($customerId, $campaignId);
+        if ($live['status'] === 'ok') {
+            $actual = $live['items'][$key]['state'] ?? 'NOT_ATTACHED';
+            if ($actual !== $expectedState) {
+                if ($action === 'pause' && $actual === 'ENABLED') {
+                    return $this->excludeShoppingItem($customerId, $campaignId, $itemId, 'Google accepted the pause but the listing is still enabled');
+                }
+
+                return $fail("Google accepted the request but the Item ID is still {$actual} (expected {$expectedState}).");
+            }
+        }
+
         return ['ok' => true, 'message' => $note, 'state' => $state];
+    }
+
+    /**
+     * Stops an Item ID from serving by replacing its unit with an excluded (grey "−") one.
+     * Used when a plain pause does not stick. Flat tree only.
+     *
+     * @return array{ok: bool, message: string, state: string}
+     */
+    private function excludeShoppingItem(string $customerId, string $campaignId, string $itemId, string $why): array
+    {
+        $fail = static fn (string $m) => ['ok' => false, 'message' => $m, 'state' => ''];
+        try {
+            $data = $this->fetchListingGroupNodes($customerId, $campaignId);
+        } catch (\Throwable $e) {
+            return $fail($why.'; could not re-read the ad: '.self::briefGoogleError($e));
+        }
+        $nodes = $data['nodes'];
+        $roots = array_values(array_filter($nodes, static fn ($n) => $n['parent'] === ''));
+        if (count($data['adGroups']) !== 1 || count($roots) !== 1 || $roots[0]['type'] !== 'SUBDIVISION') {
+            return $fail($why.'. Campaign has a custom listing-group tree — pause it manually in Google Ads.');
+        }
+        $key = strtolower($itemId);
+        $ops = [];
+        foreach ($nodes as $n) {
+            if ($n['item'] !== '' && strtolower($n['item']) === $key) {
+                $ops[] = (new AdGroupCriterionOperation())->setRemove($n['resource']);
+            }
+        }
+        $ops[] = (new AdGroupCriterionOperation())->setCreate(new AdGroupCriterion([
+            'ad_group' => (string) array_key_first($data['adGroups']),
+            'status' => AdGroupCriterionStatus::ENABLED,
+            'negative' => true,
+            'listing_group' => new ListingGroupInfo([
+                'type' => ListingGroupType::UNIT,
+                'parent_ad_group_criterion' => $roots[0]['resource'],
+                'case_value' => new ListingDimensionInfo([
+                    'product_item_id' => new ProductItemIdInfo(['value' => $itemId]),
+                ]),
+            ]),
+        ]));
+        try {
+            $this->getClient()->getAdGroupCriterionServiceClient()->mutateAdGroupCriteria(
+                new MutateAdGroupCriteriaRequest(['customer_id' => $customerId, 'operations' => $ops])
+            );
+        } catch (\Throwable $e) {
+            Log::error('Failed to exclude Shopping Item ID', ['campaign_id' => $campaignId, 'item' => $itemId, 'error' => $e->getMessage()]);
+
+            return $fail($why.'; excluding it also failed: '.self::briefGoogleError($e));
+        }
+        Log::info('Excluded Shopping Item ID (pause fallback)', ['campaign_id' => $campaignId, 'item' => $itemId, 'why' => $why]);
+
+        return ['ok' => true, 'message' => $why.' — so the Item ID was excluded instead (it no longer serves).', 'state' => 'EXCLUDED'];
     }
 
     /**

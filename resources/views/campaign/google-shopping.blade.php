@@ -1844,7 +1844,7 @@
                 var el = document.getElementById('gacSkuMsg');
                 if (!el) return;
                 if (!text) { el.classList.add('d-none'); el.textContent = ''; return; }
-                el.className = 'small mb-2 ' + (ok ? 'text-success' : 'text-danger');
+                el.className = 'small mb-2 fw-semibold ' + (ok ? 'text-success' : 'text-danger');
                 el.textContent = text;
             }
             function gacSkuRender(resp) {
@@ -1933,9 +1933,9 @@
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                     body: JSON.stringify({ campaign_id: gacSkuCid, item_id: item, action: action }),
-                }).then(function(r) { return r.json().catch(function() { return {}; }); }).then(function(resp) {
+                }).then(function(r) { return r.json().catch(function() { return {}; }).then(function(b) { b = b || {}; b._status = r.status; return b; }); }).then(function(resp) {
                     var ok = !!(resp && resp.ok);
-                    gacSkuShowMsg((resp && resp.message) || (ok ? 'Done.' : 'Failed.'), ok);
+                    gacSkuShowMsg(((resp && resp.message) || (ok ? 'Done.' : 'Request failed (HTTP ' + (resp && resp._status || '?') + ').')) + (ok && resp.state ? ' → ' + resp.state : ''), ok);
                     if (ok && typeof gacRawReloadGridForFilters === 'function') { try { gacRawReloadGridForFilters(); } catch (e) {} }
                     gacSkuLoad(); // re-read the live state either way
                 }).catch(function() {

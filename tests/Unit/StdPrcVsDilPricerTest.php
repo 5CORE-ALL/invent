@@ -490,16 +490,45 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(100.0, $wayfair->priceFromRow($row + ['dil' => 50]));
         // Every other channel page has the same SNROI Cap.
         $this->assertSame(84.21, (new StdPrcVsDilPricer($rules, 'faire'))->priceFromRow($row + ['dil' => 10]));
-        // Only Amazon, eBay 1 / 2 / 3 and the no-Ship pages have the SNROI Cap. The other pages with Ship (Reverb, Best Buy,
-        // Temu ...) price from their discounts only, so the same Dil slab leaves the Std price alone.
-        foreach (['reverb', 'bestbuy', 'newtemuone', 'shopify_b2c'] as $channel) {
+        // Only Amazon, eBay 1 / 2 / 3, Temu 1 / 2 / 3 and the no-Ship pages have the SNROI Cap. The other pages with Ship
+        // (Reverb, Best Buy ...) price from their discounts only, so the same Dil slab leaves the Std price alone.
+        foreach (['reverb', 'bestbuy', 'shopify_b2c'] as $channel) {
             $this->assertSame(100.0, (new StdPrcVsDilPricer($rules, $channel))->priceFromRow($row + ['dil' => 10, 'ship' => 5, 'ads' => 0.10]), $channel);
             $this->assertNull((new StdPrcVsDilPricer($rules, $channel))->snroiCapTargetForDil(10.0), $channel);
         }
-        // The no-Ship pages and eBay keep it.
-        foreach (['wayfair', 'faire', 'topdawg', 'alibaba', 'shopify_b2b', 'amazon', 'ebay1', 'ebay2', 'ebay3'] as $channel) {
+        // The no-Ship pages, eBay and Temu keep it.
+        foreach (['wayfair', 'faire', 'topdawg', 'alibaba', 'shopify_b2b', 'amazon', 'ebay1', 'ebay2', 'ebay3', 'newtemuone', 'newtemutwo', 'temu3'] as $channel) {
             $this->assertTrue(StdPrcVsDilPricer::supportsSnroiCap($channel), $channel);
         }
+    }
+
+    public function test_temu3_snroi_cap_uses_the_s_recovery_rate(): void
+    {
+        $rules = [
+            'dil' => [],
+            'age' => [],
+            'cvr' => [
+                'down2_lt' => 4, 'down2_disc' => 0, 'down_lt' => 7, 'down_disc' => 0,
+                'up_gt' => 10, 'up_disc' => 0, 'up2_gt' => 15, 'up2_disc' => 0, 'flat_disc' => 0,
+            ],
+            'reviews' => [],
+            'review_max' => 4,
+            'snroi_cap' => [
+                ['min' => 0, 'max' => 20, 'cap' => 40],
+                ['min' => 20, 'max' => 100, 'cap' => null],
+            ],
+        ];
+        // Temu 3 SNROI% = (S PRC x 0.88 x take-home - ship - LP) / LP.
+        $row = ['inv' => 1, 'std_price' => 100, 'cvr' => 8, 'cvr_60' => 8, 'sold' => 1, 'lp' => 30, 'margin' => 0.95, 'ship' => 2];
+        $pricer = new StdPrcVsDilPricer($rules, 'temu3');
+        // (30 x 1.4 + 2) / (0.88 x 0.95) = 52.63… → 52.63, and SNROI at that price is not above 40%.
+        $price = $pricer->priceFromRow($row + ['dil' => 10]);
+        $this->assertSame(52.63, $price);
+        $this->assertLessThanOrEqual(40.0 + 1e-9, ($price * 0.88 * 0.95 - 2 - 30) / 30 * 100);
+        // A slab without a cap keeps the discount price.
+        $this->assertSame(100.0, $pricer->priceFromRow($row + ['dil' => 50]));
+        $this->assertSame(0.88, StdPrcVsDilPricer::snroiRecoveryRate('temu3'));
+        $this->assertSame(1.0, StdPrcVsDilPricer::snroiRecoveryRate('ebay1'));
     }
 
     public function test_ebay_snroi_cap_solves_the_price_with_ship_and_ads(): void

@@ -1140,6 +1140,8 @@
     function temuAdsPercentForNet() {
         return 0;
     }
+    // The SNROI Cap (Std prc vs dil) judges the same Ads% the SNROI column uses (none on Temu 3).
+    window.CH_PROMO_ADS_FN = function() { return temuAdsPercentForNet(); };
     /** Disc % = PRMT % (this page's Sum-disc equivalent — Dil → PRMT slab, or the saved override). */
     function temu3PromoPct(d) {
         d = d || {};

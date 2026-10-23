@@ -223,7 +223,7 @@
             height: 14px;
         }
         #column-dropdown-menu .col-vis-item > label:hover { background: #e9ecef; }
-        @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'css'])
+        @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'css', 'channelPromoChannel' => 'newtemutwo'])
         .nto-server-push-note {
             display: inline-flex;
             align-items: center;
@@ -454,7 +454,7 @@
                         <option value="l30_gt_l60">CVR30 &gt; CVR60</option>
                         <option value="equal">CVR60 = CVR30</option>
                     </select>
-                    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'buttons'])
+                    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'buttons', 'channelPromoChannel' => 'newtemutwo'])
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
@@ -1025,7 +1025,7 @@
     window.CH_STD_SERVER_OWNED = true;
     // After Save and Apply succeeds, reload the page so S PRC, S Promo Prc, SNROI% and Push show the new rules.
     window.CH_STD_RELOAD_AFTER_APPLY = true;
-    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'script'])
+    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'script', 'channelPromoChannel' => 'newtemutwo'])
     window.chPromoSku = chPromoSku;
     window.chPromoGetSprice = chPromoGetSprice;
     window.chPromoSpricePatch = chPromoSpricePatch;

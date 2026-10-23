@@ -261,6 +261,13 @@ class DilRuleSpriceApplyService
             if ($margin > 0 && ! is_numeric($row['margin'] ?? null)) {
                 $row['margin'] = $margin;
             }
+            // Temu 3: the SNROI Cap judges the same take-home % as the page's SNROI% column (TEMU_MARGIN).
+            if ($this->channel === 'temu3') {
+                $temuMargin = TemuShopifySalesService::temu3MarginDecimal();
+                if ($temuMargin > 0 && $temuMargin <= 1) {
+                    $row['margin'] = $temuMargin;
+                }
+            }
             $priced = \App\Support\StdPrcVsDilPricer::forChannel($this->channel)->priceFromRow($row);
 
             return $priced !== null ? ['sprice' => $priced] : null;

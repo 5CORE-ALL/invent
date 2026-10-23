@@ -175,6 +175,9 @@ class StdPrcVsDilPricer
         if (! ($margin > 0 && $margin <= 1)) {
             $margin = 0.80;
         }
+        // Temu 3: the S PRC is the full Temu price and only S PRC × 0.88 (S Recovery) is earned, so the SNROI% column
+        // measures (S PRC × 0.88 × take-home − Ship − LP) ÷ LP.
+        $margin *= self::snroiRecoveryRate($this->channel);
         $ship = self::excludesShip($this->channel) ? 0.0 : (float) ($row['ship'] ?? 0);
         // Ads % as a fraction of the price (the auto-push rows pass 0.05 for 5%). Pages without ads pass 0.
         if (is_numeric($row['ads'] ?? null)) {
@@ -502,9 +505,11 @@ class StdPrcVsDilPricer
     }
 
     /**
-     * Pages that have the SNROI Cap rule: Amazon, eBay 1 / 2 / 3 (same rule chain as Amazon, SNROI% judged with the
-     * page's take-home %, Ship and Ads%) and the pages with no Ship (Wayfair, Faire, Topdawg, Alibaba, Shopify B2B,
-     * Depop, Mercari w/o ship, Doba w/o ship, FB Marketplace, Instagram). Every other page prices from its discounts only.
+     * Pages that have the SNROI Cap rule: Amazon, eBay 1 / 2 / 3 and Temu 1 / 2 / 3 (same rule chain as Amazon, SNROI%
+     * judged with each page's own take-home %, Ship and Ads%) and the pages with no Ship (Wayfair, Faire, Topdawg,
+     * Alibaba, Shopify B2B, Depop, Mercari w/o ship, Doba w/o ship, FB Marketplace, Instagram). Every other page prices
+     * from its discounts only.
+     * New Temu One / Two (newtemuone, newtemutwo) solve the cap on their own Price After Discount chain.
      */
     public static function supportsSnroiCap(string $channel): bool
     {
@@ -512,8 +517,15 @@ class StdPrcVsDilPricer
 
         return $c === 'amazon'
             || self::usesOwnChannelMetrics($c)
+            || in_array($c, ['newtemuone', 'newtemutwo', 'temu3'], true)
             || self::excludesShip($c)
             || in_array($c, ['doba_withoutship', 'fb_marketplace', 'instagram'], true);
+    }
+
+    /** Share of S PRC the page's SNROI% column earns. Temu 3 uses S Recovery (S PRC × 0.88). Every other page is 1. */
+    public static function snroiRecoveryRate(string $channel): float
+    {
+        return strtolower(trim($channel)) === 'temu3' ? 0.88 : 1.0;
     }
 
     public static function excludesShip(string $channel): bool

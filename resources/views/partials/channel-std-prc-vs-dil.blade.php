@@ -834,7 +834,9 @@
             const target = Number(rules[idx].cap);
             const lp = (typeof chPromoLp === 'function') ? (Number(chPromoLp(d)) || 0) : 0;
             const adsFrac = (typeof chPromoAdsFrac === 'function') ? (Number(chPromoAdsFrac(d)) || 0) : 0;
-            const margin = chStdMargin(d) - (adsFrac > 0 && adsFrac < chStdMargin(d) ? adsFrac : 0);
+            // Temu 3 earns S PRC x 0.88 (S Recovery): its SNROI% column is (S PRC x 0.88 x take-home - ship - LP) / LP.
+            const earned = chStdMargin(d) * @json(\App\Support\StdPrcVsDilPricer::snroiRecoveryRate((string) ($channelPromoChannel ?? '')));
+            const margin = earned - (adsFrac > 0 && adsFrac < earned ? adsFrac : 0);
             const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0);
             if (!(lp > 0) || !(margin > 0)) return price;
             let solved = Math.floor((((lp * (1 + target / 100)) + ship) / margin) * 100 + 0.00001) / 100;
