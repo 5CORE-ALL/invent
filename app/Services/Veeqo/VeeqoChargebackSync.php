@@ -212,6 +212,8 @@ class VeeqoChargebackSync
 
             $rows[] = [
                 'transaction_id' => mb_substr((string) $tx['transactionId'], 0, 128),
+                'source' => 'amazon_api',
+                'order_number' => $this->str($ids['ORDER_ID'] ?? null, 100),
                 'transaction_type' => $this->str($tx['transactionType'] ?? null, 64),
                 'description' => $this->str($description, 100),
                 'transaction_status' => $this->str($tx['transactionStatus'] ?? null, 32),

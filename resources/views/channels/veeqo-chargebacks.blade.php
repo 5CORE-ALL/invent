@@ -48,10 +48,17 @@
                     <div class="vc-toolbar">
                         <label>From <input type="date" id="vcFrom" class="form-control form-control-sm"></label>
                         <label>To <input type="date" id="vcTo" class="form-control form-control-sm"></label>
+                        <label>Source
+                            <select id="vcSource" class="form-select form-select-sm">
+                                <option value="">All</option>
+                                <option value="veeqo_csv">Veeqo card (CSV)</option>
+                                <option value="amazon_api">Amazon settlement (API)</option>
+                            </select>
+                        </label>
                         <label>Type
                             <select id="vcType" class="form-select form-select-sm">
                                 <option value="">All label adjustments</option>
-                                <option value="LabmanLabelChargeBack" selected>LabmanLabelChargeBack</option>
+                                <option value="chargebacks" selected>All chargebacks</option>
                             </select>
                         </label>
                         <label>Debit / Credit
@@ -63,7 +70,7 @@
                         </label>
                         <label>Status <select id="vcStatus" class="form-select form-select-sm"><option value="">All</option></select></label>
                         <label style="min-width:220px;flex:1;">Search
-                            <input type="search" id="vcSearch" class="form-control form-control-sm" placeholder="Amazon order, settlement, transaction…">
+                            <input type="search" id="vcSearch" class="form-control form-control-sm" placeholder="Order, reason, service, settlement, transaction…">
                         </label>
                         <div class="dropdown">
                             <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" title="Columns">
@@ -72,7 +79,9 @@
                             <div class="dropdown-menu" id="vc-col-dropdown"></div>
                         </div>
                         <button type="button" class="btn btn-sm btn-primary" id="vcExport"><i class="fas fa-download"></i> Export page</button>
-                        <button type="button" class="btn btn-sm btn-success" id="vcSync"><i class="fas fa-sync"></i> Sync now</button>
+                        <button type="button" class="btn btn-sm btn-success" id="vcSync" title="Pull the last 30 days from Amazon Finances"><i class="fas fa-sync"></i> Sync Amazon</button>
+                        <button type="button" class="btn btn-sm btn-warning" id="vcImport" title="Veeqo → Reports → transactions CSV (reports-*.csv)"><i class="fas fa-file-upload"></i> Import Veeqo CSV</button>
+                        <input type="file" id="vcImportFile" accept=".csv,text/csv" class="d-none">
                     </div>
                     <div class="vc-sync mb-2" id="vcSyncInfo"></div>
 
@@ -122,6 +131,7 @@
                 return {
                     from: document.getElementById('vcFrom').value,
                     to: document.getElementById('vcTo').value,
+                    source: document.getElementById('vcSource').value,
                     type: document.getElementById('vcType').value,
                     direction: document.getElementById('vcDirection').value,
                     status: document.getElementById('vcStatus').value,
@@ -149,8 +159,13 @@
                         cellClick: (e, cell) => openRaw(cell.getRow().getData()),
                     },
                     col('Posted', 'posted_at', { frozen: true, minWidth: 130 }),
-                    col('Amazon Order', 'amazon_order_id', { frozen: true, minWidth: 150 }),
-                    moneyCol('Chargeback (net)', 'total_amount'),
+                    col('Order #', 'order_number', { frozen: true, minWidth: 150 }),
+                    moneyCol('Chargeback', 'total_amount'),
+                    col('Reason', 'reason', { minWidth: 170 }),
+                    col('Source', 'source', { minWidth: 100, formatter: c => c.getValue() === 'veeqo_csv' ? '<span class="badge bg-warning text-dark">Veeqo CSV</span>' : '<span class="badge bg-info text-dark">Amazon API</span>' }),
+                    plain('Channel', 'v_channel'),
+                    col('Carrier', 'carrier'),
+                    col('Service', 'service', { minWidth: 180 }),
                     moneyCol('You Paid (label)', 'customer_charge'),
                     moneyCol('Carrier Billed', 'carrier_charge'),
                     ...components.map(t => moneyCol(label(t), 'c_' + t, false)),
@@ -158,17 +173,18 @@
                     col('Type', 'description', { minWidth: 170 }),
                     col('Debit/Credit', 'direction', { minWidth: 80 }),
                     col('Status', 'transaction_status'),
+                    col('Payment Method', 'payment_method', { minWidth: 140 }),
                     col('Items', 'item_types', { minWidth: 220 }),
                     plain('Veeqo Shipped', 'v_shipped_at', { minWidth: 130 }),
                     plain('Tracking #', 'v_tracking', { minWidth: 180 }),
-                    plain('Carrier', 'v_carrier'),
-                    plain('Service', 'v_service', { minWidth: 180 }),
+                    plain('Veeqo Carrier', 'v_carrier'),
+                    plain('Veeqo Service', 'v_service', { minWidth: 180 }),
                     plain('Veeqo Label Cost', 'v_label_cost', { hozAlign: 'right', formatter: c => money(c.getValue()) }),
                     plain('Labels', 'v_labels', { hozAlign: 'right', minWidth: 60 }),
                     plain('Weight', 'v_weight'),
                     plain('Tracking Status', 'v_status'),
                     plain('SKUs', 'v_skus', { minWidth: 160 }),
-                    plain('Channel', 'v_channel'),
+                    col('Amazon Order', 'amazon_order_id', { minWidth: 150 }),
                     col('Settlement ID', 'settlement_id', { minWidth: 120 }),
                     col('Event Group ID', 'financial_event_group_id', { minWidth: 200 }),
                     col('Marketplace', 'marketplace_name'),
@@ -250,17 +266,20 @@
                     badge('Debits', money(t.debit_total || 0), 'vc-debit') +
                     badge('Credits', money(t.credit_total || 0), 'vc-credit') +
                     badge('Net', money(t.net_total || 0), Number(t.net_total) < 0 ? 'vc-debit' : 'vc-credit') +
-                    badge('You paid (labels)', money(t.customer_total || 0)) +
-                    badge('Carrier billed', money(t.carrier_total || 0));
+                    badge('Veeqo card net', money(t.veeqo_net || 0), Number(t.veeqo_net) < 0 ? 'vc-debit' : 'vc-credit') +
+                    badge('Amazon settlement net', money(t.amazon_net || 0), Number(t.amazon_net) < 0 ? 'vc-debit' : 'vc-credit');
 
                 const f = json.filters || {};
                 setOptions('vcType', f.types);
                 setOptions('vcStatus', f.statuses);
 
                 const s = json.sync || {};
-                let info = Number(s.rows || 0).toLocaleString() + ' label adjustments stored';
-                if (s.first_posted_at) info += ' · posted ' + String(s.first_posted_at).slice(0, 10) + ' → ' + String(s.last_posted_at).slice(0, 10);
-                if (s.last_sync_at) info += ' · last sync ' + String(s.last_sync_at).replace('T', ' ').slice(0, 16);
+                const day = v => String(v || '').slice(0, 10);
+                let info = Number(s.rows || 0).toLocaleString() + ' rows stored';
+                info += s.csv_first
+                    ? ' · Veeqo CSV ' + day(s.csv_first) + ' → ' + day(s.csv_last) + ' (imported ' + String(s.csv_imported_at).replace('T', ' ').slice(0, 16) + ')'
+                    : ' · no Veeqo CSV imported yet';
+                if (s.api_first) info += ' · Amazon API ' + day(s.api_first) + ' → ' + day(s.api_last) + ' (synced ' + String(s.api_synced_at).replace('T', ' ').slice(0, 16) + ')';
                 document.getElementById('vcSyncInfo').textContent = info;
 
                 const comps = json.components || [];
@@ -277,7 +296,7 @@
             }
 
             async function openRaw(row) {
-                document.getElementById('vcRawTitle').textContent = (row.description || 'Transaction') + ' · ' + (row.amazon_order_id || '');
+                document.getElementById('vcRawTitle').textContent = (row.description || 'Transaction') + ' · ' + (row.order_number || '');
                 document.getElementById('vcRaw').textContent = 'Loading…';
                 rawModal.show();
                 try {
@@ -309,6 +328,33 @@
                 }
             }
 
+            async function importCsv(input) {
+                const file = input.files && input.files[0];
+                if (!file) return;
+                const btn = document.getElementById('vcImport');
+                const html = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing…';
+                const form = new FormData();
+                form.append('file', file);
+                try {
+                    const res = await fetch('{{ route('veeqo.chargebacks.import') }}', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
+                        body: form,
+                    });
+                    const json = await res.json().catch(() => ({}));
+                    alert(json.message || (res.ok ? 'Import finished.' : 'Import failed (' + res.status + ').'));
+                    refresh();
+                } catch (e) {
+                    alert('Import failed: ' + e.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = html;
+                    input.value = '';
+                }
+            }
+
             document.addEventListener('DOMContentLoaded', function () {
                 rawModal = new bootstrap.Modal(document.getElementById('vcRawModal'));
                 const today = new Date();
@@ -318,7 +364,9 @@
                 document.getElementById('vcFrom').value = iso(yearAgo);
                 document.getElementById('vcTo').value = iso(today);
 
-                ['vcFrom', 'vcTo', 'vcType', 'vcDirection', 'vcStatus'].forEach(id => document.getElementById(id).addEventListener('change', refresh));
+                document.getElementById('vcImport').addEventListener('click', () => document.getElementById('vcImportFile').click());
+                document.getElementById('vcImportFile').addEventListener('change', function () { importCsv(this); });
+                ['vcFrom', 'vcTo', 'vcSource', 'vcType', 'vcDirection', 'vcStatus'].forEach(id => document.getElementById(id).addEventListener('change', refresh));
                 let timer = null;
                 document.getElementById('vcSearch').addEventListener('input', function () {
                     clearTimeout(timer);
