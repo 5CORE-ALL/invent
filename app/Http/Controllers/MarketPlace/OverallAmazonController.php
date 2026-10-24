@@ -881,6 +881,13 @@ class OverallAmazonController extends Controller
                     ? round($parentKwPtSpend['kw'][self::normalizeCampaignName((string) $parent)], 2) : null,
                 'pt_spend_l30' => isset($parentKwPtSpend['pt'][self::normalizeCampaignName((string) $parent)])
                     ? round($parentKwPtSpend['pt'][self::normalizeCampaignName((string) $parent)], 2) : null,
+                'kw_pt_spend_l30' => (function () use ($parentKwPtSpend, $parent) {
+                    $k = self::normalizeCampaignName((string) $parent);
+                    $kw = $parentKwPtSpend['kw'][$k] ?? null;
+                    $pt = $parentKwPtSpend['pt'][$k] ?? null;
+
+                    return ($kw === null && $pt === null) ? null : round((float) $kw) + round((float) $pt);
+                })(),
                 'GPFT%' => $rows->count() > 0 ? round($rows->avg('GPFT%'), 2) : 0,
                 'PFT%' => $rows->count() > 0 ? round($rows->avg('PFT%'), 2) : 0,
                 'GROI%' => $rows->count() > 0 ? round($rows->avg('GROI%'), 2) : 0,

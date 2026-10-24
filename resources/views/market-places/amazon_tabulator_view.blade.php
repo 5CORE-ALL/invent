@@ -5635,7 +5635,7 @@
                             if (val == null || val === '') return '';
                             const n = parseFloat(val);
                             if (!Number.isFinite(n)) return '';
-                            return `<span>$${n.toFixed(2)}</span>`;
+                            return `<span>$${Math.round(n).toLocaleString('en-US')}</span>`;
                         },
                         width: 70
                     },
@@ -5651,9 +5651,25 @@
                             if (val == null || val === '') return '';
                             const n = parseFloat(val);
                             if (!Number.isFinite(n)) return '';
-                            return `<span>$${n.toFixed(2)}</span>`;
+                            return `<span>$${Math.round(n).toLocaleString('en-US')}</span>`;
                         },
                         width: 70
+                    },
+                    {
+                        title: "KW+PT S",
+                        field: "kw_pt_spend_l30",
+                        hozAlign: "center",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
+                        headerTooltip: "Parent rows: KW S + PT S (L30 spend of the parent's KW and PT campaigns).",
+                        formatter: function(cell) {
+                            if (!cell.getRow().getData().is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const n = parseFloat(val);
+                            if (!Number.isFinite(n)) return '';
+                            return `<span>$${Math.round(n).toLocaleString('en-US')}</span>`;
+                        },
+                        width: 80
                     }
                 ]
             });
@@ -6822,7 +6838,7 @@
                 if (shipIdx !== -1) {
                     valid.splice(shipIdx, 1);
                     valid.push('Ship_productmaster');
-                    ['kw_spend_l30', 'pt_spend_l30'].forEach(function(f) {
+                    ['kw_spend_l30', 'pt_spend_l30', 'kw_pt_spend_l30'].forEach(function(f) {
                         const i = valid.indexOf(f);
                         if (i !== -1) valid.splice(i, 1);
                         if (existing.indexOf(f) !== -1) valid.push(f);
