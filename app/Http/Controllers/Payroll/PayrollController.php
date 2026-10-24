@@ -1276,4 +1276,162 @@ class PayrollController extends Controller
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
     }
+
+    /**
+     * Excel download of increments: one worksheet per payroll month (e.g. "October 2026"),
+     * coloured header row. ?month=all (default) exports every month that has increments;
+     * ?month={id} exports only that month.
+     */
+    public function exportIncrements(Request $request)
+    {
+        $this->authorizeManage();
+
+        $monthParam = (string) $request->query('month', 'all');
+
+        $monthsQuery = PayrollMonth::orderByDesc('period_start')->orderByDesc('id');
+        if ($monthParam !== 'all' && ctype_digit($monthParam)) {
+            $monthsQuery->where('id', (int) $monthParam);
+        }
+        $months = $monthsQuery->get();
+
+        $rowsByMonth = PayrollEmployeeSalary::with('user')
+            ->whereIn('payroll_month_id', $months->pluck('id'))
+            ->whereNotNull('increment')
+            ->where('increment', '!=', 0)
+            ->get()
+            ->filter(fn ($r) => $r->user?->name)
+            ->groupBy('payroll_month_id');
+
+        $singleMonth = $monthParam !== 'all' && $months->count() === 1;
+        if (! $singleMonth) {
+            $months = $months->filter(fn ($m) => $rowsByMonth->has($m->id))->values();
+        }
+
+        $regionMeta = [
+            'india' => ['label' => 'India', 'currency' => 'INR', 'format' => '"₹"#,##0.00'],
+            'china' => ['label' => 'China', 'currency' => 'RMB', 'format' => '"RMB "#,##0.00'],
+            'usa' => ['label' => 'USA', 'currency' => 'USD', 'format' => '"US $"#,##0.00'],
+        ];
+
+        $fill = \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID;
+        $thin = \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN;
+        $center = \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER;
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $spreadsheet->removeSheetByIndex(0);
+
+        $usedTitles = [];
+        $headers = ['#', 'Employee', 'Country', 'Currency', 'Increment'];
+
+        foreach ($months as $month) {
+            $title = trim(str_replace(['\\', '/', '?', '*', '[', ']', ':'], ' ', (string) $month->month_label)) ?: 'Month '.$month->id;
+            $title = mb_substr($title, 0, 31);
+            $base = $title;
+            for ($n = 2; in_array(mb_strtolower($title), $usedTitles, true); $n++) {
+                $title = mb_substr($base, 0, 28).' '.$n;
+            }
+            $usedTitles[] = mb_strtolower($title);
+
+            $sheet = $spreadsheet->createSheet();
+            $sheet->setTitle($title);
+            $sheet->fromArray($headers, null, 'A1');
+
+            // Coloured header row: white bold text on deep blue.
+            $sheet->getStyle('A1:E1')->applyFromArray([
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 11],
+                'alignment' => [
+                    'horizontal' => $center,
+                    'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
+                ],
+                'fill' => ['fillType' => $fill, 'startColor' => ['rgb' => '1F4E78']],
+            ]);
+            $sheet->getRowDimension(1)->setRowHeight(24);
+
+            $rows = $rowsByMonth->get($month->id, collect())
+                ->sortBy(fn ($r) => mb_strtolower($r->user->name))
+                ->values();
+
+            $r = 2;
+            $totals = [];
+            foreach ($rows as $i => $row) {
+                $region = $row->user->salaryRegion();
+                $meta = $regionMeta[$region] ?? $regionMeta['india'];
+                $amount = (float) $row->increment;
+                $totals[$region] = ($totals[$region] ?? 0) + $amount;
+
+                $sheet->setCellValue('A'.$r, $i + 1);
+                $sheet->setCellValue('B'.$r, $row->user->name);
+                $sheet->setCellValue('C'.$r, $meta['label']);
+                $sheet->setCellValue('D'.$r, $meta['currency']);
+                $sheet->setCellValue('E'.$r, $amount);
+                $sheet->getStyle('E'.$r)->getNumberFormat()->setFormatCode($meta['format']);
+
+                // Zebra striping for readability.
+                if ($i % 2 === 1) {
+                    $sheet->getStyle('A'.$r.':E'.$r)->getFill()->setFillType($fill)->getStartColor()->setRGB('EAF1FB');
+                }
+                $r++;
+            }
+
+            if ($rows->isEmpty()) {
+                $sheet->setCellValue('A2', 'No increments in this month.');
+                $sheet->mergeCells('A2:E2');
+                $sheet->getStyle('A2')->getFont()->setItalic(true);
+                $r = 3;
+            } else {
+                // One total row per currency (amounts of different currencies are never mixed).
+                foreach ($regionMeta as $region => $meta) {
+                    if (! isset($totals[$region])) {
+                        continue;
+                    }
+                    $sheet->setCellValue('B'.$r, 'Total');
+                    $sheet->setCellValue('D'.$r, $meta['currency']);
+                    $sheet->setCellValue('E'.$r, $totals[$region]);
+                    $sheet->getStyle('E'.$r)->getNumberFormat()->setFormatCode($meta['format']);
+                    $sheet->getStyle('A'.$r.':E'.$r)->applyFromArray([
+                        'font' => ['bold' => true],
+                        'fill' => ['fillType' => $fill, 'startColor' => ['rgb' => 'C6EFCE']],
+                    ]);
+                    $r++;
+                }
+            }
+
+            $lastRow = $r - 1;
+            $sheet->getStyle('A1:E'.$lastRow)->getBorders()->getAllBorders()->setBorderStyle($thin);
+            $sheet->getStyle('A2:A'.$lastRow)->getAlignment()->setHorizontal($center);
+            $sheet->getStyle('C2:D'.$lastRow)->getAlignment()->setHorizontal($center);
+            $sheet->getStyle('E2:E'.$lastRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+
+            $sheet->getColumnDimension('A')->setWidth(6);
+            $sheet->getColumnDimension('B')->setWidth(30);
+            $sheet->getColumnDimension('C')->setWidth(12);
+            $sheet->getColumnDimension('D')->setWidth(12);
+            $sheet->getColumnDimension('E')->setWidth(18);
+            $sheet->freezePane('A2');
+        }
+
+        // Nothing to export at all: still return a valid workbook.
+        if ($spreadsheet->getSheetCount() === 0) {
+            $sheet = $spreadsheet->createSheet();
+            $sheet->setTitle('Increments');
+            $sheet->fromArray($headers, null, 'A1');
+            $sheet->getStyle('A1:E1')->applyFromArray([
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => ['fillType' => $fill, 'startColor' => ['rgb' => '1F4E78']],
+            ]);
+        }
+
+        $spreadsheet->setActiveSheetIndex(0);
+
+        $filename = $singleMonth
+            ? 'increments_'.str_replace(' ', '_', (string) $months->first()->month_label).'.xlsx'
+            : 'increments_all_months.xlsx';
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
 }

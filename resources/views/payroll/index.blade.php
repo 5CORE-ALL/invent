@@ -300,6 +300,9 @@
                             <option value="all">All Months</option>
                         </select>
                         @if($canManage)
+                        <a href="#" class="btn btn-sm btn-success inc-btn-add" id="btnDownloadIncrements" title="Download Excel (one tab per month)">
+                            <i class="ri-file-excel-2-line"></i> Download Excel
+                        </a>
                         <button type="button" class="btn btn-sm btn-primary inc-btn-add" id="btnAddIncrement">
                             <i class="ri-add-line"></i> Add Increment
                         </button>
@@ -1363,6 +1366,13 @@
     }
 
     document.getElementById('btnAddIncrement')?.addEventListener('click', () => openIncrementModal());
+
+    // Excel download follows the month dropdown: All Months = one tab per month, otherwise just that month.
+    document.getElementById('btnDownloadIncrements')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const month = document.getElementById('incrementMonthSelect')?.value || 'all';
+        window.location.href = `${base}/increments/export?month=${encodeURIComponent(month)}`;
+    });
     incModalMonth?.addEventListener('change', () => incModalFillEmployees(incModalMonth.value));
     incModalEmployee?.addEventListener('change', () => {
         incModalOnEmployee();
