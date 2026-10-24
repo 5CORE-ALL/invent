@@ -206,7 +206,8 @@ class PayrollController extends Controller
     }
 
     /**
-     * Month-wise list of employees who have an increment (user names only).
+     * Month-wise table of employees who have an increment, with amounts and totals.
+     * Totals are kept per currency region (india / china / usa) because they are not interchangeable.
      */
     public function incrementsList(): JsonResponse
     {
@@ -217,25 +218,48 @@ class PayrollController extends Controller
             ->groupBy('payroll_month_id');
 
         $months = PayrollMonth::whereIn('id', $rows->keys())
+            ->orderByDesc('period_start')
             ->orderByDesc('id')
             ->get();
 
-        $data = $months->map(function (PayrollMonth $m) use ($rows) {
-            $names = $rows->get($m->id)
-                ->map(fn ($r) => $r->user?->name)
-                ->filter()
-                ->unique()
-                ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+        $grandTotals = [];
+
+        $data = $months->map(function (PayrollMonth $m) use ($rows, &$grandTotals) {
+            $totals = [];
+
+            $users = $rows->get($m->id)
+                ->filter(fn ($r) => $r->user?->name)
+                ->groupBy('user_id')
+                ->map(function ($group) {
+                    $user = $group->first()->user;
+
+                    return [
+                        'user_id' => $user->id,
+                        'name' => $user->name,
+                        'region' => $user->salaryRegion(),
+                        'amount' => round((float) $group->sum('increment'), 2),
+                    ];
+                })
+                ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
                 ->values();
+
+            foreach ($users as $u) {
+                $totals[$u['region']] = ($totals[$u['region']] ?? 0) + $u['amount'];
+                $grandTotals[$u['region']] = ($grandTotals[$u['region']] ?? 0) + $u['amount'];
+            }
 
             return [
                 'month_id' => $m->id,
                 'month_label' => $m->month_label,
-                'users' => $names,
+                'users' => $users,
+                'totals' => (object) $totals,
             ];
         })->filter(fn ($m) => $m['users']->isNotEmpty())->values();
 
-        return response()->json(['months' => $data]);
+        return response()->json([
+            'months' => $data,
+            'grand_totals' => (object) $grandTotals,
+        ]);
     }
 
     public function storeMonth(Request $request): JsonResponse
