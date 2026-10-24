@@ -82,6 +82,79 @@
     .payroll-increment-table th { background: #fcfcfd; font-weight: 600; color: #6c757d; }
     .payroll-increment-table .num { text-align: right; white-space: nowrap; }
     .payroll-increment-table .idx { width: 40px; color: #6c757d; }
+    /* Center-align all payroll table data and headers. */
+    #payrollApp .tabulator .tabulator-cell,
+    #payrollApp .tabulator .tabulator-header .tabulator-col-title {
+        text-align: center !important;
+    }
+    #payrollApp .tbl-dot {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+    }
+    #payrollApp .tbl-dot--green { background: #22c55e; }
+    #payrollApp .tbl-dot--yellow { background: #eab308; }
+    #payrollApp .tbl-dot--red { background: #ef4444; }
+    #payrollApp .tbl-dot--gray { background: #9ca3af; }
+    .payroll-status-multi { position: relative; flex-shrink: 0; width: 140px; z-index: 30; }
+    .payroll-status-multi > button {
+        width: 100%; height: 31px; text-align: left; padding: 0 .75rem; padding-right: 1.75rem;
+        border: 1px solid #ced4da; border-radius: .375rem; background: #fff; font-size: .8rem;
+        line-height: 29px; cursor: pointer; color: #212529;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+        background-repeat: no-repeat; background-position: right .6rem center; background-size: 12px;
+    }
+    .payroll-status-menu {
+        display: none; position: fixed; z-index: 2000;
+        min-width: 160px; padding: .4rem 0; background: #fff; border: 1px solid rgba(0,0,0,.12);
+        border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.12);
+    }
+    .payroll-status-multi.open .payroll-status-menu { display: block; }
+    .payroll-status-menu label {
+        display: flex; align-items: center; gap: .45rem; margin: 0;
+        padding: .35rem .75rem; font-size: .8rem; cursor: pointer; white-space: nowrap;
+        color: #212529; height: auto !important; min-height: 0 !important;
+    }
+    .payroll-status-menu label:hover { background: #f1f3f5; }
+    .payroll-status-menu input { margin: 0; cursor: pointer; height: auto !important; min-height: 0 !important; }
+    .payroll-region-tabs { border-bottom: 1px solid rgba(0,0,0,.08); }
+    .payroll-region-tabs .nav-link {
+        font-size: .85rem; font-weight: 600; color: #6c757d;
+        border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+        padding: .55rem 1rem; margin-bottom: -1px;
+    }
+    .payroll-region-tabs .nav-link:hover { color: #0d6efd; }
+    .payroll-region-tabs .nav-link.active {
+        color: #0d6efd; background: transparent; border-bottom-color: #0d6efd;
+    }
+    #payrollApp .payroll-country-select {
+        width: 100%; max-width: 118px; height: 28px; padding: 0 .35rem;
+        border: 1px solid #ced4da; border-radius: .35rem; font-size: .78rem;
+        background: #fff; cursor: pointer; text-align: center;
+    }
+    #payrollApp .payroll-country-select:disabled {
+        background: #f8f9fa; cursor: default; opacity: .85;
+    }
+    .payroll-region-tabs { overflow-x: auto; flex-wrap: nowrap; }
+    #payrollApp .tabulator .tabulator-tableholder { overflow-x: auto; }
+    @media (max-width: 1199.98px) {
+        .payroll-toolbar .input-group { max-width: none; }
+        .payroll-month-select,
+        .payroll-status-multi { flex: 1 1 140px; width: auto; max-width: none; }
+    }
+    @media (max-width: 767.98px) {
+        #payrollApp.container-fluid { padding-left: .5rem; padding-right: .5rem; }
+        #salaryStatusSection { padding-left: .6rem !important; padding-right: .6rem !important; }
+        .payroll-toolbar-title { width: 100%; }
+        #monthStats,
+        .payroll-fx-badges.is-visible { width: 100%; }
+        .payroll-toolbar .input-group,
+        .payroll-month-select,
+        .payroll-status-multi { flex: 1 1 100%; max-width: none; width: 100%; }
+        .payroll-toolbar .btn { flex: 1 1 calc(50% - .4rem); justify-content: center; }
+        .payroll-region-tabs .nav-link { padding: .5rem .75rem; }
+    }
 </style>
 @endsection
 
