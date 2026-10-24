@@ -900,6 +900,14 @@
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'amazon-lmp-missing-badge', 'lmpChannelKey' => 'amazon'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'amazon-price-gt-lmp-badge', 'pglChannelKey' => 'amazon', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'amazon-price-lt80-lmp-badge', 'pltChannelKey' => 'amazon', 'pltPriceField' => 'price'])
+                        <span class="badge fs-6 p-2" id="amazon-price-eq-lmp-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Price = LMP: SKUs (INV &gt; 0) where our Amz Price equals the landed LMP (L1). Click to filter. Click again to clear."
+                            aria-label="Price equals LMP"><i class="fas fa-equals"></i> 0</span>
+                        <span class="badge fs-6 p-2" id="amazon-sprice-eq-lmp-badge"
+                            style="background-color:#6610f2;color:#fff;font-weight:700;cursor:pointer;"
+                            title="S PRC = LMP: SKUs where S PRC equals the landed LMP (L1). Click to filter. Click again to clear."
+                            aria-label="S PRC equals LMP">S PRC <i class="fas fa-equals"></i> LMP: 0</span>
                     </div>
                 </div>
             </div>
@@ -1300,6 +1308,8 @@
         let lmpMissingFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
+        let priceEqLmpFilterActive = false;
+        let spriceEqLmpFilterActive = false;
         let blueTriangleFilterActive = false;
         let clearanceFilterActive = false;
 
@@ -1396,6 +1406,25 @@
             const price = parseFloat(data.price) || 0;
             const lmp = lmpWithShipping(data);
             return inv > 0 && price > 0 && lmp > 0 && price > lmp;
+        }
+
+        /** INV > 0 and our Price equals landed L1 LMP (to the cent). */
+        function amazonPriceEqLandedLmp(data) {
+            if (!data || data.is_parent_summary) return false;
+            if (window.PriceGtLmpBadge && PriceGtLmpBadge.isParentRow(data)) return false;
+            const inv = parseFloat(data.INV) || 0;
+            const price = parseFloat(data.price) || 0;
+            const lmp = lmpWithShipping(data);
+            return inv > 0 && price > 0 && lmp > 0 && Math.abs(price - lmp) < 0.005;
+        }
+
+        /** S PRC equals landed L1 LMP (to the cent). */
+        function amazonSpriceEqLandedLmp(data) {
+            if (!data || data.is_parent_summary) return false;
+            if (window.PriceGtLmpBadge && PriceGtLmpBadge.isParentRow(data)) return false;
+            const sprice = parseFloat(data.SPRICE) || 0;
+            const lmp = lmpWithShipping(data);
+            return sprice > 0 && lmp > 0 && Math.abs(sprice - lmp) < 0.005;
         }
 
         /** SGROI at a candidate S PRC: ((price × 0.80 − ship − LP) / LP) × 100. */
@@ -1782,6 +1811,14 @@
             $('#amazon-clearance-badge').css({
                 outline: clearanceFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: clearanceFilterActive ? '2px' : ''
+            });
+            $('#amazon-price-eq-lmp-badge').css({
+                outline: priceEqLmpFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: priceEqLmpFilterActive ? '2px' : ''
+            });
+            $('#amazon-sprice-eq-lmp-badge').css({
+                outline: spriceEqLmpFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: spriceEqLmpFilterActive ? '2px' : ''
             });
         }
         function amazonIsClearanceChildRow(data) {
@@ -3506,12 +3543,62 @@
                 applyFilters();
             });
 
+            // Price = LMP badge: toggle filter (clears the other LMP badge filters)
+            // S PRC = LMP badge: same behavior
+            $('#amazon-sprice-eq-lmp-badge').on('click', function() {
+                spriceEqLmpFilterActive = !spriceEqLmpFilterActive;
+                if (spriceEqLmpFilterActive) {
+                    priceEqLmpFilterActive = false;
+                    lmpMissingFilterActive = false;
+                    priceGtLmpFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                    blueTriangleFilterActive = false;
+                    clearanceFilterActive = false;
+                    [
+                        [window.LmpMissingBadge, 'amazon-lmp-missing-badge'],
+                        [window.PriceGtLmpBadge, 'amazon-price-gt-lmp-badge'],
+                        [window.PriceLt80LmpBadge, 'amazon-price-lt80-lmp-badge']
+                    ].forEach(function(pair) {
+                        if (pair[0] && typeof pair[0].setOutline === 'function') {
+                            pair[0].setOutline(document.getElementById(pair[1]), false);
+                        }
+                    });
+                }
+                applyFilters();
+                syncAmazonBlueTriangleBadgeState();
+            });
+
+            $('#amazon-price-eq-lmp-badge').on('click', function() {
+                priceEqLmpFilterActive = !priceEqLmpFilterActive;
+                if (priceEqLmpFilterActive) {
+                    spriceEqLmpFilterActive = false;
+                    lmpMissingFilterActive = false;
+                    priceGtLmpFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                    blueTriangleFilterActive = false;
+                    clearanceFilterActive = false;
+                    [
+                        [window.LmpMissingBadge, 'amazon-lmp-missing-badge'],
+                        [window.PriceGtLmpBadge, 'amazon-price-gt-lmp-badge'],
+                        [window.PriceLt80LmpBadge, 'amazon-price-lt80-lmp-badge']
+                    ].forEach(function(pair) {
+                        if (pair[0] && typeof pair[0].setOutline === 'function') {
+                            pair[0].setOutline(document.getElementById(pair[1]), false);
+                        }
+                    });
+                }
+                applyFilters();
+                syncAmazonBlueTriangleBadgeState();
+            });
+
             $('#amazon-blue-triangle-badge').on('click', function() {
                 blueTriangleFilterActive = !blueTriangleFilterActive;
                 if (blueTriangleFilterActive) {
                     lmpMissingFilterActive = false;
                     priceGtLmpFilterActive = false;
                     priceLt80LmpFilterActive = false;
+                    priceEqLmpFilterActive = false;
+                    spriceEqLmpFilterActive = false;
                     clearanceFilterActive = false;
                 }
                 applyFilters();
@@ -3524,6 +3611,8 @@
                     lmpMissingFilterActive = false;
                     priceGtLmpFilterActive = false;
                     priceLt80LmpFilterActive = false;
+                    priceEqLmpFilterActive = false;
+                    spriceEqLmpFilterActive = false;
                     if (window.LmpMissingBadge && typeof LmpMissingBadge.setOutline === 'function') {
                         LmpMissingBadge.setOutline(document.getElementById('amazon-lmp-missing-badge'), false);
                     }
@@ -3543,7 +3632,7 @@
                     getActive: function() { return lmpMissingFilterActive; },
                     onToggle: function(on) {
                         lmpMissingFilterActive = on;
-                        if (on) { blueTriangleFilterActive = false; clearanceFilterActive = false; }
+                        if (on) { blueTriangleFilterActive = false; clearanceFilterActive = false; priceEqLmpFilterActive = false; spriceEqLmpFilterActive = false; }
                         applyFilters();
                         syncAmazonBlueTriangleBadgeState();
                     }
@@ -3555,7 +3644,7 @@
                     getActive: function() { return priceGtLmpFilterActive; },
                     onToggle: function(on) {
                         priceGtLmpFilterActive = on;
-                        if (on) { blueTriangleFilterActive = false; clearanceFilterActive = false; }
+                        if (on) { blueTriangleFilterActive = false; clearanceFilterActive = false; priceEqLmpFilterActive = false; spriceEqLmpFilterActive = false; }
                         applyFilters();
                         syncAmazonBlueTriangleBadgeState();
                     }
@@ -3567,7 +3656,7 @@
                     getActive: function() { return priceLt80LmpFilterActive; },
                     onToggle: function(on) {
                         priceLt80LmpFilterActive = on;
-                        if (on) { blueTriangleFilterActive = false; clearanceFilterActive = false; }
+                        if (on) { blueTriangleFilterActive = false; clearanceFilterActive = false; priceEqLmpFilterActive = false; spriceEqLmpFilterActive = false; }
                         applyFilters();
                         syncAmazonBlueTriangleBadgeState();
                     }
@@ -5970,6 +6059,16 @@
                         return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
                     });
                 }
+                if (priceEqLmpFilterActive) {
+                    table.addFilter(function(data) {
+                        return amazonPriceEqLandedLmp(data);
+                    });
+                }
+                if (spriceEqLmpFilterActive) {
+                    table.addFilter(function(data) {
+                        return amazonSpriceEqLandedLmp(data);
+                    });
+                }
                 updateSummary();
                 amazonTabulatorFinalizeFilterApply(sortSnapshot);
                 setTimeout(function() {
@@ -6072,6 +6171,12 @@
                 if (window.PriceLt80LmpBadge) {
                     PriceLt80LmpBadge.update('#amazon-price-lt80-lmp-badge', allData, 'amazon', 'price');
                 }
+                $('#amazon-price-eq-lmp-badge').html(
+                    '<i class="fas fa-equals"></i> ' + allData.filter(amazonPriceEqLandedLmp).length.toLocaleString()
+                );
+                $('#amazon-sprice-eq-lmp-badge').html(
+                    'S PRC <i class="fas fa-equals"></i> LMP: ' + allData.filter(amazonSpriceEqLandedLmp).length.toLocaleString()
+                );
                 if (typeof amzRuleSpriceSlabsReady !== 'undefined' && !amzRuleSpriceSlabsReady) {
                     $('#amazon-blue-triangle-badge').html(
                         '<i class="fas fa-exclamation-triangle"></i> …'
