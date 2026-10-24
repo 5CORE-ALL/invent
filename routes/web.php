@@ -3702,7 +3702,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/chat/health/retry', 'retry')->name('chat.health.retry');
     });
 
-    // Announcements (directors post; everyone can read)
+    // Announcements (directors and HR post; everyone can read)
     Route::controller(AnnouncementController::class)->group(function () {
         Route::get('/announcements', 'index')->name('announcements.index');
         Route::get('/announcements/data', 'data')->name('announcements.data');

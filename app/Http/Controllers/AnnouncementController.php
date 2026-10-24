@@ -10,6 +10,7 @@ use App\Models\AnnouncementView;
 use App\Models\User;
 use Illuminate\Validation\Rule;
 use App\Support\OpenAiRequest;
+use App\Support\TeamManagementAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -1302,6 +1303,11 @@ class AnnouncementController extends Controller
             return false;
         }
         if ($user->isDirector()) {
+            return true;
+        }
+
+        // HR (designation = "HR") can add announcements too.
+        if (TeamManagementAccess::isHrDesignation($user)) {
             return true;
         }
 
