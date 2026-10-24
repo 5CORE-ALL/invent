@@ -205,6 +205,39 @@ class PayrollController extends Controller
         ]);
     }
 
+    /**
+     * Month-wise list of employees who have an increment (user names only).
+     */
+    public function incrementsList(): JsonResponse
+    {
+        $rows = PayrollEmployeeSalary::with('user')
+            ->whereNotNull('increment')
+            ->where('increment', '!=', 0)
+            ->get()
+            ->groupBy('payroll_month_id');
+
+        $months = PayrollMonth::whereIn('id', $rows->keys())
+            ->orderByDesc('id')
+            ->get();
+
+        $data = $months->map(function (PayrollMonth $m) use ($rows) {
+            $names = $rows->get($m->id)
+                ->map(fn ($r) => $r->user?->name)
+                ->filter()
+                ->unique()
+                ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+                ->values();
+
+            return [
+                'month_id' => $m->id,
+                'month_label' => $m->month_label,
+                'users' => $names,
+            ];
+        })->filter(fn ($m) => $m['users']->isNotEmpty())->values();
+
+        return response()->json(['months' => $data]);
+    }
+
     public function storeMonth(Request $request): JsonResponse
     {
         $this->authorizeManage();

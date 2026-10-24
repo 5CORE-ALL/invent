@@ -63,6 +63,16 @@
     .payroll-doc-label { color: #6c757d; min-width: 0; text-align: right; }
     .payroll-doc-actions { display: inline-flex; align-items: center; gap: .15rem; }
     .table-payroll { font-size: .85rem; }
+    .payroll-increment-month { border: 1px solid rgba(0,0,0,.08); border-radius: 8px; margin-bottom: .75rem; overflow: hidden; }
+    .payroll-increment-month-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: .45rem .75rem; background: #f8f9fa; font-weight: 600; font-size: .9rem;
+    }
+    .payroll-increment-names { display: flex; flex-wrap: wrap; gap: .4rem; padding: .65rem .75rem; }
+    .payroll-increment-name {
+        padding: .2rem .65rem; border-radius: 999px; font-size: .82rem;
+        background: rgba(25, 135, 84, .12); color: #146c43;
+    }
     /* Center-align all payroll table data and headers. */
     #payrollApp .tabulator .tabulator-cell,
     #payrollApp .tabulator .tabulator-header .tabulator-col-title {
@@ -165,6 +175,12 @@
                 <span class="me-1">🇺🇸</span>USA
             </button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-increment-btn" data-bs-toggle="tab" data-bs-target="#tab-increment"
+                type="button" role="tab" data-tab-kind="increment" aria-selected="false">
+                <span class="me-1">📈</span>Increment
+            </button>
+        </li>
     </ul>
 
     <div class="payroll-card px-3 py-2 mb-2" id="salaryStatusSection">
@@ -230,6 +246,14 @@
         <div class="tab-pane fade" id="tab-usa" role="tabpanel">
             <div class="payroll-card p-2">
                 <div id="usaEmployeesTable"></div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="tab-increment" role="tabpanel">
+            <div class="payroll-card p-3">
+                <h5 class="mb-3" style="font-size: 1rem; font-weight: 600;">Increment — month wise</h5>
+                <div id="incrementList" class="payroll-increment-list">
+                    <div class="text-muted small">Loading…</div>
+                </div>
             </div>
         </div>
     </div>
@@ -1070,9 +1094,42 @@
         }
     });
 
+    // Increment tab: month-wise list of users who have an increment (names only).
+    async function loadIncrements() {
+        const box = document.getElementById('incrementList');
+        if (!box) return;
+        box.innerHTML = '<div class="text-muted small">Loading…</div>';
+        try {
+            const res = await api(`${base}/increments`);
+            const months = res.months || [];
+            if (!months.length) {
+                box.innerHTML = '<div class="text-muted small">No increments found.</div>';
+                return;
+            }
+            box.innerHTML = months.map((m) => {
+                const users = m.users || [];
+                return '<div class="payroll-increment-month">'
+                    + '<div class="payroll-increment-month-head"><span>' + esc(m.month_label) + '</span>'
+                    + '<span class="text-muted small">' + users.length + '</span></div>'
+                    + '<div class="payroll-increment-names">'
+                    + users.map((n) => '<span class="payroll-increment-name">' + esc(n) + '</span>').join('')
+                    + '</div></div>';
+            }).join('');
+        } catch (err) {
+            box.innerHTML = '<div class="text-danger small">' + esc(err.message || 'Failed to load increments.') + '</div>';
+        }
+    }
+
     // Tables built inside hidden tabs need a redraw once their tab becomes visible.
     document.querySelectorAll('#payrollRegionTabs [data-bs-toggle="tab"]').forEach((btn) => {
         btn.addEventListener('shown.bs.tab', () => {
+            const isIncrement = btn.dataset.tabKind === 'increment';
+            const toolbar = document.getElementById('salaryStatusSection');
+            if (toolbar) toolbar.style.display = isIncrement ? 'none' : '';
+            if (isIncrement) {
+                loadIncrements();
+                return;
+            }
             activeSalaryRegion = normalizeRegion(btn.dataset.region || 'india');
             updateRegionUi();
             applyPayrollFilters();
