@@ -560,6 +560,9 @@
                         <button type="button" id="pushEbayBtn" class="btn btn-sm btn-outline-danger" title="Push technical specifications to eBay 1 for the selected rows">
                             <i class="fas fa-cloud-upload-alt"></i> Push to eBay 1
                         </button>
+                        <button type="button" id="clearSpecsBtn" class="btn btn-sm btn-outline-secondary" title="Clear the saved specifications of the selected rows in this app. eBay is not changed.">
+                            <i class="fas fa-eraser"></i> Clear
+                        </button>
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm">
                             <i class="fas fa-download"></i> Export
                         </button>
@@ -627,8 +630,8 @@
                     <input type="hidden" id="modalSku">
                     <div id="bulkEditBanner" class="alert alert-info py-2 px-3 mb-2" style="display:none;">
                         <i class="fas fa-layer-group me-1"></i>
-                        <strong>Bulk Edit:</strong> Saving will update
-                        <strong id="bulkEditCount">0</strong> selected SKU(s).
+                        <strong>Bulk Edit:</strong> Saving updates only the fields you change on
+                        <strong id="bulkEditCount">0</strong> selected SKU(s). Other values stay as they are.
                     </div>
                     <div class="ts-edit-meta">
                         <span class="ts-chip ts-chip-sku"><i class="fas fa-barcode"></i> <span id="modalSkuLabel"></span></span>
@@ -1048,10 +1051,32 @@
                 return names;
             }
 
+            // Fixed values for every row. MPN always equals the row's own SKU (parent rows are not listed, so they keep what is saved).
+            const AUTOFILL_FIXED = { brand: '5 Core', condition: 'New', countryoforigin: 'China' };
+
+            function specNameKey(name) {
+                return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+            }
+
+            function autofillValue(row, name) {
+                const key = specNameKey(name);
+                if (Object.prototype.hasOwnProperty.call(AUTOFILL_FIXED, key)) return AUTOFILL_FIXED[key];
+                if (key === 'mpn') {
+                    const sku = String(row.SKU || '').trim();
+                    if (!sku || /^parent\s/i.test(sku)) return null;
+                    return sku;
+                }
+                return null;
+            }
+
             function stampAspectFields(row) {
                 const values = row.ebay_values || {};
+                row.ebay_values = values;
                 ebayAspectNames.forEach(function (name) {
-                    row[aspectKey(name)] = rowRequiresAspect(row, name) ? (values[name] || '') : '';
+                    const required = rowRequiresAspect(row, name);
+                    const auto = required ? autofillValue(row, name) : null;
+                    if (auto !== null) values[name] = auto;
+                    row[aspectKey(name)] = required ? (values[name] || '') : '';
                 });
             }
 
@@ -1066,7 +1091,8 @@
                         headerTooltip: name,
                         editor: 'input',
                         editable: function (cell) {
-                            return rowRequiresAspect(cell.getRow().getData(), name);
+                            const d = cell.getRow().getData();
+                            return rowRequiresAspect(d, name) && autofillValue(d, name) === null;
                         },
                         formatter: function (cell) {
                             const d = cell.getRow().getData();
@@ -1145,7 +1171,10 @@
                         ebay_values: Object.assign({}, data.ebay_values || {}),
                     };
                     ebayAspectNames.forEach(function (name) {
-                        const value = rowRequiresAspect(data, name) ? (byKey[String(name).toLowerCase()] || '') : '';
+                        const auto = autofillValue(data, name);
+                        const value = rowRequiresAspect(data, name)
+                            ? (auto !== null ? auto : (byKey[String(name).toLowerCase()] || ''))
+                            : '';
                         patch[aspectKey(name)] = value;
                         if (rowRequiresAspect(data, name)) patch.ebay_values[name] = value;
                     });
@@ -1177,7 +1206,7 @@
                     ? (bulkEditSkus.length + ' SKUs selected')
                     : (rowData.SKU || '');
                 document.getElementById('modalProductLabel').textContent = isBulk
-                    ? 'Bulk edit — same specs will be saved to every selected SKU'
+                    ? 'Bulk edit — only the fields you change are saved to every selected SKU'
                     : (rowData.Parent || rowData.title150 || rowData.SKU || '');
 
                 const banner = document.getElementById('bulkEditBanner');
@@ -1215,6 +1244,8 @@
             }
 
             function valueForSpec(row, name) {
+                const auto = autofillValue(row, name);
+                if (auto !== null) return auto;
                 const want = String(name || '').trim().toLowerCase();
                 const specs = row.description_v2_specifications || [];
                 for (let i = 0; i < specs.length; i++) {
@@ -1273,6 +1304,7 @@
                     input.className = 'form-control spec-field';
                     input.dataset.name = name;
                     input.value = valueForSpec(source, name);
+                    input.dataset.initial = input.value;
                     input.addEventListener('input', function () { markBlankSpec(group, input); });
                     group.appendChild(label);
                     group.appendChild(input);
@@ -1301,6 +1333,31 @@
                 group.classList.toggle('is-blank', blank);
                 group.classList.toggle('is-filled', !blank);
                 refreshSpecCounts();
+            }
+
+            // Fields the user actually changed. Blank edits are ignored so a bulk save never wipes values.
+            function collectEditedSpecFields() {
+                return Array.from(document.querySelectorAll('#specFields .spec-field')).filter(function (input) {
+                    return String(input.value || '').trim() !== String(input.dataset.initial || '').trim();
+                }).map(function (input) {
+                    return { key: input.dataset.name, value: String(input.value || '').trim() };
+                }).filter(function (row) { return row.value !== ''; });
+            }
+
+            function mergeEditedSpecs(sku, edited) {
+                const row = table ? table.getData().find(function (r) { return String(r.SKU || '').trim() === sku; }) : null;
+                const merged = ((row && row.description_v2_specifications) || []).map(function (spec) {
+                    return { key: spec.key, value: spec.value };
+                });
+                edited.forEach(function (change) {
+                    const want = String(change.key || '').trim().toLowerCase();
+                    const idx = merged.findIndex(function (spec) {
+                        return String(spec.key || '').trim().toLowerCase() === want;
+                    });
+                    if (idx >= 0) merged[idx] = { key: merged[idx].key, value: change.value };
+                    else merged.push({ key: change.key, value: change.value });
+                });
+                return merged;
             }
 
             function collectSpecFields() {
@@ -1974,6 +2031,71 @@
                 runEbaySync('push', skus);
             }
 
+            function promptClearSpecs() {
+                const rows = selectedRows();
+                if (!rows.length) {
+                    openEbayPrompt({
+                        title: 'Select rows',
+                        body: 'Select the rows to clear before continuing. Use the checkboxes in the first column.',
+                        rows: [],
+                    });
+                    return;
+                }
+                if (rows.length > 500) {
+                    openEbayPrompt({
+                        title: 'Too many rows',
+                        body: 'Select 500 rows or fewer at a time, then clear again.',
+                        rows: rows,
+                    });
+                    return;
+                }
+                openEbayPrompt({
+                    title: 'Clear specifications',
+                    body: 'Clear all saved technical specifications for these ' + rows.length + ' row' + (rows.length === 1 ? '' : 's') + '? This only changes this app. eBay is not changed.',
+                    rows: rows,
+                    confirmText: 'Clear',
+                    confirmClass: 'btn-danger',
+                    onConfirm: function () { runClearSpecs(rows.map(function (row) { return row.SKU; })); },
+                });
+            }
+
+            async function runClearSpecs(skus) {
+                const confirmBtn = document.getElementById('ebaySyncConfirm');
+                const cancelBtn = document.getElementById('ebaySyncCancel');
+                const status = document.getElementById('ebaySyncStatus');
+                const list = document.getElementById('ebaySyncSkuList');
+                confirmBtn.disabled = true;
+                cancelBtn.disabled = true;
+                hideSyncOutcome();
+                list.innerHTML = '';
+                let done = 0;
+                let failed = 0;
+                for (const sku of skus) {
+                    status.textContent = 'Clearing ' + (done + failed + 1) + ' of ' + skus.length + '…';
+                    try {
+                        const json = await saveSpecs(sku, '', []);
+                        applySaveToRow(sku, json, '');
+                        done++;
+                    } catch (e) {
+                        failed++;
+                        const li = document.createElement('li');
+                        li.className = 'ts-sync-row text-danger';
+                        li.textContent = sku + ' — ' + (e.message || 'Clear failed');
+                        list.appendChild(li);
+                    }
+                }
+                applyStatusFilter();
+                updateSelectedCount();
+                const summary = 'Cleared ' + done + ' row' + (done === 1 ? '' : 's') + (failed ? ', ' + failed + ' failed' : '') + '.';
+                status.textContent = summary;
+                document.getElementById('ebaySyncBody').textContent = '';
+                showSyncOutcome(failed === 0, failed === 0 ? 'Specifications cleared' : 'Clear finished with errors', summary);
+                confirmBtn.classList.add('d-none');
+                cancelBtn.disabled = false;
+                cancelBtn.textContent = 'Close';
+                ebaySyncAction = null;
+            }
+
             function promptEbaySync(mode) {
                 const rows = selectedRows();
                 const verb = mode === 'pull' ? 'pull from eBay 1' : 'push to eBay 1';
@@ -2005,6 +2127,36 @@
                 });
             }
 
+            // Save MPN = SKU for rows whose category uses MPN, so the push sends the right value.
+            async function ensureAutofillSaved(skus) {
+                const wanted = new Set(skus);
+                const rows = (table ? table.getData() : []).filter(function (row) {
+                    return wanted.has(String(row.SKU || '').trim());
+                });
+                for (const row of rows) {
+                    const sku = String(row.SKU || '').trim();
+                    const changes = [];
+                    (row.ebay_required || []).forEach(function (name) {
+                        const value = autofillValue(row, name);
+                        if (value === null) return;
+                        if (valueForSpecSaved(row, name) !== value) changes.push({ key: name, value: value });
+                    });
+                    if (!changes.length) continue;
+                    try {
+                        const json = await saveSpecs(sku, '', mergeEditedSpecs(sku, changes));
+                        applySaveToRow(sku, json, json.technical_specifications || '');
+                    } catch (_) {}
+                }
+            }
+
+            function valueForSpecSaved(row, name) {
+                const want = String(name || '').trim().toLowerCase();
+                const spec = (row.description_v2_specifications || []).find(function (s) {
+                    return String(s.key || '').trim().toLowerCase() === want;
+                });
+                return spec ? String(spec.value || '').trim() : '';
+            }
+
             async function runEbaySync(mode, skus) {
                 const confirmBtn = document.getElementById('ebaySyncConfirm');
                 const cancelBtn = document.getElementById('ebaySyncCancel');
@@ -2018,6 +2170,10 @@
                 let done = 0;
                 let failed = 0;
                 try {
+                    if (mode === 'push') {
+                        status.textContent = 'Filling Brand and MPN…';
+                        await ensureAutofillSaved(skus);
+                    }
                     for (let i = 0; i < skus.length; i += 8) {
                         const chunk = skus.slice(i, i + 8);
                         status.textContent = (mode === 'pull' ? 'Pulling ' : 'Pushing ') + (done + 1) + '–' + (done + chunk.length) + ' of ' + skus.length + '…';
@@ -2113,6 +2269,7 @@
                 if (colMenuParent) colMenuParent.addEventListener('shown.bs.dropdown', placeTsColumnPanel);
                 window.addEventListener('resize', placeTsColumnPanel);
                 document.getElementById('pushEbayBtn').addEventListener('click', function () { promptEbaySync('push'); });
+                document.getElementById('clearSpecsBtn').addEventListener('click', promptClearSpecs);
                 document.getElementById('ebaySyncConfirm').addEventListener('click', function () {
                     if (typeof ebaySyncAction === 'function') ebaySyncAction();
                 });
@@ -2156,12 +2313,18 @@
                 });
 
                 document.getElementById('modalSaveBtn').addEventListener('click', async function () {
-                    const specs = collectSpecFields();
                     const skus = bulkEditSkus.length
                         ? bulkEditSkus.slice()
                         : [document.getElementById('modalSku').value].filter(Boolean);
                     if (!skus.length) {
                         toast('No SKUs to save', 'error');
+                        return;
+                    }
+                    const isBulkSave = skus.length > 1;
+                    const specs = isBulkSave ? null : collectSpecFields();
+                    const edited = isBulkSave ? collectEditedSpecFields() : [];
+                    if (isBulkSave && !edited.length) {
+                        toast('Change at least one field to save it to the selected SKUs', 'error');
                         return;
                     }
                     const btn = this;
@@ -2174,7 +2337,7 @@
                     try {
                         for (const sku of skus) {
                             try {
-                                const json = await saveSpecs(sku, '', specs);
+                                const json = await saveSpecs(sku, '', isBulkSave ? mergeEditedSpecs(sku, edited) : specs);
                                 applySaveToRow(sku, json, json.technical_specifications || '');
                                 saved.push(sku);
                             } catch (_) {
