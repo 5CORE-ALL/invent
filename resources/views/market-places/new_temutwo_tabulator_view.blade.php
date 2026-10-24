@@ -3967,20 +3967,33 @@
                     title: 'S Promo Base Prc',
                     field: 's_promo_base_prc',
                     hozAlign: 'center',
-                    width: 80,
+                    width: 96,
                     sorter: function(a, b, aRow, bRow) {
                         const x = ntoRowSPromoBasePrc(aRow.getData() || {});
                         const y = ntoRowSPromoBasePrc(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'S Promo Base Prc = S Promo Prc − S Ship Disc.',
+                    headerTooltip: 'S Promo Base Prc = S Promo Prc − S Ship Disc. A blue triangle means this price still has to be pushed to Temu (same test as the blue-triangle badge).',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const v = ntoRowSPromoBasePrc(row);
                         if (v == null) return '<span style="color: #6c757d;">—</span>';
                         const tip = 'S Promo Prc $' + ntoRowSPriceAfterDisc(row).toFixed(2)
                             + ' − S Ship Disc $' + (ntoRowSShipDisc(row) || 0).toFixed(2) + ' = $' + v.toFixed(2);
-                        return '<span style="font-weight: 600;" title="' + tip + '">$' + v.toFixed(2) + '</span>';
+                        let blueTri = '';
+                        if (typeof temuHasBlueTriangle === 'function' && temuHasBlueTriangle(row)
+                            && typeof ntoRowPushState === 'function'
+                            && ['pushed', 'pushing'].indexOf(ntoRowPushState(row)) === -1) {
+                            const liveBase = parseFloat(row.base_price) || 0;
+                            const blueTip = 'S Promo Base Prc $' + v.toFixed(2)
+                                + (liveBase > 0 ? ' ≠ Temu Base Prc $' + liveBase.toFixed(2) : '')
+                                + ' — push needed';
+                            blueTri = '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="'
+                                + blueTip.replace(/"/g, '&quot;') + '"></i>';
+                        }
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:2px;">'
+                            + '<span style="font-weight: 600;" title="' + tip + '">$' + v.toFixed(2) + '</span>'
+                            + blueTri + '</span>';
                     }
                 },
                 {
