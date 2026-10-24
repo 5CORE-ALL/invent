@@ -821,10 +821,17 @@
                 return '';
             }
 
+            let categorySearchQuery = '';
+
             function unmountSearchSelect(sel) {
                 if (window.jQuery && jQuery.fn.select2 && jQuery(sel).hasClass('select2-hidden-accessible')) {
                     jQuery(sel).select2('destroy');
                 }
+            }
+
+            function applyCategorySearch() {
+                applyStatusFilter();
+                if (table) buildTsColumnPicker();
             }
 
             function mountSearchSelect(sel, placeholder) {
@@ -839,11 +846,27 @@
                     minimumResultsForSearch: 0,
                     dropdownParent: jQuery(document.body),
                 });
-                $sel.off('select2:open.tsQuick').on('select2:open.tsQuick', function () {
+                $sel.off('.tsQuick');
+                $sel.on('select2:open.tsQuick', function () {
                     const field = document.querySelector('.select2-container--open .select2-search__field');
                     if (!field) return;
                     field.placeholder = 'Quick search';
                     field.focus();
+                    if (sel.id !== 'categoryFilter') return;
+                    field.oninput = function () {
+                        categorySearchQuery = field.value || '';
+                        applyStatusFilter();
+                    };
+                });
+                $sel.on('select2:close.tsQuick', function () {
+                    if (sel.id !== 'categoryFilter' || !categorySearchQuery) return;
+                    categorySearchQuery = '';
+                    applyStatusFilter();
+                });
+                $sel.on('select2:select.tsQuick select2:clear.tsQuick', function () {
+                    categorySearchQuery = '';
+                    if (sel.id === 'channelFilter') fillCategoryFilter();
+                    applyCategorySearch();
                 });
             }
 
@@ -924,6 +947,20 @@
                 const channelName = document.getElementById('channelFilter')?.value || '';
                 const channelField = channelCategoryField(channelName);
                 const categoryPick = document.getElementById('categoryFilter')?.value || '';
+                const typedCategory = String(categorySearchQuery || '').trim().toLowerCase();
+                const categoryFields = channelField ? [channelField] : ['category_ebay', 'category_amz', 'category_temu'];
+                function categoryCell(data, key) {
+                    return String(data[key] || '').replace(/\s+/g, ' ').trim();
+                }
+                function rowMatchesCategory(data, query, exact) {
+                    const needle = String(query || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    if (!needle) return true;
+                    return categoryFields.some(function (key) {
+                        const value = categoryCell(data, key).toLowerCase();
+                        if (!value) return false;
+                        return exact ? value === needle : value.indexOf(needle) !== -1;
+                    });
+                }
                 function passesBase(data) {
                     const isParent = window.isPmParentRowData
                         ? window.isPmParentRowData(data)
@@ -933,15 +970,12 @@
                     if (navParent != null && String(data.Parent || '') !== String(navParent)) return false;
                     if (parentQ && !containsText(data.Parent || data.title150 || '', parentQ)) return false;
                     if (skuQ && !containsText(data.SKU, skuQ)) return false;
-                    if (channelField && categoryPick) {
-                        if (String(data[channelField] || '').trim() !== categoryPick) return false;
-                    } else if (channelField && !String(data[channelField] || '').trim()) {
-                        return false;
+                    if (typedCategory) {
+                        if (!rowMatchesCategory(data, typedCategory, false)) return false;
                     } else if (categoryPick) {
-                        const matched = ['category_ebay', 'category_amz', 'category_temu'].some(function (key) {
-                            return String(data[key] || '').trim() === categoryPick;
-                        });
-                        if (!matched) return false;
+                        if (!rowMatchesCategory(data, categoryPick, true)) return false;
+                    } else if (channelField && !categoryCell(data, channelField)) {
+                        return false;
                     }
                     if (quickQ && !containsText([data.SKU, data.Parent, data.title150, categoryText(data), anythingText(data)].join('\n'), quickQ)) return false;
                     if (anyQ && !containsText(anythingText(data), anyQ)) return false;
