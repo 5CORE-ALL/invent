@@ -47,6 +47,7 @@ class ReverbInventorySyncService
         $settings = MarketplaceSyncSettings::getFor('reverb');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
 
         // Fast path: listing ids from metric / SKU lookup, then LIVE listing GET for state (no full catalog crawl).
         $listingIdsBySku = [];
@@ -141,7 +142,8 @@ class ReverbInventorySyncService
                 $shopifyStock,
                 $exactShopifyQty,
                 $qtyPercent,
-                $maxQty
+                $maxQty,
+                $qtyOffset
             );
 
             $inventoryRows[] = [
@@ -308,6 +310,7 @@ class ReverbInventorySyncService
 
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
         $useSalePrice = (bool) ($settings['pricing']['use_sale_price'] ?? false);
 
         $inventoryRows = [];
@@ -326,7 +329,7 @@ class ReverbInventorySyncService
                     continue;
                 }
 
-                $pushQty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                $pushQty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty, $qtyOffset);
                 $inventoryRows[] = [
                     'product_id' => $productId,
                     'sku_code' => $sku,

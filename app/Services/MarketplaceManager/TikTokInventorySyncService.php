@@ -36,6 +36,7 @@ class TikTokInventorySyncService
         $settings = MarketplaceSyncSettings::getFor('tiktok');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
 
         $shopifyQty = $this->shopifyQtyForPush($skus, $shopifyConfig);
         $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
@@ -212,6 +213,7 @@ class TikTokInventorySyncService
 
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
         $liveMpQty = $this->liveMarketplaceQtyMap($metrics->pluck('sku')->all());
         $updated = 0;
         $failed = 0;
@@ -314,7 +316,8 @@ class TikTokInventorySyncService
             $shopifyStock,
             $exactShopifyQty,
             $qtyPercent,
-            $maxQty
+            $maxQty,
+            $qtyOffset
         );
         $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
 

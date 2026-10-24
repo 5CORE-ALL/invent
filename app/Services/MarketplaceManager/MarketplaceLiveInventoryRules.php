@@ -54,9 +54,13 @@ final class MarketplaceLiveInventoryRules
      * Optional percent/max may only REDUCE inventory, never raise above live Shopify.
      * Negative live Shopify (oversell reporting) is treated as 0 for marketplace push.
      *
+     * $offset is the per-marketplace "Qty adjust" (0, -1, -2 ...): subtracted from the final qty,
+     * never below 0. A positive value is ignored, so stock is never pushed above Shopify.
+     *
      * @param  int|string|null  $maxQty
+     * @param  int|string|null  $offset
      */
-    public static function qtyFromLiveShopify(?int $liveShopifyQty, ?int $percent = 100, $maxQty = null): int
+    public static function qtyFromLiveShopify(?int $liveShopifyQty, ?int $percent = 100, $maxQty = null, $offset = 0): int
     {
         if ($liveShopifyQty === null || (int) $liveShopifyQty <= 0) {
             return 0;
@@ -67,14 +71,30 @@ final class MarketplaceLiveInventoryRules
         $live = (int) $liveShopifyQty;
         $cap = self::normalizeMaxCap($maxQty);
         if ($cap !== null && $live >= $cap) {
-            return $cap;
+            $qty = $cap;
+        } else {
+            $percent = $percent === null ? 100 : max(0, min(100, (int) $percent));
+            $qty = $percent < 100 ? (int) floor($live * $percent / 100) : $live;
         }
 
-        $percent = $percent === null ? 100 : max(0, min(100, (int) $percent));
-        $qty = $percent < 100 ? (int) floor($live * $percent / 100) : $live;
-
         // Absolute: never exceed live Shopify; never invent when live was 0.
-        return max(0, min($qty, $live));
+        $qty = max(0, min($qty, $live));
+
+        return max(0, $qty + self::normalizeOffset($offset));
+    }
+
+    /**
+     * Qty adjust: whole number from -999 to 0 (0 = send the Shopify qty as is).
+     *
+     * @param  int|string|null  $offset
+     */
+    public static function normalizeOffset($offset): int
+    {
+        if ($offset === null || $offset === '' || ! is_numeric($offset)) {
+            return 0;
+        }
+
+        return max(-999, min(0, (int) round((float) $offset)));
     }
 
     /**
@@ -128,6 +148,7 @@ final class MarketplaceLiveInventoryRules
         $caps = [
             'percent' => max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100))),
             'maxQty' => self::normalizeMaxCap($settings['inventory']['max_quantity'] ?? null),
+            'offset' => self::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0),
         ];
         self::$capsMemo[$marketplace] = ['at' => microtime(true), 'caps' => $caps];
 
@@ -151,7 +172,7 @@ final class MarketplaceLiveInventoryRules
     {
         $caps = self::inventoryCapsForMarketplace($marketplace);
 
-        return self::qtyFromLiveShopify($shopifyQty, $caps['percent'], $caps['maxQty']);
+        return self::qtyFromLiveShopify($shopifyQty, $caps['percent'], $caps['maxQty'], $caps['offset'] ?? 0);
     }
 
     /**
@@ -161,14 +182,14 @@ final class MarketplaceLiveInventoryRules
      *
      * @param  int|string|null  $maxQty
      */
-    public static function qtyForMismatchPush(?int $shopifyStock, bool $exactShopifyQty, int $qtyPercent = 100, $maxQty = null): int
+    public static function qtyForMismatchPush(?int $shopifyStock, bool $exactShopifyQty, int $qtyPercent = 100, $maxQty = null, $offset = 0): int
     {
         unset($exactShopifyQty);
         if ($shopifyStock === null) {
             return self::qtyWhenMissingFromShopify();
         }
 
-        return self::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+        return self::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty, $offset);
     }
 
     /**

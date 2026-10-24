@@ -81,6 +81,7 @@ class Ebay2InventorySyncService
         $settings = MarketplaceSyncSettings::getFor('ebay2');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
 
         $fetchSkus = $skus;
         $wantedNorms = [];
@@ -155,7 +156,8 @@ class Ebay2InventorySyncService
                 $shopifyStock,
                 $exactShopifyQty,
                 $qtyPercent,
-                $maxQty
+                $maxQty,
+                $qtyOffset
             );
             $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
 
@@ -226,6 +228,7 @@ class Ebay2InventorySyncService
         $settings = MarketplaceSyncSettings::getFor('ebay2');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
         Log::info('Ebay2InventorySyncService: loaded inventory rule', [
             'qty_percent' => $qtyPercent,
             'inventory_sync' => (bool) ($settings['inventory']['inventory_sync'] ?? false),
@@ -411,7 +414,7 @@ class Ebay2InventorySyncService
             if ($settings['inventory']['inventory_sync'] ?? false) {
                 $pushQty = $shopifyStock === null
                     ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty, $qtyOffset);
             }
 
             $price = null;

@@ -46,6 +46,7 @@ class FaireInventorySyncService
         $settings = MarketplaceSyncSettings::getFor('faire');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
 
         // Include NBSP-normalized forms so live Shopify Admin lookup matches Admin SKUs.
         $fetchSkus = $skus;
@@ -129,7 +130,7 @@ class FaireInventorySyncService
             }
             $pushQty = $shopifyStock === null
                 ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty, $qtyOffset);
 
             $inventoryRows[] = [
                 'product_id' => $productId,
@@ -275,6 +276,7 @@ class FaireInventorySyncService
 
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
         $useSalePrice = (bool) ($settings['pricing']['use_sale_price'] ?? false);
 
         $inventoryRows = [];
@@ -293,7 +295,7 @@ class FaireInventorySyncService
                 $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
                 $pushQty = $shopifyStock === null
                     ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty, $qtyOffset);
 
                 $inventoryRows[] = [
                     'product_id' => $productId,
