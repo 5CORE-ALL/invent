@@ -548,12 +548,13 @@
                         ? $annMe->avatar
                         : asset('storage/'.$annMe->avatar);
                 }
+                $annMeData = [
+                    'id' => $annMe ? $annMe->id : null,
+                    'name' => ($annMe && $annMe->name) ? $annMe->name : 'You',
+                    'avatar' => $annMeAvatar,
+                ];
             @endphp
-            const currentUser = @json([
-                'id' => $annMe?->id,
-                'name' => $annMe?->name ?: 'You',
-                'avatar' => $annMeAvatar,
-            ]);
+            const currentUser = @json($annMeData);
 
             function escapeHtml(s) {
                 const d = document.createElement('div');
