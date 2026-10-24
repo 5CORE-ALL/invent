@@ -40,6 +40,7 @@ class EbayRuleSpriceCommand extends Command
         $unchanged = 0;
         $skipped = 0;
         $pageAds = EbayRuleSprice::pageAdsPercent($channel);
+        $ruleContext = EbayRuleSprice::context($channel);
         foreach ($this->tabulatorRows($channel) as $row) {
             $input = EbayRuleSprice::inputFromTabulatorRow($row, $pageAds);
             if ($input === null) {
@@ -48,7 +49,7 @@ class EbayRuleSpriceCommand extends Command
             if ($only !== [] && ! in_array(strtoupper($input['sku']), $only, true)) {
                 continue;
             }
-            $priced = EbayRuleSprice::price($pricer, $input);
+            $priced = EbayRuleSprice::price($pricer, $input, $ruleContext);
             if ($priced === null) {
                 $skipped++;
 

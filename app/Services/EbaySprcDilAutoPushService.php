@@ -58,6 +58,9 @@ class EbaySprcDilAutoPushService
 
             $changes = [];
             $pageAds = EbayRuleSprice::pageAdsPercent($channel);
+            // The page switch decides the rule: Std prc vs dil, or Sprc Dil (Target NROI by Dil, LMP × 0.98).
+            $ruleContext = EbayRuleSprice::context($channel);
+            $log($channel.': S PRC rule = '.($ruleContext['rule'] === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'));
             foreach ($this->tabulatorRows($channel) as $row) {
                 $input = EbayRuleSprice::inputFromTabulatorRow($row, $pageAds);
                 if ($input === null) {
@@ -67,7 +70,7 @@ class EbaySprcDilAutoPushService
                     continue;
                 }
                 $stats['candidates']++;
-                $priced = EbayRuleSprice::price($pricer, $input);
+                $priced = EbayRuleSprice::price($pricer, $input, $ruleContext);
                 if ($priced === null) {
                     $stats['skipped']++;
 

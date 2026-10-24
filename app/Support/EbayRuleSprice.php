@@ -6,7 +6,8 @@ namespace App\Support;
  * eBay 1 / 2 / 3 S PRC — the same rule chain as /amazon-tabulator-view with the Std prc vs dil rule ON:
  *   1. S PRC = Std Prc × (1 − (Age + Dil + B Disc + 0 Sold + CVR + Review) / 100), Std under $15 halves rule discs
  *   2. clearance SKUs stay on the discount price
- *   3. LMP cap: S PRC ≥ LMP and SGROI at LMP ≥ 20% → S PRC = LMP
+ *   3. LMP cap: S PRC ≥ LMP and SGROI at LMP ≥ 20% → S PRC = LMP (Std prc vs dil switch ON)
+ *      or LMP × 0.98 (Sprc Dil switch ON, AmazonDilGroiRule::DIL_LMP_REDUCE_PCT)
  *   4. Std Prc is the maximum
  * Inputs always come from the eBay channel's own tabulator row: Shopify INV / OV L30, eBay L30,
  * eBay CVR 30 vs CVR 45, eBay take-home %, eBay channel Ads %, eBay LMP. Std Prc is the shared master price.
@@ -142,14 +143,77 @@ class EbayRuleSprice
     }
 
     /**
+     * Which S PRC rule the eBay page switch has ON, plus the Dil slabs when it is Sprc Dil.
+     * std = Std prc vs dil (LMP cap = LMP). dil = Sprc Dil (Target NROI by Dil, LMP cap = LMP × 0.98).
+     *
+     * @return array{rule: string, dil: array{rules: array, cvr_adj: array}|null}
+     */
+    public static function context(string $channel): array
+    {
+        $channel = strtolower(trim($channel));
+        if (SpriceActiveRule::forChannel($channel) !== 'dil') {
+            return ['rule' => 'std', 'dil' => null];
+        }
+        $row = \App\Models\ChannelTabulatorColumnSetting::query()->where('channel_name', $channel.'_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $rules = $unpacked['rules'] === []
+            ? AmazonDilGroiRule::defaultsForChannel($channel)
+            : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+
+        return ['rule' => 'dil', 'dil' => ['rules' => $rules, 'cvr_adj' => $unpacked['cvr_adj']]];
+    }
+
+    /**
+     * Sprc Dil price: the Dil slab (nearest slab outside them) gives a Target NROI%, the CVR overlay adds or takes off
+     * points, and S PRC solves (LP × (1 + target%) + Ship) ÷ (take-home − Ads%). Null with no INV, LP or slab.
+     *
+     * @param  array<string, mixed>  $input  from inputFromTabulatorRow()
+     * @param  array{rules: array, cvr_adj: array}  $dil
+     */
+    public static function dilPrice(array $input, array $dil): ?float
+    {
+        if (! ((float) ($input['inv'] ?? 0) > 0)) {
+            return null;
+        }
+        $slab = AmazonDilGroiRule::matchOrNearest((float) ($input['dil'] ?? 0), $dil['rules']);
+        if ($slab === null) {
+            return null;
+        }
+        $nroi = AmazonDilGroiRule::adjustGroiForCvrArrow(
+            (float) $slab['groi'],
+            (float) ($input['cvr'] ?? 0),
+            (float) ($input['cvr_60'] ?? 0),
+            $dil['cvr_adj']
+        );
+        $margin = (float) ($input['percentage'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0)) {
+            $margin = AmazonDilGroiRule::TAKE_HOME;
+        }
+        $price = AmazonDilGroiRule::suggestedPrice(
+            (float) ($input['lp'] ?? 0),
+            (float) ($input['ship'] ?? 0),
+            max(0.0, $nroi),
+            max(0.0, (float) ($input['ads'] ?? 0)) * 100,
+            $margin
+        );
+
+        return ($price !== null && $price >= 0.01) ? $price : null;
+    }
+
+    /**
      * Full chain for one SKU.
      *
      * @param  array<string, mixed>  $input  from inputFromTabulatorRow()
+     * @param  array{rule: string, dil: array|null}|null  $context  from context(); null = Std prc vs dil
      * @return array{sprice:float,rule_price:float,lmp_capped:bool,std_capped:bool}|null
      */
-    public static function price(StdPrcVsDilPricer $pricer, array $input): ?array
+    public static function price(StdPrcVsDilPricer $pricer, array $input, ?array $context = null): ?array
     {
-        $rulePrice = $pricer->priceFromRow($input);
+        $dilOn = is_array($context) && ($context['rule'] ?? 'std') === 'dil' && is_array($context['dil'] ?? null);
+        $rulePrice = $dilOn ? self::dilPrice($input, $context['dil']) : $pricer->priceFromRow($input);
         if ($rulePrice === null || ! ($rulePrice > 0)) {
             return null;
         }
@@ -162,8 +226,10 @@ class EbayRuleSprice
         if (! ($margin > 0)) {
             $margin = AmazonDilGroiRule::TAKE_HOME;
         }
+        // Sprc Dil (switch ON): S PRC at LMP lands on LMP × 0.98. Std prc vs dil: S PRC = LMP.
         $afterLmp = AmazonDilGroiRule::capSpriceToLmp(
-            $rulePrice, $lmp, (float) ($input['lp'] ?? 0), (float) ($input['ship'] ?? 0), $margin, 0.0
+            $rulePrice, $lmp, (float) ($input['lp'] ?? 0), (float) ($input['ship'] ?? 0), $margin, 0.0,
+            $dilOn ? AmazonDilGroiRule::DIL_LMP_REDUCE_PCT : 0.0
         );
         $final = AmazonDilGroiRule::capToStdWhenNoLmp($afterLmp, $lmp, max($std, $rulePrice));
 

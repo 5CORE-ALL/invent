@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Support\AmazonDilGroiRule;
 use App\Support\EbayRuleSprice;
 use App\Support\StdPrcVsDilPricer;
 use PHPUnit\Framework\TestCase;
@@ -203,6 +204,28 @@ class EbayRuleSpriceTest extends TestCase
         // LMP 70, LP 50, Ship 5: margin 0.95 → 23% (cap); margin 0.85 → 9% (no cap).
         $this->assertSame(70.0, EbayRuleSprice::price($this->pricer(), $this->input(['lp' => 50, 'ship' => 5, 'lmp' => 70, 'percentage' => 0.95]))['sprice']);
         $this->assertSame(100.0, EbayRuleSprice::price($this->pricer(), $this->input(['lp' => 50, 'ship' => 5, 'lmp' => 70, 'percentage' => 85]))['sprice']);
+    }
+
+    public function test_sprc_dil_switch_prices_from_target_nroi_and_lands_on_lmp_x_098(): void
+    {
+        $dil = ['rules' => [AmazonDilGroiRule::make(0, 0, 40), AmazonDilGroiRule::make(0.1, 100, 40)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null)];
+        $context = ['rule' => 'dil', 'dil' => $dil];
+        // Target NROI 40%: (50 × 1.4 + 5) ÷ (0.80 − 0.10) = 107.14, over LMP 90 (SGROI at LMP = 34%) → LMP × 0.98.
+        $input = $this->input(['lp' => 50, 'ship' => 5, 'lmp' => 90, 'percentage' => 0.8, 'ads' => 0.10, 'inv' => 10, 'dil' => 5, 'cvr' => 8, 'cvr_60' => 8]);
+        $out = EbayRuleSprice::price($this->pricer(), $input, $context);
+        $this->assertSame(107.14, $out['rule_price']);
+        $this->assertSame(88.2, $out['sprice']);
+        $this->assertTrue($out['lmp_capped']);
+        // The same SKU on Std prc vs dil (switch default) lands on LMP itself.
+        $std = EbayRuleSprice::price($this->pricer(), $input, ['rule' => 'std', 'dil' => null]);
+        $this->assertSame(90.0, $std['sprice']);
+    }
+
+    public function test_sprc_dil_switch_skips_a_sku_without_inventory(): void
+    {
+        $dil = ['rules' => [AmazonDilGroiRule::make(0, 100, 40)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null)];
+        $input = $this->input(['inv' => 0, 'dil' => 5]);
+        $this->assertNull(EbayRuleSprice::price($this->pricer(), $input, ['rule' => 'dil', 'dil' => $dil]));
     }
 
     public function test_lmp_never_raises_a_price_below_it(): void

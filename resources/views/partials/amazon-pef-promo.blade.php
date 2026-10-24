@@ -756,7 +756,7 @@
                         <li>
                             <strong>When</strong> LMP is available and the calculated price is at or above LMP
                             (and SGROI at LMP is at least 20%):
-                            S PRC = <strong>LMP × 0.95</strong>. Std Prc is still the maximum.
+                            S PRC = <strong>LMP × 0.98</strong>. Std Prc is still the maximum.
                         </li>
                         <li>
                             <strong>When</strong> LMP is above Std Prc:

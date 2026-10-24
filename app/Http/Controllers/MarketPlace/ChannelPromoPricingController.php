@@ -258,9 +258,6 @@ class ChannelPromoPricingController extends Controller
     public function spriceActiveRule(string $channel): JsonResponse
     {
         $channel = \App\Support\SpriceActiveRule::normalize($channel);
-        if (self::ebayDilRuleRemoved($channel)) {
-            return self::ebayDilRuleRemovedResponse();
-        }
         if (! $this->allowsSpriceActiveRuleChannel($channel)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
@@ -275,9 +272,6 @@ class ChannelPromoPricingController extends Controller
     public function saveSpriceActiveRule(Request $request, string $channel): JsonResponse
     {
         $channel = \App\Support\SpriceActiveRule::normalize($channel);
-        if (self::ebayDilRuleRemoved($channel)) {
-            return self::ebayDilRuleRemovedResponse();
-        }
         if (! $this->allowsSpriceActiveRuleChannel($channel)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
@@ -1837,9 +1831,6 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
-        if (self::ebayDilRuleRemoved($channel)) {
-            return self::ebayDilRuleRemovedResponse();
-        }
 
         if ($channel === 'newtemutwo') {
             DilRuleSpriceApplyService::copyDilGroiStoreIfMissing('newtemutwo', 'temu');
@@ -1881,9 +1872,6 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
-        if (self::ebayDilRuleRemoved($channel)) {
-            return self::ebayDilRuleRemovedResponse();
-        }
 
         $incoming = $request->input('rules');
         if (! is_array($incoming) && is_string($request->input('rules'))) {
@@ -1959,9 +1947,6 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
-        if (self::ebayDilRuleRemoved($channel)) {
-            return self::ebayDilRuleRemovedResponse();
-        }
 
         $days = (int) $request->input('days', 30);
         if ($days < 7) {
@@ -2848,17 +2833,6 @@ class ChannelPromoPricingController extends Controller
     private function dilTargetMetric(string $channel): string
     {
         return 'nroi';
-    }
-
-    /** eBay 1 / 2 / 3 no longer have a Dil / Sprc Dil rule (data and editor removed). */
-    private static function ebayDilRuleRemoved(string $channel): bool
-    {
-        return in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true);
-    }
-
-    private static function ebayDilRuleRemovedResponse(): JsonResponse
-    {
-        return response()->json(['success' => false, 'message' => 'Dil / Sprc Dil rule is removed for eBay.'], 410);
     }
 
     private function normalizeRulesChannel(string $channel): ?string

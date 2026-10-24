@@ -1438,8 +1438,8 @@
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             return ((sprice * 0.80 - ship - lp) / lp) * 100;
         }
-        /** Sprc Dil rule: when S PRC reaches LMP it lands on LMP × 0.95 (same as AmazonDilGroiRule::DIL_LMP_REDUCE_PCT). */
-        const AMZ_DIL_LMP_REDUCE_PCT = 5;
+        /** Sprc Dil rule: when S PRC reaches LMP it lands on LMP × 0.98 (same as AmazonDilGroiRule::DIL_LMP_REDUCE_PCT). */
+        const AMZ_DIL_LMP_REDUCE_PCT = 2;
         /** LMP is lower than S PRC, and SGROI at LMP is at least 20%. */
         function amazonShouldCapSpriceToLmp(rowData, sprice) {
             const lmp = lmpWithShipping(rowData);
@@ -1482,7 +1482,7 @@
                 const lmp = lmpWithShipping(rowData);
                 if (lmp > 0) {
                     // LMP Reduce block (Std prc vs dil): S PRC at LMP lands on LMP less the % of its Dil slab.
-                    // Sprc Dil rule: S PRC at LMP = LMP × 0.95. Std prc vs dil rule: the LMP Reduce block (by Dil slab).
+                    // Sprc Dil rule: S PRC at LMP = LMP × 0.98. Std prc vs dil rule: the LMP Reduce block (by Dil slab).
                     const dilRuleOn = (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil');
                     const reducePct = dilRuleOn
                         ? AMZ_DIL_LMP_REDUCE_PCT

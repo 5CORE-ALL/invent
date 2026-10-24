@@ -446,6 +446,7 @@
             font-size: 11px; font-weight: 700; line-height: 1; cursor: help;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay3'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay3'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
 @endsection
@@ -623,6 +624,7 @@
                         Dil vs SBid
                     </button>
                     @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 3'])
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay3'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay3'])
 
                 </div>
@@ -828,6 +830,7 @@
         'account' => 'eBay 3',
         'extended' => true,
     ])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay3'])
 @endsection
 
@@ -857,6 +860,7 @@
         ],
     ])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay3'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     let table = null;
 
@@ -994,7 +998,7 @@
         if (!(margin > 0)) return null;
         return ((sprice * margin - lp - ship) / lp) * 100;
     }
-    /** Same as Amazon: Dil below LMP stays Dil; cap only when Dil ≥ LMP and SGROI at LMP ≥ 20%. */
+    /** Same as Amazon: Dil below LMP stays Dil; cap only when Dil ≥ LMP and SGROI at LMP ≥ 20%; S PRC then = LMP (Std switch) or LMP × 0.98 (Sprc Dil switch). */
     function ebay3ShouldCapSpriceToLmp(rowData, sprice) {
         const lmp = ebayEffectiveLmp(rowData);
         const s = parseFloat(sprice);
@@ -1009,7 +1013,10 @@
         let out = +Number(s).toFixed(2);
         if (ebay3ShouldCapSpriceToLmp(rowData, s)) {
             const lmp = ebayEffectiveLmp(rowData);
-            if (lmp > 0) out = +Number(lmp).toFixed(2);
+            // Sprc Dil switch ON: S PRC at LMP lands on LMP × 0.98 (AmazonDilGroiRule::DIL_LMP_REDUCE_PCT).
+            // Std prc vs dil switch ON: S PRC = LMP.
+            const dilOn = (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil');
+            if (lmp > 0) out = +Number(dilOn ? lmp * (1 - 2 / 100) : lmp).toFixed(2);
         }
         const lmpNow = ebayEffectiveLmp(rowData);
         if (window.SpriceLmpCap && typeof SpriceLmpCap.capToStdWhenNoLmp === 'function') {
@@ -3062,6 +3069,38 @@
                 },
                     ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
+                    title: "Sprc Dil",
+                    field: "SPRC_DIL",
+                    hozAlign: "center",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof ebaySprcDilForRow === 'function')
+                                ? (ebaySprcDilForRow(row) || 0)
+                                : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Every INV > 0 SKU Dil-matches, including 0 Sold; Dil outside the table uses the nearest slab. CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary || rowData.is_parent_row) return '';
+                        if (typeof ebay3IsAlertParentRow === 'function' && ebay3IsAlertParentRow(rowData)) return '';
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta || !(meta.sprc > 0)) return '';
+                        const tip = (typeof ebayDilGroiTipText === 'function')
+                            ? ebayDilGroiTipText(meta)
+                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2));
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + meta.sprc.toFixed(2) + '</span>';
+                    },
+                    width: 78
+                    },
+                    {
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
@@ -4313,7 +4352,7 @@
             const tl = t.toLowerCase();
 
             if (
-                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SGROI|SNROI|SNPFT|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc|sbid_diff_.+|sbid_total_discount)$/i.test(f) ||
+                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SPRC_DIL|SGPFT|SGROI|SNROI|SNPFT|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc|sbid_diff_.+|sbid_total_discount)$/i.test(f) ||
                 /\b(prc|price|std\s*prc|gpft|groi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*groi|dil|cvr|push\s*std\s*prc|es\s*bid|c\s*bid|s\s*bid|alert)\b/i.test(tl) ||
                 /^\+$/i.test(t)
             ) {
