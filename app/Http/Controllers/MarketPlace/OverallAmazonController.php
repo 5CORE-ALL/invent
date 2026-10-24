@@ -193,6 +193,9 @@ class OverallAmazonController extends Controller
             ]);
         }
 
+        // Per-SKU L30 ad spend from the campaign reports (SP KW + SP PT + SB HL).
+        $amazonSkuAdSpendL30 = $this->amazonSkuAdSpendL30Map();
+
         // Amazon Ads/SP cron ratings → amazon_product_reviews (Reviews column on tabulator)
         $amzReviewsBySku = [];
         try {
@@ -764,6 +767,11 @@ class OverallAmazonController extends Controller
             }
 
             $row['image_path'] = $shopify->image_src ?? ($values['image_path'] ?? null);
+            // Real L30 ad spend from campaign reports; keep the stored Spend_L30 only if none found.
+            $adSpendFromCampaigns = $this->adSpendL30ForSku((string) $pm->sku, $amazonSkuAdSpendL30);
+            if ($adSpendFromCampaigns !== null) {
+                $row['ad_spend'] = $adSpendFromCampaigns;
+            }
             $row['ACOS'] = self::skuAcosPercent($row['ad_spend'] ?? null, $row['T_Sale_l30'] ?? 0);
 
             $result[] = (object) $row;
@@ -3766,6 +3774,89 @@ class OverallAmazonController extends Controller
     /**
      * ACOS % = ad spend ÷ L30 sales × 100. Spend with $0 sales is 100%.
      */
+    /** Uppercase, nbsp → space, collapse whitespace, trim, drop trailing dots. */
+    private static function normalizeCampaignName(?string $name): string
+    {
+        $n = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', (string) $name);
+        $n = preg_replace('/\s+/', ' ', $n);
+
+        return rtrim(strtoupper(trim($n)), '.');
+    }
+
+    /**
+     * L30 spend by normalized campaign name: Sponsored Products (spend) and Sponsored Brands (cost).
+     * Latest row per campaign name, archived campaigns skipped (same rule as Channel Master).
+     *
+     * @return array<string, float>
+     */
+    private function amazonSkuAdSpendL30Map(): array
+    {
+        $map = [];
+
+        try {
+            $spIds = DB::table('amazon_sp_campaign_reports')
+                ->selectRaw('MAX(id) as id')
+                ->where('report_date_range', 'L30')
+                ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+                ->groupBy('campaignName')
+                ->pluck('id');
+            foreach ($spIds->chunk(2000) as $chunk) {
+                foreach (DB::table('amazon_sp_campaign_reports')->whereIn('id', $chunk)->get(['campaignName', 'spend']) as $r) {
+                    $key = self::normalizeCampaignName($r->campaignName);
+                    if ($key === '') {
+                        continue;
+                    }
+                    $map[$key] = ($map[$key] ?? 0.0) + (float) ($r->spend ?? 0);
+                }
+            }
+
+            $sbIds = DB::table('amazon_sb_campaign_reports')
+                ->selectRaw('MAX(id) as id')
+                ->where('report_date_range', 'L30')
+                ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+                ->groupBy('campaignName')
+                ->pluck('id');
+            foreach ($sbIds->chunk(2000) as $chunk) {
+                foreach (DB::table('amazon_sb_campaign_reports')->whereIn('id', $chunk)->get(['campaignName', 'cost']) as $r) {
+                    $key = self::normalizeCampaignName($r->campaignName);
+                    if ($key === '') {
+                        continue;
+                    }
+                    $map['SB|' . $key] = ($map['SB|' . $key] ?? 0.0) + (float) ($r->cost ?? 0);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon tabulator: failed loading per-SKU L30 ad spend', ['error' => $e->getMessage()]);
+        }
+
+        return $map;
+    }
+
+    /**
+     * Total L30 ad spend for one SKU: KW campaign (name = SKU), PT campaign (SKU PT) and HL (SKU / SKU HEAD).
+     * Returns null when no campaign matches, so callers can keep any stored value.
+     *
+     * @param  array<string, float>  $map
+     */
+    private function adSpendL30ForSku(string $sku, array $map): ?float
+    {
+        $s = self::normalizeCampaignName($sku);
+        if ($s === '') {
+            return null;
+        }
+
+        $total = 0.0;
+        $found = false;
+        foreach ([$s, $s . ' PT', $s . 'PT', 'SB|' . $s, 'SB|' . $s . ' HEAD'] as $key) {
+            if (isset($map[$key])) {
+                $total += $map[$key];
+                $found = true;
+            }
+        }
+
+        return $found ? round($total, 2) : null;
+    }
+
     public static function skuAcosPercent(mixed $spend, mixed $sales): float
     {
         $spendN = is_numeric($spend) ? (float) $spend : 0.0;
