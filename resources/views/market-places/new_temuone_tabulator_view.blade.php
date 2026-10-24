@@ -2199,11 +2199,11 @@
         if (p == null) return null;
         return p <= 30 ? 2.99 : 0;
     }
-    /** Promo Base Prc = Price After Discount − Ship Disc. */
-    function ntoRowPromoBasePrc(d) {
-        const p = ntoRowPriceAfterDisc(d);
-        if (p == null) return null;
-        return +(p - (ntoRowShipDisc(d) || 0)).toFixed(2);
+    /** Promo Base Prc = the base price Temu holds on its server (last pull). Never calculated; null when not pulled. */
+    function temuServerBasePrc(d) {
+        if (!d || d.is_parent_summary) return null;
+        const n = parseFloat(d.base_price);
+        return (isFinite(n) && n > 0) ? +n.toFixed(2) : null;
     }
     /** Std Prc for the S breakup. Same STANDARD_PRICE as the Std Price column. */
     function ntoRowSpriceStart(d) {
@@ -2347,8 +2347,11 @@
             const when = d.nto_pushed_at ? String(d.nto_pushed_at) : '';
             const tip = 'Pushed S Promo Base Prc $' + sBase.toFixed(2)
                 + (when ? ' at ' + when : '');
-            return '<i class="fa-solid fa-check-double nto-push-ok" title="'
-                + tip.replace(/"/g, '&quot;') + '"></i>';
+            // "Pushed" only means our call was accepted, Temu may not have applied it. So the tick stays clickable
+            // to push the same price again (spinner + progress bar run like any other push).
+            return '<button type="button" class="nto-push-single-btn" data-sku="' + esc
+                + '" data-price="' + sBase + '" title="' + (tip + ' — click to push again').replace(/"/g, '&quot;') + '">'
+                + '<i class="fa-solid fa-check-double nto-push-ok"></i></button>';
         }
         if (state === 'error') {
             return '<button type="button" class="nto-push-single-btn" data-sku="' + esc
@@ -2367,7 +2370,8 @@
             return want[ntoRowSku(row.getData() || {}).toUpperCase()];
         });
         if (!hits.length) return;
-        const blocked = typeof table.blockRedraw === 'function';
+        // A single click repaints its own row right away; only big batches need the redraw blocked.
+        const blocked = hits.length > 10 && typeof table.blockRedraw === 'function';
         if (blocked) table.blockRedraw();
         try {
             hits.forEach(function(row) {
@@ -2416,7 +2420,7 @@
             changed.push({ row: row, next: next });
         });
         if (!changed.length) return;
-        const blocked = typeof table.blockRedraw === 'function';
+        const blocked = changed.length > 10 && typeof table.blockRedraw === 'function';
         if (blocked) table.blockRedraw();
         try {
             changed.forEach(function(item) {
@@ -3291,6 +3295,9 @@
                 } else if (field === 's_ship_disc') {
                     const amt = ntoRowSShipDisc(row);
                     v = amt > 0 ? amt : '';
+                } else if (field === 'promo_base_prc') {
+                    const amt = temuServerBasePrc(row);
+                    v = amt == null ? '' : amt;
                 } else if (field === 's_promo_base_prc') {
                     const amt = ntoRowSPromoBasePrc(row);
                     v = amt == null ? '' : amt;
@@ -3709,17 +3716,16 @@
                     hozAlign: 'center',
                     width: 80,
                     sorter: function(a, b, aRow, bRow) {
-                        const x = ntoRowPromoBasePrc(aRow.getData() || {});
-                        const y = ntoRowPromoBasePrc(bRow.getData() || {});
+                        const x = temuServerBasePrc(aRow.getData() || {});
+                        const y = temuServerBasePrc(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'Promo Base Prc = Price After Discount − Ship Disc.',
+                    headerTooltip: 'Promo Base Prc = the base price Temu holds on its server, as of the last pull. It is not calculated here; it only changes after a pull.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
-                        const v = ntoRowPromoBasePrc(row);
+                        const v = temuServerBasePrc(row);
                         if (v == null) return '<span style="color: #6c757d;">—</span>';
-                        const tip = 'Price After Discount $' + ntoRowPriceAfterDisc(row).toFixed(2)
-                            + ' − Ship Disc $' + (ntoRowShipDisc(row) || 0).toFixed(2) + ' = $' + v.toFixed(2);
+                        const tip = 'Base price on Temu (last pull) = $' + v.toFixed(2);
                         return '<span style="font-weight: 600;" title="' + tip + '">$' + v.toFixed(2) + '</span>';
                     }
                 },
