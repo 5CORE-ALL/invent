@@ -35,6 +35,13 @@ class AmazonDailyBadgeStat extends Model
         'nroi_pct',
         'tcos_pct',
         'total_l30_orders',
+        'p_sales',
+        'p_qty',
+        'p_groi_pct',
+        'p_npft',
+        'p_nroi_pct',
+        'p_ads_pct',
+        'p_views',
     ];
 
     protected $casts = [

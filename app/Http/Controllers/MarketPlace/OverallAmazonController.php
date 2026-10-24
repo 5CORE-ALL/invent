@@ -3718,13 +3718,21 @@ class OverallAmazonController extends Controller
             ? round((((float) $agg['pft']) - $adSpendEst) / (float) $agg['cogs'] * 100, 1)
             : 0.0;
 
+        $amazonProjected = $this->amazonTabulatorProjected(
+            $amazonSalesL30,
+            $amazonAdBadges['l30_spend'],
+            $adsPct
+        );
+
         return view("market-places.amazon_tabulator_view", [
+            'amazonProjected'    => $amazonProjected,
             'amazonAdsPercent'   => $amazonAdsPercent,
             'amazonAdSales'      => $amazonAdSales,
             'amazonAcosPercent'  => $amazonAcosPercent,
             'amazonL30Spend'     => $amazonAdBadges['l30_spend'],
             'amazonYSpend'       => $amazonAdBadges['y_spend'],
             'amazonYAcosPercent' => $amazonAdBadges['y_acos'],
+            'amazonYTacosPercent' => $amazonAdBadges['y_tacos'],
             'amazonYSalesPercent' => $amazonAdBadges['y_sales_pct'],
             'amazonYBgtPercent'  => $amazonAdBadges['y_bgt_pct'],
             'amazonYUtilizedPercent' => $amazonAdBadges['y_utilized_pct'],
@@ -3740,6 +3748,63 @@ class OverallAmazonController extends Controller
     }
 
     /**
+     * Projected (30-day pace from the last 7 days) badges for /amazon-tabulator-view.
+     *
+     * Same idea as the Projected block on All Marketplace Master: P-Sales = (L7 ÷ 7) × 30.
+     * L7 = the 7 Pacific days ending yesterday, from the same real order lines as the L30 badges.
+     * Projected PFT and COGS scale the same way, so P-GROI% equals L7 PFT ÷ L7 COGS.
+     * Ad spend is the current L30 ad spend (not projected), so P Ads% = L30 spend ÷ P-Sales.
+     *
+     * @return array{p_sales: float, p_qty: float, p_groi: float, p_npft: float, p_nroi: float, p_ads: float, l7_sales: float}
+     */
+    private function amazonTabulatorProjected(float $l30Sales, ?float $l30Spend, float $adsPct): array
+    {
+        $blank = ['p_sales' => 0.0, 'p_qty' => 0.0, 'p_groi' => 0.0, 'p_npft' => 0.0, 'p_nroi' => 0.0, 'p_ads' => 0.0, 'l7_sales' => 0.0];
+
+        try {
+            [$start, $end] = AmazonOrder::dailySalesL30Window(7);
+            $l7Sales = (float) AmazonOrder::badgeTotalSalesByOrderDate($start, $end);
+            $l7Units = (int) (AmazonOrder::constrainOrderDate(
+                DB::table('amazon_orders as o')
+                    ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                    ->where(function ($q) {
+                        $q->whereNull('o.status')
+                            ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                    }),
+                $start,
+                $end
+            )->sum(DB::raw('COALESCE(i.quantity, 0)')));
+
+            $fin = AmazonSalesController::l30OrdersFinancials($start, $end);
+
+            $scale = 30.0 / 7.0;
+            $pSales = $l7Sales * $scale;
+            $pQty = $l7Units * $scale;
+            $pPft = ((float) $fin['pft']) * $scale;
+            $pCogs = ((float) $fin['cogs']) * $scale;
+            $lineSales = (float) $fin['line_sales'];
+
+            $spend = $l30Spend !== null ? $l30Spend : (($adsPct / 100.0) * $l30Sales);
+            $pAds = $pSales > 0 ? ($spend / $pSales) * 100.0 : 0.0;
+            $pGpft = $lineSales > 0 ? ((float) $fin['pft'] / $lineSales) * 100.0 : 0.0;
+
+            return [
+                'p_sales' => round($pSales, 2),
+                'p_qty' => round($pQty, 2),
+                'p_groi' => $pCogs > 0 ? round($pPft / $pCogs * 100.0, 1) : 0.0,
+                'p_npft' => $pSales > 0 ? round($pGpft - $pAds, 1) : 0.0,
+                'p_nroi' => $pCogs > 0 ? round(($pPft - $spend) / $pCogs * 100.0, 1) : 0.0,
+                'p_ads' => round($pAds, 1),
+                'l7_sales' => round($l7Sales, 2),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('amazonTabulatorProjected error: ' . $e->getMessage());
+
+            return $blank;
+        }
+    }
+
+    /**
      * Channel-level ad badges for /amazon-tabulator-view.
      *
      * L30 spend is All Marketplace Master Total Ad Spend.
@@ -3748,7 +3813,7 @@ class OverallAmazonController extends Controller
      * Y bgt % is the daily campaign budget versus that same daily average.
      * Y utilized % is L1 spend ÷ daily budget (the U1% ratio, totaled).
      *
-     * @return array{l30_spend: float|null, y_spend: float|null, y_acos: float|null, y_sales_pct: float|null, y_bgt_pct: float|null, y_utilized_pct: float|null}
+     * @return array{l30_spend: float|null, y_spend: float|null, y_acos: float|null, y_tacos: float|null, y_sales_pct: float|null, y_bgt_pct: float|null, y_utilized_pct: float|null}
      */
     private function amazonTabulatorAdBadges(?\App\Models\ChannelMasterCalculatedData $channel, float $l30OrderSales): array
     {
@@ -3756,6 +3821,7 @@ class OverallAmazonController extends Controller
             'l30_spend' => null,
             'y_spend' => null,
             'y_acos' => null,
+            'y_tacos' => null,
             'y_sales_pct' => null,
             'y_bgt_pct' => null,
             'y_utilized_pct' => null,
@@ -3855,6 +3921,17 @@ class OverallAmazonController extends Controller
             $ySpend = round((float) $channel->y_ad_spend, 2);
         }
         $blank['y_spend'] = $ySpend;
+
+        // Y TACOS% = yesterday ad spend ÷ yesterday total (order) sales × 100.
+        if ($ySpend !== null && $ySales !== null) {
+            if ($ySales > 0) {
+                $blank['y_tacos'] = round(($ySpend / $ySales) * 100, 1);
+            } elseif ($ySpend > 0) {
+                $blank['y_tacos'] = 100.0;
+            } else {
+                $blank['y_tacos'] = 0.0;
+            }
+        }
 
         if ($live['found']) {
             $yAdSales = $live['y_sales'];
@@ -7163,9 +7240,7 @@ class OverallAmazonController extends Controller
         try {
             $today = now('America/Los_Angeles')->toDateString();
 
-            \App\Models\AmazonDailyBadgeStat::updateOrCreate(
-                ['snapshot_date' => $today],
-                [
+            $values = [
                     'sold_count' => intval($request->input('sold_count', 0)),
                     'zero_sold_count' => intval($request->input('zero_sold_count', 0)),
                     'map_count' => intval($request->input('map_count', 0)),
@@ -7191,8 +7266,16 @@ class OverallAmazonController extends Controller
                     'nroi_pct' => floatval($request->input('nroi_pct', 0)),
                     'tcos_pct' => floatval($request->input('tcos_pct', 0)),
                     'total_l30_orders' => intval($request->input('total_l30_orders', 0)),
-                ]
-            );
+            ];
+
+            // Projected badge history — only when the page sent it and the migration has run.
+            if ($request->has('p_sales') && \Illuminate\Support\Facades\Schema::hasColumn('amazon_daily_badge_stats', 'p_sales')) {
+                foreach (['p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_views'] as $pKey) {
+                    $values[$pKey] = floatval($request->input($pKey, 0));
+                }
+            }
+
+            \App\Models\AmazonDailyBadgeStat::updateOrCreate(['snapshot_date' => $today], $values);
 
             return response()->json(['success' => true]);
         } catch (\Exception $e) {
@@ -7219,6 +7302,7 @@ class OverallAmazonController extends Controller
                 'total_pft', 'total_sales', 'total_spend',
                 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct',
                 'total_l30_orders',
+                'p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_views',
             ];
 
             if (!in_array($metric, $allowedMetrics)) {
@@ -7318,6 +7402,13 @@ class OverallAmazonController extends Controller
                     'sold_count' => (float) $row->sold_count,
                     'zero_sold_count' => (float) $row->zero_sold_count,
                     'prc_gt_lmp_count' => (float) $row->prc_gt_lmp_count,
+                    'p_sales' => (float) $row->p_sales,
+                    'p_qty' => (float) $row->p_qty,
+                    'p_groi_pct' => (float) $row->p_groi_pct,
+                    'p_npft' => (float) $row->p_npft,
+                    'p_nroi_pct' => (float) $row->p_nroi_pct,
+                    'p_ads_pct' => (float) $row->p_ads_pct,
+                    'p_views' => (float) $row->p_views,
                 ],
             ]);
         } catch (\Throwable $e) {

@@ -153,7 +153,7 @@
             min-width: 0;
             overflow: visible;
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+            grid-template-columns: repeat(10, minmax(0, 1fr));
             gap: 0.5rem;
             align-items: start;
             background: transparent !important;
@@ -176,11 +176,12 @@
             margin: 0 0 0.35rem;
             color: #854d0e;
         }
-        #summary-stats .amz-sum-block--yesterday { grid-column: 1; grid-row: 1; }
-        #summary-stats .amz-sum-block--l30 { grid-column: 2; grid-row: 1; }
-        #summary-stats .amz-sum-block--listing { grid-column: 3; grid-row: 1; }
-        #summary-stats .amz-sum-block--sold { grid-column: 1; grid-row: 2; }
-        #summary-stats .amz-sum-block--alerts { grid-column: 2 / 4; grid-row: 2; }
+        #summary-stats .amz-sum-block--yesterday { grid-column: 1 / 3; grid-row: 1; }
+        #summary-stats .amz-sum-block--l30 { grid-column: 3 / 7; grid-row: 1; }
+        #summary-stats .amz-sum-block--projected { grid-column: 7 / 11; grid-row: 1; }
+        #summary-stats .amz-sum-block--listing { grid-column: 1 / 3; grid-row: 2; }
+        #summary-stats .amz-sum-block--sold { grid-column: 3 / 5; grid-row: 2; }
+        #summary-stats .amz-sum-block--alerts { grid-column: 5 / 11; grid-row: 2; }
         #summary-stats .amz-sum-row {
             display: grid;
             align-items: stretch;
@@ -193,6 +194,7 @@
         #summary-stats .amz-sum-row--listing,
         #summary-stats .amz-sum-row--sold { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         #summary-stats .amz-sum-row--l30 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        #summary-stats .amz-sum-row--projected { grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); }
         #summary-stats .amz-sum-row--alerts { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
         #summary-stats .amz-sum-row > .badge {
             width: 100%;
@@ -215,21 +217,25 @@
         }
         /* Hidden helper badges stay hidden inside the grid */
         #summary-stats .amz-sum-row > .badge.d-none { display: none !important; }
-        @media (max-width: 1199.98px) {
+        @media (max-width: 1399.98px) {
             #summary-stats.amz-sum-grid { grid-template-columns: 1fr 1fr; }
             #summary-stats .amz-sum-block--yesterday,
             #summary-stats .amz-sum-block--l30,
+            #summary-stats .amz-sum-block--projected,
             #summary-stats .amz-sum-block--listing,
             #summary-stats .amz-sum-block--sold,
             #summary-stats .amz-sum-block--alerts { grid-column: auto; grid-row: auto; }
             #summary-stats .amz-sum-block--l30,
+            #summary-stats .amz-sum-block--projected,
             #summary-stats .amz-sum-block--alerts { grid-column: 1 / -1; }
         }
         @media (max-width: 767.98px) {
             #summary-stats.amz-sum-grid { grid-template-columns: 1fr; }
             #summary-stats .amz-sum-block--l30,
+            #summary-stats .amz-sum-block--projected,
             #summary-stats .amz-sum-block--alerts { grid-column: 1; }
             #summary-stats .amz-sum-row--l30 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            #summary-stats .amz-sum-row--projected { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
 
         /* Column visibility — 4 groups (Basic / Price / Ads / Other) */
@@ -939,7 +945,8 @@
                         <div class="amz-sum-block-title">Yesterday</div>
                         <div class="amz-sum-row amz-sum-row--yesterday" role="group" aria-label="Yesterday metrics">
                             <span class="badge fs-6 p-2" id="amazon-y-spend-badge" style="background-color: #4c1d95; color: white; font-weight: bold;" title="Yesterday Amazon ad spend (L1) from SP+SB campaign reports, same pull as Amazon Ads."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y spend: {{ isset($amazonYSpend) && $amazonYSpend !== null ? '$' . number_format((float) $amazonYSpend) : 'N/A' }}</span>
-                            <span class="badge fs-6 p-2" id="amazon-y-acos-badge" style="background-color: #e11d48; color: white; font-weight: bold;" title="Yesterday ACOS = L1 spend ÷ L1 ad sales × 100. 100% when spend is positive and ad sales are 0. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y ACOS: {{ isset($amazonYAcosPercent) && $amazonYAcosPercent !== null ? round((float) $amazonYAcosPercent, 1) . '%' : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2" id="amazon-y-acos-badge" style="background-color: #e11d48; color: white; font-weight: bold;" title="Yesterday ACOS = L1 spend ÷ L1 ad sales × 100. 100% when spend is positive and ad sales are 0. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y ACOS%: {{ isset($amazonYAcosPercent) && $amazonYAcosPercent !== null ? round((float) $amazonYAcosPercent, 1) . '%' : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2" id="amazon-y-tacos-badge" style="background-color: #c2410c; color: white; font-weight: bold;" title="Yesterday TACOS% = yesterday ad spend (L1) ÷ yesterday total sales × 100. Total sales (not just ad sales) is the base. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y TACOS%: {{ isset($amazonYTacosPercent) && $amazonYTacosPercent !== null ? round((float) $amazonYTacosPercent, 1) . '%' : 'N/A' }}</span>
                             <span class="badge fs-6 p-2" id="amazon-y-sales-pct-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Y Sales vs the L30 daily average: ((L30 Sales / 30) − Y Sales) / (L30 Sales / 30) × 100. Positive means yesterday is below a typical day."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y Sales%: {{ isset($amazonYSalesPercent) && $amazonYSalesPercent !== null ? round((float) $amazonYSalesPercent, 1) . '%' : 'N/A' }}</span>
                             <span class="badge fs-6 p-2" id="amazon-y-bgt-pct-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Daily campaign budget ÷ (L30 sales / 30) × 100. How large the SP+SB daily budgets are versus a typical day's sales."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y bgt %: {{ isset($amazonYBgtPercent) && $amazonYBgtPercent !== null ? round((float) $amazonYBgtPercent, 1) . '%' : 'N/A' }}</span>
                             <span class="badge fs-6 p-2" id="amazon-y-utilized-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="Yesterday spend (L1) ÷ sum of daily campaign budgets × 100. Same ratio as U1% on Amazon Ads, totaled across SP+SB."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y utilized %: {{ isset($amazonYUtilizedPercent) && $amazonYUtilizedPercent !== null ? round((float) $amazonYUtilizedPercent, 1) . '%' : 'N/A' }}</span>
@@ -957,7 +964,32 @@
                             <span class="badge fs-6 p-2 amz-badge-chart" data-metric="tcos_pct" data-live-value="{{ $amazonAdsPercent !== null ? round((float) $amazonAdsPercent, 1) : 0 }}" data-format="pct" data-invert="1" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Amz Ads% (Total Ad Spend / L30 Sales). Lower is better. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="tcos_pct" title="Rolling history"></span>Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
                             <span class="badge fs-6 p-2" id="amazon-ad-sales-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Amazon ad-attributed sales. Same Ad Sales as All Marketplace Master."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Ads sales: {{ $amazonAdSales !== null ? '$' . number_format((float) $amazonAdSales) : 'N/A' }}</span>
                             <span class="badge fs-6 p-2" id="amazon-acos-badge" style="background-color: #dc3545; color: white; font-weight: bold;" title="ACOS% = Ad Spend ÷ Ad Sales × 100. Same ACOS as All Marketplace Master. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>ACOS: {{ $amazonAcosPercent !== null ? round((float) $amazonAcosPercent, 1) . '%' : 'N/A' }}</span>
+                            @php
+                                $l30TacosV = (isset($amazonL30Spend) && $amazonL30Spend !== null && (float) ($amazonSalesL30 ?? 0) > 0)
+                                    ? round(((float) $amazonL30Spend / (float) $amazonSalesL30) * 100, 1)
+                                    : null;
+                            @endphp
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="tcos_pct" data-live-value="{{ $l30TacosV ?? 0 }}" data-format="pct" data-invert="1" id="amazon-tacos-badge" style="background-color: #0d9488; color: white; font-weight: bold; cursor:pointer;" title="TACOS% = L30 ad spend ÷ L30 total sales × 100 (total sales, not just ad sales). Lower is better. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="tcos_pct" title="Rolling history"></span>TACOS%: {{ $l30TacosV !== null ? $l30TacosV . '%' : 'N/A' }}</span>
                             <span class="badge fs-6 p-2" id="amazon-l30-spend-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Amazon L30 ad spend. Same Total Ad Spend as All Marketplace Master (the numerator of Ads%)."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>L30 spend: {{ isset($amazonL30Spend) && $amazonL30Spend !== null ? '$' . number_format((float) $amazonL30Spend) : 'N/A' }}</span>
+                        </div>
+                    </div>
+                    @php
+                        $pr = $amazonProjected ?? [];
+                        $pSalesV = (float) ($pr['p_sales'] ?? 0);
+                        $pVsPct = ((float) ($amazonSalesL30 ?? 0)) > 0
+                            ? (($pSalesV - (float) $amazonSalesL30) / (float) $amazonSalesL30) * 100
+                            : null;
+                    @endphp
+                    <div class="amz-sum-block amz-sum-block--projected">
+                        <div class="amz-sum-block-title">Projected</div>
+                        <div class="amz-sum-row amz-sum-row--projected" role="group" aria-label="Projected metrics">
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="p_sales" data-live-value="{{ $pSalesV }}" data-format="money" id="amazon-p-sales-badge" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30, from real Amz orders. % is P-Sales vs L30 Sales. Click badge or dot for trend."><span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>Sales: ${{ number_format($pSalesV) }}@if($pVsPct !== null)<span class="amz-p-vs" style="margin-left:.3rem;font-size:.75rem;color:{{ abs($pVsPct) < 0.1 ? '#e2e8f0' : ($pVsPct > 0 ? '#86efac' : '#fca5a5') }};">{{ abs($pVsPct) < 0.1 ? '0%' : ($pVsPct > 0 ? '+' : '−') . number_format(abs($pVsPct), 0) . '%' }}</span>@endif</span>
+                            <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="p_qty" data-live-value="{{ (float) ($pr['p_qty'] ?? 0) }}" data-format="int" id="amazon-p-qty-badge" style="color: black; font-weight: bold; cursor:pointer;" title="P Qty = L7 units ÷ 7 × 30 (real Amz orders). Click for trend."><span class="summary-trend-dot none" data-metric="p_qty" title="Rolling history"></span>Qty: {{ number_format((float) ($pr['p_qty'] ?? 0)) }}</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="p_groi_pct" data-live-value="{{ (float) ($pr['p_groi'] ?? 0) }}" data-format="pct" id="amazon-p-groi-badge" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-GROI% = projected PFT ÷ projected COGS. Both scale from L7 (× 30 ÷ 7), so this is L7 PFT ÷ L7 COGS from real Amz orders. Click for trend."><span class="summary-trend-dot none" data-metric="p_groi_pct" title="Rolling history"></span>GROI%: {{ (int) round((float) ($pr['p_groi'] ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="p_npft" data-live-value="{{ (float) ($pr['p_npft'] ?? 0) }}" data-format="pct" id="amazon-p-npft-badge" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Projected NPFT% = L7 GPFT% − P Ads%. Ad spend is the current L30 spend over P-Sales. Click for trend."><span class="summary-trend-dot none" data-metric="p_npft" title="Rolling history"></span>Npft%: {{ (int) round((float) ($pr['p_npft'] ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="p_nroi_pct" data-live-value="{{ (float) ($pr['p_nroi'] ?? 0) }}" data-format="pct" id="amazon-p-nroi-badge" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-NROI% = (projected PFT − L30 ad spend) ÷ projected COGS. Click for trend."><span class="summary-trend-dot none" data-metric="p_nroi_pct" title="Rolling history"></span>NROI%: {{ (int) round((float) ($pr['p_nroi'] ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="p_ads_pct" data-live-value="{{ (float) ($pr['p_ads'] ?? 0) }}" data-format="pct" data-invert="1" id="amazon-p-ads-badge" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="P Ads% = L30 ad spend ÷ P-Sales × 100. Lower is better. Click for trend."><span class="summary-trend-dot none" data-metric="p_ads_pct" title="Rolling history"></span>Ads%: {{ number_format((float) ($pr['p_ads'] ?? 0), 1) }}%</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="p_views" data-live-value="0" data-format="int" id="amazon-p-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P Views = Σ Views × (P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. Click for trend."><span class="summary-trend-dot none" data-metric="p_views" title="Rolling history"></span>Views: 0</span>
                         </div>
                     </div>
                     <div class="amz-sum-block amz-sum-block--listing">
@@ -1637,6 +1669,7 @@
         const AMAZON_L30_SPEND = {{ isset($amazonL30Spend) && $amazonL30Spend !== null ? (float) $amazonL30Spend : 'null' }};
         const AMAZON_Y_SPEND = {{ isset($amazonYSpend) && $amazonYSpend !== null ? (float) $amazonYSpend : 'null' }};
         const AMAZON_Y_ACOS_PCT = {{ isset($amazonYAcosPercent) && $amazonYAcosPercent !== null ? (float) $amazonYAcosPercent : 'null' }};
+        const AMAZON_Y_TACOS_PCT = {{ isset($amazonYTacosPercent) && $amazonYTacosPercent !== null ? (float) $amazonYTacosPercent : 'null' }};
         const AMAZON_Y_SALES_PCT = {{ isset($amazonYSalesPercent) && $amazonYSalesPercent !== null ? (float) $amazonYSalesPercent : 'null' }};
         const AMAZON_Y_BGT_PCT = {{ isset($amazonYBgtPercent) && $amazonYBgtPercent !== null ? (float) $amazonYBgtPercent : 'null' }};
         const AMAZON_Y_UTILIZED_PCT = {{ isset($amazonYUtilizedPercent) && $amazonYUtilizedPercent !== null ? (float) $amazonYUtilizedPercent : 'null' }};
@@ -1646,6 +1679,13 @@
         const ORDERS_L30_NROI = {{ (float) ($ordersL30Nroi ?? 0) }};
         const ORDERS_L30_PFT = {{ (float) ($ordersL30Pft ?? 0) }};
         const ORDERS_L30_COGS = {{ (float) ($ordersL30Cogs ?? 0) }};
+        // Projected (L7 pace × 30) — computed server-side from the same real order lines.
+        const AMAZON_P_SALES = {{ (float) ($amazonProjected['p_sales'] ?? 0) }};
+        const AMAZON_P_QTY = {{ (float) ($amazonProjected['p_qty'] ?? 0) }};
+        const AMAZON_P_GROI = {{ (float) ($amazonProjected['p_groi'] ?? 0) }};
+        const AMAZON_P_NPFT = {{ (float) ($amazonProjected['p_npft'] ?? 0) }};
+        const AMAZON_P_NROI = {{ (float) ($amazonProjected['p_nroi'] ?? 0) }};
+        const AMAZON_P_ADS = {{ (float) ($amazonProjected['p_ads'] ?? 0) }};
 
         /**
          * Net SROI — same shape as the NROI badge:
@@ -1721,10 +1761,14 @@
          * Parent averages are cached for a moment so sorting / rendering many parent rows stays fast.
          */
         let _amzParentNpftCache = { at: 0, map: null };
-        function amazonRowNpftAmt(rowData) {
-            if (!rowData) return null;
-            if (!rowData.is_parent_summary) return amazonChildNpftAmt(rowData);
-            if (!table) return null;
+        /**
+         * Per-parent totals built from the child SKU calcs (cached for a moment so sorting / rendering many parent rows stays fast):
+         *   n / sum / priceSum  — children with a price: Σ NPFT$ and Σ price
+         *   gross               — Σ gross profit $ per pc (price × 0.80 − ship − LP), same numerator as GPFT%
+         *   roiN / lpSum / roiGross / roiNet — children with price and LP: Σ LP, Σ gross $, Σ (gross − ads) $ (GROI% / NROI% numerators)
+         */
+        function amazonParentAgg(rowData) {
+            if (!rowData || !rowData.is_parent_summary || !table) return null;
             const now = Date.now();
             if (!_amzParentNpftCache.map || now - _amzParentNpftCache.at > 400) {
                 const sums = {};
@@ -1734,15 +1778,36 @@
                     if (!key) return;
                     const v = amazonChildNpftAmt(r);
                     if (v == null || !isFinite(v)) return;
-                    if (!sums[key]) sums[key] = { sum: 0, priceSum: 0, n: 0 };
-                    sums[key].sum += v;
-                    sums[key].priceSum += parseFloat(r.price);
-                    sums[key].n += 1;
+                    const price = parseFloat(r.price);
+                    if (!sums[key]) sums[key] = { sum: 0, priceSum: 0, n: 0, gross: 0, roiN: 0, lpSum: 0, roiGross: 0, roiNet: 0 };
+                    const a = sums[key];
+                    a.sum += v;
+                    a.priceSum += price;
+                    a.n += 1;
+                    const lp = parseFloat(r.LP_productmaster);
+                    const ship = parseFloat(r.Ship_productmaster) || 0;
+                    const gpft = amazonComputeGpftAt(price, r);
+                    if (gpft != null && isFinite(gpft)) a.gross += price * gpft / 100;
+                    if (isFinite(lp) && lp > 0) {
+                        const groi = amazonComputeGroiAt(price, r);
+                        const nroi = amazonComputeNroi(r);
+                        if (groi != null && isFinite(groi) && nroi != null && isFinite(nroi)) {
+                            a.roiN += 1;
+                            a.lpSum += lp;
+                            a.roiGross += groi * lp / 100;
+                            a.roiNet += nroi * lp / 100;
+                        }
+                    }
                 });
                 _amzParentNpftCache = { at: now, map: sums };
             }
             const k = String(rowData.Parent || rowData.parent || '').trim().toUpperCase();
-            const s = _amzParentNpftCache.map[k];
+            return _amzParentNpftCache.map[k] || null;
+        }
+        function amazonRowNpftAmt(rowData) {
+            if (!rowData) return null;
+            if (!rowData.is_parent_summary) return amazonChildNpftAmt(rowData);
+            const s = amazonParentAgg(rowData);
             return (s && s.n > 0) ? s.sum / s.n : null;
         }
         /**
@@ -1755,12 +1820,33 @@
                 const gpft = amazonComputeGpftAt(rowData.price, rowData);
                 return (gpft == null || !isFinite(gpft) ? 0 : gpft) - amazonRowAdsPct(rowData);
             }
-            const avgAmt = amazonRowNpftAmt(rowData); // also (re)builds the parent cache
-            if (avgAmt == null) return null;
-            const k = String(rowData.Parent || rowData.parent || '').trim().toUpperCase();
-            const s = _amzParentNpftCache.map && _amzParentNpftCache.map[k];
+            const s = amazonParentAgg(rowData);
             if (!s || !(s.n > 0) || !(s.priceSum > 0)) return null;
             return (s.sum / s.priceSum) * 100;
+        }
+        /** GPFT% for a row. Child: SKU calc at its price. Parent: Σ gross profit $ ÷ Σ price of its child SKUs. */
+        function amazonRowGpftPct(rowData) {
+            if (!rowData) return null;
+            if (!rowData.is_parent_summary) return amazonComputeGpftAt(rowData.price, rowData);
+            const s = amazonParentAgg(rowData);
+            if (!s || !(s.n > 0) || !(s.priceSum > 0)) return null;
+            return (s.gross / s.priceSum) * 100;
+        }
+        /** GROI% for a row. Child: SKU calc at its price. Parent: Σ gross profit $ ÷ Σ LP of its child SKUs. */
+        function amazonRowGroiPct(rowData) {
+            if (!rowData) return null;
+            if (!rowData.is_parent_summary) return amazonComputeGroiAt(rowData.price, rowData);
+            const s = amazonParentAgg(rowData);
+            if (!s || !(s.roiN > 0) || !(s.lpSum > 0)) return null;
+            return (s.roiGross / s.lpSum) * 100;
+        }
+        /** NROI% for a row. Child: SKU calc at its price. Parent: Σ (gross − ad spend) $ ÷ Σ LP of its child SKUs. */
+        function amazonRowNroiPct(rowData) {
+            if (!rowData) return null;
+            if (!rowData.is_parent_summary) return amazonComputeNroi(rowData);
+            const s = amazonParentAgg(rowData);
+            if (!s || !(s.roiN > 0) || !(s.lpSum > 0)) return null;
+            return (s.roiNet / s.lpSum) * 100;
         }
         function amazonComputeGroiAt(price, rowData) {
             if (!rowData) return null;
@@ -2209,6 +2295,9 @@
             'total_pft': 'PFT', 'total_sales': 'Sales',
             'gpft_pct': 'GPFT%', 'npft_pct': 'NPFT%', 'groi_pct': 'GROI%', 'nroi_pct': 'NROI%',
             'tcos_pct': 'Ads%', 'total_l30_orders': 'Qty',
+            'p_sales': 'Projected Sales', 'p_qty': 'Projected Qty', 'p_groi_pct': 'Projected GROI%',
+            'p_npft': 'Projected NPFT%', 'p_nroi_pct': 'Projected NROI%', 'p_ads_pct': 'Projected Ads%',
+            'p_views': 'Projected Views',
         };
 
         // Metrics stored in badge stats table (daily counts/amounts)
@@ -2218,12 +2307,13 @@
             'total_pft', 'total_sales',
             'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct',
             'tcos_pct', 'total_l30_orders',
+            'p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_views',
         ];
 
-        const amzPctMetrics = ['gprofit', 'groi', 'npft', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct'];
-        const amzDollarMetrics = ['l30_sales', 'total_pft', 'total_sales'];
+        const amzPctMetrics = ['gprofit', 'groi', 'npft', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct'];
+        const amzDollarMetrics = ['l30_sales', 'total_pft', 'total_sales', 'p_sales'];
         /** Metrics where lower is better → invert 3-color (up=red, down=green) */
-        const amzBadgeInvertMetrics = { tcos_pct: true, zero_sold_count: true, prc_gt_lmp_count: true };
+        const amzBadgeInvertMetrics = { p_ads_pct: true, tcos_pct: true, zero_sold_count: true, prc_gt_lmp_count: true };
         let amzBadgePrevDay = null;
         let amzBadgePrevDayLoaded = false;
 
@@ -2407,7 +2497,7 @@
             $('#amzChartRangeSelect').val('30');
             const label = amzMetricLabels[metricKey] || metricKey;
             const isBadge = amzBadgeStatMetrics.includes(metricKey);
-            const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'total_l30_orders'];
+            const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'total_l30_orders', 'p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_views'];
             const suffix = isBadge ? (badgeSnapshotMetrics.includes(metricKey) ? 'Daily Snapshot' : 'Daily Count') : 'Rolling L30';
             $('#amzChartModalTitle').text(`Amz - ${label} (${suffix})`);
             withChartJs(function() {
@@ -5502,12 +5592,12 @@
                         field: "GROI%",
                         hozAlign: "center",
                         formatter: function(cell) {
-                            const percent = amazonComputeGroiAt(cell.getRow().getData().price, cell.getRow().getData());
-                            if (percent === null || !isFinite(percent)) return '0.00%';
+                            const percent = amazonRowGroiPct(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return cell.getRow().getData().is_parent_summary ? '' : '0.00%';
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GROI%', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
-                        sorter: amazonMetricSorter(function(d) { return amazonComputeGroiAt(d && d.price, d); }),
+                        sorter: amazonMetricSorter(amazonRowGroiPct),
                         width: 65
                     },
 
@@ -5515,10 +5605,10 @@
                         title: "GPFT %",
                         field: "GPFT%",
                         hozAlign: "center",
-                        sorter: amazonMetricSorter(function(d) { return amazonComputeGpftAt(d && d.price, d); }),
+                        sorter: amazonMetricSorter(amazonRowGpftPct),
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
-                            const percent = amazonComputeGpftAt(d && d.price, d);
+                            const percent = amazonRowGpftPct(d);
                             if (percent === null || !isFinite(percent)) return '';
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GPFT%', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
@@ -5531,9 +5621,9 @@
                         field: "NROI",
                         hozAlign: "center",
                         headerTooltip: "NROI% = (gross PFT$ − ad spend$) / LP × 100, using current Amazon price. Ad spend uses the Dynamic Rule slab Ads % when it is on, else the channel Ads%.",
-                        sorter: amazonMetricSorter(amazonComputeNroi),
+                        sorter: amazonMetricSorter(amazonRowNroiPct),
                         formatter: function(cell) {
-                            const percent = amazonComputeNroi(cell.getRow().getData());
+                            const percent = amazonRowNroiPct(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
                             const _st = (window.MetricPctColors && MetricPctColors.styleFor('nroi', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
@@ -6657,9 +6747,13 @@
                 const amazonYSalesPct = (typeof AMAZON_Y_SALES_PCT === 'number' && isFinite(AMAZON_Y_SALES_PCT)) ? AMAZON_Y_SALES_PCT : null;
                 const amazonYBgtPct = (typeof AMAZON_Y_BGT_PCT === 'number' && isFinite(AMAZON_Y_BGT_PCT)) ? AMAZON_Y_BGT_PCT : null;
                 const amazonYUtilized = (typeof AMAZON_Y_UTILIZED_PCT === 'number' && isFinite(AMAZON_Y_UTILIZED_PCT)) ? AMAZON_Y_UTILIZED_PCT : null;
+                const amazonTacosPct = (amazonL30Spend !== null && SERVER_AMZ_SALES_L30 > 0) ? (amazonL30Spend / SERVER_AMZ_SALES_L30 * 100) : null;
+                setAmzSummaryBadge($('#amazon-tacos-badge'), 'TACOS%: ' + amzPct(amazonTacosPct), amazonTacosPct);
                 setAmzSummaryBadge($('#amazon-l30-spend-badge'), 'L30 spend: ' + amzMoney(amazonL30Spend), amazonL30Spend);
                 setAmzSummaryBadge($('#amazon-y-spend-badge'), 'Y spend: ' + amzMoney(amazonYSpend), amazonYSpend);
-                setAmzSummaryBadge($('#amazon-y-acos-badge'), 'Y ACOS: ' + amzPct(amazonYAcos), amazonYAcos);
+                setAmzSummaryBadge($('#amazon-y-acos-badge'), 'Y ACOS%: ' + amzPct(amazonYAcos), amazonYAcos);
+                const amazonYTacos = (typeof AMAZON_Y_TACOS_PCT === 'number' && isFinite(AMAZON_Y_TACOS_PCT)) ? AMAZON_Y_TACOS_PCT : null;
+                setAmzSummaryBadge($('#amazon-y-tacos-badge'), 'Y TACOS%: ' + amzPct(amazonYTacos), amazonYTacos);
                 setAmzSummaryBadge($('#amazon-y-sales-pct-badge'), 'Y Sales%: ' + amzPct(amazonYSalesPct), amazonYSalesPct);
                 setAmzSummaryBadge($('#amazon-y-bgt-pct-badge'), 'Y bgt %: ' + amzPct(amazonYBgtPct), amazonYBgtPct);
                 setAmzSummaryBadge($('#amazon-y-utilized-badge'), 'Y utilized %: ' + amzPct(amazonYUtilized), amazonYUtilized);
@@ -6670,6 +6764,11 @@
                 // AVG PFT% (Net Profit %) = GPFT% − Ads%  (Ads% from /all-marketplace-master, Amazon channel)
                 const avgPft = avgGpft - amazonAdsPercent;
                 setAmzSummaryBadge($('#avg-pft-badge'), 'NPFT: ' + Math.round(avgPft) + '%', Math.round(avgPft));
+                // Projected Views = Σ Views × (P-Sales ÷ L30 Sales) — same 30-day pace as P-Sales.
+                const pViewsProjected = (SERVER_AMZ_SALES_L30 > 0 && AMAZON_P_SALES > 0)
+                    ? totalViewsAll * (AMAZON_P_SALES / SERVER_AMZ_SALES_L30)
+                    : totalViewsAll;
+                setAmzSummaryBadge($('#amazon-p-views-badge'), 'Views: ' + Math.round(pViewsProjected).toLocaleString('en-US'), Math.round(pViewsProjected));
                 if (typeof syncAmzSummaryTrendDots === 'function') syncAmzSummaryTrendDots();
                 
                 // Save badge stats daily (fire-and-forget, once per page load)
@@ -6693,7 +6792,14 @@
                         groi_pct: Math.round(groiPercent),
                         nroi_pct: Math.round(nroiPercent),
                         tcos_pct: amazonAdsPercent,
-                        total_l30_orders: SERVER_AMZ_QTY_L30
+                        total_l30_orders: SERVER_AMZ_QTY_L30,
+                        p_sales: Math.round(AMAZON_P_SALES),
+                        p_qty: Math.round(AMAZON_P_QTY),
+                        p_groi_pct: AMAZON_P_GROI,
+                        p_npft: AMAZON_P_NPFT,
+                        p_nroi_pct: AMAZON_P_NROI,
+                        p_ads_pct: AMAZON_P_ADS,
+                        p_views: Math.round(pViewsProjected)
                     });
                 }
             
