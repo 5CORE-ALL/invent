@@ -866,6 +866,67 @@ class NewTemutwoController extends Controller
         }
     }
 
+    /**
+     * The Sprc Dil switch / slab Save on /new-temu2 paints a new S PRC (the Promo Base Prc the server job pushes).
+     * Save that same dollar to NT2_SPRICE so the page and the 04:20 / 20:20 server job agree. Nothing is pushed.
+     */
+    public function saveSprice(Request $request)
+    {
+        $updates = $request->input('updates');
+        if (! is_array($updates)) {
+            $sku = trim((string) $request->input('sku', ''));
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'updates array required'], 422);
+            }
+            $updates = [[
+                'sku' => $sku,
+                'sprice' => $request->input('sprice'),
+                'lp' => $request->input('lp'),
+                'ship' => $request->input('ship'),
+            ]];
+        }
+
+        $skus = [];
+        foreach ($updates as $row) {
+            $sku = is_array($row) ? trim((string) ($row['sku'] ?? '')) : '';
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+        $store = new NewTemutwoSuggestedPriceStore();
+        $store->loadForSkus($skus);
+        $cleared = 0;
+        $saved = 0;
+        foreach ($updates as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $sprice = (float) ($row['sprice'] ?? 0);
+            if ($sprice > 0) {
+                $store->writeExactSprice(
+                    $sku,
+                    $sprice,
+                    (float) ($row['lp'] ?? 0),
+                    (float) ($row['ship'] ?? 0),
+                    (float) ($row['sprc_dil'] ?? 0),
+                    is_array($row['labels'] ?? null) ? $row['labels'] : [],
+                    ! empty($row['lmp_alert'])
+                );
+                $saved++;
+            } else {
+                $store->clearSprice($sku);
+                $cleared++;
+            }
+        }
+        $store->flush();
+
+        return response()->json(['success' => true, 'cleared' => $cleared, 'saved' => $saved]);
+    }
+
     public function saveLinks(Request $request)
     {
         $sku = trim((string) $request->input('sku'));

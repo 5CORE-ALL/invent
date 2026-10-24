@@ -221,6 +221,12 @@ class NewTemutwoSprcDilAutoPushService
         $lmp = (float) ($row['lmp'] ?? 0);
         $adsPct = (float) ($row['ads_percent'] ?? 0);
 
+        // Sprc Dil switch ON (/new-temu2): price from the Target SNROI, the Std prc vs dil discounts are not used.
+        $dilCtx = $this->dilContext();
+        if ($dilCtx !== null) {
+            return $this->computeDilTarget($row, $std, $lp, $ship, $lmp, $adsPct, $dilCtx);
+        }
+
         $pricer ??= StdPrcVsDilPricer::forChannel('newtemutwo');
         // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
         $pricerRow = [
@@ -287,50 +293,137 @@ class NewTemutwoSprcDilAutoPushService
                 $snroiCapped = true;
             }
         }
-        $shipDisc = $priceAfterDisc <= 30 ? 2.99 : 0.0;
-        $effective = round($priceAfterDisc - $shipDisc, 2);
-        if (! ($effective > 0)) {
-            return null;
-        }
-
         // No Amazon / eBay cap (same as New Temu One).
-        // LMP cap only when this SKU did not already take an LMP discount.
-        $labels = [];
-        $afterRefs = round($effective, 2);
-        $sumDiscPct = $std > 0 ? max(0.0, ($std - $discounted) / $std * 100) : 0.0;
-
-        $capped = $lmpDiscApplied
-            ? $afterRefs
-            : $this->capToLmp($afterRefs, $lmp, $lp, $ship, max($std, $afterRefs), $sumDiscPct);
-        $lmpCapped = ! $lmpDiscApplied
-            && $lmp > 0
-            && ($afterRefs - $capped) > 0.009
-            && abs($capped - round($lmp, 2)) <= 0.02;
-        if ($lmpCapped) {
-            $labels = [];
+        // LMP rule, same as Amazon and the page's S Promo Prc: when the price reaches LMP it lands on LMP × 0.98.
+        // A SKU that already took an LMP discount inside Sum disc sits below LMP, so the rule does not fire for it.
+        $lmpCapped = false;
+        $promoPrc = round($priceAfterDisc, 2);
+        if (! $lmpDiscApplied) {
+            [$promoPrc, $lmpCapped] = $this->promoWithLmpRule($promoPrc, $lmp, $lp, $ship);
         }
 
-        if (! is_finite($capped) || $capped < 0.01) {
-            return null;
-        }
-        $sprice = round($capped, 2);
-        // S PRC is already the Temu base (Promo Base Prc), so it is pushed as-is — no further 0.88 / −$2.99 step.
-        $base = $sprice;
-        $promoBase = $sprice;
-        if (! ($base > 0)) {
+        return $this->finishTarget($priceAfterDisc, $promoPrc, $lmpCapped, $snroiCapped);
+    }
+
+    /**
+     * Ship Disc ($2.99 when S Promo Prc ≤ $30), then the pushed Promo Base Prc. S PRC is already the Temu base
+     * (Promo Base Prc), so it is pushed as-is — no further 0.88 / −$2.99 step.
+     *
+     * @return array{sprice:float,uncapped:float,lmp_capped:bool,snroi_capped:bool,labels:list<string>,base:float,promo_base:float,full:float}|null
+     */
+    protected function finishTarget(float $promoBeforeLmp, float $promoPrc, bool $lmpCapped, bool $snroiCapped): ?array
+    {
+        $uncapped = round($promoBeforeLmp - ($promoBeforeLmp <= 30 ? 2.99 : 0.0), 2);
+        $effective = round($promoPrc - ($promoPrc <= 30 ? 2.99 : 0.0), 2);
+        if (! is_finite($effective) || ! ($effective >= 0.01)) {
             return null;
         }
 
         return [
-            'sprice' => $sprice,
-            'uncapped' => round($effective, 2),
+            'sprice' => $effective,
+            'uncapped' => $uncapped,
             'lmp_capped' => $lmpCapped,
             'snroi_capped' => $snroiCapped,
-            'labels' => $labels,
-            'base' => round($base, 2),
-            'promo_base' => round($promoBase, 2),
-            'full' => round(TemuShopifySalesService::computeFullTemuPrice($base), 2),
+            'labels' => [],
+            'base' => $effective,
+            'promo_base' => $effective,
+            'full' => round(TemuShopifySalesService::computeFullTemuPrice($effective), 2),
         ];
+    }
+
+    /**
+     * Amazon's LMP rule on the S Promo Prc: at or above LMP, and SGROI at LMP is at least 20%, the price is
+     * LMP × 0.98. Never raises the price.
+     *
+     * @return array{0: float, 1: bool}  [S Promo Prc, rule applied]
+     */
+    protected function promoWithLmpRule(float $promo, float $lmp, float $lp, float $ship): array
+    {
+        $promo = round($promo, 2);
+        if ($lmp > 0 && ($promo + 0.0001) >= $lmp) {
+            $sgroiAtLmp = $lp > 0
+                ? ((($lmp * TemuShopifySalesService::DECREASE_TAKEHOME) - $ship - $lp) / $lp) * 100
+                : null;
+            if ($sgroiAtLmp === null || $sgroiAtLmp >= AmazonDilGroiRule::LMP_SGROI_MIN) {
+                return [round($lmp * (1 - (AmazonDilGroiRule::DIL_LMP_REDUCE_PCT / 100)), 2), true];
+            }
+        }
+
+        return [$promo, false];
+    }
+
+    /** @var array{rules: array, cvr_adj: array|null}|null */
+    private ?array $dilCtx = null;
+
+    private bool $dilCtxLoaded = false;
+
+    /**
+     * The Sprc Dil slabs when the /new-temu2 switch is ON (Sprc Dil), else null (Std prc vs dil).
+     * Read once per run so every SKU is priced with the same rule the page shows.
+     *
+     * @return array{rules: array, cvr_adj: array|null}|null
+     */
+    protected function dilContext(): ?array
+    {
+        if ($this->dilCtxLoaded) {
+            return $this->dilCtx;
+        }
+        $this->dilCtxLoaded = true;
+        $this->dilCtx = null;
+        try {
+            $ctx = \App\Support\EbayRuleSprice::context('newtemutwo');
+            if (($ctx['rule'] ?? 'std') === 'dil' && is_array($ctx['dil'] ?? null)) {
+                $this->dilCtx = [
+                    'rules' => $ctx['dil']['rules'] ?? [],
+                    'cvr_adj' => is_array($ctx['dil']['cvr_adj'] ?? null) ? $ctx['dil']['cvr_adj'] : null,
+                ];
+            }
+        } catch (Throwable $e) {
+            Log::warning('[NewTemutwoSprcDilAutoPush] Sprc Dil rule load failed', ['error' => $e->getMessage()]);
+        }
+
+        return $this->dilCtx;
+    }
+
+    /**
+     * Sprc Dil rule on, same steps as the page (Amazon flow, Temu formula):
+     *  Target SNROI = the SKU's Dil slab + CVR overlay.
+     *  S Promo Prc  = (LP × (1 + target/100) + Ship + Std × Ads%) / 0.95, nearest cent, at most Std − S 12% $.
+     *  Then the LMP rule (LMP × 0.98), Ship Disc and the Promo Base Prc that is pushed.
+     * A SKU with no target gets no S PRC.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{rules: array, cvr_adj: array|null}  $dil
+     * @return array{sprice:float,uncapped:float,lmp_capped:bool,snroi_capped:bool,labels:list<string>,base:float,promo_base:float,full:float}|null
+     */
+    protected function computeDilTarget(array $row, float $std, float $lp, float $ship, float $lmp, float $adsPct, array $dil): ?array
+    {
+        if (! ($lp > 0) || ! ($std > 0)) {
+            return null;
+        }
+        $slab = AmazonDilGroiRule::matchOrNearest((float) ($row['dil'] ?? 0), $dil['rules']);
+        if ($slab === null) {
+            return null;
+        }
+        $target = AmazonDilGroiRule::adjustGroiForCvrArrow(
+            (float) $slab['groi'],
+            (float) ($row['cvr'] ?? 0),
+            (float) ($row['cvr_60'] ?? 0),
+            $dil['cvr_adj']
+        );
+        $price = round(
+            (($lp * (1 + $target / 100)) + $ship + ($std * $adsPct / 100)) / TemuShopifySalesService::DECREASE_TAKEHOME,
+            2
+        );
+        if (! ($price > 0)) {
+            return null;
+        }
+        // Std Prc less S 12% $ is the most it can be. A target that needs more holds there with no discount.
+        $maxPromo = round($std - round($std * 0.12, 2), 2);
+        $promo = min($price, $maxPromo);
+        [$promoPrc, $lmpCapped] = $this->promoWithLmpRule($promo, $lmp, $lp, $ship);
+
+        return $this->finishTarget($promo, $promoPrc, $lmpCapped, true);
     }
 
     /**

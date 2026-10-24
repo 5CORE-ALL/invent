@@ -323,7 +323,9 @@ class DilRuleSpriceApplyService
 
         $lmp = (float) ($row['lmp'] ?? 0);
         $std = (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0);
-        $sprice = AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, $std);
+        // Temu 3 uses Amazon's LMP rule: a price that reaches LMP lands on LMP × 0.98 (same as the page).
+        $lmpReducePct = $this->channel === 'temu3' ? AmazonDilGroiRule::DIL_LMP_REDUCE_PCT : 0.0;
+        $sprice = AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, $std, $lmpReducePct);
 
         if (! empty($cfg['amz_floor'])) {
             $amz = (float) ($row['amz_price'] ?? 0);

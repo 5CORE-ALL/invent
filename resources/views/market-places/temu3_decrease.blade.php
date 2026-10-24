@@ -2084,7 +2084,7 @@
     }
 
     /**
-     * S PRC = Std prc vs dil, then capped at LMP when LMP is cheaper. No Amazon / eBay cap.
+     * S PRC = Std prc vs dil, then LMP × 0.98 when the price reaches LMP (Amazon rule). No Amazon / eBay cap.
      * Stored S PRC is never the source — only an explicit candidate (use_passed_as_discounted).
      */
     function temuSpriceCapResult(row, rawSprice, extra) {
@@ -2104,11 +2104,15 @@
         const zeroSoldOwns = typeof chPromoTemuZeroSoldOwnsSprice === 'function'
             && chPromoTemuZeroSoldOwnsSprice(row);
 
-        if (!zeroSoldOwns) {
-            if (lmp > 0 && sprice > lmp + 0.0001) sprice = +lmp.toFixed(2);
+        // Same LMP rule as Amazon: when the price reaches LMP (and SGROI at LMP is at least 20%) it lands on LMP × 0.98.
+        let lmpAlert = false;
+        if (!zeroSoldOwns && lmp > 0 && sprice + 0.0001 >= lmp) {
+            const atLmp = (typeof temuSpriceCalcParts === 'function') ? temuSpriceCalcParts(row, lmp) : null;
+            if (!atLmp || atLmp.sgroi == null || atLmp.sgroi >= 20) {
+                sprice = +(lmp * 0.98).toFixed(2);
+                lmpAlert = true;
+            }
         }
-
-        const lmpAlert = lmp > 0 && Math.abs(sprice - lmp) <= 0.015 && discounted + 0.0001 >= lmp;
         return { sprice: +sprice.toFixed(2), labels: [], lmpAlert: lmpAlert, lmp: lmp };
     }
 

@@ -5440,6 +5440,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/new-temu2', [NewTemutwoController::class, 'index'])->name('newtemutwo.index');
     Route::get('/new-temu2-data-json', [NewTemutwoController::class, 'dataJson'])->name('newtemutwo.data.json');
     Route::post('/new-temu2-save-links', [NewTemutwoController::class, 'saveLinks'])->name('newtemutwo.save.links');
+    Route::post('/new-temu2-save-sprice', [NewTemutwoController::class, 'saveSprice'])->name('newtemutwo.save.sprice');
     Route::get('/new-temu2-promotion-setting', [NewTemutwoController::class, 'getPromotionSetting'])->name('newtemutwo.promotion.setting.get');
     Route::post('/new-temu2-promotion-setting', [NewTemutwoController::class, 'savePromotionSetting'])->name('newtemutwo.promotion.setting.save');
     Route::get('/new-temu2-promotion-eligibility', [NewTemutwoController::class, 'promotionEligibility'])->name('newtemutwo.promotion.eligibility');

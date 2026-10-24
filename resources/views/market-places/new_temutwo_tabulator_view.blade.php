@@ -224,6 +224,11 @@
         }
         #column-dropdown-menu .col-vis-item > label:hover { background: #e9ecef; }
         @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'css', 'channelPromoChannel' => 'newtemutwo'])
+        @include('partials.ebay-sprc-dil', [
+            'ebaySprcDilPart' => 'css',
+            'ebaySprcDilChannel' => 'newtemutwo',
+            'ebaySprcDilClampToNearest' => true,
+        ])
         .nto-server-push-note {
             display: inline-flex;
             align-items: center;
@@ -455,6 +460,12 @@
                         <option value="equal">CVR60 = CVR30</option>
                     </select>
                     @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'buttons', 'channelPromoChannel' => 'newtemutwo'])
+                    @include('partials.ebay-sprc-dil', [
+                        'ebaySprcDilPart' => 'buttons',
+                        'ebaySprcDilChannel' => 'newtemutwo',
+                        'ebaySprcDilZeroSoldUsesMinGroi' => true,
+                        'ebaySprcDilClampToNearest' => true,
+                    ])
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
@@ -662,6 +673,12 @@
         </div>
     </div>
     @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'modals', 'channelPromoChannel' => 'newtemutwo'])
+    @include('partials.ebay-sprc-dil', [
+        'ebaySprcDilPart' => 'modals',
+        'ebaySprcDilChannel' => 'newtemutwo',
+        'ebaySprcDilZeroSoldUsesMinGroi' => true,
+        'ebaySprcDilClampToNearest' => true,
+    ])
 
     <div class="modal fade" id="uploadPricingModal" tabindex="-1" aria-labelledby="uploadPricingModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
@@ -1031,6 +1048,108 @@
     window.chPromoSpricePatch = chPromoSpricePatch;
     window.chPromoEachTableRow = chPromoEachTableRow;
 
+    @include('partials.ebay-sprc-dil', [
+        'ebaySprcDilPart' => 'script',
+        'ebaySprcDilChannel' => 'newtemutwo',
+        'ebaySprcDilZeroSoldUsesMinGroi' => true,
+        'ebaySprcDilClampToNearest' => true,
+    ])
+
+    const NTO2_SAVE_SPRICE_URL = '{{ route("newtemutwo.save.sprice") }}';
+    function ntoCsrf2() {
+        return (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+    }
+    /** Repaint the grid with the active rule right now. Keeps the scroll position. */
+    function ntoRepaintNow() {
+        if (!table) return;
+        temuClearCapMemo();
+        const holder = document.querySelector('#new-temu2-table .tabulator-tableholder');
+        const top = holder ? holder.scrollTop : 0;
+        const left = holder ? holder.scrollLeft : 0;
+        try { table.redraw(true); } catch (e) { /* ignore */ }
+        if (holder) { holder.scrollTop = top; holder.scrollLeft = left; }
+        if (typeof updateSummary === 'function') {
+            try { updateSummary(); } catch (e) { /* ignore */ }
+        }
+    }
+    /**
+     * Save the painted S Promo Base Prc as the SKU's S PRC (NT2_SPRICE) so the page and the 04:20 / 20:20 server job
+     * agree. Only SKUs whose painted price differs from the saved one are written. Nothing is pushed.
+     */
+    async function ntoPersistDisplayedSprice() {
+        temuClearCapMemo();
+        const updates = [];
+        const rows = [];
+        chPromoEachTableRow(function(row, d) {
+            if (!chPromoIsChildRow(d) || !(chPromoInv(d) > 0)) return;
+            const sku = chPromoSku(d);
+            if (!sku) return;
+            const price = typeof ntoRowPushPrice === 'function' ? ntoRowPushPrice(d) : 0;
+            if (!(price > 0)) return;
+            if (Math.abs(ntoSavedSprice(d) - price) < 0.005) return;
+            updates.push({
+                sku: sku,
+                sprice: price,
+                lp: parseFloat(d.lp) || 0,
+                ship: parseFloat(d.temu_ship) || 0,
+                sprc_dil: price,
+                labels: [],
+                lmp_alert: typeof ntoRowLmpAlertPrc === 'function' && ntoRowLmpAlertPrc(d) != null
+            });
+            rows.push({ row: row, price: price });
+        });
+        if (!updates.length) return 0;
+        const size = 200;
+        for (let i = 0; i < updates.length; i += size) {
+            await $.ajax({
+                url: NTO2_SAVE_SPRICE_URL,
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': ntoCsrf2(), 'Accept': 'application/json' },
+                data: { updates: updates.slice(i, i + size), _token: ntoCsrf2() }
+            });
+        }
+        const blocked = table && typeof table.blockRedraw === 'function';
+        if (blocked) table.blockRedraw();
+        try {
+            rows.forEach(function(item) {
+                if (item.row && typeof item.row.update === 'function') {
+                    item.row.update(chPromoSpricePatch(item.price));
+                }
+            });
+        } finally {
+            if (blocked) table.restoreRedraw();
+        }
+        temuClearCapMemo();
+        if (typeof updateSummary === 'function') {
+            try { updateSummary(); } catch (e) { /* ignore */ }
+        }
+        return updates.length;
+    }
+    /**
+     * The Sprc Dil / Std prc vs dil switch was flipped. Same steps as Amazon, with the Temu formula:
+     * 1) repaint every S column from the ON rule at once (S Promo Prc, S Promo Base Prc, SNROI% ...),
+     * 2) save the new S PRC in the background (no push).
+     */
+    let ntoRuleSwitchSeq = 0;
+    window.spriceOnRuleSwitched = function(rule) {
+        const seq = ++ntoRuleSwitchSeq;
+        ntoRepaintNow();
+        (async function() {
+            try {
+                if (seq !== ntoRuleSwitchSeq) return;
+                await ntoPersistDisplayedSprice();
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('Could not save the recalculated prices', 'error');
+            }
+        })();
+    };
+    // Sprc Dil slab / CVR edit or Save and Apply: repaint first, then save the painted prices.
+    window.chPromoClearThenApplyAllRules = async function(opts) {
+        opts = opts || {};
+        if (opts.persist !== true) return 0;
+        ntoRepaintNow();
+        return await ntoPersistDisplayedSprice();
+    };
 
     function temuParseMoney(v) {
         const n = parseFloat(v);
@@ -1067,8 +1186,18 @@
     // a cap (new data, refilter, LMP edit) clears it first.
     const temuCapMemo = new Map();
 
+    // Sprc Dil Target SNROI and its price, once per row per render pass (the Dil slab match is not free).
+    let ntoDilMemoMap = new WeakMap();
+    function ntoDilMemo(d, key, fn) {
+        if (!d || typeof d !== 'object') return fn();
+        let m = ntoDilMemoMap.get(d);
+        if (!m) { m = Object.create(null); ntoDilMemoMap.set(d, m); }
+        if (key in m) return m[key];
+        return (m[key] = fn());
+    }
     function temuClearCapMemo() {
         temuCapMemo.clear();
+        ntoDilMemoMap = new WeakMap();
     }
 
     /** Memoized entry point. Callers passing an ad-hoc row must use temuSpriceCapCompute. */
@@ -2278,9 +2407,52 @@
      * target and the Dil / Age / CVR ... discounts are not used. Std Prc less S 12% $ is the highest it can be, so a target
      * that needs more than that holds there with no discount.
      */
+    /** The Sprc Dil switch is ON: S Promo Prc comes from the Sprc Dil Target SNROI, not from Std prc vs dil. */
+    function ntoDilRuleOn() {
+        return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+    }
+    /** Target SNROI% for the row: its Dil slab (INV > 0 child SKUs) plus the CVR up / down overlay. Null when none. */
+    function ntoRowSprcDilTarget(d) {
+        if (typeof ebayDilGroiResolve !== 'function' || typeof ebayDilGroiApplyCvrAdj !== 'function'
+            || typeof ebayDgIsChild !== 'function' || typeof ebayDgInv !== 'function') return null;
+        return ntoDilMemo(d, 'target', function() {
+            if (!d || d.is_parent_summary || !ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return null;
+            const dil = ebayDgDil(d);
+            const rule = ebayDilGroiMatch(dil) || ebayDilGroiResolve(dil);
+            if (!rule) return null;
+            const t = Number(ebayDilGroiApplyCvrAdj(rule.groi, d));
+            return isFinite(t) ? t : null;
+        });
+    }
+    /**
+     * S Promo Prc that lands exactly on the Sprc Dil Target SNROI (Temu formula, same as the SNROI% column):
+     *   SNROI = ((S Promo Prc × 0.95 − Temu Ship − LP) − Std Prc × Ads%) / LP × 100
+     *   S Promo Prc = (LP × (1 + target/100) + Ship + Std × Ads%) / 0.95, rounded to the nearest cent (same as Amazon).
+     */
+    function ntoRowDilTargetPrc(d) {
+        return ntoDilMemo(d, 'prc', function() {
+            const target = ntoRowSprcDilTarget(d);
+            if (target == null) return null;
+            const std = ntoRowSpriceStart(d);
+            const lp = parseFloat(d && d.lp) || 0;
+            if (!(std > 0) || !(lp > 0)) return null;
+            const ship = parseFloat(d && d.temu_ship) || 0;
+            const adsFrac = (typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 0) / 100;
+            const prc = Math.round(((((lp * (1 + target / 100)) + ship + (std * adsFrac)) / 0.95) * 100) - 0.00001) / 100;
+            return prc > 0 ? prc : null;
+        });
+    }
     function ntoRowSDiscAmt(d) {
         const s = ntoRowSpriceStart(d);
         if (!(s > 0)) return 0;
+        if (ntoDilRuleOn()) {
+            // Same as Amazon: with Sprc Dil ON the Std prc vs dil discounts are not used. The target price replaces them.
+            // Std Prc less S 12% $ is the most it can be, so a target that needs more holds there with no discount.
+            const dilPrc = ntoRowDilTargetPrc(d);
+            if (dilPrc == null) return 0;
+            const maxPromoDil = s - ntoRowSTwelvePct(d);
+            return dilPrc >= maxPromoDil ? 0 : +(maxPromoDil - dilPrc).toFixed(2);
+        }
         const pm = ntoRowPm(d);
         let amt = pm > 0 ? +(s * pm / 100).toFixed(2) : 0;
         const capPrc = ntoRowSnroiCapPrc(d);
@@ -2297,23 +2469,32 @@
         if (s == null) return null;
         return +(s - ntoRowSTwelvePct(d) - ntoRowSDiscAmt(d)).toFixed(2);
     }
+    /** Same as Amazon (AMZ_DIL_LMP_REDUCE_PCT): when the price reaches LMP it lands on LMP × 0.98. */
+    const NTO_LMP_REDUCE_PCT = 2;
     /**
-     * LMP Alert Prc = LMP × 0.87 when the LMP column is lower than the base S Promo Prc.
-     * Otherwise blank.
+     * LMP Alert Prc = LMP × 0.98. Same rule as Amazon (amazonShouldCapSpriceToLmp / amazonCapSpriceToLmp):
+     * it applies when the base S Promo Prc is at or above LMP, and SGROI at LMP is at least 20%
+     * (Temu take-home 0.95: (LMP × 0.95 − Temu Ship − LP) / LP). Otherwise blank, S Promo Prc stays as calculated.
      */
     function ntoRowLmpAlertPrc(d) {
         const promo = ntoRowSPromoPrcBase(d);
         const lmp = typeof temuLmpRefPrice === 'function' ? temuLmpRefPrice(d) : 0;
-        if (promo == null || !(lmp > 0) || !(lmp < promo)) return null;
-        return +(lmp * 0.87).toFixed(2);
+        if (promo == null || !(lmp > 0) || promo + 0.0001 < lmp) return null;
+        const lp = parseFloat(d && d.lp) || 0;
+        if (lp > 0) {
+            const ship = parseFloat(d && d.temu_ship) || 0;
+            const sgroiAtLmp = ((lmp * 0.95 - ship - lp) / lp) * 100;
+            if (sgroiAtLmp < 20) return null;
+        }
+        return +(lmp * (1 - NTO_LMP_REDUCE_PCT / 100)).toFixed(2);
     }
-    /** Shown S Promo Prc. An LMP alert overwrites it with LMP Alert Prc × 0.98. */
+    /** Shown S Promo Prc. When the LMP rule applies it is LMP × 0.98 (the LMP Alert Prc), as on Amazon. */
     function ntoRowSPriceAfterDisc(d) {
         const base = ntoRowSPromoPrcBase(d);
         if (base == null) return null;
         const alert = ntoRowLmpAlertPrc(d);
         if (alert == null) return base;
-        return +(alert * 0.98).toFixed(2);
+        return alert;
     }
     /** S Ship Disc = $2.99 when S Price After Discount is $30 or less, otherwise 0. */
     function ntoRowSShipDisc(d) {
@@ -3901,7 +4082,7 @@
                         const y = ntoRowSPriceAfterDisc(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'S Promo Prc = Std Prc − S 12% $ − S Disc $. When LMP Alert Prc is showing, this cell is LMP Alert Prc × 0.98. SPFT, SGROI%, SGPFT%, SNROI%, and SNPFT% use this price.',
+                    headerTooltip: 'S Promo Prc = Std Prc − S 12% $ − S Disc $. When LMP Alert Prc is showing, this cell is that price (LMP × 0.98, same as Amazon). SPFT, SGROI%, SGPFT%, SNROI%, and SNPFT% use this price.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const p = ntoRowSPriceAfterDisc(row);
@@ -3909,7 +4090,7 @@
                         const alert = ntoRowLmpAlertPrc(row);
                         let tip;
                         if (alert != null) {
-                            tip = 'LMP Alert Prc $' + alert.toFixed(2) + ' × 0.98 = $' + p.toFixed(2);
+                            tip = 'LMP $' + (temuLmpRefPrice(row) || 0).toFixed(2) + ' × 0.98 = $' + p.toFixed(2);
                         } else {
                             const s = ntoRowSpriceStart(row) || 0;
                             tip = 'Std Prc $' + s.toFixed(2) + ' − S 12% $' + ntoRowSTwelvePct(row).toFixed(2)
@@ -3928,15 +4109,15 @@
                         const y = ntoRowLmpAlertPrc(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'LMP Alert Prc = LMP × 0.87 when LMP is lower than S Promo Prc. A red triangle marks that alert.',
+                    headerTooltip: 'LMP Alert Prc = LMP × 0.98 (same as Amazon) when S Promo Prc is at or above LMP and SGROI at LMP is at least 20%. A red triangle marks that alert.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const alert = ntoRowLmpAlertPrc(row);
                         if (alert == null) return '<span style="color: #6c757d;">—</span>';
                         const lmp = temuLmpRefPrice(row);
                         const promo = ntoRowSPromoPrcBase(row) || 0;
-                        const tip = 'LMP $' + lmp.toFixed(2) + ' is below S Promo Prc $' + promo.toFixed(2)
-                            + ' → $' + lmp.toFixed(2) + ' × 0.87 = $' + alert.toFixed(2);
+                        const tip = 'S Promo Prc $' + promo.toFixed(2) + ' reaches LMP $' + lmp.toFixed(2)
+                            + ' → $' + lmp.toFixed(2) + ' × 0.98 = $' + alert.toFixed(2);
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;font-weight:600;" title="' + tip + '">$'
                             + alert.toFixed(2)
                             + '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="'
