@@ -1667,18 +1667,22 @@
     document.getElementById('incBulkSearch')?.addEventListener('input', incBulkFilter);
 
     function incBulkSelectedIds() {
-        return Array.from(incBulkList.querySelectorAll('.inc-bulk-chk:checked')).map((c) => Number(c.value));
+        // Only rows currently visible count: anything hidden by the search is never copied.
+        return Array.from(incBulkList.querySelectorAll('tbody tr:not([hidden]) .inc-bulk-chk:checked')).map((c) => Number(c.value));
     }
 
     function incBulkUpdateCount() {
-        const total = incBulkList.querySelectorAll('.inc-bulk-chk').length;
+        const all = incBulkList.querySelectorAll('.inc-bulk-chk').length;
+        const total = incBulkList.querySelectorAll('tbody tr:not([hidden]) .inc-bulk-chk').length;
         const sel = incBulkSelectedIds().length;
-        document.getElementById('incBulkCount').textContent = total ? sel + ' of ' + total + ' selected' : '';
+        document.getElementById('incBulkCount').textContent = all
+            ? sel + ' of ' + total + ' selected' + (total < all ? ' (search shows ' + total + ' of ' + all + ')' : '')
+            : '';
         document.getElementById('incBulkSave').disabled = sel === 0 || !incBulkTargetOk;
-        const all = document.getElementById('incBulkAll');
-        if (all) {
+        const headerChk = document.getElementById('incBulkAll');
+        if (headerChk) {
             const vis = incBulkList.querySelectorAll('tbody tr:not([hidden]) .inc-bulk-chk');
-            all.checked = vis.length > 0 && Array.from(vis).every((c) => c.checked);
+            headerChk.checked = vis.length > 0 && Array.from(vis).every((c) => c.checked);
         }
     }
 
@@ -1735,7 +1739,10 @@
         if (!ids.length || !incBulkTargetOk) return;
         const toLabel = findIncMonth(incBulkTo.value)?.month_label || 'the target month';
         const fromLabel = findIncMonth(incBulkFrom.value)?.month_label || 'the source month';
-        if (!confirm('Copy ' + ids.length + ' increment(s) from ' + fromLabel + ' to ' + toLabel + '?')) return;
+        const names = Array.from(incBulkList.querySelectorAll('tbody tr:not([hidden]) .inc-bulk-chk:checked'))
+            .map((c) => c.closest('tr').querySelector('.inc-person')?.textContent.trim()).filter(Boolean);
+        const who = names.length <= 5 ? '\n\n' + names.join(', ') : '';
+        if (!confirm('Copy ' + ids.length + ' increment(s) from ' + fromLabel + ' to ' + toLabel + '?' + who)) return;
         const btn = document.getElementById('incBulkSave');
         btn.disabled = true;
         incBulkError.hidden = true;

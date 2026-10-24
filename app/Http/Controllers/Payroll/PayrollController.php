@@ -421,8 +421,8 @@ class PayrollController extends Controller
 
     /**
      * Bulk: copy the increments of one month to another (e.g. "same increment for next
-     * month"). user_ids limits it to chosen employees; omit it to copy everyone who has an
-     * increment in the source month. Existing target increments are kept unless overwrite=1.
+     * month"). user_ids limits it to chosen employees (an empty list copies nobody); omit it
+     * entirely to copy everyone who has an increment in the source month. Existing target increments are kept unless overwrite=1.
      */
     public function copyIncrements(Request $request): JsonResponse
     {
@@ -444,7 +444,8 @@ class PayrollController extends Controller
 
         $sources = PayrollEmployeeSalary::where('payroll_month_id', $from->id)
             ->where('increment', '!=', 0)
-            ->when(! empty($validated['user_ids']), fn ($q) => $q->whereIn('user_id', $validated['user_ids']))
+            // When user_ids is sent, ONLY those employees are copied (an empty list copies nobody).
+            ->when(array_key_exists('user_ids', $validated), fn ($q) => $q->whereIn('user_id', $validated['user_ids'] ?? []))
             ->get();
 
         $existing = PayrollEmployeeSalary::where('payroll_month_id', $to->id)
