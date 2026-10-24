@@ -19,7 +19,7 @@ class AlibabaInventoryUpdateTest extends TestCase
         ]);
     }
 
-    public function test_inventory_push_sets_amount_on_the_sku_id(): void
+    public function test_inventory_push_sends_a_plus_delta_for_the_warehouse_on_the_sku_id(): void
     {
         Http::fake(function ($request) {
             $method = (string) ($request['method'] ?? '');
@@ -30,6 +30,7 @@ class AlibabaInventoryUpdateTest extends TestCase
                             'skus' => [[
                                 'skuCode' => '14B LED',
                                 'skuId' => 10001889397471,
+                                'inventoryDTOList' => [['inventory' => 10, 'storeCode' => 'US_LOCAL_01']],
                             ]],
                         ],
                     ],
@@ -49,24 +50,67 @@ class AlibabaInventoryUpdateTest extends TestCase
             'shopify_qty' => 77,
         ]]);
 
-        $this->assertTrue($result['success']);
+        $this->assertTrue($result['success'], $result['message'] ?? '');
         $this->assertSame(1, $result['updated']);
         Http::assertSent(function ($request) {
             if (($request['method'] ?? '') !== '/icbu/product/inventory/update') {
                 return false;
             }
-            $payload = json_decode((string) $request['inventory_update_request'], true);
-            $item = $payload['inventoryItems'][0] ?? [];
+            $list = json_decode((string) $request['inventory_list'], true);
+            $row = $list[0] ?? [];
 
             return str_contains($request->url(), 'https://openapi-api.alibaba.com/rest')
-                && ($item['productId'] ?? '') === '160000043250883'
-                && ($item['skuId'] ?? '') === '10001889397471'
-                && ($item['inventory']['amount'] ?? null) === '77'
-                && ! array_key_exists('sku_code', $item);
+                && ($request['product_id'] ?? '') === '160000043250883'
+                && ! isset($request['inventory_update_request'])
+                && ($row['sku_id'] ?? null) === 10001889397471
+                && ($row['inventory_code'] ?? '') === 'US_LOCAL_01'
+                && ($row['inventory'] ?? null) === 67
+                && ($row['operate'] ?? '') === 'plus';
         });
     }
 
-    public function test_inventory_push_uses_the_only_inventory_sku_when_the_product_has_no_sku_id(): void
+    public function test_inventory_push_subtracts_when_alibaba_holds_more_and_skips_when_equal(): void
+    {
+        Http::fake(function ($request) {
+            $method = (string) ($request['method'] ?? '');
+            if ($method === '/icbu/product/get') {
+                return Http::response([
+                    'product' => [
+                        'productSku' => [
+                            'skus' => [[
+                                'skuCode' => '14B LED',
+                                'skuId' => 10001889397471,
+                                'inventoryDTOList' => [['inventory' => 90, 'storeCode' => 'US_LOCAL_01']],
+                            ]],
+                        ],
+                    ],
+                ]);
+            }
+            if ($method === '/icbu/product/inventory/update') {
+                return Http::response(['success' => true]);
+            }
+
+            return Http::response(['message' => 'unexpected '.$method], 400);
+        });
+
+        $result = app(AlibabaApiService::class)->batchUpdateInventory([[
+            'product_id' => '160000043250883',
+            'sku_code' => '14B LED',
+            'inventory' => 77,
+            'shopify_qty' => 77,
+        ]]);
+
+        $this->assertTrue($result['success'], $result['message'] ?? '');
+        Http::assertSent(function ($request) {
+            $list = json_decode((string) ($request['inventory_list'] ?? '[]'), true);
+
+            return ($request['method'] ?? '') === '/icbu/product/inventory/update'
+                && ($list[0]['inventory'] ?? null) === 13
+                && ($list[0]['operate'] ?? '') === 'sub';
+        });
+    }
+
+    public function test_inventory_push_uses_the_inventory_lookup_when_the_product_has_no_sku_id(): void
     {
         Http::fake(function ($request) {
             $method = (string) ($request['method'] ?? '');
@@ -78,7 +122,8 @@ class AlibabaInventoryUpdateTest extends TestCase
                     'result' => [
                         'inventoryItems' => [[
                             'skuId' => '58224724203874',
-                            'inventory' => ['amount' => '79'],
+                            'inventoryCode' => 'US_LOCAL_01',
+                            'inventory' => 79,
                         ]],
                     ],
                 ]);
@@ -99,13 +144,17 @@ class AlibabaInventoryUpdateTest extends TestCase
 
         $this->assertTrue($result['success'], $result['message'] ?? '');
         Http::assertSent(function ($request) {
+            if (($request['method'] ?? '') === '/icbu/product/inventory/get') {
+                return ($request['product_id'] ?? '') === '160000043250883';
+            }
             if (($request['method'] ?? '') !== '/icbu/product/inventory/update') {
                 return false;
             }
-            $payload = json_decode((string) $request['inventory_update_request'], true);
+            $list = json_decode((string) $request['inventory_list'], true);
 
-            return ($payload['inventoryItems'][0]['skuId'] ?? '') === '58224724203874'
-                && ($payload['inventoryItems'][0]['inventory']['amount'] ?? null) === '77';
+            return ($list[0]['sku_id'] ?? null) === 58224724203874
+                && ($list[0]['inventory'] ?? null) === 2
+                && ($list[0]['operate'] ?? '') === 'sub';
         });
     }
 
@@ -120,6 +169,7 @@ class AlibabaInventoryUpdateTest extends TestCase
                             'skus' => [[
                                 'skuCode' => '14B LED',
                                 'skuId' => 10001889397471,
+                                'inventoryDTOList' => [['inventory' => 10, 'storeCode' => 'US_LOCAL_01']],
                             ]],
                         ],
                     ],
