@@ -947,8 +947,8 @@
                 style="background-color:#ea580c;color:#fff;font-weight:bold;cursor:pointer;"
                 onclick="window.location.href='{{ route('customer.care.dispatch.chargeback.issues') }}'"
                 role="button"
-                title="Open Chargeback Issues"
-            >Chargeback Issues</span>
+                title="Open CC Chargeback"
+            >CC Chargeback</span>
             <span
                 class="badge fs-6 p-2"
                 style="background-color:#2563eb;color:#fff;font-weight:bold;cursor:pointer;"

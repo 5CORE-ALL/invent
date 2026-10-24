@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Channels;
 
+use App\Console\Commands\SyncTikTokChargebacksCommand;
 use App\Http\Controllers\Controller;
 use App\Models\VeeqoChargeback;
 use App\Services\Veeqo\ChargebackOsizeSync;
 use App\Services\Veeqo\OrderSkuLookup;
+use App\Services\Veeqo\PlatformChargebackCsvImport;
+use App\Services\Veeqo\TikTokChargebackSync;
 use App\Services\Veeqo\VeeqoChargebackCsvImport;
 use App\Services\Veeqo\VeeqoOrderSkuResolver;
 use Illuminate\Database\Eloquent\Builder;
@@ -13,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class VeeqoChargebackController extends Controller
@@ -26,7 +30,11 @@ class VeeqoChargebackController extends Controller
 
     private const SEARCHABLE = ['order_number', 'settlement_id', 'transaction_id', 'item_types', 'reason', 'service'];
 
-    public const CHARGEBACK_TYPES = ['LabmanLabelChargeBack', 'Chargeback Debit - Outbound', 'Chargeback Credit - Outbound'];
+    public const CHARGEBACK_TYPES = [
+        'LabmanLabelChargeBack', 'Chargeback Debit - Outbound', 'Chargeback Credit - Outbound',
+        'TikTok Shipping Fee Adjustment', 'TikTok Shipping Fee Compensation',
+        'Shopify Label Price Adjustment', 'Temu Label Purchase Adjustment',
+    ];
 
     public function index()
     {
@@ -94,6 +102,9 @@ class VeeqoChargebackController extends Controller
             ->selectRaw('COUNT(DISTINCT order_number) as orders')
             ->selectRaw("COALESCE(SUM(CASE WHEN source = 'veeqo_csv' THEN total_amount END), 0) as veeqo_net")
             ->selectRaw("COALESCE(SUM(CASE WHEN source = 'amazon_api' THEN total_amount END), 0) as amazon_net")
+            ->selectRaw("COALESCE(SUM(CASE WHEN source IN ('tiktok_api', 'tiktok2_api') THEN total_amount END), 0) as tiktok_net")
+            ->selectRaw("COALESCE(SUM(CASE WHEN source = 'shopify_csv' THEN total_amount END), 0) as shopify_net")
+            ->selectRaw("COALESCE(SUM(CASE WHEN source IN ('temu1_csv', 'temu2_csv', 'temu3_csv') THEN total_amount END), 0) as temu_net")
             ->selectRaw("SUM(CASE WHEN direction = 'debit' THEN 1 ELSE 0 END) as debits")
             ->selectRaw("COALESCE(SUM(CASE WHEN direction = 'debit' THEN total_amount END), 0) as debit_total")
             ->selectRaw("COALESCE(SUM(CASE WHEN direction = 'credit' THEN total_amount END), 0) as credit_total")
@@ -119,6 +130,13 @@ class VeeqoChargebackController extends Controller
                 'csv_first' => VeeqoChargeback::query()->where('source', 'veeqo_csv')->min('posted_at'),
                 'csv_last' => VeeqoChargeback::query()->where('source', 'veeqo_csv')->max('posted_at'),
                 'csv_imported_at' => VeeqoChargeback::query()->where('source', 'veeqo_csv')->max('updated_at'),
+                'tiktok_last' => VeeqoChargeback::query()->whereIn('source', ['tiktok_api', 'tiktok2_api'])->max('posted_at'),
+                'tiktok_synced_at' => VeeqoChargeback::query()->whereIn('source', ['tiktok_api', 'tiktok2_api'])->max('updated_at'),
+                'imports' => VeeqoChargeback::query()
+                    ->whereIn('source', array_column(PlatformChargebackCsvImport::PLATFORMS, 'source'))
+                    ->groupBy('source')
+                    ->selectRaw('source, MIN(posted_at) as first, MAX(posted_at) as last, MAX(updated_at) as imported_at')
+                    ->get(),
             ],
         ]);
     }
@@ -128,6 +146,56 @@ class VeeqoChargebackController extends Controller
         $row = VeeqoChargeback::query()->findOrFail($id);
 
         return response()->json(['transaction' => $row->raw]);
+    }
+
+    public function syncTikTok()
+    {
+        $probe = Cache::lock(SyncTikTokChargebacksCommand::LOCK, 1);
+        if (! $probe->get()) {
+            return response()->json(['success' => false, 'message' => 'A TikTok sync is already running.'], 409);
+        }
+        $probe->release();
+
+        $needsBackfill = collect(array_keys(TikTokChargebackSync::CHANNELS))->contains(fn ($ch) => ! TikTokChargebackSync::hasRows($ch));
+        if ($needsBackfill) {
+            if (! $this->runInBackground('tiktok:sync-chargebacks', 'tiktok-chargebacks.log')) {
+                return response()->json(['success' => false, 'message' => 'Could not start the TikTok backfill.'], 500);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Loading the last 12 months of TikTok shipping charges in the background. This takes a while; refresh the page later.']);
+        }
+
+        @set_time_limit(900);
+        $exit = Artisan::call('tiktok:sync-chargebacks', ['--days' => 30]);
+        $lines = array_values(array_filter(explode("\n", trim(Artisan::output())), fn ($l) => ! str_starts_with($l, 'Transaction types seen') && ! str_contains($l, ' → ')));
+
+        return response()->json(['success' => $exit === 0, 'message' => implode("\n", $lines) ?: 'Sync finished.'], $exit === 0 ? 200 : 502);
+    }
+
+    private function runInBackground(string $command, string $logFile): bool
+    {
+        try {
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            if (PHP_OS_FAMILY === 'Windows') {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' '.$command, 'r'));
+            } else {
+                pclose(popen('nohup '.escapeshellarg($php).' '.escapeshellarg($artisan).' '.$command
+                    .' >> '.escapeshellarg(storage_path('logs/'.$logFile)).' 2>&1 &', 'r'));
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Background command failed to start', ['command' => $command, 'error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 
     public function syncNow()
@@ -407,12 +475,18 @@ class VeeqoChargebackController extends Controller
         }
     }
 
-    public function import(Request $request, VeeqoChargebackCsvImport $import)
+    public function import(Request $request, VeeqoChargebackCsvImport $import, PlatformChargebackCsvImport $platformImport)
     {
-        $request->validate(['file' => ['required', 'file', 'max:51200']]);
+        $request->validate([
+            'file' => ['required', 'file', 'max:51200'],
+            'platform' => ['nullable', 'in:veeqo,'.implode(',', array_keys(PlatformChargebackCsvImport::PLATFORMS))],
+        ]);
         $file = $request->file('file');
+        $platform = (string) $request->input('platform', 'veeqo');
         @set_time_limit(600);
-        $result = $import->import($file->getRealPath(), $file->getClientOriginalName());
+        $result = $platform === 'veeqo'
+            ? $import->import($file->getRealPath(), $file->getClientOriginalName())
+            : $platformImport->import($platform, $file->getRealPath());
 
         return response()->json(['success' => $result['ok']] + $result, $result['ok'] ? 200 : 422);
     }

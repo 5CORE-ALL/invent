@@ -560,6 +560,34 @@ class TikTokShopService
     }
 
     /**
+     * GET a Finance API action (e.g. "statements", "statements/{id}/statement_transactions").
+     *
+     * @return array{ok: bool, data: array<string, mixed>, error: ?string}
+     */
+    public function financeGet(string $action, array $query, string $version = '202309', bool $retried = false): array
+    {
+        try {
+            if (! $this->accessToken) {
+                return ['ok' => false, 'data' => [], 'error' => 'No TikTok access token available.'];
+            }
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+
+            $data = $this->client->Finance->call('GET', $action, [\GuzzleHttp\RequestOptions::QUERY => $query], $version);
+
+            return ['ok' => true, 'data' => is_array($data) ? $data : [], 'error' => null];
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if (! $retried && $this->refreshAccessToken()) {
+                return $this->financeGet($action, $query, $version, true);
+            }
+
+            return ['ok' => false, 'data' => [], 'error' => $e->getMessage()];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'data' => [], 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
      * TikTok Shop rejects create_time ranges longer than 30 days (empty/error).
      * Split into 14-day windows so scheduled fetches still pick up new orders.
      */

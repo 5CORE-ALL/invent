@@ -232,6 +232,12 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('veeqo-fill-order-skus')
             ->appendOutputTo($log);
+        $schedule->command('tiktok:sync-chargebacks')
+            ->dailyAt('04:50')
+            ->withoutOverlapping(240)
+            ->runInBackground()
+            ->name('tiktok-sync-chargebacks')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)

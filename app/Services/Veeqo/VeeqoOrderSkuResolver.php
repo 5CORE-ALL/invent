@@ -28,6 +28,8 @@ class VeeqoOrderSkuResolver
         $orders = DB::table('veeqo_chargebacks')
             ->whereNotNull('order_number')->where('order_number', '!=', '')
             ->where('posted_at', '>=', now()->subMonths(13))
+            ->whereIn('description', \App\Http\Controllers\Channels\VeeqoChargebackController::CHARGEBACK_TYPES)
+            ->whereNotIn('source', ['temu1_csv', 'temu2_csv', 'temu3_csv'])
             ->distinct()->pluck('order_number')->map(fn ($o) => (string) $o)->all();
         $found = app(OrderSkuLookup::class)->forOrders($orders);
 

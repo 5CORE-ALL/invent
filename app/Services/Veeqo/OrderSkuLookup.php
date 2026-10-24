@@ -33,6 +33,7 @@ class OrderSkuLookup
         }
         foreach (['tiktok_orders' => '#TT-', 'tiktok2_orders' => '#TT2-'] as $table => $prefix) {
             $this->collect($found, $want, fn (array $missing) => $this->prefixed($table, 'order_id', 'seller_sku', $missing, $prefix));
+            $this->collect($found, $want, fn (array $missing) => $this->pairs($table, 'order_id', 'seller_sku', array_values(array_filter($missing, 'ctype_digit'))));
         }
 
         return array_map(fn (array $skus) => implode(', ', array_keys($skus)), $found);
