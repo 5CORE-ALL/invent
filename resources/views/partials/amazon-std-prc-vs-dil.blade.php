@@ -89,6 +89,14 @@
         #amzStdPrcModal .amz-sp-col-head .amz-sp-pie-title { margin-bottom: 0; }
         #amzStdPrcModal .amz-sp-min-btn { border: 0; background: #f1f5f9; color: #334155; width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-weight: 700; flex-shrink: 0; }
         #amzStdPrcModal .amz-sp-min-btn:hover { background: #e2e8f0; }
+        #amzStdPrcModal .amz-sp-head-btns { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+        #amzStdPrcModal .amz-sp-pause-btn { border: 0; background: #f1f5f9; color: #475569; width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-size: 10px; flex-shrink: 0; }
+        #amzStdPrcModal .amz-sp-pause-btn:hover { background: #e2e8f0; }
+        #amzStdPrcModal .amz-sp-col.is-paused { border-style: dashed; border-color: #f59e0b; }
+        #amzStdPrcModal .amz-sp-col.is-paused > :not(.amz-sp-col-head) { opacity: 0.45; filter: grayscale(0.6); }
+        #amzStdPrcModal .amz-sp-col.is-paused .amz-sp-pause-btn { background: #f59e0b; color: #fff; }
+        #amzStdPrcModal .amz-sp-col.is-paused .amz-sp-pie-title::after { content: " · PAUSED"; color: #d97706; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; }
+        #amzStdPrcModal .amz-sp-col.is-min .amz-sp-head-btns { flex-direction: column; }
         #amzStdPrcModal .amz-sp-col.is-min { flex: 0 0 40px; padding: 10px 4px; cursor: pointer; }
         #amzStdPrcModal .amz-sp-col.is-min > :not(.amz-sp-col-head) { display: none !important; }
         #amzStdPrcModal .amz-sp-col.is-min .amz-sp-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; gap: 10px; }
@@ -412,7 +420,7 @@
 
                     <div class="amz-sp-cols">
                         <div class="amz-sp-col" data-amz-sp-panel="dil">
-                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">Dil</div><button type="button" class="amz-sp-min-btn" title="Minimize Dil" aria-label="Minimize Dil">−</button></div>
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">Dil</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause Dil rule" aria-label="Pause Dil rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize Dil" aria-label="Minimize Dil">−</button></span></div>
                             <div class="amz-sp-pie">
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-dil"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-dil"></div>
@@ -435,7 +443,7 @@
                         </div>
 
                         <div class="amz-sp-col" data-amz-sp-panel="rev">
-                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">Reviews</div><button type="button" class="amz-sp-min-btn" title="Minimize Reviews" aria-label="Minimize Reviews">−</button></div>
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">Reviews</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause Reviews rule" aria-label="Pause Reviews rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize Reviews" aria-label="Minimize Reviews">−</button></span></div>
                             <div class="amz-sp-pie">
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-rev"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-rev"></div>
@@ -466,7 +474,7 @@
                         </div>
 
                         <div class="amz-sp-col" data-amz-sp-panel="buss">
-                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Std Prc ranges. Disc % updates the B Disc column.">B Disc</div><button type="button" class="amz-sp-min-btn" title="Minimize B Disc" aria-label="Minimize B Disc">−</button></div>
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Std Prc ranges. Disc % updates the B Disc column.">B Disc</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause B Disc rule" aria-label="Pause B Disc rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize B Disc" aria-label="Minimize B Disc">−</button></span></div>
                             <div class="amz-sp-pie">
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-buss"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-buss"></div>
@@ -489,7 +497,7 @@
                         </div>
 
                         <div class="amz-sp-col" data-amz-sp-panel="zs">
-                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Disc % when A L30 is 0. Sold SKUs stay 0%.">0 Sold</div><button type="button" class="amz-sp-min-btn" title="Minimize 0 Sold" aria-label="Minimize 0 Sold">−</button></div>
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Disc % when A L30 is 0. Sold SKUs stay 0%.">0 Sold</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause 0 Sold rule" aria-label="Pause 0 Sold rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize 0 Sold" aria-label="Minimize 0 Sold">−</button></span></div>
                             <div class="amz-sp-pie">
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-zs"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-zs"></div>
@@ -502,7 +510,7 @@
                         </div>
 
                         <div class="amz-sp-col" data-amz-sp-panel="cvr">
-                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">CVR up / down</div><button type="button" class="amz-sp-min-btn" title="Minimize CVR" aria-label="Minimize CVR">−</button></div>
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">CVR up / down</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause CVR rule" aria-label="Pause CVR rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize CVR" aria-label="Minimize CVR">−</button></span></div>
                             <div class="amz-sp-pie">
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-cvr"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-cvr"></div>
@@ -554,7 +562,7 @@
                         </div>
 
                         <div class="amz-sp-col" data-amz-sp-panel="age">
-                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">Age Days</div><button type="button" class="amz-sp-min-btn" title="Minimize Age Days" aria-label="Minimize Age Days">−</button></div>
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">Age Days</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause Age Days rule" aria-label="Pause Age Days rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize Age Days" aria-label="Minimize Age Days">−</button></span></div>
                             <div class="amz-sp-pie">
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-age"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-age"></div>
@@ -577,7 +585,7 @@
                         </div>
 
                         <div class="amz-sp-col" data-amz-sp-panel="snroicap">
-                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %. Cap is the Target SNROI %. After all discounts, a SKU whose SNROI at S PRC is above the Cap of its Dil slab gets a lower S PRC that lands on the Cap. It only lowers prices. Leave the Cap blank to turn it off for that slab.">SNROI Cap</div><button type="button" class="amz-sp-min-btn" title="Minimize SNROI Cap" aria-label="Minimize SNROI Cap">−</button></div>
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %. Cap is the Target SNROI %. After all discounts, a SKU whose SNROI at S PRC is above the Cap of its Dil slab gets a lower S PRC that lands on the Cap. It only lowers prices. Leave the Cap blank to turn it off for that slab.">SNROI Cap</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause SNROI Cap rule" aria-label="Pause SNROI Cap rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize SNROI Cap" aria-label="Minimize SNROI Cap">−</button></span></div>
                             <div class="amz-sp-pie">
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-snroicap"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-snroicap"></div>
@@ -600,7 +608,7 @@
                         </div>
 
                         <div class="amz-sp-col" data-amz-sp-panel="lmpreduce">
-                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %. When S PRC reaches LMP, it is set to LMP less the Reduce % of its Dil slab (for example 10% off LMP when Dil is under 25, 5% off LMP above). Leave the Reduce % blank to keep S PRC = LMP for that slab.">LMP Reduce</div><button type="button" class="amz-sp-min-btn" title="Minimize LMP Reduce" aria-label="Minimize LMP Reduce">−</button></div>
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %. When S PRC reaches LMP, it is set to LMP less the Reduce % of its Dil slab (for example 10% off LMP when Dil is under 25, 5% off LMP above). Leave the Reduce % blank to keep S PRC = LMP for that slab.">LMP Reduce</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause LMP Reduce rule" aria-label="Pause LMP Reduce rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize LMP Reduce" aria-label="Minimize LMP Reduce">−</button></span></div>
                             <div class="amz-sp-sub">If S PRC = LMP, S PRC = LMP − Reduce %.</div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0">
@@ -620,7 +628,7 @@
                         </div>
 
                         <div class="amz-sp-col" data-amz-sp-panel="clrsnroi">
-                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %, for SKUs marked C (Inv Days clearance = YES). Target is the SNROI % their S PRC is priced at, instead of the discounts. Dil up to 25 → 0%, over 25 up to 50 → 20%, over 50 → 30%. A slab covers Dil over From and up to To. S PRC rounds up to the cent so SNROI is never under the target; Std Prc stays the maximum. Leave Target blank to keep clearance SKUs unpriced for that slab.">Clearance SNROI</div><button type="button" class="amz-sp-min-btn" title="Minimize Clearance SNROI" aria-label="Minimize Clearance SNROI">−</button></div>
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %, for SKUs marked C (Inv Days clearance = YES). Target is the SNROI % their S PRC is priced at, instead of the discounts. Dil up to 25 → 0%, over 25 up to 50 → 20%, over 50 → 30%. A slab covers Dil over From and up to To. S PRC rounds up to the cent so SNROI is never under the target; Std Prc stays the maximum. Leave Target blank to keep clearance SKUs unpriced for that slab.">Clearance SNROI</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause Clearance SNROI rule" aria-label="Pause Clearance SNROI rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize Clearance SNROI" aria-label="Minimize Clearance SNROI">−</button></span></div>
                             <div class="amz-sp-sub">Clearance (C) SKUs: S PRC = Target SNROI by Dil.</div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0">
@@ -718,6 +726,18 @@
         ];
         let amzStdClearanceSnroi = AMZ_STD_CLEARANCE_SNROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzStdCvrCfg = Object.assign({}, AMZ_STD_CVR_DEFAULT);
+        // Paused rules: panel keys (dil, rev, buss, zs, cvr, age, snroicap, lmpreduce, clrsnroi). A paused rule adds no
+        // discount / cap / reduce. amzStdPausedDraft is the unsaved choice while the modal is open, else null.
+        let amzStdPaused = [];
+        let amzStdPausedDraft = null;
+        const AMZ_STD_PAUSABLE = ['dil', 'rev', 'buss', 'zs', 'cvr', 'age', 'snroicap', 'lmpreduce', 'clrsnroi'];
+        function amzStdIsPaused(key) {
+            return (amzStdPausedDraft || amzStdPaused || []).indexOf(key) !== -1;
+        }
+        function amzStdNormPaused(list) {
+            return (Array.isArray(list) ? list : []).filter(function(k, i, a) { return AMZ_STD_PAUSABLE.indexOf(k) !== -1 && a.indexOf(k) === i; });
+        }
+        window.amzStdIsPaused = amzStdIsPaused;
         const amzStdPieCharts = {};
         let amzStdPieGen = 0;
         let amzStdApplied = false;
@@ -773,18 +793,21 @@
         function computeAmzAgeDiscountPct(d) {
             if (typeof amzPefIsChildRow === 'function' && !amzPefIsChildRow(d)) return null;
             if (typeof amzPefInv === 'function' && amzPefInv(d) === 0) return 0;
+            if (amzStdIsPaused('age')) return 0;
             if (!d || d.age_days == null || d.age_days === '') return 0;
             return amzStdScaleDisc(d.STANDARD_PRICE, amzStdRangeDisc(d.age_days, amzStdAgeRules));
         }
         function computeAmzDilDiscountPct(d) {
             if (typeof amzPefIsChildRow === 'function' && !amzPefIsChildRow(d)) return null;
             if (typeof amzPefInv === 'function' && amzPefInv(d) === 0) return 0;
+            if (amzStdIsPaused('dil')) return 0;
             const dil = (typeof amzPefDil === 'function') ? amzPefDil(d) : 0;
             return amzStdScaleDisc(d && d.STANDARD_PRICE, amzStdRangeDisc(dil, amzStdDilRules));
         }
         function computeAmzBussDiscountPct(d) {
             if (typeof amzPefIsChildRow === 'function' && !amzPefIsChildRow(d)) return null;
             if (typeof amzPefInv === 'function' && amzPefInv(d) === 0) return 0;
+            if (amzStdIsPaused('buss')) return 0;
             const std = Number(d && d.STANDARD_PRICE) || 0;
             return amzStdDisc(amzStdRangeDisc(std, amzStdBussRules));
         }
@@ -793,6 +816,7 @@
         function computeAmzZeroSoldDiscountPct(d) {
             if (typeof amzPefIsChildRow === 'function' && !amzPefIsChildRow(d)) return null;
             if (typeof amzPefInv === 'function' && amzPefInv(d) === 0) return 0;
+            if (amzStdIsPaused('zs')) return 0;
             const zero = (typeof amzIsZeroSoldRow === 'function')
                 ? amzIsZeroSoldRow(d)
                 : !((typeof amzPefAL30 === 'function' ? amzPefAL30(d) : 0) > 0);
@@ -833,6 +857,7 @@
         }
         function amzStdCvrTrendDisc(d) {
             if (!d || (typeof amzPefInv === 'function' && amzPefInv(d) === 0)) return 0;
+            if (amzStdIsPaused('cvr')) return 0;
             const cfg = amzStdCvrCfg || AMZ_STD_CVR_DEFAULT;
             const hit = amzStdCvrMatch(d, cfg);
             return amzStdScaleDisc(d && d.STANDARD_PRICE, amzStdDisc(hit ? hit.disc : cfg.flat_disc));
@@ -930,6 +955,7 @@
         function amzStdApplySnroiCap(d, price, rules) {
             const p = Number(price);
             if (!(p > 0)) return price;
+            if (amzStdIsPaused('snroicap')) return price;
             rules = rules || amzStdSnroiCap;
             const idx = amzStdSnroiCapSlab(d, rules);
             if (idx < 0 || rules[idx].cap == null) return price;
@@ -1006,6 +1032,7 @@
         }
         /** Reduce % for this SKU (0 when its slab has none). */
         function amzStdLmpReducePct(d, rules) {
+            if (amzStdIsPaused('lmpreduce')) return 0;
             rules = rules || amzStdLmpReduce;
             const idx = amzStdLmpReduceSlab(d, rules);
             if (idx < 0 || rules[idx].pct == null) return 0;
@@ -1079,6 +1106,7 @@
         /** Target SNROI % for a clearance (C) SKU, or null (not clearance, no slab, or the slab is blank). */
         function amzStdClearanceTarget(d, rules) {
             if (typeof amzStdIsClearance !== 'function' || !d || !amzStdIsClearance(d)) return null;
+            if (amzStdIsPaused('clrsnroi')) return null;
             rules = rules || amzStdClearanceSnroi;
             const idx = amzStdClearanceSnroiSlab(d, rules);
             if (idx < 0 || rules[idx].nroi == null) return null;
@@ -1178,6 +1206,7 @@
                 snroiCap: amzStdSnroiCapRulesLive(),
                 lmpReduce: amzStdLmpReduceRulesLive(),
                 clearanceSnroi: amzStdClearanceSnroiRulesLive(),
+                paused: amzStdNormPaused(amzStdPausedDraft || amzStdPaused),
                 zeroSoldDisc: (function() { const n = Number($('#amz-sp-zs-disc').val()); return isFinite(n) ? amzStdDisc(n) : 0; })(),
                 reviewMax: reviewMax,
                 noReviewsNoDiscount: $('#amz-sp-no-reviews-no-disc').is(':checked'),
@@ -1228,6 +1257,8 @@
             const noRev = (typeof amzNoReviewsNoDiscount === 'undefined') ? true : !!amzNoReviewsNoDiscount;
             $('#amz-sp-no-reviews-no-disc').prop('checked', noRev);
             amzStdPaintCvr(amzStdCvrCfg);
+            amzStdPausedDraft = amzStdNormPaused(amzStdPaused);
+            amzStdPaintPaused();
             amzStdRefreshModal();
         }
         function amzStdMoney(n) {
@@ -1643,6 +1674,11 @@
                 let bussDisc = bussIdx >= 0 ? amzStdDisc(draft.buss[bussIdx].disc) : 0;
                 const cvrHit = amzStdCvrMatch(d, draft.cvr);
                 let cvrDisc = amzStdDisc(cvrHit ? cvrHit.disc : draft.cvr.flat_disc);
+                if (amzStdIsPaused('age')) ageDisc = 0;
+                if (amzStdIsPaused('dil')) dilDisc = 0;
+                if (amzStdIsPaused('rev')) revDisc = 0;
+                if (amzStdIsPaused('buss')) bussDisc = 0;
+                if (amzStdIsPaused('cvr')) cvrDisc = 0;
                 ageDisc = amzStdScaleDisc(std, ageDisc);
                 dilDisc = amzStdScaleDisc(std, dilDisc);
                 revDisc = amzStdScaleDisc(std, revDisc);
@@ -1651,7 +1687,7 @@
                     ? amzIsZeroSoldRow(d)
                     : !((typeof amzPefAL30 === 'function' ? amzPefAL30(d) : 0) > 0);
                 if (zeroSold) zsCounts.zero += 1; else zsCounts.sold += 1;
-                const zsDisc = zeroSold ? amzStdScaleDisc(std, amzStdDisc(draft.zeroSoldDisc)) : 0;
+                const zsDisc = (zeroSold && !amzStdIsPaused('zs')) ? amzStdScaleDisc(std, amzStdDisc(draft.zeroSoldDisc)) : 0;
                 if (ageDisc !== 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc !== 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
                 if (cvrDisc !== 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
@@ -1681,7 +1717,7 @@
                     // LMP Reduce: S PRC that reaches LMP lands on LMP less the Reduce % of its Dil slab.
                     if (typeof amazonShouldCapSpriceToLmp === 'function' && amazonShouldCapSpriceToLmp(d, sprice)) {
                         const lmpIdx = amzStdLmpReduceSlab(d, draft.lmpReduce);
-                        const lmpPct = lmpIdx >= 0 ? Number(draft.lmpReduce[lmpIdx].pct) : 0;
+                        const lmpPct = (lmpIdx >= 0 && !amzStdIsPaused('lmpreduce')) ? Number(draft.lmpReduce[lmpIdx].pct) : 0;
                         const lmpNow = (typeof lmpWithShipping === 'function') ? Number(lmpWithShipping(d)) : 0;
                         if (lmpIdx >= 0) lmpReduceCounts['m' + lmpIdx] += 1;
                         if (lmpNow > 0) sprice = Math.round(lmpNow * (1 - (isFinite(lmpPct) && lmpPct > 0 ? lmpPct : 0) / 100) * 100) / 100;
@@ -1877,6 +1913,7 @@
                 if (Array.isArray(res.lmp_reduce)) amzStdLmpReduce = res.lmp_reduce.map(amzStdNormLmpReduce).filter(Boolean);
                 if (Array.isArray(res.clearance_snroi)) amzStdClearanceSnroi = res.clearance_snroi.map(amzStdNormClearanceSnroi).filter(Boolean);
                 amzStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? amzStdDisc(res.zero_sold_disc) : 0;
+                amzStdPaused = amzStdNormPaused(res.paused);
                 if (!amzStdDilRules.length) amzStdDilRules = AMZ_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!amzStdAgeRules.length) amzStdAgeRules = AMZ_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!amzStdBussRules.length) amzStdBussRules = AMZ_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -1898,6 +1935,8 @@
             amzStdLmpReduce = draft.lmpReduce || [];
             amzStdClearanceSnroi = draft.clearanceSnroi || [];
             amzStdZeroSoldDisc = amzStdDisc(draft.zeroSoldDisc);
+            amzStdPaused = amzStdNormPaused(draft.paused);
+            amzStdPausedDraft = null;
             if (typeof amzReviewDiscRules !== 'undefined') {
                 amzReviewDiscRules = draft.reviews.map(function(r) {
                     return (typeof amzNormalizeReviewDiscRule === 'function')
@@ -1916,7 +1955,7 @@
                 url: '/amazon-std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss, snroi_cap_sent: 1, snroi_cap: (draft.snroiCap || []).map(function(r) { return { min: r.min, max: r.max, cap: r.cap == null ? '' : r.cap }; }), clearance_snroi_sent: 1, clearance_snroi: (draft.clearanceSnroi || []).map(function(r) { return { min: r.min, max: r.max, nroi: r.nroi == null ? '' : r.nroi }; }), lmp_reduce_sent: 1, lmp_reduce: (draft.lmpReduce || []).map(function(r) { return { min: r.min, max: r.max, pct: r.pct == null ? '' : r.pct }; }), zero_sold_disc: draft.zeroSoldDisc },
+                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss, snroi_cap_sent: 1, snroi_cap: (draft.snroiCap || []).map(function(r) { return { min: r.min, max: r.max, cap: r.cap == null ? '' : r.cap }; }), clearance_snroi_sent: 1, clearance_snroi: (draft.clearanceSnroi || []).map(function(r) { return { min: r.min, max: r.max, nroi: r.nroi == null ? '' : r.nroi }; }), lmp_reduce_sent: 1, lmp_reduce: (draft.lmpReduce || []).map(function(r) { return { min: r.min, max: r.max, pct: r.pct == null ? '' : r.pct }; }), zero_sold_disc: draft.zeroSoldDisc, paused_sent: 1, paused: draft.paused },
             });
             const revSave = $.ajax({
                 url: '/amazon-review-disc',
@@ -1934,6 +1973,7 @@
                 if (res && Array.isArray(res.lmp_reduce)) amzStdLmpReduce = res.lmp_reduce.map(amzStdNormLmpReduce).filter(Boolean);
                 if (res && Array.isArray(res.clearance_snroi)) amzStdClearanceSnroi = res.clearance_snroi.map(amzStdNormClearanceSnroi).filter(Boolean);
                 if (res && isFinite(Number(res.zero_sold_disc))) amzStdZeroSoldDisc = amzStdDisc(res.zero_sold_disc);
+                if (res && Array.isArray(res.paused)) amzStdPaused = amzStdNormPaused(res.paused);
                 if (typeof table !== 'undefined' && table && typeof amzTableRedrawPreserveScroll === 'function') {
                     amzTableRedrawPreserveScroll(true);
                 }
@@ -1954,6 +1994,32 @@
                 status.text('Save failed');
                 if (typeof amzPefToast === 'function') amzPefToast('error', 'Could not save Std prc vs dil');
             });
+        }
+        /** Show each panel's pause switch from the draft (or saved) paused list. */
+        function amzStdPaintPaused() {
+            document.querySelectorAll('#amzStdPrcModal [data-amz-sp-panel]').forEach(function(el) {
+                const key = el.getAttribute('data-amz-sp-panel');
+                if (AMZ_STD_PAUSABLE.indexOf(key) === -1) return;
+                const on = amzStdIsPaused(key);
+                el.classList.toggle('is-paused', on);
+                const btn = el.querySelector('.amz-sp-pause-btn');
+                if (!btn) return;
+                const title = ((el.querySelector('.amz-sp-pie-title') || {}).firstChild || {}).textContent || key;
+                const name = String(title).replace(/\s*·\s*PAUSED\s*$/, '').trim();
+                btn.innerHTML = on ? '<i class="fas fa-play"></i>' : '<i class="fas fa-pause"></i>';
+                btn.title = (on ? 'Resume ' : 'Pause ') + name + ' rule';
+                btn.setAttribute('aria-label', btn.title);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+        function amzStdTogglePaused(key) {
+            if (AMZ_STD_PAUSABLE.indexOf(key) === -1) return;
+            const list = (amzStdPausedDraft || amzStdNormPaused(amzStdPaused)).slice();
+            const i = list.indexOf(key);
+            if (i === -1) list.push(key); else list.splice(i, 1);
+            amzStdPausedDraft = list;
+            amzStdPaintPaused();
+            amzStdRefreshModal();
         }
         const AMZ_STD_PANELS = [
             { key: 'dil', field: 'dil_discount' },
@@ -2049,6 +2115,12 @@
         }
         function bindAmzStdPrcUi() {
             amzStdPaintPanels();
+            $(document).off('click.amzsppause').on('click.amzsppause', '#amzStdPrcModal .amz-sp-pause-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const key = $(this).closest('[data-amz-sp-panel]').attr('data-amz-sp-panel');
+                if (key) amzStdTogglePaused(key);
+            });
             $(document).off('click.amzspmin').on('click.amzspmin', '#amzStdPrcModal .amz-sp-min-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -2078,6 +2150,8 @@
                 $('#amz-sp-snroicap-tbody').removeData('painted');
                 $('#amz-sp-lmpreduce-tbody').removeData('painted');
                 $('#amz-sp-clrsnroi-tbody').removeData('painted');
+                // Unsaved pause switches must not leak into the page's pricing after the modal closes.
+                amzStdPausedDraft = null;
                 $('#amz-sp-hist-wrap').removeClass('is-open');
                 if (amzStdHistChart) { amzStdHistChart.destroy(); amzStdHistChart = null; }
                 Object.keys(amzStdPieCharts).forEach(function(id) {

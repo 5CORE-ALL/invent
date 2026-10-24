@@ -805,8 +805,6 @@ class OverallAmazonController extends Controller
 
         foreach ($groupedByParent as $parent => $rows) {
             foreach ($rows as $row) {
-                // No parent: TCOS% is the SKU's own spend ÷ sales (overwritten below for parented SKUs).
-                $row->TCOS_PCT = self::skuAcosPercent($row->ad_spend ?? null, $row->T_Sale_l30 ?? 0);
                 $finalResult[] = $row;
             }
 
@@ -912,13 +910,6 @@ class OverallAmazonController extends Controller
             $childPrices = $rows->pluck('price')->filter(fn($p) => is_numeric($p) && $p > 0);
             $sumRow['price'] = $childPrices->count() > 0 ? round($childPrices->avg(), 2) : 0;
             $sumRow['ACOS'] = self::skuAcosPercent($sumRow['ad_spend'] ?? 0, $sumRow['T_Sale_l30'] ?? 0);
-
-            // TCOS% = parent spend ÷ parent sales; child SKU rows show the same parent %.
-            $parentTcos = self::skuAcosPercent($sumRow['ad_spend'] ?? 0, $sumRow['T_Sale_l30'] ?? 0);
-            $sumRow['TCOS_PCT'] = $parentTcos;
-            foreach ($rows as $childRow) {
-                $childRow->TCOS_PCT = $parentTcos;
-            }
 
             $finalResult[] = (object) $sumRow;
         }
@@ -3010,6 +3001,7 @@ class OverallAmazonController extends Controller
             'lmp_reduce' => \App\Support\AmazonDilGroiRule::LMP_REDUCE_DEFAULTS,
             'clearance_snroi' => \App\Support\AmazonDilGroiRule::CLEARANCE_SNROI_DEFAULTS,
             'zero_sold_disc' => 0,
+            'paused' => [],
         ];
     }
 
@@ -3123,6 +3115,7 @@ class OverallAmazonController extends Controller
                 'lmp_reduce' => $defaults['lmp_reduce'],
                 'clearance_snroi' => $defaults['clearance_snroi'],
                 'zero_sold_disc' => $defaults['zero_sold_disc'],
+                'paused' => [],
             ]);
         }
 
@@ -3138,6 +3131,7 @@ class OverallAmazonController extends Controller
             'lmp_reduce' => \App\Support\AmazonDilGroiRule::normalizeLmpReduceRules(array_key_exists('lmp_reduce', $saved) ? $saved['lmp_reduce'] : null),
             'clearance_snroi' => \App\Support\AmazonDilGroiRule::normalizeClearanceSnroiRules(array_key_exists('clearance_snroi', $saved) ? $saved['clearance_snroi'] : null),
             'zero_sold_disc' => $this->amazonClampPromoDisc(is_numeric($saved['zero_sold_disc'] ?? null) ? (float) $saved['zero_sold_disc'] : 0),
+            'paused' => \App\Services\AmazonSprcDilAutoPushService::normalizePausedRules($saved['paused'] ?? null),
         ]);
     }
 
@@ -3158,6 +3152,10 @@ class OverallAmazonController extends Controller
         $clearanceSnroiIn = ($request->has('clearance_snroi') || $request->has('clearance_snroi_sent'))
             ? $request->input('clearance_snroi', [])
             : (array_key_exists('clearance_snroi', $existingVis) ? $existingVis['clearance_snroi'] : null);
+        // Paused panels: an old page that does not send paused keeps what is saved; paused_sent lets an empty list resume all.
+        $pausedIn = ($request->has('paused') || $request->has('paused_sent'))
+            ? $request->input('paused', [])
+            : ($existingVis['paused'] ?? []);
         $payload = [
             'dil' => $this->amazonNormalizeStdPrcRanges($request->input('dil'), $defaults['dil']),
             'age' => $this->amazonNormalizeStdPrcRanges($request->input('age'), $defaults['age']),
@@ -3168,6 +3166,7 @@ class OverallAmazonController extends Controller
             'lmp_reduce' => \App\Support\AmazonDilGroiRule::normalizeLmpReduceRules($lmpReduceIn),
             'clearance_snroi' => \App\Support\AmazonDilGroiRule::normalizeClearanceSnroiRules($clearanceSnroiIn),
             'zero_sold_disc' => $this->amazonClampPromoDisc(is_numeric($request->input('zero_sold_disc')) ? (float) $request->input('zero_sold_disc') : 0),
+            'paused' => \App\Services\AmazonSprcDilAutoPushService::normalizePausedRules($pausedIn),
         ];
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
@@ -3186,6 +3185,7 @@ class OverallAmazonController extends Controller
             'lmp_reduce' => $payload['lmp_reduce'],
             'clearance_snroi' => $payload['clearance_snroi'],
             'zero_sold_disc' => $payload['zero_sold_disc'],
+            'paused' => $payload['paused'],
         ]);
     }
 

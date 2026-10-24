@@ -272,7 +272,7 @@ class AmazonSprcDilAutoPushService
             if (\App\Support\SpriceActiveRule::forChannel('amazon') === 'dil') {
                 return null;
             }
-            $clearanceTarget = AmazonDilGroiRule::clearanceSnroiTarget(
+            $clearanceTarget = self::stdRulePaused($stdPromo, 'clrsnroi') ? null : AmazonDilGroiRule::clearanceSnroiTarget(
                 (float) ($row['dil'] ?? 0),
                 $stdPromo['clearance_snroi'] ?? null
             );
@@ -326,7 +326,8 @@ class AmazonSprcDilAutoPushService
                 $lp,
                 $ship,
                 AmazonDilGroiRule::TAKE_HOME,
-                $std
+                $std,
+                AmazonDilGroiRule::DIL_LMP_REDUCE_PCT
             );
             if (! is_finite($capped) || $capped < 0.01) {
                 return null;
@@ -351,24 +352,31 @@ class AmazonSprcDilAutoPushService
             ];
         }
 
-        $cvrDisc = $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []);
+        // A rule paused in Std prc vs dil contributes nothing (0 discount / no cap / no reduce).
+        $cvrDisc = self::stdRulePaused($stdPromo, 'cvr')
+            ? 0.0
+            : $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []);
         $reviewQty = (int) ($row['review_count'] ?? 0);
         $hasStarRating = array_key_exists('review_rating', $row) && is_numeric($row['review_rating']);
-        $reviewDisc = ($noReviewsNoDiscount && $hasStarRating && $reviewQty <= 0)
+        $reviewDisc = (self::stdRulePaused($stdPromo, 'rev') || ($noReviewsNoDiscount && $hasStarRating && $reviewQty <= 0))
             ? 0.0
             : $this->discForReviews($reviews, $reviewRules, $reviewMax);
-        $dilDisc = $this->discForStdRange($dil, is_array($stdPromo['dil'] ?? null) ? $stdPromo['dil'] : []);
+        $dilDisc = self::stdRulePaused($stdPromo, 'dil')
+            ? 0.0
+            : $this->discForStdRange($dil, is_array($stdPromo['dil'] ?? null) ? $stdPromo['dil'] : []);
         $ageDisc = 0.0;
-        if (isset($row['age_days']) && $row['age_days'] !== null && $row['age_days'] !== '') {
+        if (! self::stdRulePaused($stdPromo, 'age') && isset($row['age_days']) && $row['age_days'] !== null && $row['age_days'] !== '') {
             $ageDisc = $this->discForStdRange((float) $row['age_days'], is_array($stdPromo['age'] ?? null) ? $stdPromo['age'] : []);
         }
         $ageDisc = StdPrcVsDilPricer::scaleRuleDisc($ageDisc, $std);
         $dilDisc = StdPrcVsDilPricer::scaleRuleDisc($dilDisc, $std);
         $cvrDisc = StdPrcVsDilPricer::scaleRuleDisc($cvrDisc, $std);
         $reviewDisc = StdPrcVsDilPricer::scaleRuleDisc($reviewDisc, $std);
-        $bussDisc = $this->discForStdRange($std, is_array($stdPromo['buss'] ?? null) ? $stdPromo['buss'] : []);
+        $bussDisc = self::stdRulePaused($stdPromo, 'buss')
+            ? 0.0
+            : $this->discForStdRange($std, is_array($stdPromo['buss'] ?? null) ? $stdPromo['buss'] : []);
         $aL30Sold = (float) ($row['a_l30'] ?? 0);
-        $zeroSoldDisc = ! ($aL30Sold > 0)
+        $zeroSoldDisc = (! self::stdRulePaused($stdPromo, 'zs') && ! ($aL30Sold > 0))
             ? StdPrcVsDilPricer::scaleRuleDisc((float) ($stdPromo['zero_sold_disc'] ?? 0), $std)
             : 0.0;
         $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc)), 2);
@@ -391,10 +399,10 @@ class AmazonSprcDilAutoPushService
 
         // SNROI Cap: a Dil slab with a Target SNROI % prices S PRC from that SNROI, not from the discounts. Std Prc
         // stays the maximum. The LMP cap below can still bring it down.
-        $snroiCap = $clearanceTarget ?? StdPrcVsDilPricer::snroiCapTarget(
+        $snroiCap = $clearanceTarget ?? (self::stdRulePaused($stdPromo, 'snroicap') ? null : StdPrcVsDilPricer::snroiCapTarget(
             $dil,
             is_array($stdPromo['snroi_cap'] ?? null) ? $stdPromo['snroi_cap'] : []
-        );
+        ));
         $snroiCapped = false;
         if ($snroiCap !== null) {
             // Clearance: the Clearance SNROI target replaces the SNROI Cap and the price rounds up so SNROI is never under it.
@@ -423,7 +431,9 @@ class AmazonSprcDilAutoPushService
             $stdCeiling = (float) $sale;
         }
         // LMP Reduce: when S PRC reaches LMP it lands on LMP less the % of its Dil slab (block in Std prc vs dil).
-        $lmpReducePct = AmazonDilGroiRule::lmpReducePct($dil, $stdPromo['lmp_reduce'] ?? null);
+        $lmpReducePct = self::stdRulePaused($stdPromo, 'lmpreduce')
+            ? 0.0
+            : AmazonDilGroiRule::lmpReducePct($dil, $stdPromo['lmp_reduce'] ?? null);
         $capped = AmazonDilGroiRule::capSpriceToLmp(
             $effective,
             $lmp,
@@ -894,7 +904,7 @@ class AmazonSprcDilAutoPushService
      */
     protected function loadStdPrcVsDil(): array
     {
-        $empty = ['dil' => [], 'age' => [], 'cvr' => [], 'buss' => [], 'snroi_cap' => [], 'lmp_reduce' => AmazonDilGroiRule::LMP_REDUCE_DEFAULTS, 'clearance_snroi' => AmazonDilGroiRule::CLEARANCE_SNROI_DEFAULTS, 'zero_sold_disc' => 0];
+        $empty = ['dil' => [], 'age' => [], 'cvr' => [], 'buss' => [], 'snroi_cap' => [], 'lmp_reduce' => AmazonDilGroiRule::LMP_REDUCE_DEFAULTS, 'clearance_snroi' => AmazonDilGroiRule::CLEARANCE_SNROI_DEFAULTS, 'zero_sold_disc' => 0, 'paused' => []];
         try {
             $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_std_prc_vs_dil')->first();
         } catch (Throwable $e) {
@@ -914,7 +924,37 @@ class AmazonSprcDilAutoPushService
             'lmp_reduce' => AmazonDilGroiRule::normalizeLmpReduceRules(array_key_exists('lmp_reduce', $saved) ? $saved['lmp_reduce'] : null),
             'clearance_snroi' => AmazonDilGroiRule::normalizeClearanceSnroiRules(array_key_exists('clearance_snroi', $saved) ? $saved['clearance_snroi'] : null),
             'zero_sold_disc' => is_numeric($saved['zero_sold_disc'] ?? null) ? (float) $saved['zero_sold_disc'] : 0,
+            'paused' => self::normalizePausedRules($saved['paused'] ?? null),
         ];
+    }
+
+    /** Std prc vs dil panels that can be paused (same keys as the modal's data-amz-sp-panel). */
+    public const STD_PAUSABLE_RULES = ['dil', 'rev', 'buss', 'zs', 'cvr', 'age', 'snroicap', 'lmpreduce', 'clrsnroi'];
+
+    /**
+     * @param  mixed  $raw
+     * @return list<string>
+     */
+    public static function normalizePausedRules($raw): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $key) {
+            $key = is_string($key) ? trim($key) : '';
+            if ($key !== '' && in_array($key, self::STD_PAUSABLE_RULES, true) && ! in_array($key, $out, true)) {
+                $out[] = $key;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @param array<string, mixed> $stdPromo */
+    protected static function stdRulePaused(array $stdPromo, string $rule): bool
+    {
+        return is_array($stdPromo['paused'] ?? null) && in_array($rule, $stdPromo['paused'], true);
     }
 
     public function capSpriceToLmp(float $sprice, float $lmp, float $lp, float $ship): float

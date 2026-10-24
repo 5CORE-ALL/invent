@@ -870,7 +870,7 @@
                         <span class="badge fs-6 p-2" id="amazon-y-sales-pct-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Y Sales vs the L30 daily average: ((L30 Sales / 30) − Y Sales) / (L30 Sales / 30) × 100. Positive means yesterday is below a typical day."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y Sales%: {{ isset($amazonYSalesPercent) && $amazonYSalesPercent !== null ? round((float) $amazonYSalesPercent, 1) . '%' : 'N/A' }}</span>
                         <span class="badge fs-6 p-2" id="amazon-y-bgt-pct-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Daily campaign budget ÷ (L30 sales / 30) × 100. How large the SP+SB daily budgets are versus a typical day's sales."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y bgt %: {{ isset($amazonYBgtPercent) && $amazonYBgtPercent !== null ? round((float) $amazonYBgtPercent, 1) . '%' : 'N/A' }}</span>
                         <span class="badge fs-6 p-2" id="amazon-y-utilized-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="Yesterday spend (L1) ÷ sum of daily campaign budgets × 100. Same ratio as U1% on Amazon Ads, totaled across SP+SB."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y utilized %: {{ isset($amazonYUtilizedPercent) && $amazonYUtilizedPercent !== null ? round((float) $amazonYUtilizedPercent, 1) . '%' : 'N/A' }}</span>
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" data-live-value="{{ (float) (($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}" data-format="pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="NPFT% = GPFT% − TCos% (Σ SKU ad spend ÷ Σ SKU L30 sales). GPFT from real Amz orders (same as /amazon/daily-sales). Click for trend."><span class="summary-trend-dot none" data-metric="npft_pct" title="Rolling history"></span>NPFT: {{ (int) round((float) ($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}%</span>
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" data-live-value="{{ (float) (($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}" data-format="pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="NPFT% = GPFT% − Ads%. GPFT from real Amz orders (same as /amazon/daily-sales). Click for trend."><span class="summary-trend-dot none" data-metric="npft_pct" title="Rolling history"></span>NPFT: {{ (int) round((float) ($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}%</span>
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" data-live-value="{{ (float) ($ordersL30Groi ?? 0) }}" data-format="pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="L30 GROI% = rounded Σ PFT ÷ rounded Σ COGS from real Amz orders — same as /amazon/daily-sales GROI. Click for trend."><span class="summary-trend-dot none" data-metric="groi_pct" title="Rolling history"></span>GROI: {{ (int) round((float) ($ordersL30Groi ?? 0)) }}%</span>
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" data-live-value="{{ (float) ($ordersL30Nroi ?? 0) }}" data-format="pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="L30 NROI% = (Σ PFT − Ads% × Sales) ÷ Σ COGS. PFT/COGS from real Amz orders (same as /amazon/daily-sales). Click for trend."><span class="summary-trend-dot none" data-metric="nroi_pct" title="Rolling history"></span>NROI: {{ (int) round((float) ($ordersL30Nroi ?? 0)) }}%</span>
                         
@@ -1435,6 +1435,8 @@
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             return ((sprice * 0.80 - ship - lp) / lp) * 100;
         }
+        /** Sprc Dil rule: when S PRC reaches LMP it lands on LMP × 0.95 (same as AmazonDilGroiRule::DIL_LMP_REDUCE_PCT). */
+        const AMZ_DIL_LMP_REDUCE_PCT = 5;
         /** LMP is lower than S PRC, and SGROI at LMP is at least 20%. */
         function amazonShouldCapSpriceToLmp(rowData, sprice) {
             const lmp = lmpWithShipping(rowData);
@@ -1477,7 +1479,11 @@
                 const lmp = lmpWithShipping(rowData);
                 if (lmp > 0) {
                     // LMP Reduce block (Std prc vs dil): S PRC at LMP lands on LMP less the % of its Dil slab.
-                    const reducePct = (typeof window.amzStdLmpReducePct === 'function') ? Number(window.amzStdLmpReducePct(rowData)) || 0 : 0;
+                    // Sprc Dil rule: S PRC at LMP = LMP × 0.95. Std prc vs dil rule: the LMP Reduce block (by Dil slab).
+                    const dilRuleOn = (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil');
+                    const reducePct = dilRuleOn
+                        ? AMZ_DIL_LMP_REDUCE_PCT
+                        : ((typeof window.amzStdLmpReducePct === 'function') ? Number(window.amzStdLmpReducePct(rowData)) || 0 : 0);
                     out = +Number(lmp * (1 - (Math.min(99, Math.max(0, reducePct)) / 100))).toFixed(2);
                 }
             }
@@ -1669,56 +1675,11 @@
             return amazonComputeGpftAt(amazonDisplaySprice(rowData), rowData);
         }
 
-        /** L30 gross profit $ − the row's own L30 ad spend $ (parent rows use summed values). */
-        function amazonTcNetProfit(rowData) {
-            if (!rowData) return null;
-            const pft = parseFloat(rowData.Total_pft);
-            if (!isFinite(pft)) return null;
-            const spend = parseFloat(rowData.ad_spend);
-            return pft - (isFinite(spend) ? spend : 0);
-        }
-        /** TC NPFT% = (L30 profit $ − ad spend $) ÷ L30 sales $ × 100. No channel Ads%. */
-        function amazonComputeTcNpft(rowData) {
-            const net = amazonTcNetProfit(rowData);
-            const sales = parseFloat(rowData && rowData.T_Sale_l30);
-            if (net === null || !(sales > 0)) return null;
-            return (net / sales) * 100;
-        }
-        /** TC NROI% = (L30 profit $ − ad spend $) ÷ L30 COGS $ × 100. No channel Ads%. */
-        function amazonComputeTcNroi(rowData) {
-            const net = amazonTcNetProfit(rowData);
-            const cogs = parseFloat(rowData && rowData.T_COGS);
-            if (net === null || !(cogs > 0)) return null;
-            return (net / cogs) * 100;
-        }
-
-        /** Row TCos% (parent spend ÷ parent sales, shown on every child SKU). 0 when unknown. */
-        function amazonRowTcosPct(rowData) {
-            const v = parseFloat(rowData && rowData.TCOS_PCT);
-            return isFinite(v) ? v : 0;
-        }
-        /**
-         * Channel TCos% = Σ SKU ad spend ÷ Σ SKU L30 sales over child SKU rows.
-         * Falls back to the channel Ads% when there is no SKU sales data.
-         */
-        function amazonChannelTcosPct(rows) {
-            let spend = 0, sales = 0;
-            (rows || []).forEach(function(r) {
-                if (!r || r.is_parent_summary) return;
-                const sku = String(r['(Child) sku'] || '').trim().toUpperCase();
-                if (sku.indexOf('PARENT ') === 0 || sku === 'PARENT') return;
-                spend += parseFloat(r.ad_spend) || 0;
-                sales += parseFloat(r.T_Sale_l30) || 0;
-            });
-            if (sales > 0) return (spend / sales) * 100;
-            return parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
-        }
-
-        /** SNPFT = live S GPFT − TCos% */
+        /** SNPFT = live S GPFT − Ads% */
         function amazonComputeSpft(rowData) {
             const sgpft = amazonComputeSgpft(rowData);
             if (sgpft == null || !isFinite(sgpft)) return null;
-            return sgpft - amazonRowTcosPct(rowData);
+            return sgpft - (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
         }
 
         /**
@@ -2002,8 +1963,8 @@
                     tr.append($('<td class="text-end"></td>').html(amazonModalCountEmphasisHtml(row['A_L30'])));
                     tr.append($('<td class="text-end"></td>').html(amazonModalCvrL30ColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(row['GPFT%'])));
-                    // NPFT% = GPFT% − TCos%
-                    const modalPft = (parseFloat(row['GPFT%']) || 0) - amazonRowTcosPct(row);
+                    // PFT% = GPFT% − Ads% (channel TACOS)
+                    const modalPft = (parseFloat(row['GPFT%']) || 0) - (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
                     tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(modalPft, 'npft')));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGroiColoredHtml(row['GROI%'])));
                     tr.append($('<td class="text-end"></td>').html(amazonModalLmpColoredHtml(row)));
@@ -5392,27 +5353,10 @@
                         width: 65
                     },
                     {
-                        title: "TCos %",
-                        field: "TCOS_PCT",
-                        hozAlign: "center",
-                        headerSortStartingDir: "desc",
-                        headerTooltip: "TCOS% = Spend ÷ Sales (L30). Calculated on the parent row (parent spend ÷ parent sales); child SKUs show their parent's %.",
-                        sorter: amazonMetricSorter(function(d) {
-                            const v = parseFloat(d && d.TCOS_PCT);
-                            return isFinite(v) ? v : null;
-                        }),
-                        formatter: function(cell) {
-                            const v = parseFloat(cell.getRow().getData().TCOS_PCT);
-                            if (!isFinite(v)) return '<span style="color:#999;">—</span>';
-                            return `<span style="font-weight:600;">${v.toFixed(1)}%</span>`;
-                        },
-                        width: 65
-                    },
-                    {
                         title: "Ads %",
                         field: "ADS_PCT",
                         hozAlign: "center",
-                        headerTooltip: "Amz channel Ads% (Total Ad Spend / L30 Sales) — same as the Ads badge. (NPFT% now uses the TCos % column instead.)",
+                        headerTooltip: "Amz channel Ads% (Total Ad Spend / L30 Sales) — same as the Ads badge. NPFT% = GPFT% − Ads%.",
                         sorter: amazonMetricSorter(function(d) {
                             return (d && d.is_parent_summary) ? null : (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
                         }),
@@ -5428,52 +5372,21 @@
                         title: "NPFT%",
                         field: "PFT%",
                         hozAlign: "center",
-                        headerTooltip: "NPFT% = GPFT% − TCos% (the TCos % column). Parent rows use the parent's TCos%; child SKUs use their parent's TCos%.",
-                        // Same value the cell shows (blank GPFT counts as 0, minus TCos%).
+                        // Same value the cell shows (blank GPFT counts as 0, minus Ads%).
                         sorter: amazonMetricSorter(function(d) {
-                            const tcos = parseFloat(d && d.TCOS_PCT) || 0;
+                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
                             const gpft = amazonComputeGpftAt(d && d.price, d);
-                            return (gpft == null || !isFinite(gpft) ? 0 : gpft) - tcos;
+                            return (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
                         }),
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const tcos = parseFloat(rowData && rowData.TCOS_PCT) || 0;
+                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
                             const gpft = amazonComputeGpftAt(rowData && rowData.price, rowData);
-                            const percent = (gpft == null || !isFinite(gpft) ? 0 : gpft) - tcos;
+                            const percent = (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
                             const _st = (window.MetricPctColors && MetricPctColors.styleFor('npft', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
-                    },
-                    {
-                        title: "TC NPFT%",
-                        field: "TC_NPFT",
-                        hozAlign: "center",
-                        headerSortStartingDir: "desc",
-                        headerTooltip: "TC NPFT% = (L30 gross profit $ − the row's actual L30 ad spend $) ÷ L30 sales $ × 100. Uses real spend, not the Ads% column.",
-                        sorter: amazonMetricSorter(amazonComputeTcNpft),
-                        formatter: function(cell) {
-                            const percent = amazonComputeTcNpft(cell.getRow().getData());
-                            if (percent === null || !isFinite(percent)) return '<span style="color:#999;">—</span>';
-                            const _st = (window.MetricPctColors && MetricPctColors.styleFor('npft', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        },
-                        width: 65
-                    },
-                    {
-                        title: "TC NROI%",
-                        field: "TC_NROI",
-                        hozAlign: "center",
-                        headerSortStartingDir: "desc",
-                        headerTooltip: "TC NROI% = (L30 gross profit $ − the row's actual L30 ad spend $) ÷ L30 COGS $ × 100. Uses real spend, not the Ads% column.",
-                        sorter: amazonMetricSorter(amazonComputeTcNroi),
-                        formatter: function(cell) {
-                            const percent = amazonComputeTcNroi(cell.getRow().getData());
-                            if (percent === null || !isFinite(percent)) return '<span style="color:#999;">—</span>';
-                            const _st = (window.MetricPctColors && MetricPctColors.styleFor('nroi', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        },
-                        width: 70
                     },
                     {
                         title: "ACOS",
@@ -5613,7 +5526,7 @@
                         title: "SNPFT%",
                         field: "Spft%",
                         hozAlign: "center",
-                        headerTooltip: "SNPFT = live S GPFT − TCos%. Same S PRC as SGROI / S GPFT.",
+                        headerTooltip: "SNPFT = live S GPFT − Ads%. Same S PRC as SGROI / S GPFT.",
                         sorter: amazonMetricSorter(amazonComputeSpft),
                         formatter: function(cell) {
                             const percent = amazonComputeSpft(cell.getRow().getData());
@@ -6377,8 +6290,8 @@
                 const avgGpft = ORDERS_L30_GPFT;
                 setAmzSummaryBadge($('#avg-gpft-badge'), 'GPFT: ' + Math.round(avgGpft) + '%', Math.round(avgGpft));
                 
-                // AVG PFT% (Net Profit %) = GPFT% − TCos% (Σ SKU spend ÷ Σ SKU sales)
-                const avgPft = avgGpft - amazonChannelTcosPct(allData);
+                // AVG PFT% (Net Profit %) = GPFT% − Ads%  (Ads% from /all-marketplace-master, Amazon channel)
+                const avgPft = avgGpft - amazonAdsPercent;
                 setAmzSummaryBadge($('#avg-pft-badge'), 'NPFT: ' + Math.round(avgPft) + '%', Math.round(avgPft));
                 if (typeof syncAmzSummaryTrendDots === 'function') syncAmzSummaryTrendDots();
                 

@@ -754,6 +754,11 @@
                             A blank Std Prc leaves the calculated price.
                         </li>
                         <li>
+                            <strong>When</strong> LMP is available and the calculated price is at or above LMP
+                            (and SGROI at LMP is at least 20%):
+                            S PRC = <strong>LMP × 0.95</strong>. Std Prc is still the maximum.
+                        </li>
+                        <li>
                             <strong>When</strong> LMP is above Std Prc:
                             every calculated price is capped at <strong>Std Prc</strong>.
                             An orange triangle on Std Prc means review that Std price.
@@ -1289,6 +1294,7 @@
         function computeAmzReviewDiscountPct(d) {
             if (!amzPefIsChildRow(d)) return null;
             if (amzPefInv(d) === 0) return 0;
+            if (typeof amzStdIsPaused === 'function' && amzStdIsPaused('rev')) return 0;
             if (amzNoReviewsNoDiscount && !(amzPefReviewQty(d) > 0)) return 0;
             const count = amzPefReviewCount(d);
             const cap = Number(amzReviewDiscMax);
