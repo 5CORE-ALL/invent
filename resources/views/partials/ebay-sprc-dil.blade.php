@@ -40,7 +40,7 @@
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'vinted', 'instagram', 'depop', 'alibaba'], true);
     // eBay rules that Temu now shares: Diff +10 to the Target, and the LMP cap % by Dil band.
-    $ebaySprcDilDiffAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3'], true);
+    $ebaySprcDilDiffAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3'], true);
     $ebaySprcDilLmpCapOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest

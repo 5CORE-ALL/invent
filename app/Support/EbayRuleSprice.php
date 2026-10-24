@@ -165,9 +165,9 @@ class EbayRuleSprice
             'rules' => $rules,
             'cvr_adj' => $unpacked['cvr_adj'],
             'lmp_cap' => $unpacked['lmp_cap'],
-            // eBay 1 only: Diff = (Std Prc − Price) / Price above diff_adj.gt_pct adds diff_adj.points to the Target NROI
+            // eBay 1/2/3: Diff = (Std Prc − Price) / Price above diff_adj.gt_pct adds diff_adj.points to the Target NROI
             // (both saved in the Sprc Dil modal; default 20% and +10). Null = rule off for this channel.
-            'diff_adj' => $channel === 'ebay1' ? $unpacked['diff_adj'] : null,
+            'diff_adj' => $unpacked['diff_adj'],
         ]];
     }
 

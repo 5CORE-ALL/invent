@@ -1499,7 +1499,7 @@
          *  re-saves S PRC right after the switch is saved (EbayRuleSpriceApply). */
         window.spriceOnRuleSwitched = function() {
             try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
-            try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
+            try { if (typeof window.updateSummary === 'function') window.updateSummary(); } catch (e) { /* ignore */ }
         };
         function ebayCapSpriceToLmp(rowData, sprice) {
             const s = parseFloat(sprice);

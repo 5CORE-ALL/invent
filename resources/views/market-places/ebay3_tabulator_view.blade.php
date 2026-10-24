@@ -1035,9 +1035,357 @@
         const n = Number(raw);
         return (isFinite(n) && n > 0) ? Math.round(n * 100) / 100 : 0;
     }
-    function ebay3DisplayedSprice(rowData) {
-        return ebay3RawRuleSprice(rowData);
-    }
+    /** The rule price before the LMP cap and the Std Prc maximum: Sprc Dil price (switch ON) or the Std prc vs dil price. 0 when none. */
+        function ebay3LiveRuleSprice(rowData) {
+            if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return 0;
+            try {
+                if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                    // Rules not loaded yet: the defaults would flash a wrong price, so show the saved one.
+                    if (window._ebayDilRulesLoaded !== true) return 0;
+                    const meta = (typeof ebayDilGroiMetaForRow === 'function') ? ebayDilGroiMetaForRow(rowData) : null;
+                    return (meta && meta.rawSprc > 0) ? Number(meta.rawSprc) : 0;
+                }
+                if (window.__chStdSettled !== true) return 0;
+                if (typeof window.chStdPriceForRow === 'function') {
+                    const n = Number(window.chStdPriceForRow(rowData)) || 0;
+                    return n > 0 ? n : 0;
+                }
+            } catch (e) { /* rule not loaded yet */ }
+            return 0;
+        }
+        /**
+         * S PRC shown on the page (and used by S GROI, S NROI, SGPFT, the summaries): the LIVE rule price after the LMP cap
+         * and the Std Prc maximum, like Amazon / eBay 1. A rule change repaints at once; the server saves the same price right
+         * after (EbayRuleSpriceApply). Falls back to the saved S PRC while the rules are not loaded or the row has no rule price.
+         */
+        function ebay3DisplayedSprice(rowData) {
+            const saved = ebay3RawRuleSprice(rowData);
+            if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return saved;
+            try {
+                const raw = ebay3LiveRuleSprice(rowData);
+                if (raw > 0) {
+                    const capped = Number(ebay3CapSpriceToLmp(rowData, raw));
+                    const live = (isFinite(capped) && capped > 0) ? capped : raw;
+                    return Math.round(live * 100) / 100;
+                }
+            } catch (e) { /* use the saved price */ }
+            return saved;
+        }
+        // ---------------------------------------------------------------------------------------------
+        // Hover explainer: hovering a S PRC or Price cell opens a card listing every rule and exception
+        // that produced that number (applied rules are green, rules that did not apply are grey).
+        // ---------------------------------------------------------------------------------------------
+        let ebayRuleTipEl = null;
+        let ebayRuleTipShowTimer = null;
+        let ebayRuleTipHideTimer = null;
+
+        function ebayRuleEsc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+            });
+        }
+        function ebayRuleMoney(n) {
+            n = Number(n);
+            return (isFinite(n) && n > 0) ? '$' + n.toFixed(2) : '—';
+        }
+        function ebayRuleStep(state, title, detail) {
+            return { state: state, title: title, detail: detail };
+        }
+
+        /** Every rule / exception behind the S PRC shown in the grid. */
+        function ebayExplainSprice(d) {
+            const steps = [];
+            const notes = [];
+            const dilOn = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+            const saved = (typeof ebay3DisplayedSprice === 'function') ? ebay3DisplayedSprice(d) : (parseFloat(d.SPRICE) || 0);
+            const std = parseFloat(d.STANDARD_PRICE) || 0;
+            const lmp = (typeof ebayEffectiveLmp === 'function') ? ebayEffectiveLmp(d) : (parseFloat(d.lmp_price) || 0);
+            const inv = parseFloat(d.INV) || 0;
+            let raw = 0;
+
+            if (dilOn) {
+                const meta = (typeof ebayDilGroiMetaForRow === 'function') ? ebayDilGroiMetaForRow(d) : null;
+                if (!meta || !(meta.rawSprc > 0)) {
+                    steps.push(ebayRuleStep('skip', 'Sprc Dil', 'No rule price. It needs INV &gt; 0, an LP, and a matching Dil slab.'));
+                } else {
+                    raw = meta.rawSprc;
+                    steps.push(ebayRuleStep('info', '1 · Dil slab',
+                        'Dil <b>' + Number(meta.dil || 0).toFixed(1) + '%</b> → slab <b>' + ebayRuleEsc(meta.label) + '</b>'
+                        + (meta.clamped ? ' (outside the table, so the nearest slab)' : '')
+                        + ' → Target SNROI <b>' + meta.slabGroi + '%</b>'));
+                    const cvrTxt = (typeof ebayDgCvr30 === 'function') ? Number(ebayDgCvr30(d)).toFixed(1) + '%' : '';
+                    const trend = (typeof ebayDgCvrTrend === 'function') ? ebayDgCvrTrend(d) : '';
+                    if (meta.cvrAdj) {
+                        steps.push(ebayRuleStep('ok', '2 · CVR overlay',
+                            'CVR ' + cvrTxt + ' with ' + trend + ' arrow → <b>' + (meta.cvrAdj > 0 ? '+' : '') + meta.cvrAdj + '</b> to Target SNROI'));
+                    } else {
+                        steps.push(ebayRuleStep('skip', '2 · CVR overlay',
+                            'CVR ' + cvrTxt + (trend ? ' (' + trend + ' arrow)' : '') + ' is inside the thresholds, so no adjustment'));
+                    }
+                    const diffPct = (typeof ebayStdPrcDiffPct === 'function') ? ebayStdPrcDiffPct(d) : null;
+                    if (meta.diffAdj) {
+                        steps.push(ebayRuleStep('ok', '3 · Diff rule',
+                            'Diff ' + diffPct.toFixed(1) + '% is above ' + ebayDiffCfgNow().gt_pct + '% → <b>' + (meta.diffAdj > 0 ? '+' : '') + meta.diffAdj + '</b> to Target SNROI'));
+                    } else {
+                        steps.push(ebayRuleStep('skip', '3 · Diff rule',
+                            diffPct === null ? 'Needs both Std Prc and Price. Not applied.'
+                                : ('Diff ' + diffPct.toFixed(1) + '% is not above ' + ebayDiffCfgNow().gt_pct + '%. No ' + (ebayDiffCfgNow().points > 0 ? '+' : '') + ebayDiffCfgNow().points)));
+                    }
+                    steps.push(ebayRuleStep('info', '4 · Target SNROI', 'Final target <b>' + meta.groi + '%</b>'));
+                    const lp = (typeof ebayDgLp === 'function') ? ebayDgLp(d) : 0;
+                    const ship = (typeof ebayDgShip === 'function') ? ebayDgShip(d) : 0;
+                    const margin = (typeof ebayDilTakehomeMargin === 'function') ? ebayDilTakehomeMargin(d) : 0.8;
+                    const ads = (typeof ebayDilAdsPct === 'function') ? Number(ebayDilAdsPct()) || 0 : 0;
+                    steps.push(ebayRuleStep('ok', '5 · Price from target',
+                        '(LP ' + ebayRuleMoney(lp) + ' × (1 + ' + meta.groi + '%) + Ship ' + ebayRuleMoney(ship) + ') ÷ (take-home '
+                        + (margin * 100).toFixed(0) + '% − Ads ' + ads.toFixed(1) + '%) = <b>' + ebayRuleMoney(raw) + '</b>'));
+                }
+            } else {
+                steps.push(ebayRuleStep('info', 'Std prc vs dil (switch ON)',
+                    'S PRC = Std Prc ' + ebayRuleMoney(std) + ' × (1 − (Age + Dil + B Disc + 0 Sold + CVR + Review discounts) ÷ 100).'));
+                notes.push('Clearance SKUs stay on the discount price.');
+            }
+
+            // Caps applied after the rule price (same order as the grid: LMP cap, then Std Prc maximum)
+            let afterLmp = raw;
+            if (raw > 0 || !dilOn) {
+                const stdLive = dilOn ? 0 : ((typeof ebay3LiveRuleSprice === 'function') ? ebay3LiveRuleSprice(d) : 0);
+                const base = dilOn ? raw : (stdLive > 0 ? stdLive : saved);
+                const n = dilOn ? '6' : '2';
+                if (!(lmp > 0)) {
+                    steps.push(ebayRuleStep('skip', n + ' · LMP cap', 'No LMP available, so no LMP cap.'));
+                } else if (!(base > 0) || base + 0.0001 < lmp) {
+                    steps.push(ebayRuleStep('skip', n + ' · LMP cap',
+                        'Price ' + ebayRuleMoney(base) + ' is below LMP ' + ebayRuleMoney(lmp) + '. The price is kept.'));
+                } else {
+                    const sg = (typeof ebay3SgroiAtPrice === 'function') ? ebay3SgroiAtPrice(d, lmp) : null;
+                    if (sg != null && sg < 20) {
+                        steps.push(ebayRuleStep('skip', n + ' · LMP cap',
+                            'Price is at or above LMP ' + ebayRuleMoney(lmp) + ', but SGROI at LMP is ' + sg.toFixed(1)
+                            + '% (below 20%). The cap is <b>not</b> applied.'));
+                    } else {
+                        const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? window.ebayLmpReducePctForRow(d) : 2;
+                        afterLmp = +(dilOn ? lmp * (1 - pct / 100) : lmp).toFixed(2);
+                        steps.push(ebayRuleStep('ok', n + ' · LMP cap',
+                            'Price is at or above LMP ' + ebayRuleMoney(lmp) + ' and SGROI at LMP is '
+                            + (sg != null ? sg.toFixed(1) + '%' : 'n/a') + ' (20% or more) → S PRC = '
+                            + (dilOn ? 'LMP − ' + pct + '% (Dil band)' : 'LMP') + ' = <b>' + ebayRuleMoney(afterLmp) + '</b>'));
+                    }
+                }
+                const stdBase = dilOn ? (afterLmp > 0 ? afterLmp : raw) : (stdLive > 0 ? stdLive : saved);
+                const sn = dilOn ? '7' : '3';
+                if (!(std > 0)) {
+                    steps.push(ebayRuleStep('skip', sn + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
+                } else if (stdBase > std + 0.0001) {
+                    steps.push(ebayRuleStep('ok', sn + ' · Std Prc maximum',
+                        'Price ' + ebayRuleMoney(stdBase) + ' is above Std Prc ' + ebayRuleMoney(std) + ' → capped at <b>' + ebayRuleMoney(std) + '</b>'));
+                } else {
+                    steps.push(ebayRuleStep('skip', sn + ' · Std Prc maximum',
+                        'Price is within Std Prc ' + ebayRuleMoney(std) + '. Not capped.'));
+                }
+            }
+
+            if (lmp > 0 && std > 0 && lmp > std + 0.0001) {
+                notes.push('LMP ' + ebayRuleMoney(lmp) + ' is above Std Prc ' + ebayRuleMoney(std) + ': every price is capped at Std Prc. Review the Std price.');
+            }
+            if (inv <= 0) notes.push('INV is 0, so Sprc Dil does not price this SKU.');
+            if (d.has_custom_sprice === false || d.SPRICE_STATUS === 'error') {
+                notes.push('Last save / push status: ' + ebayRuleEsc(d.SPRICE_STATUS || 'error') + '.');
+            }
+
+            let finalNote = '';
+            const serverSaved = (typeof ebay3RawRuleSprice === 'function') ? ebay3RawRuleSprice(d) : 0;
+            if (saved > 0 && serverSaved > 0 && Math.abs(serverSaved - saved) > 0.009) {
+                finalNote = 'The page shows the live rule price ' + ebayRuleMoney(saved) + '. The saved S PRC is still '
+                    + ebayRuleMoney(serverSaved) + '; the server re-saves it from the rules right after a rule change.';
+            }
+            return {
+                title: 'S PRC ' + ebayRuleMoney(saved),
+                sub: (d['(Child) sku'] || '') + ' · ' + (dilOn ? 'Sprc Dil rule' : 'Std prc vs dil rule'),
+                steps: steps, notes: notes, finalNote: finalNote
+            };
+        }
+
+        /** Where the listing Price stands vs S PRC, yesterday, Std Prc and LMP. */
+        function ebayExplainPrice(d) {
+            const steps = [];
+            const notes = [];
+            const price = parseFloat(d['eBay Price']) || 0;
+            const saved = (typeof ebay3DisplayedSprice === 'function') ? ebay3DisplayedSprice(d) : (parseFloat(d.SPRICE) || 0);
+            const std = parseFloat(d.STANDARD_PRICE) || 0;
+            const lmp = (typeof ebayEffectiveLmp === 'function') ? ebayEffectiveLmp(d) : (parseFloat(d.lmp_price) || 0);
+            const inv = parseFloat(d.INV) || 0;
+
+            steps.push(ebayRuleStep('info', '1 · Source', 'Price is the <b>live eBay listing price</b>. It changes only when a new price is pushed to eBay.'));
+            if (saved > 0) {
+                if (Math.abs(saved - price) <= 0.009) {
+                    steps.push(ebayRuleStep('ok', '2 · S PRC', 'S PRC ' + ebayRuleMoney(saved) + ' is already live. Price matches S PRC.'));
+                } else {
+                    const st = d.SPRICE_STATUS ? ' Status: <b>' + ebayRuleEsc(d.SPRICE_STATUS) + '</b>.' : '';
+                    steps.push(ebayRuleStep('warn', '2 · S PRC',
+                        'S PRC ' + ebayRuleMoney(saved) + ' is not live yet (Price ' + ebayRuleMoney(price) + '). It goes live when S PRC is pushed.' + st));
+                }
+            } else {
+                steps.push(ebayRuleStep('skip', '2 · S PRC', 'No S PRC saved, so there is nothing waiting to be pushed.'));
+            }
+            const yest = parseFloat(d.price_yesterday);
+            if (isFinite(yest) && yest > 0 && price > 0) {
+                const ch = ((price - yest) / yest) * 100;
+                steps.push(ebayRuleStep(Math.abs(ch) < 0.005 ? 'skip' : 'info', '3 · vs yesterday',
+                    ebayRuleMoney(yest) + ' → ' + ebayRuleMoney(price) + ' (' + (ch > 0 ? '+' : '') + ch.toFixed(1) + '%). Dot is '
+                    + (price > yest ? 'green (up)' : (price < yest ? 'red (down)' : 'grey (same)')) + '.'));
+            } else {
+                steps.push(ebayRuleStep('skip', '3 · vs yesterday', 'No earlier price snapshot yet.'));
+            }
+            const diff = (typeof ebayStdPrcDiffPct === 'function') ? ebayStdPrcDiffPct(d) : null;
+            if (diff !== null) {
+                steps.push(ebayRuleStep(diff > 20 ? 'warn' : (diff < -5 ? 'warn' : 'ok'), '4 · vs Std Prc',
+                    'Std Prc ' + ebayRuleMoney(std) + ' vs Price → Diff <b>' + diff.toFixed(1) + '%</b> ('
+                    + (diff > 20 ? 'pink: Price far below Std' : (diff < -5 ? 'red: Price above Std' : 'green: normal')) + ').'));
+            } else {
+                steps.push(ebayRuleStep('skip', '4 · vs Std Prc', 'Needs both Std Prc and Price.'));
+            }
+            if (lmp > 0 && price > 0) {
+                const over = inv > 0 && price > lmp;
+                steps.push(ebayRuleStep(over ? 'warn' : 'ok', '5 · vs LMP',
+                    'LMP ' + ebayRuleMoney(lmp) + ' · Price is ' + (price > lmp ? 'above' : (price < lmp ? 'below' : 'equal to')) + ' LMP'
+                    + (over ? ' (red triangle).' : '.')));
+                if (price < lmp * 0.8) notes.push('Price is below 80% of LMP (purple triangle).');
+            } else {
+                steps.push(ebayRuleStep('skip', '5 · vs LMP', 'No LMP available.'));
+            }
+            if (price <= 0) notes.push('Price is $0. The listing price is missing.');
+            return {
+                title: 'Price ' + ebayRuleMoney(price),
+                sub: (d['(Child) sku'] || '') + ' · where this price stands',
+                steps: steps, notes: notes, finalNote: ''
+            };
+        }
+
+        function ebayRuleTipRender(model) {
+            const icon = { ok: '✓', skip: '–', info: 'i', warn: '!' };
+            let html = '<div class="ebay-rule-tip-head"><div class="ebay-rule-tip-title">' + ebayRuleEsc(model.title)
+                + '</div><div class="ebay-rule-tip-sub">' + ebayRuleEsc(model.sub) + '</div></div><div class="ebay-rule-tip-body">';
+            model.steps.forEach(function(s) {
+                html += '<div class="ebay-rule-step is-' + s.state + '"><span class="ebay-rule-ico">' + icon[s.state]
+                    + '</span><div><div class="ebay-rule-step-title">' + ebayRuleEsc(s.title) + '</div><div class="ebay-rule-step-detail">'
+                    + s.detail + '</div></div></div>';
+            });
+            if (model.notes.length) {
+                html += '<div class="ebay-rule-notes"><b>Exceptions</b><ul>'
+                    + model.notes.map(function(n) { return '<li>' + n + '</li>'; }).join('') + '</ul></div>';
+            }
+            if (model.finalNote) html += '<div class="ebay-rule-final">' + model.finalNote + '</div>';
+            return html + '</div>';
+        }
+
+        function ebayRuleTipEnsure() {
+            if (ebayRuleTipEl) return ebayRuleTipEl;
+            if (!document.getElementById('ebay-rule-tip-css')) {
+                const st = document.createElement('style');
+                st.id = 'ebay-rule-tip-css';
+                st.textContent = [
+                    '#ebay-rule-tip{position:fixed;z-index:20000;width:380px;max-width:92vw;max-height:80vh;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(15,23,42,.28);font-size:12px;color:#334155;display:none}',
+                    '#ebay-rule-tip .ebay-rule-tip-head{padding:10px 14px;background:linear-gradient(90deg,#6f42c1,#8b5cf6);color:#fff;border-radius:12px 12px 0 0}',
+                    '#ebay-rule-tip .ebay-rule-tip-title{font-size:15px;font-weight:700}',
+                    '#ebay-rule-tip .ebay-rule-tip-sub{font-size:11px;opacity:.85}',
+                    '#ebay-rule-tip .ebay-rule-tip-body{padding:8px 12px 10px}',
+                    '#ebay-rule-tip .ebay-rule-step{display:flex;gap:8px;padding:5px 0;border-bottom:1px dashed #e2e8f0}',
+                    '#ebay-rule-tip .ebay-rule-ico{flex:0 0 18px;height:18px;border-radius:50%;text-align:center;line-height:18px;font-size:11px;font-weight:700;color:#fff;background:#94a3b8}',
+                    '#ebay-rule-tip .is-ok .ebay-rule-ico{background:#16a34a}',
+                    '#ebay-rule-tip .is-info .ebay-rule-ico{background:#3b82f6}',
+                    '#ebay-rule-tip .is-warn .ebay-rule-ico{background:#f59e0b}',
+                    '#ebay-rule-tip .is-skip{opacity:.7}',
+                    '#ebay-rule-tip .ebay-rule-step-title{font-weight:700;color:#1e293b}',
+                    '#ebay-rule-tip .ebay-rule-step-detail{line-height:1.35}',
+                    '#ebay-rule-tip .ebay-rule-notes{margin-top:8px;padding:6px 10px;background:#fff7ed;border-radius:8px;color:#9a3412}',
+                    '#ebay-rule-tip .ebay-rule-notes ul{margin:2px 0 0;padding-left:16px}',
+                    '#ebay-rule-tip .ebay-rule-final{margin-top:8px;padding:6px 10px;background:#eff6ff;border-radius:8px;color:#1d4ed8}'
+                ].join('');
+                document.head.appendChild(st);
+            }
+            ebayRuleTipEl = document.createElement('div');
+            ebayRuleTipEl.id = 'ebay-rule-tip';
+            document.body.appendChild(ebayRuleTipEl);
+            ebayRuleTipEl.addEventListener('mouseenter', function() { clearTimeout(ebayRuleTipHideTimer); });
+            ebayRuleTipEl.addEventListener('mouseleave', ebayRuleTipScheduleHide);
+            return ebayRuleTipEl;
+        }
+        function ebayRuleTipScheduleHide() {
+            clearTimeout(ebayRuleTipShowTimer);
+            clearTimeout(ebayRuleTipHideTimer);
+            ebayRuleTipHideTimer = setTimeout(function() {
+                if (ebayRuleTipEl) ebayRuleTipEl.style.display = 'none';
+            }, 200);
+        }
+        function ebayRuleTipShow(kind, cell) {
+            clearTimeout(ebayRuleTipHideTimer);
+            clearTimeout(ebayRuleTipShowTimer);
+            ebayRuleTipShowTimer = setTimeout(function() {
+                const d = cell.getRow().getData();
+                if (!d || d.is_parent_summary) return;
+                const sku = String(d['(Child) sku'] || '');
+                if (!sku || sku.toUpperCase().indexOf('PARENT') !== -1) return;
+                let model;
+                try {
+                    model = kind === 'sprice' ? ebayExplainSprice(d) : ebayExplainPrice(d);
+                } catch (e) { return; }
+                const el = ebayRuleTipEnsure();
+                el.innerHTML = ebayRuleTipRender(model);
+                el.style.display = 'block';
+                const r = cell.getElement().getBoundingClientRect();
+                const w = el.offsetWidth;
+                const h = el.offsetHeight;
+                let left = r.right + 8;
+                if (left + w > window.innerWidth - 8) left = Math.max(8, r.left - w - 8);
+                let top = r.top - 10;
+                if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+                el.style.left = left + 'px';
+                el.style.top = Math.max(8, top) + 'px';
+            }, 250);
+        }
+        window.ebayRuleTipShow = ebayRuleTipShow;
+        window.ebayRuleTipScheduleHide = ebayRuleTipScheduleHide;
+
+        /** Switch Sprc Dil <-> Std prc vs dil: repaint every S PRC dependent cell from the rule now ON. */
+        window.spriceOnRuleSwitched = function() {
+            try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
+            try {
+                if (typeof window.updateEbay3Summary === 'function') window.updateEbay3Summary();
+                else if (typeof window.updateSummary === 'function') window.updateSummary();
+            } catch (e) { /* ignore */ }
+        };
+        /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+        function ebayDiffCfgNow() {
+            const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+            return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+        }
+        /** Diff % = (Std Prc − eBay Price) / eBay Price × 100; null when either value is missing. */
+        function ebayStdPrcDiffPct(rowData) {
+            if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return null;
+            const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+            const price = parseFloat(rowData['eBay Price']) || 0;
+            if (!(std > 0) || !(price > 0)) return null;
+            return ((std - price) / price) * 100;
+        }
+        /** Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. */
+        function ebayRenderStdPrcDiff(el, rowData) {
+            const pct = ebayStdPrcDiffPct(rowData);
+            let html = '';
+            let bg = '';
+            let color = '';
+            if (pct !== null) {
+                if (pct > ebayDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+                else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+                else { bg = '#28a745'; color = '#fff'; }
+                html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+            }
+            if (el) {
+                el.style.backgroundColor = bg;
+                el.style.color = color;
+            }
+            return html;
+        }
     function ebay3SpriceAmount(rowData) {
         return ebay3DisplayedSprice(rowData) || 0;
     }
@@ -2168,11 +2516,14 @@
             if (ebay3IsAlertParentRow(data)) return false;
             if (!(ebay3Qty(data && data.INV) > 0)) return false;
             if (ebay3IsEndedListing(data)) return false;
-            // Judge on the S PRC the server saved (what the runner / blue push actually sends), not on
-            // the page's own recalculation, so the badge and the pushes cannot disagree.
-            const sprice = (data.SPRICE_SERVER !== undefined)
-                ? (Number(data.SPRICE_SERVER) || 0)
-                : ebay3RowSpriceForAlert(data);
+            // Live rule price (same as the S PRC cell), so a rule change moves the badge at once like Amazon.
+            // The server saves the same price right after the change, and the blue push sends the saved one.
+            let sprice = Number(ebay3DisplayedSprice(data)) || 0;
+            if (!(sprice > 0)) {
+                sprice = (data.SPRICE_SERVER !== undefined)
+                    ? (Number(data.SPRICE_SERVER) || 0)
+                    : ebay3RowSpriceForAlert(data);
+            }
             const price = parseFloat(data['eBay Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
@@ -2995,8 +3346,29 @@
                     }
                 },
                 {
+                        title: "Diff",
+                        field: "std_prc_diff",
+                        hozAlign: "center",
+                        width: 62,
+                        headerSort: true,
+                        headerTooltip: "Diff = (Std Prc − Price) / Price. Pink = above the Diff threshold set in Sprc Dil (default 20%, adds points to the Target SNROI), Red < −5%, otherwise Green.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = ebayStdPrcDiffPct(aRow.getData());
+                            const bv = ebayStdPrcDiffPct(bRow.getData());
+                            if (av === null && bv === null) return 0;
+                            if (av === null) return -1;
+                            if (bv === null) return 1;
+                            return av - bv;
+                        },
+                        formatter: function(cell) {
+                            return ebayRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                        }
+                    },
+                    {
                     title: "Price",
                     field: "eBay Price",
+                    cellMouseEnter: function(e, cell) { ebayRuleTipShow('price', cell); },
+                    cellMouseLeave: function() { ebayRuleTipScheduleHide(); },
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -3118,55 +3490,43 @@
                         return av - bv;
                     },
                     editable: false,
-                    headerTooltip: "Read-only. Same as Amazon: Dil below LMP stays Dil. Dil at/above LMP becomes LMP only when SGROI at that LMP is ≥ 20%; if SGROI at LMP is < 20%, Dil is kept. When LMP is missing, Std Prc is the maximum. Red triangle stays when S PRC ≥ LMP.",
+                    cellMouseEnter: function(e, cell) { ebayRuleTipShow('sprice', cell); },
+                    cellMouseLeave: function() { ebayRuleTipScheduleHide(); },
+                    headerTooltip: "Read-only. Same as Amazon: Dil below LMP stays Dil. Dil at/above LMP becomes LMP only when SGROI at that LMP is ≥ 20%; if SGROI at LMP is < 20%, Dil is kept. Std Prc is always the maximum. Red triangle = S PRC reached LMP. Orange triangle = LMP is above Std Prc, S PRC capped at Std (review Std). Brown triangle = capped at Std Prc. Blue triangle = S PRC ≠ Price. Red C = clearance SKU.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary || rowData.is_parent_row) return '';
-                        const raw = (typeof ebay3DisplayedSprice === 'function')
-                            ? ebay3DisplayedSprice(rowData)
-                            : ((typeof ebay3RawRuleSprice === 'function')
-                                ? ebay3RawRuleSprice(rowData)
-                                : ((typeof chPromoSavedOrLiveSprice === 'function')
-                                    ? chPromoSavedOrLiveSprice(rowData)
-                                    : (parseFloat(rowData.SPRICE) || 0)));
-                        if (!(raw > 0)) return '';
-
-                        const lmpNow = (typeof ebayEffectiveLmp === 'function')
-                            ? ebayEffectiveLmp(rowData)
-                            : ((window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function')
-                                ? Number(LmpIgnore.effectiveLmp(rowData)) || 0
-                                : (parseFloat(rowData.lmp_price) || 0));
-                        const sprice = raw;
-                        // Clearance "C" and Std Prc cap marks (same as Amazon). A Std cap replaces the red LMP triangle.
-                        const stdM = (window.chClr && typeof chClr.stdMarks === 'function') ? chClr.stdMarks(rowData, sprice, lmpNow) : { kind: '', color: '', html: '' };
-                        const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
-                        const appliedLmp = wouldHitLmp && sprice + 0.0001 <= lmpNow + 0.0001;
-                        const atOrAboveLmp = wouldHitLmp && !stdM.kind;
-                        const sgroiAtLmp = (typeof ebay3SgroiAtPrice === 'function')
-                            ? ebay3SgroiAtPrice(rowData, lmpNow)
-                            : null;
-                        const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
-
-                        let formattedValue = '$' + Number(sprice).toFixed(2);
-                        if (atOrAboveLmp) {
-                            formattedValue = '<span style="color:#dc3545;font-weight:600;">' + formattedValue + '</span>';
-                        } else if (stdM.color) {
-                            formattedValue = '<span style="color:' + stdM.color + ';font-weight:600;">' + formattedValue + '</span>';
-                        }
-                        const blueTri = ebay3HasBlueTriangle(rowData)
-                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
-                            : '';
-                        const redTri = atOrAboveLmp
-                            ? (appliedLmp
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                    + lmpNow.toFixed(2) + '"></i>'
-                                : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
-                                    + lmpNow.toFixed(2) + ' not applied — SGROI would be '
-                                    + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?') + '% (&lt; 20%)"></i>')
-                            : '';
-                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + formattedValue + ((window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '') + blueTri + redTri + stdM.html + '</span>';
+                            // Same as eBay 1 / Amazon: the live rule price drives the number and every cap icon.
+                            const saved = ebay3DisplayedSprice(rowData);
+                            if (!(saved > 0)) return '';
+                            const sprice = saved;
+                            const lmpNow = (typeof ebayEffectiveLmp === 'function')
+                                ? ebayEffectiveLmp(rowData)
+                                : (parseFloat(rowData.lmp_price) || 0);
+                            const stdNow = parseFloat(rowData.STANDARD_PRICE) || 0;
+                            // Capping icons need the rule price BEFORE the caps (a saved price is already capped).
+                            const liveRaw = ebay3LiveRuleSprice(rowData);
+                            const raw = liveRaw > 0 ? liveRaw : saved;
+                            const capped = Number(ebay3CapSpriceToLmp(rowData, raw));
+                            const shown = capped > 0 ? capped : raw;
+                            const sgroiAtLmp = (typeof ebay3SgroiAtPrice === 'function') ? ebay3SgroiAtPrice(rowData, lmpNow) : null;
+                            const cap = (window.chClr && typeof chClr.capFlags === 'function')
+                                ? chClr.capFlags({ raw: raw, shown: shown, lmp: lmpNow, std: stdNow, sgroiAtLmp: sgroiAtLmp })
+                                : { color: '', redTri: '', reviewTri: '', stdTri: '' };
+                            const sku = rowData['(Child) sku'] || '';
+                            const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
+                            const dot = (typeof ebayStdPrcChangeDotHtml === 'function') ? ebayStdPrcChangeDotHtml(sprice, ebayPrice, sku) : '';
+                            let formattedValue = '$' + Number(sprice).toFixed(2);
+                            if (cap.color) {
+                                formattedValue = '<span style="color:' + cap.color + ';font-weight:600;">' + formattedValue + '</span>';
+                            }
+                            const blueTri = ebay3HasBlueTriangle(rowData)
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
+                                : '';
+                            const clearanceBadge = (window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '';
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
+                                + dot + formattedValue + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + '</span>';
                     },
                     width: 118
                 },
