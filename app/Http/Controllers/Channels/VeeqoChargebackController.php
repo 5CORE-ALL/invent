@@ -138,6 +138,12 @@ class VeeqoChargebackController extends Controller
                     ->selectRaw('source, MIN(posted_at) as first, MAX(posted_at) as last, MAX(updated_at) as imported_at')
                     ->get(),
             ],
+            'source_types' => VeeqoChargeback::query()
+                ->groupBy('source', 'description')
+                ->selectRaw('source, description, COUNT(*) as n')
+                ->get()
+                ->groupBy('source')
+                ->map(fn ($rows) => $rows->pluck('n', 'description')),
         ]);
     }
 

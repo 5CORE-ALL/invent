@@ -416,7 +416,7 @@
                 table = new Tabulator('#veeqo-chargebacks-table', {
                     layout: 'fitDataStretch',
                     height: 'calc(100vh - 330px)',
-                    placeholder: 'No rows for these filters. Check that the Type selection includes types from the chosen Source, and the Debit / Credit and date filters.',
+                    placeholder: emptyEl,
                     pagination: true,
                     paginationMode: 'remote',
                     paginationSize: 100,
@@ -474,11 +474,35 @@
 
             const SOURCE_GROUP = { veeqo_csv: 'Veeqo', amazon_api: 'Amazon', tiktok_api: 'TikTok', tiktok2_api: 'TikTok', shopify_csv: 'Shopify', temu1_csv: 'Temu', temu2_csv: 'Temu', temu3_csv: 'Temu' };
 
+            let sourceTypes = {};
+            const SOURCE_EMPTY_HINT = {
+                veeqo_csv: 'Use Import CSV → Veeqo.',
+                amazon_api: 'Click Sync Amazon.',
+                tiktok_api: 'Click Sync TikTok.',
+                tiktok2_api: 'Click Sync TikTok.',
+                shopify_csv: 'Use Import CSV → Shopify.',
+                temu1_csv: 'Use Import CSV → Temu 1.',
+                temu2_csv: 'Use Import CSV → Temu 2.',
+                temu3_csv: 'Use Import CSV → Temu 3.',
+            };
+            const emptyEl = document.createElement('div');
+            emptyEl.className = 'p-3 text-muted';
+
+            function updateEmptyText() {
+                const source = document.getElementById('vcSource').value;
+                const loaded = Object.keys(sourceTypes).length > 0;
+                emptyEl.textContent = source && loaded && !sourceTypes[source]
+                    ? 'No ' + (SOURCE_LABELS[source] || source) + ' data on this server yet. ' + (SOURCE_EMPTY_HINT[source] || '')
+                    : 'No rows for these filters. Check that the Type selection includes types from the chosen Source, and the Debit / Credit and date filters.';
+            }
+
             // A source only has its own types, so a selection made for another platform would show nothing.
             function alignTypesToSource() {
-                const group = SOURCE_GROUP[document.getElementById('vcSource').value];
+                const source = document.getElementById('vcSource').value;
+                const group = SOURCE_GROUP[source];
                 if (!group || selectedTypes.length === 0) return;
-                const groupTypes = typeOptions.filter(o => o[2] === group).map(o => o[0]);
+                const stored = Object.keys(sourceTypes[source] || {});
+                const groupTypes = stored.length ? stored : typeOptions.filter(o => o[2] === group).map(o => o[0]);
                 if (selectedTypes.some(t => groupTypes.includes(t))) return;
                 const chargebacks = groupTypes.filter(t => CHARGEBACK_TYPES.includes(t));
                 selectedTypes = chargebacks.length ? chargebacks : groupTypes;
@@ -602,6 +626,15 @@
                     info += ' · ' + (SOURCE_LABELS[im.source] || im.source) + ' ' + day(im.first) + ' → ' + day(im.last) + ' (imported ' + String(im.imported_at).replace('T', ' ').slice(0, 16) + ')';
                 });
                 document.getElementById('vcSyncInfo').textContent = info;
+
+                const firstLoad = Object.keys(sourceTypes).length === 0;
+                sourceTypes = json.source_types || {};
+                updateEmptyText();
+                if (firstLoad && document.getElementById('vcSource').value) {
+                    const before = selectedTypes.join('|');
+                    alignTypesToSource();
+                    if (selectedTypes.join('|') !== before && table) table.setData();
+                }
 
                 const comps = json.components || [];
                 if (rebuildIfChanged && comps.join(',') !== components.join(',')) {
@@ -924,6 +957,7 @@
                 ['vcFrom', 'vcTo', 'vcReason', 'vcDirection', 'vcStatus'].forEach(id => document.getElementById(id).addEventListener('change', refresh));
                 document.getElementById('vcSource').addEventListener('change', function () {
                     alignTypesToSource();
+                    updateEmptyText();
                     refresh();
                 });
                 let timer = null;
