@@ -309,6 +309,11 @@ class AmazonSprcDilAutoPushService
                 AmazonDilGroiRule::cvrTrend($cvrL30, $cvrL45),
                 $cvrAdj
             );
+            // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above 20% adds +10 to the Target NROI.
+            $diffPct = \App\Support\EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
+            if ($diffPct !== null && $diffPct > \App\Support\EbayRuleSprice::DIFF_ADJ_GT_PCT) {
+                $nroi += \App\Support\EbayRuleSprice::DIFF_ADJ_POINTS;
+            }
             // Dynamic Rule (Ads % by price slab): solve the price against the Ads % of the slab it lands in.
             $dilPrice = AmazonDilGroiRule::priceWithDynamicAds(
                 fn (float $a): ?float => AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, $a),
@@ -332,7 +337,8 @@ class AmazonSprcDilAutoPushService
                 $ship,
                 AmazonDilGroiRule::TAKE_HOME,
                 $std,
-                AmazonDilGroiRule::DIL_LMP_REDUCE_PCT
+                // x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as the page.
+                AmazonDilGroiRule::lmpCapReducePct($dil, $this->lmpCapCfg)
             );
             if (! is_finite($capped) || $capped < 0.01) {
                 return null;
@@ -1181,6 +1187,9 @@ class AmazonSprcDilAutoPushService
     /** @var array{enabled: bool, slabs: array}|null */
     private ?array $dynamicAdsRuleCache = null;
 
+    /** LMP cap (reduce % by Dil band) saved in the Sprc Dil modal; null = default 2%. */
+    private ?array $lmpCapCfg = null;
+
     /** Dynamic Rule (Ads % by price slab) saved on /amazon-tabulator-view. Loaded once per service instance. */
     protected function dynamicAdsRule(): array
     {
@@ -1207,6 +1216,7 @@ class AmazonSprcDilAutoPushService
         $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_dil_vs_groi')->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
+        $this->lmpCapCfg = $unpacked['lmp_cap'] ?? null;
         if ($unpacked['rules'] === []) {
             $unpacked['rules'] = AmazonDilGroiRule::amazonDefaults();
         } else {

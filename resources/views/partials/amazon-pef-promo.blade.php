@@ -744,6 +744,10 @@
                             apply that Adj NROI to the Dil slab Target NROI (Count updates as you edit).
                         </li>
                         <li>
+                            <strong>When</strong> <code>(Std Prc − Price) / Price</code> is <strong>&gt; 20%</strong>:
+                            add <strong>+10</strong> to the Target NROI.
+                        </li>
+                        <li>
                             <strong>When</strong> a price is calculated from a Dil slab match:
                             it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
                         </li>
@@ -756,7 +760,8 @@
                         <li>
                             <strong>When</strong> LMP is available and the calculated price is at or above LMP
                             (and SGROI at LMP is at least 20%):
-                            S PRC = <strong>LMP × 0.98</strong>. Std Prc is still the maximum.
+                            S PRC = <strong>LMP − x%</strong>, where x follows the SKU's Dil band in the <strong>LMP cap</strong> table
+                            (default 2% = LMP × 0.98). Std Prc is still the maximum.
                         </li>
                         <li>
                             <strong>When</strong> LMP is above Std Prc:
@@ -828,6 +833,54 @@
                                         <input type="number" step="1" class="form-control form-control-sm amz-cvr-groi-input amz-cvr-groi-up-adj" value="10">
                                     </td>
                                     <td class="amz-dg-count"><span class="amz-cvr-groi-up-count">0</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="amz-dg-rules-title mt-3"
+                        title="When the calculated price reaches LMP (and SGROI at LMP is at least 20%): S PRC = LMP × (1 − x/100). x depends on the SKU's Dil.">
+                        LMP cap — S PRC = LMP − x% by Dil
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="amz-lmp-cap-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Dil band</th>
+                                    <th class="text-center">Dil %</th>
+                                    <th class="text-end">LMP reduce %</th>
+                                    <th class="text-center" style="width:90px;" title="S PRC at the LMP cap, e.g. LMP $100 with 2% → $98.00">S PRC</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr data-row="low">
+                                    <td>Below</td>
+                                    <td class="text-center">
+                                        &lt;
+                                        <input type="number" min="0" step="1" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-low-lt" value="25">
+                                    </td>
+                                    <td class="text-end">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-low-pct" value="2">
+                                    </td>
+                                    <td class="text-center text-muted amz-lmp-cap-eg-low">LMP × 0.98</td>
+                                </tr>
+                                <tr data-row="mid">
+                                    <td>Between</td>
+                                    <td class="text-center"><span class="amz-lmp-cap-mid-range">25 – 50</span></td>
+                                    <td class="text-end">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-mid-pct" value="2">
+                                    </td>
+                                    <td class="text-center text-muted amz-lmp-cap-eg-mid">LMP × 0.98</td>
+                                </tr>
+                                <tr data-row="high">
+                                    <td>Above</td>
+                                    <td class="text-center">
+                                        &gt;
+                                        <input type="number" min="0" step="1" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-high-gt" value="50">
+                                    </td>
+                                    <td class="text-end">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-high-pct" value="2">
+                                    </td>
+                                    <td class="text-center text-muted amz-lmp-cap-eg-high">LMP × 0.98</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -949,6 +1002,63 @@
             $tbl.find('.amz-cvr-groi-up-gt').val(cfg.up_gt);
             $tbl.find('.amz-cvr-groi-up-adj').val(cfg.up_adj);
         }
+        /** Sprc Dil LMP cap (same as eBay): S PRC = LMP − x% where x follows the SKU's Dil band. */
+        const AMZ_LMP_CAP_DEFAULT = { low_lt: 25, high_gt: 50, low_pct: 2, mid_pct: 2, high_pct: 2 };
+        let amzLmpCap = Object.assign({}, AMZ_LMP_CAP_DEFAULT);
+        function amzNormalizeLmpCap(raw) {
+            const out = Object.assign({}, AMZ_LMP_CAP_DEFAULT);
+            if (!raw) return out;
+            Object.keys(out).forEach(function(k) {
+                const n = Number(raw[k]);
+                if (!isFinite(n) || n < 0 || raw[k] === '' || raw[k] === null) return;
+                out[k] = Math.round((/_pct$/.test(k) ? Math.min(99, n) : n) * 100) / 100;
+            });
+            if (out.high_gt < out.low_lt) out.high_gt = out.low_lt;
+            return out;
+        }
+        function amzLmpCapNow() {
+            const $tbl = $('#amz-lmp-cap-table');
+            if ($tbl.length) {
+                return amzNormalizeLmpCap({
+                    low_lt: parseFloat($tbl.find('.amz-lmp-cap-low-lt').val()),
+                    high_gt: parseFloat($tbl.find('.amz-lmp-cap-high-gt').val()),
+                    low_pct: parseFloat($tbl.find('.amz-lmp-cap-low-pct').val()),
+                    mid_pct: parseFloat($tbl.find('.amz-lmp-cap-mid-pct').val()),
+                    high_pct: parseFloat($tbl.find('.amz-lmp-cap-high-pct').val()),
+                });
+            }
+            return amzNormalizeLmpCap(amzLmpCap);
+        }
+        function amzPaintLmpCapExamples(cfg) {
+            const $tbl = $('#amz-lmp-cap-table');
+            if (!$tbl.length) return;
+            const f = function(p) { return 'LMP × ' + (1 - p / 100).toFixed(3).replace(/0+$/, '').replace(/\.$/, ''); };
+            $tbl.find('.amz-lmp-cap-mid-range').text(cfg.low_lt + ' – ' + cfg.high_gt);
+            $tbl.find('.amz-lmp-cap-eg-low').text(f(cfg.low_pct));
+            $tbl.find('.amz-lmp-cap-eg-mid').text(f(cfg.mid_pct));
+            $tbl.find('.amz-lmp-cap-eg-high').text(f(cfg.high_pct));
+        }
+        function amzPaintLmpCapTable(cfg) {
+            cfg = amzNormalizeLmpCap(cfg);
+            amzLmpCap = cfg;
+            const $tbl = $('#amz-lmp-cap-table');
+            if (!$tbl.length) return;
+            $tbl.find('.amz-lmp-cap-low-lt').val(cfg.low_lt);
+            $tbl.find('.amz-lmp-cap-high-gt').val(cfg.high_gt);
+            $tbl.find('.amz-lmp-cap-low-pct').val(cfg.low_pct);
+            $tbl.find('.amz-lmp-cap-mid-pct').val(cfg.mid_pct);
+            $tbl.find('.amz-lmp-cap-high-pct').val(cfg.high_pct);
+            amzPaintLmpCapExamples(cfg);
+        }
+        /** LMP reduce % for one grid row, from its Dil (OV L30 ÷ INV). */
+        function amzLmpReducePctForRow(d) {
+            const cfg = amzNormalizeLmpCap(amzLmpCap);
+            const dil = Number(amzPefDil(d)) || 0;
+            if (dil < cfg.low_lt) return cfg.low_pct;
+            if (dil > cfg.high_gt) return cfg.high_pct;
+            return cfg.mid_pct;
+        }
+        window.amzLmpReducePctForRow = amzLmpReducePctForRow;
         function amzDgCvrBands() {
             const cfg = amzCvrGroiAdjNow();
             const lo = cfg.down_lt;
@@ -1507,8 +1617,22 @@
             if (trend === 'up' && cvr > cfg.up_gt) return cfg.up_adj;
             return 0;
         }
+        /** Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above 20% adds +10 to the Target NROI. */
+        const AMZ_DIFF_ADJ_GT_PCT = 20;
+        const AMZ_DIFF_ADJ_POINTS = 10;
+        function amzStdPrcDiffPct(d) {
+            const std = (typeof amazonStdPrice === 'function') ? amazonStdPrice(d) : (parseFloat(d && d.STANDARD_PRICE) || 0);
+            const price = parseFloat(d && d.price) || 0;
+            if (!(std > 0) || !(price > 0)) return null;
+            return ((std - price) / price) * 100;
+        }
+        function amzDilGroiDiffAdj(d) {
+            if (!d) return 0;
+            const pct = amzStdPrcDiffPct(d);
+            return (pct !== null && pct > AMZ_DIFF_ADJ_GT_PCT) ? AMZ_DIFF_ADJ_POINTS : 0;
+        }
         function amzDilGroiApplyCvrAdj(slabGroi, d) {
-            const groi = amzPefRound2((Number(slabGroi) || 0) + amzDilGroiCvrAdj(d));
+            const groi = amzPefRound2((Number(slabGroi) || 0) + amzDilGroiCvrAdj(d) + amzDilGroiDiffAdj(d));
             return groi < 0 ? 0 : groi;
         }
         function amzDilGroiCollectCounts(list) {
@@ -1869,6 +1993,7 @@
             if (!rule) return null;
             const slabNroi = (rule.nroi != null) ? rule.nroi : rule.groi;
             const cvrAdj = amzDilGroiCvrAdj(d);
+            const diffAdj = amzDilGroiDiffAdj(d);
             const nroi = amzDilGroiApplyCvrAdj(slabNroi, d);
             const sprc = amzSpriceFromTargetNroi(d, nroi);
             if (!(sprc > 0)) return null;
@@ -1881,6 +2006,7 @@
                 groi: nroi,
                 nroi: nroi,
                 cvrAdj: cvrAdj,
+                diffAdj: diffAdj,
                 sprc: sprc,
                 zeroSoldMin: false,
             };
@@ -2140,6 +2266,7 @@
                     amzDilGroiRules = AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 }
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
+                if (res && res.lmp_cap) amzPaintLmpCapTable(res.lmp_cap);
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
                 }
@@ -2161,6 +2288,8 @@
             const rules = readAmzDilGroiRulesFromModal();
             const cvrAdj = amzCvrGroiAdjNow();
             amzCvrGroiAdj = cvrAdj;
+            const lmpCap = amzLmpCapNow();
+            amzLmpCap = lmpCap;
             return $.ajax({
                 url: '/channel-promo-pricing/amazon/dil-groi',
                 method: 'POST',
@@ -2169,7 +2298,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
             }).then(function(res) {
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
@@ -2182,6 +2311,7 @@
                     renderAmzDilGroiModalTable();
                 }
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
+                if (res && res.lmp_cap) amzPaintLmpCapTable(res.lmp_cap);
                 amzAfterDilGroiRulesChanged();
                 $('#amz-dil-groi-status').text('Saved via API and applied. S PRC written from Sprc Dil.');
                 return res;
@@ -4800,6 +4930,12 @@
                     amzCvrGroiAdj = amzCvrGroiAdjNow();
                     if ($('#amzDilGroiModal').hasClass('show')) renderAmzDilGroiPies();
                     else amzPaintCvrGroiAdjCounts();
+                    amzAfterDilGroiRulesChanged();
+                });
+            $(document).off('input.amzLmpCap change.amzLmpCap', '#amz-lmp-cap-table .amz-lmp-cap-input')
+                .on('input.amzLmpCap change.amzLmpCap', '#amz-lmp-cap-table .amz-lmp-cap-input', function() {
+                    amzLmpCap = amzLmpCapNow();
+                    amzPaintLmpCapExamples(amzLmpCap);
                     amzAfterDilGroiRulesChanged();
                 });
             $('#amzDilGroiModal').off('shown.bs.modal.amzdg').on('shown.bs.modal.amzdg', function() {

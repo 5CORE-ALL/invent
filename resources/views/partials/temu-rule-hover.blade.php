@@ -3,7 +3,7 @@
     lists every rule and exception behind that number. Applied rules are green, rules that did not apply are grey.
 
     Script-only partial. Include it inside the page's <script>, after partials.ebay-sprc-dil (it reads its helpers).
-    Kind 'nto' is for New Temu One / New Temu Two, kind 'temu3' is for Temu 3.
+    Kind 'nto' is for New Temu One / New Temu Two, 'temu3' is for Temu 3, 'amazon' is for /amazon-tabulator-view.
     Then add to the two columns:
         cellMouseEnter: function(e, cell) { temuRuleTipShow('sprice' | 'price', cell); },
         cellMouseLeave: function() { temuRuleTipScheduleHide(); },
@@ -13,7 +13,7 @@
         let temuRuleTipEl = null;
         let temuRuleTipShowTimer = null;
         let temuRuleTipHideTimer = null;
-
+    
         function temuRuleEsc(s) {
             return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) {
                 return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
@@ -89,7 +89,7 @@
                 steps.push(temuRuleStep('ok', t,
                     'Price is at or above LMP ' + temuRuleMoney(o.lmp) + ' and SGROI at LMP is '
                     + (o.sgroiAtLmp != null ? o.sgroiAtLmp.toFixed(1) + '%' : 'n/a') + ' (20% or more) → LMP − ' + o.pct
-                    + '% (Dil band) = LMP × ' + temuRulePctText(o.pct) + ' = <b>' + temuRuleMoney(o.after) + '</b>'));
+                    + '% (' + (o.src || 'Dil band') + ') = LMP × ' + temuRulePctText(o.pct) + ' = <b>' + temuRuleMoney(o.after) + '</b>'));
             }
         }
 
@@ -218,7 +218,151 @@
                 });
             }
         };
-@else
+@elseif($temuRuleHoverKind === 'amazon')
+        /** Steps 1–4 on Amazon: Dil slab, CVR overlay, Diff rule and the final Target NROI. Returns the target, or null. */
+        function amzRuleDilTargetSteps(d, steps) {
+            if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) {
+                steps.push(temuRuleStep('skip', 'Sprc Dil', 'Needs a child SKU with INV &gt; 0 and an LP. This SKU has no Dil target.'));
+                return null;
+            }
+            const dil = amzPefDil(d);
+            const rule = amzDilGroiMatch(dil);
+            if (!rule) {
+                steps.push(temuRuleStep('skip', 'Sprc Dil', 'No Dil slab matches this SKU, so there is no Target NROI.'));
+                return null;
+            }
+            const slabNroi = (rule.nroi != null) ? rule.nroi : rule.groi;
+            steps.push(temuRuleStep('info', '1 · Dil slab',
+                'Dil <b>' + Number(dil || 0).toFixed(1) + '%</b> → slab <b>' + temuRuleEsc(rule.label) + '</b> → Target NROI <b>' + slabNroi + '%</b>'));
+            const cvrAdj = amzDilGroiCvrAdj(d);
+            const cvrTxt = Number(amzPefCvrL30Live(d)).toFixed(1) + '%';
+            const trend = amzPefCvrTrend(d);
+            if (cvrAdj) {
+                steps.push(temuRuleStep('ok', '2 · CVR overlay',
+                    'CVR ' + cvrTxt + ' with ' + trend + ' arrow → <b>' + (cvrAdj > 0 ? '+' : '') + cvrAdj + '</b> to Target NROI'));
+            } else {
+                steps.push(temuRuleStep('skip', '2 · CVR overlay',
+                    'CVR ' + cvrTxt + (trend ? ' (' + trend + ' arrow)' : '') + ' is inside the thresholds, so no adjustment'));
+            }
+            const diffAdj = amzDilGroiDiffAdj(d);
+            const diffPct = amzStdPrcDiffPct(d);
+            if (diffAdj) {
+                steps.push(temuRuleStep('ok', '3 · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% is above 20% → <b>+' + diffAdj + '</b> to Target NROI'));
+            } else {
+                steps.push(temuRuleStep('skip', '3 · Diff rule',
+                    diffPct === null ? 'Needs both Std Prc and Price. Not applied.' : ('Diff ' + diffPct.toFixed(1) + '% is not above 20%. No +10')));
+            }
+            const target = Number(amzDilGroiApplyCvrAdj(slabNroi, d));
+            steps.push(temuRuleStep('info', '4 · Target NROI', 'Final target <b>' + (isFinite(target) ? target : '—') + '%</b>'));
+            return isFinite(target) ? target : null;
+        }
+
+        /** S PRC on Amazon: every rule and exception behind the number. */
+        function temuRuleExplainSprice(d) {
+            const steps = [];
+            const notes = [];
+            const dilOn = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+            const final = amazonShownSprice(d);
+            const std = amazonStdPrice(d);
+            const lmp = lmpWithShipping(d);
+            let base = 0;
+            let n = 1;
+            if (dilOn) {
+                const target = amzRuleDilTargetSteps(d, steps);
+                const meta = (target != null) ? amzDilGroiMetaForRow(d) : null;
+                if (meta && meta.sprc > 0) {
+                    base = meta.sprc;
+                    const lp = parseFloat(d.LP_productmaster) || 0;
+                    const ship = parseFloat(d.Ship_productmaster) || 0;
+                    const ads = (typeof amazonAdsPctAtPrice === 'function') ? Number(amazonAdsPctAtPrice(base)) || 0 : (Number(AMAZON_CHANNEL_ADS_PCT) || 0);
+                    steps.push(temuRuleStep('ok', '5 · Price from target',
+                        '(LP ' + temuRuleMoney(lp) + ' × (1 + ' + target + '%) + Ship ' + temuRuleMoney(ship) + ') ÷ (0.80 − Ads ' + ads.toFixed(1) + '%) = <b>' + temuRuleMoney(base) + '</b>'));
+                }
+                n = 6;
+            } else {
+                base = Number(amzDisplayedSprice(d)) || 0;
+                const disc = (typeof computeAmzSumDiscountPct === 'function') ? Number(computeAmzSumDiscountPct(d)) : NaN;
+                steps.push(temuRuleStep('info', '1 · Std prc vs dil (switch ON)',
+                    'S PRC = Std Prc ' + temuRuleMoney(std) + ' × (1 − Sum disc ' + (isFinite(disc) ? disc.toFixed(1) : '0') + '% (Age + Dil + B Disc + 0 Sold + CVR + Review discounts)) = <b>' + temuRuleMoney(base) + '</b>'));
+                if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(d)) notes.push('Clearance SKU: priced only from the Clearance SNROI block (or shows "C" with no price).');
+                n = 2;
+            }
+            const shouldCap = base > 0 && amazonShouldCapSpriceToLmp(d, base);
+            const sg = (lmp > 0) ? amazonSgroiAtPrice(d, lmp) : null;
+            let pct = 2;
+            if (dilOn) {
+                pct = (typeof window.amzLmpReducePctForRow === 'function') ? Number(window.amzLmpReducePctForRow(d)) : 2;
+            } else {
+                pct = (typeof window.amzStdLmpReducePct === 'function') ? (Number(window.amzStdLmpReducePct(d)) || 0) : 0;
+            }
+            temuRuleLmpStep(steps, {
+                n: String(n), base: base, lmp: lmp, sgroiAtLmp: sg, pct: pct,
+                src: dilOn ? 'Dil band, LMP cap table' : 'LMP Reduce block',
+                after: shouldCap ? +(lmp * (1 - Math.min(99, Math.max(0, pct)) / 100)).toFixed(2) : null
+            });
+            const afterLmp = (base > 0 && typeof amazonCapSpriceToLmp === 'function') ? amazonCapSpriceToLmp(d, base) : base;
+            const capped = (std > 0 && afterLmp > 0) && Math.abs(afterLmp - final) < 0.0001 && Math.abs(final - std) < 0.0001;
+            if (!(std > 0)) {
+                steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
+            } else if (capped || (final > 0 && Math.abs(final - std) < 0.0001)) {
+                steps.push(temuRuleStep('ok', (n + 1) + ' · Std Prc maximum', 'Price is above Std Prc ' + temuRuleMoney(std) + ' → held at <b>' + temuRuleMoney(std) + '</b>.'));
+            } else {
+                steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Price is within Std Prc ' + temuRuleMoney(std) + '. Not capped.'));
+            }
+            if (lmp > 0 && std > 0 && lmp > std + 0.0001) notes.push('LMP ' + temuRuleMoney(lmp) + ' is above Std Prc ' + temuRuleMoney(std) + ': every price is capped at Std Prc. Review the Std price.');
+            if (amzPefInv(d) <= 0) notes.push('INV is 0, so no S PRC is set for this SKU.');
+            return {
+                title: 'S PRC ' + temuRuleMoney(final),
+                sub: (d['(Child) sku'] || '') + ' · ' + (dilOn ? 'Sprc Dil rule' : 'Std prc vs dil rule'),
+                steps: steps, notes: notes, finalNote: ''
+            };
+        }
+        window.temuRuleExplainers = {
+            sprice: temuRuleExplainSprice,
+            price: function(d) {
+                const steps = [];
+                const notes = [];
+                const price = parseFloat(d.price) || 0;
+                const shown = amazonShownSprice(d);
+                const std = amazonStdPrice(d);
+                const lmp = lmpWithShipping(d);
+                const inv = amzPefInv(d);
+                steps.push(temuRuleStep('info', '1 · Source', 'Price is the <b>live Amazon listing price</b>. It changes only when a new price is pushed to Amazon.'));
+                if (shown > 0) {
+                    if (Math.abs(shown - price) <= 0.009) {
+                        steps.push(temuRuleStep('ok', '2 · S PRC', 'S PRC ' + temuRuleMoney(shown) + ' is already live. Price matches S PRC.'));
+                    } else {
+                        const st = d.SPRICE_STATUS ? ' Status: <b>' + temuRuleEsc(d.SPRICE_STATUS) + '</b>.' : '';
+                        steps.push(temuRuleStep('warn', '2 · S PRC', 'S PRC ' + temuRuleMoney(shown) + ' is not live yet (Price ' + temuRuleMoney(price) + '). It goes live when it is pushed.' + st));
+                    }
+                } else {
+                    steps.push(temuRuleStep('skip', '2 · S PRC', 'No S PRC yet, so there is nothing waiting to be pushed.'));
+                }
+                const diff = amzStdPrcDiffPct(d);
+                if (diff !== null) {
+                    steps.push(temuRuleStep(diff > 20 || diff < -5 ? 'warn' : 'ok', '3 · vs Std Prc',
+                        'Std Prc ' + temuRuleMoney(std) + ' vs Price → Diff <b>' + diff.toFixed(1) + '%</b>'
+                        + (diff > 20 ? ' (above 20%: Sprc Dil adds +10 to the Target NROI)' : (diff < -5 ? ' (Price is above Std Prc)' : ' (normal)')) + '.'));
+                } else {
+                    steps.push(temuRuleStep('skip', '3 · vs Std Prc', 'Needs both Std Prc and Price.'));
+                }
+                if (lmp > 0 && price > 0) {
+                    const over = inv > 0 && price > lmp;
+                    steps.push(temuRuleStep(over ? 'warn' : 'ok', '4 · vs LMP',
+                        'LMP ' + temuRuleMoney(lmp) + ' · Price is ' + (price > lmp ? 'above' : (price < lmp ? 'below' : 'equal to')) + ' LMP' + (over ? ' (red triangle).' : '.')));
+                    if (price < lmp * 0.8) notes.push('Price is below 80% of LMP (purple triangle).');
+                } else {
+                    steps.push(temuRuleStep('skip', '4 · vs LMP', 'No LMP available.'));
+                }
+                if (price <= 0) notes.push('Price is $0. The listing price is missing.');
+                return {
+                    title: 'Price ' + temuRuleMoney(price),
+                    sub: (d['(Child) sku'] || '') + ' · where this price stands',
+                    steps: steps, notes: notes, finalNote: ''
+                };
+            }
+        };
+@elseif($temuRuleHoverKind === 'temu3')
         /** S PRC on Temu 3: every rule and exception behind the number. */
         function temuRuleExplainSprice(d) {
             const steps = [];

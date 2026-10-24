@@ -1323,6 +1323,7 @@
 
         @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'script'])
         @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'script'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'amazon'])
 
         function amazonNormalizeSkuKey(sku) {
             return String(sku == null ? '' : sku).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
@@ -1438,7 +1439,7 @@
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             return ((sprice * 0.80 - ship - lp) / lp) * 100;
         }
-        /** Sprc Dil rule: when S PRC reaches LMP it lands on LMP × 0.98 (same as AmazonDilGroiRule::DIL_LMP_REDUCE_PCT). */
+        /** Sprc Dil rule: when S PRC reaches LMP it lands on LMP − x% (x by Dil band; default 2% = LMP × 0.98, AmazonDilGroiRule::DIL_LMP_REDUCE_PCT). */
         const AMZ_DIL_LMP_REDUCE_PCT = 2;
         /** LMP is lower than S PRC, and SGROI at LMP is at least 20%. */
         function amazonShouldCapSpriceToLmp(rowData, sprice) {
@@ -1484,8 +1485,10 @@
                     // LMP Reduce block (Std prc vs dil): S PRC at LMP lands on LMP less the % of its Dil slab.
                     // Sprc Dil rule: S PRC at LMP = LMP × 0.98. Std prc vs dil rule: the LMP Reduce block (by Dil slab).
                     const dilRuleOn = (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil');
+                    // Sprc Dil: x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as eBay.
                     const reducePct = dilRuleOn
-                        ? AMZ_DIL_LMP_REDUCE_PCT
+                        ? ((typeof window.amzLmpReducePctForRow === 'function' && isFinite(Number(window.amzLmpReducePctForRow(rowData))))
+                            ? Number(window.amzLmpReducePctForRow(rowData)) : AMZ_DIL_LMP_REDUCE_PCT)
                         : ((typeof window.amzStdLmpReducePct === 'function') ? Number(window.amzStdLmpReducePct(rowData)) || 0 : 0);
                     out = +Number(lmp * (1 - (Math.min(99, Math.max(0, reducePct)) / 100))).toFixed(2);
                 }
@@ -4955,6 +4958,8 @@
                         title: "Price",
                         field: "price",
                         hozAlign: "center",
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         cellClick: function(e, cell) {
                             if (typeof $ === 'undefined') return;
                             const $btn = $(e.target).closest('.parent-pricing-eye-btn');
@@ -5051,6 +5056,8 @@
                         title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         headerSort: true,
                         // Sort by the price the cell shows (clearance rows show their rule price next to "C").
                         // Blank cells stay at the bottom in both directions.
