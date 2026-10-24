@@ -262,7 +262,11 @@ class EbayRuleSprice
             $rulePrice, $lmp, (float) ($input['lp'] ?? 0), (float) ($input['ship'] ?? 0), $margin, 0.0,
             $lmpReducePct
         );
-        $final = AmazonDilGroiRule::capToStdWhenNoLmp($afterLmp, $lmp, max($std, $rulePrice));
+        // Std Prc is the maximum. Std prc vs dil can price above Std on purpose (a negative discount), so its ceiling is
+        // the larger of the two. Sprc Dil (switch ON) solves a price from a Target NROI that knows nothing about Std,
+        // so Std Prc must cap it, the same as the page and Amazon do.
+        $stdCeiling = $dilOn ? $std : max($std, $rulePrice);
+        $final = AmazonDilGroiRule::capToStdWhenNoLmp($afterLmp, $lmp, $stdCeiling);
 
         return [
             'sprice' => round($final, 2),

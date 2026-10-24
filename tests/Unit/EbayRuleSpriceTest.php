@@ -276,6 +276,19 @@ class EbayRuleSpriceTest extends TestCase
         $this->assertSame(121.43, $custom['rule_price']);
     }
 
+    public function test_sprc_dil_price_is_capped_at_std_prc_even_when_lmp_is_above_std(): void
+    {
+        $dil = ['rules' => [AmazonDilGroiRule::make(0, 0, 40), AmazonDilGroiRule::make(0.1, 100, 115)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null)];
+        $base = ['lp' => 22.3, 'ship' => 8, 'percentage' => 0.83, 'ads' => 0.093, 'inv' => 10, 'dil' => 5, 'cvr' => 8, 'cvr_60' => 8, 'price' => 70];
+        // Rule price ~ $75.9, LMP $71.95 is above Std $65.99: the Std Prc maximum wins.
+        $out = EbayRuleSprice::price($this->pricer(), $this->input($base + ['lmp' => 71.95, 'std' => 65.99]), ['rule' => 'dil', 'dil' => $dil]);
+        $this->assertSame(65.99, $out['sprice']);
+        $this->assertTrue($out['std_capped']);
+        // A blank Std Prc does not cap.
+        $none = EbayRuleSprice::price($this->pricer(), $this->input($base + ['lmp' => 71.95, 'std' => 0]), ['rule' => 'dil', 'dil' => $dil]);
+        $this->assertGreaterThan(65.99, $none['sprice']);
+    }
+
     public function test_sprc_dil_switch_skips_a_sku_without_inventory(): void
     {
         $dil = ['rules' => [AmazonDilGroiRule::make(0, 100, 40)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null)];
