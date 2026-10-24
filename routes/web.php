@@ -7921,6 +7921,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/payslip/{payrollPayslip}/print', [PayrollController::class, 'viewPayslipPrint'])->name('payslip.print');
         Route::get('/month/{payrollMonth}/salary-slip/{user}', [PayrollController::class, 'downloadSalarySlip'])->name('salary-slip.download');
         Route::get('/increments', [PayrollController::class, 'incrementsList'])->name('increments.list');
+        Route::post('/increments', [PayrollController::class, 'storeIncrement'])->name('increments.store');
         Route::get('/increments/export', [PayrollController::class, 'exportIncrements'])->name('increments.export');
         Route::get('/previous-records', [PayrollController::class, 'previousRecords'])->name('previous-records');
         Route::post('/previous-records', [PayrollController::class, 'storePreviousRecord'])->name('previous-records.store');

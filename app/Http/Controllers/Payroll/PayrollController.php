@@ -260,11 +260,77 @@ class PayrollController extends Controller
             ];
         })->values();
 
+        // Everyone who appears on the Salary tab (active + shown in salary), so any of
+        // them can be picked in the Add Increment popup even if this month has no row yet.
+        $salaryUsers = User::query()
+            ->where('is_active', true)
+            ->where('show_in_salary', true)
+            ->orderBy('name')
+            ->get()
+            ->map(fn (User $u) => [
+                'user_id' => $u->id,
+                'name' => $u->name,
+                'region' => $u->salaryRegion(),
+            ])
+            ->values();
+
         return response()->json([
             'months' => $months,
+            'salary_users' => $salaryUsers,
             'default_month_id' => $defaultMonth?->id,
             'grand_totals' => (object) $grandTotals,
             'grand_count' => $grandCount,
+        ]);
+    }
+
+    /**
+     * Set (add / replace / clear) a user's increment for a payroll month. If the user has
+     * no sheet row for that month yet, one is created the same way the Salary tab does it
+     * (only possible when the user has recorded hours for the month).
+     */
+    public function storeIncrement(Request $request): JsonResponse
+    {
+        $this->authorizeManage();
+
+        $validated = $request->validate([
+            'payroll_month_id' => 'required|integer|exists:payroll_months,id',
+            'user_id' => 'required|integer|exists:users,id',
+            'increment' => 'required|numeric|min:0',
+        ]);
+
+        $month = PayrollMonth::findOrFail($validated['payroll_month_id']);
+        $this->ensureUnlocked($month);
+
+        $find = fn () => PayrollEmployeeSalary::where('payroll_month_id', $month->id)
+            ->where('user_id', $validated['user_id'])
+            ->first();
+
+        $row = $find();
+
+        if (! $row) {
+            $this->payroll->syncEmployeesFromUsers($month, [(int) $validated['user_id']]);
+            $row = $find();
+        }
+
+        if (! $row) {
+            $name = User::withTrashed()->find($validated['user_id'])?->name ?? 'This employee';
+
+            return response()->json([
+                'success' => false,
+                'message' => "{$name} has no payroll row (no recorded hours) for {$month->month_label}, so an increment cannot be added yet.",
+            ], 422);
+        }
+
+        $row->update([
+            'increment' => $validated['increment'],
+            'edited_by' => $request->user()?->name,
+            'edited_at' => now(),
+        ]);
+        $this->payroll->recalculateMonth($month);
+
+        return response()->json([
+            'success' => true,
+            'row' => $this->employeeRowPayload($row->fresh()->load('user')),
         ]);
     }
 

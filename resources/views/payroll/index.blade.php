@@ -106,6 +106,17 @@
     .inc-icon-btn { border: 0; background: transparent; padding: .15rem .3rem; border-radius: 6px; color: #6b7280; line-height: 1; font-size: 1rem; }
     .inc-icon-btn:hover { background: #eef2ff; color: #4338ca; }
     .inc-icon-btn.danger:hover { background: #fee2e2; color: #b91c1c; }
+    .inc-combo { position: relative; }
+    .inc-combo-list {
+        position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 1060;
+        max-height: 250px; overflow-y: auto; background: #fff;
+        border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.14);
+    }
+    .inc-combo-item { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .45rem .75rem; cursor: pointer; font-size: .86rem; }
+    .inc-combo-item:hover, .inc-combo-item.is-active { background: #eef2ff; }
+    .inc-combo-item .meta { font-size: .72rem; color: #6b7280; white-space: nowrap; }
+    .inc-combo-item .meta.has { color: #047857; font-weight: 600; }
+    .inc-combo-empty { padding: .75rem; text-align: center; color: #6b7280; font-size: .82rem; }
     .inc-empty { text-align: center; padding: 2.5rem 1rem; color: #6b7280; border: 1px dashed #d1d5db; border-radius: 10px; background: #fafafa; }
     .inc-empty .big { font-size: 2rem; line-height: 1; margin-bottom: .4rem; }
     .inc-empty .t { font-weight: 600; color: #374151; margin-bottom: .25rem; }
@@ -402,7 +413,10 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-semibold">Employee</label>
-                        <select id="incModalEmployee" class="form-select" required></select>
+                        <div class="inc-combo" id="incCombo">
+                            <input type="text" id="incComboInput" class="form-control" placeholder="Search employee name…" autocomplete="off">
+                            <div class="inc-combo-list" id="incComboList" hidden></div>
+                        </div>
                         <div class="form-text" id="incModalCurrent"></div>
                     </div>
                     <div class="mb-1">
@@ -1270,8 +1284,8 @@
                 + '<td><span class="inc-person"><span class="inc-avatar">' + esc(initials(u.name)) + '</span>' + esc(u.name) + '</span></td>'
                 + '<td class="num"><span class="inc-amt">' + esc(fmt(u.increment, u.region)) + '</span></td>'
                 + (canManage ? '<td class="act">' + (editable
-                    ? '<button type="button" class="inc-icon-btn inc-edit" title="Edit" data-month="' + m.month_id + '" data-row="' + u.row_id + '"><i class="ri-pencil-line"></i></button>'
-                    + '<button type="button" class="inc-icon-btn danger inc-remove" title="Remove increment" data-month="' + m.month_id + '" data-row="' + u.row_id + '"><i class="ri-delete-bin-line"></i></button>'
+                    ? '<button type="button" class="inc-icon-btn inc-edit" title="Edit" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="ri-pencil-line"></i></button>'
+                    + '<button type="button" class="inc-icon-btn danger inc-remove" title="Remove increment" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="ri-delete-bin-line"></i></button>'
                     : '<span class="text-muted" title="Month is locked">🔒</span>') + '</td>' : '')
                 + '</tr>').join('');
             const emptyRow = m.users.length ? '' : '<tr><td colspan="' + (canManage ? 4 : 3) + '" class="text-center text-muted py-4">No increments in this month yet.</td></tr>';
@@ -1322,29 +1336,102 @@
     // ----- Add / edit increment modal -----
     const incModalEl = document.getElementById('incrementModal');
     const incModalMonth = document.getElementById('incModalMonth');
-    const incModalEmployee = document.getElementById('incModalEmployee');
     const incModalAmount = document.getElementById('incModalAmount');
     const incModalCurrent = document.getElementById('incModalCurrent');
     const incModalCurrency = document.getElementById('incModalCurrency');
     const incModalError = document.getElementById('incModalError');
+    const incComboInput = document.getElementById('incComboInput');
+    const incComboList = document.getElementById('incComboList');
+    let incSelected = null;      // { user_id, name, region, increment }
+    let incComboItems = [];      // currently rendered options
+    let incComboActive = -1;
 
-    function incModalFillEmployees(monthId, selectedRowId) {
+    // Everyone on the Salary tab (+ anyone already on this month's sheet), with this month's current increment.
+    function incModalEmployeesForMonth(monthId) {
         const m = findIncMonth(monthId);
-        const emps = m?.employees || [];
-        incModalEmployee.innerHTML = '<option value="">Select employee…</option>'
-            + emps.map((e) => '<option value="' + e.row_id + '">' + esc(e.name) + (e.increment ? ' (current: ' + esc(fmt(e.increment, e.region)) + ')' : '') + '</option>').join('');
-        if (selectedRowId) incModalEmployee.value = String(selectedRowId);
-        incModalOnEmployee();
+        const byUser = {};
+        (incrementData?.salary_users || []).forEach((u) => {
+            byUser[u.user_id] = { user_id: u.user_id, name: u.name, region: u.region, increment: 0 };
+        });
+        (m?.employees || []).forEach((e) => {
+            byUser[e.user_id] = { user_id: e.user_id, name: e.name, region: e.region, increment: e.increment || 0 };
+        });
+        return Object.values(byUser).sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
     }
 
-    function incModalOnEmployee() {
-        const m = findIncMonth(incModalMonth.value);
-        const e = (m?.employees || []).find((x) => String(x.row_id) === String(incModalEmployee.value));
-        incModalCurrency.textContent = e ? fmt(0, e.region).replace(/[0-9,.\s]+$/, '').trim() || '₹' : '₹';
-        incModalCurrent.textContent = e && e.increment
-            ? 'Current increment: ' + fmt(e.increment, e.region) + '. Saving will replace it.'
-            : '';
+    function incSetSelected(emp) {
+        incSelected = emp || null;
+        if (emp) {
+            incComboInput.value = emp.name;
+            incModalCurrency.textContent = (fmt(0, emp.region).replace(/[0-9,.\s]+$/, '').trim()) || '₹';
+            incModalCurrent.textContent = emp.increment
+                ? 'Current increment: ' + fmt(emp.increment, emp.region) + '. Saving will replace it.'
+                : '';
+            if (emp.increment) incModalAmount.value = emp.increment;
+        } else {
+            incModalCurrent.textContent = '';
+            incModalCurrency.textContent = '₹';
+        }
     }
+
+    function incComboRender() {
+        const term = incComboInput.value.toLowerCase().trim();
+        const all = incModalEmployeesForMonth(incModalMonth.value);
+        incComboItems = all.filter((e) => !term || String(e.name).toLowerCase().includes(term));
+        incComboActive = incComboItems.length ? 0 : -1;
+        if (!incComboItems.length) {
+            incComboList.innerHTML = '<div class="inc-combo-empty">No employee found</div>';
+        } else {
+            incComboList.innerHTML = incComboItems.map((e, i) =>
+                '<div class="inc-combo-item' + (i === incComboActive ? ' is-active' : '') + '" data-idx="' + i + '">'
+                + '<span>' + esc(e.name) + '</span>'
+                + '<span class="meta' + (e.increment ? ' has' : '') + '">'
+                + (e.increment ? 'Current ' + esc(fmt(e.increment, e.region)) : esc(countryLabel(e.region))) + '</span></div>'
+            ).join('');
+        }
+        incComboList.hidden = false;
+    }
+
+    function incComboHighlight(delta) {
+        if (!incComboItems.length) return;
+        incComboActive = (incComboActive + delta + incComboItems.length) % incComboItems.length;
+        incComboList.querySelectorAll('.inc-combo-item').forEach((el, i) => {
+            el.classList.toggle('is-active', i === incComboActive);
+            if (i === incComboActive) el.scrollIntoView({ block: 'nearest' });
+        });
+    }
+
+    incComboInput?.addEventListener('focus', () => { if (!incComboInput.disabled) incComboRender(); });
+    incComboInput?.addEventListener('input', () => {
+        if (incSelected && incComboInput.value !== incSelected.name) incSetSelected(null);
+        incComboRender();
+    });
+    incComboInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (incComboList.hidden) incComboRender(); else incComboHighlight(1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); incComboHighlight(-1); }
+        else if (e.key === 'Enter') {
+            if (!incComboList.hidden && incComboActive >= 0 && incComboItems[incComboActive]) {
+                e.preventDefault();
+                incSetSelected(incComboItems[incComboActive]);
+                incComboList.hidden = true;
+                incModalAmount.focus();
+            }
+        } else if (e.key === 'Escape' && !incComboList.hidden) {
+            e.stopPropagation();
+            incComboList.hidden = true;
+        }
+    });
+    incComboList?.addEventListener('mousedown', (e) => {
+        const item = e.target.closest('.inc-combo-item');
+        if (!item) return;
+        e.preventDefault();
+        incSetSelected(incComboItems[Number(item.dataset.idx)]);
+        incComboList.hidden = true;
+        incModalAmount.focus();
+    });
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#incCombo')) incComboList && (incComboList.hidden = true);
+    });
 
     function openIncrementModal(opts) {
         if (!incrementData || !incModalEl) return;
@@ -1355,17 +1442,36 @@
         const sel = document.getElementById('incrementMonthSelect')?.value;
         const preferred = opts.monthId || (sel && sel !== 'all' ? sel : incrementData.default_month_id);
         incModalMonth.value = open.some((m) => String(m.month_id) === String(preferred)) ? String(preferred) : String(open[0].month_id);
-        incModalFillEmployees(incModalMonth.value, opts.rowId);
-        const emp = (findIncMonth(incModalMonth.value)?.employees || []).find((x) => String(x.row_id) === String(opts.rowId));
-        incModalAmount.value = emp && emp.increment ? emp.increment : '';
+
+        incModalAmount.value = '';
+        incComboInput.value = '';
+        incSetSelected(null);
+        incComboList.hidden = true;
         incModalError.hidden = true;
-        document.getElementById('incrementModalTitle').textContent = opts.rowId ? 'Edit Increment' : 'Add Increment';
-        incModalMonth.disabled = !!opts.rowId;
-        incModalEmployee.disabled = !!opts.rowId;
+
+        if (opts.userId) {
+            const emp = incModalEmployeesForMonth(incModalMonth.value).find((x) => String(x.user_id) === String(opts.userId));
+            if (emp) incSetSelected(emp);
+        }
+        document.getElementById('incrementModalTitle').textContent = opts.userId ? 'Edit Increment' : 'Add Increment';
+        incModalMonth.disabled = !!opts.userId;
+        incComboInput.disabled = !!opts.userId;
         bootstrap.Modal.getOrCreateInstance(incModalEl).show();
+        if (!opts.userId) setTimeout(() => incComboInput.focus(), 300);
     }
 
     document.getElementById('btnAddIncrement')?.addEventListener('click', () => openIncrementModal());
+    incModalMonth?.addEventListener('change', () => {
+        // Re-resolve the chosen employee against the new month (current increment differs per month).
+        const keep = incSelected ? incSelected.user_id : null;
+        incModalAmount.value = '';
+        incSetSelected(null);
+        incComboInput.value = '';
+        if (keep) {
+            const emp = incModalEmployeesForMonth(incModalMonth.value).find((x) => x.user_id === keep);
+            if (emp) incSetSelected(emp);
+        }
+    });
 
     // Excel download follows the month dropdown: All Months = one tab per month, otherwise just that month.
     document.getElementById('btnDownloadIncrements')?.addEventListener('click', (e) => {
@@ -1373,29 +1479,21 @@
         const month = document.getElementById('incrementMonthSelect')?.value || 'all';
         window.location.href = `${base}/increments/export?month=${encodeURIComponent(month)}`;
     });
-    incModalMonth?.addEventListener('change', () => incModalFillEmployees(incModalMonth.value));
-    incModalEmployee?.addEventListener('change', () => {
-        incModalOnEmployee();
-        const m = findIncMonth(incModalMonth.value);
-        const e = (m?.employees || []).find((x) => String(x.row_id) === String(incModalEmployee.value));
-        if (e && e.increment) incModalAmount.value = e.increment;
-    });
 
-    async function saveIncrement(rowId, amount) {
-        return api(`${base}/employee-salary/${rowId}`, 'PUT', { increment: amount });
+    function saveIncrement(monthId, userId, amount) {
+        return api(`${base}/increments`, 'POST', { payroll_month_id: monthId, user_id: userId, increment: amount });
     }
 
     document.getElementById('formIncrement')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const rowId = incModalEmployee.value;
         const amount = parseFloat(incModalAmount.value);
         incModalError.hidden = true;
-        if (!rowId) { incModalError.textContent = 'Please select an employee.'; incModalError.hidden = false; return; }
+        if (!incSelected) { incModalError.textContent = 'Please select an employee from the list.'; incModalError.hidden = false; return; }
         if (isNaN(amount) || amount < 0) { incModalError.textContent = 'Enter a valid amount.'; incModalError.hidden = false; return; }
         const btn = document.getElementById('incModalSave');
         btn.disabled = true;
         try {
-            await saveIncrement(rowId, amount);
+            await saveIncrement(incModalMonth.value, incSelected.user_id, amount);
             bootstrap.Modal.getInstance(incModalEl)?.hide();
             await loadIncrements();
             salarySheetStale = true;
@@ -1411,12 +1509,12 @@
         const edit = e.target.closest('.inc-edit');
         const remove = e.target.closest('.inc-remove');
         if (edit) {
-            openIncrementModal({ monthId: edit.dataset.month, rowId: edit.dataset.row });
+            openIncrementModal({ monthId: edit.dataset.month, userId: edit.dataset.user });
         } else if (remove) {
             if (!confirm('Remove this increment (set to 0)?')) return;
             remove.disabled = true;
             try {
-                await saveIncrement(remove.dataset.row, 0);
+                await saveIncrement(remove.dataset.month, remove.dataset.user, 0);
                 await loadIncrements();
                 salarySheetStale = true;
             } catch (err) {
