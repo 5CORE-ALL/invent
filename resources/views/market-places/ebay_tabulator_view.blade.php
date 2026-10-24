@@ -1477,6 +1477,21 @@
             if (sgroiAtLmp != null && sgroiAtLmp < 20) return false;
             return true;
         }
+        /** The rule price before the LMP cap and the Std Prc maximum: the Sprc Dil price (switch ON) or the Std prc vs dil price. 0 when none. */
+        function ebay1LiveRuleSprice(rowData) {
+            if (!rowData || rowData.is_parent_summary) return 0;
+            try {
+                if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                    const meta = (typeof ebayDilGroiMetaForRow === 'function') ? ebayDilGroiMetaForRow(rowData) : null;
+                    return (meta && meta.rawSprc > 0) ? Number(meta.rawSprc) : 0;
+                }
+                if (typeof window.chStdPriceForRow === 'function') {
+                    const n = Number(window.chStdPriceForRow(rowData)) || 0;
+                    return n > 0 ? n : 0;
+                }
+            } catch (e) { /* rule not loaded yet */ }
+            return 0;
+        }
         function ebayCapSpriceToLmp(rowData, sprice) {
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
@@ -5414,58 +5429,54 @@
                         editable: false,
                         cellMouseEnter: function(e, cell) { ebayRuleTipShow('sprice', cell); },
                         cellMouseLeave: function() { ebayRuleTipScheduleHide(); },
-                        headerTooltip: "Read-only. Same as Amazon: Dil below LMP stays Dil. Dil at/above LMP becomes LMP only when SGROI at that LMP is ≥ 20%; if SGROI at LMP is < 20%, Dil is kept. When LMP is missing, Std Prc is the maximum. Red triangle stays when S PRC ≥ LMP.",
+                        headerTooltip: "Read-only. Same as Amazon: Dil below LMP stays Dil. Dil at/above LMP becomes LMP only when SGROI at that LMP is ≥ 20%; if SGROI at LMP is < 20%, Dil is kept. Std Prc is always the maximum. Red triangle = S PRC reached LMP. Orange triangle = LMP is above Std Prc, S PRC capped at Std (review Std). Brown triangle = capped at Std Prc. Blue triangle = S PRC ≠ Price. Red C = clearance SKU.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
-                            const raw = (typeof ebayDisplayedSprice === 'function')
+                            // The number shown is the saved S PRC (the server saves and pushes it).
+                            const saved = (typeof ebayDisplayedSprice === 'function')
                                 ? ebayDisplayedSprice(rowData)
                                 : ((typeof ebayRawRuleSprice === 'function')
                                     ? ebayRawRuleSprice(rowData)
                                     : ((typeof chPromoSavedOrLiveSprice === 'function')
                                         ? chPromoSavedOrLiveSprice(rowData)
                                         : (parseFloat(rowData.SPRICE) || 0)));
-                            if (!(raw > 0)) return '';
+                            if (!(saved > 0)) return '';
+                            const sprice = saved;
 
                             const lmpNow = (typeof ebayEffectiveLmp === 'function')
                                 ? ebayEffectiveLmp(rowData)
                                 : (parseFloat(rowData.lmp_price) || 0);
-                            const sprice = raw;
-                            // Clearance "C" and Std Prc cap marks (same as Amazon). A Std cap replaces the red LMP triangle.
-                            const stdM = (window.chClr && typeof chClr.stdMarks === 'function') ? chClr.stdMarks(rowData, sprice, lmpNow) : { kind: '', color: '', html: '' };
-                            const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
-                            const appliedLmp = wouldHitLmp && sprice + 0.0001 <= lmpNow + 0.0001;
-                            const atOrAboveLmp = wouldHitLmp && !stdM.kind;
+                            const stdNow = parseFloat(rowData.STANDARD_PRICE) || 0;
+                            // Capping icons need the rule price BEFORE the caps (a saved price is already capped):
+                            // the live rule price, then the same LMP cap + Std Prc maximum the grid applies. Same as Amazon.
+                            const liveRaw = (typeof ebay1LiveRuleSprice === 'function') ? ebay1LiveRuleSprice(rowData) : 0;
+                            const raw = liveRaw > 0 ? liveRaw : saved;
+                            const capped = (typeof ebayCapSpriceToLmp === 'function') ? Number(ebayCapSpriceToLmp(rowData, raw)) : raw;
+                            const shown = capped > 0 ? capped : raw;
                             const sgroiAtLmp = (typeof ebaySgroiAtPrice === 'function')
                                 ? ebaySgroiAtPrice(rowData, lmpNow)
                                 : null;
+                            const cap = (window.chClr && typeof chClr.capFlags === 'function')
+                                ? chClr.capFlags({ raw: raw, shown: shown, lmp: lmpNow, std: stdNow, sgroiAtLmp: sgroiAtLmp })
+                                : { color: '', redTri: '', reviewTri: '', stdTri: '' };
 
                             const sku = rowData['(Child) sku'] || '';
-                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
-
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
+                            const dot = (typeof ebayStdPrcChangeDotHtml === 'function') ? ebayStdPrcChangeDotHtml(sprice, ebayPrice, sku) : '';
 
                             let formattedValue = '$' + Number(sprice).toFixed(2);
-                            if (atOrAboveLmp) {
-                                formattedValue = '<span style="color: #dc3545; font-weight: 600;">' + formattedValue + '</span>';
-                            } else if (stdM.color) {
-                                formattedValue = '<span style="color: ' + stdM.color + '; font-weight: 600;">' + formattedValue + '</span>';
+                            if (cap.color) {
+                                formattedValue = '<span style="color: ' + cap.color + '; font-weight: 600;">' + formattedValue + '</span>';
                             }
                             const blueTri = (typeof window.ebay1HasBlueTriangle === 'function' && window.ebay1HasBlueTriangle(rowData))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
                                 : '';
-                            const redTri = atOrAboveLmp
-                                ? (appliedLmp
-                                    ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                        + lmpNow.toFixed(2) + '"></i>'
-                                    : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
-                                        + lmpNow.toFixed(2) + ' not applied — SGROI would be '
-                                        + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?') + '% (&lt; 20%)"></i>')
-                                : '';
+                            const clearanceBadge = (window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '';
 
-                            return '<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">'
-                                + formattedValue + ((window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '') + blueTri + redTri + stdM.html + '</span>';
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
+                                + dot + formattedValue + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + '</span>';
                         },
                         width: 118
                     },

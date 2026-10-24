@@ -65,6 +65,52 @@
                 return out;
             }
 
+            /**
+             * All S PRC capping icons, same rules as /amazon-tabulator-view (copied from its S PRC cell).
+             * raw = the rule price before any cap, shown = that price after the LMP cap and the Std Prc maximum.
+             *   red triangle    : raw reached LMP (capped at LMP, or LMP not applied because SGROI at LMP < 20%)
+             *   orange triangle : LMP is above Std Prc and the price stopped at Std Prc (review the Std price)
+             *   brown triangle  : the price was capped at Std Prc
+             * An orange or brown cap replaces the red one. `color` is the value colour to use ('' = none).
+             * o = { raw, shown, lmp, std, sgroiAtLmp }
+             */
+            function capFlags(o) {
+                var raw = Number(o.raw) || 0;
+                var shown = Number(o.shown) || 0;
+                var lmpNow = Number(o.lmp) || 0;
+                var stdNow = Number(o.std) || 0;
+                var sgroiAtLmp = (o.sgroiAtLmp == null || !isFinite(o.sgroiAtLmp)) ? null : Number(o.sgroiAtLmp);
+                var wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
+                var appliedLmp = wouldHitLmp && shown + 0.0001 <= lmpNow + 0.0001;
+                var atOrAboveLmp = wouldHitLmp;
+                var lmpAboveStd = lmpNow > 0 && stdNow > 0 && lmpNow + 0.0001 > stdNow;
+                var stdCappedHighLmp = lmpAboveStd && raw + 0.0001 > stdNow && shown + 0.0001 <= stdNow + 0.0001;
+                var stdCapped = !lmpAboveStd && !appliedLmp && stdNow > 0 && raw + 0.0001 > stdNow && shown + 0.0001 <= stdNow + 0.0001;
+                var tri = function (color, title) {
+                    return '<i class="fas fa-exclamation-triangle" style="color:' + color + ';font-size:10px;margin-left:3px;" title="' + title + '"></i>';
+                };
+                var redTri = (atOrAboveLmp && !stdCappedHighLmp && !stdCapped)
+                    ? (appliedLmp
+                        ? tri('#dc3545', 'S PRC capped at LMP $' + lmpNow.toFixed(2))
+                        : tri('#dc3545', 'LMP $' + lmpNow.toFixed(2) + ' not applied — SGROI would be '
+                            + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?') + '% (&lt; 20%)'))
+                    : '';
+                var reviewTri = stdCappedHighLmp
+                    ? tri('#fd7e14', 'LMP $' + lmpNow.toFixed(2) + ' is above Std Prc $' + stdNow.toFixed(2) + ' — S PRC capped at Std. Review Std price.')
+                    : '';
+                var stdTri = stdCapped
+                    ? tri('#b45309', 'S PRC capped at Std Prc $' + stdNow.toFixed(2))
+                    : '';
+                var color = '';
+                if (atOrAboveLmp && !stdCappedHighLmp && !stdCapped) color = '#dc3545';
+                else if (stdCappedHighLmp) color = '#fd7e14';
+                else if (stdCapped) color = '#b45309';
+                return {
+                    atOrAboveLmp: atOrAboveLmp, appliedLmp: appliedLmp, stdCapped: stdCapped, stdCappedHighLmp: stdCappedHighLmp,
+                    color: color, redTri: redTri, reviewTri: reviewTri, stdTri: stdTri
+                };
+            }
+
             function rows() {
                 var t = ctx && ctx.getTable ? ctx.getTable() : null;
                 if (!t || typeof t.getData !== 'function') return [];
@@ -130,6 +176,7 @@
                 isClearance: isClearance,
                 markHtml: markHtml,
                 stdMarks: stdMarks,
+                capFlags: capFlags,
                 refresh: refresh,
                 filterOn: function () { return filterOn; },
                 filterFn: function (d) { return isClearance(d); }
