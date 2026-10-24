@@ -324,6 +324,13 @@
                             : apply that Adj {{ $ebaySprcDilTargetLabel }} to the Target {{ $ebaySprcDilTargetLabel }} (Count updates as you edit).
                         </li>
                         @endif
+                        @if($ebaySprcDilChannel === 'ebay1')
+                        <li>
+                            <strong>When</strong> the <strong>Diff</strong> column
+                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt; 20%</strong>:
+                            add <strong>+10</strong> to the Target {{ $ebaySprcDilTargetLabel }}.
+                        </li>
+                        @endif
                         @if(!empty($ebaySprcDilUsesAmzFloor))
                         <li>
                             <strong>When</strong> that Dil S PRC is <strong>below A Price</strong>:
@@ -389,6 +396,13 @@
                             @endif
                             : apply that Adj {{ $ebaySprcDilTargetLabel }} to the Dil slab Target {{ $ebaySprcDilTargetLabel }}
                             (Count updates as you edit).
+                        </li>
+                        @endif
+                        @if($ebaySprcDilChannel === 'ebay1')
+                        <li>
+                            <strong>When</strong> the <strong>Diff</strong> column
+                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt; 20%</strong>:
+                            add <strong>+10</strong> to the Target {{ $ebaySprcDilTargetLabel }}.
                         </li>
                         @endif
                         @if(!empty($ebaySprcDilIsMacys))
@@ -1057,8 +1071,18 @@
             if (trend === 'up' && cvr > cfg.up_gt) return cfg.up_adj;
             return 0;
         }
+        /** eBay 1 only: Diff = (Std Prc − Price) / Price > 20% adds +10 to the Target. */
+        const EBAY_DIFF_ADJ_GT_PCT = 20;
+        const EBAY_DIFF_ADJ_POINTS = 10;
+        function ebayDilGroiDiffAdj(d) {
+            if (EBAY_DIL_GROI_CHANNEL !== 'ebay1' || !d) return 0;
+            const std = parseFloat(d.STANDARD_PRICE) || 0;
+            const price = parseFloat(d['eBay Price']) || 0;
+            if (!(std > 0) || !(price > 0)) return 0;
+            return (((std - price) / price) * 100 > EBAY_DIFF_ADJ_GT_PCT) ? EBAY_DIFF_ADJ_POINTS : 0;
+        }
         function ebayDilGroiApplyCvrAdj(slabGroi, d) {
-            const groi = ebayDgRound2((Number(slabGroi) || 0) + ebayDilGroiCvrAdj(d));
+            const groi = ebayDgRound2((Number(slabGroi) || 0) + ebayDilGroiCvrAdj(d) + ebayDilGroiDiffAdj(d));
             return groi < 0 ? 0 : groi;
         }
         /** Vinted / Instagram / Depop: channel L30 = 0 still uses the OV Dil % slab (OV L30 ÷ INV). */
@@ -1371,6 +1395,7 @@
             }
             const slabGroi = groi;
             const cvrAdj = ebayDilGroiCvrAdj(d);
+            const diffAdj = ebayDilGroiDiffAdj(d);
             groi = ebayDilGroiApplyCvrAdj(slabGroi, d);
             const rawSprc = ebaySpriceFromGroi(d, groi);
             if (!(rawSprc > 0)) return null;
@@ -1413,6 +1438,7 @@
                 slabGroi: slabGroi,
                 groi: groi,
                 cvrAdj: cvrAdj,
+                diffAdj: diffAdj,
                 sprc: sprc,
                 rawSprc: rawSprc,
                 amzApplied: amzApplied,
@@ -1439,7 +1465,13 @@
                 const why = meta.cvrAdj > 0
                     ? ('CVR Up > ' + cfg.up_gt + '% and up arrow')
                     : ('CVR Down < ' + cfg.down_lt + '% and down arrow');
-                tip += ' ' + sign + meta.cvrAdj + ' (' + why + ') → ' + meta.groi + '%';
+                tip += ' ' + sign + meta.cvrAdj + ' (' + why + ')';
+            }
+            if (meta.diffAdj) {
+                tip += ' +' + meta.diffAdj + ' (Diff > ' + EBAY_DIFF_ADJ_GT_PCT + '%)';
+            }
+            if (meta.cvrAdj || meta.diffAdj) {
+                tip += ' → ' + meta.groi + '%';
             }
             return tip + (meta.lmpCapped ? ' → LMP $' : ' → $') + Number(meta.sprc).toFixed(2);
         }

@@ -94,6 +94,7 @@ class EbayRuleSprice
             'sku' => $sku,
             'inv' => $inv,
             'std' => round((float) ($row['STANDARD_PRICE'] ?? 0), 2),
+            'price' => (float) ($row['eBay Price'] ?? 0),
             'dil' => $inv > 0 ? ($ov / $inv) * 100 : 0.0,
             'cvr' => $cvr30,
             'cvr_60' => $cvr45,
@@ -160,8 +161,27 @@ class EbayRuleSprice
             ? AmazonDilGroiRule::defaultsForChannel($channel)
             : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
 
-        return ['rule' => 'dil', 'dil' => ['rules' => $rules, 'cvr_adj' => $unpacked['cvr_adj']]];
+        return ['rule' => 'dil', 'dil' => [
+            'rules' => $rules,
+            'cvr_adj' => $unpacked['cvr_adj'],
+            // eBay 1 only: Diff = (Std Prc − Price) / Price above this % adds DIFF_ADJ_POINTS to the Target NROI.
+            'diff_adj' => $channel === 'ebay1',
+        ]];
     }
+
+    /** Diff% = (Std Prc − Price) / Price × 100; null when either is missing. */
+    public static function stdPriceDiffPct(float $std, float $price): ?float
+    {
+        if (! ($std > 0) || ! ($price > 0)) {
+            return null;
+        }
+
+        return (($std - $price) / $price) * 100;
+    }
+
+    public const DIFF_ADJ_GT_PCT = 20.0;
+
+    public const DIFF_ADJ_POINTS = 10.0;
 
     /**
      * Sprc Dil price: the Dil slab (nearest slab outside them) gives a Target NROI%, the CVR overlay adds or takes off
@@ -185,6 +205,12 @@ class EbayRuleSprice
             (float) ($input['cvr_60'] ?? 0),
             $dil['cvr_adj']
         );
+        if (! empty($dil['diff_adj'])) {
+            $diffPct = self::stdPriceDiffPct((float) ($input['std'] ?? 0), (float) ($input['price'] ?? 0));
+            if ($diffPct !== null && $diffPct > self::DIFF_ADJ_GT_PCT) {
+                $nroi += self::DIFF_ADJ_POINTS;
+            }
+        }
         $margin = (float) ($input['percentage'] ?? 0);
         if ($margin > 1) {
             $margin /= 100;

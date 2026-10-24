@@ -2600,6 +2600,34 @@
                 'background:' + meta.color + ';flex-shrink:0;" title="' + escAttr(tip) + '"></span>';
         }
 
+        /** Diff % = (Std Prc − eBay Price) / eBay Price × 100; null when either value is missing. */
+        function ebayStdPrcDiffPct(rowData) {
+            if (!rowData || rowData.is_parent_summary) return null;
+            const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+            const price = parseFloat(rowData['eBay Price']) || 0;
+            if (!(std > 0) || !(price > 0)) return null;
+            return ((std - price) / price) * 100;
+        }
+
+        /** Renders the Diff cell: Pink bg > 20%, Red bg < -5%, else Green. Styles the cell element itself. */
+        function ebayRenderStdPrcDiff(el, rowData) {
+            const pct = ebayStdPrcDiffPct(rowData);
+            let html = '';
+            let bg = '';
+            let color = '';
+            if (pct !== null) {
+                if (pct > 20) { bg = '#ffb6d9'; color = '#000'; }
+                else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+                else { bg = '#28a745'; color = '#fff'; }
+                html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+            }
+            if (el) {
+                el.style.backgroundColor = bg;
+                el.style.color = color;
+            }
+            return html;
+        }
+
         /** Apply STANDARD_PRICE to a SKU row + all Sku Link LMP siblings in the grid */
         function applyEbayStandardPriceToLinkedRows(sku, std, appliedSkus) {
             if (typeof table === 'undefined' || !table) return null;
@@ -4675,6 +4703,26 @@
                     },
 
                     {
+                        title: "Diff",
+                        field: "std_prc_diff",
+                        hozAlign: "center",
+                        width: 62,
+                        headerSort: true,
+                        headerTooltip: "Diff = (Std Prc − Price) / Price. Pink > 20%, Red < −5%, otherwise Green.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = ebayStdPrcDiffPct(aRow.getData());
+                            const bv = ebayStdPrcDiffPct(bRow.getData());
+                            if (av === null && bv === null) return 0;
+                            if (av === null) return -1;
+                            if (bv === null) return 1;
+                            return av - bv;
+                        },
+                        formatter: function(cell) {
+                            return ebayRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                        }
+                    },
+
+                    {
                         title: "Price",
                         field: "eBay Price",
                         hozAlign: "center",
@@ -5540,6 +5588,16 @@
                 });
             });
 
+            // Keep the Diff column in sync when Std Prc / eBay Price change via row.update()
+            table.on('rowUpdated', function(row) {
+                try {
+                    var diffCell = row.getCell('std_prc_diff');
+                    if (!diffCell) return;
+                    var el = diffCell.getElement();
+                    el.innerHTML = ebayRenderStdPrcDiff(el, row.getData());
+                } catch (e) { /* ignore */ }
+            });
+
             table.on('cellEdited', function(cell) {
                 var row = cell.getRow();
                 var data = row.getData();
@@ -6276,7 +6334,7 @@
 
                 // Pricing
                 if (
-                    /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc)$/i.test(f) ||
+                    /^(eBay Price|STANDARD_PRICE|std_prc_diff|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc)$/i.test(f) ||
                     /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|prmt|cpn|dsc|appr|push\s*prc|push\s*std\s*prc|sale\s*event|push\s*cpn)\b/i.test(tl) ||
                     /^\+$/i.test(t)
                 ) {

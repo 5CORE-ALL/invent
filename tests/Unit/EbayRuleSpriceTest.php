@@ -221,6 +221,24 @@ class EbayRuleSpriceTest extends TestCase
         $this->assertSame(90.0, $std['sprice']);
     }
 
+    public function test_sprc_dil_adds_10_to_target_nroi_when_std_vs_price_diff_is_over_20_percent(): void
+    {
+        $dil = ['rules' => [AmazonDilGroiRule::make(0, 0, 40), AmazonDilGroiRule::make(0.1, 100, 40)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null), 'diff_adj' => true];
+        $context = ['rule' => 'dil', 'dil' => $dil];
+        $base = ['lp' => 50, 'ship' => 5, 'lmp' => 0, 'percentage' => 0.8, 'ads' => 0.10, 'inv' => 10, 'dil' => 5, 'cvr' => 8, 'cvr_60' => 8, 'std' => 500];
+
+        // Diff = (500 − 100) / 100 = 400% > 20% → Target 50%: (50 × 1.5 + 5) ÷ 0.70 = 114.29
+        $over = EbayRuleSprice::price($this->pricer(), $this->input($base + ['price' => 100]), $context);
+        $this->assertSame(114.29, $over['rule_price']);
+        // Diff = 0% → stays on Target 40%: 107.14
+        $flat = EbayRuleSprice::price($this->pricer(), $this->input(['std' => 500, 'price' => 500] + $base), $context);
+        $this->assertSame(107.14, $flat['rule_price']);
+        // Rule off (not eBay 1) → no boost
+        $dil['diff_adj'] = false;
+        $off = EbayRuleSprice::price($this->pricer(), $this->input($base + ['price' => 100]), ['rule' => 'dil', 'dil' => $dil]);
+        $this->assertSame(107.14, $off['rule_price']);
+    }
+
     public function test_sprc_dil_switch_skips_a_sku_without_inventory(): void
     {
         $dil = ['rules' => [AmazonDilGroiRule::make(0, 100, 40)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null)];
