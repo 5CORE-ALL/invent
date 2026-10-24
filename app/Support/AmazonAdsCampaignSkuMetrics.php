@@ -1504,6 +1504,21 @@ final class AmazonAdsCampaignSkuMetrics
                     }
                 }
             }
+            // The compact SQL match above does not apply the PHP normalisation (e.g. "…8PCS" → "…8PC"), so SKUs
+            // like that were never found. Match them by the SKU text as well.
+            foreach (array_chunk($spaceKeys, 400) as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $rows = \Illuminate\Support\Facades\DB::table('amazon_buybox_data')
+                    ->where('our_listing_price', '>', 0)
+                    ->whereRaw('UPPER(TRIM(sku)) IN ('.$ph.')', $chunk)
+                    ->get(['sku', 'our_listing_price']);
+                foreach ($rows as $row) {
+                    $ck = AmazonDatasheet::normalizeSkuForLookup((string) $row->sku);
+                    if ($ck !== '' && ! isset($sitePrice[$ck])) {
+                        $sitePrice[$ck] = (float) $row->our_listing_price;
+                    }
+                }
+            }
         }
 
         // Child SKUs of a PARENT campaign are not in $sheetByCompact (it only holds the campaign keys).
@@ -1514,6 +1529,30 @@ final class AmazonAdsCampaignSkuMetrics
                 $rows = AmazonDatasheet::query()
                     ->whereNotNull('sku')
                     ->whereRaw('UPPER(REPLACE(REPLACE(TRIM(sku), " ", ""), CHAR(9), "")) IN ('.$ph.')', $chunk)
+                    ->get();
+                foreach ($rows as $row) {
+                    $ck = AmazonDatasheet::normalizeSkuForLookup((string) ($row->sku ?? ''));
+                    if ($ck === '') {
+                        continue;
+                    }
+                    $sheetByCompact[$ck] = isset($sheetByCompact[$ck])
+                        ? AmazonDatasheet::pickBestForProductSku((string) ($row->sku ?? ''), [$sheetByCompact[$ck], $row])
+                        : $row;
+                }
+            }
+            // Same gap as the buybox lookup: match the still-missing SKUs by their SKU text.
+            $stillMissing = [];
+            foreach ($skus as $sku) {
+                $ck = AmazonDatasheet::normalizeSkuForLookup($sku);
+                if ($ck !== '' && ! isset($sheetByCompact[$ck])) {
+                    $stillMissing[AmazonDatasheet::normalizeSkuSpaces($sku)] = true;
+                }
+            }
+            foreach (array_chunk(array_keys($stillMissing), 400) as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $rows = AmazonDatasheet::query()
+                    ->whereNotNull('sku')
+                    ->whereRaw('UPPER(TRIM(sku)) IN ('.$ph.')', $chunk)
                     ->get();
                 foreach ($rows as $row) {
                     $ck = AmazonDatasheet::normalizeSkuForLookup((string) ($row->sku ?? ''));

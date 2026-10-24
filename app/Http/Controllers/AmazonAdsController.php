@@ -42,6 +42,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -103,7 +104,7 @@ class AmazonAdsController extends Controller
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
         'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos',
         'pageCvr', 'viewsL30', 'viewsL7',
-        'ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc',
+        'ACOS', 'acosGpft', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc',
     ];
 
     /**
@@ -462,10 +463,11 @@ class AmazonAdsController extends Controller
         // ACOS (%) = cost / sales * 100 — spend + Ads Sold 0 is saved as 100% for BGT / SBGT.
         // LT ACOS is lifetime cost ÷ lifetime sales on daily API rows, immediately after ACOS%.
         // Y ACOS sits just before ACOS% so yesterday's spend ÷ sales stays next to Y Sales.
+        // acosGpft (GPFT%, the campaign's SKU / parent GPFT) sits right before ACOS% so the green flag (ACOS% < GPFT%) reads left to right.
         $canAcos = in_array('cost', $baseCols, true)
             && (in_array('sales30d', $baseCols, true) || in_array('sales', $baseCols, true));
         if ($canAcos) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => ! in_array($c, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc'], true)));
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => ! in_array($c, ['acosGpft', 'ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc'], true)));
             $idxSales30 = array_search('yAcos', $ordered, true);
             if ($idxSales30 === false) {
                 $idxSales30 = array_search('ySales', $ordered, true);
@@ -474,11 +476,11 @@ class AmazonAdsController extends Controller
                 $idxSales30 = array_search('sales30d', $ordered, true);
             }
             if ($idxSales30 !== false) {
-                array_splice($ordered, $idxSales30 + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcos', 'ltCpc', 'ltTcps']);
+                array_splice($ordered, $idxSales30 + 1, 0, ['acosGpft', 'ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcos', 'ltCpc', 'ltTcps']);
             } else {
                 $idxSales = array_search('sales', $ordered, true);
                 if ($idxSales !== false) {
-                    array_splice($ordered, $idxSales + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcos', 'ltCpc', 'ltTcps']);
+                    array_splice($ordered, $idxSales + 1, 0, ['acosGpft', 'ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcos', 'ltCpc', 'ltTcps']);
                 }
             }
         }
@@ -2951,6 +2953,7 @@ class AmazonAdsController extends Controller
         self::applyCampaignStatusFilter($query, $table, $request);
         self::applyAcosColorFilter($query, $table, $request);
         self::applyAdsCvrColorFilter($query, $table, $request);
+        self::applyAcosGpftFlagFilter($query, $table, $request);
         self::applyInventoryFilter($query, $table, $request, $dbColumns);
         self::applyTargetsFilter($query, $table, $request);
         if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
@@ -3682,6 +3685,113 @@ class AmazonAdsController extends Controller
         }
 
         return -1;
+    }
+
+    /**
+     * Campaign ids whose L30 ACOS% is below their GPFT% (the GPFT% column: the SKU's GPFT, or the
+     * average of a PARENT campaign's child SKUs). A campaign with no L30 spend is never flagged,
+     * so the green flag on the ACOS% cell means "ads are costing less than the margin".
+     *
+     * @return array<string, true> campaign_id => true
+     */
+    private static function acosBelowGpftCampaignIds(Builder $query, string $table): array
+    {
+        // The SKU metrics lookup is the slow part (seconds on all SP campaigns), and every grid draw asks for
+        // the count, so reuse the result for a couple of minutes per identical filtered query.
+        $cacheKey = 'amz_ads_acos_below_gpft:'.md5($table.'|'.$query->toSql().'|'.json_encode($query->getBindings()));
+
+        return Cache::remember($cacheKey, 120, static fn (): array => self::computeAcosBelowGpftCampaignIds($query, $table));
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private static function computeAcosBelowGpftCampaignIds(Builder $query, string $table): array
+    {
+        $dbColumns = SchemaMemo::getColumnListing($table);
+        if (! in_array('campaign_id', $dbColumns, true) || ! in_array('campaignName', $dbColumns, true)
+            || ! in_array('report_date_range', $dbColumns, true) || ! in_array('id', $dbColumns, true)) {
+            return [];
+        }
+
+        $pairs = $query->clone()->reorder()
+            ->select('campaign_id', DB::raw('MAX(campaignName) AS campaignName'))
+            ->groupBy('campaign_id')
+            ->get();
+        if ($pairs->isEmpty()) {
+            return [];
+        }
+
+        $names = [];
+        foreach ($pairs as $pair) {
+            $cn = trim((string) ($pair->campaignName ?? ''));
+            if ($cn !== '') {
+                $names[] = $cn;
+            }
+        }
+        $skuByName = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($names);
+
+        $sliceByCid = [];
+        foreach (self::fetchL30SummarySliceMap($table, $dbColumns, $pairs) as $key => $slice) {
+            $sliceByCid[explode("\0", (string) $key)[0]] = $slice;
+        }
+
+        $out = [];
+        foreach ($pairs as $pair) {
+            $cid = trim((string) ($pair->campaign_id ?? ''));
+            $cn = trim((string) ($pair->campaignName ?? ''));
+            if ($cid === '' || $cn === '' || ! isset($sliceByCid[$cid])) {
+                continue;
+            }
+            $gpft = $skuByName[$cn]['gpft'] ?? null;
+            if (! is_numeric($gpft)) {
+                continue;
+            }
+            $slice = $sliceByCid[$cid];
+            $spend = $slice['spend'] ?? null;
+            if ($spend === null || ! ((float) $spend > 0)) {
+                continue;
+            }
+            $sold = $slice['purchases30d'] ?? null;
+            $sales = $slice['sales30d'] ?? null;
+            $acos = self::computedAcosPercentFromReportRow([
+                'cost' => $spend,
+                'spend' => $spend,
+                'sales30d' => $sales,
+                'sales' => $sales,
+                'purchases30d' => $sold === null ? 0 : $sold,
+                'purchases' => $sold === null ? 0 : $sold,
+                'Prchase' => $sold === null ? 0 : $sold,
+            ], $dbColumns);
+            if ($acos !== null && $acos < (float) $gpft) {
+                $out[$cid] = true;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * "ACOS% green flag" filter: keep only campaigns whose L30 ACOS% is below their GPFT%.
+     * Request value `filter_acos_gpft` = 1.
+     */
+    private static function applyAcosGpftFlagFilter(Builder $query, string $table, Request $request): void
+    {
+        $raw = $request->input('filter_acos_gpft');
+        if (! ($raw === true || $raw === 1 || $raw === '1' || $raw === 'true')) {
+            return;
+        }
+        $keep = array_keys(self::acosBelowGpftCampaignIds($query, $table));
+        if ($keep === []) {
+            $query->whereRaw('0 = 1');
+
+            return;
+        }
+        $query->where(function (Builder $w) use ($keep) {
+            foreach (array_chunk($keep, 500) as $chunk) {
+                $w->orWhereIn('campaign_id', array_map('strval', $chunk));
+            }
+        });
     }
 
     /**
@@ -5673,6 +5783,7 @@ class AmazonAdsController extends Controller
         self::applyCampaignStatusFilter($query, $table, $request);
         self::applyAcosColorFilter($query, $table, $request);
         self::applyAdsCvrColorFilter($query, $table, $request);
+        self::applyAcosGpftFlagFilter($query, $table, $request);
         self::applyInventoryFilter($query, $table, $request, $dbColumns);
         self::applyTargetsFilter($query, $table, $request);
         if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
@@ -6432,6 +6543,7 @@ class AmazonAdsController extends Controller
         self::applyCampaignStatusFilter($inner, $table, $request);
         self::applyAcosColorFilter($inner, $table, $request);
         self::applyAdsCvrColorFilter($inner, $table, $request);
+        self::applyAcosGpftFlagFilter($inner, $table, $request);
 
         $bucketExpr = self::sqlU7BucketCaseExpression();
 
@@ -6726,6 +6838,7 @@ class AmazonAdsController extends Controller
         self::applyCampaignStatusFilter($query, $table, $request);
         self::applyAcosColorFilter($query, $table, $request);
         self::applyAdsCvrColorFilter($query, $table, $request);
+        self::applyAcosGpftFlagFilter($query, $table, $request);
         self::applyInventoryFilter($query, $table, $request, $dbColumns);
         self::applyTargetsFilter($query, $table, $request);
 
@@ -6749,6 +6862,16 @@ class AmazonAdsController extends Controller
         }
 
         $queryForAggregates = $query->clone();
+        // Count for the ACOS% green-flag badge (ACOS% < GPFT%), taken before paging is applied to $query.
+        $acosGpftFlagCount = null;
+        if (! $forBgtUniverse && $request->boolean('want_acos_gpft_count')
+            && ($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports')) {
+            try {
+                $acosGpftFlagCount = count(self::acosBelowGpftCampaignIds($query, $table));
+            } catch (\Throwable $e) {
+                Log::warning('ACOS < GPFT flag count failed: '.$e->getMessage());
+            }
+        }
         // Calendar grid includes that day's rows plus L30 rows Amazon omitted (no impressions).
         // Spend / Clicks / Sold / Sales / ACOS badges still sum the L30 summary universe.
         if (self::shouldUseL30SummaryUniverseForBadges($table, $request)) {
@@ -6996,7 +7119,7 @@ class AmazonAdsController extends Controller
             || in_array('pageCvr', $columns, true) || in_array('bgtViews', $columns, true)
             || in_array('bgtCvr', $columns, true) || in_array('bgtPrc', $columns, true)
             || in_array('bgtReviews', $columns, true) || in_array('bgtDil', $columns, true)
-            || in_array('bgtInv', $columns, true) || in_array('bgtGpft', $columns, true)
+            || in_array('bgtInv', $columns, true) || in_array('bgtGpft', $columns, true) || in_array('acosGpft', $columns, true)
             || in_array('viewsL30', $columns, true) || in_array('viewsL7', $columns, true);
         foreach (self::SKU_METRIC_DISPLAY_COLUMNS as $skuCol) {
             if (in_array($skuCol, $columns, true)) {
@@ -7264,6 +7387,9 @@ class AmazonAdsController extends Controller
                     $arr['bgt_inv_color'] = $hitInv['color'];
                     $arr['bgt_inv_label'] = $hitInv['label'];
                     $arr['bgt_inv_value'] = $invForRule;
+                }
+                if (in_array('acosGpft', $columns, true)) {
+                    $arr['acosGpft'] = isset($mSku['gpft']) && is_numeric($mSku['gpft']) ? (float) $mSku['gpft'] : null;
                 }
                 if (in_array('gpft', $columns, true) || in_array('bgtGpft', $columns, true) || in_array('sbgt', $columns, true)) {
                     $gpftVal = isset($mSku['gpft']) && is_numeric($mSku['gpft']) ? (float) $mSku['gpft'] : null;
@@ -7621,6 +7747,9 @@ class AmazonAdsController extends Controller
         if ($kpiBlocks !== null) {
             $payload['kpiBlocks'] = $kpiBlocks;
         }
+        if ($acosGpftFlagCount !== null) {
+            $payload['acosGpftFlagCount'] = $acosGpftFlagCount;
+        }
 
         return $payload;
     }
@@ -7756,6 +7885,8 @@ class AmazonAdsController extends Controller
         $projectedSalesSum = 0.0;
         $haveYesterday = false;
         $kpiBlocksSum = null;
+        $acosGpftFlagSum = 0;
+        $haveAcosGpftFlag = false;
         $bgtSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
         $bidSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
 
@@ -7804,6 +7935,10 @@ class AmazonAdsController extends Controller
             }
             if (isset($part['kpiBlocks']) && is_array($part['kpiBlocks'])) {
                 $kpiBlocksSum = self::sumKpiBlocks($kpiBlocksSum, $part['kpiBlocks']);
+            }
+            if (isset($part['acosGpftFlagCount'])) {
+                $acosGpftFlagSum += (int) $part['acosGpftFlagCount'];
+                $haveAcosGpftFlag = true;
             }
             foreach (['green', 'yellow', 'red'] as $color) {
                 $bgtSyncCounts[$color] += (int) ($part['bgt_sync_counts'][$color] ?? 0);
@@ -7865,6 +8000,9 @@ class AmazonAdsController extends Controller
         }
         if ($kpiBlocksSum !== null) {
             $payload['kpiBlocks'] = $kpiBlocksSum;
+        }
+        if ($haveAcosGpftFlag) {
+            $payload['acosGpftFlagCount'] = $acosGpftFlagSum;
         }
 
         return $payload;
@@ -8128,7 +8266,7 @@ class AmazonAdsController extends Controller
     {
         $handled = [
             'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain',
-            'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'sbgt',
+            'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'acosGpft', 'bgtGpft', 'sbgt',
             'CPC3', 'CPCAvg', 'CPC2', 'ltCvr', 'L1cost', 'L1clicks',
             'pageCvr', 'viewsL30', 'viewsL7', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc',
         ];
@@ -8137,7 +8275,7 @@ class AmazonAdsController extends Controller
         }
 
         $hasAd = in_array('ad_type', $dbColumns, true);
-        $needsSku = in_array($column, ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'bgtPrc', 'bgtReviews', 'sbgt', 'ruleStatus'], true);
+        $needsSku = in_array($column, ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgtDil', 'bgtInv', 'gpft', 'acosGpft', 'bgtGpft', 'bgtPrc', 'bgtReviews', 'sbgt', 'ruleStatus'], true);
         $needsViews = in_array($column, ['bgtViews', 'bgtCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'sbgt'], true);
         $needsLtAcos = in_array($column, ['ltAcos', 'bgtAcos', 'sbgt'], true);
         $needsRatings = in_array($column, ['reviews', 'bgtReviews', 'sbgt'], true);
@@ -8260,9 +8398,9 @@ class AmazonAdsController extends Controller
                     : AmazonAdsBgtReviewsRule::apply($rating)['bgt'];
             } elseif ($column === 'bgtInv') {
                 $keys[] = AmazonAdsBgtInvRule::apply($inv)['bgt'];
-            } elseif ($column === 'gpft' || $column === 'bgtGpft') {
+            } elseif ($column === 'gpft' || $column === 'acosGpft' || $column === 'bgtGpft') {
                 $gpftKey = isset($m['gpft']) && is_numeric($m['gpft']) ? (float) $m['gpft'] : null;
-                $keys[] = $column === 'gpft' ? $gpftKey : AmazonAdsBgtGpftRule::apply($gpftKey)['bgt'];
+                $keys[] = $column !== 'bgtGpft' ? $gpftKey : AmazonAdsBgtGpftRule::apply($gpftKey)['bgt'];
             } elseif ($column === 'pageCvr') {
                 $keys[] = $pc['page_cvr'] ?? null;
             } elseif ($column === 'viewsL30') {

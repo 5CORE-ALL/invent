@@ -548,6 +548,11 @@
         .amz-kpi-tile > .amz-kpi-pct { margin-left: 0; white-space: nowrap; font-size: 0.75rem; font-weight: 700; opacity: 0.95; }
         .amz-kpi-tile.amz-cmp-better { background: #22c55e; color: #052e16; border-color: #16a34a; }
         .amz-kpi-tile.amz-cmp-worse { background: #ef4444; color: #fff; border-color: #dc2626; }
+        button.amz-kpi-tile.amz-acos-flag-btn { cursor: pointer; background: #f0fdf4; color: #166534; border-color: #86efac; }
+        button.amz-kpi-tile.amz-acos-flag-btn:hover { background: #dcfce7; }
+        button.amz-kpi-tile.amz-acos-flag-btn.is-active { background: #16a34a; color: #fff; border-color: #15803d; box-shadow: 0 0 0 2px #86efac; }
+        button.amz-kpi-tile.amz-acos-flag-btn .fa-flag { color: #16a34a; }
+        button.amz-kpi-tile.amz-acos-flag-btn.is-active .fa-flag { color: #fff; }
         .amz-kpi-tile.amz-kpi-campaign { background: #4c7ed8; color: #fff; border-color: #3b6cc4; }
         .amz-kpi-tile.amz-kpi-active { background: #16a34a; color: #fff; border-color: #15803d; }
         .amz-kpi-tile.amz-util-red { background: #dc2626; color: #fff; border-color: #b91c1c; }
@@ -1297,6 +1302,9 @@
                                     @foreach ($kpiCard['items'] as [$kpiKey, $kpiText, $kpiTip, $kpiDot])
                                         <span id="amzKpi_{{ $kpiKey }}" class="amz-kpi-tile" data-kpi="{{ $kpiKey }}" title="{{ $kpiTip }}">@if ($kpiDot)<button type="button" class="amz-badge-history-dot is-none" id="{{ $kpiDot[0] }}" data-history="{{ $kpiDot[1] }}" data-label="{{ $kpiDot[2] }}" title="Click for history"><span></span></button>@else<button type="button" class="amz-badge-history-dot is-none" id="amzDot_{{ $kpiKey }}" data-history="kpi" data-kpi="{{ $kpiKey }}" data-label="{{ $kpiCard['tag'] }} {{ $kpiText }}" title="Click for history"><span></span></button>@endif{{ $kpiText }}:<span class="amz-kpi-val">—</span></span>
                                     @endforeach
+                                    @if ($kpiCard['tag'] === 'L30')
+                                        <button type="button" id="amzAcosFlagBtn" class="amz-kpi-tile amz-acos-flag-btn" aria-pressed="false" title="Green flag: campaigns whose L30 ACOS% is below their GPFT% (the GPFT% column, a PARENT campaign uses its child SKUs). Count covers the campaigns matching the current filters. Click to show only those rows, click again to clear."><i class="fas fa-flag"></i>ACOS%:<span class="amz-kpi-val" id="amzAcosFlagCount">0</span></button>
+                                    @endif
                                     @if ($kpiCard['tag'] === 'Yesterday')
                                         <span id="amazonAdsCampaignBadgeWrap" class="amz-kpi-tile amz-kpi-campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span class="amz-kpi-val" id="amazonAdsCampaignBadgeValue">0</span></span>
                                         <span id="amzKpiActive" class="amz-kpi-tile amz-kpi-active" title="ENABLED campaigns out of the campaigns matching the current filters, and the share that is active.">ACTIVE:<span class="amz-kpi-val" id="amzKpiActiveValue">—</span><span class="amz-kpi-pct" id="amzKpiActivePct"></span></span>
@@ -2210,7 +2218,7 @@
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_inv_color', 'bgt_inv_label', 'bgt_inv_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value'];
             var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -2688,6 +2696,21 @@
                     + '<span style="color:' + color + ';font-weight:600;">' + pctLabel + '</span>'
                     + ' <span style="vertical-align:middle;"><i class="fas ' + arrowIcon + '" style="color:' + arrowColor + ';font-size:12px;"></i></span>'
                     + '</span>';
+            }
+            /** ACOS% cell: same as fmtAcos, plus a green flag when ACOS% is below the row's GPFT% (needs spend, so idle campaigns are not flagged). */
+            function amzAcosBelowGpft(row) {
+                if (!row) return false;
+                var a = parseFloat(row.ACOS);
+                var g = parseFloat(row.acosGpft);
+                var spend = parseFloat(row.cost != null ? row.cost : row.spend);
+                return isFinite(a) && isFinite(g) && isFinite(spend) && spend > 0 && a < g;
+            }
+            function fmtAcosFlag(cell) {
+                var html = fmtAcos(cell);
+                var row = cell.getRow ? cell.getRow().getData() : null;
+                if (!amzAcosBelowGpft(row)) return html;
+                var tip = 'ACOS ' + Math.round(parseFloat(row.ACOS)) + '% is below GPFT ' + Math.round(parseFloat(row.acosGpft)) + '%';
+                return '<span style="white-space:nowrap;" title="' + tip + '">' + html + ' <i class="fas fa-flag" style="color:#16a34a;font-size:11px;"></i></span>';
             }
             function fmtAcos(cell) {
                 var v = cell.getValue();
@@ -3304,7 +3327,15 @@
                     return;
                 }
                 if (c === 'Label' || c === 'label') { col.title = 'ACOS%'; col.headerTooltip = 'ACOS %'; return; }
-                if (c === 'ACOS') { col.title = 'ACOS%'; col.headerTooltip = 'ACOS % = SPL30 ÷ SL 30 × 100. Spend with Ads Sold 0 is saved as 100% for BGT / SBGT / filters.'; col.formatter = fmtAcos; return; }
+                if (c === 'acosGpft') {
+                    col.title = 'GPFT%';
+                    col.headerTooltip = 'GPFT% of the campaign SKU, same as /amazon-tabulator-view. A PARENT campaign shows its parent GPFT% (average of its child SKUs). ACOS% gets a green flag when it is below this.';
+                    col.formatter = fmtSkuGpft;
+                    col.width = 58;
+                    col.minWidth = 52;
+                    return;
+                }
+                if (c === 'ACOS') { col.title = 'ACOS%'; col.headerTooltip = 'ACOS % = SPL30 ÷ SL 30 × 100. Spend with Ads Sold 0 is saved as 100% for BGT / SBGT / filters. Green flag = ACOS% is below the GPFT% column.'; col.formatter = fmtAcosFlag; return; }
                 if (c === 'ltAcos') {
                     col.title = 'LT ACOS';
                     col.headerTooltip = 'Lifetime ACOS = total cost ÷ total sales on daily Amazon report rows. Spend with no sales is 100%.';
@@ -3672,6 +3703,15 @@
                 amzPaintSyncHeaders();
                 amzReloadGridForFilters();
             }
+            (function () {
+                var btn = document.getElementById('amzAcosFlagBtn');
+                if (!btn) return;
+                btn.addEventListener('click', function () {
+                    amzAcosFlagOn = !amzAcosFlagOn;
+                    amzPaintAcosFlagBtn();
+                    amzReloadGridForFilters();
+                });
+            })();
             function amzClearSyncFilters() {
                 amzSyncFilters.bgt = '';
                 amzSyncFilters.bid = '';
@@ -3854,6 +3894,13 @@
                     amzSyncStatFilterLabel();
                 }
             }
+            var amzAcosFlagOn = false;
+            function amzPaintAcosFlagBtn() {
+                var b = document.getElementById('amzAcosFlagBtn');
+                if (!b) return;
+                b.classList.toggle('is-active', amzAcosFlagOn);
+                b.setAttribute('aria-pressed', amzAcosFlagOn ? 'true' : 'false');
+            }
             function amzFilterPayload() {
                 var g = function (id) { var e = document.getElementById(id); return e ? (e.value || '') : ''; };
                 return {
@@ -3868,6 +3915,8 @@
                     filter_inv: g('amazonAdsFilterInv'),
                     filter_acos: g('amazonAdsFilterAcos'),
                     filter_ads_cvr: g('amazonAdsFilterAdsCvr'),
+                    filter_acos_gpft: amzAcosFlagOn ? '1' : '',
+                    want_acos_gpft_count: '1',
                     filter_bgt_sync: amzSyncFilters.bgt || '',
                     filter_bid_sync: amzSyncFilters.bid || ''
                 };
@@ -3880,6 +3929,8 @@
                 var camp = (json && typeof json.distinctCampaignCount === 'number' && isFinite(json.distinctCampaignCount)) ? json.distinctCampaignCount : null;
                 if (camp !== null) amzDistinctCampaignCount = camp;
                 amzSetText('amazonAdsCampaignBadgeValue', camp === null ? '0' : Number(camp).toLocaleString('en-US'));
+                var flagCnt = (json && typeof json.acosGpftFlagCount === 'number' && isFinite(json.acosGpftFlagCount)) ? json.acosGpftFlagCount : null;
+                if (flagCnt !== null || !(json && json.draw)) amzSetText('amzAcosFlagCount', flagCnt === null ? '0' : Number(flagCnt).toLocaleString('en-US'));
                 amzPaintKpiBlocks(json || {});
                 amzRefreshYesterdayBadgeTones();
             }
@@ -4640,6 +4691,8 @@
                     amzTintAcosFilterSelect();
                     amzTintAdsCvrFilterSelect();
                     amzClearSyncFilters();
+                    amzAcosFlagOn = false;
+                    amzPaintAcosFlagBtn();
                     amzReloadGridForFilters();
                 });
             }
