@@ -1039,8 +1039,11 @@
 
             function missingSpecs(row) {
                 const names = [];
-                (row.ebay_required || []).forEach(function (name) {
-                    if (!String(row[aspectKey(name)] || '').trim()) names.push(name);
+                const source = Array.isArray(row.ebay_required_only) ? row.ebay_required_only : (row.ebay_required || []);
+                source.forEach(function (name) {
+                    if (!isRealAspect(name)) return;
+                    const value = (row.ebay_values || {})[name];
+                    if (!String(value == null ? row[aspectKey(name)] : value).trim()) names.push(name);
                 });
                 return names;
             }
@@ -1339,6 +1342,10 @@
 
             let columnFocusActive = false;
 
+            function normCat(value) {
+                return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            }
+
             function focusedSpecFields() {
                 const channelName = document.getElementById('channelFilter')?.value || '';
                 const category = document.getElementById('categoryFilter')?.value || '';
@@ -1347,10 +1354,17 @@
                 const keep = {};
                 keep[field] = true;
                 if (field === 'category_ebay') {
+                    const want = normCat(category);
                     allRows.forEach(function (row) {
-                        if (String(row.category_ebay || '').trim() !== category) return;
-                        (row.ebay_required || []).forEach(function (name) {
+                        if (normCat(row.category_ebay) !== want) return;
+                        const names = Array.isArray(row.ebay_required_only) ? row.ebay_required_only : (row.ebay_required || []);
+                        names.forEach(function (name) {
                             if (isRealAspect(name)) keep[aspectKey(name)] = true;
+                        });
+                        // Imported or saved values belong to the category too, so they stay visible.
+                        (row.ebay_required || []).forEach(function (name) {
+                            if (!isRealAspect(name)) return;
+                            if (String((row.ebay_values || {})[name] || '').trim() !== '') keep[aspectKey(name)] = true;
                         });
                     });
                 }
@@ -1856,15 +1870,6 @@
                 return table ? table.getSelectedData() : [];
             }
 
-            function blankFieldsForRow(row) {
-                if (!specsText(row)) return ['Technical specifications'];
-                const missing = [];
-                (row.ebay_required || []).forEach(function (name) {
-                    if (!String(row[aspectKey(name)] || '').trim()) missing.push(name);
-                });
-                return missing;
-            }
-
             function fillSkuList(rows) {
                 const list = document.getElementById('ebaySyncSkuList');
                 list.innerHTML = '';
@@ -1958,33 +1963,15 @@
 
             function pushSavedSpecs(skus, failedSaves) {
                 const rows = rowsBySku(skus);
-                const blanks = [];
-                rows.forEach(function (row) {
-                    const missing = blankFieldsForRow(row);
-                    if (missing.length) blanks.push({ sku: row.SKU || '', missing: missing });
-                });
                 const failedNote = failedSaves
                     ? failedSaves + ' SKU' + (failedSaves === 1 ? '' : 's') + ' could not be saved and will not be pushed. '
                     : '';
-                if (blanks.length) {
-                    openEbayPrompt({
-                        title: 'Save and push to eBay 1',
-                        body: failedNote + 'Saved. These rows still have blank specifications.',
-                        rows: rows,
-                        blanks: blanks,
-                        alertText: 'Blank values are not sent, so eBay 1 keeps its current value. Push anyway only if that is what you want.',
-                        confirmText: 'Push anyway',
-                        confirmClass: 'btn-danger',
-                        onConfirm: function () { runEbaySync('push', skus, true); },
-                    });
-                    return;
-                }
                 openEbayPrompt({
                     title: 'Save and push to eBay 1',
-                    body: failedNote + 'Saved. Pushing the filled specifications to eBay 1…',
+                    body: failedNote + 'Saved. Pushing changed specifications to eBay 1. Blank values are not sent.',
                     rows: rows,
                 });
-                runEbaySync('push', skus, false);
+                runEbaySync('push', skus);
             }
 
             function promptEbaySync(mode) {
@@ -2006,28 +1993,19 @@
                     });
                     return;
                 }
-                const blanks = [];
-                if (mode === 'push') {
-                    rows.forEach(function (row) {
-                        const missing = blankFieldsForRow(row);
-                        if (missing.length) blanks.push({ sku: row.SKU || '', missing: missing });
-                    });
-                }
                 openEbayPrompt({
                     title: mode === 'pull' ? 'Pull from eBay 1' : 'Push to eBay 1',
                     body: mode === 'pull'
                         ? 'Pull eBay 1 specifications for these ' + rows.length + ' rows? Matching columns are filled, and any specification that does not have a column yet is added for that category. A blank cell is one eBay 1 did not have.'
-                        : 'Push the filled specifications for these ' + rows.length + ' rows back to eBay 1?',
+                        : 'Push changed specifications for these ' + rows.length + ' rows to eBay 1? Only values that differ from the live listing are sent. Blank values are never sent.',
                     rows: rows,
-                    blanks: blanks,
-                    alertText: 'These rows have blank specifications. Blank values are not sent, so eBay 1 keeps its current value. Push anyway only if that is what you want.',
-                    confirmText: blanks.length ? 'Push anyway' : (mode === 'pull' ? 'Pull from eBay 1' : 'Push to eBay 1'),
-                    confirmClass: blanks.length ? 'btn-danger' : 'btn-primary',
-                    onConfirm: function () { runEbaySync(mode, rows.map(function (row) { return row.SKU; }), blanks.length > 0); },
+                    confirmText: mode === 'pull' ? 'Pull from eBay 1' : 'Push to eBay 1',
+                    confirmClass: 'btn-primary',
+                    onConfirm: function () { runEbaySync(mode, rows.map(function (row) { return row.SKU; })); },
                 });
             }
 
-            async function runEbaySync(mode, skus, pushAnyway) {
+            async function runEbaySync(mode, skus) {
                 const confirmBtn = document.getElementById('ebaySyncConfirm');
                 const cancelBtn = document.getElementById('ebaySyncCancel');
                 const status = document.getElementById('ebaySyncStatus');
@@ -2050,26 +2028,9 @@
                                 'Accept': 'application/json',
                                 'X-CSRF-TOKEN': csrfToken,
                             },
-                            body: JSON.stringify({ skus: chunk, push_anyway: !!pushAnyway }),
+                            body: JSON.stringify({ skus: chunk }),
                         });
                         const json = await res.json();
-                        if (res.status === 422 && json.needs_confirmation) {
-                            confirmBtn.disabled = false;
-                            cancelBtn.disabled = false;
-                            openEbayPrompt({
-                                title: 'Push to eBay 1',
-                                body: 'These rows have blank specifications.',
-                                rows: selectedRows().filter(function (row) {
-                                    return (json.blanks || []).some(function (blank) { return blank.sku === row.SKU; });
-                                }),
-                                blanks: json.blanks || [],
-                                alertText: 'Blank values are not sent, so eBay keeps its current value. Push anyway only if that is what you want.',
-                                confirmText: 'Push anyway',
-                                confirmClass: 'btn-danger',
-                                onConfirm: function () { runEbaySync('push', skus, true); },
-                            });
-                            return;
-                        }
                         if (!res.ok) throw new Error(json.message || 'eBay request failed');
                         (json.results || []).forEach(function (result) {
                             const li = document.createElement('li');

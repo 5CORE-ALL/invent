@@ -1005,9 +1005,9 @@ final class EbayTradingReviseItem
     }
 
     /**
-     * Write non-empty technical specifications onto the live listing.
-     * Item specifics are merged. A name that already belongs to this SKU's variation is revised on that variation.
-     * Blank values are not sent.
+     * Write technical specifications that differ from the live listing.
+     * Blank values are never sent. Matching values are left unchanged.
+     * A name that already belongs to this SKU's variation is revised on that variation.
      *
      * @param  list<array{name: string, value: string}>  $overrides
      * @return array{success: bool, message: string}
@@ -1054,28 +1054,47 @@ final class EbayTradingReviseItem
         $itemRows = self::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null);
         $itemChanged = false;
         $variationChanged = false;
+        $changedCount = 0;
         foreach ($clean as $row) {
             $key = self::aspectKey($row['name']);
             if (isset($variationKeys[$key])) {
-                $variationMap[$variationKeys[$key]] = $row['value'];
+                $currentName = $variationKeys[$key];
+                $current = trim((string) ($variationMap[$currentName] ?? ''));
+                if (strcasecmp($current, $row['value']) === 0) {
+                    continue;
+                }
+                $variationMap[$currentName] = $row['value'];
                 $variationChanged = true;
+                $changedCount++;
 
                 continue;
             }
-            $itemChanged = true;
             $replaced = false;
             foreach ($itemRows as &$existing) {
-                if (self::aspectKey($existing['name']) === $key) {
-                    $existing['name'] = $row['name'];
-                    $existing['values'] = [$row['value']];
-                    $replaced = true;
+                if (self::aspectKey($existing['name']) !== $key) {
+                    continue;
+                }
+                $replaced = true;
+                $current = trim(implode(', ', array_map(static fn ($value) => trim((string) $value), $existing['values'] ?? [])));
+                if (strcasecmp($current, $row['value']) === 0) {
                     break;
                 }
+                $existing['name'] = $row['name'];
+                $existing['values'] = [$row['value']];
+                $itemChanged = true;
+                $changedCount++;
+                break;
             }
             unset($existing);
             if (! $replaced) {
                 $itemRows[] = ['name' => $row['name'], 'values' => [$row['value']]];
+                $itemChanged = true;
+                $changedCount++;
             }
+        }
+
+        if (! $itemChanged && ! $variationChanged) {
+            return ['success' => true, 'message' => 'No values changed. Blank and matching values were not sent to eBay.'];
         }
 
         $messages = [];
@@ -1100,7 +1119,9 @@ final class EbayTradingReviseItem
             }
         }
 
-        return ['success' => true, 'message' => $messages === [] ? 'Already matches eBay.' : implode(' ', $messages)];
+        $summary = 'Sent '.$changedCount.' changed value'.($changedCount === 1 ? '' : 's').'. Blank values were not sent.';
+
+        return ['success' => true, 'message' => $summary.' '.implode(' ', $messages)];
     }
 
     /**

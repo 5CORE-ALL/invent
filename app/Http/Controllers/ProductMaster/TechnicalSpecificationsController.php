@@ -103,12 +103,14 @@ class TechnicalSpecificationsController extends Controller
                 $saved = $categoryId !== ''
                     ? array_values($savedByCategory[$categoryId] ?? [])
                     : array_map(static fn ($spec) => (string) ($spec['key'] ?? ''), $row['description_v2_specifications']);
-                $names = $this->mergeAspectNames($aspectsByCategory[$categoryId] ?? [], $saved);
+                $requiredOnly = array_values($aspectsByCategory[$categoryId] ?? []);
+                $names = $this->mergeAspectNames($requiredOnly, $saved);
                 $values = [];
                 foreach ($names as $name) {
                     $values[$name] = $this->specValue($row['description_v2_specifications'], $name);
                     $aspectNames[$this->specKey($name)] = $name;
                 }
+                $row['ebay_required_only'] = $requiredOnly;
                 $row['ebay_required'] = $names;
                 $row['ebay_values'] = $values;
                 unset($row['category_ebay_id']);
@@ -445,25 +447,12 @@ class TechnicalSpecificationsController extends Controller
 
     /**
      * POST /technical-specifications/push-ebay
-     * Refuses while any selected row is blank unless push_anyway is set.
+     * Sends only values that differ from the live listing. Blank values are never sent.
      */
     public function pushEbay(Request $request, EbayTechnicalSpecificationSync $sync)
     {
         $skus = $this->selectedSkus($request);
-        $pushAnyway = $request->boolean('push_anyway');
         @set_time_limit(300);
-
-        if (! $pushAnyway) {
-            $blanks = $this->blankSpecifications($skus);
-            if ($blanks !== []) {
-                return response()->json([
-                    'success' => false,
-                    'needs_confirmation' => true,
-                    'message' => 'Some selected rows have blank technical specifications.',
-                    'blanks' => $blanks,
-                ], 422);
-            }
-        }
 
         $results = [];
         foreach ($skus as $sku) {
@@ -506,66 +495,6 @@ class TechnicalSpecificationsController extends Controller
         }
 
         return array_values($skus);
-    }
-
-    /**
-     * @param  list<string>  $skus
-     * @return list<array{sku: string, missing: list<string>}>
-     */
-    private function blankSpecifications(array $skus): array
-    {
-        $products = ProductMaster::query()->whereIn('sku', $skus)->get(['sku', 'parent', 'description_v2_specifications']);
-        $categoryColumns = ['sku', 'category_ebay'];
-        if (Schema::hasTable('category_masters') && Schema::hasColumn('category_masters', 'category_ebay_id')) {
-            $categoryColumns[] = 'category_ebay_id';
-        }
-        $wanted = $products->pluck('sku')->all();
-        foreach ($products as $product) {
-            $parent = trim((string) ($product->parent ?? ''));
-            if ($parent !== '') {
-                $wanted[] = 'PARENT '.$parent;
-            }
-        }
-        $categories = Schema::hasTable('category_masters')
-            ? CategoryMaster::query()->whereIn('sku', array_values(array_unique($wanted)))->get($categoryColumns)
-                ->keyBy(fn ($row) => $this->skuKey((string) $row->sku))
-            : collect();
-
-        $rows = [];
-        foreach ($products as $product) {
-            $category = $categories->get($this->skuKey((string) $product->sku));
-            $categoryId = $this->ebayCategoryId($category);
-            $parent = trim((string) ($product->parent ?? ''));
-            if ($categoryId === '' && $parent !== '' && ! $this->isParentSku((string) $product->sku)) {
-                $categoryId = $this->ebayCategoryId($categories->get($this->skuKey('PARENT '.$parent)));
-            }
-            $rows[] = [
-                'SKU' => (string) $product->sku,
-                'Parent' => $parent,
-                'category_ebay_id' => $categoryId,
-                'specs' => $this->normalizeSpecs($product->description_v2_specifications ?? null),
-            ];
-        }
-        $aspects = $this->ebayRequiredAspects($rows);
-
-        $blanks = [];
-        foreach ($rows as $row) {
-            $missing = [];
-            if ($row['specs'] === []) {
-                $missing[] = 'Technical specifications';
-            } else {
-                foreach ($aspects[$row['category_ebay_id']] ?? [] as $name) {
-                    if ($this->specValue($row['specs'], $name) === '') {
-                        $missing[] = $name;
-                    }
-                }
-            }
-            if ($missing !== []) {
-                $blanks[] = ['sku' => $row['SKU'], 'missing' => array_values(array_unique($missing))];
-            }
-        }
-
-        return $blanks;
     }
 
     /**
