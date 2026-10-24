@@ -180,6 +180,17 @@ class TechnicalSpecificationsController extends Controller
                 $specs = $this->textToSpecs($text);
             }
 
+            foreach ($specs as &$spec) {
+                $name = $this->specKey((string) ($spec['key'] ?? ''));
+                $fixed = ['brand' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China'];
+                if (isset($fixed[$name])) {
+                    $spec['value'] = $fixed[$name];
+                } elseif ($name === 'mpn' && ! $this->isParentSku($sku)) {
+                    $spec['value'] = $sku;
+                }
+            }
+            unset($spec);
+
             $product->description_v2_specifications = $specs === [] ? null : $specs;
             $product->save();
 
