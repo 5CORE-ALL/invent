@@ -113,6 +113,13 @@
             display: inline-flex; align-items: center; justify-content: center;
         }
         .lm-sku-magnify:hover { color: #1d4ed8; }
+        .lm-sku-cell { display: flex; align-items: center; gap: .35rem; width: 100%; min-width: 0; }
+        .lm-sku-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+        .lm-copy-sku {
+            flex: 0 0 auto; border: 0; background: none; padding: 0; line-height: 1;
+            color: #64748b; cursor: pointer; font-size: .82rem;
+        }
+        .lm-copy-sku:hover, .lm-copy-sku.is-copied { color: #2563eb; }
         .lm-status-pill {
             display: inline-block; border-radius: 999px; padding: .18rem .55rem;
             font-size: .72rem; font-weight: 700; white-space: nowrap;
@@ -1883,6 +1890,47 @@
 
     function escapeHtml(s) {
         return String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function skuWithCopy(cell) {
+        const sku = String(cell.getValue() || '').trim();
+        if (!sku) return '';
+        return '<span class="lm-sku-cell"><span class="lm-sku-text">' + escapeHtml(sku) + '</span>'
+            + '<button type="button" class="lm-copy-sku" title="Copy SKU"><i class="fas fa-copy"></i></button></span>';
+    }
+
+    function copySkuClick(e, cell) {
+        if (!e.target.closest('.lm-copy-sku')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const sku = String(cell.getValue() || '').trim();
+        const btn = e.target.closest('.lm-copy-sku');
+        if (!sku || !btn) return;
+        const done = function () {
+            btn.classList.add('is-copied');
+            btn.innerHTML = '<i class="fas fa-check"></i>';
+            toast('Copied ' + sku, 'success');
+            setTimeout(function () {
+                btn.classList.remove('is-copied');
+                btn.innerHTML = '<i class="fas fa-copy"></i>';
+            }, 1200);
+        };
+        const fallback = function () {
+            const ta = document.createElement('textarea');
+            ta.value = sku;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); done(); }
+            catch (err) { toast('Could not copy SKU.', 'error'); }
+            ta.remove();
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(sku).then(done).catch(fallback);
+        } else {
+            fallback();
+        }
     }
 
     function logoSrc(logo) {
@@ -4334,7 +4382,7 @@
                         if (sku) openProductModal(sku, 'images');
                     }
                 },
-                { title: 'SKU', field: 'sku', minWidth: 140 },
+                { title: 'SKU', field: 'sku', minWidth: 160, formatter: skuWithCopy, cellClick: copySkuClick },
                 {
                     title: '', field: '_magnify', width: 42, hozAlign: 'center', headerSort: false,
                     formatter: () => '<button type="button" class="btn btn-link btn-sm p-0 lm-sku-magnify" title="Open editor in new tab"><i class="fas fa-search"></i></button>',
@@ -4454,7 +4502,7 @@
                         }
                     }
                 },
-                { title: 'SKU', field: 'sku', minWidth: 130 },
+                { title: 'SKU', field: 'sku', minWidth: 150, formatter: skuWithCopy, cellClick: copySkuClick },
                 {
                     title: '', field: '_magnify', width: 42, hozAlign: 'center', headerSort: false,
                     formatter: () => '<button type="button" class="btn btn-link btn-sm p-0 lm-sku-magnify" title="Open editor in new tab"><i class="fas fa-search"></i></button>',

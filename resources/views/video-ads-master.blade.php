@@ -847,7 +847,7 @@
             function isLikelyUrl(value) {
                 if (!value) return false;
                 const v = String(value).trim();
-                return /^(https?:)?\/\//i.test(v) || /^www\./i.test(v);
+                return /^(https?:)?\/\//i.test(v) || /^www\./i.test(v) || v.charAt(0) === '/';
             }
             function normalizeUrl(value) {
                 const v = String(value || '').trim();
@@ -1238,9 +1238,23 @@
             function linkFormatter(cell) {
                 const v = cell.getValue();
                 if (!v || !String(v).trim()) return '<span class="vam-dash">—</span>';
-                const url = normalizeUrl(v);
-                if (!isLikelyUrl(url)) return '<span class="vam-dash">—</span>';
+                const url = playableLink(v);
+                if (!url) return '<span class="vam-dash">—</span>';
                 return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-link-icon" title="Open link"><i class="fas fa-link"></i></a>`;
+            }
+
+            // Uploaded videos are stored as /video-ads-master/file/… so they play
+            // on whatever host the page is open on.
+            function playableLink(value) {
+                const url = normalizeUrl(value);
+                if (!isLikelyUrl(url)) return '';
+                try {
+                    const parsed = new URL(url, location.origin);
+                    if (/\/video-ads-master\/file\/\d+\//i.test(parsed.pathname)) {
+                        return parsed.pathname;
+                    }
+                } catch (e) {}
+                return url;
             }
 
             function extractYoutubeId(value) {
@@ -1253,7 +1267,7 @@
             // that link (jpg/png next to the video, or the image itself).
             function thumbKind(url, row) {
                 let parsed;
-                try { parsed = new URL(url); } catch (e) { return null; }
+                try { parsed = new URL(url, location.origin); } catch (e) { return null; }
                 const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
                 const path = decodeURIComponent(parsed.pathname || '');
                 const videoExt = /\.(mp4|webm|mov|m4v|ogg|ogv|mkv)$/i.test(path);
@@ -1285,6 +1299,10 @@
                     return { type: 'image', src: dropboxImage, video: video };
                 }
 
+                if (/\/video-ads-master\/file\/\d+\//i.test(parsed.pathname) && videoExt) {
+                    return { type: 'image', src: parsed.pathname, video: parsed.pathname, href: parsed.pathname };
+                }
+
                 if (imageExt) return { type: 'image', src: url };
                 if (videoExt) return { type: 'image', src: url, video: url };
                 return null;
@@ -1311,15 +1329,16 @@
             };
 
             function thumbFormatter(cell) {
-                const url = normalizeUrl(cell.getRow().getData().link);
-                if (!isLikelyUrl(url)) return '<span class="vam-dash">—</span>';
+                const url = playableLink(cell.getRow().getData().link);
+                if (!url) return '<span class="vam-dash">—</span>';
                 const kind = thumbKind(url, cell.getRow().getData());
                 if (!kind) return '<span class="vam-dash">—</span>';
+                const href = kind.href || url;
                 if (kind.type === 'folder') {
-                    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-thumb-folder" title="This link is a folder"><i class="fas fa-folder"></i></a>`;
+                    return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="vam-thumb-folder" title="This link is a folder"><i class="fas fa-folder"></i></a>`;
                 }
                 const videoAttr = kind.video ? ` data-video="${escapeHtml(kind.video)}"` : '';
-                return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-thumb-box" data-zoom="image" data-src="${escapeHtml(kind.src)}"${videoAttr} title="Open link"><img src="${escapeHtml(kind.src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="window._vamThumbFail(this)"></a>`;
+                return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="vam-thumb-box" data-zoom="image" data-src="${escapeHtml(kind.src)}"${videoAttr} title="Open link"><img src="${escapeHtml(kind.src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="window._vamThumbFail(this)"></a>`;
             }
 
             // Enlarged preview is attached to <body> so the table cannot clip it.
@@ -2168,6 +2187,40 @@
                 };
             }
 
+            // PHP accepts only a couple of megabytes in one request, so a video
+            // is sent as 512 KB pieces and assembled on the server.
+            function sendVideoChunks(file, saveBtn) {
+                const bytes = new Uint8Array(16);
+                crypto.getRandomValues(bytes);
+                const uploadId = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                const chunkSize = 512 * 1024;
+                const total = Math.max(1, Math.ceil(file.size / chunkSize));
+                let chain = Promise.resolve();
+                for (let i = 0; i < total; i++) {
+                    chain = chain.then(function () {
+                        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Uploading ' + (i + 1) + '/' + total + '…';
+                        const body = new FormData();
+                        body.append('upload_id', uploadId);
+                        body.append('chunk_index', String(i));
+                        body.append('total_chunks', String(total));
+                        body.append('filename', file.name || 'video.mp4');
+                        body.append('chunk', file.slice(i * chunkSize, Math.min(file.size, (i + 1) * chunkSize)), 'part.bin');
+                        return fetch('/video-ads-master/video-chunk', {
+                            method: 'POST',
+                            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                            body,
+                        }).then(function (res) {
+                            return res.json().catch(function () { return {}; }).then(function (json) {
+                                if (!res.ok || !json.success) {
+                                    throw new Error((json && json.message) || 'Video upload failed');
+                                }
+                            });
+                        });
+                    });
+                }
+                return chain.then(function () { return uploadId; });
+            }
+
             function saveFormRow() {
                 const payload = collectFormPayload();
                 if (!payload.target_type) {
@@ -2179,6 +2232,10 @@
                 const isEdit = !!editingId;
                 const url    = isEdit ? `/video-ads-master/${editingId}` : '/video-ads-master';
                 const videoFile = document.getElementById('vam_video').files[0] || null;
+                if (videoFile && videoFile.size > 200 * 1024 * 1024) {
+                    showToast('Video must be 200 MB or smaller.', 'warning');
+                    return;
+                }
                 const saveBtn = document.getElementById('vamRowSaveBtn');
                 const saveIdle = saveBtn.innerHTML;
                 saveBtn.disabled = true;
@@ -2186,19 +2243,10 @@
                     ? '<i class="fas fa-spinner fa-spin me-1"></i>Uploading…'
                     : '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
 
-                let request;
-                if (videoFile) {
-                    const body = new FormData();
-                    Object.keys(payload).forEach(key => body.append(key, payload[key] == null ? '' : payload[key]));
-                    body.append('video', videoFile);
-                    if (isEdit) body.append('_method', 'PUT');
-                    request = fetch(url, {
-                        method: 'POST',
-                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                        body,
-                    });
-                } else {
-                    request = fetch(url, {
+                const request = (videoFile ? sendVideoChunks(videoFile, saveBtn) : Promise.resolve(null))
+                .then(function (uploadId) {
+                    if (uploadId) payload.video_upload = uploadId;
+                    return fetch(url, {
                         method: isEdit ? 'PUT' : 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -2207,7 +2255,7 @@
                         },
                         body: JSON.stringify(payload),
                     });
-                }
+                });
 
                 request
                 .then(r => r.json().then(j => ({ ok: r.ok, j })))
@@ -2228,7 +2276,11 @@
                     updateCount();
                     rowModal.hide();
                 })
-                .catch(e => { console.error(e); showToast('Network error while saving', 'error'); })
+                .catch(e => {
+                    console.error(e);
+                    const message = e && e.message && e.message !== 'Failed to fetch' ? e.message : 'Network error while saving';
+                    showToast(message, 'error');
+                })
                 .finally(() => {
                     saveBtn.disabled = false;
                     saveBtn.innerHTML = saveIdle;

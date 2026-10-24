@@ -23,6 +23,10 @@ class VideoAdsMasterController extends Controller
     /** The Creator dropdown only offers these two names from the user table. */
     private const CREATOR_DROPDOWN_NAMES = ['Mariya', 'Rahul'];
 
+    private const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'm4v', 'ogg', 'ogv', 'mkv'];
+
+    private const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+
     public function index()
     {
         return view('video-ads-master');
@@ -164,7 +168,11 @@ class VideoAdsMasterController extends Controller
 
     private function videoMime(string $url): string
     {
-        $ext = strtolower(pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+        $path = parse_url($url, PHP_URL_PATH);
+        if (! is_string($path) || pathinfo($path, PATHINFO_EXTENSION) === '') {
+            $path = $url;
+        }
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
         return match ($ext) {
             'webm' => 'video/webm',
@@ -239,11 +247,12 @@ class VideoAdsMasterController extends Controller
             'hook'         => 'nullable|string',
             'link'         => 'nullable|string',
             'video'        => 'nullable|file|max:204800',
+            'video_upload' => 'nullable|string|max:64',
         ]);
 
-        unset($data['video']);
+        unset($data['video'], $data['video_upload']);
         $row = VideoAdsMaster::create($data);
-        $uploaded = $this->attachUploadedVideo($request, $row);
+        $uploaded = $this->attachAssembledVideo($request, $row);
         if ($uploaded !== null) {
             $row->delete();
 
@@ -271,11 +280,12 @@ class VideoAdsMasterController extends Controller
             'hook'         => 'sometimes|nullable|string',
             'link'         => 'sometimes|nullable|string',
             'video'        => 'nullable|file|max:204800',
+            'video_upload' => 'nullable|string|max:64',
         ]);
 
-        unset($data['video']);
+        unset($data['video'], $data['video_upload']);
         $row->fill($data)->save();
-        $uploaded = $this->attachUploadedVideo($request, $row);
+        $uploaded = $this->attachAssembledVideo($request, $row);
         if ($uploaded !== null) {
             return $uploaded;
         }
@@ -311,6 +321,82 @@ class VideoAdsMasterController extends Controller
     }
 
     /**
+     * One piece of a video. The browser sends 512 KB pieces because PHP rejects
+     * a whole video in a single request. The last piece marks the upload ready
+     * for store() / update() to attach.
+     */
+    public function uploadVideoChunk(Request $request)
+    {
+        $uploadId = (string) $request->input('upload_id', '');
+        $index = (int) $request->input('chunk_index', -1);
+        $total = (int) $request->input('total_chunks', 0);
+        $filename = (string) $request->input('filename', '');
+        if (! preg_match('/^[a-f0-9]{32}$/', $uploadId) || $index < 0 || $total < 1 || $total > 500 || $index >= $total) {
+            return response()->json(['success' => false, 'message' => 'Video upload was not accepted.'], 422);
+        }
+
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        if (! in_array($ext, self::VIDEO_EXTENSIONS, true)) {
+            return response()->json(['success' => false, 'message' => 'Upload an mp4, webm, mov, or mkv video.'], 422);
+        }
+
+        $chunk = $request->file('chunk');
+        if (! $chunk || ! $chunk->isValid()) {
+            return response()->json(['success' => false, 'message' => 'A piece of the video did not upload. Try again.'], 422);
+        }
+        if ($chunk->getSize() > 1024 * 1024) {
+            return response()->json(['success' => false, 'message' => 'A piece of the video is too large.'], 422);
+        }
+
+        $dir = $this->videoTempDir();
+        if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+            return response()->json(['success' => false, 'message' => 'Could not store the video.'], 500);
+        }
+
+        $part = $dir.'/'.$uploadId.'.part';
+        $metaPath = $part.'.json';
+        if ($index === 0) {
+            $this->purgeStaleVideoTemps($dir);
+            @unlink($part);
+            file_put_contents($metaPath, json_encode(['next' => 0, 'ext' => $ext, 'done' => false]));
+        }
+
+        $state = is_file($metaPath) ? json_decode((string) file_get_contents($metaPath), true) : null;
+        if (! is_array($state) || (int) ($state['next'] ?? -1) !== $index || ($state['ext'] ?? '') !== $ext) {
+            return response()->json(['success' => false, 'message' => 'Video upload was interrupted. Please try again.'], 409);
+        }
+
+        $in = fopen($chunk->getRealPath(), 'rb');
+        $out = fopen($part, 'ab');
+        if ($in === false || $out === false) {
+            if (is_resource($in)) {
+                fclose($in);
+            }
+            if (is_resource($out)) {
+                fclose($out);
+            }
+
+            return response()->json(['success' => false, 'message' => 'Could not store the video.'], 500);
+        }
+        stream_copy_to_stream($in, $out);
+        fclose($in);
+        fclose($out);
+        clearstatcache(true, $part);
+
+        if ((int) filesize($part) > self::MAX_VIDEO_BYTES) {
+            @unlink($part);
+            @unlink($metaPath);
+
+            return response()->json(['success' => false, 'message' => 'Video must be 200 MB or smaller.'], 422);
+        }
+
+        $done = $index === $total - 1;
+        file_put_contents($metaPath, json_encode(['next' => $index + 1, 'ext' => $ext, 'done' => $done]));
+
+        return response()->json(['success' => true, 'done' => $done]);
+    }
+
+    /**
      * Plays a video uploaded from the Add / Edit form. The URL ends in the
      * file extension so the table thumbnail can show a frame of it.
      */
@@ -334,6 +420,38 @@ class VideoAdsMasterController extends Controller
     }
 
     /**
+     * Attach a video that arrived in pieces, or a single small file.
+     *
+     * @return \Illuminate\Http\JsonResponse|null
+     */
+    private function attachAssembledVideo(Request $request, VideoAdsMaster $row)
+    {
+        $uploadId = (string) $request->input('video_upload', '');
+        if ($uploadId === '') {
+            return $this->attachUploadedVideo($request, $row);
+        }
+        if (! preg_match('/^[a-f0-9]{32}$/', $uploadId)) {
+            return response()->json(['success' => false, 'message' => 'Video upload was not accepted.'], 422);
+        }
+
+        $part = $this->videoTempDir().'/'.$uploadId.'.part';
+        $metaPath = $part.'.json';
+        $state = is_file($metaPath) ? json_decode((string) file_get_contents($metaPath), true) : null;
+        $ext = strtolower((string) (is_array($state) ? ($state['ext'] ?? '') : ''));
+        if (! is_array($state) || empty($state['done']) || ! is_file($part) || ! in_array($ext, self::VIDEO_EXTENSIONS, true)) {
+            return response()->json(['success' => false, 'message' => 'The video upload did not finish. Please try again.'], 422);
+        }
+
+        $stored = $this->storeVideoFile($row, $part, $ext, true);
+        @unlink($metaPath);
+        if ($stored !== null) {
+            return $stored;
+        }
+
+        return null;
+    }
+
+    /**
      * Store an uploaded video and point the row link at it so the table
      * thumbnail uses the same frame preview as other video links.
      *
@@ -341,12 +459,11 @@ class VideoAdsMasterController extends Controller
      */
     private function attachUploadedVideo(Request $request, VideoAdsMaster $row)
     {
-        if (! $request->hasFile('video')) {
+        $file = $request->file('video');
+        if (! $file) {
             return null;
         }
-
-        $file = $request->file('video');
-        if (! $file || ! $file->isValid()) {
+        if (! $file->isValid()) {
             return response()->json([
                 'success' => false,
                 'message' => 'The video upload did not finish. Try a smaller file.',
@@ -354,13 +471,21 @@ class VideoAdsMasterController extends Controller
         }
 
         $ext = strtolower((string) ($file->getClientOriginalExtension() ?: $file->extension() ?: ''));
-        if (! in_array($ext, ['mp4', 'webm', 'mov', 'm4v', 'ogg', 'ogv', 'mkv'], true)) {
+        if (! in_array($ext, self::VIDEO_EXTENSIONS, true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Upload an mp4, webm, mov, or mkv video.',
             ], 422);
         }
 
+        return $this->storeVideoFile($row, $file->getRealPath(), $ext, false);
+    }
+
+    /**
+     * @return \Illuminate\Http\JsonResponse|null
+     */
+    private function storeVideoFile(VideoAdsMaster $row, string $source, string $ext, bool $move): ?\Illuminate\Http\JsonResponse
+    {
         $dir = storage_path('app/video-ads');
         if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
             return response()->json(['success' => false, 'message' => 'Could not store the video.'], 500);
@@ -368,11 +493,36 @@ class VideoAdsMasterController extends Controller
 
         $this->deleteUploadedVideoFile($row);
         $name = $row->id.'-'.bin2hex(random_bytes(4)).'.'.$ext;
-        $file->move($dir, $name);
-        $row->link = url('/video-ads-master/file/'.$row->id.'/'.$name);
+        $dest = $dir.'/'.$name;
+        $stored = $move ? @rename($source, $dest) : @copy($source, $dest);
+        if (! $stored) {
+            $stored = @copy($source, $dest);
+            if ($stored && $move) {
+                @unlink($source);
+            }
+        }
+        if (! $stored || ! is_file($dest)) {
+            return response()->json(['success' => false, 'message' => 'Could not store the video.'], 500);
+        }
+
+        $row->link = '/video-ads-master/file/'.$row->id.'/'.$name;
         $row->save();
 
         return null;
+    }
+
+    private function videoTempDir(): string
+    {
+        return storage_path('app/video-ads-tmp/'.(Auth::id() ?: 0));
+    }
+
+    private function purgeStaleVideoTemps(string $dir): void
+    {
+        foreach (glob($dir.'/*') ?: [] as $file) {
+            if (is_file($file) && filemtime($file) < time() - 86400) {
+                @unlink($file);
+            }
+        }
     }
 
     private function deleteUploadedVideoFile(VideoAdsMaster $row): void
