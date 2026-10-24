@@ -26,7 +26,7 @@ final class DilVsSbidRule
     public const KEY_EBAY1 = 'ebay1_dil_sbid';
 
     /** Extra range tables whose S Bid is added to the Dil slab bid. */
-    public const TABLE_KEYS = ['views', 'cvr', 'sold', 'npft'];
+    public const TABLE_KEYS = ['views', 'cvr', 'sold', 'npft', 'gpft'];
 
     public const KEY_EBAY2 = 'ebay2_dil_sbid';
 
@@ -165,6 +165,8 @@ final class DilVsSbidRule
             'cvr' => $build([[0, 0], [0, 2], [2, 4], [4, 7], [7, 10], [10, 9999]]),
             'sold' => $build([[0, 0], [1, 2], [3, 5], [6, 10], [11, 25], [26, 9999]]),
             'npft' => $build([[-9999, 0], [0, 10], [10, 20], [20, 30], [30, 9999]]),
+            // GPFT % of the listing price (eBay 1 only). Below 0 is outside every range and adds 0.
+            'gpft' => $build([[0, 10], [10, 20], [20, 30], [30, 40], [40, 50], [50, 9999]]),
         ];
     }
 
@@ -215,6 +217,32 @@ final class DilVsSbidRule
         return false;
     }
 
+    /** True when the GPFT % table adds anything, so price / LP / ship are worth loading. */
+    public static function usesGpft(array $tables): bool
+    {
+        foreach ($tables['gpft'] ?? [] as $slab) {
+            if (abs((float) ($slab['bid'] ?? 0)) > 0.0000001) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * GPFT % as on /ebay-tabulator-view: ((price × take-home − ship − LP) / price) × 100, 2 decimals.
+     * Null when there is no price.
+     */
+    public static function gpftPercent(?float $price, ?float $lp, float $ship, float $takeHome): ?float
+    {
+        if ($price === null || $price <= 0) {
+            return null;
+        }
+        $lpVal = ($lp !== null && $lp > 0) ? $lp : 0.0;
+
+        return round((($price * $takeHome - $ship - $lpVal) / $price) * 100, 2);
+    }
+
     /**
      * Std NPFT % as on /lmp-overall: ((Std × 0.70 − ship − LP) / Std) × 100, 2 decimals.
      * Null when there is no Std Price.
@@ -258,7 +286,7 @@ final class DilVsSbidRule
      * With every extra table at 0 this is the same decision resolve() gives.
      *
      * @param  array<string, list<array{min:float,max:float,bid:float}>>  $tables  Normalized tables
-     * @param  array{views?:?float,cvr?:?float,sold?:?float,npft?:?float}  $inputs
+     * @param  array{views?:?float,cvr?:?float,sold?:?float,npft?:?float,gpft?:?float}  $inputs
      * @return array{mode:string,bid:float,off:bool,label:string,parts:array<string,float>}
      */
     public static function resolveTotal(float $dil, float $esBid, array $slabs, array $tables, array $inputs): array
@@ -494,7 +522,8 @@ final class DilVsSbidRule
         $stored = self::load($key);
         $on = $enabled === null ? $stored['enabled'] : (bool) $enabled;
         $cvrClean = $cvr === null ? $stored['cvr'] : self::normalizeCvr($cvr);
-        $tablesClean = $tables === null ? $stored['tables'] : self::normalizeTables($tables);
+        // A page that does not show every table (GPFT is eBay 1 only) leaves the missing ones as saved.
+        $tablesClean = $tables === null ? $stored['tables'] : self::normalizeTables(self::withStoredTables($tables, $stored['tables']));
         $capClean = $cap === null ? $stored['cap'] : self::normalizeCap($cap);
         $viewClean = $viewsOver === null ? $stored['views_over'] : self::normalizeViewOver($viewsOver);
 
@@ -504,6 +533,23 @@ final class DilVsSbidRule
         );
 
         return ['success' => true, 'enabled' => $on, 'slabs' => $clean, 'cvr' => $cvrClean, 'tables' => $tablesClean, 'cap' => $capClean, 'views_over' => $viewClean];
+    }
+
+    /**
+     * @param  array<string, mixed>|mixed  $raw
+     * @param  array<string, list<array{min:float,max:float,bid:float}>>  $stored
+     * @return array<string, mixed>
+     */
+    private static function withStoredTables($raw, array $stored): array
+    {
+        $raw = is_array($raw) ? $raw : [];
+        foreach (self::TABLE_KEYS as $key) {
+            if (! isset($raw[$key]) && isset($stored[$key])) {
+                $raw[$key] = $stored[$key];
+            }
+        }
+
+        return $raw;
     }
 
     public static function normalize(array $slabs): array

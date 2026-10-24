@@ -143,7 +143,7 @@ class DilVsSbidRuleTest extends TestCase
     public function test_extra_tables_start_at_zero_so_nothing_changes(): void
     {
         $tables = DilVsSbidRule::defaultTables();
-        $this->assertSame(['views', 'cvr', 'sold', 'npft'], array_keys($tables));
+        $this->assertSame(['views', 'cvr', 'sold', 'npft', 'gpft'], array_keys($tables));
         foreach ($tables as $slabs) {
             foreach ($slabs as $slab) {
                 $this->assertSame(0.0, $slab['bid']);
@@ -229,6 +229,55 @@ class DilVsSbidRuleTest extends TestCase
         $this->assertFalse(DilVsSbidRule::usesNpft($tables));
         $tables['npft'][2]['bid'] = 1.0;
         $this->assertTrue(DilVsSbidRule::usesNpft($tables));
+    }
+
+    public function test_gpft_slabs_run_in_tens_with_an_open_top_and_start_at_zero_bid(): void
+    {
+        $slabs = DilVsSbidRule::defaultTables()['gpft'];
+        $this->assertSame(
+            [[0.0, 10.0], [10.0, 20.0], [20.0, 30.0], [30.0, 40.0], [40.0, 50.0], [50.0, 9999.0]],
+            array_map(fn ($s) => [$s['min'], $s['max']], $slabs)
+        );
+        $this->assertFalse(DilVsSbidRule::usesGpft(DilVsSbidRule::defaultTables()));
+
+        foreach ($slabs as $i => $slab) {
+            $slabs[$i]['bid'] = (float) ($i + 1);
+        }
+        $this->assertSame(1.0, DilVsSbidRule::tableBid(0, $slabs));
+        $this->assertSame(1.0, DilVsSbidRule::tableBid(10, $slabs));
+        $this->assertSame(2.0, DilVsSbidRule::tableBid(10.01, $slabs));
+        $this->assertSame(5.0, DilVsSbidRule::tableBid(50, $slabs));
+        $this->assertSame(6.0, DilVsSbidRule::tableBid(50.01, $slabs));
+        $this->assertSame(6.0, DilVsSbidRule::tableBid(120, $slabs));
+        $this->assertSame(0.0, DilVsSbidRule::tableBid(-5, $slabs));
+        $this->assertSame(0.0, DilVsSbidRule::tableBid(null, $slabs));
+    }
+
+    public function test_gpft_bid_is_added_to_the_sum(): void
+    {
+        $tables = DilVsSbidRule::defaultTables();
+        $tables['gpft'][2]['bid'] = 1.5;
+        $this->assertTrue(DilVsSbidRule::usesGpft($tables));
+
+        $total = DilVsSbidRule::resolveTotal(4, 9, DilVsSbidRule::defaultSlabs(), $tables, ['gpft' => 25]);
+        $this->assertSame(1.5, $total['parts']['gpft']);
+        $this->assertSame(9.5, $total['bid']);
+
+        $outside = DilVsSbidRule::resolveTotal(4, 9, DilVsSbidRule::defaultSlabs(), $tables, ['gpft' => 5]);
+        $this->assertSame(0.0, $outside['parts']['gpft']);
+        $this->assertSame(8.0, $outside['bid']);
+    }
+
+    public function test_gpft_percent_matches_the_ebay_grid(): void
+    {
+        $this->assertNull(DilVsSbidRule::gpftPercent(null, 10, 1, 0.8));
+        $this->assertNull(DilVsSbidRule::gpftPercent(0, 10, 1, 0.8));
+        // ((100 × 0.80 − 5 − 40) / 100) × 100 = 35
+        $this->assertSame(35.0, DilVsSbidRule::gpftPercent(100, 40, 5, 0.8));
+        // No LP counts as 0.
+        $this->assertSame(75.0, DilVsSbidRule::gpftPercent(100, null, 5, 0.8));
+        // Loss-making SKUs stay negative.
+        $this->assertSame(-20.0, DilVsSbidRule::gpftPercent(100, 90, 10, 0.8));
     }
 
     public function test_bid_cap_defaults_to_ebay_range_and_clamps(): void

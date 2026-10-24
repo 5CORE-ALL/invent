@@ -130,6 +130,7 @@
     'part' => 'modal',
     'account' => 'eBay 1',
     'extended' => true,
+    'gpft' => true,
 ])
 
 @include('campaign.partials.ebay-report-history', ['historyUrl' => url('/ebay/listing-report-history')])
@@ -1052,6 +1053,7 @@ function getDilColor(dil) {
     'part' => 'script',
     'account' => 'eBay 1',
     'extended' => true,
+    'gpft' => true,
     'getUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
     'saveUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
     'applyUrl' => url('/ebay/campaign-ads/push-selected'),

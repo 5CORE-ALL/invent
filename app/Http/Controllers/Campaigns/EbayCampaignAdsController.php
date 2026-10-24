@@ -10,6 +10,7 @@ use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\Marketplace\EbayListingEnded;
 use App\Support\CpMasterDil;
 use App\Support\EbayListingReportHistory;
+use App\Support\EbayGpftLookup;
 use App\Support\EbayStdNpftLookup;
 use App\Support\EbayYesterdaySpend;
 use Illuminate\Http\Request;
@@ -723,6 +724,7 @@ class EbayCampaignAdsController extends Controller
         EbayYesterdaySpend::attachToCampaignRows($data);
         EbayListingReportHistory::attachToRows($data);
         $this->attachStdNpft($data);
+        $this->attachGpft($data);
         return response()->json([
             'total' => $total,
             'data'  => $data,
@@ -751,6 +753,31 @@ class EbayCampaignAdsController extends Controller
         foreach ($rows as $row) {
             $key = EbayStdNpftLookup::key((string) ($row->resolved_sku ?? ''));
             $row->std_npft = ($key !== '' && array_key_exists($key, $npft)) ? $npft[$key] : null;
+        }
+    }
+
+    /**
+     * GPFT % from the listing price, the same number /ebay-tabulator-view shows,
+     * so the Dil vs SBid GPFT table counts what the push uses.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     */
+    private function attachGpft($rows): void
+    {
+        $prices = [];
+        foreach ($rows as $row) {
+            if ((int) ($row->sku_matched ?? 0) !== 1) {
+                continue;
+            }
+            $sku = trim((string) ($row->resolved_sku ?? ''));
+            if ($sku !== '') {
+                $prices[$sku] = $row->metric_price ?? null;
+            }
+        }
+        $gpft = EbayGpftLookup::forPrices($prices);
+        foreach ($rows as $row) {
+            $key = EbayStdNpftLookup::key((string) ($row->resolved_sku ?? ''));
+            $row->gpft_pct = ($key !== '' && array_key_exists($key, $gpft)) ? $gpft[$key] : null;
         }
     }
 

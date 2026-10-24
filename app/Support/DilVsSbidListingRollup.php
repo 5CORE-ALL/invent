@@ -7,13 +7,13 @@ namespace App\Support;
  * INV / OV L30 are per SKU and are summed (family Dil).
  * Views, eBay sold and L7 views are listing-level on eBay 2 — the same
  * number is stored on every variation — so those use one copy, not a sum.
- * Std NPFT % is the average of SKUs that have a Std Prc.
+ * Std NPFT % and GPFT % are the average of SKUs that have one.
  */
 final class DilVsSbidListingRollup
 {
     /**
-     * @param  list<array{sku?:string,quantity?:float|int|null,inv?:float|int|null,views?:float|int|null,ebay_l30?:float|int|null,ebay_l60?:float|int|null,l7_views?:float|int|null,npft?:float|null}>  $members
-     * @return array{sku:string,quantity:?float,inv:?float,views:float,ebay_l30:float,ebay_l60:float,l7_views:float,npft:?float}
+     * @param  list<array{sku?:string,quantity?:float|int|null,inv?:float|int|null,views?:float|int|null,ebay_l30?:float|int|null,ebay_l60?:float|int|null,l7_views?:float|int|null,npft?:float|null,gpft?:float|null}>  $members
+     * @return array{sku:string,quantity:?float,inv:?float,views:float,ebay_l30:float,ebay_l60:float,l7_views:float,npft:?float,gpft:?float}
      */
     public static function combine(array $members): array
     {
@@ -27,6 +27,8 @@ final class DilVsSbidListingRollup
         $l7 = 0.0;
         $npftSum = 0.0;
         $npftN = 0;
+        $gpftSum = 0.0;
+        $gpftN = 0;
         $sku = '';
 
         foreach ($members as $m) {
@@ -52,6 +54,10 @@ final class DilVsSbidListingRollup
                 $npftSum += (float) $m['npft'];
                 $npftN++;
             }
+            if (isset($m['gpft']) && is_numeric($m['gpft'])) {
+                $gpftSum += (float) $m['gpft'];
+                $gpftN++;
+            }
         }
 
         return [
@@ -63,6 +69,7 @@ final class DilVsSbidListingRollup
             'ebay_l60' => $l60,
             'l7_views' => $l7,
             'npft' => $npftN > 0 ? $npftSum / $npftN : null,
+            'gpft' => $gpftN > 0 ? $gpftSum / $gpftN : null,
         ];
     }
 }

@@ -1909,7 +1909,7 @@
 
                         <div class="amz-bgt-col" data-amz-bgt-panel="gpft">
                             <div class="amz-bgt-col-head">
-                                <div class="amz-bgt-title" title="Inclusive Avg GPFT % of the campaign's SKU(s) (the GPFT column, same as /amazon-tabulator-view; a PARENT campaign uses the average of its child SKUs). First matching slab wins, top to bottom. Negative From, To, and Bgt are allowed. Default budgets are 0 until you set them.">BGT Vs GPFT%</div>
+                                <div class="amz-bgt-title" title="Inclusive Avg GPFT % of the campaign's SKU(s) (the GPFT column, same as /amazon-tabulator-view; a PARENT campaign uses the average of its child SKUs). First matching slab wins, top to bottom. Negative From, To, and Bgt are allowed. Default budgets are 0 until you set them. Flag Bgt (optional) replaces Bgt for a GPFT-flagged campaign: L30 ACOS% below its GPFT% (green flag).">BGT Vs GPFT%</div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs GPFT%" aria-label="Minimize BGT Vs GPFT%">−</button></span>
                             </div>
                             <div class="table-responsive">
@@ -1920,6 +1920,7 @@
                                             <th>From %</th>
                                             <th>To %</th>
                                             <th>Bgt</th>
+                                            <th title="Bgt used instead when the campaign is GPFT-flagged: its L30 ACOS% is below its GPFT% (green flag on the ACOS% cell). Leave blank to use Bgt."><i class="fas fa-flag" style="color:#16a34a;font-size:10px;"></i> Flag Bgt</th>
                                             <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
@@ -2216,7 +2217,7 @@
             var amzU7PieChart = null;
             var amzU7PieRefreshTimer = null;
 
-            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_inv_color', 'bgt_inv_label', 'bgt_inv_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value'];
+            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_inv_color', 'bgt_inv_label', 'bgt_inv_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value', 'bgt_gpft_flagged'];
             var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
             var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
@@ -2887,7 +2888,10 @@
                 var tip = 'Bgt GPFT from the campaign Avg GPFT%';
                 if (isFinite(gpft)) tip += ' · GPFT ' + Math.round(gpft) + '%';
                 if (label) tip += ' · ' + label;
-                return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
+                var flagged = !!(row && row.bgt_gpft_flagged);
+                if (flagged) tip += ' · GPFT-flagged (ACOS% below GPFT%): flag Bgt used';
+                return '<span class="fw-semibold" style="color:' + color + ';white-space:nowrap;" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t
+                    + (flagged ? ' <i class="fas fa-flag" style="color:#16a34a;font-size:10px;"></i>' : '') + '</span>';
             }
             // GPFT% colours follow the /amazon-tabulator-view GPFT filter bands: ≤20 red, 20–30 yellow, 30–43 green, ≥43 pink.
             function fmtSkuGpft(cell) {
@@ -6668,7 +6672,10 @@
                         foot.className = 'amz-bgt-cnt-foot';
                         table.appendChild(foot);
                     }
-                    foot.innerHTML = '<tr><td></td><td class="amz-bgt-foot-label">Total</td><td></td><td></td>'
+                    // Blank cells between the label and the Count column: one per amount column (Bgt, and Flag Bgt on GPFT).
+                    var footGap = '';
+                    for (var g = 0; g < Math.max(2, table.querySelectorAll('thead th').length - 4); g++) footGap += '<td></td>';
+                    foot.innerHTML = '<tr><td></td><td class="amz-bgt-foot-label">Total</td>' + footGap
                         + '<td class="amz-bgt-cnt amz-bgt-cnt-sum text-center">' + sumText + '</td><td></td></tr>';
                 }
                 // Count badges in the panel header: sum of the slab counts, plus campaigns that match no slab.
@@ -6730,7 +6737,11 @@
                     reviews: amzBgtBandAmount(amzBgtReviewsBands, amzBgtReviewsBandIndexForRating(amzBgtReviewsRatingOfRow(row), amzBgtReviewsBands), 'bgt'),
                     dil: amzBgtBandAmount(amzBgtDilBands, amzBgtFirstBandIndex(amzBgtDilValueOfRow(row), amzBgtDilBands, 'dil_from', 'dil_to'), 'bgt'),
                     inv: amzBgtBandAmount(amzBgtInvBands, amzBgtFirstBandIndex(amzBgtInvValueOfRow(row), amzBgtInvBands, 'inv_from', 'inv_to'), 'bgt'),
-                    gpft: amzBgtBandAmount(amzBgtGpftBands, amzBgtFirstBandIndex(amzBgtGpftValueOfRow(row), amzBgtGpftBands, 'gpft_from', 'gpft_to'), 'bgt')
+                    gpft: (function () {
+                        var gi = amzBgtFirstBandIndex(amzBgtGpftValueOfRow(row), amzBgtGpftBands, 'gpft_from', 'gpft_to');
+                        var gFlag = row && row.bgt_gpft_flagged ? amzBgtBandAmount(amzBgtGpftBands, gi, 'bgt_flag') : null;
+                        return gFlag != null ? gFlag : amzBgtBandAmount(amzBgtGpftBands, gi, 'bgt');
+                    })()
                 };
             }
             function amzBgtFloorSum(parts) {
@@ -8206,9 +8217,9 @@
 
             // ---- BGT Vs GPFT% Rule (campaign Avg GPFT% → Bgt); dynamic slabs, negatives allowed ----
             var AMZ_BGT_GPFT_DEFAULTS = [
-                { gpft_from: 30, gpft_to: 9999, bgt: 0, label: 'Pink', color: '#e83e8c' },
-                { gpft_from: 15, gpft_to: 30, bgt: 0, label: 'Green', color: '#28a745' },
-                { gpft_from: -9999, gpft_to: 15, bgt: 0, label: 'Red', color: '#a00211' }
+                { gpft_from: 30, gpft_to: 9999, bgt: 0, bgt_flag: '', label: 'Pink', color: '#e83e8c' },
+                { gpft_from: 15, gpft_to: 30, bgt: 0, bgt_flag: '', label: 'Green', color: '#28a745' },
+                { gpft_from: -9999, gpft_to: 15, bgt: 0, bgt_flag: '', label: 'Red', color: '#a00211' }
             ];
             var AMZ_BGT_GPFT_LABELS = ['Pink', 'Green', 'Red', 'Yellow', 'Purple', 'Blue'];
             var AMZ_BGT_GPFT_COLORS = ['#e83e8c', '#28a745', '#a00211', '#ffc107', '#7c3aed', '#2563eb'];
@@ -8220,10 +8231,12 @@
                     var from = parseFloat(keep.gpft_from);
                     var to = parseFloat(keep.gpft_to);
                     var bgt = parseFloat(keep.bgt);
+                    var bgtFlag = (keep.bgt_flag === '' || keep.bgt_flag == null) ? NaN : parseFloat(keep.bgt_flag);
                     out.push({
                         gpft_from: isFinite(from) ? from : '',
                         gpft_to: isFinite(to) ? to : '',
                         bgt: isFinite(bgt) ? bgt : '',
+                        bgt_flag: isFinite(bgtFlag) ? bgtFlag : '',
                         label: keep.label != null ? String(keep.label) : '',
                         color: keep.color || '#6c757d'
                     });
@@ -8237,6 +8250,7 @@
                     gpft_from: next.from,
                     gpft_to: next.to,
                     bgt: next.amt,
+                    bgt_flag: '',
                     label: AMZ_BGT_GPFT_LABELS[i] || ('Slab ' + (i + 1)),
                     color: AMZ_BGT_GPFT_COLORS[i] || AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
                 };
@@ -8267,6 +8281,7 @@
                         + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.gpft_from != null ? band.gpft_from : '') + '" data-idx="' + i + '" data-field="gpft_from" placeholder="-9999"></td>'
                         + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.gpft_to != null ? band.gpft_to : '') + '" data-idx="' + i + '" data-field="gpft_to" placeholder="9999"></td>'
                         + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 and negatives are allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt_flag != null ? band.bgt_flag : '') + '" data-idx="' + i + '" data-field="bgt_flag" placeholder="= Bgt" title="Bgt for a GPFT-flagged campaign (L30 ACOS% below its GPFT%, green flag). Blank = use Bgt. 0 and negatives are allowed."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -8500,11 +8515,16 @@
                     bands[idx][fld] = el.value === '' ? '' : parseFloat(el.value);
                 });
             }
-            function amzBgtCleanRuleBands(bands, fromKey, toKey, amtKey) {
+            function amzBgtCleanRuleBands(bands, fromKey, toKey, amtKey, optionalKeys) {
                 return (bands || []).map(function (b) {
                     var row = { label: (b.label || '').toString(), color: (b.color || '#6c757d').toString() };
                     [fromKey, toKey, amtKey].forEach(function (k) {
                         row[k] = (b[k] === '' || b[k] == null) ? NaN : parseFloat(b[k]);
+                    });
+                    // Optional numbers (blank is allowed and saved as null).
+                    (optionalKeys || []).forEach(function (k) {
+                        var n = (b[k] === '' || b[k] == null) ? NaN : parseFloat(b[k]);
+                        row[k] = isFinite(n) ? n : null;
                     });
                     return row;
                 });
@@ -8550,7 +8570,7 @@
                     { label: 'BGT Vs REVIEWS', url: bgtReviewsRuleSaveUrl, body: 'amazonAdsBgtReviewsRuleBandsBody', bands: amzBgtReviewsBands, from: 'rev_from', to: 'rev_to', amt: 'bgt', store: 'amazonAdsBgtReviewsRule', load: amzLoadBgtReviewsBandsFromRule },
                     { label: 'BGT Vs Dil', url: bgtDilRuleSaveUrl, body: 'amazonAdsBgtDilRuleBandsBody', bands: amzBgtDilBands, from: 'dil_from', to: 'dil_to', amt: 'bgt', store: 'amazonAdsBgtDilRule', load: amzLoadBgtDilBandsFromRule },
                     { label: 'Inv Rule', url: bgtInvRuleSaveUrl, body: 'amazonAdsBgtInvRuleBandsBody', bands: amzBgtInvBands, from: 'inv_from', to: 'inv_to', amt: 'bgt', store: 'amazonAdsBgtInvRule', load: amzLoadBgtInvBandsFromRule },
-                    { label: 'BGT Vs GPFT%', url: bgtGpftRuleSaveUrl, body: 'amazonAdsBgtGpftRuleBandsBody', bands: amzBgtGpftBands, from: 'gpft_from', to: 'gpft_to', amt: 'bgt', store: 'amazonAdsBgtGpftRule', load: amzLoadBgtGpftBandsFromRule },
+                    { label: 'BGT Vs GPFT%', url: bgtGpftRuleSaveUrl, body: 'amazonAdsBgtGpftRuleBandsBody', bands: amzBgtGpftBands, from: 'gpft_from', to: 'gpft_to', amt: 'bgt', optional: ['bgt_flag'], store: 'amazonAdsBgtGpftRule', load: amzLoadBgtGpftBandsFromRule },
                     { label: 'Spend Rule', url: bgtSpendRuleSaveUrl, body: 'amazonAdsBgtSpendRuleBandsBody', bands: amzBgtSpendBands, from: 'spend_from', to: 'spend_to', amt: 'bgt', store: 'amazonAdsBgtSpendRule', load: amzLoadBgtSpendBandsFromRule }
                 ];
                 var jobs = [];
@@ -8558,7 +8578,7 @@
                 for (var i = 0; i < specs.length; i++) {
                     var spec = specs[i];
                     try {
-                        var cleaned = amzBgtCleanRuleBands(amzBgtBandsFromInputs(spec), spec.from, spec.to, spec.amt);
+                        var cleaned = amzBgtCleanRuleBands(amzBgtBandsFromInputs(spec), spec.from, spec.to, spec.amt, spec.optional);
                         var problem = amzBgtValidateRuleBands(cleaned, spec.from, spec.to, spec.amt, spec.label);
                         if (problem) { errors.push(problem); continue; }
                         jobs.push({ spec: spec, bands: cleaned });

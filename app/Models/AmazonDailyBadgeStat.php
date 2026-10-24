@@ -41,6 +41,7 @@ class AmazonDailyBadgeStat extends Model
         'p_npft',
         'p_nroi_pct',
         'p_ads_pct',
+        'p_acos_pct',
         'p_views',
     ];
 

@@ -42,6 +42,17 @@ class DilVsSbidListingRollupTest extends TestCase
         $this->assertSame(30.0, CpMasterDil::slabPercent($out['quantity'], $out['inv']));
     }
 
+    public function test_variation_skus_average_gpft_over_skus_that_have_one(): void
+    {
+        $out = DilVsSbidListingRollup::combine([
+            ['sku' => 'RED', 'gpft' => 20.0],
+            ['sku' => 'BLUE', 'gpft' => 40.0],
+            ['sku' => 'GREEN', 'gpft' => null],
+        ]);
+        $this->assertSame(30.0, $out['gpft']);
+        $this->assertNull(DilVsSbidListingRollup::combine([['sku' => 'RED']])['gpft']);
+    }
+
     public function test_listing_metrics_are_not_tripled_when_copied_onto_each_variation(): void
     {
         $out = DilVsSbidListingRollup::combine([

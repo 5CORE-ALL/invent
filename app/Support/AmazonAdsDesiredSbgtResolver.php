@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Http\Controllers\AmazonAdsController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -73,6 +74,20 @@ final class AmazonAdsDesiredSbgtResolver
             $invByCid = [];
         }
 
+        // GPFT-flagged campaigns (L30 ACOS% < GPFT%) take the slab's flag Bgt, same as the grid.
+        $l30ByCid = [];
+        if (($channel === 'sp' || $channel === 'sb') && AmazonAdsBgtGpftRule::hasFlagBudgets()) {
+            try {
+                $l30ByCid = AmazonAdsController::l30AcosSpendForCampaigns(
+                    $channel === 'sb' ? 'amazon_sb_campaign_reports' : 'amazon_sp_campaign_reports',
+                    array_map('strval', array_keys($rows))
+                );
+            } catch (Throwable $e) {
+                Log::warning('amazon-ads SBGT: L30 ACOS lookup for the GPFT flag failed', ['error' => $e->getMessage()]);
+                $l30ByCid = [];
+            }
+        }
+
         $out = [];
         foreach ($rows as $cid => $arr) {
             $name = trim((string) ($arr['campaignName'] ?? $arr['campaign_name'] ?? ''));
@@ -116,7 +131,9 @@ final class AmazonAdsDesiredSbgtResolver
             $bgtDil = AmazonAdsBgtDilRule::apply($dilVal)['bgt'] ?? null;
             $bgtInv = AmazonAdsBgtInvRule::apply($inv)['bgt'] ?? null;
             $gpftVal = isset($mSku['gpft']) && is_numeric($mSku['gpft']) ? (float) $mSku['gpft'] : null;
-            $bgtGpft = AmazonAdsBgtGpftRule::apply($gpftVal)['bgt'] ?? null;
+            $l30 = $l30ByCid[(string) $cid] ?? null;
+            $flagged = AmazonAdsBgtGpftRule::isFlagged($l30['acos'] ?? null, $gpftVal, $l30['spend'] ?? null);
+            $bgtGpft = AmazonAdsBgtGpftRule::apply($gpftVal, null, $flagged)['bgt'] ?? null;
 
             $sum = AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil, $bgtInv, $bgtGpft);
             if ($sum === null && isset($arr['sbgt']) && is_numeric($arr['sbgt'])) {

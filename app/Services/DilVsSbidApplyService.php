@@ -8,6 +8,7 @@ use App\Support\DilVsSbidListingRollup;
 use App\Support\DilVsSbidRule;
 use App\Support\EbayBidPercentage;
 use App\Support\EbayCampaignAdLiveBid;
+use App\Support\EbayGpftLookup;
 use App\Support\EbayMarketingPushRetry;
 use App\Support\EbayStdNpftLookup;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
@@ -69,6 +70,9 @@ class DilVsSbidApplyService
         $npftMap = ($useDil && DilVsSbidRule::usesNpft($tables))
             ? EbayStdNpftLookup::forSkus($skus)
             : [];
+        $gpftMap = ($useDil && DilVsSbidRule::usesGpft($tables))
+            ? $this->gpftBySku($metricsByListing)
+            : [];
 
         $service = new $apiServiceClass();
         $http = new EbayMarketingPushRetry($service);
@@ -101,7 +105,7 @@ class DilVsSbidApplyService
                     continue;
                 }
 
-                $rolled = $this->rolledListingInputs($lid, $ad, $metricsByListing, $shopifyMap, $npftMap);
+                $rolled = $this->rolledListingInputs($lid, $ad, $metricsByListing, $shopifyMap, $npftMap, $gpftMap);
                 $wanted = $this->listingDecision(
                     $useDil,
                     $ad,
@@ -113,7 +117,8 @@ class DilVsSbidApplyService
                     $cap,
                     $viewsOver,
                     $rolled['npftMap'],
-                    DilVsSbidRule::usesEsBidCeiling($ruleKey)
+                    DilVsSbidRule::usesEsBidCeiling($ruleKey),
+                    $rolled['gpftMap']
                 );
 
                 if ($wanted['skip'] !== null) {
@@ -240,6 +245,7 @@ class DilVsSbidApplyService
         $skus = $this->skusForListings($listingIds, $metricsByListing, $ads);
         $shopifyMap = $this->shopifyBySku($skus);
         $npftMap = DilVsSbidRule::usesNpft($tables) ? EbayStdNpftLookup::forSkus($skus) : [];
+        $gpftMap = DilVsSbidRule::usesGpft($tables) ? $this->gpftBySku($metricsByListing) : [];
 
         $out = [];
         foreach ($listingIds as $lid) {
@@ -251,7 +257,7 @@ class DilVsSbidApplyService
                 if (! $ad->campaign_id) {
                     continue;
                 }
-                $rolled = $this->rolledListingInputs($lid, $ad, $metricsByListing, $shopifyMap, $npftMap);
+                $rolled = $this->rolledListingInputs($lid, $ad, $metricsByListing, $shopifyMap, $npftMap, $gpftMap);
                 $wanted = $this->listingDecision(
                     true,
                     $ad,
@@ -263,7 +269,8 @@ class DilVsSbidApplyService
                     $cap,
                     $viewsOver,
                     $rolled['npftMap'],
-                    DilVsSbidRule::usesEsBidCeiling($ruleKey)
+                    DilVsSbidRule::usesEsBidCeiling($ruleKey),
+                    $rolled['gpftMap']
                 );
                 if ($wanted['skip'] !== null || $wanted['off'] || $wanted['formatted'] === null) {
                     continue;
@@ -313,9 +320,10 @@ class DilVsSbidApplyService
      * @param  \Illuminate\Support\Collection<string, mixed>  $metricsByListing
      * @param  array<string, mixed>  $shopifyMap
      * @param  array<string, mixed>  $npftMap
-     * @return array{metric:object,shopify:object,npftMap:array<string,?float>}
+     * @param  array<string, ?float>  $gpftMap
+     * @return array{metric:object,shopify:object,npftMap:array<string,?float>,gpftMap:array<string,?float>}
      */
-    private function rolledListingInputs(string $listingId, object $ad, $metricsByListing, array $shopifyMap, array $npftMap): array
+    private function rolledListingInputs(string $listingId, object $ad, $metricsByListing, array $shopifyMap, array $npftMap, array $gpftMap = []): array
     {
         $members = [];
         foreach ($metricsByListing->get($listingId) ?? [] as $metric) {
@@ -330,6 +338,7 @@ class DilVsSbidApplyService
                 'ebay_l60' => $metric->ebay_l60 ?? 0,
                 'l7_views' => $metric->l7_views ?? 0,
                 'npft' => $sku !== '' ? ($npftMap[EbayStdNpftLookup::key($sku)] ?? null) : null,
+                'gpft' => $sku !== '' ? ($gpftMap[EbayStdNpftLookup::key($sku)] ?? null) : null,
             ];
         }
         if ($members === []) {
@@ -344,6 +353,7 @@ class DilVsSbidApplyService
                 'ebay_l60' => 0,
                 'l7_views' => 0,
                 'npft' => $sku !== '' ? ($npftMap[EbayStdNpftLookup::key($sku)] ?? null) : null,
+                'gpft' => $sku !== '' ? ($gpftMap[EbayStdNpftLookup::key($sku)] ?? null) : null,
             ];
         }
 
@@ -363,7 +373,30 @@ class DilVsSbidApplyService
                 'inv' => $rolled['inv'],
             ],
             'npftMap' => $sku !== '' ? [EbayStdNpftLookup::key($sku) => $rolled['npft']] : [],
+            'gpftMap' => $sku !== '' ? [EbayStdNpftLookup::key($sku) => $rolled['gpft']] : [],
         ];
+    }
+
+    /**
+     * GPFT % per SKU from each listing's own price (ebay_metrics.ebay_price),
+     * the same number the eBay 1 grid shows. Keyed by EbayStdNpftLookup::key(sku).
+     *
+     * @param  \Illuminate\Support\Collection<string, mixed>  $metricsByListing
+     * @return array<string, ?float>
+     */
+    private function gpftBySku($metricsByListing): array
+    {
+        $prices = [];
+        foreach ($metricsByListing as $metrics) {
+            foreach ($metrics as $metric) {
+                $sku = trim((string) ($metric->sku ?? ''));
+                if ($sku !== '') {
+                    $prices[$sku] = $metric->ebay_price ?? null;
+                }
+            }
+        }
+
+        return EbayGpftLookup::forPrices($prices);
     }
 
     /**
@@ -383,7 +416,8 @@ class DilVsSbidApplyService
         array $cap,
         array $viewsOver,
         array $npftMap,
-        bool $esCeiling = false
+        bool $esCeiling = false,
+        array $gpftMap = []
     ): array {
         if (! $useDil) {
             return ['skip' => 'Dil vs SBid is off', 'off' => false, 'formatted' => null, 'label' => ''];
@@ -403,6 +437,7 @@ class DilVsSbidApplyService
             'cvr' => $views > 0 ? ($sold / $views) * 100 : null,
             'sold' => $sold,
             'npft' => $npftMap[EbayStdNpftLookup::key($sku)] ?? null,
+            'gpft' => $gpftMap[EbayStdNpftLookup::key($sku)] ?? null,
         ]);
         if ($decision['bid'] > 0) {
             $adjusted = DilVsSbidRule::applyCvr(

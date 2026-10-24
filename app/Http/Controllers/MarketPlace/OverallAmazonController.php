@@ -3721,7 +3721,8 @@ class OverallAmazonController extends Controller
         $amazonProjected = $this->amazonTabulatorProjected(
             $amazonSalesL30,
             $amazonAdBadges['l30_spend'],
-            $adsPct
+            $adsPct,
+            $amazonAdBadges['l7_ad_sales']
         );
 
         return view("market-places.amazon_tabulator_view", [
@@ -3753,13 +3754,15 @@ class OverallAmazonController extends Controller
      * Same idea as the Projected block on All Marketplace Master: P-Sales = (L7 ÷ 7) × 30.
      * L7 = the 7 Pacific days ending yesterday, from the same real order lines as the L30 badges.
      * Projected PFT and COGS scale the same way, so P-GROI% equals L7 PFT ÷ L7 COGS.
-     * Ad spend is the current L30 ad spend (not projected), so P Ads% = L30 spend ÷ P-Sales.
+     * Ad spend is the current L30 ad spend (not projected), so P TACOS% (p_ads) = L30 spend ÷ P-Sales.
+     * P ACOS% = L30 spend ÷ projected ad sales, where projected ad sales = (L7 ad sales ÷ 7) × 30
+     * (Amazon Ads L7 SP+SB pull, same sales field as Y ACOS%).
      *
-     * @return array{p_sales: float, p_qty: float, p_groi: float, p_npft: float, p_nroi: float, p_ads: float, l7_sales: float}
+     * @return array{p_sales: float, p_qty: float, p_groi: float, p_npft: float, p_nroi: float, p_ads: float, p_acos: float, l7_sales: float}
      */
-    private function amazonTabulatorProjected(float $l30Sales, ?float $l30Spend, float $adsPct): array
+    private function amazonTabulatorProjected(float $l30Sales, ?float $l30Spend, float $adsPct, ?float $l7AdSales = null): array
     {
-        $blank = ['p_sales' => 0.0, 'p_qty' => 0.0, 'p_groi' => 0.0, 'p_npft' => 0.0, 'p_nroi' => 0.0, 'p_ads' => 0.0, 'l7_sales' => 0.0];
+        $blank = ['p_sales' => 0.0, 'p_qty' => 0.0, 'p_groi' => 0.0, 'p_npft' => 0.0, 'p_nroi' => 0.0, 'p_ads' => 0.0, 'p_acos' => 0.0, 'l7_sales' => 0.0];
 
         try {
             [$start, $end] = AmazonOrder::dailySalesL30Window(7);
@@ -3786,6 +3789,8 @@ class OverallAmazonController extends Controller
 
             $spend = $l30Spend !== null ? $l30Spend : (($adsPct / 100.0) * $l30Sales);
             $pAds = $pSales > 0 ? ($spend / $pSales) * 100.0 : 0.0;
+            $pAdSales = $l7AdSales !== null ? $l7AdSales * $scale : 0.0;
+            $pAcos = $pAdSales > 0 ? ($spend / $pAdSales) * 100.0 : ($spend > 0 ? 100.0 : 0.0);
             $pGpft = $lineSales > 0 ? ((float) $fin['pft'] / $lineSales) * 100.0 : 0.0;
 
             return [
@@ -3795,6 +3800,7 @@ class OverallAmazonController extends Controller
                 'p_npft' => $pSales > 0 ? round($pGpft - $pAds, 1) : 0.0,
                 'p_nroi' => $pCogs > 0 ? round(($pPft - $spend) / $pCogs * 100.0, 1) : 0.0,
                 'p_ads' => round($pAds, 1),
+                'p_acos' => round($pAcos, 1),
                 'l7_sales' => round($l7Sales, 2),
             ];
         } catch (\Throwable $e) {
@@ -3813,12 +3819,13 @@ class OverallAmazonController extends Controller
      * Y bgt % is the daily campaign budget versus that same daily average.
      * Y utilized % is L1 spend ÷ daily budget (the U1% ratio, totaled).
      *
-     * @return array{l30_spend: float|null, y_spend: float|null, y_acos: float|null, y_tacos: float|null, y_sales_pct: float|null, y_bgt_pct: float|null, y_utilized_pct: float|null}
+     * @return array{l30_spend: float|null, l7_ad_sales: float|null, y_spend: float|null, y_acos: float|null, y_tacos: float|null, y_sales_pct: float|null, y_bgt_pct: float|null, y_utilized_pct: float|null}
      */
     private function amazonTabulatorAdBadges(?\App\Models\ChannelMasterCalculatedData $channel, float $l30OrderSales): array
     {
         $blank = [
             'l30_spend' => null,
+            'l7_ad_sales' => null,
             'y_spend' => null,
             'y_acos' => null,
             'y_tacos' => null,
@@ -3846,7 +3853,7 @@ class OverallAmazonController extends Controller
             $blank['y_sales_pct'] = round((($dailyAvg - $ySales) / $dailyAvg) * 100, 1);
         }
 
-        $live = ['l30_spend' => 0.0, 'y_spend' => 0.0, 'y_sales' => 0.0, 'budget' => 0.0, 'found' => false];
+        $live = ['l30_spend' => 0.0, 'y_spend' => 0.0, 'y_sales' => 0.0, 'l7_sales' => 0.0, 'budget' => 0.0, 'found' => false];
         try {
             foreach ([
                 'amazon_sp_campaign_reports' => true,
@@ -3900,7 +3907,9 @@ class OverallAmazonController extends Controller
 
                 $l30 = $slice('L30');
                 $l1 = $slice('L1');
+                $l7 = $slice('L7');
                 $live['found'] = true;
+                $live['l7_sales'] += $l7['sales'];
                 $live['l30_spend'] += $l30['spend'];
                 $live['y_spend'] += $l1['spend'];
                 $live['y_sales'] += $l1['sales'];
@@ -3915,6 +3924,7 @@ class OverallAmazonController extends Controller
             $l30Spend = round($live['l30_spend'], 2);
         }
         $blank['l30_spend'] = $l30Spend !== null ? round($l30Spend, 2) : null;
+        $blank['l7_ad_sales'] = $live['found'] ? round($live['l7_sales'], 2) : null;
 
         $ySpend = $live['found'] ? round($live['y_spend'], 2) : null;
         if ($ySpend === null && $channel !== null && $channel->y_ad_spend !== null) {
@@ -7273,6 +7283,10 @@ class OverallAmazonController extends Controller
                 foreach (['p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_views'] as $pKey) {
                     $values[$pKey] = floatval($request->input($pKey, 0));
                 }
+                // P ACOS% has its own column (added later); only write it once that migration has run.
+                if ($request->has('p_acos_pct') && \Illuminate\Support\Facades\Schema::hasColumn('amazon_daily_badge_stats', 'p_acos_pct')) {
+                    $values['p_acos_pct'] = floatval($request->input('p_acos_pct', 0));
+                }
             }
 
             \App\Models\AmazonDailyBadgeStat::updateOrCreate(['snapshot_date' => $today], $values);
@@ -7302,7 +7316,7 @@ class OverallAmazonController extends Controller
                 'total_pft', 'total_sales', 'total_spend',
                 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct',
                 'total_l30_orders',
-                'p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_views',
+                'p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_acos_pct', 'p_views',
             ];
 
             if (!in_array($metric, $allowedMetrics)) {
@@ -7408,6 +7422,7 @@ class OverallAmazonController extends Controller
                     'p_npft' => (float) $row->p_npft,
                     'p_nroi_pct' => (float) $row->p_nroi_pct,
                     'p_ads_pct' => (float) $row->p_ads_pct,
+                    'p_acos_pct' => (float) ($row->p_acos_pct ?? 0),
                     'p_views' => (float) $row->p_views,
                 ],
             ]);

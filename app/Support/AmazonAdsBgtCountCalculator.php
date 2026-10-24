@@ -258,7 +258,12 @@ final class AmazonAdsBgtCountCalculator
                 'reviews' => $this->amount($reviews, $this->reviewsIndex($this->picked($row, 'bgt_reviews_rating', 'reviews'), $reviews), 'bgt'),
                 'dil' => $this->amount($dil, $this->bandIndex($this->dilOf($row), $dil, 'dil_from', 'dil_to'), 'bgt'),
                 'inv' => $this->amount($inv, $this->bandIndex($this->picked($row, 'bgt_inv_value', 'Inv'), $inv, 'inv_from', 'inv_to'), 'bgt'),
-                'gpft' => $this->amount($gpft, $this->bandIndex($this->picked($row, 'bgt_gpft_value', 'gpft'), $gpft, 'gpft_from', 'gpft_to'), 'bgt'),
+                'gpft' => $this->amount(
+                    $gpft,
+                    $this->bandIndex($this->picked($row, 'bgt_gpft_value', 'gpft'), $gpft, 'gpft_from', 'gpft_to'),
+                    ! empty($row['bgt_gpft_flagged']) ? 'bgt_flag' : 'bgt',
+                    'bgt'
+                ),
             ];
             foreach ($order as $part) {
                 $n = $parts[$part['key']];
@@ -324,12 +329,15 @@ final class AmazonAdsBgtCountCalculator
     /**
      * @param  list<array<string, mixed>>  $bands
      */
-    private function amount(array $bands, int $idx, string $key): ?float
+    private function amount(array $bands, int $idx, string $key, ?string $fallbackKey = null): ?float
     {
         if ($idx < 0 || ! isset($bands[$idx]) || ! is_array($bands[$idx])) {
             return null;
         }
         $raw = $bands[$idx][$key] ?? null;
+        if (($raw === null || $raw === '') && $fallbackKey !== null) {
+            $raw = $bands[$idx][$fallbackKey] ?? null;
+        }
         if ($raw === null || $raw === '' || ! is_numeric($raw)) {
             return null;
         }

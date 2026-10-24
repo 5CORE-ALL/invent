@@ -119,7 +119,7 @@ final class EbayStdNpftLookup
      * @param  list<string>  $skus
      * @return array<string, array{lp: ?float, ship: float}>
      */
-    private static function costs(array $skus): array
+    public static function costs(array $skus): array
     {
         $out = [];
         try {

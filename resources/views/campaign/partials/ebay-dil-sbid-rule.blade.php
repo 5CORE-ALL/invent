@@ -4,6 +4,11 @@
     $dilSbidUnit = $dilSbidListingWise ? 'listing' : 'SKU';
     $dilSbidUnits = $dilSbidListingWise ? 'listings' : 'SKUs';
     $dilSbidEsCeiling = in_array($dilSbidAccount, ['eBay 1', 'eBay 2'], true);
+    // GPFT % table (eBay 1 only). Adds its S Bid to the sum like Views / CVR / Sold / Std NPFT %.
+    $dilSbidGpft = ! empty($gpft);
+    $dilSbidParts = $dilSbidGpft
+        ? 'Dil + Views + CVR + eBay Sold + Std NPFT % + GPFT %'
+        : 'Dil + Views + CVR + eBay Sold + Std NPFT %';
 @endphp
 @if(($part ?? 'modal') === 'modal' && ! empty($extended))
 @php
@@ -13,6 +18,9 @@
         'sold' => ['title' => 'eBay Sold', 'hint' => 'eBay L30 units sold. Each range adds its S Bid.'],
         'npft' => ['title' => 'Std NPFT %', 'hint' => 'Std NPFT % from /lmp-overall: ((Std Prc × 0.70 − ship − LP) ÷ Std Prc) × 100. Needs a Std Prc. Each range adds its S Bid.'],
     ];
+    if ($dilSbidGpft) {
+        $dsbTables['gpft'] = ['title' => 'GPFT %', 'hint' => 'GPFT % = the GPFT% column: ((eBay Prc × take-home − ship − LP) ÷ eBay Prc) × 100. Needs an eBay Prc. Below 0 is outside every range. Each range adds its S Bid.'];
+    }
 @endphp
 <div class="modal fade is-off dsb-ext" id="dilSbidRuleModal" tabindex="-1" aria-labelledby="dilSbidRuleModalLabel" aria-hidden="true">
     <style>
@@ -33,7 +41,7 @@
         #dilSbidRuleModal .dsb-sub { color: #64748b; font-size: 12px; margin-top: 2px; }
         #dilSbidRuleModal .dsb-notes { color: #64748b; font-size: 12px; margin: 0 0 12px; padding-left: 1.1rem; }
         #dilSbidRuleModal .modal-body { overflow-x: auto; }
-        #dilSbidRuleModal .dsb-cols { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; align-items: stretch; width: 100%; min-width: 1440px; }
+        #dilSbidRuleModal .dsb-cols { display: grid; grid-template-columns: repeat({{ $dilSbidGpft ? 9 : 8 }}, minmax(0, 1fr)); gap: 8px; align-items: stretch; width: 100%; min-width: {{ $dilSbidGpft ? 1620 : 1440 }}px; }
         #dilSbidRuleModal .dsb-col { min-width: 0; display: flex; flex-direction: column; border: 1px solid #e6edf5; border-radius: 12px; padding: 8px; background: #fff; }
         #dilSbidRuleModal .dsb-col-sum { border-color: #b6d4fe; box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.08); }
         #dilSbidRuleModal .dsb-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; color: #0f172a; }
@@ -72,7 +80,7 @@
                         <i class="fas fa-percent me-2 text-primary"></i>Dil vs SBid
                         <span class="badge bg-secondary ms-2" style="font-size:11px;">{{ $dilSbidAccount }} only</span>
                     </h5>
-                    <div class="dsb-sub">S Bid = Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then @if($dilSbidEsCeiling) the Min cap. A bid above ES Bid uses ES Bid. @else the Min / Max cap. @endif The last card shows the sum that fills the S BID column.</div>
+                    <div class="dsb-sub">S Bid = {{ $dilSbidParts }}, then CVR up / down, then L30 View up / down, then @if($dilSbidEsCeiling) the Min cap. A bid above ES Bid uses ES Bid. @else the Min / Max cap. @endif The last card shows the sum that fills the S BID column.</div>
                 </div>
                 <div class="dsb-cap ms-3 me-2" title="{{ $dilSbidEsCeiling ? 'The final S Bid never goes below Min. When it is above this listing’s ES Bid, ES Bid is used.' : 'The final S Bid never goes below Min or above Max. eBay only accepts 2–100.' }}">
                     <label class="mb-0" for="dil-sbid-cap-min">Min</label>
@@ -97,13 +105,16 @@
                         Count is unique SKUs. Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100).
                     @endif
                     Inventory 0 and missing data are not counted. First matching range wins in every table. A range that starts where the one above ended is exclusive on From. The last range is open at the top.</li>
-                    <li><strong>Dil 0–0</strong> is {{ $dilSbidUnits }} with OV L30 sold = 0. Every Dil slab, including 0–0, uses the S Bid you type. Views, CVR, eBay Sold and Std NPFT % each <strong>add</strong> the S Bid of the range the {{ $dilSbidUnit }} falls in. A negative value subtracts. A {{ $dilSbidUnit }} outside every range adds 0.</li>
+                    <li><strong>Dil 0–0</strong> is {{ $dilSbidUnits }} with OV L30 sold = 0. Every Dil slab, including 0–0, uses the S Bid you type. {{ $dilSbidGpft ? 'Views, CVR, eBay Sold, Std NPFT % and GPFT %' : 'Views, CVR, eBay Sold and Std NPFT %' }} each <strong>add</strong> the S Bid of the range the {{ $dilSbidUnit }} falls in. A negative value subtracts. A {{ $dilSbidUnit }} outside every range adds 0.</li>
                     <li>New tables start at 0, so nothing changes until you type an S Bid. L30 View up / down uses the same arrow as the L30 View column (L7 pace vs L30 pace). Its Adj starts at 0. The final bid is rounded to 0.1 and @if($dilSbidEsCeiling) kept at or above Min. When it is above this listing's ES Bid, ES Bid is used. eBay only accepts 2–100. @else kept between the Min and Max caps (those caps cannot go outside 2 and 100, which eBay accepts). @endif</li>
                     <li>Views, CVR and eBay Sold use <code>ebay_metrics</code> L30, same as the server push.
                     @if($dilSbidListingWise)
                         Variation SKUs that share an item_id are summed, then one S Bid is pushed and pulled on that parent listing. C Bid is shown on the parent row and every SKU under that listing.
                     @endif
-                    Std NPFT % needs a Std Prc, taken from the Sku Link LMP group when the SKU has none.</li>
+                    Std NPFT % needs a Std Prc, taken from the Sku Link LMP group when the SKU has none.
+                    @if($dilSbidGpft)
+                        GPFT % is the GPFT% column ((eBay Prc × take-home − ship − LP) ÷ eBay Prc). The slabs start at 0–10 and the last one is open at the top (> 50). A negative GPFT % or a SKU with no eBay Prc is outside every slab and adds 0.
+                    @endif</li>
                     <li>Saved for {{ $dilSbidAccount }} only. eBay 1, eBay 2 and eBay 3 each keep their own tables. They push the new S Bid on their own when the rules change the bid. The switch must be On.</li>
                 </ul>
                 <div class="dsb-cols">
@@ -220,7 +231,7 @@
                         </div>
                     </div>
                     <div class="dsb-col dsb-col-sum">
-                        <div class="dsb-title" title="Dil + Views + CVR + eBay Sold + Std NPFT %. This sum, after the CVR up / down adjustment, fills the S BID column.">Sum S Bid</div>
+                        <div class="dsb-title" title="{{ $dilSbidParts }}. This sum, after the CVR up / down adjustment, fills the S BID column.">Sum S Bid</div>
                         <div class="dsb-canvas"><canvas id="dil-sbid-chart-sum"></canvas></div>
                         <div class="dsb-legend" id="dil-sbid-leg-sum"></div>
                         <div class="table-responsive" style="max-height: 260px; overflow-y: auto;">
@@ -446,10 +457,15 @@ const DIL_SBID_LISTING_WISE = @json((bool) ($listingWise ?? false));
 // Daily slab-count history (dot next to each Count + click for a chart). Only pages that pass urls use it (eBay 3).
 const DIL_SBID_COUNT_HIST = @json($countHistory ?? null);
 const DIL_SBID_TABLE_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultTables());
-const DIL_SBID_EXT_KEYS = ['views', 'cvr', 'sold', 'npft'];
-const DIL_SBID_EXT_LABELS = { views: 'Views', cvr: 'CVR', sold: 'eBay Sold', npft: 'Std NPFT' };
-const DIL_SBID_EXT_STEP = { views: 100, cvr: 5, sold: 10, npft: 10 };
-const DIL_SBID_SUM_COLORS = { dil: '#6f42c1', views: '#3b82f6', cvr: '#14b8a6', sold: '#f59e0b', npft: '#e83e8c', sum: '#0d6efd' };
+// GPFT % table: eBay 1 only. Other accounts keep their saved GPFT table untouched.
+const DIL_SBID_GPFT = @json($dilSbidGpft);
+const DIL_SBID_EXT_KEYS = DIL_SBID_GPFT ? ['views', 'cvr', 'sold', 'npft', 'gpft'] : ['views', 'cvr', 'sold', 'npft'];
+const DIL_SBID_EXT_LABELS = { views: 'Views', cvr: 'CVR', sold: 'eBay Sold', npft: 'Std NPFT', gpft: 'GPFT' };
+const DIL_SBID_EXT_STEP = { views: 100, cvr: 5, sold: 10, npft: 10, gpft: 10 };
+const DIL_SBID_SUM_COLORS = { dil: '#6f42c1', views: '#3b82f6', cvr: '#14b8a6', sold: '#f59e0b', npft: '#e83e8c', gpft: '#84cc16', sum: '#0d6efd' };
+const DIL_SBID_PARTS_TXT = DIL_SBID_GPFT ? 'Dil, Views, CVR, eBay Sold, Std NPFT % and GPFT %' : 'Dil, Views, CVR, eBay Sold and Std NPFT %';
+const DIL_SBID_EXTRA_TXT = DIL_SBID_GPFT ? 'Views, CVR, eBay Sold, Std NPFT % and GPFT %' : 'Views, CVR, eBay Sold and Std NPFT %';
+const DIL_SBID_SUM_TXT = DIL_SBID_GPFT ? 'Dil + Views + CVR + eBay Sold + Std NPFT % + GPFT %' : 'Dil + Views + CVR + eBay Sold + Std NPFT %';
 function dilSbidCloneTables(src) {
     const out = {};
     DIL_SBID_EXT_KEYS.forEach(function(key) {
@@ -748,9 +764,9 @@ function dilSbidPaintMode() {
             ? (DIL_SBID_EXT
                 ? (DIL_SBID_LISTING_WISE
                     ? ((dilSbidParentIndex(), dilSbidParentCount)
-                        ? 'On. One S Bid per parent. Dil, Views, CVR, eBay Sold and Std NPFT % come from the parent row, then CVR up / down, then L30 View up / down, then ' + DIL_SBID_CAP_NOTE + '. ' + (DIL_SBID_ES_CEILING ? 'When that bid is above a SKU\'s ES Bid, that SKU uses its ES Bid.' : 'Every SKU under that parent shows the same bid.')
-                        : 'On. One S Bid per eBay listing: family Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then ' + DIL_SBID_CAP_NOTE + '. Variation SKUs that share an item_id get the same bid. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
-                    : 'On. S Bid is the sum of Dil, Views, CVR, eBay Sold and Std NPFT %, then CVR up / down, then L30 View up / down, then ' + DIL_SBID_CAP_NOTE + '. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
+                        ? 'On. One S Bid per parent. ' + DIL_SBID_PARTS_TXT + ' come from the parent row, then CVR up / down, then L30 View up / down, then ' + DIL_SBID_CAP_NOTE + '. ' + (DIL_SBID_ES_CEILING ? 'When that bid is above a SKU\'s ES Bid, that SKU uses its ES Bid.' : 'Every SKU under that parent shows the same bid.')
+                        : 'On. One S Bid per eBay listing: family ' + DIL_SBID_SUM_TXT + ', then CVR up / down, then L30 View up / down, then ' + DIL_SBID_CAP_NOTE + '. Variation SKUs that share an item_id get the same bid. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
+                    : 'On. S Bid is the sum of ' + DIL_SBID_PARTS_TXT + ', then CVR up / down, then L30 View up / down, then ' + DIL_SBID_CAP_NOTE + '. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
                 : 'On. S Bid uses these Dil slabs, then the CVR overlay, then the L30 View overlay, then ' + DIL_SBID_CAP_NOTE + '. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
             : 'Off. S Bid is not changed.';
         note.className = on ? 'small mb-2 text-success' : 'small mb-2 text-muted';
@@ -1272,6 +1288,22 @@ function dilSbidStdNpft(row) {
     const lpVal = (isFinite(lp) && lp > 0) ? lp : 0;
     return Math.round((((std * 0.70 - ship - lpVal) / std) * 100) * 100) / 100;
 }
+/**
+ * GPFT % of a row: the GPFT% column on the eBay 1 grid, or gpft_pct sent with the campaign rows.
+ * Null when the row has no eBay price, so a SKU without a price is not counted in the 0–10 slab.
+ */
+function dilSbidGpft(row) {
+    if (!row) return null;
+    if (Object.prototype.hasOwnProperty.call(row, 'gpft_pct')) {
+        if (row.gpft_pct === null || row.gpft_pct === '') return null;
+        const preset = parseFloat(row.gpft_pct);
+        return isFinite(preset) ? preset : null;
+    }
+    const price = parseFloat(row['eBay Price']);
+    if (!(price > 0)) return null;
+    const v = parseFloat(row['GPFT%']);
+    return isFinite(v) ? v : null;
+}
 /** Value a row is looked up by in each extra table. Null = no data for that table. */
 function dilSbidExtValue(key, row) {
     if (!row) return null;
@@ -1291,6 +1323,7 @@ function dilSbidExtValue(key, row) {
         return isFinite(v) ? v : 0;
     }
     if (key === 'npft') return dilSbidStdNpft(row);
+    if (key === 'gpft') return dilSbidGpft(row);
     return null;
 }
 /** What each extra table adds for this row: { views: {value, idx, bid}, ... }. */
@@ -1349,8 +1382,8 @@ function dilSbidOfRow(row, esFrom) {
     const base = dilSbidRound(part.bid + extraSum);
     if (!(base > 0)) {
         const why = part.miss
-            ? part.miss + (DIL_SBID_EXT ? ' Views, CVR, eBay Sold and Std NPFT % add ' + dilSbidRound(extraSum) + '.' : '')
-            : 'Dil, Views, CVR, eBay Sold and Std NPFT % add up to ' + base + ' or less, so there is no S Bid.';
+            ? part.miss + (DIL_SBID_EXT ? ' ' + DIL_SBID_EXTRA_TXT + ' add ' + dilSbidRound(extraSum) + '.' : '')
+            : DIL_SBID_PARTS_TXT + ' add up to ' + base + ' or less, so there is no S Bid.';
         return { bid: 0, color: '#6c757d', skip: true, off: false, short: part.short || 'Sum ≤ 0', title: 'No S Bid: ' + why };
     }
     let title = part.title;
@@ -1386,7 +1419,7 @@ function dilSbidOfRow(row, esFrom) {
     }
     return { bid: capped, color: part.color, skip: false, off: false, title: title };
 }
-/** S Bid from each Dil vs SBid table. Total is Dil + Views + CVR % + eBay Sold + Std NPFT % + both up/down overlays. */
+/** S Bid from each Dil vs SBid table. Total is Dil + Views + CVR % + eBay Sold + Std NPFT % (+ GPFT % on eBay 1) + both up/down overlays. */
 function dilSbidBreakdown(row) {
     if (row && !row._dilSbidRolled) {
         const parent = dilSbidParentFor(row);
@@ -1404,7 +1437,7 @@ function dilSbidBreakdown(row) {
     const pick = function(key) {
         return (extra && extra[key]) ? (parseFloat(extra[key].bid) || 0) : 0;
     };
-    const base = dilSbidRound((parseFloat(part.bid) || 0) + pick('views') + pick('cvr') + pick('sold') + pick('npft'));
+    const base = dilSbidRound((parseFloat(part.bid) || 0) + pick('views') + pick('cvr') + pick('sold') + pick('npft') + pick('gpft'));
     const cvrAdj = dilSbidApplyCvr(base, row);
     const viewAdj = dilSbidApplyView(cvrAdj.bid, row);
     const pieces = [
@@ -1413,9 +1446,10 @@ function dilSbidBreakdown(row) {
         { key: 'cvr', label: 'CVR %', bid: pick('cvr') },
         { key: 'sold', label: 'eBay Sold', bid: pick('sold') },
         { key: 'npft', label: 'Std NPFT %', bid: pick('npft') },
+    ].concat(DIL_SBID_GPFT ? [{ key: 'gpft', label: 'GPFT %', bid: pick('gpft') }] : []).concat([
         { key: 'cvrAdj', label: 'CVR up / down', bid: parseFloat(cvrAdj.adj) || 0 },
         { key: 'viewAdj', label: 'L30 View up / down', bid: parseFloat(viewAdj.adj) || 0 },
-    ];
+    ]);
     const byKey = {};
     let total = 0;
     const bits = [];
@@ -1457,9 +1491,10 @@ function ebaySbidDiffColumns() {
         ['CVR %', 'cvr', 72, 'S Bid from the CVR % range this SKU falls in.'],
         ['eBay Sold', 'sold', 92, 'S Bid from the eBay Sold range this SKU falls in.'],
         ['Std NPFT %', 'npft', 100, 'S Bid from the Std NPFT % range this SKU falls in.'],
+    ].concat(DIL_SBID_GPFT ? [['GPFT %', 'gpft', 80, 'S Bid from the GPFT % slab this SKU falls in.']] : []).concat([
         ['CVR up / down', 'cvrAdj', 118, 'Adj S Bid from CVR up / down.'],
         ['L30 View up / down', 'viewAdj', 140, 'Adj S Bid from L30 View up / down.'],
-    ];
+    ]);
     const cols = specs.map(function(spec) {
         const title = spec[0], key = spec[1], width = spec[2], tip = spec[3];
         return {
@@ -1481,7 +1516,7 @@ function ebaySbidDiffColumns() {
         field: 'sbid_total_discount',
         width: 100,
         hozAlign: 'center',
-        headerTooltip: 'Dil + Views + CVR % + eBay Sold + Std NPFT % + CVR up / down + L30 View up / down.',
+        headerTooltip: DIL_SBID_SUM_TXT + ' + CVR up / down + L30 View up / down.',
         sorter: function(a, b, aRow, bRow) {
             return (dilSbidDiffOf(aRow.getData(), 'discount') || 0) - (dilSbidDiffOf(bRow.getData(), 'discount') || 0);
         },
@@ -1820,7 +1855,7 @@ function dilSbidExtPaint() {
         const slices = slabs.map(function(slab, i) {
             return { label: dilSbidRangeLabel(slab), count: res.counts[i] || 0, color: DIL_SBID_COLORS[i % DIL_SBID_COLORS.length] };
         });
-        slices.push({ label: key === 'npft' ? 'No Std Prc / outside' : 'Outside', count: res.outside, color: '#adb5bd' });
+        slices.push({ label: key === 'npft' ? 'No Std Prc / outside' : (key === 'gpft' ? 'No Prc / < 0' : 'Outside'), count: res.outside, color: '#adb5bd' });
         dilSbidPaintLegend('dil-sbid-leg-' + key, slices);
         jobs.push({ id: 'dil-sbid-chart-' + key, slices: slices });
     });
@@ -1856,8 +1891,9 @@ function dilSbidExtPaint() {
         { key: 'cvr', label: DIL_SBID_EXT_LABELS.cvr },
         { key: 'sold', label: DIL_SBID_EXT_LABELS.sold },
         { key: 'npft', label: DIL_SBID_EXT_LABELS.npft + ' %' },
+    ].concat(DIL_SBID_GPFT ? [{ key: 'gpft', label: DIL_SBID_EXT_LABELS.gpft + ' %' }] : []).concat([
         { key: 'sum', label: 'Sum S Bid' },
-    ];
+    ]);
     // Bid-wise: one row per final S Bid (rounded to a whole number), with SKU count and share.
     const sumBody = document.getElementById('dil-sbid-sum-tbody');
     if (sumBody) {
