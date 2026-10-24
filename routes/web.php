@@ -3746,6 +3746,29 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             Route::post('/replies/{id}/seen', 'markReplySeen')->whereNumber('id')->name('replies.seen');
         });
 
+    // Dynamic tasks: pre-saved tasks created for pre-saved users from page data / events.
+    // Assignor is always Amarjit; rules are editable by president@5core.com only.
+    Route::controller(\App\Http\Controllers\DynamicTaskController::class)
+        ->prefix('dynamic-tasks')->name('dynamic-tasks.')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/rules', 'rules')->name('rules');
+            Route::post('/rules', 'store')->name('rules.store');
+            Route::put('/rules/{id}', 'update')->whereNumber('id')->name('rules.update');
+            Route::post('/rules/{id}/toggle', 'toggle')->whereNumber('id')->name('rules.toggle');
+            Route::post('/rules/{id}/preview', 'preview')->whereNumber('id')->name('rules.preview');
+            Route::post('/rules/{id}/run', 'run')->whereNumber('id')->name('rules.run');
+            Route::delete('/rules/{id}', 'destroy')->whereNumber('id')->name('rules.destroy');
+            Route::get('/log', 'log')->name('log');
+        });
+
+    // Task Summary quick actions: preset messages / tasks for one member (president only).
+    Route::controller(\App\Http\Controllers\DynamicQuickActionController::class)
+        ->prefix('dynamic-quick')->name('dynamic-quick.')->group(function () {
+            Route::get('/presets', 'presets')->name('presets');
+            Route::post('/message', 'sendMessage')->name('message');
+            Route::post('/task', 'createTask')->name('task');
+        });
+
     Route::controller(DepartmentFeedbackController::class)->group(function () {
         Route::get('/feedback', 'index')->name('feedback.index');
         Route::post('/feedback', 'store')->name('feedback.store');

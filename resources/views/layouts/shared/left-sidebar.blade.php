@@ -96,6 +96,13 @@
                                 <i class="ri-mail-send-line me-2"></i>Dynamic Messages
                             </a>
                         </li>
+                        @if(\App\Http\Controllers\DynamicMessageController::canManage())
+                            <li>
+                                <a href="{{ route('dynamic-tasks.index') }}" class="{{ request()->routeIs('dynamic-tasks.*') ? 'active' : '' }}">
+                                    <i class="ri-task-line me-2"></i>Dynamic Tasks
+                                </a>
+                            </li>
+                        @endif
                         <li>
                             <a href="{{ route('feedback.index') }}" class="{{ request()->routeIs('feedback.*') ? 'active' : '' }}">
                                 <i class="ri-feedback-line me-2"></i>Feedback

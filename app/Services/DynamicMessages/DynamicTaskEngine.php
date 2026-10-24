@@ -116,6 +116,23 @@ class DynamicTaskEngine
         return $result;
     }
 
+    /**
+     * One-off creation for a single person using a saved rule as the template
+     * (Task Summary "Create task" button). Ignores condition, frequency and "skip if open":
+     * the president pressed the button on purpose.
+     */
+    public function createQuick(DynamicTaskRule $rule, User $user, string $title, string $description, array $vars = []): Task
+    {
+        $dedupe = 'quick:'.now()->format('YmdHis').':'.bin2hex(random_bytes(3));
+        $task = $this->createTask($rule, $user, mb_substr($title, 0, 190), $description, $dedupe, $vars);
+        if ($task === null) {
+            throw new \RuntimeException('Could not create the task. Please try again.');
+        }
+        $rule->forceFill(['last_run_at' => now()])->saveQuietly();
+
+        return $task;
+    }
+
     /** Run every active, non-manual rule. @return array<int, array> keyed by rule id */
     public function runAll(bool $dryRun = false): array
     {

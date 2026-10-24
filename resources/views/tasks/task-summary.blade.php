@@ -265,15 +265,21 @@
             font-variant-numeric: tabular-nums;
             color: #000 !important;
         }
-        .task-summary-col-dar.is-dar-high {
+        /* Selectors are deliberately more specific than the Manager-row highlight
+           (tr[data-sort-org_level="mgr"] > td { background !important }) and its hover
+           rule, otherwise Manager rows hide the DAR colour band. */
+        .task-summary-table tbody tr.task-summary-row > td.task-summary-col-dar.is-dar-high,
+        .task-summary-table.table-hover tbody tr.task-summary-row:hover > td.task-summary-col-dar.is-dar-high {
             background-color: #22c55e !important;
             color: #000 !important;
         }
-        .task-summary-col-dar.is-dar-mid {
+        .task-summary-table tbody tr.task-summary-row > td.task-summary-col-dar.is-dar-mid,
+        .task-summary-table.table-hover tbody tr.task-summary-row:hover > td.task-summary-col-dar.is-dar-mid {
             background-color: #facc15 !important;
             color: #000 !important;
         }
-        .task-summary-col-dar.is-dar-low {
+        .task-summary-table tbody tr.task-summary-row > td.task-summary-col-dar.is-dar-low,
+        .task-summary-table.table-hover tbody tr.task-summary-row:hover > td.task-summary-col-dar.is-dar-low {
             background-color: #ef4444 !important;
             color: #000 !important;
         }
@@ -1605,6 +1611,14 @@
                                                 <button type="button" class="ts-member-snooze-btn" title="Hide until midnight PT (PST/PDT)" aria-label="Snooze {{ e($row['team_member']) }} until midnight PT">
                                                     <i class="ri-timer-line" aria-hidden="true"></i>
                                                 </button>
+                                                @if(\App\Http\Controllers\DynamicMessageController::canManage())
+                                                    <button type="button" class="ts-dyn-task-btn" title="Create a preset task for {{ e($row['team_member']) }} (assignor: Amarjit)" aria-label="Create task for {{ e($row['team_member']) }}">
+                                                        <i class="ri-task-line" aria-hidden="true"></i>
+                                                    </button>
+                                                    <button type="button" class="ts-dyn-msg-btn" title="Send a preset message to {{ e($row['team_member']) }}" aria-label="Send message to {{ e($row['team_member']) }}">
+                                                        <i class="ri-mail-send-line" aria-hidden="true"></i>
+                                                    </button>
+                                                @endif
                                             </span>
                                         </td>
                                         <td class="task-summary-avatar-cell">
@@ -2277,6 +2291,9 @@
             </div>
         </div>
     </div>
+    @if(\App\Http\Controllers\DynamicMessageController::canManage())
+        @include('partials.ts-dynamic-quick-modal')
+    @endif
 @endsection
 
 @section('script')

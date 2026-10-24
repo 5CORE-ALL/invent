@@ -125,6 +125,27 @@ class DynamicMessageEngine
         return $result;
     }
 
+    /**
+     * One-off message to a single person using a saved rule as the template
+     * (Task Summary "Send message" button). Ignores condition and frequency.
+     */
+    public function sendQuick(DynamicMessageRule $rule, User $user, string $title, string $body, array $vars = []): DynamicMessage
+    {
+        $def = DynamicMessageEvents::definition($rule->event_key);
+
+        return DynamicMessage::create([
+            'rule_id' => $rule->id,
+            'recipient_user_id' => $user->id,
+            'dedupe_key' => 'quick:'.now()->format('YmdHis').':'.bin2hex(random_bytes(3)),
+            'event_key' => $rule->event_key,
+            'page_label' => $def['page'] ?? null,
+            'title' => mb_substr($title, 0, 190),
+            'body' => $body,
+            'context' => $vars ?: null,
+            'allow_reply' => $rule->allow_reply,
+        ]);
+    }
+
     /** Run every active, non-manual rule. @return array<int, array> keyed by rule id */
     public function runAll(bool $dryRun = false): array
     {

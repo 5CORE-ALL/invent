@@ -330,8 +330,8 @@
                         <a href="#" class="btn btn-sm btn-success inc-btn-add" id="btnDownloadIncrements" title="Download Excel (one tab per month)">
                             <i class="ri-file-excel-2-line"></i> Download Excel
                         </a>
-                        <button type="button" class="btn btn-sm btn-outline-primary inc-btn-add" id="btnBulkIncrement" title="Copy increments from one month to another">
-                            <i class="ri-file-copy-line"></i> Bulk Copy
+                        <button type="button" class="btn btn-sm btn-outline-primary inc-btn-add" id="btnBulkIncrement" title="Repeat the same increments in the next month for all or selected employees">
+                            <i class="ri-file-copy-line"></i> Copy to Next Month
                         </button>
                         <button type="button" class="btn btn-sm btn-primary inc-btn-add" id="btnAddIncrement">
                             <i class="ri-add-line"></i> Add Increment
@@ -461,7 +461,7 @@
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Bulk Copy Increments</h5>
+                <h5 class="modal-title">Copy Increments to Next Month</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -472,9 +472,10 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label small fw-semibold">Copy to</label>
-                        <select id="incBulkTo" class="form-select"></select>
+                        <select id="incBulkTo" class="form-select" title="Increments are copied to the next month"></select>
                     </div>
                 </div>
+                <div class="text-danger small mb-2" id="incBulkTargetNote"></div>
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="incBulkOverwrite">
@@ -482,12 +483,16 @@
                     </div>
                     <span class="small text-muted" id="incBulkCount"></span>
                 </div>
+                <div class="inc-search mb-2" style="flex:none;">
+                    <i class="ri-search-line"></i>
+                    <input type="text" id="incBulkSearch" class="form-control form-control-sm" placeholder="Search employee" autocomplete="off">
+                </div>
                 <div class="inc-bulk-list" id="incBulkList"></div>
                 <div class="text-danger small mt-2" id="incBulkError" hidden></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="incBulkSave">Copy Selected</button>
+                <button type="button" class="btn btn-primary" id="incBulkSave">Copy Selected to Next Month</button>
             </div>
         </div>
     </div>
@@ -1638,9 +1643,28 @@
                     + '<td>' + (has ? 'Already ' + esc(fmt(t.increment, t.region)) : '<span class="text-muted">—</span>') + '</td>'
                     + '</tr>';
             }).join('')
-            + '</tbody></table>';
+            + '</tbody></table>'
+            + '<div class="inc-combo-empty" id="incBulkNoMatch" hidden>No matching employees</div>';
+        incBulkFilter();
         incBulkUpdateCount();
     }
+
+    // Name search: hides non-matching rows (their ticked state is kept).
+    function incBulkFilter() {
+        const term = (document.getElementById('incBulkSearch')?.value || '').toLowerCase().trim();
+        let visible = 0;
+        incBulkList.querySelectorAll('tbody tr').forEach((tr) => {
+            const name = (tr.querySelector('.inc-person')?.textContent || '').toLowerCase();
+            const show = !term || name.includes(term);
+            tr.hidden = !show;
+            if (show) visible++;
+        });
+        const noMatch = document.getElementById('incBulkNoMatch');
+        if (noMatch) noMatch.hidden = visible > 0 || !incBulkList.querySelector('tbody tr');
+        incBulkUpdateCount();
+    }
+
+    document.getElementById('incBulkSearch')?.addEventListener('input', incBulkFilter);
 
     function incBulkSelectedIds() {
         return Array.from(incBulkList.querySelectorAll('.inc-bulk-chk:checked')).map((c) => Number(c.value));
@@ -1650,45 +1674,54 @@
         const total = incBulkList.querySelectorAll('.inc-bulk-chk').length;
         const sel = incBulkSelectedIds().length;
         document.getElementById('incBulkCount').textContent = total ? sel + ' of ' + total + ' selected' : '';
-        document.getElementById('incBulkSave').disabled = sel === 0;
+        document.getElementById('incBulkSave').disabled = sel === 0 || !incBulkTargetOk;
         const all = document.getElementById('incBulkAll');
-        if (all) all.checked = total > 0 && sel === total;
+        if (all) {
+            const vis = incBulkList.querySelectorAll('tbody tr:not([hidden]) .inc-bulk-chk');
+            all.checked = vis.length > 0 && Array.from(vis).every((c) => c.checked);
+        }
     }
 
     incBulkList?.addEventListener('change', (e) => {
         if (e.target.id === 'incBulkAll') {
-            incBulkList.querySelectorAll('.inc-bulk-chk').forEach((c) => { c.checked = e.target.checked; });
+            incBulkList.querySelectorAll('tbody tr:not([hidden]) .inc-bulk-chk').forEach((c) => { c.checked = e.target.checked; });
         }
         incBulkUpdateCount();
     });
 
-    function incBulkDefaultTarget(fromId) {
-        // "Next month" = the month after the source in time (list is newest first).
-        const months = incrementData?.months || [];
-        const idx = months.findIndex((m) => String(m.month_id) === String(fromId));
-        const next = idx > 0 ? months[idx - 1] : null;
-        const open = months.filter((m) => !m.is_locked && String(m.month_id) !== String(fromId));
-        if (next && !next.is_locked) return String(next.month_id);
-        return open.length ? String(open[0].month_id) : '';
-    }
+    let incBulkTargetOk = false;
 
+    // "Copy to" is always just the month right after the source one (newest-first list => index - 1).
     function incBulkFillTargets() {
-        const months = (incrementData?.months || []).filter((m) => !m.is_locked && String(m.month_id) !== String(incBulkFrom.value));
-        incBulkTo.innerHTML = months.map((m) => '<option value="' + m.month_id + '">' + esc(m.month_label) + '</option>').join('');
-        const want = incBulkDefaultTarget(incBulkFrom.value);
-        if (want) incBulkTo.value = want;
+        const months = incrementData?.months || [];
+        const idx = months.findIndex((m) => String(m.month_id) === String(incBulkFrom.value));
+        const next = idx > 0 ? months[idx - 1] : null;
+        const note = document.getElementById('incBulkTargetNote');
+
+        if (!next) {
+            incBulkTo.innerHTML = '<option value="">No next month</option>';
+            incBulkTargetOk = false;
+            if (note) note.textContent = 'There is no next payroll month yet. Create it first, then copy.';
+        } else {
+            incBulkTo.innerHTML = '<option value="' + next.month_id + '">' + esc(next.month_label) + '</option>';
+            incBulkTo.value = String(next.month_id);
+            incBulkTargetOk = !next.is_locked;
+            if (note) note.textContent = next.is_locked ? next.month_label + ' is locked, so increments cannot be copied into it.' : '';
+        }
+        incBulkTo.disabled = true;
     }
 
     function openBulkModal() {
         if (!incrementData || !incBulkEl) return;
         const months = incrementData.months || [];
         incBulkFrom.innerHTML = months.map((m) => '<option value="' + m.month_id + '">' + esc(m.month_label) + ((m.increment_count || 0) ? ' (' + m.increment_count + ')' : '') + '</option>').join('');
-        const sel = document.getElementById('incrementMonthSelect')?.value;
-        const preferred = sel && sel !== 'all' ? sel : incrementData.default_month_id;
+        // Default source = the current month (the one the Salary tab opens on).
+        const preferred = incrementData.default_month_id;
         incBulkFrom.value = months.some((m) => String(m.month_id) === String(preferred)) ? String(preferred) : (months[0] ? String(months[0].month_id) : '');
         incBulkOverwrite.checked = false;
+        const bulkSearch = document.getElementById('incBulkSearch');
+        if (bulkSearch) bulkSearch.value = '';
         incBulkFillTargets();
-        if (!incBulkTo.options.length) { alert('There is no unlocked month to copy increments into.'); return; }
         incBulkRender();
         bootstrap.Modal.getOrCreateInstance(incBulkEl).show();
     }
@@ -1699,7 +1732,7 @@
 
     document.getElementById('incBulkSave')?.addEventListener('click', async () => {
         const ids = incBulkSelectedIds();
-        if (!ids.length) return;
+        if (!ids.length || !incBulkTargetOk) return;
         const toLabel = findIncMonth(incBulkTo.value)?.month_label || 'the target month';
         const fromLabel = findIncMonth(incBulkFrom.value)?.month_label || 'the source month';
         if (!confirm('Copy ' + ids.length + ' increment(s) from ' + fromLabel + ' to ' + toLabel + '?')) return;
