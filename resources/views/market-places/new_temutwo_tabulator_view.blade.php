@@ -3981,12 +3981,12 @@
                         const tip = 'S Promo Prc $' + ntoRowSPriceAfterDisc(row).toFixed(2)
                             + ' − S Ship Disc $' + (ntoRowSShipDisc(row) || 0).toFixed(2) + ' = $' + v.toFixed(2);
                         let blueTri = '';
-                        if (typeof temuHasBlueTriangle === 'function' && temuHasBlueTriangle(row)
-                            && typeof ntoRowPushState === 'function'
-                            && ['pushed', 'pushing'].indexOf(ntoRowPushState(row)) === -1) {
-                            const liveBase = parseFloat(row.base_price) || 0;
+                        // Same state as the blue upload arrow in the Push column: not pushed yet / price changed / failed.
+                        const pushSt = ntoRowPushState(row);
+                        if (v > 0 && (pushSt === '' || pushSt === 'error')) {
+                            const pushedBase = parseFloat(row.nto_pushed_base) || 0;
                             const blueTip = 'S Promo Base Prc $' + v.toFixed(2)
-                                + (liveBase > 0 ? ' ≠ Temu Base Prc $' + liveBase.toFixed(2) : '')
+                                + (pushedBase > 0 ? ' ≠ last pushed $' + pushedBase.toFixed(2) : ' — not pushed yet')
                                 + ' — push needed';
                             blueTri = '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="'
                                 + blueTip.replace(/"/g, '&quot;') + '"></i>';
