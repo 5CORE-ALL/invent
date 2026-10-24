@@ -888,6 +888,10 @@ class OverallAmazonController extends Controller
 
                     return ($kw === null && $pt === null) ? null : round((float) $kw) + round((float) $pt);
                 })(),
+                'lt_spend' => isset($parentKwPtSpend['lt'][self::normalizeCampaignName((string) $parent)])
+                    ? round($parentKwPtSpend['lt'][self::normalizeCampaignName((string) $parent)]) : null,
+                'lt_sales' => isset($parentKwPtSpend['lts'][self::normalizeCampaignName((string) $parent)])
+                    ? round($parentKwPtSpend['lts'][self::normalizeCampaignName((string) $parent)]) : null,
                 'GPFT%' => $rows->count() > 0 ? round($rows->avg('GPFT%'), 2) : 0,
                 'PFT%' => $rows->count() > 0 ? round($rows->avg('PFT%'), 2) : 0,
                 'GROI%' => $rows->count() > 0 ? round($rows->avg('GROI%'), 2) : 0,
@@ -3910,11 +3914,17 @@ class OverallAmazonController extends Controller
      * L30 spend (SPL30, same value as /amazon-ads/all) of "PARENT <parent> KW" / "PARENT <parent> PT"
      * Sponsored Products campaigns, keyed by normalized parent name.
      *
-     * @return array{kw: array<string, float>, pt: array<string, float>}
+     * `lt` is the lifetime spend (LT Spend on /amazon-ads/all: total cost on all daily rows) of the same
+     * KW + PT campaigns combined, keyed by normalized parent name.
+     *
+     * `lts` is the lifetime sales (LT Sales on /amazon-ads/all, `sales30d` on all daily rows) of the same campaigns.
+     *
+     * @return array{kw: array<string, float>, pt: array<string, float>, lt: array<string, float>, lts: array<string, float>}
      */
     private function amazonParentKwPtSpendL30Map(): array
     {
-        $out = ['kw' => [], 'pt' => []];
+        $out = ['kw' => [], 'pt' => [], 'lt' => [], 'lts' => []];
+        $parentByCampaignId = [];
 
         try {
             if (! Schema::hasTable('amazon_sp_campaign_reports')) {
@@ -3928,10 +3938,13 @@ class OverallAmazonController extends Controller
                 ->groupBy('campaign_id')
                 ->pluck('id');
             foreach ($ids->chunk(2000) as $chunk) {
-                foreach (DB::table('amazon_sp_campaign_reports')->whereIn('id', $chunk)->get(['campaignName', 'cost', 'spend']) as $r) {
+                foreach (DB::table('amazon_sp_campaign_reports')->whereIn('id', $chunk)->get(['campaign_id', 'campaignName', 'cost', 'spend']) as $r) {
                     $name = self::normalizeCampaignName($r->campaignName);
                     if (! preg_match('/^PARENT\s+(.+?)\s+(KW|PT)$/', $name, $m)) {
                         continue;
+                    }
+                    if ($r->campaign_id !== null && $r->campaign_id !== '') {
+                        $parentByCampaignId[(string) $r->campaign_id] = self::normalizeCampaignName($m[1]);
                     }
                     $spend = (float) ($r->cost ?? 0);
                     if ($spend <= 0) {
@@ -3940,6 +3953,24 @@ class OverallAmazonController extends Controller
                     $bucket = $m[2] === 'KW' ? 'kw' : 'pt';
                     $parentKey = self::normalizeCampaignName($m[1]);
                     $out[$bucket][$parentKey] = ($out[$bucket][$parentKey] ?? 0.0) + $spend;
+                }
+            }
+
+            // Lifetime spend: total cost on every daily row (report_date_range = YYYY-MM-DD) of those campaigns.
+            foreach (array_chunk(array_keys($parentByCampaignId), 1000) as $cidChunk) {
+                $lifeRows = DB::table('amazon_sp_campaign_reports')
+                    ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+                    ->whereIn('campaign_id', $cidChunk)
+                    ->groupBy('campaign_id')
+                    ->selectRaw('campaign_id, SUM(COALESCE(cost, spend, 0)) as life_cost, SUM(COALESCE(sales30d, 0)) as life_sales')
+                    ->get();
+                foreach ($lifeRows as $lr) {
+                    $parentKey = $parentByCampaignId[(string) $lr->campaign_id] ?? null;
+                    if ($parentKey === null) {
+                        continue;
+                    }
+                    $out['lt'][$parentKey] = ($out['lt'][$parentKey] ?? 0.0) + (float) $lr->life_cost;
+                    $out['lts'][$parentKey] = ($out['lts'][$parentKey] ?? 0.0) + (float) $lr->life_sales;
                 }
             }
         } catch (\Throwable $e) {
