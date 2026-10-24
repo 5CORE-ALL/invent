@@ -9790,10 +9790,10 @@ class TaskController extends Controller
         $designation = trim((string) ($validated['designation'] ?? ''));
         $designation = $designation === '' ? null : $designation;
 
-        if (! $this->canManageRow($viewer, $user)) {
+        if (! $this->isTaskSummaryProfileEditor($viewer)) {
             return response()->json([
                 'success' => false,
-                'message' => 'You can only change designations for yourself, your tagged juniors, or Executives.',
+                'message' => 'Only '.self::INCENTIVE_EDITOR_EMAIL.' can change designations.',
             ], 403);
         }
 
@@ -9806,6 +9806,45 @@ class TaskController extends Controller
                 'id' => $user->id,
                 'designation' => $user->designation,
             ],
+        ]);
+    }
+
+    /** Task Summary: only president@5core.com may edit a member's name / designation. */
+    protected function isTaskSummaryProfileEditor(?User $viewer): bool
+    {
+        return $viewer !== null
+            && strtolower(trim((string) $viewer->email)) === strtolower(self::INCENTIVE_EDITOR_EMAIL);
+    }
+
+    /**
+     * Rename a team member from the Task Summary (president@5core.com only).
+     */
+    public function updateUserName(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'name' => ['required', 'string', 'max:255'],
+        ]);
+
+        if (! $this->isTaskSummaryProfileEditor(Auth::user())) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only '.self::INCENTIVE_EDITOR_EMAIL.' can change names.',
+            ], 403);
+        }
+
+        $name = trim(preg_replace('/\s+/', ' ', (string) $validated['name']));
+        if ($name === '') {
+            return response()->json(['success' => false, 'message' => 'Name cannot be empty.'], 422);
+        }
+
+        $user = User::findOrFail($validated['user_id']);
+        $user->name = $name;
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'user' => ['id' => $user->id, 'name' => $user->name],
         ]);
     }
 

@@ -7737,6 +7737,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Task Summary "Role" column — org_level dropdown + Mgr tags modal
     Route::post('/tasks/users/org-level', [\App\Http\Controllers\TaskController::class, 'updateUserOrgLevel'])->name('tasks.users.orgLevel');
     Route::post('/tasks/users/designation', [\App\Http\Controllers\TaskController::class, 'updateUserDesignation'])->name('tasks.users.designation');
+    Route::post('/tasks/users/name', [\App\Http\Controllers\TaskController::class, 'updateUserName'])->name('tasks.users.name');
     Route::get('/tasks/mgr-tags', [\App\Http\Controllers\TaskController::class, 'getManagerJuniorsForTags'])->name('tasks.mgrTags.get');
     Route::get('/tasks/user-dashboard', [\App\Http\Controllers\TaskController::class, 'getUserDashboard'])->name('tasks.userDashboard.get');
     Route::get('/tasks/user-score-history', [\App\Http\Controllers\TaskController::class, 'getUserScoreHistory'])->name('tasks.userScoreHistory.get');

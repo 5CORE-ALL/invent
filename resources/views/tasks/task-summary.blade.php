@@ -1197,6 +1197,7 @@
 
 @section('content')
     @php
+        $tsIsPresident = strtolower(trim((string) (auth()->user()->email ?? ''))) === 'president@5core.com';
         $taskDashboardStats = $taskDashboardStats ?? [
             'total_tasks' => 0,
             'assigned_members' => 0,
@@ -1629,6 +1630,9 @@
                                         <td class="task-summary-col-member">
                                             <span class="task-summary-member-cell-inner">
                                                 <span class="task-summary-member-name" @if($memberFirst !== $memberFull) title="{{ e($memberFull) }}" @endif>{{ $memberFirst }}</span>
+                                                @if(! empty($tsIsPresident) && (int) ($row['user_id'] ?? 0) > 0)
+                                                    <button type="button" class="ts-name-edit-btn" data-user-id="{{ (int) $row['user_id'] }}" data-full-name="{{ e($memberFull) }}" title="Edit name" aria-label="Edit name of {{ e($memberFull) }}"><i class="ri-pencil-line" aria-hidden="true"></i></button>
+                                                @endif
                                             </span>
                                         </td>
                                         <td class="task-summary-col-monitor text-center">
@@ -1661,7 +1665,7 @@
                                                     $designationFull
                                                 );
                                             $designationUserId = (int) ($row['user_id'] ?? 0);
-                                            $canEditDesignation = $designationUserId !== 0 && (bool) ($row['can_manage'] ?? false);
+                                            $canEditDesignation = $designationUserId !== 0 && ! empty($tsIsPresident);
                                         @endphp
                                         <td class="task-summary-designation-cell" @if(! $canEditDesignation && $designationFull !== '' && $designationCompact !== $designationFull) title="{{ e($designationFull) }}" @endif>
                                             <span class="task-summary-designation-dot {{ $designationFull !== '' ? 'is-has-data' : 'is-no-data' }}" title="{{ $designationFull !== '' ? 'Designation set' : 'No designation' }}" aria-hidden="true"></span>
@@ -2293,6 +2297,9 @@
     </div>
     @if(\App\Http\Controllers\DynamicMessageController::canManage())
         @include('partials.ts-dynamic-quick-modal')
+    @endif
+    @if(! empty($tsIsPresident))
+        @include('partials.ts-name-edit')
     @endif
 @endsection
 
