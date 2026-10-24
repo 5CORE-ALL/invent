@@ -592,6 +592,7 @@
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu3-price-lt80-lmp-badge', 'pltChannelKey' => 'temu3', 'pltPriceField' => 'temu_price'])
                         <span class="badge fs-6 p-2" id="temu2-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Price.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'temu3-clearance-badge'])
                     </div>
                 </div>
             </div>
@@ -1946,6 +1947,7 @@
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'temu3'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'temu3'])
     @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'temu3'])
+    @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
     const chPromoSnroiPriceCache = {};
     function chPromoRound2Local(n) {
         return (typeof chPromoRound2 === 'function')
@@ -3430,6 +3432,7 @@
         function fitSummaryBadges() {}
 
         function updateSummary() {
+            try { if (window.chClr) chClr.refresh(); } catch (e) { /* ignore */ }
             if (!table) return;
             const allData = table.getData('all');
             const filteredData = table.getData('active');
@@ -4258,10 +4261,12 @@
                         const formatted = '$' + value.toFixed(2);
                         const zeroSoldOwns = typeof chPromoTemuZeroSoldOwnsSprice === 'function'
                             && chPromoTemuZeroSoldOwnsSprice(rowData);
-                        const overLmp = !zeroSoldOwns && (model.lmpAlert || (lmp > 0 && value + 0.0001 >= lmp));
+                        // Clearance "C" and Std Prc cap marks (same as Amazon). A Std cap replaces the red LMP triangle.
+                        const stdM = (window.chClr && typeof chClr.stdMarks === 'function') ? chClr.stdMarks(rowData, value, lmp) : { kind: '', color: '', html: '' };
+                        const overLmp = !zeroSoldOwns && !stdM.kind && (model.lmpAlert || (lmp > 0 && value + 0.0001 >= lmp));
                         const priceHtml = overLmp
                             ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
-                            : formatted;
+                            : (stdM.color ? `<span style="color:${stdM.color};font-weight:600;">${formatted}</span>` : formatted);
                         const redTri = overLmp
                             ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
                                 + Number(lmp || 0).toFixed(2) + '"></i>'
@@ -4270,7 +4275,8 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                        const clrMark = (window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '';
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clrMark}${redTri}${blueTri}${stdM.html}</span>`;
                     }
                 },
                 {
@@ -4500,6 +4506,8 @@
         }
 
         // Apply filters — same structure as /ebay-tabulator-view, Temu field mapping
+        // Clearance "C" badge: count + click-to-filter (partials/channel-clearance-badge).
+        if (window.chClr) chClr.init({ badgeId: 'temu3-clearance-badge', getTable: function() { return table; }, applyFilters: function() { applyFilters(); } });
         function applyFilters() {
             let parentFilter = $('#parent-filter').val() || 'skus';
             if (priceGtLmpFilterActive && parentFilter === 'parents') {
@@ -4525,6 +4533,7 @@
             adsRunningFilter = 'all';
 
             table.clearFilter(true);
+            if (window.chClr && chClr.filterOn()) table.addFilter(chClr.filterFn);
 
             // Row type: All Rows / Parents / SKUs (default SKUs)
             if (parentFilter === 'parents') {

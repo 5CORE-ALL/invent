@@ -648,6 +648,7 @@
                             title="Blue alert: INV > 0 and Price ≠ S PRC. Click to show only those SKUs.">
                             <i class="fas fa-exclamation-triangle"></i> 0
                         </span>
+                        @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'ebay2-clearance-badge'])
                         <span class="badge fs-6 p-2" id="ebay2-red-triangle-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="Red triangle: S PRC &gt; LMP. Click to show only those rows. Click again to clear.">
@@ -1047,6 +1048,7 @@
         // S PRC is saved + pushed by the server (ebay:push-blue-prices every 10 min). The page only shows it.
         window.CH_STD_SERVER_OWNED = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
+        @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
         @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay2'])
         @include('campaign.partials.ebay-dil-sbid-rule', [
@@ -3814,9 +3816,11 @@
                                     ? Number(LmpIgnore.effectiveLmp(rowData)) || 0
                                     : (parseFloat(rowData.lmp_price) || 0));
                             const sprice = raw;
+                            // Clearance "C" and Std Prc cap marks (same as Amazon). A Std cap replaces the red LMP triangle.
+                            const stdM = (window.chClr && typeof chClr.stdMarks === 'function') ? chClr.stdMarks(rowData, sprice, lmpNow) : { kind: '', color: '', html: '' };
                             const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
                             const appliedLmp = wouldHitLmp && sprice + 0.0001 <= lmpNow + 0.0001;
-                            const atOrAboveLmp = wouldHitLmp;
+                            const atOrAboveLmp = wouldHitLmp && !stdM.kind;
                             const sgroiAtLmp = (typeof ebay2SgroiAtPrice === 'function')
                                 ? ebay2SgroiAtPrice(rowData, lmpNow)
                                 : null;
@@ -3828,6 +3832,8 @@
                                 formattedValue = '<span style="color:#d39e00;font-weight:700;" title="Ended listing">' + formattedValue + '</span>';
                             } else if (atOrAboveLmp) {
                                 formattedValue = '<span style="color:#dc3545;font-weight:600;">' + formattedValue + '</span>';
+                            } else if (stdM.color) {
+                                formattedValue = '<span style="color:' + stdM.color + ';font-weight:600;">' + formattedValue + '</span>';
                             }
                             const blueTri = ebay2HasBlueTriangle(rowData)
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
@@ -3843,7 +3849,7 @@
                                 : '';
 
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                + formattedValue + blueTri + redTri + '</span>';
+                                + formattedValue + ((window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '') + blueTri + redTri + stdM.html + '</span>';
                         },
                         width: 118
                     },
@@ -4355,6 +4361,8 @@
             });
 
             // Apply filters
+            // Clearance "C" badge: count + click-to-filter (partials/channel-clearance-badge).
+            if (window.chClr) chClr.init({ badgeId: 'ebay2-clearance-badge', getTable: function() { return table; }, applyFilters: function() { applyFilters(); } });
             function applyFilters() {
                 const viewModeFilter = $('#view-mode-filter').val() || 'sku';
                 const inventoryFilter = $('#inventory-filter').val();
@@ -4373,6 +4381,7 @@
 
                 function runEbay2Filters() {
                 table.clearFilter(true);
+                if (window.chClr && chClr.filterOn()) table.addFilter(chClr.filterFn);
 
                 // View mode: ALL (Parent + SKU) · Parents · SKU
                 // Dataset is already sliced below; keep addFilter so PARENT rows cannot reappear.
@@ -4752,6 +4761,7 @@
             // Shared partials (S PRC save, push queue) recount the badges through window.updateSummary.
             window.updateSummary = function() { try { return updateSummary(); } catch (e) { /* table not ready yet */ } };
             function updateSummary() {
+                try { if (window.chClr) chClr.refresh(); } catch (e) { /* ignore */ }
                 // Use active (filtered) data for all counts to match what's actually visible
                 const data = table.getData('active');
                 

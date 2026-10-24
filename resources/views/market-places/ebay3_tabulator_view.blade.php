@@ -484,6 +484,7 @@
                             title="Blue alert: INV > 0 and Price ≠ S PRC. Click to show only those SKUs.">
                             <i class="fas fa-exclamation-triangle"></i> 0
                         </span>
+                        @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'ebay3-clearance-badge'])
                         <span class="badge fs-6 p-2" id="ebay3-lmp-missing-badge"
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                             title="LMP M.: SKUs with no LMP data. Green = 0 missing. Click to show only those rows.">
@@ -847,6 +848,7 @@
     // S PRC is saved + pushed by the server (ebay:push-blue-prices every 10 min). The page only shows it.
     window.CH_STD_SERVER_OWNED = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
+    @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
     @include('campaign.partials.ebay-dil-sbid-rule', [
         'part' => 'script',
         'account' => 'eBay 3',
@@ -3135,9 +3137,11 @@
                                 ? Number(LmpIgnore.effectiveLmp(rowData)) || 0
                                 : (parseFloat(rowData.lmp_price) || 0));
                         const sprice = raw;
+                        // Clearance "C" and Std Prc cap marks (same as Amazon). A Std cap replaces the red LMP triangle.
+                        const stdM = (window.chClr && typeof chClr.stdMarks === 'function') ? chClr.stdMarks(rowData, sprice, lmpNow) : { kind: '', color: '', html: '' };
                         const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
                         const appliedLmp = wouldHitLmp && sprice + 0.0001 <= lmpNow + 0.0001;
-                        const atOrAboveLmp = wouldHitLmp;
+                        const atOrAboveLmp = wouldHitLmp && !stdM.kind;
                         const sgroiAtLmp = (typeof ebay3SgroiAtPrice === 'function')
                             ? ebay3SgroiAtPrice(rowData, lmpNow)
                             : null;
@@ -3146,6 +3150,8 @@
                         let formattedValue = '$' + Number(sprice).toFixed(2);
                         if (atOrAboveLmp) {
                             formattedValue = '<span style="color:#dc3545;font-weight:600;">' + formattedValue + '</span>';
+                        } else if (stdM.color) {
+                            formattedValue = '<span style="color:' + stdM.color + ';font-weight:600;">' + formattedValue + '</span>';
                         }
                         const blueTri = ebay3HasBlueTriangle(rowData)
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
@@ -3160,7 +3166,7 @@
                                     + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?') + '% (&lt; 20%)"></i>')
                             : '';
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + formattedValue + blueTri + redTri + '</span>';
+                            + formattedValue + ((window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '') + blueTri + redTri + stdM.html + '</span>';
                     },
                     width: 118
                 },
@@ -3656,6 +3662,8 @@
 
 
         // Apply filters
+        // Clearance "C" badge: count + click-to-filter (partials/channel-clearance-badge).
+        if (window.chClr) chClr.init({ badgeId: 'ebay3-clearance-badge', getTable: function() { return table; }, applyFilters: function() { applyFilters(); } });
         function applyFilters() {
             if (isPlayNavigationActive) {
                 showCurrentParentPlayView();
@@ -3675,6 +3683,7 @@
             const dilFilter = $('#dil-filter').val() || 'all';
 
             table.clearFilter(true);
+            if (window.chClr && chClr.filterOn()) table.addFilter(chClr.filterFn);
             
             // Disable tree mode for SKU-only view
             if (viewModeFilter === 'sku') {
@@ -4229,6 +4238,7 @@
         // Shared partials (S PRC save, push queue) recount the badges through window.updateSummary.
         window.updateSummary = function() { try { return updateSummary(); } catch (e) { /* table not ready yet */ } };
         function updateSummary() {
+            try { if (window.chClr) chClr.refresh(); } catch (e) { /* ignore */ }
             const data = ebay3GetBackendSkuRows();
 
             let totalPftAmt = 0;

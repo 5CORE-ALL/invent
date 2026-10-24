@@ -632,6 +632,7 @@
                     <span class="badge fs-6 p-2" id="newtemuone-blue-triangle-badge"
                         style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                         title="Blue triangle: S PRC ≠ T Price. Click to filter."><i class="fas fa-exclamation-triangle"></i> 0</span>
+                    @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'newtemuone-clearance-badge'])
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -2200,6 +2201,7 @@
         }
     }
     @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'nto'])
+    @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
     function ntoRowSku(d) {
         return String((d && (d['(Child) sku'] || d.SKU || d.sku)) || '').trim();
     }
@@ -2909,6 +2911,7 @@
     }
 
     function updateSummaryNow() {
+        try { if (window.chClr) chClr.refresh(); } catch (e) { /* ignore */ }
         if (!table) return;
         temuClearCapMemo();
         const rows = ntoSummaryRows();
@@ -3044,6 +3047,8 @@
     // If the rules event never arrives, still show a count instead of staying on "…".
     setTimeout(function() { ntoLmpAlertReadyFallback = true; ntoRefreshLmpAlertBadge(true); }, 8000);
 
+    // Clearance "C" badge: count + click-to-filter (partials/channel-clearance-badge).
+    if (window.chClr) chClr.init({ badgeId: 'newtemuone-clearance-badge', getTable: function() { return table; }, applyFilters: function() { applyFilters(); } });
     // Each addFilter() used to re-filter and repaint the grid on its own (up to ~10 passes per change).
     // Blocking the redraw makes Tabulator filter and paint once, when the last filter is in.
     function applyFilters() {
@@ -3075,6 +3080,7 @@
         const parentSearch = $('#parent-search').val() || '';
 
         table.clearFilter();
+        if (window.chClr && chClr.filterOn()) table.addFilter(chClr.filterFn);
 
         if (inventoryFilter === 'zero') {
             table.addFilter('INV', '=', 0);
@@ -4078,9 +4084,14 @@
                     },
                     headerTooltip: 'Std Prc — same Standard Price as the Std Price column (amazon_data_view.STANDARD_PRICE).',
                     formatter: function(cell) {
-                        const value = ntoRowSpriceStart(cell.getRow().getData() || {});
+                        const stdRow = cell.getRow().getData() || {};
+                        const value = ntoRowSpriceStart(stdRow);
                         if (!(value > 0)) return '<span style="color: #6c757d;">—</span>';
-                        return '<span style="font-weight: 600;">$' + value.toFixed(2) + '</span>';
+                        // Orange triangle when LMP is above Std Prc: review the Std price (same as Amazon / eBay).
+                        const reviewTri = (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function')
+                            ? SpriceLmpCap.reviewStdTriangleHtml(stdRow)
+                            : '';
+                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;font-weight:600;">$' + value.toFixed(2) + reviewTri + '</span>';
                     }
                 },
                 {
@@ -4146,7 +4157,9 @@
                             tip = 'Std Prc $' + s.toFixed(2) + ' − S 12% $' + ntoRowSTwelvePct(row).toFixed(2)
                                 + ' − S Disc $' + ntoRowSDiscAmt(row).toFixed(2) + ' = $' + p.toFixed(2);
                         }
-                        return '<span style="font-weight: 600;">$' + p.toFixed(2) + '</span>';
+                        // Red "C" when the SKU is on the clearance list (same as Amazon).
+                        const clrMark = (window.chClr && chClr.markHtml) ? chClr.markHtml(row) : '';
+                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;font-weight:600;">$' + p.toFixed(2) + clrMark + '</span>';
                     }
                 },
                 {
