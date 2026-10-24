@@ -4,7 +4,7 @@
 @if($amazonDynAdsPart === 'buttons' || $amazonDynAdsPart === 'all')
                     <button type="button" class="btn btn-sm btn-info" id="amz-dyn-ads-btn" style="font-weight:600;color:#000;"
                         title="Ads % by price slab. Each SKU's Ads % comes from the slab its price falls in.">
-                        <i class="fas fa-sliders-h"></i> Dynamic Rule
+                        <i class="fas fa-sliders-h"></i> Ads Prc Rule
                         <span class="badge bg-dark ms-1" id="amz-dyn-ads-state" style="display:none;">ON</span>
                     </button>
 @endif
@@ -15,7 +15,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <div>
-                        <h5 class="modal-title fs-6 mb-0" id="amzDynAdsModalLabel"><i class="fas fa-sliders-h me-1"></i> Dynamic Rule — Ads % by price</h5>
+                        <h5 class="modal-title fs-6 mb-0" id="amzDynAdsModalLabel"><i class="fas fa-sliders-h me-1"></i> Ads Prc Rule — Ads % by price</h5>
                         <div class="text-muted" style="font-size:12px;">A SKU whose price is From $ or more and below To $ gets that slab's Ads %. Leave To $ blank for no upper limit. Prices outside every slab use the channel Ads %.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -210,16 +210,16 @@
                     contentType: 'application/json',
                     headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' }
                 }).done(function(res) {
-                    if (!res || !res.success) { amzPefToast('error', 'Could not save Dynamic Rule'); return; }
+                    if (!res || !res.success) { amzPefToast('error', 'Could not save Ads Prc Rule'); return; }
                     amzDynAds = { enabled: !!res.enabled, slabs: res.slabs || [] };
                     amzDynAdsPaintState();
                     if (typeof amzTableRedrawPreserveScroll === 'function') amzTableRedrawPreserveScroll(true);
                     else if (typeof table !== 'undefined' && table) table.redraw(true);
-                    amzPefToast('success', amzDynAds.enabled ? 'Dynamic Rule saved. Ads % now follows the price slabs.' : 'Dynamic Rule saved (off). Ads % uses the channel value.');
+                    amzPefToast('success', amzDynAds.enabled ? 'Ads Prc Rule saved. Ads % now follows the price slabs.' : 'Ads Prc Rule saved (off). Ads % uses the channel value.');
                     const el = document.getElementById('amzDynAdsModal');
                     if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).hide();
                 }).fail(function() {
-                    amzPefToast('error', 'Could not save Dynamic Rule');
+                    amzPefToast('error', 'Could not save Ads Prc Rule');
                 }).always(function() { $btn.prop('disabled', false); });
             });
         });
