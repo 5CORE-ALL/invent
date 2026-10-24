@@ -141,8 +141,6 @@
     .inc-table .chk { width: 40px; text-align: center; padding-left: .75rem; padding-right: 0; }
     .inc-table .chk input { cursor: pointer; }
     .inc-table tbody tr.is-selected { background: #eef2ff; }
-    .inc-bulk-edit { display: inline-flex; align-items: center; gap: .3rem; font-size: .78rem; font-weight: 600; padding: .2rem .65rem; }
-    .inc-card-head .mid { display: flex; align-items: center; gap: .5rem; margin-left: auto; margin-right: .75rem; }
     .inc-be-chips { display: flex; flex-wrap: wrap; gap: .4rem; max-height: 140px; overflow-y: auto; padding: .5rem; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; }
     .inc-be-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .15rem .6rem .15rem .2rem; border-radius: 999px; background: #fff; border: 1px solid #e5e7eb; font-size: .8rem; }
     .inc-be-chip .inc-avatar { width: 22px; height: 22px; font-size: .6rem; }
@@ -1372,12 +1370,6 @@
             all.checked = rows.length > 0 && set.size === rows.length;
             all.indeterminate = set.size > 0 && set.size < rows.length;
         }
-        const btn = card.querySelector('.inc-bulk-edit');
-        if (btn) {
-            btn.hidden = set.size === 0;
-            const lbl = btn.querySelector('.lbl');
-            if (lbl) lbl.textContent = set.size > 1 ? 'Edit ' + set.size + ' selected' : 'Edit selected';
-        }
     }
 
     function renderIncrements() {
@@ -1469,7 +1461,6 @@
             const emptyRow = m.users.length ? '' : '<tr><td colspan="' + (canManage ? 5 : 3) + '" class="text-center text-muted py-4">No employees in this month.</td></tr>';
             return '<div class="inc-card" data-month="' + m.month_id + '">'
                 + '<div class="inc-card-head"><span><span class="m">' + esc(m.month_label) + '</span><span class="c">' + m.withInc + ' of ' + m.users.length + ' with increment</span></span>'
-                + (editable ? '<span class="mid"><button type="button" class="btn btn-sm btn-primary inc-bulk-edit" hidden title="Edit the selected employees together"><i class="ri-pencil-line"></i> <span class="lbl"></span></button></span>' : '')
                 + '<span class="t">' + esc(formatTotals(m.totals)) + '</span></div>'
                 + '<table class="inc-table"><thead><tr>'
                 + (canManage ? '<th class="chk">' + (editable ? '<input type="checkbox" class="inc-card-all" title="Select all">' : '') + '</th>' : '')
@@ -1744,7 +1735,7 @@
         renderIncrements();
     });
 
-    // ----- Bulk edit: same increment for every selected employee -----
+    // ----- Bulk edit: tick rows, then use the pencil on any ticked row -----
     document.getElementById('incrementList')?.addEventListener('change', (e) => {
         const card = e.target.closest('.inc-card');
         if (!card) return;
@@ -1786,12 +1777,6 @@
         bootstrap.Modal.getOrCreateInstance(incBEEl).show();
         setTimeout(() => { incBEAmount.focus(); incBEAmount.select(); }, 300);
     }
-
-    document.getElementById('incrementList')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('.inc-bulk-edit');
-        if (!btn) return;
-        openBulkEdit(btn.closest('.inc-card')?.dataset.month);
-    });
 
     document.getElementById('formIncrementBulkEdit')?.addEventListener('submit', async (e) => {
         e.preventDefault();
