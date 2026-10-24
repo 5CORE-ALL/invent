@@ -998,25 +998,9 @@
         return temuParseMoney(row && (row.lmp_raw != null ? row.lmp_raw : row.lmp));
     }
 
-    function temuStdPrc(row) {
-        return temuParseMoney(row && (row.temu_price != null ? row.temu_price : row.t_price));
-    }
-
-    function ntoRowUsesSaved(row) {
-        if (!row) return false;
-        const flag = row.nto_use_saved;
-        return flag === true || flag === 1 || flag === '1';
-    }
-
     function ntoSavedSprice(row) {
         const n = parseFloat(row && (row.sprice != null ? row.sprice : row.SPRICE));
         return (isFinite(n) && n > 0) ? +n.toFixed(2) : 0;
-    }
-
-    function ntoSavedSgroi(row) {
-        if (!row || row.sgroi_percent == null || row.sgroi_percent === '') return null;
-        const n = Number(row.sgroi_percent);
-        return isFinite(n) ? n : null;
     }
 
     /** Discounted Price = Std prc vs dil only. Sprc Dil does not write S PRC. */
@@ -1035,9 +1019,20 @@
     // pass ask for the same row's cap. Memoize per render pass; every event that can change
     // a cap (redraw after a Sprc Dil edit, new data, refilter) clears it first.
     const temuCapMemo = new Map();
+    // Per-row memo for the S Promo chain (Sum disc -> S Disc $ -> S Promo Prc -> S Promo Base Prc). Every cell, sorter,
+    // badge loop and the Push test used to re-run that whole chain; now each step runs once per row per render pass.
+    let ntoDerivedMemo = new WeakMap();
+    function ntoMemo(d, key, fn) {
+        if (!d || typeof d !== 'object') return fn();
+        let m = ntoDerivedMemo.get(d);
+        if (!m) { m = Object.create(null); ntoDerivedMemo.set(d, m); }
+        if (key in m) return m[key];
+        return (m[key] = fn());
+    }
 
     function temuClearCapMemo() {
         temuCapMemo.clear();
+        ntoDerivedMemo = new WeakMap();
     }
 
     /** Memoized entry point. Callers passing an ad-hoc row must use temuSpriceCapCompute. */
@@ -1163,6 +1158,7 @@
     }
     function chPromoEachTableRow(fn) {
         if (!table || typeof table.getRows !== 'function') return;
+        temuClearCapMemo(); // callers write prices, so never read a memo from before the rules changed
         (table.getRows('all') || []).forEach(function(row) {
             fn(row, row.getData() || {});
         });
@@ -1407,11 +1403,6 @@
         return (spft / lp) * 100;
     }
 
-    function temuSgroiFromRule(row) {
-        if (typeof ebayDilGroiTargetGroi !== 'function') return null;
-        const rule = ebayDilGroiTargetGroi(row);
-        return (rule == null || !isFinite(rule)) ? null : rule;
-    }
     /** SGROI% = live SPFT ÷ LP at the displayed S PRC (not the Dil target). */
     function temuSgroiPercent(row) {
         return temuSroiPercent(row);
@@ -1465,15 +1456,6 @@
         return (snpft / sprice) * 100;
     }
 
-    /** Dil + CVR Target NROI when S PRC is the Dil price (not LMP capped). */
-    function temuSnroiFromRule(row) {
-        if (typeof ebayDilGroiTargetGroi !== 'function') return null;
-        const rule = ebayDilGroiTargetGroi(row);
-        if (rule == null || !isFinite(rule)) return null;
-        const cap = typeof temuSpriceCapResult === 'function' ? temuSpriceCapResult(row) : null;
-        if (cap && cap.lmpAlert) return null;
-        return rule;
-    }
     function temuSnroiPercent(row) {
         const snpft = temuSnpftDollars(row);
         const lp = parseFloat(row && row.lp) || 0;
@@ -1994,10 +1976,8 @@
     }
 
     let blueTriangleFilterActive = false;
-    let lmpCapFilterActive = false;
     let zeroSoldFilterActive = false;
     let moreSoldFilterActive = false;
-    let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let missingLmpFilterActive = false;
     let lmpAlertFilterActive = false;
@@ -2038,11 +2018,6 @@
         return !temuHasLmp(row);
     }
 
-    function temuHasPriceGtLmp(row) {
-        return !!(window.PriceGtLmpBadge
-            && PriceGtLmpBadge.hasRedTriangle(row, 'temu_price', temuBadgeLmpValue));
-    }
-
     function temuHasPriceLt80Lmp(row) {
         return !!(window.PriceLt80LmpBadge
             && PriceLt80LmpBadge.hasPurpleTriangle(row, 'temu_price'));
@@ -2053,12 +2028,6 @@
         if (!row || row.is_parent_summary) return false;
         if (!((parseFloat(row.INV) || 0) > 0)) return false;
         return typeof ntoRowLmpAlertPrc === 'function' && ntoRowLmpAlertPrc(row) != null;
-    }
-
-    function temuHasLmpCap(row) {
-        const cap = temuSpriceCapResult(row);
-        if (!cap || !(cap.sprice > 0)) return false;
-        return !!cap.lmpAlert || (cap.lmp > 0 && cap.sprice >= cap.lmp);
     }
 
     function temuLiveListingPrice(row) {
@@ -2120,7 +2089,6 @@
 
     const NTO_PUSH_SPRICE_URL = '/channel-push-sprice/newtemuone';
     const NTO_PUSH_SPRICE_LIVE = @json(!empty($newtemuonePushSpriceLive));
-    const NTO_PUSH_SPRICE_CHUNK = 200;
     let ntoPageReloadPushEnabled = @json(!empty($newtemuonePageReloadPushEnabled));
     let ntoPushSpricePollTimer = null;
     let ntoPushSpriceExpecting = false;
@@ -2193,21 +2161,16 @@
     function ntoRowSku(d) {
         return String((d && (d['(Child) sku'] || d.SKU || d.sku)) || '').trim();
     }
-    function ntoRowSBase(d) {
-        if (!d || d.is_parent_summary) return 0;
-        const sku = ntoRowSku(d);
-        if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return 0;
-        const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : 0;
-        return typeof temuSBaseFromSprice === 'function' ? temuSBaseFromSprice(sprice) : 0;
-    }
     /** PM = Sum disc of the row (child SKUs with stock only). */
     function ntoRowPm(d) {
         if (!d || d.is_parent_summary) return 0;
-        const sku = ntoRowSku(d);
-        if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return 0;
-        if (typeof chStdSumDisc !== 'function') return 0;
-        const n = Number(chStdSumDisc(d)) || 0;
-        return n > 0 ? +n.toFixed(2) : 0;
+        return ntoMemo(d, 'pm', function() {
+            const sku = ntoRowSku(d);
+            if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return 0;
+            if (typeof chStdSumDisc !== 'function') return 0;
+            const n = Number(chStdSumDisc(d)) || 0;
+            return n > 0 ? +n.toFixed(2) : 0;
+        });
     }
     /** Disc $ = Std Price × Disc % (Disc % = Sum disc = PM). */
     function ntoRowDiscAmt(d) {
@@ -2263,15 +2226,17 @@
      */
     function ntoRowSnroiCapPrc(d) {
         if (typeof window.chStdSnroiCapTarget !== 'function') return null;
-        const std = ntoRowSpriceStart(d);
-        const lp = parseFloat(d && d.lp) || 0;
-        if (!(std > 0) || !(lp > 0)) return null;
-        const target = window.chStdSnroiCapTarget(d);
-        if (target == null) return null;
-        const ship = parseFloat(d && d.temu_ship) || 0;
-        const adsFrac = (typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 0) / 100;
-        const cap = Math.floor((((lp * (1 + target / 100)) + ship + (std * adsFrac)) / 0.95) * 100 + 0.00001) / 100;
-        return cap > 0 ? cap : null;
+        return ntoMemo(d, 'snroiCap', function() {
+            const std = ntoRowSpriceStart(d);
+            const lp = parseFloat(d && d.lp) || 0;
+            if (!(std > 0) || !(lp > 0)) return null;
+            const target = window.chStdSnroiCapTarget(d);
+            if (target == null) return null;
+            const ship = parseFloat(d && d.temu_ship) || 0;
+            const adsFrac = (typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 0) / 100;
+            const cap = Math.floor((((lp * (1 + target / 100)) + ship + (std * adsFrac)) / 0.95) * 100 + 0.00001) / 100;
+            return cap > 0 ? cap : null;
+        });
     }
     /**
      * S Disc $ = Std Prc × Disc % (Disc % = Sum disc = PM).
@@ -2280,6 +2245,9 @@
      * that needs more than that holds there with no discount.
      */
     function ntoRowSDiscAmt(d) {
+        return ntoMemo(d, 'sDisc', function() { return ntoRowSDiscAmtCompute(d); });
+    }
+    function ntoRowSDiscAmtCompute(d) {
         const s = ntoRowSpriceStart(d);
         if (!(s > 0)) return 0;
         const pm = ntoRowPm(d);
@@ -2300,18 +2268,22 @@
     }
     /** LMP Alert Prc = LMP × 0.87 when the LMP column is lower than the base S Promo Prc. Otherwise blank. */
     function ntoRowLmpAlertPrc(d) {
-        const promo = ntoRowSPromoPrcBase(d);
-        const lmp = typeof temuLmpRefPrice === 'function' ? temuLmpRefPrice(d) : 0;
-        if (promo == null || !(lmp > 0) || !(lmp < promo)) return null;
-        return +(lmp * 0.87).toFixed(2);
+        return ntoMemo(d, 'lmpAlert', function() {
+            const promo = ntoRowSPromoPrcBase(d);
+            const lmp = typeof temuLmpRefPrice === 'function' ? temuLmpRefPrice(d) : 0;
+            if (promo == null || !(lmp > 0) || !(lmp < promo)) return null;
+            return +(lmp * 0.87).toFixed(2);
+        });
     }
     /** Shown S Promo Prc. An LMP alert overwrites it with LMP Alert Prc × 0.98. */
     function ntoRowSPriceAfterDisc(d) {
-        const base = ntoRowSPromoPrcBase(d);
-        if (base == null) return null;
-        const alert = ntoRowLmpAlertPrc(d);
-        if (alert == null) return base;
-        return +(alert * 0.98).toFixed(2);
+        return ntoMemo(d, 'sPromo', function() {
+            const base = ntoRowSPromoPrcBase(d);
+            if (base == null) return null;
+            const alert = ntoRowLmpAlertPrc(d);
+            if (alert == null) return base;
+            return +(alert * 0.98).toFixed(2);
+        });
     }
     /** S Ship Disc = $2.99 when S Promo Prc is $30 or less, otherwise 0. */
     function ntoRowSShipDisc(d) {
@@ -2321,9 +2293,11 @@
     }
     /** S Promo Base Prc = S Promo Prc − S Ship Disc. */
     function ntoRowSPromoBasePrc(d) {
-        const p = ntoRowSPriceAfterDisc(d);
-        if (p == null) return null;
-        return +(p - (ntoRowSShipDisc(d) || 0)).toFixed(2);
+        return ntoMemo(d, 'sPromoBase', function() {
+            const p = ntoRowSPriceAfterDisc(d);
+            if (p == null) return null;
+            return +(p - (ntoRowSShipDisc(d) || 0)).toFixed(2);
+        });
     }
     /** Price the Push column sends: the S Promo Base Prc cell. */
     function ntoRowPushPrice(d) {
@@ -2389,12 +2363,20 @@
         if (!table || typeof table.getRows !== 'function' || !skus || !skus.length) return;
         const want = {};
         skus.forEach(function(sku) { want[String(sku).toUpperCase()] = true; });
-        table.getRows().forEach(function(row) {
-            const d = row.getData() || {};
-            if (!want[ntoRowSku(d).toUpperCase()]) return;
-            row.update(patch);
-            try { row.reformat(); } catch (e) { /* ignore */ }
+        const hits = table.getRows().filter(function(row) {
+            return want[ntoRowSku(row.getData() || {}).toUpperCase()];
         });
+        if (!hits.length) return;
+        const blocked = typeof table.blockRedraw === 'function';
+        if (blocked) table.blockRedraw();
+        try {
+            hits.forEach(function(row) {
+                row.update(patch);
+                try { row.reformat(); } catch (e) { /* ignore */ }
+            });
+        } finally {
+            if (blocked) table.restoreRedraw();
+        }
     }
     function ntoApplyPushTaskResults(tasks) {
         if (!table || typeof table.getRows !== 'function' || !Array.isArray(tasks)) return;
@@ -2403,6 +2385,7 @@
             const sku = String((task && task.sku) || '').trim();
             if (sku) bySku[sku.toUpperCase()] = task;
         });
+        const changed = [];
         table.getRows().forEach(function(row) {
             const d = row.getData() || {};
             const task = bySku[ntoRowSku(d).toUpperCase()];
@@ -2424,11 +2407,25 @@
             } else if (st === 'failed' || st === 'error') {
                 next.nto_push_status = 'error';
             }
-            if (Object.keys(next).length) {
-                row.update(next);
-                try { row.reformat(); } catch (e) { /* ignore */ }
-            }
+            if (!Object.keys(next).length) return;
+            // The status poll re-sends every task every 1.5s. Skip rows that already show this result, otherwise
+            // hundreds of rows are rewritten and repainted on every poll.
+            const same = String(d.nto_push_status || '') === next.nto_push_status
+                && (next.nto_pushed_base == null || ntoMoneyEq(d.nto_pushed_base, next.nto_pushed_base));
+            if (same) return;
+            changed.push({ row: row, next: next });
         });
+        if (!changed.length) return;
+        const blocked = typeof table.blockRedraw === 'function';
+        if (blocked) table.blockRedraw();
+        try {
+            changed.forEach(function(item) {
+                item.row.update(item.next);
+                try { item.row.reformat(); } catch (e) { /* ignore */ }
+            });
+        } finally {
+            if (blocked) table.restoreRedraw();
+        }
     }
     function collectNtoPushItemsFromRows(rows) {
         const seen = {};
@@ -2447,9 +2444,11 @@
     }
     function collectNtoSelectedPushItems() {
         if (typeof table === 'undefined' || !table || typeof table.getSelectedData !== 'function') return [];
+        temuClearCapMemo(); // what gets pushed must come from fresh numbers
         return collectNtoPushItemsFromRows(table.getSelectedData() || []);
     }
     function collectNtoReloadPushItems() {
+        temuClearCapMemo(); // what gets pushed must come from fresh numbers
         const seen = {};
         const items = [];
         function consider(d) {
@@ -2518,7 +2517,10 @@
     }
     function startNtoPushSpricePoll() {
         stopNtoPushSpricePoll();
-        ntoPushSpricePollTimer = setInterval(pollNtoPushSpriceStatus, 1500);
+        ntoPushSpricePollTimer = setInterval(function() {
+            if (document.hidden) return; // nobody is looking at the bar; catch up when the tab is back
+            pollNtoPushSpriceStatus();
+        }, 2500);
         pollNtoPushSpriceStatus();
     }
     function postNtoPushSpriceItems(items, opts) {
@@ -2762,12 +2764,6 @@
         return (isFinite(n) && n > 0) ? n : 0;
     }
 
-    function ntoParentKey(row) {
-        const parent = String((row && (row.Parent || row.parent)) || '').replace(/^PARENT\s+/i, '').trim();
-        const sku = String((row && (row.sku || row['(Child) sku'])) || '').trim();
-        return (parent || sku).toUpperCase();
-    }
-
     /**
      * Views are Goods ID level (variants of one listing share the same clicks), so each Goods ID counts once.
      * A Parent can hold several listings, so counting once per Parent under-counts Views and pushes CVR too high.
@@ -2791,7 +2787,17 @@
         return total;
     }
 
+    // Filters, paging, data loads and push polls all ask for a badge refresh; one pass over the grid is enough.
+    let ntoSummaryTimer = null;
     function updateSummary() {
+        if (ntoSummaryTimer) return;
+        ntoSummaryTimer = setTimeout(function() {
+            ntoSummaryTimer = null;
+            updateSummaryNow();
+        }, 60);
+    }
+
+    function updateSummaryNow() {
         if (!table) return;
         temuClearCapMemo();
         const rows = ntoSummaryRows();
@@ -2913,9 +2919,9 @@
     window.ntoRefreshLmpAlertBadge = ntoRefreshLmpAlertBadge;
     $(document).off('chStd:settled.ntoLmpAlert').on('chStd:settled.ntoLmpAlert', function() {
         // The grid is redrawn right after this event, so count again once it has settled.
-        ntoRefreshLmpAlertBadge(true);
-        [300, 1200, 3000].forEach(function(ms) { setTimeout(function() { ntoRefreshLmpAlertBadge(true); }, ms); });
-        if (typeof updateSummary === 'function') updateSummary();
+        // updateSummary() recounts every badge, the LMP alert one included, and is coalesced.
+        updateSummary();
+        setTimeout(updateSummary, 1200);
         setTimeout(function() {
             ntoPersistPromoBase().catch(function() {});
             if (window._ntoPushAfterRules) {
@@ -2927,9 +2933,27 @@
     // If the rules event never arrives, still show a count instead of staying on "…".
     setTimeout(function() { ntoLmpAlertReadyFallback = true; ntoRefreshLmpAlertBadge(true); }, 8000);
 
+    // Each addFilter() used to re-filter and repaint the grid on its own (up to ~10 passes per change).
+    // Blocking the redraw makes Tabulator filter and paint once, when the last filter is in.
     function applyFilters() {
         if (!table) return;
+        const blocked = typeof table.blockRedraw === 'function';
+        if (blocked) table.blockRedraw();
+        try {
+            applyFiltersCore();
+        } finally {
+            if (blocked) table.restoreRedraw();
+        }
+        updateSummary();
+    }
 
+    let ntoFilterTimer = null;
+    function applyFiltersDebounced() {
+        clearTimeout(ntoFilterTimer);
+        ntoFilterTimer = setTimeout(applyFilters, 250);
+    }
+
+    function applyFiltersCore() {
         const inventoryFilter = $('#inventory-filter').val();
         const dilFilter = $('#dil-filter').val();
         const cvrFilter = $('#cvr-filter').val();
@@ -3039,8 +3063,6 @@
         if (lmpAlertFilterActive) {
             table.addFilter(function(data) { return temuHasLmpAlert(data); });
         }
-
-        updateSummary();
     }
 
     // Same hide/show + persist as /temu1-data, stored under this page's channel.
@@ -3061,7 +3083,6 @@
         // Every discount column goes under one Discounts header.
         if (/^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f)) return 'discounts';
         const t = String(title || field || '').replace(/<[^>]*>/g, '');
-        const fl = f.toLowerCase();
         const tl = t.toLowerCase();
         if (
             /^(spend|spend_l30|ad_sold_l30|acos_ad|ad_clicks|t_clicks|impressions|ads_percent)$/i.test(f) ||
@@ -3298,14 +3319,16 @@
     }
 
     // Same SKU sequence as Listing Temu: Parent group, then SKU (not A–Z across the catalog).
+    // One shared collator: localeCompare(..., options) builds a new one on every call, which made the sort slow.
+    const temuSkuCollator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: false });
     function temuListingSkuSequence(a, b) {
         const parentA = String((a && (a.Parent || a.parent)) || '').replace(/^PARENT\s+/i, '').trim();
         const parentB = String((b && (b.Parent || b.parent)) || '').replace(/^PARENT\s+/i, '').trim();
-        const parentCmp = parentA.localeCompare(parentB, undefined, { sensitivity: 'base' });
+        const parentCmp = temuSkuCollator.compare(parentA, parentB);
         if (parentCmp !== 0) return parentCmp;
         const skuA = String((a && (a['(Child) sku'] || a.sku)) || '');
         const skuB = String((b && (b['(Child) sku'] || b.sku)) || '');
-        return skuA.localeCompare(skuB, undefined, { sensitivity: 'base', numeric: false });
+        return temuSkuCollator.compare(skuA, skuB);
     }
 
     $(document).ready(function() {
@@ -3317,7 +3340,7 @@
             // ~43 columns x 100 rows: only build cells for the columns on screen so left/right scroll stays smooth.
             renderHorizontal: 'virtual',
             pagination: true,
-            paginationSize: 100,
+            paginationSize: 50,
             paginationSizeSelector: [10, 25, 50, 100, 200],
             paginationCounter: 'rows',
             langs: {
@@ -4214,7 +4237,7 @@
             updateSummary();
         });
 
-        $('#sku-search, #parent-search').on('keyup', applyFilters);
+        $('#sku-search, #parent-search').on('input', applyFiltersDebounced);
         $('#inventory-filter, #dil-filter, #cvr-filter, #gpft-filter, #groi-filter, #cvr-trend-filter').on('change', applyFilters);
 
         temuLoadCvrCpnRules();
