@@ -626,6 +626,11 @@ class FacebookAllAdsSheetController extends Controller
             // Don't let later rows overwrite a previously-filled cell with
             // an empty value (so blanks in Spend don't wipe Campaign data).
             foreach ($cleanedData as $k => $v) {
+                // The new Shopify sales export also carries Impressions;
+                // Meta's Spend sheet is the source of truth for that metric.
+                if ($uploadType === 'sales' && $k === 'Impressions') {
+                    continue;
+                }
                 $existing       = $merged[$cid][$k] ?? null;
                 $emptyExisting  = $existing === null || $existing === '';
                 $emptyIncoming  = $v === null || (is_string($v) && trim($v) === '');
@@ -2041,7 +2046,8 @@ class FacebookAllAdsSheetController extends Controller
         foreach ($rowData as $key => $value) {
             $k = trim((string) $key);
             if (preg_match('/^campaign[\s_]?id$/i', $k)
-                || preg_match('/^campaign\s+activities$/i', $k)) {
+                || preg_match('/^campaign\s+activities$/i', $k)
+                || preg_match('/^marketing\s+campaign$/i', $k)) {
                 $clean = trim((string) $value);
                 if ($clean === '') continue;
                 // Skip the obvious non-id markers Shopify emits.
@@ -2497,8 +2503,10 @@ class FacebookAllAdsSheetController extends Controller
         // CTR = CLK / IMPR * 100, rounded to 1 decimal
         ['title' => 'CTR',           'formula' => ['CLK', 'IMPR', 1]],
         ['title' => 'SPEND',         'sources' => ['Amount spent (USD)'], 'formatter' => 'usd_int'],
-        ['title' => 'SALES',         'sources' => ['Sales'],               'formatter' => 'int'],
-        ['title' => 'SOLD',          'sources' => ['Orders']],
+        // New Shopify export headers first ("Total sales (last non-direct
+        // click)" / "Orders (last non-direct click)"), legacy ones as fallback.
+        ['title' => 'SALES',         'sources' => ['Total sales (last non-direct click)', 'Sales'], 'formatter' => 'int'],
+        ['title' => 'SOLD',          'sources' => ['Orders (last non-direct click)', 'Orders']],
         // CVR = SOLD / CLK * 100, rounded to 1 decimal
         ['title' => 'CVR',           'formula' => ['SOLD', 'CLK', 1]],
         // CPS = SPEND / SOLD (cost per sold), rounded to whole dollars,
@@ -2522,7 +2530,7 @@ class FacebookAllAdsSheetController extends Controller
         // "Active", "In draft", "Paused", "Inactive", etc.
         ['title' => 'Status',        'sources' => ['Campaign delivery']],
         // Kept last — ID is rarely needed for scanning metrics.
-        ['title' => 'CAMPAIGN ID',   'sources' => ['_campaign_id', 'Campaign ID', 'CAMPAIGN ID', 'Campaign activities']],
+        ['title' => 'CAMPAIGN ID',   'sources' => ['_campaign_id', 'Campaign ID', 'CAMPAIGN ID', 'Marketing campaign', 'Campaign activities']],
     ];
 
     /**
@@ -2556,7 +2564,7 @@ class FacebookAllAdsSheetController extends Controller
             // purchases" on top. Sessions (Shopify) is the only forbidden
             // column — that's what `sales` is for now.
             'required_any' => ['spend', 'amount spent', 'impressions'],
-            'forbidden'    => ['sessions', 'campaign activities'],
+            'forbidden'    => ['sessions', 'campaign activities', 'marketing campaign'],
             'description'  => 'a Meta Ads Manager export (Spend / Impressions / Clicks — plain Spend or Sales-objective)',
         ],
         'sales' => [
@@ -2566,8 +2574,13 @@ class FacebookAllAdsSheetController extends Controller
             // Meta exports (which carry Reporting starts / Result indicator /
             // Shops-assisted purchases) are forbidden here — they belong to
             // the Spend type.
+            // New format: "Marketing campaign" / "Marketing channel" /
+            // "Traffic type" / "Total sales (last non-direct click)" /
+            // "Sessions" / "Orders (last non-direct click)" / ...
+            // Legacy format ("Campaign activities" + Sales + Orders) is
+            // still accepted.
+            'required_any' => ['marketing campaign', 'campaign activities'],
             'required_all' => [
-                'campaign activities',
                 'sessions',
                 'sales',
                 'orders',
@@ -2578,7 +2591,7 @@ class FacebookAllAdsSheetController extends Controller
                 'shops-assisted purchases',
                 'amount spent',
             ],
-            'description'  => 'a Shopify Sales export (Campaign activities / Channel / Type / Sessions / Sales / Orders / Conversion / Cost / ROAS / CPA / CTR / AOV / Orders from / Orders from returning customers)',
+            'description'  => 'a Shopify Sales export (Marketing campaign / Marketing channel / Traffic type / Total sales (last non-direct click) / Sessions / Orders (last non-direct click) / Conversion rate / Ad spend / ROAS / CPA / CAC / Impressions / Clicks / CTR / Average order value / New customers / Returning customers)',
         ],
     ];
 
@@ -2848,7 +2861,8 @@ class FacebookAllAdsSheetController extends Controller
 
         // Shopify Attribution: campaign activities + sessions is the
         // unmistakable signature.
-        if (mb_strpos($joined, 'campaign activities') !== false
+        if ((mb_strpos($joined, 'marketing campaign') !== false
+                || mb_strpos($joined, 'campaign activities') !== false)
             && mb_strpos($joined, 'sessions') !== false) {
             return 'sales';
         }

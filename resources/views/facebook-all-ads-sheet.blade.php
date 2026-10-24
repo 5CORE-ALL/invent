@@ -1512,7 +1512,7 @@
 
         function rowCampaignId(data) {
             return String(
-                (data && (data['CAMPAIGN ID'] || data._campaign_id || data['Campaign ID'] || data['Campaign activities'])) || ''
+                (data && (data['CAMPAIGN ID'] || data._campaign_id || data['Campaign ID'] || data['Marketing campaign'] || data['Campaign activities'])) || ''
             );
         }
 
