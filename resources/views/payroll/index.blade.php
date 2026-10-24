@@ -63,6 +63,11 @@
     .payroll-doc-label { color: #6c757d; min-width: 0; text-align: right; }
     .payroll-doc-actions { display: inline-flex; align-items: center; gap: .15rem; }
     .table-payroll { font-size: .85rem; }
+    .payroll-increment-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .75rem; }
+    .payroll-increment-filter { display: flex; align-items: center; gap: .5rem; }
+    .payroll-increment-filter .form-select { min-width: 200px; height: 31px; font-size: .85rem; }
+    .payroll-increment-summary .cnt { margin-left: auto; font-size: .8rem; color: #146c43; }
+    .payroll-increment-grid.is-single { grid-template-columns: minmax(320px, 640px); }
     .payroll-increment-summary {
         display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
         padding: .6rem .85rem; margin-bottom: .85rem; border-radius: 8px;
@@ -259,7 +264,15 @@
         </div>
         <div class="tab-pane fade" id="tab-increment" role="tabpanel">
             <div class="payroll-card p-3">
-                <h5 class="mb-3" style="font-size: 1rem; font-weight: 600;">Increment — month wise</h5>
+                <div class="payroll-increment-toolbar">
+                    <h5 class="mb-0" style="font-size: 1rem; font-weight: 600;">Increment</h5>
+                    <div class="payroll-increment-filter">
+                        <label for="incrementMonthSelect" class="form-label mb-0 small text-muted">Month</label>
+                        <select id="incrementMonthSelect" class="form-select form-select-sm">
+                            <option value="all">All Months</option>
+                        </select>
+                    </div>
+                </div>
                 <div id="incrementSummary"></div>
                 <div id="incrementList" class="payroll-increment-list">
                     <div class="text-muted small">Loading…</div>
@@ -1111,48 +1124,90 @@
         return parts.length ? parts.join(' + ') : fmt(0, 'india');
     }
 
+    let incrementData = null;
+
+    function renderIncrements() {
+        const box = document.getElementById('incrementList');
+        const summary = document.getElementById('incrementSummary');
+        const select = document.getElementById('incrementMonthSelect');
+        if (!box || !incrementData) return;
+
+        const selected = select ? select.value : 'all';
+        const allMonths = incrementData.months || [];
+        const months = selected === 'all'
+            ? allMonths
+            : allMonths.filter((m) => String(m.month_id) === String(selected));
+
+        if (!months.length) {
+            if (summary) summary.innerHTML = '';
+            box.className = '';
+            box.innerHTML = '<div class="text-muted small">No increments found.</div>';
+            return;
+        }
+
+        let totals;
+        if (selected === 'all') {
+            totals = incrementData.grand_totals;
+        } else {
+            totals = months[0].totals;
+        }
+        const scopeLabel = selected === 'all' ? 'All Months' : months[0].month_label;
+        const entries = months.reduce((n, m) => n + (m.users || []).length, 0);
+
+        if (summary) {
+            summary.innerHTML = '<div class="payroll-increment-summary">'
+                + '<span class="lbl">Total Increment — ' + esc(scopeLabel) + '</span>'
+                + '<span class="amt">' + esc(formatTotals(totals)) + '</span>'
+                + '<span class="cnt">' + entries + ' increment' + (entries === 1 ? '' : 's')
+                + (selected === 'all' ? ' in ' + months.length + ' month' + (months.length === 1 ? '' : 's') : '') + '</span>'
+                + '</div>';
+        }
+
+        box.className = 'payroll-increment-grid' + (months.length === 1 ? ' is-single' : '');
+        box.innerHTML = months.map((m) => {
+            const users = m.users || [];
+            const rowsHtml = users.map((u, i) => '<tr>'
+                + '<td class="idx">' + (i + 1) + '</td>'
+                + '<td>' + esc(u.name) + '</td>'
+                + '<td class="num">' + esc(fmt(u.amount, u.region)) + '</td>'
+                + '</tr>').join('');
+            return '<div class="payroll-increment-month">'
+                + '<div class="payroll-increment-month-head">'
+                + '<span>' + esc(m.month_label) + ' <span class="text-muted small fw-normal">(' + users.length + ')</span></span>'
+                + '<span class="total">Total: ' + esc(formatTotals(m.totals)) + '</span>'
+                + '</div>'
+                + '<table class="payroll-increment-table"><thead><tr>'
+                + '<th class="idx">#</th><th>Employee</th><th class="num">Increment</th>'
+                + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>'
+                + '</div>';
+        }).join('');
+    }
+
     async function loadIncrements() {
         const box = document.getElementById('incrementList');
         const summary = document.getElementById('incrementSummary');
+        const select = document.getElementById('incrementMonthSelect');
         if (!box) return;
+        box.className = '';
         box.innerHTML = '<div class="text-muted small">Loading…</div>';
         if (summary) summary.innerHTML = '';
         try {
-            const res = await api(`${base}/increments`);
-            const months = res.months || [];
-            if (!months.length) {
-                box.innerHTML = '<div class="text-muted small">No increments found.</div>';
-                return;
+            incrementData = await api(`${base}/increments`);
+            if (select) {
+                const keep = select.value || 'all';
+                select.innerHTML = '<option value="all">All Months</option>'
+                    + (incrementData.months || []).map((m) =>
+                        '<option value="' + m.month_id + '">' + esc(m.month_label) + '</option>').join('');
+                select.value = Array.from(select.options).some((o) => o.value === keep) ? keep : 'all';
             }
-            if (summary) {
-                summary.innerHTML = '<div class="payroll-increment-summary">'
-                    + '<span class="lbl">Total Increment (all months)</span>'
-                    + '<span class="amt">' + esc(formatTotals(res.grand_totals)) + '</span>'
-                    + '</div>';
-            }
-            box.className = 'payroll-increment-grid';
-            box.innerHTML = months.map((m) => {
-                const users = m.users || [];
-                const rowsHtml = users.map((u, i) => '<tr>'
-                    + '<td class="idx">' + (i + 1) + '</td>'
-                    + '<td>' + esc(u.name) + '</td>'
-                    + '<td class="num">' + esc(fmt(u.amount, u.region)) + '</td>'
-                    + '</tr>').join('');
-                return '<div class="payroll-increment-month">'
-                    + '<div class="payroll-increment-month-head">'
-                    + '<span>' + esc(m.month_label) + ' <span class="text-muted small fw-normal">(' + users.length + ')</span></span>'
-                    + '<span class="total">Total: ' + esc(formatTotals(m.totals)) + '</span>'
-                    + '</div>'
-                    + '<table class="payroll-increment-table"><thead><tr>'
-                    + '<th class="idx">#</th><th>Employee</th><th class="num">Increment</th>'
-                    + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>'
-                    + '</div>';
-            }).join('');
+            renderIncrements();
         } catch (err) {
-            box.className = '';
+            incrementData = null;
             box.innerHTML = '<div class="text-danger small">' + esc(err.message || 'Failed to load increments.') + '</div>';
         }
     }
+
+    document.getElementById('incrementMonthSelect')?.addEventListener('change', renderIncrements);
 
     // Tables built inside hidden tabs need a redraw once their tab becomes visible.
     document.querySelectorAll('#payrollRegionTabs [data-bs-toggle="tab"]').forEach((btn) => {
