@@ -3,6 +3,8 @@
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet">
     @include('partials.parent-row-highlight')
     <style>
         .card.ts-master-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
@@ -23,8 +25,34 @@
         .ts-search-parent input { background:#f5f3ff; border-color:#c4b5fd; }
         .ts-search-sku { color:#1d4ed8; }
         .ts-search-sku input { background:#eff6ff; border-color:#93c5fd; }
-        .ts-search-category { color:#b45309; }
-        .ts-search-category input { background:#fffbeb; border-color:#fcd34d; }
+        .ts-search-channel { color:#0369a1; }
+        .ts-search-channel select {
+            height:32px; border-radius:8px; border:1px solid #7dd3fc; padding:0 .5rem;
+            font-size:.84rem; font-weight:500; text-transform:none; letter-spacing:0;
+            background:#f0f9ff; color:#0f172a;
+        }
+        .ts-search-channel select:focus { outline:none; box-shadow:0 0 0 3px rgba(14,165,233,.18); }
+        .ts-search-row .select2-container { width: 100% !important; }
+        .ts-search-row .select2-container--bootstrap-5 .select2-selection--single {
+            height: 32px; min-height: 32px; border-radius: 8px; font-size: .84rem; font-weight: 500;
+        }
+        .ts-search-row .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            line-height: 30px; color: #0f172a; padding-left: .15rem;
+        }
+        .ts-search-row .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow { height: 30px; }
+        .ts-search-channel .select2-container--bootstrap-5 .select2-selection--single { background:#f0f9ff; border-color:#7dd3fc; }
+        .ts-search-category .select2-container--bootstrap-5 .select2-selection--single { background:#fffbeb; border-color:#fcd34d; }
+        .select2-container--open { z-index: 1080; }
+        .select2-search--dropdown .select2-search__field { border-radius: 8px; }
+        .ts-search-category { color:#b45309; min-width: 280px; flex: 1.6; }
+        .ts-search-category select {
+            height:32px; border-radius:8px; border:1px solid #fcd34d; padding:0 .5rem;
+            font-size:.84rem; font-weight:500; text-transform:none; letter-spacing:0;
+            background:#fffbeb; color:#0f172a;
+        }
+        .ts-search-category select:focus { outline:none; box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+        .ts-search-quick { color:#334155; }
+        .ts-search-quick input { background:#f8fafc; border-color:#cbd5e1; }
         .ts-search-any { color:#0f766e; }
         .ts-search-any input { background:#f0fdfa; border-color:#5eead4; }
         #ts-hscroll {
@@ -60,26 +88,31 @@
         #technical-specs-table .tabulator-row.tabulator-selected .tabulator-cell.tabulator-frozen {
             background: #d6e6ff;
         }
+        #technical-specs-table .tabulator-header .tabulator-col[tabulator-field="Parent"],
         #technical-specs-table .tabulator-header .tabulator-col[tabulator-field="SKU"] {
-            position: sticky !important;
-            left: 44px !important;
             z-index: 32;
             background: #2c6ed5 !important;
+        }
+        #technical-specs-table .tabulator-header .tabulator-col[tabulator-field="SKU"] {
             box-shadow: 3px 0 6px rgba(15, 23, 42, .18);
         }
+        #technical-specs-table .tabulator-row .tabulator-cell[tabulator-field="Parent"],
         #technical-specs-table .tabulator-row .tabulator-cell[tabulator-field="SKU"] {
-            position: sticky !important;
-            left: 44px !important;
             z-index: 13;
             background: #fff;
+        }
+        #technical-specs-table .tabulator-row .tabulator-cell[tabulator-field="SKU"] {
             box-shadow: 3px 0 6px rgba(15, 23, 42, .12);
         }
+        #technical-specs-table .tabulator-row.tabulator-row-even .tabulator-cell[tabulator-field="Parent"],
         #technical-specs-table .tabulator-row.tabulator-row-even .tabulator-cell[tabulator-field="SKU"] {
             background: #f8fafc;
         }
+        #technical-specs-table .tabulator-row:hover:not([class*="parent-row"]) .tabulator-cell[tabulator-field="Parent"],
         #technical-specs-table .tabulator-row:hover:not([class*="parent-row"]) .tabulator-cell[tabulator-field="SKU"] {
             background: #e8f0fe !important;
         }
+        #technical-specs-table .tabulator-row.tabulator-selected .tabulator-cell[tabulator-field="Parent"],
         #technical-specs-table .tabulator-row.tabulator-selected .tabulator-cell[tabulator-field="SKU"] {
             background: #d6e6ff;
         }
@@ -135,6 +168,44 @@
         #technical-specs-table .ts-cat-dot--ok { background: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,.18); }
         #technical-specs-table .ts-cat-dot--none { background: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,.18); }
         #technical-specs-table .ts-cat-dot:hover { transform: scale(1.35); }
+        #technical-specs-table .tabulator-cell[tabulator-field^="category_"] { overflow: visible; }
+        #technical-specs-table .tabulator-row:hover .tabulator-cell[tabulator-field^="category_"] { z-index: 6; }
+        #technical-specs-table .ts-cat-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #technical-specs-table .ts-cat-copy {
+            position: absolute;
+            left: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            border: 0;
+            border-radius: 6px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            color: #475569;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, .22);
+            font-size: 11px;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 7;
+        }
+        #technical-specs-table .ts-cat-wrap:hover .ts-cat-copy,
+        #technical-specs-table .ts-cat-copy:focus,
+        #technical-specs-table .ts-cat-copy.is-copied {
+            opacity: 1;
+            pointer-events: auto;
+            color: #1d4ed8;
+        }
         .ts-cat-tip {
             position: fixed;
             z-index: 2000;
@@ -169,28 +240,43 @@
         .toast-container { position:fixed; top:20px; right:20px; z-index:9999; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         #ts-column-dropdown.show {
-            min-width: min(92vw, 720px);
-            max-width: min(96vw, 780px);
-            max-height: 70vh;
-            overflow-y: auto;
-            padding: 0.4rem 0.5rem 0.55rem;
+            position: fixed;
+            left: 0;
+            right: 0;
+            width: 100vw;
+            max-width: none;
+            min-width: 0;
+            height: 33vh;
+            max-height: 33vh;
+            overflow: hidden;
+            padding: 8px 10px;
+            border-radius: 0 0 12px 12px;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, .18);
+            display: flex;
+            flex-direction: column;
+            z-index: 1080;
         }
         #ts-column-dropdown .col-vis-groups {
             display: grid;
-            grid-template-columns: repeat(3, minmax(160px, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 8px;
             margin: 0;
+            flex: 1;
+            min-height: 0;
+            height: 100%;
         }
         #ts-column-dropdown .col-vis-group {
             background: #f8f9fa;
             border: 1px solid #e9ecef;
-            border-radius: 6px;
+            border-radius: 8px;
             padding: 6px;
-            min-height: 120px;
+            min-width: 0;
+            min-height: 0;
             display: flex;
             flex-direction: column;
         }
-        #ts-column-dropdown .col-vis-group-title {
+        #ts-column-dropdown .col-vis-group-title,
+        #ts-column-dropdown .col-vis-cat-title {
             display: flex;
             align-items: center;
             gap: 6px;
@@ -199,19 +285,69 @@
             text-transform: uppercase;
             letter-spacing: 0.04em;
             color: #495057;
-            margin: 0 0 6px;
+            margin: 0;
             padding: 2px 4px;
-            border-bottom: 1px solid #dee2e6;
             user-select: none;
             cursor: pointer;
         }
+        #ts-column-dropdown .col-vis-group-title {
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 6px;
+            flex: 0 0 auto;
+        }
+        #ts-column-dropdown .ts-ch-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 13px;
+            flex: 0 0 auto;
+        }
+        #ts-column-dropdown .ts-ch-icon.ebay { background: #e53238; }
+        #ts-column-dropdown .ts-ch-icon.amazon { background: #ff9900; color: #111; }
+        #ts-column-dropdown .ts-ch-icon.temu { background: #f97316; font-weight: 800; font-size: 12px; font-family: Arial, sans-serif; }
+        #ts-column-dropdown .col-vis-cats {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            flex: 1;
+            min-height: 0;
+            padding-bottom: 2px;
+        }
+        #ts-column-dropdown .col-vis-cat {
+            flex: 0 0 168px;
+            min-width: 148px;
+            max-width: 220px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        #ts-column-dropdown .col-vis-cat-title {
+            border-bottom: 1px solid #eef2f7;
+            background: #f1f5f9;
+            border-radius: 6px 6px 0 0;
+            text-transform: none;
+            letter-spacing: 0;
+            font-size: 0.75rem;
+        }
+        #ts-column-dropdown .col-vis-cat-title span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         #ts-column-dropdown .col-vis-group-list {
             flex: 1;
-            min-height: 60px;
-            max-height: 320px;
+            min-height: 0;
             overflow-y: auto;
             margin: 0;
-            padding: 0;
+            padding: 2px 0;
             list-style: none;
         }
         #ts-column-dropdown .col-vis-item { list-style: none; margin: 0; padding: 0; }
@@ -219,13 +355,13 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            padding: 3px 5px;
+            padding: 3px 6px;
             cursor: pointer;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             margin: 0;
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             user-select: none;
         }
         #ts-column-dropdown input[type="checkbox"] {
@@ -236,12 +372,13 @@
             accent-color: #0d6efd;
             cursor: pointer;
         }
-        #ts-column-dropdown .col-vis-item > label:hover {
-            background: rgba(0, 0, 0, 0.04);
-            border-radius: 3px;
+        #ts-column-dropdown .col-vis-item > label:hover,
+        #ts-column-dropdown .col-vis-cat-title:hover,
+        #ts-column-dropdown .col-vis-group-title:hover {
+            background: rgba(37, 99, 235, .06);
         }
-        @media (max-width: 768px) {
-            #ts-column-dropdown .col-vis-groups { grid-template-columns: 1fr; }
+        @media (max-width: 900px) {
+            #ts-column-dropdown .col-vis-groups { grid-template-columns: 1fr; overflow-y: auto; }
         }
         #editSpecsModal .ts-edit-dialog {
             width: min(1440px, 96vw);
@@ -415,7 +552,7 @@
                                 aria-expanded="false" title="Columns">
                                 <i class="fas fa-columns"></i>
                             </button>
-                            <div class="dropdown-menu" id="ts-column-dropdown" aria-labelledby="tsColumnVisibility"></div>
+                            <div class="dropdown-menu" id="ts-column-dropdown" data-bs-popper="static" aria-labelledby="tsColumnVisibility"></div>
                         </div>
                         <button type="button" id="pullEbayBtn" class="btn btn-sm btn-outline-primary" title="Pull item specifics from eBay for the selected rows">
                             <i class="fas fa-cloud-download-alt"></i> Pull from eBay 1
@@ -448,14 +585,24 @@
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
                     <div class="ts-search-row">
+                        <label class="ts-search-channel">Channel
+                            <select id="channelFilter">
+                                <option value="">All channels</option>
+                            </select>
+                        </label>
+                        <label class="ts-search-category">Category
+                            <select id="categoryFilter">
+                                <option value="">All categories</option>
+                            </select>
+                        </label>
+                        <label class="ts-search-quick">Quick search
+                            <input type="search" id="quickSearch" placeholder="SKU, parent, category, specification…" autocomplete="off">
+                        </label>
                         <label class="ts-search-parent">Parent
                             <input type="search" id="parentSearch" placeholder="Search parent column" autocomplete="off">
                         </label>
                         <label class="ts-search-sku">SKU
                             <input type="search" id="skuSearch" placeholder="Search SKU column" autocomplete="off">
-                        </label>
-                        <label class="ts-search-category">Category
-                            <input type="search" id="categorySearch" placeholder="Search eBay, Amazon, and Temu categories" autocomplete="off">
                         </label>
                         <label class="ts-search-any">Anything
                             <input type="search" id="anythingSearch" placeholder="Search every other column" autocomplete="off">
@@ -552,6 +699,7 @@
 @endsection
 
 @section('script')
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
@@ -569,9 +717,9 @@
             const aspectFields = {};
             const TS_COL_VIS_KEY = 'technical_specs_col_vis_v1';
             const TS_COL_GROUPS = [
-                { key: 'ebay', label: 'eBay' },
-                { key: 'amz', label: 'Amz' },
-                { key: 'temu', label: 'Temu' },
+                { key: 'ebay', label: 'eBay', icon: 'ebay', mark: '<i class="fab fa-ebay"></i>' },
+                { key: 'amz', label: 'Amz', icon: 'amazon', mark: '<i class="fab fa-amazon"></i>' },
+                { key: 'temu', label: 'Temu', icon: 'temu', mark: 'T' },
             ];
 
             function toast(message, type) {
@@ -596,7 +744,42 @@
                     formatter: function (cell) {
                         const v = String(cell.getValue() || '').trim();
                         const tip = v ? v : 'No ' + title.replace(/^Category\s*/i, '') + ' category';
-                        return '<span class="ts-cat-dot ' + (v ? 'ts-cat-dot--ok' : 'ts-cat-dot--none') + '" data-tip="' + esc(tip) + '" aria-label="' + esc(tip) + '"></span>';
+                        const copy = v
+                            ? '<button type="button" class="ts-cat-copy" title="Copy category"><i class="fas fa-copy"></i></button>'
+                            : '';
+                        return '<span class="ts-cat-wrap"><span class="ts-cat-dot ' + (v ? 'ts-cat-dot--ok' : 'ts-cat-dot--none') + '" data-tip="' + esc(tip) + '" aria-label="' + esc(tip) + '"></span>' + copy + '</span>';
+                    },
+                    cellClick: function (e, cell) {
+                        const btn = e.target.closest && e.target.closest('.ts-cat-copy');
+                        if (!btn) return;
+                        e.stopPropagation();
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) return;
+                        const done = function () {
+                            btn.classList.add('is-copied');
+                            btn.innerHTML = '<i class="fas fa-check"></i>';
+                            toast('Copied ' + value, 'success');
+                            setTimeout(function () {
+                                btn.classList.remove('is-copied');
+                                btn.innerHTML = '<i class="fas fa-copy"></i>';
+                            }, 1200);
+                        };
+                        const fallback = function () {
+                            const ta = document.createElement('textarea');
+                            ta.value = value;
+                            ta.style.position = 'fixed';
+                            ta.style.left = '-9999px';
+                            document.body.appendChild(ta);
+                            ta.select();
+                            try { document.execCommand('copy'); done(); }
+                            catch (err) { toast('Could not copy category.', 'error'); }
+                            ta.remove();
+                        };
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(value).then(done).catch(fallback);
+                        } else {
+                            fallback();
+                        }
                     },
                 };
             }
@@ -630,6 +813,86 @@
                 return String(value || '').toLowerCase().indexOf(query) !== -1;
             }
 
+            function channelCategoryField(name) {
+                const n = String(name || '').toLowerCase();
+                if (n.indexOf('temu') !== -1) return 'category_temu';
+                if (n.indexOf('amazon') !== -1 || n.indexOf('amz') !== -1) return 'category_amz';
+                if (n.indexOf('ebay') !== -1 || n.indexOf('e bay') !== -1) return 'category_ebay';
+                return '';
+            }
+
+            function unmountSearchSelect(sel) {
+                if (window.jQuery && jQuery.fn.select2 && jQuery(sel).hasClass('select2-hidden-accessible')) {
+                    jQuery(sel).select2('destroy');
+                }
+            }
+
+            function mountSearchSelect(sel, placeholder) {
+                if (!window.jQuery || !jQuery.fn.select2) return;
+                const $sel = jQuery(sel);
+                if ($sel.hasClass('select2-hidden-accessible')) $sel.select2('destroy');
+                $sel.select2({
+                    theme: 'bootstrap-5',
+                    placeholder: placeholder,
+                    allowClear: true,
+                    width: '100%',
+                    minimumResultsForSearch: 0,
+                    dropdownParent: jQuery(document.body),
+                });
+                $sel.off('select2:open.tsQuick').on('select2:open.tsQuick', function () {
+                    const field = document.querySelector('.select2-container--open .select2-search__field');
+                    if (!field) return;
+                    field.placeholder = 'Quick search';
+                    field.focus();
+                });
+            }
+
+            function fillChannelFilter(names) {
+                const sel = document.getElementById('channelFilter');
+                if (!sel) return;
+                const current = sel.value;
+                unmountSearchSelect(sel);
+                sel.innerHTML = '<option value="">All channels</option>';
+                (names || []).forEach(function (name) {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name;
+                    sel.appendChild(option);
+                });
+                if (current && Array.from(sel.options).some(function (option) { return option.value === current; })) {
+                    sel.value = current;
+                }
+                mountSearchSelect(sel, 'All channels');
+            }
+
+            function fillCategoryFilter() {
+                const sel = document.getElementById('categoryFilter');
+                if (!sel) return;
+                const current = sel.value;
+                unmountSearchSelect(sel);
+                const field = channelCategoryField(document.getElementById('channelFilter')?.value || '');
+                const fields = field ? [field] : ['category_ebay', 'category_amz', 'category_temu'];
+                const seen = new Map();
+                allRows.forEach(function (row) {
+                    fields.forEach(function (key) {
+                        const value = String(row[key] || '').trim();
+                        if (!value) return;
+                        const id = value.toLowerCase();
+                        if (!seen.has(id)) seen.set(id, value);
+                    });
+                });
+                const names = Array.from(seen.values()).sort(function (a, b) { return a.localeCompare(b); });
+                sel.innerHTML = '<option value="">All categories</option>';
+                names.forEach(function (name) {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name;
+                    sel.appendChild(option);
+                });
+                sel.value = current && names.indexOf(current) !== -1 ? current : '';
+                mountSearchSelect(sel, 'All categories');
+            }
+
             function categoryText(data) {
                 return [data.category_ebay, data.category_amz, data.category_temu].join('\n');
             }
@@ -656,8 +919,11 @@
                 const rowType = document.getElementById('rowTypeFilter')?.value || 'sku';
                 const parentQ = searchValue('parentSearch');
                 const skuQ = searchValue('skuSearch');
-                const categoryQ = searchValue('categorySearch');
+                const quickQ = searchValue('quickSearch');
                 const anyQ = searchValue('anythingSearch');
+                const channelName = document.getElementById('channelFilter')?.value || '';
+                const channelField = channelCategoryField(channelName);
+                const categoryPick = document.getElementById('categoryFilter')?.value || '';
                 function passesBase(data) {
                     const isParent = window.isPmParentRowData
                         ? window.isPmParentRowData(data)
@@ -667,7 +933,17 @@
                     if (navParent != null && String(data.Parent || '') !== String(navParent)) return false;
                     if (parentQ && !containsText(data.Parent || data.title150 || '', parentQ)) return false;
                     if (skuQ && !containsText(data.SKU, skuQ)) return false;
-                    if (categoryQ && !containsText(categoryText(data), categoryQ)) return false;
+                    if (channelField && categoryPick) {
+                        if (String(data[channelField] || '').trim() !== categoryPick) return false;
+                    } else if (channelField && !String(data[channelField] || '').trim()) {
+                        return false;
+                    } else if (categoryPick) {
+                        const matched = ['category_ebay', 'category_amz', 'category_temu'].some(function (key) {
+                            return String(data[key] || '').trim() === categoryPick;
+                        });
+                        if (!matched) return false;
+                    }
+                    if (quickQ && !containsText([data.SKU, data.Parent, data.title150, categoryText(data), anythingText(data)].join('\n'), quickQ)) return false;
                     if (anyQ && !containsText(anythingText(data), anyQ)) return false;
                     const text = specsText(data);
                     if (mode === 'has') return text !== '';
@@ -1004,6 +1280,13 @@
                 viewModal.show();
             }
 
+            function isRealAspect(name) {
+                const s = String(name || '').trim();
+                if (!s || s.length > 120) return false;
+                if (/[{};]|text-decoration|^\s*\./.test(s)) return false;
+                return true;
+            }
+
             function tsColumnGroup(field) {
                 if (field === 'category_ebay' || String(field).indexOf('ebay_aspect_') === 0) return 'ebay';
                 if (field === 'category_amz') return 'amz';
@@ -1020,8 +1303,51 @@
                 }
             }
 
-            function saveTsColumnVisibility() {
+            let columnFocusActive = false;
+
+            function focusedSpecFields() {
+                const channelName = document.getElementById('channelFilter')?.value || '';
+                const category = document.getElementById('categoryFilter')?.value || '';
+                const field = channelCategoryField(channelName);
+                if (!channelName || !category || !field) return null;
+                const keep = {};
+                keep[field] = true;
+                if (field === 'category_ebay') {
+                    allRows.forEach(function (row) {
+                        if (String(row.category_ebay || '').trim() !== category) return;
+                        (row.ebay_required || []).forEach(function (name) {
+                            if (isRealAspect(name)) keep[aspectKey(name)] = true;
+                        });
+                    });
+                }
+                return keep;
+            }
+
+            function prepareColumnVisibility() {
                 if (!table) return;
+                const keep = focusedSpecFields();
+                if (!keep) {
+                    columnFocusActive = false;
+                    const saved = loadTsColumnVisibility();
+                    table.getColumns().forEach(function (col) {
+                        const field = col.getDefinition().field;
+                        if (!tsColumnGroup(field)) return;
+                        if (!Object.prototype.hasOwnProperty.call(saved, field) || saved[field] !== false) col.show();
+                        else col.hide();
+                    });
+                    return;
+                }
+                columnFocusActive = true;
+                table.getColumns().forEach(function (col) {
+                    const field = col.getDefinition().field;
+                    if (!tsColumnGroup(field)) return;
+                    if (keep[field]) col.show();
+                    else col.hide();
+                });
+            }
+
+            function saveTsColumnVisibility() {
+                if (!table || columnFocusActive) return;
                 const visibility = loadTsColumnVisibility();
                 table.getColumns().forEach(function (col) {
                     const field = col.getDefinition().field;
@@ -1042,32 +1368,112 @@
                 });
             }
 
-            function syncTsGroupHeader(groupEl) {
-                const headerCb = groupEl.querySelector('.col-vis-group-toggle');
-                const itemCbs = groupEl.querySelectorAll('.col-vis-field-toggle');
-                if (!headerCb) return;
+            function syncTsHeader(box, selector) {
+                const itemCbs = box.querySelectorAll(selector);
+                const cb = box.querySelector(':scope > .col-vis-group-title input, :scope > .col-vis-cat-title input');
+                if (!cb) return;
                 if (!itemCbs.length) {
-                    headerCb.checked = false;
-                    headerCb.indeterminate = false;
-                    headerCb.disabled = true;
+                    cb.checked = false;
+                    cb.indeterminate = false;
+                    cb.disabled = true;
                     return;
                 }
-                headerCb.disabled = false;
+                cb.disabled = false;
                 let checked = 0;
-                itemCbs.forEach(function (cb) { if (cb.checked) checked++; });
-                headerCb.checked = checked === itemCbs.length;
-                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+                itemCbs.forEach(function (item) { if (item.checked) checked++; });
+                cb.checked = checked === itemCbs.length;
+                cb.indeterminate = checked > 0 && checked < itemCbs.length;
+            }
+
+            function syncTsGroupHeader(groupEl) {
+                groupEl.querySelectorAll('.col-vis-cat').forEach(function (cat) {
+                    syncTsHeader(cat, ':scope > .col-vis-group-list .col-vis-field-toggle');
+                });
+                syncTsHeader(groupEl, '.col-vis-field-toggle');
+            }
+
+            function setTsFieldVisible(field, visible) {
+                document.querySelectorAll('#ts-column-dropdown .col-vis-field-toggle').forEach(function (cb) {
+                    if (cb.value === field) cb.checked = visible;
+                });
+                const col = table.getColumn(field);
+                if (col) visible ? col.show() : col.hide();
+            }
+
+            function ebayCategoryColumns() {
+                const map = new Map();
+                allRows.forEach(function (row) {
+                    const cat = String(row.category_ebay || '').trim() || 'No category';
+                    if (!map.has(cat)) map.set(cat, []);
+                    const list = map.get(cat);
+                    (row.ebay_required || []).forEach(function (name) {
+                        if (!isRealAspect(name)) return;
+                        if (list.indexOf(name) === -1) list.push(name);
+                    });
+                });
+                const seen = {};
+                map.forEach(function (names) { names.forEach(function (name) { seen[name] = true; }); });
+                const other = ebayAspectNames.filter(function (name) { return isRealAspect(name) && !seen[name]; });
+                if (other.length) map.set('Other', (map.get('Other') || []).concat(other.filter(function (name) { return (map.get('Other') || []).indexOf(name) === -1; })));
+                const cats = [{ title: 'Category', fields: [{ field: 'category_ebay', title: 'Category eBay' }] }];
+                Array.from(map.keys()).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (title) {
+                    const fields = map.get(title).filter(isRealAspect).sort(function (a, b) { return a.localeCompare(b); }).map(function (name) {
+                        return { field: aspectKey(name), title: name };
+                    });
+                    if (fields.length) cats.push({ title: title, fields: fields });
+                });
+                return cats;
+            }
+
+            function channelCategories(key) {
+                if (key === 'ebay') return ebayCategoryColumns();
+                if (key === 'amz') return [{ title: 'Category', fields: [{ field: 'category_amz', title: 'Category Amz' }] }];
+                return [{ title: 'Category', fields: [{ field: 'category_temu', title: 'Category Temu' }] }];
+            }
+
+            function appendFieldToggle(list, field, titleText, groupEl) {
+                const col = table.getColumn(field);
+                if (!col) return;
+                const li = document.createElement('li');
+                li.className = 'col-vis-item';
+                const label = document.createElement('label');
+                label.title = titleText;
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'col-vis-field-toggle';
+                cb.value = field;
+                cb.checked = col.isVisible();
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(titleText));
+                li.appendChild(label);
+                list.appendChild(li);
+                cb.addEventListener('change', function () {
+                    setTsFieldVisible(field, cb.checked);
+                    syncTsGroupHeader(groupEl);
+                    saveTsColumnVisibility();
+                });
+            }
+
+            function placeTsColumnPanel() {
+                const menu = document.getElementById('ts-column-dropdown');
+                const bar = document.querySelector('.ts-master-toolbar');
+                if (!menu || !bar) return;
+                const card = document.querySelector('.ts-master-card') || bar;
+                const rect = card.getBoundingClientRect();
+                menu.style.top = Math.max(0, bar.getBoundingClientRect().bottom) + 'px';
+                menu.style.left = rect.left + 'px';
+                menu.style.width = rect.width + 'px';
+                menu.style.right = 'auto';
+                menu.style.transform = 'none';
             }
 
             function buildTsColumnPicker() {
                 const menu = document.getElementById('ts-column-dropdown');
                 if (!menu || !table) return;
-                applyTsColumnVisibility();
+                prepareColumnVisibility();
                 menu.innerHTML = '';
                 const wrap = document.createElement('div');
                 wrap.className = 'col-vis-groups';
-                const lists = {};
-                const groups = {};
                 TS_COL_GROUPS.forEach(function (spec) {
                     const group = document.createElement('div');
                     group.className = 'col-vis-group';
@@ -1078,61 +1484,63 @@
                     groupCb.type = 'checkbox';
                     groupCb.className = 'col-vis-group-toggle';
                     groupCb.title = 'Select / deselect all in ' + spec.label;
+                    const icon = document.createElement('span');
+                    icon.className = 'ts-ch-icon ' + spec.icon;
+                    icon.innerHTML = spec.mark;
                     title.appendChild(groupCb);
+                    title.appendChild(icon);
                     title.appendChild(document.createTextNode(spec.label));
-                    const list = document.createElement('ul');
-                    list.className = 'col-vis-group-list';
+                    const cats = document.createElement('div');
+                    cats.className = 'col-vis-cats';
                     group.appendChild(title);
-                    group.appendChild(list);
-                    wrap.appendChild(group);
-                    lists[spec.key] = list;
-                    groups[spec.key] = group;
-                    groupCb.addEventListener('change', function () {
-                        list.querySelectorAll('.col-vis-field-toggle').forEach(function (cb) {
-                            cb.checked = groupCb.checked;
-                            const col = table.getColumn(cb.value);
-                            if (col) groupCb.checked ? col.show() : col.hide();
+                    group.appendChild(cats);
+                    channelCategories(spec.key).forEach(function (catSpec) {
+                        const cat = document.createElement('div');
+                        cat.className = 'col-vis-cat';
+                        const catTitle = document.createElement('label');
+                        catTitle.className = 'col-vis-cat-title';
+                        const catCb = document.createElement('input');
+                        catCb.type = 'checkbox';
+                        catCb.title = 'Select / deselect ' + catSpec.title;
+                        const catName = document.createElement('span');
+                        catName.textContent = catSpec.title;
+                        catName.title = catSpec.title;
+                        catTitle.appendChild(catCb);
+                        catTitle.appendChild(catName);
+                        const list = document.createElement('ul');
+                        list.className = 'col-vis-group-list';
+                        cat.appendChild(catTitle);
+                        cat.appendChild(list);
+                        catSpec.fields.forEach(function (field) {
+                            appendFieldToggle(list, field.field, field.title, group);
                         });
-                        groupCb.indeterminate = false;
+                        if (!list.children.length) {
+                            const empty = document.createElement('li');
+                            empty.className = 'text-muted small px-2';
+                            empty.textContent = 'No columns';
+                            list.appendChild(empty);
+                        }
+                        cats.appendChild(cat);
+                        catCb.addEventListener('change', function () {
+                            list.querySelectorAll('.col-vis-field-toggle').forEach(function (cb) {
+                                setTsFieldVisible(cb.value, catCb.checked);
+                            });
+                            syncTsGroupHeader(group);
+                            saveTsColumnVisibility();
+                        });
+                    });
+                    groupCb.addEventListener('change', function () {
+                        group.querySelectorAll('.col-vis-field-toggle').forEach(function (cb) {
+                            setTsFieldVisible(cb.value, groupCb.checked);
+                        });
+                        syncTsGroupHeader(group);
                         saveTsColumnVisibility();
                     });
-                });
-                table.getColumns().forEach(function (col) {
-                    const def = col.getDefinition();
-                    const field = def.field;
-                    const groupKey = tsColumnGroup(field);
-                    if (!groupKey || !lists[groupKey]) return;
-                    const titleText = String(def.title || field).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-                    const li = document.createElement('li');
-                    li.className = 'col-vis-item';
-                    const label = document.createElement('label');
-                    label.title = titleText;
-                    const cb = document.createElement('input');
-                    cb.type = 'checkbox';
-                    cb.className = 'col-vis-field-toggle';
-                    cb.value = field;
-                    cb.checked = col.isVisible();
-                    label.appendChild(cb);
-                    label.appendChild(document.createTextNode(titleText));
-                    li.appendChild(label);
-                    lists[groupKey].appendChild(li);
-                    cb.addEventListener('change', function () {
-                        const column = table.getColumn(field);
-                        if (column) cb.checked ? column.show() : column.hide();
-                        syncTsGroupHeader(groups[groupKey]);
-                        saveTsColumnVisibility();
-                    });
-                });
-                TS_COL_GROUPS.forEach(function (spec) {
-                    if (!lists[spec.key].children.length) {
-                        const empty = document.createElement('li');
-                        empty.className = 'text-muted small px-1';
-                        empty.textContent = 'No columns';
-                        lists[spec.key].appendChild(empty);
-                    }
-                    syncTsGroupHeader(groups[spec.key]);
+                    syncTsGroupHeader(group);
+                    wrap.appendChild(group);
                 });
                 menu.appendChild(wrap);
+                placeTsColumnPanel();
             }
 
             function bindTopHScroll() {
@@ -1190,7 +1598,7 @@
                     table.destroy();
                     table = null;
                 }
-                ebayAspectNames = nextNames;
+                ebayAspectNames = nextNames.filter(isRealAspect);
                 rows.forEach(stampAspectFields);
                 allRows = rows;
                 if (table) {
@@ -1227,6 +1635,19 @@
                             cellClick: function (e, cell) {
                                 e.stopPropagation();
                                 cell.getRow().toggleSelect();
+                            },
+                        },
+                        {
+                            title: 'Parent',
+                            field: 'Parent',
+                            minWidth: 58,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            headerTooltip: 'Parent',
+                            frozen: true,
+                            formatter: function (cell) {
+                                const d = cell.getRow().getData();
+                                return esc(d.Parent || d.title150 || d.SKU || '');
                             },
                         },
                         {
@@ -1280,18 +1701,6 @@
                         categoryColumn('Category eBay', 'category_ebay'),
                         categoryColumn('Category Amz', 'category_amz'),
                         categoryColumn('Category Temu', 'category_temu'),
-                        {
-                            title: 'Parent',
-                            field: 'Parent',
-                            minWidth: 58,
-                            hozAlign: 'center',
-                            headerHozAlign: 'center',
-                            headerTooltip: 'Parent',
-                            formatter: function (cell) {
-                                const d = cell.getRow().getData();
-                                return esc(d.Parent || d.title150 || d.SKU || '');
-                            },
-                        },
                         ...ebayAspectColumns(),
                         {
                             title: 'Action',
@@ -1340,8 +1749,11 @@
                     if (!res.ok || json.status === 500) {
                         throw new Error(json.message || 'Failed to load data');
                     }
+                    fillChannelFilter(json.channels || []);
                     initTable(json.data || [], json.ebay_aspects || []);
+                    fillCategoryFilter();
                     applyStatusFilter();
+                    if (table) buildTsColumnPicker();
                 } catch (e) {
                     toast(e.message || 'Failed to load Technical Specifications data', 'error');
                     initTable([]);
@@ -1702,6 +2114,9 @@
                 viewModal = new bootstrap.Modal(document.getElementById('viewSpecsModal'));
                 ebaySyncModal = new bootstrap.Modal(document.getElementById('ebaySyncModal'));
                 document.getElementById('pullEbayBtn').addEventListener('click', function () { promptEbaySync('pull'); });
+                const colMenuParent = document.getElementById('tsColumnVisibility').closest('.dropdown');
+                if (colMenuParent) colMenuParent.addEventListener('shown.bs.dropdown', placeTsColumnPanel);
+                window.addEventListener('resize', placeTsColumnPanel);
                 document.getElementById('pushEbayBtn').addEventListener('click', function () { promptEbaySync('push'); });
                 document.getElementById('ebaySyncConfirm').addEventListener('click', function () {
                     if (typeof ebaySyncAction === 'function') ebaySyncAction();
@@ -1722,6 +2137,15 @@
                     if (file) importExcel(file);
                     e.target.value = '';
                 });
+                document.getElementById('channelFilter').addEventListener('change', function () {
+                    fillCategoryFilter();
+                    applyStatusFilter();
+                    if (table) buildTsColumnPicker();
+                });
+                document.getElementById('categoryFilter').addEventListener('change', function () {
+                    applyStatusFilter();
+                    if (table) buildTsColumnPicker();
+                });
                 document.getElementById('statusFilter').addEventListener('change', applyStatusFilter);
                 document.getElementById('rowTypeFilter').addEventListener('change', applyStatusFilter);
                 document.getElementById('maxAlertBtn').addEventListener('click', function () {
@@ -1729,7 +2153,7 @@
                     applyStatusFilter();
                 });
                 let searchTimer = null;
-                ['parentSearch', 'skuSearch', 'categorySearch', 'anythingSearch'].forEach(function (id) {
+                ['quickSearch', 'parentSearch', 'skuSearch', 'anythingSearch'].forEach(function (id) {
                     document.getElementById(id).addEventListener('input', function () {
                         clearTimeout(searchTimer);
                         searchTimer = setTimeout(applyStatusFilter, 150);

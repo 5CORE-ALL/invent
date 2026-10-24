@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\CategoryMaster;
+use App\Models\ChannelMaster;
 use App\Models\ProductMaster;
 use App\Services\ProductMaster\BackstageSpecificationStore;
 use App\Services\ProductMaster\EbayTechnicalSpecificationSync;
@@ -121,6 +122,7 @@ class TechnicalSpecificationsController extends Controller
                 'message' => 'Technical Specifications data loaded',
                 'data' => $result,
                 'ebay_aspects' => $ebayAspects,
+                'channels' => $this->channelNames(),
                 'status' => 200,
                 'meta' => [
                     'total' => count($result),
@@ -200,6 +202,27 @@ class TechnicalSpecificationsController extends Controller
         $sku = str_replace("\u{00a0}", ' ', trim($sku));
 
         return strtolower(preg_replace('/\s+/u', ' ', $sku) ?? $sku);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function channelNames(): array
+    {
+        if (! Schema::hasTable('channel_master')) {
+            return [];
+        }
+
+        return ChannelMaster::query()
+            ->whereNotNull('channel')
+            ->where('channel', '!=', '')
+            ->orderBy('channel')
+            ->pluck('channel')
+            ->map(fn ($name) => trim((string) $name))
+            ->filter()
+            ->unique(fn ($name) => mb_strtolower($name))
+            ->values()
+            ->all();
     }
 
     private function ebayCategoryId($category): string
