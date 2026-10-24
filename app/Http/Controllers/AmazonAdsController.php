@@ -474,11 +474,11 @@ class AmazonAdsController extends Controller
                 $idxSales30 = array_search('sales30d', $ordered, true);
             }
             if ($idxSales30 !== false) {
-                array_splice($ordered, $idxSales30 + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc']);
+                array_splice($ordered, $idxSales30 + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcos', 'ltCpc', 'ltTcps']);
             } else {
                 $idxSales = array_search('sales', $ordered, true);
                 if ($idxSales !== false) {
-                    array_splice($ordered, $idxSales + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc']);
+                    array_splice($ordered, $idxSales + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcos', 'ltCpc', 'ltTcps']);
                 }
             }
         }
@@ -2470,9 +2470,9 @@ class AmazonAdsController extends Controller
                 'cps' => ($cost !== null && $sales !== null && is_finite($cost) && is_finite($sales) && $sales > 0)
                     ? round($cost / $sales, 2)
                     : null,
-                // TCPS = CPS × 0.60.
-                'tcps' => ($cost !== null && $sales !== null && is_finite($cost) && is_finite($sales) && $sales > 0)
-                    ? round(($cost / $sales) * 0.60, 2)
+                // TCPS = CPS × 0.60, where CPS = LT Spend ÷ LT Sold.
+                'tcps' => ($cost !== null && $sold !== null && is_finite($cost) && is_finite($sold) && $sold > 0)
+                    ? round(($cost / $sold) * 0.60, 2)
                     : null,
                 // TCOS % = ACOS % × 0.60 (ACOS % = LT Spend ÷ LT Sales × 100).
                 'tcos' => ($cost !== null && $sales !== null && is_finite($cost) && is_finite($sales) && $sales > 0)

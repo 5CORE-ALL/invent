@@ -900,13 +900,13 @@ class OverallAmazonController extends Controller
 
                     return ($spend !== null && $sales !== null && $sales > 0) ? round($spend / $sales, 2) : null;
                 })(),
-                // TCPS = CPS × 0.60.
+                // TCPS = CPS × 0.60, where CPS = LT Spend ÷ LT Sold.
                 'lt_tcps' => (function () use ($parentKwPtSpend, $parent) {
                     $k = self::normalizeCampaignName((string) $parent);
                     $spend = $parentKwPtSpend['lt'][$k] ?? null;
-                    $sales = $parentKwPtSpend['lts'][$k] ?? null;
+                    $sold = $parentKwPtSpend['ltsold'][$k] ?? null;
 
-                    return ($spend !== null && $sales !== null && $sales > 0) ? round(($spend / $sales) * 0.60, 2) : null;
+                    return ($spend !== null && $sold !== null && $sold > 0) ? round(($spend / $sold) * 0.60, 2) : null;
                 })(),
                 // TCOS % = ACOS % × 0.60 (ACOS % = LT Spend ÷ LT Sales × 100).
                 'lt_tcos' => (function () use ($parentKwPtSpend, $parent) {

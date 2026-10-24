@@ -3353,7 +3353,7 @@
                 }
                 if (c === 'ltTcps') {
                     col.title = 'TCPS';
-                    col.headerTooltip = 'TCPS = CPS × 0.60, where CPS = LT Spend ÷ LT Sales. Blank when there are no lifetime sales.';
+                    col.headerTooltip = 'TCPS = CPS × 0.60, where CPS = LT Spend ÷ LT Sold. Blank when there are no lifetime sold units.';
                     col.formatter = fmt2dec;
                     col.minWidth = 58;
                     col.width = 66;
@@ -3374,8 +3374,8 @@
                     return;
                 }
                 if (c === 'ltCpc') {
-                    col.title = 'CPC';
-                    col.headerTooltip = 'CPC = LT Spend ÷ LT Sold (lifetime spend per Ads Sold unit). Blank when there are no lifetime sold units. Not the same as CPC Avg (spend ÷ clicks).';
+                    col.title = 'CPS';
+                    col.headerTooltip = 'CPS = LT Spend ÷ LT Sold (lifetime spend per Ads Sold unit). Blank when there are no lifetime sold units. Not the same as CPC Avg (spend ÷ clicks).';
                     col.formatter = fmt2dec;
                     col.minWidth = 56;
                     col.width = 62;

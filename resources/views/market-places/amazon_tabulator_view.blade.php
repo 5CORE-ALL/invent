@@ -1637,8 +1637,9 @@
                     if (!key) return;
                     const v = amazonChildNpftAmt(r);
                     if (v == null || !isFinite(v)) return;
-                    if (!sums[key]) sums[key] = { sum: 0, n: 0 };
+                    if (!sums[key]) sums[key] = { sum: 0, priceSum: 0, n: 0 };
                     sums[key].sum += v;
+                    sums[key].priceSum += parseFloat(r.price);
                     sums[key].n += 1;
                 });
                 _amzParentNpftCache = { at: now, map: sums };
@@ -1646,6 +1647,23 @@
             const k = String(rowData.Parent || rowData.parent || '').trim().toUpperCase();
             const s = _amzParentNpftCache.map[k];
             return (s && s.n > 0) ? s.sum / s.n : null;
+        }
+        /**
+         * NPFT% for a row, using the SKU calc (GPFT% at the row's price − Ads%).
+         * Parent: built from its child SKUs = average NPFT$ ÷ average price × 100, so Price × NPFT% ÷ 100 equals the NPFT$ column.
+         */
+        function amazonRowNpftPct(rowData) {
+            if (!rowData) return null;
+            if (!rowData.is_parent_summary) {
+                const gpft = amazonComputeGpftAt(rowData.price, rowData);
+                return (gpft == null || !isFinite(gpft) ? 0 : gpft) - amazonRowAdsPct(rowData);
+            }
+            const avgAmt = amazonRowNpftAmt(rowData); // also (re)builds the parent cache
+            if (avgAmt == null) return null;
+            const k = String(rowData.Parent || rowData.parent || '').trim().toUpperCase();
+            const s = _amzParentNpftCache.map && _amzParentNpftCache.map[k];
+            if (!s || !(s.n > 0) || !(s.priceSum > 0)) return null;
+            return (s.sum / s.priceSum) * 100;
         }
         function amazonComputeGroiAt(price, rowData) {
             if (!rowData) return null;
@@ -5477,17 +5495,13 @@
                         title: "NPFT%",
                         field: "PFT%",
                         hozAlign: "center",
-                        // Same value the cell shows (blank GPFT counts as 0, minus Ads%).
-                        sorter: amazonMetricSorter(function(d) {
-                            const ads = amazonRowAdsPct(d);
-                            const gpft = amazonComputeGpftAt(d && d.price, d);
-                            return (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
-                        }),
+                        headerTooltip: "NPFT% = GPFT% at the current price − Ads%. Parent rows are built from their child SKUs (average NPFT$ ÷ average price).",
+                        // Same value the cell shows (blank GPFT counts as 0, minus Ads%). Parent rows use their child SKUs.
+                        sorter: amazonMetricSorter(amazonRowNpftPct),
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const ads = amazonRowAdsPct(rowData);
-                            const gpft = amazonComputeGpftAt(rowData && rowData.price, rowData);
-                            const percent = (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
+                            const percent = amazonRowNpftPct(rowData);
+                            if (percent == null || !isFinite(percent)) return '';
                             const _st = (window.MetricPctColors && MetricPctColors.styleFor('npft', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
@@ -5790,22 +5804,6 @@
                         width: 60
                     },
                     {
-                        title: "TCPS",
-                        field: "lt_tcps",
-                        hozAlign: "center",
-                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
-                        headerTooltip: "Parent rows: TCPS = CPS × 0.60, where CPS = LT Spend ÷ LT Sales. Blank when there are no lifetime sales.",
-                        formatter: function(cell) {
-                            if (!cell.getRow().getData().is_parent_summary) return '';
-                            const val = cell.getValue();
-                            if (val == null || val === '') return '';
-                            const n = parseFloat(val);
-                            if (!Number.isFinite(n)) return '';
-                            return `<span>${n.toFixed(2)}</span>`;
-                        },
-                        width: 60
-                    },
-                    {
                         title: "TCOS%",
                         field: "lt_tcos",
                         hozAlign: "center",
@@ -5822,11 +5820,27 @@
                         width: 62
                     },
                     {
-                        title: "CPC",
+                        title: "CPS",
                         field: "lt_cpc",
                         hozAlign: "center",
                         sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
-                        headerTooltip: "Parent rows: CPC = LT Spend ÷ LT Sold (lifetime spend per Ads Sold unit, KW + PT campaigns). Blank when there are no lifetime sold units.",
+                        headerTooltip: "Parent rows: CPS = LT Spend ÷ LT Sold (lifetime spend per Ads Sold unit, KW + PT campaigns). Blank when there are no lifetime sold units.",
+                        formatter: function(cell) {
+                            if (!cell.getRow().getData().is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const n = parseFloat(val);
+                            if (!Number.isFinite(n)) return '';
+                            return `<span>$${n.toFixed(2)}</span>`;
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "TCPS",
+                        field: "lt_tcps",
+                        hozAlign: "center",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
+                        headerTooltip: "Parent rows: TCPS = CPS × 0.60, where CPS = LT Spend ÷ LT Sold. Blank when there are no lifetime sold units.",
                         formatter: function(cell) {
                             if (!cell.getRow().getData().is_parent_summary) return '';
                             const val = cell.getValue();
@@ -7004,7 +7018,7 @@
                 if (shipIdx !== -1) {
                     valid.splice(shipIdx, 1);
                     valid.push('Ship_productmaster');
-                    ['kw_spend_l30', 'pt_spend_l30', 'kw_pt_spend_l30', 'lt_spend', 'lt_sales', 'lt_sold', 'lt_cps', 'lt_tcps', 'lt_tcos', 'lt_cpc'].forEach(function(f) {
+                    ['kw_spend_l30', 'pt_spend_l30', 'kw_pt_spend_l30', 'lt_spend', 'lt_sales', 'lt_sold', 'lt_cps', 'lt_tcos', 'lt_cpc', 'lt_tcps'].forEach(function(f) {
                         const i = valid.indexOf(f);
                         if (i !== -1) valid.splice(i, 1);
                         if (existing.indexOf(f) !== -1) valid.push(f);
