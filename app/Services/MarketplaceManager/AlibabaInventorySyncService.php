@@ -46,6 +46,7 @@ class AlibabaInventorySyncService
         $settings = MarketplaceSyncSettings::getFor('alibaba');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
         // min_quantity is ignored: Shopify 0 => marketplace 0 (never invent 1).
 
         // Ledger-first when MM_USE_INVENTORY_LEDGER; else live Shopify API.
@@ -83,7 +84,8 @@ class AlibabaInventorySyncService
                 $shopifyStock,
                 $exactShopifyQty,
                 $qtyPercent,
-                $maxQty
+                $maxQty,
+                $qtyOffset
             );
 
             $inventoryRows[] = [
@@ -245,6 +247,7 @@ class AlibabaInventorySyncService
 
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
         $useSalePrice = (bool) ($settings['pricing']['use_sale_price'] ?? false);
 
         $inventoryRows = [];
@@ -265,7 +268,7 @@ class AlibabaInventorySyncService
                 // Rules 2+4: live Shopify only; missing/0 => marketplace 0 (never invent stock).
                 $pushQty = $shopifyStock === null
                     ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty, $qtyOffset);
 
                 $inventoryRows[] = [
                     'product_id' => $productId,

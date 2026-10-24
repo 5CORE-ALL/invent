@@ -50,6 +50,7 @@ class AmazonInventorySyncService
         $settings = MarketplaceSyncSettings::getFor('amazon');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
 
         $fetchSkus = $skus;
         foreach ($skus as $sku) {
@@ -128,7 +129,7 @@ class AmazonInventorySyncService
 
             $pushQty = $shopifyStock === null
                 ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty, $qtyOffset);
 
             $inventoryRows[] = [
                 'product_id' => $productId,

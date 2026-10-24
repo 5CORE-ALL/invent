@@ -44,6 +44,7 @@ class SheinInventorySyncService
         $settings = MarketplaceSyncSettings::getFor('shein');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
 
         // Include NBSP-normalized forms so live Shopify Admin lookup matches Admin SKUs.
         $fetchSkus = $skus;
@@ -129,7 +130,8 @@ class SheinInventorySyncService
                 $shopifyStock,
                 $exactShopifyQty,
                 $qtyPercent,
-                $maxQty
+                $maxQty,
+                $qtyOffset
             );
 
             $aliases = [$sku];
@@ -188,7 +190,8 @@ class SheinInventorySyncService
                 $shopifyStock,
                 $exactShopifyQty,
                 $qtyPercent,
-                $maxQty
+                $maxQty,
+                $qtyOffset
             );
             $row = [
                 'product_id' => $skuCode,
@@ -363,6 +366,7 @@ class SheinInventorySyncService
 
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
         $useSalePrice = (bool) ($settings['pricing']['use_sale_price'] ?? false);
 
         $inventoryRows = [];
@@ -382,7 +386,7 @@ class SheinInventorySyncService
                     $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
                     $pushQty = $shopifyStock === null
                         ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                        : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                        : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty, $qtyOffset);
 
                     $inventoryRows[] = [
                         'product_id' => $productId,
@@ -458,7 +462,7 @@ class SheinInventorySyncService
                     $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
                     $pushQty = $shopifyStock === null
                         ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                        : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                        : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty, $qtyOffset);
                     $inventoryRows[] = [
                         'product_id' => $skuCode,
                         'sku_code' => $sku,

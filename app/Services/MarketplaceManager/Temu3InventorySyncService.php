@@ -48,6 +48,7 @@ class Temu3InventorySyncService
         $settings = MarketplaceSyncSettings::getFor('temu3');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
 
         $fetchSkus = $skus;
         $wantedNorms = [];
@@ -115,7 +116,7 @@ class Temu3InventorySyncService
                 continue;
             }
 
-            $qty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            $qty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty, $qtyOffset);
 
             $apiItems[] = [
                 'goods_id' => $goodsId,

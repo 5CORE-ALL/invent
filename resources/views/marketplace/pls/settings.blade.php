@@ -42,6 +42,18 @@
                             <span class="form-check-label">Sync stock from B2C to PLS (mismatch listings + Sync inventory now)</span>
                         </label>
                     </div>
+                    <div class="row g-2 mt-2">
+                        <div class="col-auto">
+                            <label class="form-label small">Qty adjust</label>
+                            <input type="number" class="form-control form-control-sm" name="inventory[quantity_offset]"
+                                   value="{{ (int) ($settings['inventory']['quantity_offset'] ?? 0) }}"
+                                   min="-999" max="0" step="1" placeholder="0" style="width: 110px;"
+                                   title="Subtract this many units from the qty sent to PLS (e.g. -1 sends qty minus 1). Never goes below 0. 0 = no adjustment.">
+                        </div>
+                        <div class="col-12">
+                            <div class="form-text">Qty adjust: enter -1 to send 1 less than the B2C qty, -2 for 2 less, and so on (never below 0). 0 = send the normal qty.</div>
+                        </div>
+                    </div>
                     <input type="hidden" name="inventory[min_quantity]" value="0">
                 </div>
             </div>

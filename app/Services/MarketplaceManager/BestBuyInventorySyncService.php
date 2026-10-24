@@ -46,6 +46,7 @@ class BestBuyInventorySyncService
         $settings = MarketplaceSyncSettings::getFor('bestbuy');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
 
         $fetchSkus = $skus;
         $wantedNorms = [];
@@ -107,7 +108,8 @@ class BestBuyInventorySyncService
                 $shopifyStock,
                 $exactShopifyQty,
                 $qtyPercent,
-                $maxQty
+                $maxQty,
+                $qtyOffset
             );
 
             $apiItems[] = [

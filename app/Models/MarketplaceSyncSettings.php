@@ -36,6 +36,13 @@ class MarketplaceSyncSettings extends Model
             );
         }
 
+        if (isset($settings['inventory']) && is_array($settings['inventory'])
+            && array_key_exists('quantity_offset', $settings['inventory'])) {
+            $settings['inventory']['quantity_offset'] = \App\Services\MarketplaceManager\MarketplaceLiveInventoryRules::normalizeOffset(
+                $settings['inventory']['quantity_offset']
+            );
+        }
+
         self::updateOrCreate(
             ['marketplace' => $marketplace],
             ['settings' => $settings]
@@ -264,6 +271,8 @@ class MarketplaceSyncSettings extends Model
                 'inventory_sync' => false,
                 'quantity_calc_percent' => 100,
                 'max_quantity' => null,
+                // Qty adjust: 0, -1, -2 ... subtracted from the qty sent to the marketplace.
+                'quantity_offset' => 0,
                 // Never invent stock when Shopify is 0 — min only applies when ATS > 0.
                 'min_quantity' => 0,
                 'out_of_stock_threshold' => 0,
