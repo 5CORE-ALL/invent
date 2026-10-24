@@ -176,6 +176,42 @@
             align-items: center;
             justify-content: center;
         }
+        #technical-specs-table .ts-sku-cell {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+        #technical-specs-table .ts-sku-copy {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            border: 0;
+            border-radius: 5px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            color: #475569;
+            box-shadow: 0 1px 6px rgba(15, 23, 42, .25);
+            font-size: 11px;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+        }
+        #technical-specs-table .tabulator-cell:hover .ts-sku-copy,
+        #technical-specs-table .ts-sku-copy:focus,
+        #technical-specs-table .ts-sku-copy.is-copied {
+            opacity: 1;
+            pointer-events: auto;
+            color: #1d4ed8;
+        }
         #technical-specs-table .ts-cat-copy {
             position: absolute;
             left: 100%;
@@ -733,6 +769,35 @@
                 el.innerHTML = message + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
                 wrap.appendChild(el);
                 setTimeout(() => el.remove(), 3200);
+            }
+
+            function copyCellText(btn, value, noun) {
+                if (!value) return;
+                const done = function () {
+                    btn.classList.add('is-copied');
+                    btn.innerHTML = '<i class="fas fa-check"></i>';
+                    toast('Copied ' + value, 'success');
+                    setTimeout(function () {
+                        btn.classList.remove('is-copied');
+                        btn.innerHTML = '<i class="fas fa-copy"></i>';
+                    }, 1200);
+                };
+                const fallback = function () {
+                    const ta = document.createElement('textarea');
+                    ta.value = value;
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); done(); }
+                    catch (err) { toast('Could not copy ' + noun + '.', 'error'); }
+                    ta.remove();
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(value).then(done).catch(fallback);
+                } else {
+                    fallback();
+                }
             }
 
             function categoryColumn(title, field) {
@@ -1763,6 +1828,18 @@
                             headerHozAlign: 'center',
                             headerTooltip: 'SKU',
                             frozen: true,
+                            formatter: function (cell) {
+                                const sku = String(cell.getValue() || '').trim();
+                                if (!sku) return '';
+                                return '<span class="ts-sku-cell"><span class="ts-sku-text">' + esc(sku) + '</span>'
+                                    + '<button type="button" class="ts-sku-copy" title="Copy SKU"><i class="fas fa-copy"></i></button></span>';
+                            },
+                            cellClick: function (e, cell) {
+                                const btn = e.target.closest && e.target.closest('.ts-sku-copy');
+                                if (!btn) return;
+                                e.stopPropagation();
+                                copyCellText(btn, String(cell.getValue() || '').trim(), 'SKU');
+                            },
                         },
                         {
                             title: 'Missing',
