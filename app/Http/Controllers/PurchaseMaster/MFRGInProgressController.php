@@ -114,6 +114,7 @@ class MFRGInProgressController extends Controller
         // Executive list — dynamic from the users table so the Exec column matches
         // the Forecast Analysis page (same source, same names).
         $execUsers = \App\Models\User::query()
+            ->active()
             ->whereNotNull('name')
             ->where('name', '!=', '')
             ->orderBy('name')

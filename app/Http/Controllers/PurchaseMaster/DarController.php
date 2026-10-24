@@ -12,7 +12,7 @@ class DarController extends Controller
 {
     public function index(Request $request)
     {
-        $users = User::orderBy('name')->get(['id', 'name', 'email']);
+        $users = User::active()->orderBy('name')->get(['id', 'name', 'email']);
         $filterUserId = (int) $request->query('user_id', 0);
         $filterDays = (int) $request->query('days', 0);
 

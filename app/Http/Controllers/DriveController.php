@@ -607,7 +607,7 @@ class DriveController extends Controller
     {
         $q = trim((string) $request->query('q', ''));
         $users = User::query()
-            ->where(fn ($w) => $w->where('is_active', 1)->orWhereNull('is_active'))
+            ->active()
             ->when($q !== '', fn ($w) => $w->where(fn ($x) => $x->where('name', 'like', "%{$q}%")->orWhere('email', 'like', "%{$q}%")))
             ->orderBy('name')
             ->limit(15)

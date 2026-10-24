@@ -62,7 +62,7 @@ class ScopeOfImprovementController extends Controller
 
     public function index()
     {
-        $users = User::orderBy('name')->get(['id', 'name', 'email']);
+        $users = User::active()->orderBy('name')->get(['id', 'name', 'email']);
 
         $canAddIssue = $this->canAddIssue();
         $canViewAll = $this->canViewAllRecords();
@@ -104,7 +104,9 @@ class ScopeOfImprovementController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'user_id' => 'required|exists:users,id',
+            'user_id' => 'required_without:user_ids|nullable|exists:users,id',
+            'user_ids' => 'required_without:user_id|nullable|array|min:1',
+            'user_ids.*' => 'integer|exists:users,id',
             'issue' => 'nullable|string',
             'issues' => 'nullable|array',
             'issues.*' => 'nullable|string',
@@ -114,6 +116,18 @@ class ScopeOfImprovementController extends Controller
 
         $email = Auth::user()->email ?? 'system';
         $sBy = Auth::user()->name ?? $email;
+
+        // One or many people ("split"): every person gets their own rows so root cause,
+        // fix and history are tracked per person. Only active people are accepted.
+        $requestedIds = collect($validated['user_ids'] ?? [])
+            ->when(! empty($validated['user_id']), fn ($c) => $c->push($validated['user_id']))
+            ->map(fn ($v) => (int) $v)
+            ->unique()
+            ->values();
+        $userIds = User::active()->whereIn('id', $requestedIds)->pluck('id')->map(fn ($v) => (int) $v);
+        if ($userIds->isEmpty()) {
+            return response()->json(['message' => 'Please select at least one active user.'], 422);
+        }
 
         // Multi-select submission: one row per selected/typed issue.
         $issues = collect($validated['issues'] ?? [])
@@ -133,37 +147,42 @@ class ScopeOfImprovementController extends Controller
             ], 422);
         }
 
-        // Skip any issues already filed for this user so the "remaining only"
-        // contract holds even if the client is out of sync.
-        $existing = ScopeOfImprovement::where('user_id', $validated['user_id'])
-            ->pluck('issue')
-            ->filter()
-            ->map(fn ($v) => (string) $v)
-            ->all();
-
         $createdIds = [];
-        foreach ($issues as $issueText) {
-            if (in_array($issueText, $existing, true)) {
-                continue;
+        $createdByUser = [];
+        foreach ($userIds as $userId) {
+            // Skip any issues already filed for this user so the "remaining only"
+            // contract holds even if the client is out of sync.
+            $existing = ScopeOfImprovement::where('user_id', $userId)
+                ->pluck('issue')
+                ->filter()
+                ->map(fn ($v) => (string) $v)
+                ->all();
+
+            foreach ($issues as $issueText) {
+                if (in_array($issueText, $existing, true)) {
+                    continue;
+                }
+                $row = ScopeOfImprovement::create([
+                    'user_id'           => $userId,
+                    'issue'             => $issueText,
+                    'root_cause'        => $validated['root_cause'] ?? null,
+                    'fixing_root_cause' => $validated['fixing_root_cause'] ?? null,
+                    's_by'              => $sBy,
+                    'created_by'        => $email,
+                    'updated_by'        => $email,
+                    'history'           => [$this->historyEntry($email, 'created')],
+                ]);
+                $createdIds[] = $row->id;
+                $createdByUser[$userId] = ($createdByUser[$userId] ?? 0) + 1;
+                $existing[] = $issueText;
             }
-            $row = ScopeOfImprovement::create([
-                'user_id'           => $validated['user_id'],
-                'issue'             => $issueText,
-                'root_cause'        => $validated['root_cause'] ?? null,
-                'fixing_root_cause' => $validated['fixing_root_cause'] ?? null,
-                's_by'              => $sBy,
-                'created_by'        => $email,
-                'updated_by'        => $email,
-                'history'           => [$this->historyEntry($email, 'created')],
-            ]);
-            $createdIds[] = $row->id;
-            $existing[] = $issueText;
         }
 
         return response()->json([
-            'success'     => true,
-            'created'     => count($createdIds),
-            'created_ids' => $createdIds,
+            'success'         => true,
+            'created'         => count($createdIds),
+            'created_ids'     => $createdIds,
+            'created_by_user' => $createdByUser,
         ]);
     }
 

@@ -47,9 +47,7 @@ class DynamicTaskController extends Controller
         return view('dynamic-tasks.index', [
             'events' => $events,
             'users' => User::query()
-                ->where(function ($q) {
-                    $q->whereNull('is_active')->orWhere('is_active', 1);
-                })
+                ->active()
                 ->orderBy('name')
                 ->get(['id', 'name', 'email']),
             'operators' => \App\Models\DynamicMessageRule::OPERATORS,

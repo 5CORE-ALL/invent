@@ -70,6 +70,34 @@ class User extends Authenticatable
     ];
 
     /**
+     * Active accounts only (is_active = 1). Soft-deleted users are already excluded by
+     * SoftDeletes. This is the same rule as the Team Management "active" list and the
+     * login check, so "N/A" (null) and inactive users never appear in people pickers.
+     */
+    public function scopeActive($query)
+    {
+        return $query->where($this->qualifyColumn('is_active'), 1);
+    }
+
+    /**
+     * Active users, plus the given user ids even when inactive. Use on edit forms so the
+     * person already saved on a record stays selectable instead of silently disappearing.
+     *
+     * @param  array<int, int|string|null>  $keepIds
+     */
+    public function scopeActiveOrIds($query, array $keepIds = [])
+    {
+        $keepIds = array_values(array_filter(array_map('intval', $keepIds)));
+
+        return $query->where(function ($q) use ($keepIds) {
+            $q->where($this->qualifyColumn('is_active'), 1);
+            if ($keepIds !== []) {
+                $q->orWhereIn($this->qualifyColumn('id'), $keepIds);
+            }
+        });
+    }
+
+    /**
      * Whether this user is exempt from scheduled auto-logout.
      */
     public function staysLoggedIn(): bool

@@ -64,9 +64,7 @@ class DynamicMessageController extends Controller
 
         $users = self::canManage()
             ? User::query()
-                ->where(function ($q) {
-                    $q->whereNull('is_active')->orWhere('is_active', 1);
-                })
+                ->active()
                 ->orderBy('name')
                 ->get(['id', 'name', 'email'])
             : collect();

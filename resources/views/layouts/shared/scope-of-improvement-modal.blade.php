@@ -10,11 +10,14 @@
 --}}
 @auth
     @php
-        $__soiTopbarUsers = \App\Models\User::orderBy('name')->get(['id', 'name']);
+        $__soiTopbarUsers = \App\Models\User::active()->orderBy('name')->get(['id', 'name']);
         $__soiTopbarCurrentUserName = \Illuminate\Support\Facades\Auth::user()->name ?? '';
     @endphp
 
     <style>
+        .soi-users-multi .soi-users-actions { display: flex; align-items: center; gap: .75rem; font-size: 12px; margin: .35rem 0 .25rem; }
+        .soi-users-multi .soi-users-list { max-height: 150px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: .375rem; padding: .35rem .6rem; background: #fff; }
+        .soi-users-multi .soi-users-list label { display: block; margin: 0; padding: 2px 0; font-size: 13px; cursor: pointer; }
         .soi-topbar-history-box {
             max-height: 180px;
             overflow-y: auto;
@@ -308,6 +311,24 @@
                                     <option value="{{ $user->id }}">{{ $user->name }}</option>
                                 @endforeach
                             </select>
+
+                            {{-- Add mode: pick one or many people. Each person gets their own record. --}}
+                            <div id="soi_topbar_users_multi" class="soi-users-multi d-none">
+                                <input type="text" id="soi_topbar_users_search" class="form-control form-control-sm" placeholder="Search users…" autocomplete="off">
+                                <div class="soi-users-actions">
+                                    <button type="button" id="soi_topbar_users_all" class="btn btn-link btn-sm p-0">Select all shown</button>
+                                    <button type="button" id="soi_topbar_users_none" class="btn btn-link btn-sm p-0">Clear</button>
+                                    <span class="ms-auto text-muted" id="soi_topbar_users_count">0 selected</span>
+                                </div>
+                                <div class="soi-users-list" id="soi_topbar_users_list">
+                                    @foreach ($__soiTopbarUsers as $user)
+                                        <label data-search="{{ strtolower($user->name) }}">
+                                            <input type="checkbox" class="soi-user-cb" value="{{ $user->id }}" data-name="{{ $user->name }}"> {{ $user->name }}
+                                        </label>
+                                    @endforeach
+                                </div>
+                                <div class="form-text">Split: every selected person gets a separate record, so root cause, fix and history are tracked per person.</div>
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <label for="soi_topbar_s_by" class="form-label">Suggested By</label>
@@ -616,34 +637,90 @@
             const userIssuesUrlBase = @json(url('scope-of-improvement/user-issues'));
             const userSelect = document.getElementById('soi_topbar_user_id');
 
+            const multiBox   = document.getElementById('soi_topbar_users_multi');
+            const multiList  = document.getElementById('soi_topbar_users_list');
+            const multiCount = document.getElementById('soi_topbar_users_count');
+            const multiSearch = document.getElementById('soi_topbar_users_search');
+            let multiMode = false;
+
+            function selectedUsers() {
+                return Array.prototype.slice.call(multiList.querySelectorAll('.soi-user-cb:checked')).map(function (cb) {
+                    return { id: parseInt(cb.value, 10), name: cb.getAttribute('data-name') || '' };
+                });
+            }
+
+            function setMultiMode(on) {
+                multiMode = on;
+                multiBox.classList.toggle('d-none', !on);
+                userSelect.classList.toggle('d-none', on);
+                // A hidden required field would block form submit, so only require the visible control.
+                if (on) userSelect.removeAttribute('required'); else userSelect.setAttribute('required', 'required');
+            }
+
             function updateTopbarForUserLabel() {
-                const opt = userSelect && userSelect.options[userSelect.selectedIndex];
-                const name = (userSelect && userSelect.value && opt) ? (opt.text || '').trim() : '';
-                const text = name || 'User';
+                let text = 'User';
+                if (multiMode) {
+                    const sel = selectedUsers();
+                    if (sel.length === 1) text = sel[0].name;
+                    else if (sel.length > 1) text = 'each selected user (' + sel.length + ')';
+                } else {
+                    const opt = userSelect && userSelect.options[userSelect.selectedIndex];
+                    const name = (userSelect && userSelect.value && opt) ? (opt.text || '').trim() : '';
+                    text = name || 'User';
+                }
                 modalEl.querySelectorAll('.soi-topbar-for-user-label').forEach(function (el) {
                     el.textContent = text;
                 });
             }
 
+            // Hide issues this one person already has. With several people the server skips
+            // duplicates per person, so nothing is excluded client-side.
+            function loadExcludesFor(uid) {
+                if (!issueCombo) return;
+                if (!uid) { issueCombo.clearExcludes(); return; }
+                $.getJSON(userIssuesUrlBase + '/' + encodeURIComponent(uid), function (res) {
+                    const existing = (res && Array.isArray(res.issues)) ? res.issues : [];
+                    const editingId = document.getElementById('soi_topbar_id').value;
+                    // When editing an existing row, keep that row's issue
+                    // available so the user can re-pick or change it.
+                    const editingIssue = editingId ? (modalEl.__editingIssue || '') : '';
+                    issueCombo.setExcludes(existing.filter(function (l) { return l !== editingIssue; }));
+                }).fail(function () {
+                    issueCombo.clearExcludes();
+                });
+            }
+
+            function refreshMulti() {
+                const sel = selectedUsers();
+                multiCount.textContent = sel.length + ' selected';
+                updateTopbarForUserLabel();
+                loadExcludesFor(sel.length === 1 ? sel[0].id : '');
+            }
+
             if (userSelect) {
                 userSelect.addEventListener('change', function () {
                     updateTopbarForUserLabel();
-
-                    if (!issueCombo) return;
-                    const uid = userSelect.value;
-                    if (!uid) { issueCombo.clearExcludes(); return; }
-                    $.getJSON(userIssuesUrlBase + '/' + encodeURIComponent(uid), function (res) {
-                        const existing = (res && Array.isArray(res.issues)) ? res.issues : [];
-                        const editingId = document.getElementById('soi_topbar_id').value;
-                        // When editing an existing row, keep that row's issue
-                        // available so the user can re-pick or change it.
-                        const editingIssue = editingId ? (modalEl.__editingIssue || '') : '';
-                        issueCombo.setExcludes(existing.filter(function (l) { return l !== editingIssue; }));
-                    }).fail(function () {
-                        issueCombo.clearExcludes();
-                    });
+                    loadExcludesFor(userSelect.value);
                 });
             }
+
+            multiList.addEventListener('change', refreshMulti);
+            multiSearch.addEventListener('input', function () {
+                const q = multiSearch.value.toLowerCase().trim();
+                multiList.querySelectorAll('label').forEach(function (l) {
+                    l.style.display = (!q || (l.getAttribute('data-search') || '').indexOf(q) !== -1) ? '' : 'none';
+                });
+            });
+            document.getElementById('soi_topbar_users_all').addEventListener('click', function () {
+                multiList.querySelectorAll('label').forEach(function (l) {
+                    if (l.style.display !== 'none') l.querySelector('.soi-user-cb').checked = true;
+                });
+                refreshMulti();
+            });
+            document.getElementById('soi_topbar_users_none').addEventListener('click', function () {
+                multiList.querySelectorAll('.soi-user-cb').forEach(function (cb) { cb.checked = false; });
+                refreshMulti();
+            });
 
             const modal = new bootstrap.Modal(modalEl);
             const form  = document.getElementById('soiTopbarForm');
@@ -687,6 +764,11 @@
                 form.reset();
                 mode = mode || (row && row.id ? 'edit' : 'add');
                 progressMode = (mode === 'progress');
+                // Adding: choose one or many people. Editing / progress: the single saved person.
+                setMultiMode(!(row && row.id));
+                multiList.querySelectorAll('.soi-user-cb').forEach(function (cb) { cb.checked = false; });
+                multiSearch.value = '';
+                multiSearch.dispatchEvent(new Event('input'));
 
                 if (row && row.id) {
                     document.getElementById('soiTopbarModalTitle').textContent =
@@ -704,6 +786,10 @@
                         'Earn monthly Increments by fixing Scope of Improvement';
                     document.getElementById('soi_topbar_id').value = '';
                     document.getElementById('soi_topbar_user_id').value = (row && row.user_id) ? row.user_id : '';
+                    if (row && row.user_id) {
+                        const pre = multiList.querySelector('.soi-user-cb[value="' + row.user_id + '"]');
+                        if (pre) pre.checked = true;
+                    }
                     document.getElementById('soi_topbar_s_by').value = currentUserName;
                     modalEl.__editingIssue = '';
                     if (issueCombo) {
@@ -715,7 +801,9 @@
 
                 updateTopbarForUserLabel();
                 applyProgressLock(progressMode);
-                if ((!row || !row.id) && userSelect && userSelect.value) {
+                if (!row || !row.id) {
+                    refreshMulti();
+                } else if (userSelect && userSelect.value) {
                     userSelect.dispatchEvent(new Event('change'));
                 }
                 modal.show();
@@ -749,9 +837,9 @@
                         fixing_root_cause: fixingRootCause,
                     };
                 } else {
-                    // Add mode — may create multiple rows (one per selected issue).
-                    const userId = document.getElementById('soi_topbar_user_id').value;
-                    if (!userId) { alert('Please select a user.'); return; }
+                    // Add mode — one row per selected person and per selected issue.
+                    const pickedUsers = selectedUsers();
+                    if (pickedUsers.length === 0) { alert('Please select at least one user.'); return; }
                     const typed = (document.getElementById('soi_topbar_issue_input').value || '').trim();
                     let selections = issueCombo ? issueCombo.getSelections() : [];
                     if (typed && selections.indexOf(typed) === -1) selections.push(typed);
@@ -761,7 +849,7 @@
                     }
                     payload = {
                         _token: csrf,
-                        user_id: userId,
+                        user_ids: pickedUsers.map(function (u) { return u.id; }),
                         issues: selections,
                         root_cause: rootCause,
                         fixing_root_cause: fixingRootCause,
@@ -775,18 +863,23 @@
                         window.__soiTable.replaceData();
                     }
                     const created = parseInt(res && res.created, 10) || 0;
-                    if (!id && payload.user_id && parseInt(payload.user_id, 10) === currentUserId) {
-                        updateSoiTopbarCount(created);
-                    }
-                    if (!id && payload.user_id && created) {
-                        const rowBtn = document.querySelector('.task-summary-soi-btn[data-user-id="' + payload.user_id + '"]');
+                    // Per-person counts (add mode returns created_by_user; edit creates nothing).
+                    const perUser = (res && res.created_by_user) || {};
+                    Object.keys(perUser).forEach(function (uid) {
+                        const n = parseInt(perUser[uid], 10) || 0;
+                        if (!n) return;
+                        if (parseInt(uid, 10) === currentUserId) updateSoiTopbarCount(n);
+                        const rowBtn = document.querySelector('.task-summary-soi-btn[data-user-id="' + uid + '"]');
                         if (rowBtn) {
-                            const next = Math.max(0, (parseInt(rowBtn.getAttribute('data-soi-count'), 10) || 0) + created);
+                            const next = Math.max(0, (parseInt(rowBtn.getAttribute('data-soi-count'), 10) || 0) + n);
                             rowBtn.setAttribute('data-soi-count', String(next));
                             rowBtn.classList.toggle('has-points', next > 0);
                             const countEl = rowBtn.querySelector('.task-summary-soi-btn__count');
                             if (countEl) countEl.textContent = String(next);
                         }
+                    });
+                    if (!id && created === 0) {
+                        alert('Nothing new was added: the selected people already have these issues.');
                     }
                 }).fail(function (xhr) {
                     let msg = 'Something went wrong.';

@@ -400,6 +400,7 @@ class KpiShippingController extends Controller
     public function incentive()
     {
         $users = User::query()
+            ->active()
             ->orderBy('name')
             ->get(['id', 'name', 'email'])
             ->map(function ($user) {

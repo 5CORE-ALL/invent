@@ -173,9 +173,7 @@ class DynamicMessageEngine
     {
         return User::query()
             ->whereIn('id', $rule->recipientIds())
-            ->where(function ($q) {
-                $q->whereNull('is_active')->orWhere('is_active', 1);
-            })
+            ->active()
             ->get()
             ->keyBy('id');
     }

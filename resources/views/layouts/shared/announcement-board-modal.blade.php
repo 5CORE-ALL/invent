@@ -262,6 +262,24 @@
         }
         .ann-board-comment__name { font-size: 12px; font-weight: 800; color: #0f172a; }
         .ann-board-comment__text { font-size: 13px; color: #1e293b; white-space: pre-wrap; }
+        .ann-board-comment__head { display: flex; align-items: center; gap: 6px; }
+        .ann-board-comment__edited { font-size: 11px; color: #64748b; font-style: italic; }
+        .ann-board-comment__edit {
+            margin-left: auto; border: 0; background: transparent; color: #4f46e5;
+            font-size: 11px; font-weight: 700; padding: 0 2px; cursor: pointer;
+        }
+        .ann-board-comment__edit:hover { text-decoration: underline; }
+        .ann-board-comment__editor { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+        .ann-board-comment__editor input {
+            flex: 1; min-width: 0; border: 1px solid #a5b4fc; border-radius: 999px;
+            padding: 4px 10px; font-size: 13px; outline: none;
+        }
+        .ann-board-comment__editor button {
+            border: 0; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 4px 10px; cursor: pointer;
+        }
+        .ann-board-comment__editor .is-save { background: #4f46e5; color: #fff; }
+        .ann-board-comment__editor .is-cancel { background: #e2e8f0; color: #334155; }
+        .ann-board-comment__editor button:disabled { opacity: .6; cursor: wait; }
         .ann-board-reacts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
         .ann-board-reacts.is-post { margin-top: 12px; margin-bottom: 2px; }
         .ann-board-react {
@@ -337,6 +355,7 @@
                 }
             @endphp
             const currentUser = @json([
+                'id' => $annMe?->id,
                 'name' => $annMe?->name ?: 'You',
                 'avatar' => $annMeAvatar,
             ]);
@@ -381,14 +400,77 @@
                 return emojiButtons(row.reactions, 'data-ann', row.id, 'is-post');
             }
 
+            const commentStore = {};
+
             function renderComment(comment) {
-                return '<div class="ann-board-comment">'
+                commentStore[comment.id] = comment;
+                const mine = currentUser.id != null && String(comment.user_id) === String(currentUser.id);
+                return '<div class="ann-board-comment" data-comment-id="' + comment.id + '">'
                     + '<img src="' + escapeHtml(comment.user_avatar || currentUser.avatar) + '" alt="" data-hover-zoom>'
                     + '<div class="ann-board-comment__body">'
-                    + '<div class="ann-board-comment__name">' + escapeHtml(comment.user_name || 'User') + '</div>'
+                    + '<div class="ann-board-comment__head">'
+                    + '<span class="ann-board-comment__name">' + escapeHtml(comment.user_name || 'User') + '</span>'
+                    + (comment.edited ? '<span class="ann-board-comment__edited">(edited)</span>' : '')
+                    + (mine ? '<button type="button" class="ann-board-comment__edit" title="Edit your comment">Edit</button>' : '')
+                    + '</div>'
                     + '<div class="ann-board-comment__text">' + escapeHtml(comment.comment || '') + '</div>'
                     + renderReacts(comment)
                     + '</div></div>';
+            }
+
+            function startCommentEdit(wrap) {
+                const id = wrap.getAttribute('data-comment-id');
+                const comment = commentStore[id];
+                const textEl = wrap.querySelector('.ann-board-comment__text');
+                if (!comment || !textEl || wrap.querySelector('.ann-board-comment__editor')) return;
+                textEl.hidden = true;
+                const editor = document.createElement('div');
+                editor.className = 'ann-board-comment__editor';
+                editor.innerHTML = '<input type="text" maxlength="2000" value="' + escapeHtml(comment.comment || '').replace(/"/g, '&quot;') + '">'
+                    + '<button type="button" class="is-save">Save</button>'
+                    + '<button type="button" class="is-cancel">Cancel</button>';
+                textEl.insertAdjacentElement('afterend', editor);
+                const input = editor.querySelector('input');
+                input.focus();
+                input.setSelectionRange(input.value.length, input.value.length);
+            }
+
+            function cancelCommentEdit(wrap) {
+                const editor = wrap.querySelector('.ann-board-comment__editor');
+                if (editor) editor.remove();
+                const textEl = wrap.querySelector('.ann-board-comment__text');
+                if (textEl) textEl.hidden = false;
+            }
+
+            function saveCommentEdit(wrap) {
+                const id = wrap.getAttribute('data-comment-id');
+                const editor = wrap.querySelector('.ann-board-comment__editor');
+                const input = editor && editor.querySelector('input');
+                const text = (input && input.value || '').trim();
+                if (!text) { if (input) input.focus(); return; }
+                if (commentStore[id] && text === commentStore[id].comment) { cancelCommentEdit(wrap); return; }
+                const saveBtn = editor.querySelector('.is-save');
+                editor.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+                fetch(commentBase + '/comments/' + id + '/update', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ comment: text }),
+                }).then(function (res) { return res.json().then(function (json) { return { ok: res.ok, json: json }; }); })
+                    .then(function (result) {
+                        if (!result.ok || !result.json || !result.json.comment) {
+                            throw new Error((result.json && result.json.message) || 'Could not update the comment.');
+                        }
+                        wrap.outerHTML = renderComment(result.json.comment);
+                    }).catch(function (err) {
+                        editor.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+                        if (saveBtn) saveBtn.focus();
+                        alert(err && err.message ? err.message : 'Could not update the comment.');
+                    });
             }
 
             function renderComments(row) {
@@ -585,6 +667,12 @@
             }
 
             body.addEventListener('click', function (e) {
+                const editBtn = e.target.closest('.ann-board-comment__edit');
+                if (editBtn) { startCommentEdit(editBtn.closest('.ann-board-comment')); return; }
+                const saveBtn = e.target.closest('.ann-board-comment__editor .is-save');
+                if (saveBtn) { saveCommentEdit(saveBtn.closest('.ann-board-comment')); return; }
+                const cancelBtn = e.target.closest('.ann-board-comment__editor .is-cancel');
+                if (cancelBtn) { cancelCommentEdit(cancelBtn.closest('.ann-board-comment')); return; }
                 const reactBtn = e.target.closest('.ann-board-react');
                 if (reactBtn) {
                     reactToComment(reactBtn);
@@ -593,6 +681,14 @@
                 const readBtn = e.target.closest('.ann-board-read-btn');
                 if (!readBtn) return;
                 markRead(readBtn.getAttribute('data-id'), readBtn);
+            });
+
+            body.addEventListener('keydown', function (e) {
+                const input = e.target.closest('.ann-board-comment__editor input');
+                if (!input) return;
+                const wrap = input.closest('.ann-board-comment');
+                if (e.key === 'Enter') { e.preventDefault(); saveCommentEdit(wrap); }
+                else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelCommentEdit(wrap); }
             });
 
             body.addEventListener('submit', function (e) {

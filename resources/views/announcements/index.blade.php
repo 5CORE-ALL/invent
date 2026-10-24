@@ -102,6 +102,24 @@
             color: #0f172a;
             white-space: pre-wrap;
         }
+        .ann-table-comment__head { display: flex; align-items: center; gap: 6px; }
+        .ann-table-comment__edited { font-size: 10px; color: #64748b; font-style: italic; }
+        .ann-table-comment__edit {
+            margin-left: auto; border: 0; background: transparent; color: #1d4ed8;
+            font-size: 11px; font-weight: 700; padding: 0 2px; cursor: pointer;
+        }
+        .ann-table-comment__edit:hover { text-decoration: underline; }
+        .ann-table-comment__editor { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+        .ann-table-comment__editor input {
+            flex: 1; min-width: 0; border: 1px solid #93c5fd; border-radius: 999px;
+            padding: 3px 10px; font-size: 12px; outline: none;
+        }
+        .ann-table-comment__editor button {
+            border: 0; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 3px 10px; cursor: pointer;
+        }
+        .ann-table-comment__editor .is-save { background: #1d4ed8; color: #fff; }
+        .ann-table-comment__editor .is-cancel { background: #e2e8f0; color: #334155; }
+        .ann-table-comment__editor button:disabled { opacity: .6; cursor: wait; }
         .ann-table-reacts {
             display: flex;
             flex-wrap: wrap;
@@ -532,6 +550,7 @@
                 }
             @endphp
             const currentUser = @json([
+                'id' => $annMe?->id,
                 'name' => $annMe?->name ?: 'You',
                 'avatar' => $annMeAvatar,
             ]);
@@ -559,10 +578,15 @@
             }
 
             function renderTableComment(comment) {
-                return '<div class="ann-table-comment">'
+                const mine = currentUser.id != null && String(comment.user_id) === String(currentUser.id);
+                return '<div class="ann-table-comment" data-comment-id="' + comment.id + '">'
                     + '<img src="' + escapeHtml(comment.user_avatar || currentUser.avatar) + '" alt="" class="no-img-hover">'
                     + '<div class="ann-table-comment__body">'
-                    + '<div class="ann-table-comment__name">' + escapeHtml(comment.user_name || 'User') + '</div>'
+                    + '<div class="ann-table-comment__head">'
+                    + '<span class="ann-table-comment__name">' + escapeHtml(comment.user_name || 'User') + '</span>'
+                    + (comment.edited ? '<span class="ann-table-comment__edited">(edited)</span>' : '')
+                    + (mine ? '<button type="button" class="ann-table-comment__edit" title="Edit your comment">Edit</button>' : '')
+                    + '</div>'
                     + '<div class="ann-table-comment__text">' + escapeHtml(comment.comment || '') + '</div>'
                     + renderTableReacts(comment)
                     + '</div></div>';
@@ -730,7 +754,78 @@
                 initialSort: [{ column: 'announced_on', dir: 'desc' }],
             });
 
+            function findTableComment(id) {
+                let found = null;
+                table.getRows().forEach(function (rowComponent) {
+                    (rowComponent.getData().comments || []).forEach(function (c) {
+                        if (String(c.id) === String(id)) found = c;
+                    });
+                });
+                return found;
+            }
+
+            function startTableCommentEdit(wrap) {
+                const comment = findTableComment(wrap.getAttribute('data-comment-id'));
+                const textEl = wrap.querySelector('.ann-table-comment__text');
+                if (!comment || !textEl || wrap.querySelector('.ann-table-comment__editor')) return;
+                textEl.hidden = true;
+                const editor = document.createElement('div');
+                editor.className = 'ann-table-comment__editor';
+                editor.innerHTML = '<input type="text" maxlength="2000" value="' + escapeHtml(comment.comment || '').replace(/"/g, '&quot;') + '">'
+                    + '<button type="button" class="is-save">Save</button>'
+                    + '<button type="button" class="is-cancel">Cancel</button>';
+                textEl.insertAdjacentElement('afterend', editor);
+                const input = editor.querySelector('input');
+                input.focus();
+                input.setSelectionRange(input.value.length, input.value.length);
+            }
+
+            function cancelTableCommentEdit(wrap) {
+                const editor = wrap.querySelector('.ann-table-comment__editor');
+                if (editor) editor.remove();
+                const textEl = wrap.querySelector('.ann-table-comment__text');
+                if (textEl) textEl.hidden = false;
+            }
+
+            function saveTableCommentEdit(wrap) {
+                const id = wrap.getAttribute('data-comment-id');
+                const editor = wrap.querySelector('.ann-table-comment__editor');
+                const input = editor && editor.querySelector('input');
+                const text = (input && input.value || '').trim();
+                if (!text) { if (input) input.focus(); return; }
+                const current = findTableComment(id);
+                if (current && text === current.comment) { cancelTableCommentEdit(wrap); return; }
+                editor.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+                $.ajax({
+                    url: viewersBase + '/comments/' + id + '/update',
+                    method: 'POST',
+                    data: { _token: csrf, comment: text },
+                    headers: { 'Accept': 'application/json' },
+                }).done(function (json) {
+                    if (!json || !json.comment) return;
+                    if (current) Object.assign(current, json.comment);
+                    wrap.outerHTML = renderTableComment(json.comment);
+                }).fail(function (xhr) {
+                    editor.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+                    alert((xhr.responseJSON && xhr.responseJSON.message) || 'Could not update the comment.');
+                });
+            }
+
+            document.getElementById('announcementTable').addEventListener('keydown', function (e) {
+                const input = e.target.closest('.ann-table-comment__editor input');
+                if (!input) return;
+                const wrap = input.closest('.ann-table-comment');
+                if (e.key === 'Enter') { e.preventDefault(); saveTableCommentEdit(wrap); }
+                else if (e.key === 'Escape') { e.preventDefault(); cancelTableCommentEdit(wrap); }
+            });
+
             document.getElementById('announcementTable').addEventListener('click', function (e) {
+                const editBtn = e.target.closest('.ann-table-comment__edit');
+                if (editBtn) { e.stopPropagation(); startTableCommentEdit(editBtn.closest('.ann-table-comment')); return; }
+                const saveBtn = e.target.closest('.ann-table-comment__editor .is-save');
+                if (saveBtn) { e.stopPropagation(); saveTableCommentEdit(saveBtn.closest('.ann-table-comment')); return; }
+                const cancelBtn = e.target.closest('.ann-table-comment__editor .is-cancel');
+                if (cancelBtn) { e.stopPropagation(); cancelTableCommentEdit(cancelBtn.closest('.ann-table-comment')); return; }
                 const reactBtn = e.target.closest('.ann-table-react');
                 if (reactBtn) {
                     e.preventDefault();

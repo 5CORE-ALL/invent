@@ -321,6 +321,7 @@ class SocialMediaController extends Controller
     private function executives()
     {
         return User::query()
+            ->active()
             ->where('email', 'like', '%@5core.com')
             ->orderBy('name')
             ->get(['id', 'name', 'designation']);

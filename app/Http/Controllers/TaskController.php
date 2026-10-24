@@ -953,45 +953,56 @@ class TaskController extends Controller
         $fromDate = $today->copy()->subDays(AttL30Metrics::WINDOW_DAYS - 1)->toDateString();
         $toDate = $today->toDateString();
         $hours = [];
-        $todayFromSummary = [];
+
+        // Rolling last-30-days window (today + previous 29 days), never the calendar month.
+        // Daily summaries are only written when a day is analysed, so older days can be
+        // missing there. Every day therefore takes the larger of its summary and the hours
+        // rebuilt from that day's attendance sessions; a missing summary no longer drops
+        // the day from the 30-day total.
+        $dayHours = []; // [user_id][Y-m-d] => hours
 
         if (Schema::hasTable('attendance_daily_summaries')) {
             AttendanceDailySummary::query()
                 ->whereIn('user_id', $userIds)
                 ->whereBetween('work_date', [$fromDate, $toDate])
                 ->get(['user_id', 'work_date', 'total_work_seconds', 'active_seconds'])
-                ->each(function ($row) use (&$hours, &$todayFromSummary, $toDate) {
-                    $uid = (int) $row->user_id;
-                    $dayHours = AttL30Metrics::dayHoursFromSeconds(
+                ->each(function ($row) use (&$dayHours) {
+                    $day = optional($row->work_date)->format('Y-m-d') ?: (string) $row->work_date;
+                    $h = AttL30Metrics::dayHoursFromSeconds(
                         (int) ($row->active_seconds ?? 0),
                         (int) ($row->total_work_seconds ?? 0)
                     );
-                    $hours[$uid] = ($hours[$uid] ?? 0) + $dayHours;
-                    $day = optional($row->work_date)->format('Y-m-d') ?: (string) $row->work_date;
-                    if ($day === $toDate) {
-                        $todayFromSummary[$uid] = ($todayFromSummary[$uid] ?? 0) + $dayHours;
-                    }
+                    $uid = (int) $row->user_id;
+                    $dayHours[$uid][$day] = max($dayHours[$uid][$day] ?? 0, $h);
                 });
         }
 
         if (Schema::hasTable('attendance_sessions')) {
-            $windowStart = $today->copy();
-            $windowEnd = $today->copy()->addDay();
+            $dbTz = config('app.timezone');
+            $sessionSeconds = []; // [user_id][Y-m-d] => seconds
             AttendanceSession::query()
                 ->whereIn('user_id', $userIds)
-                ->where('started_at', '>=', $windowStart)
-                ->where('started_at', '<', $windowEnd)
-                ->selectRaw('user_id, SUM(COALESCE(total_active_seconds, 0)) as work_seconds')
-                ->groupBy('user_id')
-                ->get()
-                ->each(function ($row) use (&$hours, $todayFromSummary) {
-                    $uid = (int) $row->user_id;
-                    $sessionHours = AttL30Metrics::dayHoursFromSeconds((int) $row->work_seconds);
-                    $alreadyToday = $todayFromSummary[$uid] ?? 0;
-                    if ($sessionHours > $alreadyToday) {
-                        $hours[$uid] = ($hours[$uid] ?? 0) - $alreadyToday + $sessionHours;
+                ->where('started_at', '>=', $today->copy()->subDays(AttL30Metrics::WINDOW_DAYS - 1)->timezone($dbTz))
+                ->where('started_at', '<', $today->copy()->addDay()->timezone($dbTz))
+                ->get(['user_id', 'started_at', 'total_active_seconds'])
+                ->each(function ($row) use (&$sessionSeconds, $tz) {
+                    if (! $row->started_at) {
+                        return;
                     }
+                    $day = $row->started_at->copy()->timezone($tz)->toDateString();
+                    $uid = (int) $row->user_id;
+                    $sessionSeconds[$uid][$day] = ($sessionSeconds[$uid][$day] ?? 0) + (int) ($row->total_active_seconds ?? 0);
                 });
+            foreach ($sessionSeconds as $uid => $days) {
+                foreach ($days as $day => $seconds) {
+                    $h = AttL30Metrics::dayHoursFromSeconds((int) $seconds);
+                    $dayHours[$uid][$day] = max($dayHours[$uid][$day] ?? 0, $h);
+                }
+            }
+        }
+
+        foreach ($dayHours as $uid => $days) {
+            $hours[(int) $uid] = array_sum($days);
         }
 
         $this->applyTeamLoggerHoursFallback($userIds, $hours, $fromDate, $toDate);
@@ -1391,6 +1402,7 @@ class TaskController extends Controller
         $yDoneTotal = array_sum(array_map(fn (array $r) => (int) ($r['y_done'] ?? 0), $rows));
         $yDoneDate = $yWindow['label'];
         $yTimeTotal = $this->formatActiveDuration(array_sum(array_map(fn (array $r) => (int) ($r['y_time_seconds'] ?? 0), $rows)));
+        $yTimeDate = $yWindow['date'];
         $yTimeAttendanceUrl = route('attendance.summary', [
             'range' => 'custom',
             'from' => $yWindow['date'],
@@ -1400,7 +1412,7 @@ class TaskController extends Controller
 
         return view(
             'tasks.task-summary',
-            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl', 'canEditIncentives', 'canViewAllIncentives', 'designationOptions', 'yDoneTotal', 'yDoneDate', 'yTimeTotal', 'yTimeAttendanceUrl')
+            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl', 'canEditIncentives', 'canViewAllIncentives', 'designationOptions', 'yDoneTotal', 'yDoneDate', 'yTimeTotal', 'yTimeAttendanceUrl', 'yTimeDate')
         );
     }
 
@@ -2596,7 +2608,7 @@ class TaskController extends Controller
 
     public function create()
     {
-        $users = User::all();
+        $users = User::active()->orderBy('name')->get();
         return view('tasks.create', compact('users'));
     }
 
@@ -3463,6 +3475,9 @@ class TaskController extends Controller
             $task->assignee_id = $assigneeUser ? $assigneeUser->id : null;
         }
         
+        // Active people only, but keep whoever is already saved on this task selectable.
+        $users = User::activeOrIds([$task->assignor_id, $task->assignee_id])->orderBy('name')->get();
+
         $editor = Auth::user();
         $canDeleteCorrectiveTasks = TaskPolicy::userCanDeleteCorrectiveTasks($editor);
         $canDeleteThisTask = TaskPolicy::userCanDeleteTask($editor, $taskModel);
@@ -5339,7 +5354,7 @@ class TaskController extends Controller
 
     public function automatedCreate()
     {
-        $users = User::all();
+        $users = User::active()->orderBy('name')->get();
         return view('tasks.automated-create', compact('users'));
     }
 
@@ -5560,6 +5575,9 @@ class TaskController extends Controller
             $task->assignee_id = $assigneeUser ? $assigneeUser->id : null;
         }
         
+        // Active people only, but keep whoever is already saved on this task selectable.
+        $users = User::activeOrIds([$task->assignor_id, $task->assignee_id])->orderBy('name')->get();
+
         return view('tasks.automated-edit', compact('task', 'users'));
     }
 
@@ -6868,7 +6886,7 @@ class TaskController extends Controller
      */
     public function bulkCreate()
     {
-        $users = User::select('id', 'name', 'email')->orderBy('name')->get();
+        $users = User::active()->select('id', 'name', 'email')->orderBy('name')->get();
         return view('tasks.bulk-create', compact('users'));
     }
 

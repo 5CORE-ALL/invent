@@ -45,6 +45,22 @@
         .task-summary-designation-dot.is-has-data {
             background: #16a34a;
         }
+        /* Green = designation is set, red = missing. Hover grows the dot and shows the tooltip. */
+        .task-summary-designation-dot.is-no-data {
+            background: #dc2626;
+        }
+        .task-summary-designation-dot {
+            cursor: help;
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+        }
+        .task-summary-designation-dot:hover {
+            transform: scale(1.5);
+            box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.2);
+        }
+        .task-summary-desig-abbr {
+            text-decoration: none;
+            cursor: help;
+        }
         .task-summary-designation-btn {
             border: 0;
             background: transparent;
@@ -447,6 +463,23 @@
         }
         #ts-analytics-val-done {
             color: #15803d;
+        }
+        /* Small blue dot on Y Time: opens Team Monitoring (Time column) for that user, yesterday. */
+        .task-summary-ytime-dot {
+            display: inline-block;
+            width: 0.5rem;
+            height: 0.5rem;
+            margin-left: 0.3rem;
+            border-radius: 50%;
+            background: #2563eb;
+            vertical-align: middle;
+            text-decoration: none;
+            box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+        }
+        .task-summary-ytime-dot:hover {
+            transform: scale(1.5);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
         }
         .task-summary-num {
             font-variant-numeric: tabular-nums;
@@ -1467,7 +1500,7 @@
                                         <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="Monitor" class="task-magnify-icon" aria-hidden="true">
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="designation" data-sort-type="text" title="Designation — click a name to change it. Click the header to sort." role="button" tabindex="0">
-                                        Designation <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                        <abbr title="Designation" class="task-summary-desig-abbr">Desig</abbr> <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="org_level" data-sort-type="text" title="Sort by org level (Mgr / Director / Exec)" role="button" tabindex="0">
                                         Role <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
@@ -1668,7 +1701,7 @@
                                             $canEditDesignation = $designationUserId !== 0 && ! empty($tsIsPresident);
                                         @endphp
                                         <td class="task-summary-designation-cell" @if(! $canEditDesignation && $designationFull !== '' && $designationCompact !== $designationFull) title="{{ e($designationFull) }}" @endif>
-                                            <span class="task-summary-designation-dot {{ $designationFull !== '' ? 'is-has-data' : 'is-no-data' }}" title="{{ $designationFull !== '' ? 'Designation set' : 'No designation' }}" aria-hidden="true"></span>
+                                            <span class="task-summary-designation-dot {{ $designationFull !== '' ? 'is-has-data' : 'is-no-data' }}" title="{{ $designationFull !== '' ? 'Designation: '.e($designationFull) : 'No designation set' }}" role="img" aria-label="{{ $designationFull !== '' ? 'Designation set' : 'No designation set' }}"></span>
                                             @if($canEditDesignation)
                                                 <button type="button"
                                                         class="task-summary-designation-btn"
@@ -1882,7 +1915,28 @@
                                             $yTimeH = intdiv($yTimeSeconds, 3600);
                                             $yTimeM = intdiv($yTimeSeconds % 3600, 60);
                                         @endphp
-                                        <td class="task-summary-num" title="Active time yesterday (PT): {{ $yTimeH }}h {{ $yTimeM }}m">{{ $yTimeH }}h {{ $yTimeM }}m</td>
+                                        @php
+                                            $yTimeMonitorUserId = (int) ($row['user_id'] ?? 0);
+                                            $yTimeMonitorUrl = $yTimeMonitorUserId > 0 && ! empty($yTimeDate)
+                                                ? route('attendance.summary', [
+                                                    'executive' => $yTimeMonitorUserId,
+                                                    'range' => 'custom',
+                                                    'from' => $yTimeDate,
+                                                    'to' => $yTimeDate,
+                                                    'timezone' => 'America/Los_Angeles',
+                                                ])
+                                                : null;
+                                        @endphp
+                                        <td class="task-summary-num" title="Active time yesterday (PT): {{ $yTimeH }}h {{ $yTimeM }}m">{{ $yTimeH }}h {{ $yTimeM }}m
+                                            @if($yTimeMonitorUrl)
+                                                <a href="{{ $yTimeMonitorUrl }}"
+                                                   target="_blank"
+                                                   rel="noopener noreferrer"
+                                                   class="task-summary-ytime-dot"
+                                                   title="Open {{ e($row['team_member']) }}'s time in Team Monitoring (yesterday)"
+                                                   aria-label="Open {{ e($row['team_member']) }}'s time in Team Monitoring"></a>
+                                            @endif
+                                        </td>
                                         @php $yDone = (int) ($row['y_done'] ?? 0); @endphp
                                         <td class="text-center">
                                             <a href="{{ route('tasks.yesterdayDone', ['user_id' => (int) ($row['user_id'] ?? 0)]) }}"
@@ -7123,7 +7177,8 @@
                 if (designationDot) {
                     designationDot.classList.toggle('is-has-data', !empty);
                     designationDot.classList.toggle('is-no-data', empty);
-                    designationDot.title = empty ? 'No designation' : 'Designation set';
+                    designationDot.title = empty ? 'No designation set' : 'Designation: ' + designation;
+                    designationDot.setAttribute('aria-label', empty ? 'No designation set' : 'Designation set');
                 }
                 var presence = (window.taskSummaryChecklistPresence && window.taskSummaryChecklistPresence.by_designation) || {};
                 var info = (!empty && presence[designation]) ? presence[designation] : { rr: false, clrr: false, clmgr: false };

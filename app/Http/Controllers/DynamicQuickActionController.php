@@ -34,9 +34,7 @@ class DynamicQuickActionController extends Controller
     {
         return User::query()
             ->whereKey($id)
-            ->where(function ($q) {
-                $q->whereNull('is_active')->orWhere('is_active', 1);
-            })
+            ->active()
             ->first();
     }
 

@@ -3717,6 +3717,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/announcements/{id}/comments', 'comment')->name('announcements.comment');
         Route::post('/announcements/{id}/react', 'react')->whereNumber('id')->name('announcements.react');
         Route::post('/announcements/comments/{comment}/react', 'reactComment')->whereNumber('comment')->name('announcements.comments.react');
+        Route::post('/announcements/comments/{comment}/update', 'updateComment')->whereNumber('comment')->name('announcements.comments.update');
         Route::post('/announcements/store', 'store')->name('announcements.store');
         Route::post('/announcements/post/{id}', 'post')->name('announcements.post');
         Route::post('/announcements/ai', 'ai')->name('announcements.ai');

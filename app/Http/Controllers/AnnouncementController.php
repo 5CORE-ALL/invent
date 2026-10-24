@@ -213,6 +213,41 @@ class AnnouncementController extends Controller
         ]);
     }
 
+    /**
+     * Edit a comment. Only the person who wrote it can change it.
+     */
+    public function updateComment(Request $request, int $comment): JsonResponse
+    {
+        if (! Schema::hasTable('announcement_comments')) {
+            abort(503, 'Announcement comments table is missing. Run php artisan migrate.');
+        }
+
+        $row = AnnouncementComment::query()->findOrFail($comment);
+
+        if ((int) $row->user_id !== (int) Auth::id()) {
+            return response()->json(['message' => 'You can only edit your own comments.'], 403);
+        }
+
+        $validated = $request->validate([
+            'comment' => 'required|string|max:2000',
+        ]);
+        $text = trim($validated['comment']);
+        if ($text === '') {
+            return response()->json(['message' => 'Enter a comment.'], 422);
+        }
+
+        // Only touch the row when the text really changed so "(edited)" stays honest.
+        if ($text !== (string) $row->comment) {
+            $row->comment = $text;
+            $row->save();
+        }
+
+        return response()->json([
+            'success' => true,
+            'comment' => $this->serializeComment($row->load('user:id,name,avatar')),
+        ]);
+    }
+
     public function react(Request $request, int $id): JsonResponse
     {
         if (! Schema::hasTable('announcement_reactions')) {
@@ -1161,6 +1196,8 @@ class AnnouncementController extends Controller
             'user_name' => optional($comment->user)->name ?: 'User',
             'user_avatar' => $this->userAvatarUrl($comment->user),
             'created_at' => optional($comment->created_at)->format('d M Y H:i'),
+            'edited' => $comment->updated_at && $comment->created_at
+                && $comment->updated_at->gt($comment->created_at->copy()->addSeconds(2)),
             'reactions' => $this->serializeCommentReactions($comment),
         ];
     }

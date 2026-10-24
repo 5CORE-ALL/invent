@@ -1603,6 +1603,7 @@ class ForecastAnalysisController extends Controller
         // Executive list — dynamic from the users table (drives the Exec column
         // editor and the Exec filter dropdown).
         $execUsers = \App\Models\User::query()
+            ->active()
             ->whereNotNull('name')
             ->where('name', '!=', '')
             ->orderBy('name')
