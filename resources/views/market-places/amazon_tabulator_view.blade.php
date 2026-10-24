@@ -147,6 +147,91 @@
         #summary-stats .summary-trend-dot.flat,
         #summary-stats .summary-trend-dot.none { background: #9ca3af; }
 
+        /* Grouped summary blocks — same look as the Today / Yesterday / L30 blocks on All Marketplace Master */
+        #summary-stats.amz-sum-grid {
+            max-width: 100%;
+            min-width: 0;
+            overflow: visible;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+            gap: 0.5rem;
+            align-items: start;
+            background: transparent !important;
+            padding: 0 !important;
+        }
+        #summary-stats .amz-sum-block {
+            min-width: 0;
+            border-radius: 12px;
+            padding: 0.55rem 0.6rem 0.65rem;
+            border: 1px solid #facc15;
+            background: #fef9c3;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        }
+        #summary-stats .amz-sum-block-title {
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            line-height: 1;
+            margin: 0 0 0.35rem;
+            color: #854d0e;
+        }
+        #summary-stats .amz-sum-block--yesterday { grid-column: 1; grid-row: 1; }
+        #summary-stats .amz-sum-block--l30 { grid-column: 2; grid-row: 1; }
+        #summary-stats .amz-sum-block--listing { grid-column: 3; grid-row: 1; }
+        #summary-stats .amz-sum-block--sold { grid-column: 1; grid-row: 2; }
+        #summary-stats .amz-sum-block--alerts { grid-column: 2 / 4; grid-row: 2; }
+        #summary-stats .amz-sum-row {
+            display: grid;
+            align-items: stretch;
+            gap: 0.4rem;
+            width: 100%;
+            max-width: 100%;
+            overflow: visible;
+        }
+        #summary-stats .amz-sum-row--yesterday,
+        #summary-stats .amz-sum-row--listing,
+        #summary-stats .amz-sum-row--sold { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        #summary-stats .amz-sum-row--l30 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        #summary-stats .amz-sum-row--alerts { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+        #summary-stats .amz-sum-row > .badge {
+            width: 100%;
+            min-width: 0;
+            max-width: none;
+            min-height: 42px;
+            height: 100%;
+            font-size: 0.85rem !important;
+            line-height: 1.2;
+            padding: 0.4rem 0.45rem !important;
+            border-radius: 0.375rem;
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+            text-decoration: none;
+        }
+        /* Hidden helper badges stay hidden inside the grid */
+        #summary-stats .amz-sum-row > .badge.d-none { display: none !important; }
+        @media (max-width: 1199.98px) {
+            #summary-stats.amz-sum-grid { grid-template-columns: 1fr 1fr; }
+            #summary-stats .amz-sum-block--yesterday,
+            #summary-stats .amz-sum-block--l30,
+            #summary-stats .amz-sum-block--listing,
+            #summary-stats .amz-sum-block--sold,
+            #summary-stats .amz-sum-block--alerts { grid-column: auto; grid-row: auto; }
+            #summary-stats .amz-sum-block--l30,
+            #summary-stats .amz-sum-block--alerts { grid-column: 1 / -1; }
+        }
+        @media (max-width: 767.98px) {
+            #summary-stats.amz-sum-grid { grid-template-columns: 1fr; }
+            #summary-stats .amz-sum-block--l30,
+            #summary-stats .amz-sum-block--alerts { grid-column: 1; }
+            #summary-stats .amz-sum-row--l30 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+
         /* Column visibility — 4 groups (Basic / Price / Ads / Other) */
         #column-dropdown-menu.show {
             min-width: min(92vw, 900px);
@@ -849,66 +934,78 @@
                 </div>
 
                 <!-- Summary Stats -->
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <div class="d-flex flex-wrap gap-2">
-                        <!-- Filtered row count -->
-                        <span class="badge bg-dark fs-6 p-2" id="rows-count-badge" style="color: white; font-weight: bold;" title="Number of rows currently shown (after filters)">Row: 0</span>
-
-                        <!-- Financial Metrics -->
-                        <span class="badge bg-success fs-6 p-2 amz-badge-chart d-none" data-metric="total_pft" data-live-value="0" data-format="money" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend" aria-hidden="true"><span class="summary-trend-dot none" data-metric="total_pft" title="Rolling history"></span>PFT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" data-live-value="{{ (float) ($amazonSalesL30 ?? 0) }}" data-format="money" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="30-day sales from real Amz orders (same source as /amazon/daily-sales). Click badge or dot for trend."><span class="summary-trend-dot none" data-metric="total_sales" title="Rolling history"></span>Sales: ${{ number_format((float) ($amazonSalesL30 ?? 0)) }}</span>
-                        
-                        <!-- Percentage Metrics -->
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" data-live-value="{{ (float) ($ordersL30Gpft ?? 0) }}" data-format="pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="L30 GPFT% = rounded Σ PFT ÷ rounded Σ line sales from real Amz orders — same as /amazon/daily-sales GPFT. PFT = (Sales × 80%) − COGS − COGS Ship. Click for trend."><span class="summary-trend-dot none" data-metric="gpft_pct" title="Rolling history"></span>GPFT: {{ (int) round((float) ($ordersL30Gpft ?? 0)) }}%</span>
-
-                        <!-- Ads% (from /all-marketplace-master — Amz channel) -->
-                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="tcos_pct" data-live-value="{{ $amazonAdsPercent !== null ? round((float) $amazonAdsPercent, 1) : 0 }}" data-format="pct" data-invert="1" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Amz Ads% (Total Ad Spend / L30 Sales). Lower is better. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="tcos_pct" title="Rolling history"></span>Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
-                        <span class="badge fs-6 p-2" id="amazon-ad-sales-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Amazon ad-attributed sales. Same Ad Sales as All Marketplace Master."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Ads sales: {{ $amazonAdSales !== null ? '$' . number_format((float) $amazonAdSales) : 'N/A' }}</span>
-                        <span class="badge fs-6 p-2" id="amazon-acos-badge" style="background-color: #dc3545; color: white; font-weight: bold;" title="ACOS% = Ad Spend ÷ Ad Sales × 100. Same ACOS as All Marketplace Master. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>ACOS: {{ $amazonAcosPercent !== null ? round((float) $amazonAcosPercent, 1) . '%' : 'N/A' }}</span>
-                        <span class="badge fs-6 p-2" id="amazon-l30-spend-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Amazon L30 ad spend. Same Total Ad Spend as All Marketplace Master (the numerator of Ads%)."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>L30 spend: {{ isset($amazonL30Spend) && $amazonL30Spend !== null ? '$' . number_format((float) $amazonL30Spend) : 'N/A' }}</span>
-                        <span class="badge fs-6 p-2" id="amazon-y-spend-badge" style="background-color: #4c1d95; color: white; font-weight: bold;" title="Yesterday Amazon ad spend (L1) from SP+SB campaign reports, same pull as Amazon Ads."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y spend: {{ isset($amazonYSpend) && $amazonYSpend !== null ? '$' . number_format((float) $amazonYSpend) : 'N/A' }}</span>
-                        <span class="badge fs-6 p-2" id="amazon-y-acos-badge" style="background-color: #e11d48; color: white; font-weight: bold;" title="Yesterday ACOS = L1 spend ÷ L1 ad sales × 100. 100% when spend is positive and ad sales are 0. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y ACOS: {{ isset($amazonYAcosPercent) && $amazonYAcosPercent !== null ? round((float) $amazonYAcosPercent, 1) . '%' : 'N/A' }}</span>
-                        <span class="badge fs-6 p-2" id="amazon-y-sales-pct-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Y Sales vs the L30 daily average: ((L30 Sales / 30) − Y Sales) / (L30 Sales / 30) × 100. Positive means yesterday is below a typical day."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y Sales%: {{ isset($amazonYSalesPercent) && $amazonYSalesPercent !== null ? round((float) $amazonYSalesPercent, 1) . '%' : 'N/A' }}</span>
-                        <span class="badge fs-6 p-2" id="amazon-y-bgt-pct-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Daily campaign budget ÷ (L30 sales / 30) × 100. How large the SP+SB daily budgets are versus a typical day's sales."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y bgt %: {{ isset($amazonYBgtPercent) && $amazonYBgtPercent !== null ? round((float) $amazonYBgtPercent, 1) . '%' : 'N/A' }}</span>
-                        <span class="badge fs-6 p-2" id="amazon-y-utilized-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="Yesterday spend (L1) ÷ sum of daily campaign budgets × 100. Same ratio as U1% on Amazon Ads, totaled across SP+SB."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y utilized %: {{ isset($amazonYUtilizedPercent) && $amazonYUtilizedPercent !== null ? round((float) $amazonYUtilizedPercent, 1) . '%' : 'N/A' }}</span>
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" data-live-value="{{ (float) (($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}" data-format="pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="NPFT% = GPFT% − Ads%. GPFT from real Amz orders (same as /amazon/daily-sales). Click for trend."><span class="summary-trend-dot none" data-metric="npft_pct" title="Rolling history"></span>NPFT: {{ (int) round((float) ($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}%</span>
-                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" data-live-value="{{ (float) ($ordersL30Groi ?? 0) }}" data-format="pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="L30 GROI% = rounded Σ PFT ÷ rounded Σ COGS from real Amz orders — same as /amazon/daily-sales GROI. Click for trend."><span class="summary-trend-dot none" data-metric="groi_pct" title="Rolling history"></span>GROI: {{ (int) round((float) ($ordersL30Groi ?? 0)) }}%</span>
-                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" data-live-value="{{ (float) ($ordersL30Nroi ?? 0) }}" data-format="pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="L30 NROI% = (Σ PFT − Ads% × Sales) ÷ Σ COGS. PFT/COGS from real Amz orders (same as /amazon/daily-sales). Click for trend."><span class="summary-trend-dot none" data-metric="nroi_pct" title="Rolling history"></span>NROI: {{ (int) round((float) ($ordersL30Nroi ?? 0)) }}%</span>
-                        
-                        <!-- Amz Metrics -->
-                        <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;" aria-hidden="true"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Price: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Views: 0</span>
-                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="total_l30_orders" data-live-value="{{ (int) ($amazonUnitsSoldL30 ?? 0) }}" id="total-qty-sold-badge" style="background-color: #20c997; color: black; font-weight: bold; cursor:pointer;" title="Total Amz units sold in the last 30 days from real Amz orders (Pacific, through yesterday) — same source as /amazon/daily-sales. Click for trend."><span class="summary-trend-dot none" data-metric="total_l30_orders" title="Rolling history"></span>Qty: {{ number_format((int) ($amazonUnitsSoldL30 ?? 0)) }}</span>
-                        <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>CVR: 0%</span>
-                        @include('partials.analytics-dil-badge', ['dilChannel' => 'amazon'])
-
-                        <!-- Sold Filter Badges (badge click = filter; dot click = rolling history) -->
-                        <span class="badge bg-success fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="all" data-metric="sold_count" data-live-value="0" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Click dot for trend">
-                            <span class="summary-trend-dot none" data-metric="sold_count" title="Rolling history"></span>Sold >0: <span id="total-sold-count">0</span>
-                        </span>
-                        <span class="badge bg-danger fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="zero" data-metric="zero_sold_count" data-live-value="0" data-invert="1" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Click dot for trend">
-                            <span class="summary-trend-dot none" data-metric="zero_sold_count" title="Rolling history"></span>0 Sold: <span id="zero-sold-count">0</span>
-                        </span>
-                        <span class="badge fs-6 p-2" id="amazon-blue-triangle-badge"
-                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue alert: INV > 0 and Price ≠ S PRC (needs push). Click to show only those SKUs. Cron and Push on reload skip Price = S PRC.">
-                            <i class="fas fa-exclamation-triangle"></i> 0
-                        </span>
-                        <span class="badge fs-6 p-2" id="amazon-clearance-badge"
-                            style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
-                            title="C = Clearance SKUs (Inv days clearance = YES). They are priced from the Clearance SNROI block of Std prc vs dil (target SNROI by Dil). With no target for their Dil, S PRC shows the rule price only and nothing is saved or pushed. Click to show only those SKUs. Click again to clear."
-                            aria-label="Clearance SKUs">C 0</span>
-                        @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'amazon-lmp-missing-badge', 'lmpChannelKey' => 'amazon'])
-                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'amazon-price-gt-lmp-badge', 'pglChannelKey' => 'amazon', 'pglPriceField' => 'price'])
-                        @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'amazon-price-lt80-lmp-badge', 'pltChannelKey' => 'amazon', 'pltPriceField' => 'price'])
-                        <span class="badge fs-6 p-2" id="amazon-price-eq-lmp-badge"
-                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Price = LMP: SKUs (INV &gt; 0) where our Amz Price equals the landed LMP (L1). Click to filter. Click again to clear."
-                            aria-label="Price equals LMP"><i class="fas fa-equals"></i> 0</span>
-                        <span class="badge fs-6 p-2" id="amazon-sprice-eq-lmp-badge"
-                            style="background-color:#6610f2;color:#fff;font-weight:700;cursor:pointer;"
-                            title="S PRC = LMP: SKUs where S PRC equals the landed LMP (L1). Click to filter. Click again to clear."
-                            aria-label="S PRC equals LMP">S PRC <i class="fas fa-equals"></i> LMP: 0</span>
+                <div id="summary-stats" class="mt-2 amz-sum-grid">
+                    <div class="amz-sum-block amz-sum-block--yesterday">
+                        <div class="amz-sum-block-title">Yesterday</div>
+                        <div class="amz-sum-row amz-sum-row--yesterday" role="group" aria-label="Yesterday metrics">
+                            <span class="badge fs-6 p-2" id="amazon-y-spend-badge" style="background-color: #4c1d95; color: white; font-weight: bold;" title="Yesterday Amazon ad spend (L1) from SP+SB campaign reports, same pull as Amazon Ads."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y spend: {{ isset($amazonYSpend) && $amazonYSpend !== null ? '$' . number_format((float) $amazonYSpend) : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2" id="amazon-y-acos-badge" style="background-color: #e11d48; color: white; font-weight: bold;" title="Yesterday ACOS = L1 spend ÷ L1 ad sales × 100. 100% when spend is positive and ad sales are 0. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y ACOS: {{ isset($amazonYAcosPercent) && $amazonYAcosPercent !== null ? round((float) $amazonYAcosPercent, 1) . '%' : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2" id="amazon-y-sales-pct-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Y Sales vs the L30 daily average: ((L30 Sales / 30) − Y Sales) / (L30 Sales / 30) × 100. Positive means yesterday is below a typical day."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y Sales%: {{ isset($amazonYSalesPercent) && $amazonYSalesPercent !== null ? round((float) $amazonYSalesPercent, 1) . '%' : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2" id="amazon-y-bgt-pct-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Daily campaign budget ÷ (L30 sales / 30) × 100. How large the SP+SB daily budgets are versus a typical day's sales."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y bgt %: {{ isset($amazonYBgtPercent) && $amazonYBgtPercent !== null ? round((float) $amazonYBgtPercent, 1) . '%' : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2" id="amazon-y-utilized-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="Yesterday spend (L1) ÷ sum of daily campaign budgets × 100. Same ratio as U1% on Amazon Ads, totaled across SP+SB."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y utilized %: {{ isset($amazonYUtilizedPercent) && $amazonYUtilizedPercent !== null ? round((float) $amazonYUtilizedPercent, 1) . '%' : 'N/A' }}</span>
+                        </div>
+                    </div>
+                    <div class="amz-sum-block amz-sum-block--l30">
+                        <div class="amz-sum-block-title">L30</div>
+                        <div class="amz-sum-row amz-sum-row--l30" role="group" aria-label="L30 metrics">
+                            <span class="badge bg-success fs-6 p-2 amz-badge-chart d-none" data-metric="total_pft" data-live-value="0" data-format="money" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend" aria-hidden="true"><span class="summary-trend-dot none" data-metric="total_pft" title="Rolling history"></span>PFT: $0.00</span>
+                            <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" data-live-value="{{ (float) ($amazonSalesL30 ?? 0) }}" data-format="money" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="30-day sales from real Amz orders (same source as /amazon/daily-sales). Click badge or dot for trend."><span class="summary-trend-dot none" data-metric="total_sales" title="Rolling history"></span>Sales: ${{ number_format((float) ($amazonSalesL30 ?? 0)) }}</span>
+                            <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" data-live-value="{{ (float) ($ordersL30Gpft ?? 0) }}" data-format="pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="L30 GPFT% = rounded Σ PFT ÷ rounded Σ line sales from real Amz orders — same as /amazon/daily-sales GPFT. PFT = (Sales × 80%) − COGS − COGS Ship. Click for trend."><span class="summary-trend-dot none" data-metric="gpft_pct" title="Rolling history"></span>GPFT: {{ (int) round((float) ($ordersL30Gpft ?? 0)) }}%</span>
+                            <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" data-live-value="{{ (float) (($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}" data-format="pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="NPFT% = GPFT% − Ads%. GPFT from real Amz orders (same as /amazon/daily-sales). Click for trend."><span class="summary-trend-dot none" data-metric="npft_pct" title="Rolling history"></span>NPFT: {{ (int) round((float) ($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" data-live-value="{{ (float) ($ordersL30Groi ?? 0) }}" data-format="pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="L30 GROI% = rounded Σ PFT ÷ rounded Σ COGS from real Amz orders — same as /amazon/daily-sales GROI. Click for trend."><span class="summary-trend-dot none" data-metric="groi_pct" title="Rolling history"></span>GROI: {{ (int) round((float) ($ordersL30Groi ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" data-live-value="{{ (float) ($ordersL30Nroi ?? 0) }}" data-format="pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="L30 NROI% = (Σ PFT − Ads% × Sales) ÷ Σ COGS. PFT/COGS from real Amz orders (same as /amazon/daily-sales). Click for trend."><span class="summary-trend-dot none" data-metric="nroi_pct" title="Rolling history"></span>NROI: {{ (int) round((float) ($ordersL30Nroi ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="tcos_pct" data-live-value="{{ $amazonAdsPercent !== null ? round((float) $amazonAdsPercent, 1) : 0 }}" data-format="pct" data-invert="1" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Amz Ads% (Total Ad Spend / L30 Sales). Lower is better. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="tcos_pct" title="Rolling history"></span>Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2" id="amazon-ad-sales-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Amazon ad-attributed sales. Same Ad Sales as All Marketplace Master."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Ads sales: {{ $amazonAdSales !== null ? '$' . number_format((float) $amazonAdSales) : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2" id="amazon-acos-badge" style="background-color: #dc3545; color: white; font-weight: bold;" title="ACOS% = Ad Spend ÷ Ad Sales × 100. Same ACOS as All Marketplace Master. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>ACOS: {{ $amazonAcosPercent !== null ? round((float) $amazonAcosPercent, 1) . '%' : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2" id="amazon-l30-spend-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Amazon L30 ad spend. Same Total Ad Spend as All Marketplace Master (the numerator of Ads%)."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>L30 spend: {{ isset($amazonL30Spend) && $amazonL30Spend !== null ? '$' . number_format((float) $amazonL30Spend) : 'N/A' }}</span>
+                        </div>
+                    </div>
+                    <div class="amz-sum-block amz-sum-block--listing">
+                        <div class="amz-sum-block-title">Listing</div>
+                        <div class="amz-sum-row amz-sum-row--listing" role="group" aria-label="Listing metrics">
+                            <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;" aria-hidden="true"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Price: $0.00</span>
+                            <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Views: 0</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="total_l30_orders" data-live-value="{{ (int) ($amazonUnitsSoldL30 ?? 0) }}" id="total-qty-sold-badge" style="background-color: #20c997; color: black; font-weight: bold; cursor:pointer;" title="Total Amz units sold in the last 30 days from real Amz orders (Pacific, through yesterday) — same source as /amazon/daily-sales. Click for trend."><span class="summary-trend-dot none" data-metric="total_l30_orders" title="Rolling history"></span>Qty: {{ number_format((int) ($amazonUnitsSoldL30 ?? 0)) }}</span>
+                            <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>CVR: 0%</span>
+                            @include('partials.analytics-dil-badge', ['dilChannel' => 'amazon'])
+                        </div>
+                    </div>
+                    <div class="amz-sum-block amz-sum-block--sold">
+                        <div class="amz-sum-block-title">Rows &amp; Sold</div>
+                        <div class="amz-sum-row amz-sum-row--sold" role="group" aria-label="Rows and sold counts">
+                            <span class="badge bg-dark fs-6 p-2" id="rows-count-badge" style="color: white; font-weight: bold;" title="Number of rows currently shown (after filters)">Row: 0</span>
+                            <span class="badge bg-success fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="all" data-metric="sold_count" data-live-value="0" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Click dot for trend">
+                                <span class="summary-trend-dot none" data-metric="sold_count" title="Rolling history"></span>Sold >0: <span id="total-sold-count">0</span>
+                            </span>
+                            <span class="badge bg-danger fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="zero" data-metric="zero_sold_count" data-live-value="0" data-invert="1" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Click dot for trend">
+                                <span class="summary-trend-dot none" data-metric="zero_sold_count" title="Rolling history"></span>0 Sold: <span id="zero-sold-count">0</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="amz-sum-block amz-sum-block--alerts">
+                        <div class="amz-sum-block-title">Price &amp; LMP alerts</div>
+                        <div class="amz-sum-row amz-sum-row--alerts" role="group" aria-label="Price and LMP alerts">
+                            <span class="badge fs-6 p-2" id="amazon-blue-triangle-badge"
+                                style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Blue alert: INV > 0 and Price ≠ S PRC (needs push). Click to show only those SKUs. Cron and Push on reload skip Price = S PRC.">
+                                <i class="fas fa-exclamation-triangle"></i> 0
+                            </span>
+                            <span class="badge fs-6 p-2" id="amazon-clearance-badge"
+                                style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
+                                title="C = Clearance SKUs (Inv days clearance = YES). They are priced from the Clearance SNROI block of Std prc vs dil (target SNROI by Dil). With no target for their Dil, S PRC shows the rule price only and nothing is saved or pushed. Click to show only those SKUs. Click again to clear."
+                                aria-label="Clearance SKUs">C 0</span>
+                            @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'amazon-lmp-missing-badge', 'lmpChannelKey' => 'amazon'])
+                            @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'amazon-price-gt-lmp-badge', 'pglChannelKey' => 'amazon', 'pglPriceField' => 'price'])
+                            @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'amazon-price-lt80-lmp-badge', 'pltChannelKey' => 'amazon', 'pltPriceField' => 'price'])
+                            <span class="badge fs-6 p-2" id="amazon-price-eq-lmp-badge"
+                                style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Price = LMP: SKUs (INV &gt; 0) where our Amz Price equals the landed LMP (L1). Click to filter. Click again to clear."
+                                aria-label="Price equals LMP"><i class="fas fa-equals"></i> 0</span>
+                            <span class="badge fs-6 p-2" id="amazon-sprice-eq-lmp-badge"
+                                style="background-color:#6610f2;color:#fff;font-weight:700;cursor:pointer;"
+                                title="S PRC = LMP: SKUs where S PRC equals the landed LMP (L1). Click to filter. Click again to clear."
+                                aria-label="S PRC equals LMP">S PRC <i class="fas fa-equals"></i> LMP: 0</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2278,7 +2375,7 @@
             });
         }
         function ensureAmzKpiDots() {
-            $('#summary-stats .d-flex > .badge').each(function() {
+            $('#summary-stats .amz-sum-row > .badge, #summary-stats .d-flex > .badge').each(function() {
                 if (this.id === 'rows-count-badge') return;
                 const $b = $(this);
                 let $dot = $b.children('.summary-trend-dot').first();
