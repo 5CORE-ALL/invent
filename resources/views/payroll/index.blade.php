@@ -1462,7 +1462,7 @@
                 + '<td><span class="inc-person">' + avatarHtml(u) + esc(u.name) + '</span></td>'
                 + '<td class="num"><span class="' + (Number(u.increment) ? 'inc-amt' : 'inc-zero') + '">' + esc(fmt(u.increment || 0, u.region)) + '</span></td>'
                 + (canManage ? '<td class="act">' + (editable
-                    ? '<button type="button" class="inc-icon-btn inc-edit" title="' + (Number(u.increment) ? 'Edit' : 'Add increment') + '" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="' + (Number(u.increment) ? 'ri-pencil-line' : 'ri-add-circle-line') + '"></i></button>'
+                    ? '<button type="button" class="inc-icon-btn inc-edit" title="' + (Number(u.increment) ? 'Edit (applies to all ticked rows if several are selected)' : 'Add increment (applies to all ticked rows if several are selected)') + '" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="' + (Number(u.increment) ? 'ri-pencil-line' : 'ri-add-circle-line') + '"></i></button>'
                     + (Number(u.increment) ? '<button type="button" class="inc-icon-btn danger inc-remove" title="Remove increment" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="ri-delete-bin-line"></i></button>' : '')
                     : '<span class="text-muted" title="Month is locked">🔒</span>') + '</td>' : '')
                 + '</tr>').join('');
@@ -1691,9 +1691,33 @@
     document.getElementById('incrementList')?.addEventListener('click', async (e) => {
         const edit = e.target.closest('.inc-edit');
         const remove = e.target.closest('.inc-remove');
+        // If several employees are ticked and the clicked row is one of them, the pencil / bin act on all of them.
+        const btn = edit || remove;
+        const picked = btn ? incSelSet(Number(btn.dataset.month)) : null;
+        const isBulk = !!(btn && picked && picked.size > 1 && picked.has(Number(btn.dataset.user)));
+
         if (edit) {
-            openIncrementModal({ monthId: edit.dataset.month, userId: edit.dataset.user });
+            if (isBulk) {
+                openBulkEdit(btn.dataset.month);
+            } else {
+                openIncrementModal({ monthId: edit.dataset.month, userId: edit.dataset.user });
+            }
         } else if (remove) {
+            if (isBulk) {
+                const ids = Array.from(picked);
+                if (!confirm('Remove the increment (set to 0) for ' + ids.length + ' selected employees?')) return;
+                remove.disabled = true;
+                try {
+                    await api(`${base}/increments/bulk`, 'POST', { payroll_month_id: Number(remove.dataset.month), user_ids: ids, increment: 0 });
+                    picked.clear();
+                    await loadIncrements();
+                    salarySheetStale = true;
+                } catch (err) {
+                    alert(err.message || 'Failed to remove increments.');
+                    remove.disabled = false;
+                }
+                return;
+            }
             if (!confirm('Remove this increment (set to 0)?')) return;
             remove.disabled = true;
             try {
