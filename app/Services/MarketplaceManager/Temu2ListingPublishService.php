@@ -208,6 +208,8 @@ class Temu2ListingPublishService
             return ['success' => false, 'message' => $blocked];
         }
 
+        $requestedSkus = $skus;
+        $skippedRows = [];
         if ($expandSiblings) {
             $preview = $this->previewFromSkus($skus);
             $groups = $preview['groups'] ?? [];
@@ -218,12 +220,13 @@ class Temu2ListingPublishService
                 ];
             }
             $skus = $groups[0]['publish_skus'] ?? [];
+            $skippedRows = is_array($groups[0]['children'] ?? null) ? $groups[0]['children'] : [];
         } else {
             $skus = $this->filterPublishableSkus($skus);
         }
 
         if ($skus === []) {
-            return ['success' => false, 'message' => 'No child SKUs left to publish (NRL, missing masters, or live listings were skipped). Deleted Temu listings can be published again.'];
+            return ['success' => false, 'message' => $this->noPublishableSkusMessage($requestedSkus, $skippedRows)];
         }
 
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
@@ -1224,6 +1227,44 @@ class Temu2ListingPublishService
         }
 
         return null;
+    }
+
+    /**
+     * Say which SKU was skipped and why (NRL, already listed, no Std Prc, masters missing ...)
+     * instead of one generic line.
+     *
+     * @param  list<string>  $requestedSkus
+     * @param  list<array<string, mixed>>  $rows  Preview child rows (sku, reason) when already computed
+     */
+    private function noPublishableSkusMessage(array $requestedSkus, array $rows = []): string
+    {
+        if ($rows === []) {
+            foreach ($requestedSkus as $sku) {
+                $rows[] = ['sku' => $sku] + $this->classifyChildSku($sku);
+            }
+        }
+
+        $parts = [];
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $reason = trim((string) ($row['reason'] ?? ''));
+            if (($row['status'] ?? '') === 'skipped_no_price') {
+                $reason = 'No Std Prc — set it on '.$this->stdPriceHelp().' (LMP Overall)';
+            } elseif ($reason === '') {
+                $reason = 'not publishable';
+            }
+            $parts[] = $sku.': '.$reason;
+        }
+
+        $shown = array_slice($parts, 0, 6);
+        $extra = count($parts) - count($shown);
+        $detail = $shown !== [] ? ' '.implode('; ', $shown).($extra > 0 ? " (+{$extra} more)." : '.') : '';
+
+        return 'No SKUs left to publish on '.$this->shopLabel().'.'.$detail
+            .' Fix the reason above on the masters, then publish again. Deleted Temu listings can be published again.';
     }
 
     /**
