@@ -206,59 +206,65 @@ class PayrollController extends Controller
     }
 
     /**
-     * Month-wise table of employees who have an increment, with amounts and totals.
-     * Totals are kept per currency region (india / china / usa) because they are not interchangeable.
+     * Increment tab data: every payroll month with its increment rows, totals and the
+     * employees that can be given an increment. Totals are kept per currency region
+     * (india / china / usa) because they are not interchangeable.
      */
     public function incrementsList(): JsonResponse
     {
-        $rows = PayrollEmployeeSalary::with('user')
-            ->whereNotNull('increment')
-            ->where('increment', '!=', 0)
+        $salaryRows = PayrollEmployeeSalary::with('user')
             ->get()
+            ->filter(fn ($r) => $r->user?->name)
             ->groupBy('payroll_month_id');
 
-        $months = PayrollMonth::whereIn('id', $rows->keys())
-            ->orderByDesc('period_start')
-            ->orderByDesc('id')
-            ->get();
+        $allMonths = PayrollMonth::orderByDesc('period_start')->orderByDesc('id')->get();
+
+        $defaultLabel = $this->payroll->defaultMonthLabel();
+        $defaultMonth = $allMonths->firstWhere('month_label', $defaultLabel) ?? $allMonths->first();
 
         $grandTotals = [];
+        $grandCount = 0;
 
-        $data = $months->map(function (PayrollMonth $m) use ($rows, &$grandTotals) {
+        $months = $allMonths->map(function (PayrollMonth $m) use ($salaryRows, &$grandTotals, &$grandCount) {
+            $rows = $salaryRows->get($m->id, collect());
             $totals = [];
 
-            $users = $rows->get($m->id)
-                ->filter(fn ($r) => $r->user?->name)
-                ->groupBy('user_id')
-                ->map(function ($group) {
-                    $user = $group->first()->user;
+            $employees = $rows
+                ->sortBy(fn ($r) => mb_strtolower($r->user->name))
+                ->map(fn ($r) => [
+                    'row_id' => $r->id,
+                    'user_id' => $r->user_id,
+                    'name' => $r->user->name,
+                    'region' => $r->user->salaryRegion(),
+                    'increment' => round((float) $r->increment, 2),
+                ])
+                ->values();
 
-                    return [
-                        'user_id' => $user->id,
-                        'name' => $user->name,
-                        'region' => $user->salaryRegion(),
-                        'amount' => round((float) $group->sum('increment'), 2),
-                    ];
-                })
-                ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
+            $users = $employees
+                ->filter(fn ($e) => $e['increment'] != 0)
                 ->values();
 
             foreach ($users as $u) {
-                $totals[$u['region']] = ($totals[$u['region']] ?? 0) + $u['amount'];
-                $grandTotals[$u['region']] = ($grandTotals[$u['region']] ?? 0) + $u['amount'];
+                $totals[$u['region']] = ($totals[$u['region']] ?? 0) + $u['increment'];
+                $grandTotals[$u['region']] = ($grandTotals[$u['region']] ?? 0) + $u['increment'];
+                $grandCount++;
             }
 
             return [
                 'month_id' => $m->id,
                 'month_label' => $m->month_label,
+                'is_locked' => (bool) $m->is_locked,
                 'users' => $users,
+                'employees' => $employees,
                 'totals' => (object) $totals,
             ];
-        })->filter(fn ($m) => $m['users']->isNotEmpty())->values();
+        })->values();
 
         return response()->json([
-            'months' => $data,
+            'months' => $months,
+            'default_month_id' => $defaultMonth?->id,
             'grand_totals' => (object) $grandTotals,
+            'grand_count' => $grandCount,
         ]);
     }
 

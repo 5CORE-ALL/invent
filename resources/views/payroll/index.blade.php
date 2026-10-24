@@ -63,30 +63,52 @@
     .payroll-doc-label { color: #6c757d; min-width: 0; text-align: right; }
     .payroll-doc-actions { display: inline-flex; align-items: center; gap: .15rem; }
     .table-payroll { font-size: .85rem; }
-    .payroll-increment-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .75rem; }
-    .payroll-increment-filter { display: flex; align-items: center; gap: .5rem; }
-    .payroll-increment-filter .form-select { min-width: 200px; height: 31px; font-size: .85rem; }
-    .payroll-increment-summary .cnt { margin-left: auto; font-size: .8rem; color: #146c43; }
-    .payroll-increment-grid.is-single { grid-template-columns: minmax(320px, 640px); }
-    .payroll-increment-summary {
-        display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
-        padding: .6rem .85rem; margin-bottom: .85rem; border-radius: 8px;
-        background: rgba(25, 135, 84, .1); color: #146c43; font-size: .9rem;
-    }
-    .payroll-increment-summary .lbl { font-weight: 600; }
-    .payroll-increment-summary .amt { font-size: 1.05rem; font-weight: 700; color: #0f5132; }
-    .payroll-increment-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: .85rem; align-items: start; }
-    .payroll-increment-month { border: 1px solid rgba(0,0,0,.08); border-radius: 8px; overflow: hidden; background: #fff; }
-    .payroll-increment-month-head {
-        display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap;
-        padding: .5rem .75rem; background: #f8f9fa; font-weight: 600; font-size: .9rem;
-    }
-    .payroll-increment-month-head .total { color: #0f5132; font-weight: 700; }
-    .payroll-increment-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
-    .payroll-increment-table th, .payroll-increment-table td { padding: .35rem .75rem; border-top: 1px solid rgba(0,0,0,.06); }
-    .payroll-increment-table th { background: #fcfcfd; font-weight: 600; color: #6c757d; }
-    .payroll-increment-table .num { text-align: right; white-space: nowrap; }
-    .payroll-increment-table .idx { width: 40px; color: #6c757d; }
+    /* Increment tab */
+    .inc-wrap { padding: .35rem .25rem; }
+    .inc-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }
+    .inc-title { margin: 0; font-size: 1.15rem; font-weight: 700; color: #1f2937; }
+    .inc-subtitle { margin: .1rem 0 0; font-size: .8rem; color: #6b7280; }
+    .inc-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+    .inc-controls .form-select, .inc-controls .form-control { height: 34px; font-size: .85rem; }
+    .inc-controls .form-select { min-width: 190px; }
+    .inc-search { position: relative; }
+    .inc-search i { position: absolute; left: .6rem; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
+    .inc-search input { padding-left: 1.9rem; min-width: 180px; }
+    .inc-btn-add { height: 34px; display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; font-weight: 600; }
+    .inc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+    .inc-stat { border: 1px solid #e5e7eb; border-radius: 10px; padding: .75rem 1rem; background: #fff; }
+    .inc-stat .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; }
+    .inc-stat .v { margin-top: .15rem; font-size: 1.3rem; font-weight: 700; color: #111827; line-height: 1.25; }
+    .inc-stat.is-primary { background: linear-gradient(135deg, #ecfdf5, #f0fdf4); border-color: #bbf7d0; }
+    .inc-stat.is-primary .v { color: #047857; }
+    .inc-badge { display: inline-flex; align-items: center; gap: .3rem; font-size: .75rem; font-weight: 600; padding: .15rem .55rem; border-radius: 999px; }
+    .inc-badge.open { background: #dcfce7; color: #166534; }
+    .inc-badge.locked { background: #fee2e2; color: #991b1b; }
+    .inc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 1rem; align-items: start; }
+    .inc-grid.is-single { grid-template-columns: 1fr; }
+    .inc-card { border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; overflow: hidden; }
+    .inc-card-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .65rem 1rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
+    .inc-card-head .m { font-weight: 700; color: #111827; font-size: .92rem; }
+    .inc-card-head .c { margin-left: .4rem; font-size: .75rem; color: #6b7280; font-weight: 500; }
+    .inc-card-head .t { font-weight: 700; color: #047857; font-size: .9rem; }
+    .inc-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .inc-table th { padding: .5rem 1rem; text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; background: #fff; border-bottom: 1px solid #e5e7eb; }
+    .inc-table td { padding: .5rem 1rem; border-bottom: 1px solid #f1f5f9; color: #1f2937; vertical-align: middle; }
+    .inc-table tbody tr:hover { background: #f9fafb; }
+    .inc-table tfoot td { background: #f9fafb; font-weight: 700; border-bottom: 0; border-top: 1px solid #e5e7eb; }
+    .inc-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .inc-table .idx { width: 44px; color: #9ca3af; }
+    .inc-table .act { width: 76px; text-align: right; white-space: nowrap; }
+    .inc-table th.num, .inc-table th.act { text-align: right; }
+    .inc-amt { font-weight: 600; color: #047857; }
+    .inc-person { display: inline-flex; align-items: center; gap: .6rem; }
+    .inc-avatar { width: 28px; height: 28px; border-radius: 50%; background: #e0e7ff; color: #3730a3; display: inline-flex; align-items: center; justify-content: center; font-size: .72rem; font-weight: 700; flex-shrink: 0; }
+    .inc-icon-btn { border: 0; background: transparent; padding: .15rem .3rem; border-radius: 6px; color: #6b7280; line-height: 1; font-size: 1rem; }
+    .inc-icon-btn:hover { background: #eef2ff; color: #4338ca; }
+    .inc-icon-btn.danger:hover { background: #fee2e2; color: #b91c1c; }
+    .inc-empty { text-align: center; padding: 2.5rem 1rem; color: #6b7280; border: 1px dashed #d1d5db; border-radius: 10px; background: #fafafa; }
+    .inc-empty .big { font-size: 2rem; line-height: 1; margin-bottom: .4rem; }
+    .inc-empty .t { font-weight: 600; color: #374151; margin-bottom: .25rem; }
     /* Center-align all payroll table data and headers. */
     #payrollApp .tabulator .tabulator-cell,
     #payrollApp .tabulator .tabulator-header .tabulator-col-title {
@@ -263,20 +285,29 @@
             </div>
         </div>
         <div class="tab-pane fade" id="tab-increment" role="tabpanel">
-            <div class="payroll-card p-3">
-                <div class="payroll-increment-toolbar">
-                    <h5 class="mb-0" style="font-size: 1rem; font-weight: 600;">Increment</h5>
-                    <div class="payroll-increment-filter">
-                        <label for="incrementMonthSelect" class="form-label mb-0 small text-muted">Month</label>
-                        <select id="incrementMonthSelect" class="form-select form-select-sm">
+            <div class="payroll-card p-3 inc-wrap">
+                <div class="inc-header">
+                    <div>
+                        <h5 class="inc-title">Increments</h5>
+                        <p class="inc-subtitle" id="incSubtitle">Employees with a salary increment, month wise.</p>
+                    </div>
+                    <div class="inc-controls">
+                        <div class="inc-search">
+                            <i class="ri-search-line"></i>
+                            <input type="text" id="incrementSearch" class="form-control form-control-sm" placeholder="Search employee">
+                        </div>
+                        <select id="incrementMonthSelect" class="form-select form-select-sm" title="Select month">
                             <option value="all">All Months</option>
                         </select>
+                        @if($canManage)
+                        <button type="button" class="btn btn-sm btn-primary inc-btn-add" id="btnAddIncrement">
+                            <i class="ri-add-line"></i> Add Increment
+                        </button>
+                        @endif
                     </div>
                 </div>
                 <div id="incrementSummary"></div>
-                <div id="incrementList" class="payroll-increment-list">
-                    <div class="text-muted small">Loading…</div>
-                </div>
+                <div id="incrementList"><div class="text-muted small">Loading…</div></div>
             </div>
         </div>
     </div>
@@ -347,6 +378,43 @@
                 </div>
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="incrementModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="formIncrement">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="incrementModalTitle">Add Increment</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Month</label>
+                        <select id="incModalMonth" class="form-select" required></select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Employee</label>
+                        <select id="incModalEmployee" class="form-select" required></select>
+                        <div class="form-text" id="incModalCurrent"></div>
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label small fw-semibold">Increment amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text" id="incModalCurrency">₹</span>
+                            <input type="number" id="incModalAmount" class="form-control" min="0" step="0.01" placeholder="0" required>
+                        </div>
+                        <div class="form-text">Added on top of Salary PP for the selected month. Saving replaces any existing increment.</div>
+                    </div>
+                    <div class="text-danger small mt-2" id="incModalError" hidden></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="incModalSave">Save Increment</button>
                 </div>
             </form>
         </div>
@@ -1117,89 +1185,124 @@
         }
     });
 
-    // Increment tab: month-wise tables of users with their increment amount + totals.
+    // ---------- Increment tab ----------
+    let incrementData = null;
+    let salarySheetStale = false;
+    let incrementMonthChosen = false;
+
     function formatTotals(totals) {
         const order = ['india', 'china', 'usa'];
         const parts = order.filter((r) => totals && totals[r]).map((r) => fmt(totals[r], r));
         return parts.length ? parts.join(' + ') : fmt(0, 'india');
     }
 
-    let incrementData = null;
+    function initials(name) {
+        const parts = String(name || '?').trim().split(/\s+/);
+        return ((parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+    }
+
+    function findIncMonth(id) {
+        return (incrementData?.months || []).find((m) => String(m.month_id) === String(id));
+    }
 
     function renderIncrements() {
         const box = document.getElementById('incrementList');
         const summary = document.getElementById('incrementSummary');
+        const subtitle = document.getElementById('incSubtitle');
         const select = document.getElementById('incrementMonthSelect');
         if (!box || !incrementData) return;
 
         const selected = select ? select.value : 'all';
-        const allMonths = incrementData.months || [];
-        const months = selected === 'all'
-            ? allMonths
-            : allMonths.filter((m) => String(m.month_id) === String(selected));
+        const term = (document.getElementById('incrementSearch')?.value || '').toLowerCase().trim();
+        const single = selected !== 'all' ? findIncMonth(selected) : null;
+        const sourceMonths = single ? [single] : (incrementData.months || []);
+
+        // Apply the name search, then drop months that end up empty in "All Months" view.
+        const months = sourceMonths.map((m) => {
+            const users = (m.users || []).filter((u) => !term || String(u.name).toLowerCase().includes(term));
+            const totals = {};
+            users.forEach((u) => { totals[u.region] = (totals[u.region] || 0) + Number(u.amount ?? u.increment ?? 0); });
+            return Object.assign({}, m, { users, totals });
+        }).filter((m) => single || m.users.length);
+
+        const totals = {};
+        let entries = 0;
+        months.forEach((m) => {
+            entries += m.users.length;
+            Object.keys(m.totals).forEach((r) => { totals[r] = (totals[r] || 0) + m.totals[r]; });
+        });
+
+        if (subtitle) {
+            subtitle.textContent = single
+                ? 'Increments given in ' + single.month_label + '.'
+                : 'Employees with a salary increment, month wise.';
+        }
+
+        const statusBadge = single
+            ? '<span class="inc-badge ' + (single.is_locked ? 'locked' : 'open') + '">'
+                + (single.is_locked ? '🔒 Locked' : '● Open') + '</span>'
+            : '<span class="text-muted" style="font-size:1rem;font-weight:600;">' + months.length + '</span>';
+
+        if (summary) {
+            summary.innerHTML = '<div class="inc-stats">'
+                + '<div class="inc-stat is-primary"><div class="k">Total Increment</div><div class="v">' + esc(formatTotals(totals)) + '</div></div>'
+                + '<div class="inc-stat"><div class="k">Employees with increment</div><div class="v">' + entries + '</div></div>'
+                + '<div class="inc-stat"><div class="k">' + (single ? 'Payroll month status' : 'Months') + '</div><div class="v">' + statusBadge + '</div></div>'
+                + '</div>';
+        }
 
         if (!months.length) {
-            if (summary) summary.innerHTML = '';
-            box.className = '';
-            box.innerHTML = '<div class="text-muted small">No increments found.</div>';
+            box.innerHTML = '<div class="inc-empty"><div class="big">📭</div>'
+                + '<div class="t">' + (term ? 'No matching employees' : 'No increments found') + '</div>'
+                + '<div class="small">' + (canManage && !term ? 'Use “Add Increment” to give someone an increment.' : '') + '</div></div>';
             return;
         }
 
-        let totals;
-        if (selected === 'all') {
-            totals = incrementData.grand_totals;
-        } else {
-            totals = months[0].totals;
-        }
-        const scopeLabel = selected === 'all' ? 'All Months' : months[0].month_label;
-        const entries = months.reduce((n, m) => n + (m.users || []).length, 0);
-
-        if (summary) {
-            summary.innerHTML = '<div class="payroll-increment-summary">'
-                + '<span class="lbl">Total Increment — ' + esc(scopeLabel) + '</span>'
-                + '<span class="amt">' + esc(formatTotals(totals)) + '</span>'
-                + '<span class="cnt">' + entries + ' increment' + (entries === 1 ? '' : 's')
-                + (selected === 'all' ? ' in ' + months.length + ' month' + (months.length === 1 ? '' : 's') : '') + '</span>'
-                + '</div>';
-        }
-
-        box.className = 'payroll-increment-grid' + (months.length === 1 ? ' is-single' : '');
-        box.innerHTML = months.map((m) => {
-            const users = m.users || [];
-            const rowsHtml = users.map((u, i) => '<tr>'
+        const grid = document.createElement('div');
+        grid.className = 'inc-grid' + (months.length === 1 ? ' is-single' : '');
+        grid.innerHTML = months.map((m) => {
+            const editable = canManage && !m.is_locked;
+            const rowsHtml = m.users.map((u, i) => '<tr>'
                 + '<td class="idx">' + (i + 1) + '</td>'
-                + '<td>' + esc(u.name) + '</td>'
-                + '<td class="num">' + esc(fmt(u.amount, u.region)) + '</td>'
+                + '<td><span class="inc-person"><span class="inc-avatar">' + esc(initials(u.name)) + '</span>' + esc(u.name) + '</span></td>'
+                + '<td class="num"><span class="inc-amt">' + esc(fmt(u.increment, u.region)) + '</span></td>'
+                + (canManage ? '<td class="act">' + (editable
+                    ? '<button type="button" class="inc-icon-btn inc-edit" title="Edit" data-month="' + m.month_id + '" data-row="' + u.row_id + '"><i class="ri-pencil-line"></i></button>'
+                    + '<button type="button" class="inc-icon-btn danger inc-remove" title="Remove increment" data-month="' + m.month_id + '" data-row="' + u.row_id + '"><i class="ri-delete-bin-line"></i></button>'
+                    : '<span class="text-muted" title="Month is locked">🔒</span>') + '</td>' : '')
                 + '</tr>').join('');
-            return '<div class="payroll-increment-month">'
-                + '<div class="payroll-increment-month-head">'
-                + '<span>' + esc(m.month_label) + ' <span class="text-muted small fw-normal">(' + users.length + ')</span></span>'
-                + '<span class="total">Total: ' + esc(formatTotals(m.totals)) + '</span>'
-                + '</div>'
-                + '<table class="payroll-increment-table"><thead><tr>'
-                + '<th class="idx">#</th><th>Employee</th><th class="num">Increment</th>'
-                + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>'
-                + '</div>';
+            const emptyRow = m.users.length ? '' : '<tr><td colspan="' + (canManage ? 4 : 3) + '" class="text-center text-muted py-4">No increments in this month yet.</td></tr>';
+            return '<div class="inc-card">'
+                + '<div class="inc-card-head"><span><span class="m">' + esc(m.month_label) + '</span><span class="c">' + m.users.length + ' employee' + (m.users.length === 1 ? '' : 's') + '</span></span>'
+                + '<span class="t">' + esc(formatTotals(m.totals)) + '</span></div>'
+                + '<table class="inc-table"><thead><tr><th class="idx">#</th><th>Employee</th><th class="num">Increment</th>'
+                + (canManage ? '<th class="act"></th>' : '') + '</tr></thead><tbody>' + rowsHtml + emptyRow + '</tbody>'
+                + (m.users.length > 1 ? '<tfoot><tr><td></td><td>Total</td><td class="num">' + esc(formatTotals(m.totals)) + '</td>' + (canManage ? '<td></td>' : '') + '</tr></tfoot>' : '')
+                + '</table></div>';
         }).join('');
+        box.innerHTML = '';
+        box.appendChild(grid);
+    }
+
+    function fillIncrementMonthSelect() {
+        const select = document.getElementById('incrementMonthSelect');
+        if (!select || !incrementData) return;
+        const keep = incrementMonthChosen ? select.value : null;
+        select.innerHTML = '<option value="all">All Months</option>'
+            + (incrementData.months || []).map((m) => '<option value="' + m.month_id + '">' + esc(m.month_label) + '</option>').join('');
+        const wanted = keep || (incrementData.default_month_id ? String(incrementData.default_month_id) : 'all');
+        select.value = Array.from(select.options).some((o) => o.value === wanted) ? wanted : 'all';
     }
 
     async function loadIncrements() {
         const box = document.getElementById('incrementList');
         const summary = document.getElementById('incrementSummary');
-        const select = document.getElementById('incrementMonthSelect');
         if (!box) return;
-        box.className = '';
         box.innerHTML = '<div class="text-muted small">Loading…</div>';
         if (summary) summary.innerHTML = '';
         try {
             incrementData = await api(`${base}/increments`);
-            if (select) {
-                const keep = select.value || 'all';
-                select.innerHTML = '<option value="all">All Months</option>'
-                    + (incrementData.months || []).map((m) =>
-                        '<option value="' + m.month_id + '">' + esc(m.month_label) + '</option>').join('');
-                select.value = Array.from(select.options).some((o) => o.value === keep) ? keep : 'all';
-            }
+            fillIncrementMonthSelect();
             renderIncrements();
         } catch (err) {
             incrementData = null;
@@ -1207,7 +1310,111 @@
         }
     }
 
-    document.getElementById('incrementMonthSelect')?.addEventListener('change', renderIncrements);
+    document.getElementById('incrementMonthSelect')?.addEventListener('change', () => {
+        incrementMonthChosen = true;
+        renderIncrements();
+    });
+    document.getElementById('incrementSearch')?.addEventListener('input', renderIncrements);
+
+    // ----- Add / edit increment modal -----
+    const incModalEl = document.getElementById('incrementModal');
+    const incModalMonth = document.getElementById('incModalMonth');
+    const incModalEmployee = document.getElementById('incModalEmployee');
+    const incModalAmount = document.getElementById('incModalAmount');
+    const incModalCurrent = document.getElementById('incModalCurrent');
+    const incModalCurrency = document.getElementById('incModalCurrency');
+    const incModalError = document.getElementById('incModalError');
+
+    function incModalFillEmployees(monthId, selectedRowId) {
+        const m = findIncMonth(monthId);
+        const emps = m?.employees || [];
+        incModalEmployee.innerHTML = '<option value="">Select employee…</option>'
+            + emps.map((e) => '<option value="' + e.row_id + '">' + esc(e.name) + (e.increment ? ' (current: ' + esc(fmt(e.increment, e.region)) + ')' : '') + '</option>').join('');
+        if (selectedRowId) incModalEmployee.value = String(selectedRowId);
+        incModalOnEmployee();
+    }
+
+    function incModalOnEmployee() {
+        const m = findIncMonth(incModalMonth.value);
+        const e = (m?.employees || []).find((x) => String(x.row_id) === String(incModalEmployee.value));
+        incModalCurrency.textContent = e ? fmt(0, e.region).replace(/[0-9,.\s]+$/, '').trim() || '₹' : '₹';
+        incModalCurrent.textContent = e && e.increment
+            ? 'Current increment: ' + fmt(e.increment, e.region) + '. Saving will replace it.'
+            : '';
+    }
+
+    function openIncrementModal(opts) {
+        if (!incrementData || !incModalEl) return;
+        opts = opts || {};
+        const open = (incrementData.months || []).filter((m) => !m.is_locked);
+        if (!open.length) { alert('All payroll months are locked.'); return; }
+        incModalMonth.innerHTML = open.map((m) => '<option value="' + m.month_id + '">' + esc(m.month_label) + '</option>').join('');
+        const sel = document.getElementById('incrementMonthSelect')?.value;
+        const preferred = opts.monthId || (sel && sel !== 'all' ? sel : incrementData.default_month_id);
+        incModalMonth.value = open.some((m) => String(m.month_id) === String(preferred)) ? String(preferred) : String(open[0].month_id);
+        incModalFillEmployees(incModalMonth.value, opts.rowId);
+        const emp = (findIncMonth(incModalMonth.value)?.employees || []).find((x) => String(x.row_id) === String(opts.rowId));
+        incModalAmount.value = emp && emp.increment ? emp.increment : '';
+        incModalError.hidden = true;
+        document.getElementById('incrementModalTitle').textContent = opts.rowId ? 'Edit Increment' : 'Add Increment';
+        incModalMonth.disabled = !!opts.rowId;
+        incModalEmployee.disabled = !!opts.rowId;
+        bootstrap.Modal.getOrCreateInstance(incModalEl).show();
+    }
+
+    document.getElementById('btnAddIncrement')?.addEventListener('click', () => openIncrementModal());
+    incModalMonth?.addEventListener('change', () => incModalFillEmployees(incModalMonth.value));
+    incModalEmployee?.addEventListener('change', () => {
+        incModalOnEmployee();
+        const m = findIncMonth(incModalMonth.value);
+        const e = (m?.employees || []).find((x) => String(x.row_id) === String(incModalEmployee.value));
+        if (e && e.increment) incModalAmount.value = e.increment;
+    });
+
+    async function saveIncrement(rowId, amount) {
+        return api(`${base}/employee-salary/${rowId}`, 'PUT', { increment: amount });
+    }
+
+    document.getElementById('formIncrement')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const rowId = incModalEmployee.value;
+        const amount = parseFloat(incModalAmount.value);
+        incModalError.hidden = true;
+        if (!rowId) { incModalError.textContent = 'Please select an employee.'; incModalError.hidden = false; return; }
+        if (isNaN(amount) || amount < 0) { incModalError.textContent = 'Enter a valid amount.'; incModalError.hidden = false; return; }
+        const btn = document.getElementById('incModalSave');
+        btn.disabled = true;
+        try {
+            await saveIncrement(rowId, amount);
+            bootstrap.Modal.getInstance(incModalEl)?.hide();
+            await loadIncrements();
+            salarySheetStale = true;
+        } catch (err) {
+            incModalError.textContent = err.message || 'Failed to save increment.';
+            incModalError.hidden = false;
+        } finally {
+            btn.disabled = false;
+        }
+    });
+
+    document.getElementById('incrementList')?.addEventListener('click', async (e) => {
+        const edit = e.target.closest('.inc-edit');
+        const remove = e.target.closest('.inc-remove');
+        if (edit) {
+            openIncrementModal({ monthId: edit.dataset.month, rowId: edit.dataset.row });
+        } else if (remove) {
+            if (!confirm('Remove this increment (set to 0)?')) return;
+            remove.disabled = true;
+            try {
+                await saveIncrement(remove.dataset.row, 0);
+                await loadIncrements();
+                salarySheetStale = true;
+            } catch (err) {
+                alert(err.message || 'Failed to remove increment.');
+                remove.disabled = false;
+            }
+        }
+    });
 
     // Tables built inside hidden tabs need a redraw once their tab becomes visible.
     document.querySelectorAll('#payrollRegionTabs [data-bs-toggle="tab"]').forEach((btn) => {
@@ -1218,6 +1425,10 @@
             if (isIncrement) {
                 loadIncrements();
                 return;
+            }
+            if (salarySheetStale) {
+                salarySheetStale = false;
+                if (currentMonthId()) loadMonth();
             }
             activeSalaryRegion = normalizeRegion(btn.dataset.region || 'india');
             updateRegionUi();
