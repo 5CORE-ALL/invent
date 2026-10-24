@@ -1003,9 +1003,18 @@
         return (isFinite(n) && n > 0) ? +n.toFixed(2) : 0;
     }
 
-    /** Discounted Price = Std prc vs dil only. Sprc Dil does not write S PRC. */
+    /**
+     * S PRC the rule gives. Sprc Dil switch OFF: Std prc vs dil. Switch ON: Std Prc less the S Disc $ that lands the row
+     * on its Sprc Dil Target SNROI (S PRC = S Promo Prc + S 12% $). No target for the row = no S PRC.
+     */
     function temuDiscountedPrice(row) {
         if (!row) return 0;
+        if (ntoDilRuleOn()) {
+            const dilPrc = ntoRowDilTargetPrc(row);
+            const std = ntoRowSpriceStart(row);
+            if (dilPrc == null || !(std > 0)) return 0;
+            return +(std - ntoRowSDiscAmt(row)).toFixed(2);
+        }
         if (typeof window.chStdPriceForRow === 'function') {
             const stdRule = Number(window.chStdPriceForRow(row)) || 0;
             if (stdRule > 0) {
@@ -1328,10 +1337,42 @@
      * Dil Save writes the painted S PRC cell into NTO_SPRICE.
      * Push queues that same cell dollar (S Base of the cell), not a second solve.
      */
+    /** Repaint the grid with the active rule right now. Keeps the scroll position. */
+    function ntoRepaintNow() {
+        if (!table) return;
+        temuClearCapMemo();
+        const holder = document.querySelector('#new-temuone-table .tabulator-tableholder');
+        const top = holder ? holder.scrollTop : 0;
+        const left = holder ? holder.scrollLeft : 0;
+        try { table.redraw(true); } catch (e) { /* ignore */ }
+        if (holder) { holder.scrollTop = top; holder.scrollLeft = left; }
+        if (typeof updateSummaryNow === 'function') updateSummaryNow();
+    }
+    /**
+     * The Sprc Dil / Std prc vs dil switch was flipped. Same steps as Amazon, with the Temu formula:
+     * 1) repaint every S column from the ON rule at once (S Promo Prc, S Promo Base Prc, SNROI% ...),
+     * 2) save the new S PRC and S Promo Base Prc in the background (no push).
+     */
+    let ntoRuleSwitchSeq = 0;
+    window.spriceOnRuleSwitched = function(rule) {
+        const seq = ++ntoRuleSwitchSeq;
+        ntoRepaintNow();
+        (async function() {
+            try {
+                await ntoPersistDisplayedSprice();
+                if (seq !== ntoRuleSwitchSeq) return; // flipped again meanwhile: the newer run saves
+                await ntoPersistPromoBase();
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('Could not save the recalculated prices', 'error');
+            }
+        })();
+    };
     async function chPromoClearThenApplyAllRules(opts) {
         opts = opts || {};
         if (opts.persist !== true) return 0;
+        ntoRepaintNow(); // new slabs / rules show in the grid first, saving follows
         const n = await ntoPersistDisplayedSprice();
+        try { await ntoPersistPromoBase(); } catch (e) { /* ignore */ }
         if (opts.push === true) {
             window._ntoReloadPushQueued = false;
             if (typeof ntoTryQueuePushOnReload === 'function') ntoTryQueuePushOnReload({ manual: true });
@@ -2247,9 +2288,52 @@
     function ntoRowSDiscAmt(d) {
         return ntoMemo(d, 'sDisc', function() { return ntoRowSDiscAmtCompute(d); });
     }
+    /** The Sprc Dil switch is ON: S PRC comes from the Sprc Dil Target SNROI, not from Std prc vs dil. */
+    function ntoDilRuleOn() {
+        return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+    }
+    /** Target SNROI% for the row: its Dil slab (INV > 0 child SKUs) plus the CVR up / down overlay. Null when none. */
+    function ntoRowSprcDilTarget(d) {
+        if (typeof ebayDilGroiResolve !== 'function' || typeof ebayDilGroiApplyCvrAdj !== 'function'
+            || typeof ebayDgIsChild !== 'function' || typeof ebayDgInv !== 'function') return null;
+        return ntoMemo(d, 'dilTarget', function() {
+            if (!d || d.is_parent_summary || !ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return null;
+            const dil = ebayDgDil(d);
+            const rule = ebayDilGroiMatch(dil) || ebayDilGroiResolve(dil);
+            if (!rule) return null;
+            const t = Number(ebayDilGroiApplyCvrAdj(rule.groi, d));
+            return isFinite(t) ? t : null;
+        });
+    }
+    /**
+     * S Promo Prc that lands exactly on the Sprc Dil Target SNROI (Temu formula, same as the SNROI% column):
+     *   SNROI = ((S Promo Prc × 0.95 − Temu Ship − LP) − Std Prc × Ads%) / LP × 100
+     *   S Promo Prc = (LP × (1 + target/100) + Ship + Std × Ads%) / 0.95, rounded down to the cent.
+     */
+    function ntoRowDilTargetPrc(d) {
+        return ntoMemo(d, 'dilPrc', function() {
+            const target = ntoRowSprcDilTarget(d);
+            if (target == null) return null;
+            const std = ntoRowSpriceStart(d);
+            const lp = parseFloat(d && d.lp) || 0;
+            if (!(std > 0) || !(lp > 0)) return null;
+            const ship = parseFloat(d && d.temu_ship) || 0;
+            const adsFrac = (typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 0) / 100;
+            const prc = Math.floor((((lp * (1 + target / 100)) + ship + (std * adsFrac)) / 0.95) * 100 + 0.00001) / 100;
+            return prc > 0 ? prc : null;
+        });
+    }
     function ntoRowSDiscAmtCompute(d) {
         const s = ntoRowSpriceStart(d);
         if (!(s > 0)) return 0;
+        if (ntoDilRuleOn()) {
+            // Same as Amazon: with Sprc Dil ON the Std prc vs dil discounts are not used. The target price replaces them.
+            // Std Prc less S 12% $ is the most it can be, so a target that needs more holds there with no discount.
+            const dilPrc = ntoRowDilTargetPrc(d);
+            if (dilPrc == null) return 0;
+            const maxPromoDil = s - ntoRowSTwelvePct(d);
+            return dilPrc >= maxPromoDil ? 0 : +(maxPromoDil - dilPrc).toFixed(2);
+        }
         const pm = ntoRowPm(d);
         let amt = pm > 0 ? +(s * pm / 100).toFixed(2) : 0;
         const capPrc = ntoRowSnroiCapPrc(d);

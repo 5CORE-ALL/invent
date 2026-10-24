@@ -68,6 +68,11 @@
             }
             function spriceApplyOnRule() {
                 const rule = spriceActiveRule();
+                // A page can take over the switch: repaint at once from the ON rule, then save in the background.
+                if (typeof window.spriceOnRuleSwitched === 'function') {
+                    try { window.spriceOnRuleSwitched(rule); } catch (e) { /* ignore */ }
+                    return;
+                }
                 if (typeof window.amzScheduleRuleSpriceSync === 'function') {
                     try { window.amzScheduleRuleSpriceSync(); } catch (e) { /* ignore */ }
                     return;
