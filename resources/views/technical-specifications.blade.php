@@ -560,6 +560,9 @@
                         <button type="button" id="pushEbayBtn" class="btn btn-sm btn-outline-danger" title="Push technical specifications to eBay 1 for the selected rows">
                             <i class="fas fa-cloud-upload-alt"></i> Push to eBay 1
                         </button>
+                        <button type="button" id="clearSpecsBtn" class="btn btn-sm btn-outline-secondary" title="Clear the saved specifications of the selected rows in this app. eBay is not changed.">
+                            <i class="fas fa-eraser"></i> Clear
+                        </button>
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm">
                             <i class="fas fa-download"></i> Export
                         </button>
@@ -1974,6 +1977,71 @@
                 runEbaySync('push', skus);
             }
 
+            function promptClearSpecs() {
+                const rows = selectedRows();
+                if (!rows.length) {
+                    openEbayPrompt({
+                        title: 'Select rows',
+                        body: 'Select the rows to clear before continuing. Use the checkboxes in the first column.',
+                        rows: [],
+                    });
+                    return;
+                }
+                if (rows.length > 500) {
+                    openEbayPrompt({
+                        title: 'Too many rows',
+                        body: 'Select 500 rows or fewer at a time, then clear again.',
+                        rows: rows,
+                    });
+                    return;
+                }
+                openEbayPrompt({
+                    title: 'Clear specifications',
+                    body: 'Clear all saved technical specifications for these ' + rows.length + ' row' + (rows.length === 1 ? '' : 's') + '? This only changes this app. eBay is not changed.',
+                    rows: rows,
+                    confirmText: 'Clear',
+                    confirmClass: 'btn-danger',
+                    onConfirm: function () { runClearSpecs(rows.map(function (row) { return row.SKU; })); },
+                });
+            }
+
+            async function runClearSpecs(skus) {
+                const confirmBtn = document.getElementById('ebaySyncConfirm');
+                const cancelBtn = document.getElementById('ebaySyncCancel');
+                const status = document.getElementById('ebaySyncStatus');
+                const list = document.getElementById('ebaySyncSkuList');
+                confirmBtn.disabled = true;
+                cancelBtn.disabled = true;
+                hideSyncOutcome();
+                list.innerHTML = '';
+                let done = 0;
+                let failed = 0;
+                for (const sku of skus) {
+                    status.textContent = 'Clearing ' + (done + failed + 1) + ' of ' + skus.length + '…';
+                    try {
+                        const json = await saveSpecs(sku, '', []);
+                        applySaveToRow(sku, json, '');
+                        done++;
+                    } catch (e) {
+                        failed++;
+                        const li = document.createElement('li');
+                        li.className = 'ts-sync-row text-danger';
+                        li.textContent = sku + ' — ' + (e.message || 'Clear failed');
+                        list.appendChild(li);
+                    }
+                }
+                applyStatusFilter();
+                updateSelectedCount();
+                const summary = 'Cleared ' + done + ' row' + (done === 1 ? '' : 's') + (failed ? ', ' + failed + ' failed' : '') + '.';
+                status.textContent = summary;
+                document.getElementById('ebaySyncBody').textContent = '';
+                showSyncOutcome(failed === 0, failed === 0 ? 'Specifications cleared' : 'Clear finished with errors', summary);
+                confirmBtn.classList.add('d-none');
+                cancelBtn.disabled = false;
+                cancelBtn.textContent = 'Close';
+                ebaySyncAction = null;
+            }
+
             function promptEbaySync(mode) {
                 const rows = selectedRows();
                 const verb = mode === 'pull' ? 'pull from eBay 1' : 'push to eBay 1';
@@ -2113,6 +2181,7 @@
                 if (colMenuParent) colMenuParent.addEventListener('shown.bs.dropdown', placeTsColumnPanel);
                 window.addEventListener('resize', placeTsColumnPanel);
                 document.getElementById('pushEbayBtn').addEventListener('click', function () { promptEbaySync('push'); });
+                document.getElementById('clearSpecsBtn').addEventListener('click', promptClearSpecs);
                 document.getElementById('ebaySyncConfirm').addEventListener('click', function () {
                     if (typeof ebaySyncAction === 'function') ebaySyncAction();
                 });
