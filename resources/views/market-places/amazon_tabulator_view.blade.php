@@ -1608,6 +1608,45 @@
             const cost = (isFinite(lp) && lp > 0) ? lp : 0;
             return ((p * 0.80 - ship - cost) / p) * 100;
         }
+        /** NPFT$ of 1 pc for a child SKU at its current price: Price × (GPFT% − Ads%) ÷ 100. Null without a valid price. */
+        function amazonChildNpftAmt(rowData) {
+            if (!rowData || rowData.is_parent_summary) return null;
+            const price = parseFloat(rowData.price);
+            if (!isFinite(price) || price <= 0) return null;
+            const ads = amazonRowAdsPct(rowData);
+            const gpft = amazonComputeGpftAt(price, rowData);
+            const pct = (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
+            return price * pct / 100;
+        }
+        /**
+         * NPFT$ for a row. Child: its own NPFT$ per pc. Parent: average NPFT$ per pc across its child SKUs that have a price
+         * (same idea as the parent's Price, which is the average of its children).
+         * Parent averages are cached for a moment so sorting / rendering many parent rows stays fast.
+         */
+        let _amzParentNpftCache = { at: 0, map: null };
+        function amazonRowNpftAmt(rowData) {
+            if (!rowData) return null;
+            if (!rowData.is_parent_summary) return amazonChildNpftAmt(rowData);
+            if (!table) return null;
+            const now = Date.now();
+            if (!_amzParentNpftCache.map || now - _amzParentNpftCache.at > 400) {
+                const sums = {};
+                table.getData().forEach(function(r) {
+                    if (!r || r.is_parent_summary) return;
+                    const key = String(r.Parent || r.parent || '').trim().toUpperCase();
+                    if (!key) return;
+                    const v = amazonChildNpftAmt(r);
+                    if (v == null || !isFinite(v)) return;
+                    if (!sums[key]) sums[key] = { sum: 0, n: 0 };
+                    sums[key].sum += v;
+                    sums[key].n += 1;
+                });
+                _amzParentNpftCache = { at: now, map: sums };
+            }
+            const k = String(rowData.Parent || rowData.parent || '').trim().toUpperCase();
+            const s = _amzParentNpftCache.map[k];
+            return (s && s.n > 0) ? s.sum / s.n : null;
+        }
         function amazonComputeGroiAt(price, rowData) {
             if (!rowData) return null;
             const p = parseFloat(price);
@@ -5423,26 +5462,12 @@
                         title: "NPFT$",
                         field: "npft_amt",
                         hozAlign: "center",
-                        headerTooltip: "NPFT$ of 1 pc at the current sale price = Price × NPFT% ÷ 100 (= Price × 0.80 − ship − LP − Price × Ads%).",
-                        // Same value the cell shows. Parent rows are blank.
-                        sorter: amazonMetricSorter(function(d) {
-                            if (!d || d.is_parent_summary) return null;
-                            const price = parseFloat(d.price);
-                            if (!isFinite(price) || price <= 0) return null;
-                            const ads = amazonRowAdsPct(d);
-                            const gpft = amazonComputeGpftAt(price, d);
-                            const pct = (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
-                            return price * pct / 100;
-                        }),
+                        headerTooltip: "NPFT$ of 1 pc at the current sale price = Price × NPFT% ÷ 100 (= Price × 0.80 − ship − LP − Price × Ads%). Parent rows show the average NPFT$ per pc across their child SKUs.",
+                        // Same value the cell shows.
+                        sorter: amazonMetricSorter(amazonRowNpftAmt),
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            const price = parseFloat(rowData.price);
-                            if (!isFinite(price) || price <= 0) return '';
-                            const ads = amazonRowAdsPct(rowData);
-                            const gpft = amazonComputeGpftAt(price, rowData);
-                            const pct = (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
-                            const amt = price * pct / 100;
+                            const amt = amazonRowNpftAmt(cell.getRow().getData());
+                            if (amt == null || !isFinite(amt)) return '';
                             const color = amt < 0 ? '#a00211' : '#28a745';
                             return `<span style="font-weight:600;color:${color};">${amt < 0 ? '-' : ''}$${Math.abs(amt).toFixed(2)}</span>`;
                         },
@@ -5749,18 +5774,18 @@
                         width: 70
                     },
                     {
-                        title: "CPS",
+                        title: "ACOS %",
                         field: "lt_cps",
                         hozAlign: "center",
                         sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
-                        headerTooltip: "Parent rows: CPS = LT Spend ÷ LT Sales (lifetime, KW + PT campaigns). Blank when there are no lifetime sales.",
+                        headerTooltip: "Parent rows: lifetime ACOS % = LT Spend ÷ LT Sales × 100 (KW + PT campaigns). Blank when there are no lifetime sales.",
                         formatter: function(cell) {
                             if (!cell.getRow().getData().is_parent_summary) return '';
                             const val = cell.getValue();
                             if (val == null || val === '') return '';
                             const n = parseFloat(val);
                             if (!Number.isFinite(n)) return '';
-                            return `<span>${n.toFixed(2)}</span>`;
+                            return `<span>${Math.round(n * 100)}%</span>`;
                         },
                         width: 60
                     },
@@ -5777,6 +5802,38 @@
                             const n = parseFloat(val);
                             if (!Number.isFinite(n)) return '';
                             return `<span>${n.toFixed(2)}</span>`;
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "TCOS%",
+                        field: "lt_tcos",
+                        hozAlign: "center",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
+                        headerTooltip: "Parent rows: TCOS% = ACOS % × 0.60, where ACOS % = LT Spend ÷ LT Sales × 100 (KW + PT campaigns). Blank when there are no lifetime sales.",
+                        formatter: function(cell) {
+                            if (!cell.getRow().getData().is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const n = parseFloat(val);
+                            if (!Number.isFinite(n)) return '';
+                            return `<span>${Math.round(n)}%</span>`;
+                        },
+                        width: 62
+                    },
+                    {
+                        title: "CPC",
+                        field: "lt_cpc",
+                        hozAlign: "center",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
+                        headerTooltip: "Parent rows: CPC = LT Spend ÷ LT Sold (lifetime spend per Ads Sold unit, KW + PT campaigns). Blank when there are no lifetime sold units.",
+                        formatter: function(cell) {
+                            if (!cell.getRow().getData().is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const n = parseFloat(val);
+                            if (!Number.isFinite(n)) return '';
+                            return `<span>$${n.toFixed(2)}</span>`;
                         },
                         width: 60
                     }
@@ -6947,7 +7004,7 @@
                 if (shipIdx !== -1) {
                     valid.splice(shipIdx, 1);
                     valid.push('Ship_productmaster');
-                    ['kw_spend_l30', 'pt_spend_l30', 'kw_pt_spend_l30', 'lt_spend', 'lt_sales', 'lt_sold', 'lt_cps', 'lt_tcps'].forEach(function(f) {
+                    ['kw_spend_l30', 'pt_spend_l30', 'kw_pt_spend_l30', 'lt_spend', 'lt_sales', 'lt_sold', 'lt_cps', 'lt_tcps', 'lt_tcos', 'lt_cpc'].forEach(function(f) {
                         const i = valid.indexOf(f);
                         if (i !== -1) valid.splice(i, 1);
                         if (existing.indexOf(f) !== -1) valid.push(f);

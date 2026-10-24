@@ -908,6 +908,22 @@ class OverallAmazonController extends Controller
 
                     return ($spend !== null && $sales !== null && $sales > 0) ? round(($spend / $sales) * 0.60, 2) : null;
                 })(),
+                // TCOS % = ACOS % × 0.60 (ACOS % = LT Spend ÷ LT Sales × 100).
+                'lt_tcos' => (function () use ($parentKwPtSpend, $parent) {
+                    $k = self::normalizeCampaignName((string) $parent);
+                    $spend = $parentKwPtSpend['lt'][$k] ?? null;
+                    $sales = $parentKwPtSpend['lts'][$k] ?? null;
+
+                    return ($spend !== null && $sales !== null && $sales > 0) ? round(($spend / $sales) * 100 * 0.60, 2) : null;
+                })(),
+                // CPC = LT Spend ÷ LT Sold (blank when there are no lifetime sold units).
+                'lt_cpc' => (function () use ($parentKwPtSpend, $parent) {
+                    $k = self::normalizeCampaignName((string) $parent);
+                    $spend = $parentKwPtSpend['lt'][$k] ?? null;
+                    $sold = $parentKwPtSpend['ltsold'][$k] ?? null;
+
+                    return ($spend !== null && $sold !== null && $sold > 0) ? round($spend / $sold, 2) : null;
+                })(),
                 'lt_sold' => isset($parentKwPtSpend['ltsold'][self::normalizeCampaignName((string) $parent)])
                     ? (int) round($parentKwPtSpend['ltsold'][self::normalizeCampaignName((string) $parent)]) : null,
                 'GPFT%' => $rows->count() > 0 ? round($rows->avg('GPFT%'), 2) : 0,

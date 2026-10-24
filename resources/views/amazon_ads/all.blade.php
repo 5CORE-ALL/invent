@@ -2210,7 +2210,7 @@
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_inv_color', 'bgt_inv_label', 'bgt_inv_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value'];
             var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -3338,9 +3338,15 @@
                     return;
                 }
                 if (c === 'ltCps') {
-                    col.title = 'CPS';
-                    col.headerTooltip = 'CPS = LT Spend ÷ LT Sales (lifetime). Blank when there are no lifetime sales.';
-                    col.formatter = fmt2dec;
+                    col.title = 'ACOS %';
+                    col.headerTooltip = 'ACOS % = LT Spend ÷ LT Sales × 100 (lifetime). Blank when there are no lifetime sales.';
+                    col.formatter = function (cell) {
+                        var v = cell.getValue();
+                        if (v === null || v === undefined || v === '') return amzDash();
+                        var n = typeof v === 'number' ? v : parseFloat(v);
+                        if (isNaN(n)) return amzDash();
+                        return Math.round(n * 100) + '%';
+                    };
                     col.minWidth = 58;
                     col.width = 64;
                     return;
@@ -3351,6 +3357,28 @@
                     col.formatter = fmt2dec;
                     col.minWidth = 58;
                     col.width = 66;
+                    return;
+                }
+                if (c === 'ltTcos') {
+                    col.title = 'TCOS%';
+                    col.headerTooltip = 'TCOS% = ACOS % × 0.60, where ACOS % = LT Spend ÷ LT Sales × 100 (lifetime). Blank when there are no lifetime sales.';
+                    col.formatter = function (cell) {
+                        var v = cell.getValue();
+                        if (v === null || v === undefined || v === '') return amzDash();
+                        var n = typeof v === 'number' ? v : parseFloat(v);
+                        if (isNaN(n)) return amzDash();
+                        return Math.round(n) + '%';
+                    };
+                    col.minWidth = 58;
+                    col.width = 66;
+                    return;
+                }
+                if (c === 'ltCpc') {
+                    col.title = 'CPC';
+                    col.headerTooltip = 'CPC = LT Spend ÷ LT Sold (lifetime spend per Ads Sold unit). Blank when there are no lifetime sold units. Not the same as CPC Avg (spend ÷ clicks).';
+                    col.formatter = fmt2dec;
+                    col.minWidth = 56;
+                    col.width = 62;
                     return;
                 }
                 if (c === 'sales') { col.title = 'Sales'; col.formatter = fmtDashNumberRaw; return; }
