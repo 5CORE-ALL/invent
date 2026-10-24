@@ -1361,6 +1361,11 @@
                         names.forEach(function (name) {
                             if (isRealAspect(name)) keep[aspectKey(name)] = true;
                         });
+                        // Imported or saved values belong to the category too, so they stay visible.
+                        (row.ebay_required || []).forEach(function (name) {
+                            if (!isRealAspect(name)) return;
+                            if (String((row.ebay_values || {})[name] || '').trim() !== '') keep[aspectKey(name)] = true;
+                        });
                     });
                 }
                 return keep;
