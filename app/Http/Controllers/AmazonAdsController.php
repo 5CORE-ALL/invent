@@ -103,7 +103,7 @@ class AmazonAdsController extends Controller
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
         'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos',
         'pageCvr', 'viewsL30', 'viewsL7',
-        'ACOS', 'ltAcos', 'ltSpend', 'ltSales',
+        'ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps',
     ];
 
     /**
@@ -465,7 +465,7 @@ class AmazonAdsController extends Controller
         $canAcos = in_array('cost', $baseCols, true)
             && (in_array('sales30d', $baseCols, true) || in_array('sales', $baseCols, true));
         if ($canAcos) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => ! in_array($c, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales'], true)));
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => ! in_array($c, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps'], true)));
             $idxSales30 = array_search('yAcos', $ordered, true);
             if ($idxSales30 === false) {
                 $idxSales30 = array_search('ySales', $ordered, true);
@@ -474,11 +474,11 @@ class AmazonAdsController extends Controller
                 $idxSales30 = array_search('sales30d', $ordered, true);
             }
             if ($idxSales30 !== false) {
-                array_splice($ordered, $idxSales30 + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales']);
+                array_splice($ordered, $idxSales30 + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps']);
             } else {
                 $idxSales = array_search('sales', $ordered, true);
                 if ($idxSales !== false) {
-                    array_splice($ordered, $idxSales + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales']);
+                    array_splice($ordered, $idxSales + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps']);
                 }
             }
         }
@@ -2403,7 +2403,7 @@ class AmazonAdsController extends Controller
      *
      * @param  array<int, string>  $dbColumns
      * @param  iterable<int, object>  $pageRows
-     * @return array<string, array{spend: ?float, sales: ?float}>
+     * @return array<string, array{spend: ?float, sales: ?float, sold: ?int, cps: ?float, tcps: ?float}>
      */
     private static function prefetchLifetimeSpendSalesForPageRows(string $table, array $dbColumns, iterable $pageRows): array
     {
@@ -2412,7 +2412,10 @@ class AmazonAdsController extends Controller
         }
         $costCol = in_array('cost', $dbColumns, true) ? 'cost' : (in_array('spend', $dbColumns, true) ? 'spend' : null);
         $salesCol = in_array('sales30d', $dbColumns, true) ? 'sales30d' : (in_array('sales', $dbColumns, true) ? 'sales' : null);
-        if ($costCol === null && $salesCol === null) {
+        $soldCol = in_array('purchases30d', $dbColumns, true)
+            ? 'purchases30d'
+            : (in_array('purchases', $dbColumns, true) ? 'purchases' : null);
+        if ($costCol === null && $salesCol === null && $soldCol === null) {
             return [];
         }
         $hasAdType = in_array('ad_type', $dbColumns, true);
@@ -2430,6 +2433,9 @@ class AmazonAdsController extends Controller
         }
 
         $select = ['campaign_id'];
+        if ($soldCol !== null) {
+            $select[] = DB::raw('SUM(`'.$soldCol.'`) as life_sold');
+        }
         if ($costCol !== null) {
             $select[] = DB::raw('SUM(`'.$costCol.'`) as life_cost');
         }
@@ -2455,9 +2461,19 @@ class AmazonAdsController extends Controller
             $ad = $hasAdType ? trim((string) ($r['ad_type'] ?? '')) : '';
             $cost = isset($r['life_cost']) && $r['life_cost'] !== null ? (float) $r['life_cost'] : null;
             $sales = isset($r['life_sales']) && $r['life_sales'] !== null ? (float) $r['life_sales'] : null;
+            $sold = isset($r['life_sold']) && $r['life_sold'] !== null ? (float) $r['life_sold'] : null;
             $map[$cid."\0".$ad] = [
                 'spend' => ($cost !== null && is_finite($cost)) ? round($cost, 2) : null,
                 'sales' => ($sales !== null && is_finite($sales)) ? round($sales, 2) : null,
+                'sold' => ($sold !== null && is_finite($sold)) ? (int) round($sold) : null,
+                // CPS = LT Spend ÷ LT Sales (blank when there are no lifetime sales).
+                'cps' => ($cost !== null && $sales !== null && is_finite($cost) && is_finite($sales) && $sales > 0)
+                    ? round($cost / $sales, 2)
+                    : null,
+                // TCPS = CPS × 0.60.
+                'tcps' => ($cost !== null && $sales !== null && is_finite($cost) && is_finite($sales) && $sales > 0)
+                    ? round(($cost / $sales) * 0.60, 2)
+                    : null,
             ];
         }
 
@@ -6965,7 +6981,7 @@ class AmazonAdsController extends Controller
         $hasCpcAvg = in_array('CPCAvg', $columns, true) && (! $forBgtUniverse || $forSbidUniverse);
         $hasLtCvr = ! $forBgtUniverse && in_array('ltCvr', $columns, true);
         $hasLtAcos = ! $forSbidUniverse && in_array('ltAcos', $columns, true);
-        $hasLtSpendSales = ! $forSbidUniverse && (in_array('ltSpend', $columns, true) || in_array('ltSales', $columns, true));
+        $hasLtSpendSales = ! $forSbidUniverse && (in_array('ltSpend', $columns, true) || in_array('ltSales', $columns, true) || in_array('ltSold', $columns, true) || in_array('ltCps', $columns, true) || in_array('ltTcps', $columns, true));
         $needRuleStatus = in_array('ruleStatus', $columns, true);
         $needActiveAgain = in_array('activeAgain', $columns, true);
         $needSkuMetrics = $needRuleStatus || $needActiveAgain || in_array('sbgt', $columns, true)
@@ -7160,6 +7176,9 @@ class AmazonAdsController extends Controller
                 $ltSs = ($cid !== '') ? ($ltSpendSalesMap[$cid."\0".$adKeyLtSs] ?? null) : null;
                 $arr['ltSpend'] = $ltSs['spend'] ?? null;
                 $arr['ltSales'] = $ltSs['sales'] ?? null;
+                $arr['ltSold'] = $ltSs['sold'] ?? null;
+                $arr['ltCps'] = $ltSs['cps'] ?? null;
+                $arr['ltTcps'] = $ltSs['tcps'] ?? null;
             }
             if ($hasCpc2) {
                 $day2 = self::calendarDayOffsetFromCpc1Anchor($rowArr, $dbColumns, $table, 1);
@@ -8101,7 +8120,7 @@ class AmazonAdsController extends Controller
             'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain',
             'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'sbgt',
             'CPC3', 'CPCAvg', 'CPC2', 'ltCvr', 'L1cost', 'L1clicks',
-            'pageCvr', 'viewsL30', 'viewsL7', 'ltAcos', 'ltSpend', 'ltSales',
+            'pageCvr', 'viewsL30', 'viewsL7', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps',
         ];
         if (! in_array($column, $handled, true)) {
             return null;
@@ -8116,7 +8135,7 @@ class AmazonAdsController extends Controller
         $needsCpcDay = $column === 'CPC2' || $column === 'CPC3';
         $needsCpcAvg = $column === 'CPCAvg';
         $needsLtCvr = $column === 'ltCvr';
-        $needsLtSpendSales = $column === 'ltSpend' || $column === 'ltSales';
+        $needsLtSpendSales = in_array($column, ['ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps'], true);
         $needsL1 = $column === 'L1cost' || $column === 'L1clicks';
 
         $names = [];
@@ -8248,9 +8267,10 @@ class AmazonAdsController extends Controller
                 $keys[] = AmazonAdsBgtCvrRule::apply($cvrIn)['bgt'];
             } elseif ($column === 'ltAcos') {
                 $keys[] = $ltAcos;
-            } elseif ($column === 'ltSpend' || $column === 'ltSales') {
+            } elseif (in_array($column, ['ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps'], true)) {
+                $ltField = ['ltSpend' => 'spend', 'ltSales' => 'sales', 'ltSold' => 'sold', 'ltCps' => 'cps', 'ltTcps' => 'tcps'][$column];
                 $keys[] = ($cidRaw !== '' && isset($ltSpendSalesMap[$lk]))
-                    ? ($ltSpendSalesMap[$lk][$column === 'ltSpend' ? 'spend' : 'sales'] ?? null)
+                    ? ($ltSpendSalesMap[$lk][$ltField] ?? null)
                     : null;
             } elseif ($column === 'bgtAcos') {
                 $keys[] = is_numeric($ltAcos) ? AmazonAcosSbgtRule::bgtAcosDecimal((float) $ltAcos) : null;

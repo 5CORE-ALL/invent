@@ -5702,6 +5702,54 @@
                             return `<span>$${Math.round(n).toLocaleString('en-US')}</span>`;
                         },
                         width: 80
+                    },
+                    {
+                        title: "LT Sold",
+                        field: "lt_sold",
+                        hozAlign: "center",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
+                        headerTooltip: "Parent rows: lifetime Ads Sold (LT Sold on /amazon-ads/all) of the parent's KW + PT campaigns combined.",
+                        formatter: function(cell) {
+                            if (!cell.getRow().getData().is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const n = parseFloat(val);
+                            if (!Number.isFinite(n)) return '';
+                            return `<span>${Math.round(n).toLocaleString('en-US')}</span>`;
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "CPS",
+                        field: "lt_cps",
+                        hozAlign: "center",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
+                        headerTooltip: "Parent rows: CPS = LT Spend ÷ LT Sales (lifetime, KW + PT campaigns). Blank when there are no lifetime sales.",
+                        formatter: function(cell) {
+                            if (!cell.getRow().getData().is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const n = parseFloat(val);
+                            if (!Number.isFinite(n)) return '';
+                            return `<span>${n.toFixed(2)}</span>`;
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "TCPS",
+                        field: "lt_tcps",
+                        hozAlign: "center",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
+                        headerTooltip: "Parent rows: TCPS = CPS × 0.60, where CPS = LT Spend ÷ LT Sales. Blank when there are no lifetime sales.",
+                        formatter: function(cell) {
+                            if (!cell.getRow().getData().is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const n = parseFloat(val);
+                            if (!Number.isFinite(n)) return '';
+                            return `<span>${n.toFixed(2)}</span>`;
+                        },
+                        width: 60
                     }
                 ]
             });
@@ -6870,7 +6918,7 @@
                 if (shipIdx !== -1) {
                     valid.splice(shipIdx, 1);
                     valid.push('Ship_productmaster');
-                    ['kw_spend_l30', 'pt_spend_l30', 'kw_pt_spend_l30', 'lt_spend', 'lt_sales'].forEach(function(f) {
+                    ['kw_spend_l30', 'pt_spend_l30', 'kw_pt_spend_l30', 'lt_spend', 'lt_sales', 'lt_sold', 'lt_cps', 'lt_tcps'].forEach(function(f) {
                         const i = valid.indexOf(f);
                         if (i !== -1) valid.splice(i, 1);
                         if (existing.indexOf(f) !== -1) valid.push(f);

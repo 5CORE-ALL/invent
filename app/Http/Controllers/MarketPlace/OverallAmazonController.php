@@ -892,6 +892,24 @@ class OverallAmazonController extends Controller
                     ? round($parentKwPtSpend['lt'][self::normalizeCampaignName((string) $parent)]) : null,
                 'lt_sales' => isset($parentKwPtSpend['lts'][self::normalizeCampaignName((string) $parent)])
                     ? round($parentKwPtSpend['lts'][self::normalizeCampaignName((string) $parent)]) : null,
+                // CPS = LT Spend ÷ LT Sales (blank when there are no lifetime sales).
+                'lt_cps' => (function () use ($parentKwPtSpend, $parent) {
+                    $k = self::normalizeCampaignName((string) $parent);
+                    $spend = $parentKwPtSpend['lt'][$k] ?? null;
+                    $sales = $parentKwPtSpend['lts'][$k] ?? null;
+
+                    return ($spend !== null && $sales !== null && $sales > 0) ? round($spend / $sales, 2) : null;
+                })(),
+                // TCPS = CPS × 0.60.
+                'lt_tcps' => (function () use ($parentKwPtSpend, $parent) {
+                    $k = self::normalizeCampaignName((string) $parent);
+                    $spend = $parentKwPtSpend['lt'][$k] ?? null;
+                    $sales = $parentKwPtSpend['lts'][$k] ?? null;
+
+                    return ($spend !== null && $sales !== null && $sales > 0) ? round(($spend / $sales) * 0.60, 2) : null;
+                })(),
+                'lt_sold' => isset($parentKwPtSpend['ltsold'][self::normalizeCampaignName((string) $parent)])
+                    ? (int) round($parentKwPtSpend['ltsold'][self::normalizeCampaignName((string) $parent)]) : null,
                 'GPFT%' => $rows->count() > 0 ? round($rows->avg('GPFT%'), 2) : 0,
                 'PFT%' => $rows->count() > 0 ? round($rows->avg('PFT%'), 2) : 0,
                 'GROI%' => $rows->count() > 0 ? round($rows->avg('GROI%'), 2) : 0,
@@ -3917,13 +3935,14 @@ class OverallAmazonController extends Controller
      * `lt` is the lifetime spend (LT Spend on /amazon-ads/all: total cost on all daily rows) of the same
      * KW + PT campaigns combined, keyed by normalized parent name.
      *
+     * `ltsold` is the lifetime Ads Sold (`purchases30d` on all daily rows) of the same campaigns.
      * `lts` is the lifetime sales (LT Sales on /amazon-ads/all, `sales30d` on all daily rows) of the same campaigns.
      *
      * @return array{kw: array<string, float>, pt: array<string, float>, lt: array<string, float>, lts: array<string, float>}
      */
     private function amazonParentKwPtSpendL30Map(): array
     {
-        $out = ['kw' => [], 'pt' => [], 'lt' => [], 'lts' => []];
+        $out = ['kw' => [], 'pt' => [], 'lt' => [], 'lts' => [], 'ltsold' => []];
         $parentByCampaignId = [];
 
         try {
@@ -3962,7 +3981,7 @@ class OverallAmazonController extends Controller
                     ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
                     ->whereIn('campaign_id', $cidChunk)
                     ->groupBy('campaign_id')
-                    ->selectRaw('campaign_id, SUM(COALESCE(cost, spend, 0)) as life_cost, SUM(COALESCE(sales30d, 0)) as life_sales')
+                    ->selectRaw('campaign_id, SUM(COALESCE(cost, spend, 0)) as life_cost, SUM(COALESCE(sales30d, 0)) as life_sales, SUM(COALESCE(purchases30d, 0)) as life_sold')
                     ->get();
                 foreach ($lifeRows as $lr) {
                     $parentKey = $parentByCampaignId[(string) $lr->campaign_id] ?? null;
@@ -3971,6 +3990,7 @@ class OverallAmazonController extends Controller
                     }
                     $out['lt'][$parentKey] = ($out['lt'][$parentKey] ?? 0.0) + (float) $lr->life_cost;
                     $out['lts'][$parentKey] = ($out['lts'][$parentKey] ?? 0.0) + (float) $lr->life_sales;
+                    $out['ltsold'][$parentKey] = ($out['ltsold'][$parentKey] ?? 0.0) + (float) $lr->life_sold;
                 }
             }
         } catch (\Throwable $e) {
