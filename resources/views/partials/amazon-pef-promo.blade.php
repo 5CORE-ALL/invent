@@ -304,6 +304,112 @@
             font-weight: 700;
             color: #334155;
         }
+        /* ---- Compact one-screen layout (same as eBay): pies on top, rules (left) + slab tables (right), each scrolls on its own ---- */
+        #amzDilGroiModal .modal-dialog { max-width: min(1280px, 96vw); }
+        #amzDilGroiModal .modal-content { border: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 50px rgba(15, 23, 42, .25); }
+        #amzDilGroiModal .modal-header {
+            background: linear-gradient(90deg, #6f42c1, #8b5cf6);
+            color: #fff;
+            border-bottom: 0;
+        }
+        #amzDilGroiModal .modal-header .btn-close { filter: invert(1) grayscale(1) brightness(2); opacity: .9; }
+        #amzDilGroiModal .modal-header .btn-outline-secondary { color: #fff; border-color: rgba(255,255,255,.6); font-size: 11px; padding: 1px 8px; }
+        #amzDilGroiModal .modal-header .btn-outline-secondary:hover { background: rgba(255,255,255,.2); }
+        #amzDilGroiModal .modal-body { background: #f1f5f9; padding-top: 10px; padding-bottom: 10px; }
+        #amzDilGroiModal .modal-footer { background: #fff; }
+        #amzDilGroiModal .amz-dg-pies { gap: 10px; margin: 0 0 10px; flex-wrap: nowrap; }
+        #amzDilGroiModal .amz-dg-pie-wrap {
+            flex: 1 1 0;
+            min-width: 0;
+            padding: 6px 10px;
+            gap: 10px;
+            align-items: center;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+        }
+        #amzDilGroiModal .amz-dg-pie-canvas-wrap { width: 104px; height: 104px; flex: 0 0 104px; }
+        #amzDilGroiModal .amz-dg-hist-canvas-wrap { height: 150px; }
+        #amzDilGroiModal .amz-dg-hist-wrap.is-open { margin-top: 10px; }
+        #amzDilGroiModal .amz-dg-pie-legend {
+            max-height: 108px;
+            display: grid;
+            grid-template-columns: 1fr;
+            align-content: center;
+        }
+        #amzDilGroiModal .amz-dg-pie-row { font-size: 10.5px; line-height: 1.2; padding: 0; }
+        #amzDilGroiModal .amz-dg-cols { display: flex; gap: 10px; align-items: stretch; }
+        #amzDilGroiModal .amz-dg-panel {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            min-width: 0;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+            overflow: hidden;
+        }
+        #amzDilGroiModal .amz-dg-panel-rules { flex: 1 1 42%; }
+        #amzDilGroiModal .amz-dg-panel-tables { flex: 1 1 58%; }
+        #amzDilGroiModal .amz-dg-panel-head {
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #334155;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        #amzDilGroiModal .amz-dg-panel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 12px; margin: 0; }
+        #amzDilGroiModal .amz-dg-rules { list-style: none; padding-left: 12px; }
+        #amzDilGroiModal .amz-dg-rules li {
+            position: relative;
+            margin-bottom: 4px;
+            padding-left: 12px;
+            font-size: 11.5px;
+            line-height: 1.35;
+            color: #475569 !important;
+        }
+        #amzDilGroiModal .amz-dg-rules li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: .5em;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: #8b5cf6;
+        }
+        #amzDilGroiModal .amz-dg-rules li strong:first-child { color: #6f42c1; }
+        #amzDilGroiModal .amz-dg-rules code { font-size: 10.5px; word-break: break-word; }
+        #amzDilGroiModal .table > :not(caption) > * > * { padding: 2px 6px; }
+        #amzDilGroiModal .table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            font-size: 11px;
+            background: #eef2ff;
+            color: #334155;
+        }
+        #amzDilGroiModal .table .form-control-sm { padding-top: 1px; padding-bottom: 1px; min-height: 24px; height: 26px; font-size: 12px; }
+        #amzDilGroiModal .table-responsive { border-radius: 6px; }
+        #amz-lmp-cap-table .amz-lmp-cap-input {
+            max-width: 72px;
+            display: inline-block;
+            text-align: right;
+            font-weight: 600;
+        }
+        @media (min-width: 992px) {
+            #amzDilGroiModal .modal-dialog { height: calc(100vh - 1.5rem); margin: .75rem auto; }
+            #amzDilGroiModal .modal-content { height: 100%; }
+            #amzDilGroiModal .modal-body { display: flex; flex-direction: column; overflow: hidden; }
+            #amzDilGroiModal .amz-dg-pies { flex: 0 0 auto; }
+            #amzDilGroiModal .amz-dg-cols { flex: 1 1 auto; min-height: 0; }
+        }
+        @media (max-width: 991.98px) {
+            #amzDilGroiModal .amz-dg-pies,
+            #amzDilGroiModal .amz-dg-cols { flex-wrap: wrap; flex-direction: column; }
+            #amzDilGroiModal .amz-dg-panel-body { overflow: visible; }
+        }
         #amz-dil-groi-btn {
             background: #6f42c1;
             border-color: #6f42c1;
@@ -715,17 +821,10 @@
                             <div class="amz-dg-pie-legend" id="amz-dg-cvr-legend"></div>
                         </div>
                     </div>
-                    <div class="amz-dg-hist-wrap" id="amz-dg-hist-wrap">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="small fw-semibold" id="amz-dg-hist-title">Slab history</span>
-                            <button type="button" class="btn-close" id="amz-dg-hist-close" aria-label="Close history" style="font-size:10px;"></button>
-                        </div>
-                        <div class="amz-dg-hist-canvas-wrap">
-                            <canvas id="amz-dg-hist"></canvas>
-                        </div>
-                    </div>
-                    <div class="amz-dg-rules-title">Rules — when each condition applies</div>
-                    <ul class="small text-muted amz-dg-rules">
+                    <div class="amz-dg-cols">
+                    <div class="amz-dg-panel amz-dg-panel-rules">
+                    <div class="amz-dg-panel-head"><i class="fas fa-list-ul me-1"></i> Rules — when each condition applies</div>
+                    <ul class="small text-muted amz-dg-rules amz-dg-panel-body">
                         <li>
                             <strong>When</strong> Dil = 0 (Shopify INV &gt; 0 and OV L30 = 0):
                             use the <strong>0–0</strong> slab’s Target NROI.
@@ -783,6 +882,15 @@
                             <strong>Clearance</strong> count: INV &gt; 0 and Clearance is <strong>Yes</strong> on Inv Days.
                         </li>
                     </ul>
+                    </div>
+                    <div class="amz-dg-panel amz-dg-panel-tables">
+                    <div class="amz-dg-panel-head d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-layer-group me-1"></i> Dil slabs — Target NROI</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary amz-dg-add-btn py-0 px-2" id="amz-dil-groi-add-btn">
+                            <i class="fas fa-plus me-1"></i> Add slab
+                        </button>
+                    </div>
+                    <div class="amz-dg-panel-body">
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-dil-groi-table">
                             <thead class="table-light">
@@ -797,10 +905,16 @@
                             <tbody id="amz-dil-groi-tbody"></tbody>
                         </table>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary amz-dg-add-btn mt-2" id="amz-dil-groi-add-btn">
-                        <i class="fas fa-plus me-1"></i> Add slab
-                    </button>
-                    <div class="amz-dg-rules-title mt-3">CVR overlay — Target NROI</div>
+                    <div class="amz-dg-hist-wrap" id="amz-dg-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="amz-dg-hist-title">Slab history</span>
+                            <button type="button" class="btn-close" id="amz-dg-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="amz-dg-hist-canvas-wrap">
+                            <canvas id="amz-dg-hist"></canvas>
+                        </div>
+                    </div>
+                    <div class="amz-dg-rules-title mt-2">CVR overlay — Target NROI</div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-cvr-groi-table">
                             <thead class="table-light">
@@ -837,7 +951,7 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="amz-dg-rules-title mt-3"
+                    <div class="amz-dg-rules-title mt-2"
                         title="When the calculated price reaches LMP (and SGROI at LMP is at least 20%): S PRC = LMP × (1 − x/100). x depends on the SKU's Dil.">
                         LMP cap — S PRC = LMP − x% by Dil
                     </div>
@@ -885,7 +999,10 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="small text-muted mt-2" id="amz-dil-groi-status"></div>
+                    <div class="small text-muted mt-1" id="amz-dil-groi-status"></div>
+                    </div>
+                    </div>
+                    </div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-primary" id="amz-dil-groi-save-btn"
