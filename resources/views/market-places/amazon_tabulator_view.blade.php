@@ -1840,6 +1840,32 @@
                 outlineOffset: spriceEqLmpFilterActive ? '2px' : ''
             });
         }
+        /** Diff % = (Std Prc - Amz Price) / Amz Price x 100 (same as eBay 1 and the Sprc Dil Diff rule). null when either is missing. */
+        function amazonStdPrcDiffPct(rowData) {
+            if (!rowData || rowData.is_parent_summary) return null;
+            const std = (typeof amazonStdPrice === 'function') ? amazonStdPrice(rowData) : (parseFloat(rowData.STANDARD_PRICE) || 0);
+            const price = parseFloat(rowData.price) || 0;
+            if (!(std > 0) || !(price > 0)) return null;
+            return ((std - price) / price) * 100;
+        }
+        /** Diff cell: pink > 20%, red < -5%, else green. Styles the cell element itself. */
+        function amazonRenderStdPrcDiff(el, rowData) {
+            const pct = amazonStdPrcDiffPct(rowData);
+            let bg = '';
+            let color = '';
+            let html = '';
+            if (pct !== null) {
+                if (pct > 20) { bg = '#ffb6d9'; color = '#000'; }
+                else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+                else { bg = '#28a745'; color = '#fff'; }
+                html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+            }
+            if (el) {
+                el.style.backgroundColor = bg;
+                el.style.color = color;
+            }
+            return html;
+        }
         function amazonIsClearanceChildRow(data) {
             if (!data || data.is_parent_summary) return false;
             const sku = String(data['(Child) sku'] || data.Parent || '').trim().toUpperCase();
@@ -4955,6 +4981,19 @@
                     },
 
                     {
+                        title: "Std Diff",
+                        field: "std_prc_diff",
+                        hozAlign: "center",
+                        width: 70,
+                        headerSort: true,
+                        headerTooltip: "Diff = (Std Prc − Price) / Price. Pink > 20% (Sprc Dil adds +10 to the Target NROI), Red < −5% (Price is above Std Prc), otherwise Green.",
+                        sorter: amazonMetricSorter(function(d) { return amazonStdPrcDiffPct(d); }),
+                        formatter: function(cell) {
+                            return amazonRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                        }
+                    },
+
+                    {
                         title: "Price",
                         field: "price",
                         hozAlign: "center",
@@ -6393,7 +6432,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
