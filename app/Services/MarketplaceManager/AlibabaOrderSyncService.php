@@ -20,10 +20,10 @@ class AlibabaOrderSyncService
     private const MAX_LOOKBACK_DAYS = 730;
 
     /**
-     * Hard cutoff: never fetch/store/auto-import AE orders created before this date (America/Los_Angeles).
-     * Older orders were already entered on Shopify manually.
+     * Hard cutoff: never fetch/store/auto-import Alibaba orders created before this date (America/Los_Angeles).
+     * Orders before this date are not synced (sync was down; start fresh from the day it was fixed).
      */
-    public const MIN_ORDER_DATE = '2026-07-11';
+    public const MIN_ORDER_DATE = '2026-10-24';
 
     public function __construct(
         protected AlibabaApiService $aliExpressApi

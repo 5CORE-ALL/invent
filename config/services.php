@@ -972,7 +972,7 @@ return [
         'refresh_token' => env('ALIBABA_REFRESH_TOKEN'),
         'api_base' => env('ALIBABA_API_BASE', 'https://openapi.alibaba.com'),
         'gateway' => env('ALIBABA_GATEWAY', 'rest'),
-        'rest_base' => env('ALIBABA_REST_BASE', 'https://api-sg.alibaba.com/rest'),
+        'rest_base' => env('ALIBABA_REST_BASE', 'https://openapi-api.alibaba.com/rest'),
         'rest_sign_method' => env('ALIBABA_REST_SIGN_METHOD', 'hmac'),
         'connect_timeout' => (int) env('ALIBABA_CONNECT_TIMEOUT', 30),
         'timeout' => (int) env('ALIBABA_TIMEOUT', 60),

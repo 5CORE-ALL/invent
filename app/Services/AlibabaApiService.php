@@ -30,9 +30,12 @@ class AlibabaApiService extends AliExpressApiService
         $gw = strtolower((string) (config('services.alibaba.gateway') ?: 'rest'));
         $this->gateway = in_array($gw, ['sync', 'rest'], true) ? $gw : 'rest';
 
-        $rest = (string) (config('services.alibaba.rest_base') ?: 'https://api-sg.alibaba.com/rest');
-        if (str_contains(strtolower($rest), 'aliexpress.com')) {
-            $rest = 'https://api-sg.alibaba.com/rest';
+        // api-sg.alibaba.com no longer resolves (DNS), so every order call fell through to a 404 /sync
+        // fallback. openapi-api.alibaba.com is the live REST gateway.
+        $liveRest = 'https://openapi-api.alibaba.com/rest';
+        $rest = (string) (config('services.alibaba.rest_base') ?: $liveRest);
+        if (str_contains(strtolower($rest), 'aliexpress.com') || str_contains(strtolower($rest), 'api-sg.alibaba.com')) {
+            $rest = $liveRest;
         }
         $this->restBase = rtrim($rest, '/');
 
@@ -448,24 +451,42 @@ class AlibabaApiService extends AliExpressApiService
             }
 
             if ($resolved['items'] !== []) {
-                $payloadItems = array_map(static function (array $item): array {
-                    return [
-                        'productId' => $item['productId'],
-                        'skuId' => $item['skuId'],
-                        'inventory' => $item['inventory'],
-                    ];
-                }, $resolved['items']);
-                $raw = $this->callRestGateway('/icbu/product/inventory/update', [
-                    'inventory_update_request' => [
-                        'inventoryItems' => $payloadItems,
-                    ],
-                ]);
-                $failure = $this->icbuInventoryWriteError($raw);
+                // Alibaba's inventory API changes stock by a delta per warehouse (plus/sub), so
+                // work out the difference between Shopify's quantity and what Alibaba holds now.
+                $built = $this->icbuInventoryList((string) $productId, $resolved);
+                if ($built['auth']) {
+                    foreach (array_slice($productIds, $index) as $laterId) {
+                        foreach ($byProduct[$laterId] as $item) {
+                            $failedSkus[] = $item['sku_code'];
+                            $errors[] = $item['sku_code'].': '.$built['error'];
+                        }
+                    }
+                    break;
+                }
+                foreach ($built['failed'] as $skuCode => $message) {
+                    $failedSkus[] = (string) $skuCode;
+                    $errors[] = $skuCode.': '.$message;
+                }
+                $updated += $built['unchanged'];
+
+                if ($built['list'] === []) {
+                    $raw = ['success' => true];
+                    $failure = null;
+                } else {
+                    $raw = $this->callRestGateway('/icbu/product/inventory/update', [
+                        'product_id' => (string) $productId,
+                        'inventory_list' => $built['list'],
+                    ]);
+                    $failure = $this->icbuInventoryWriteError($raw);
+                }
                 if ($failure === null) {
-                    $updated += count($resolved['items']);
+                    $updated += count($built['list']);
                 } else {
                     foreach ($resolved['items'] as $item) {
                         $skuCode = (string) ($item['sku_code'] ?? '');
+                        if (isset($built['failed'][$skuCode]) || ! in_array($skuCode, $built['sent'], true)) {
+                            continue;
+                        }
                         $failedSkus[] = $skuCode;
                         $errors[] = $skuCode.': '.$failure;
                     }
@@ -524,8 +545,16 @@ class AlibabaApiService extends AliExpressApiService
         $items = [];
         $unresolved = [];
 
+        // A single-variation listing has no real SKU id; Alibaba expects -1 for it.
+        $singleNoId = count($nodes) === 1
+            && $this->icbuNumericId($nodes[0]['skuId'] ?? $nodes[0]['sku_id'] ?? null) === null;
+
+        $lookup = null;
         foreach ($rows as $row) {
             $skuId = $this->icbuSkuIdForCode($nodes, (string) $row['sku_code']);
+            if ($skuId === null && $singleNoId && count($rows) === 1) {
+                $skuId = '-1';
+            }
             if ($skuId === null) {
                 $unresolved[] = $row;
                 continue;
@@ -541,6 +570,8 @@ class AlibabaApiService extends AliExpressApiService
                     'missing' => [],
                     'error' => $lookup['error'],
                     'auth' => true,
+                    'nodes' => $nodes,
+                    'lookup' => null,
                 ];
             }
 
@@ -557,24 +588,207 @@ class AlibabaApiService extends AliExpressApiService
         }
 
         $error = 'Alibaba SKU id was not found, so inventory was not pushed.';
+        if ($unresolved !== [] && $lookup !== null && ! empty($lookup['error'])) {
+            $error = (string) $lookup['error'];
+        }
 
         return [
             'items' => $items,
             'missing' => array_values(array_map('strval', $unresolved)),
             'error' => $error,
             'auth' => false,
+            'nodes' => $nodes,
+            'lookup' => $lookup,
         ];
     }
 
     /**
-     * @return array{productId: string, skuId: string, inventory: array{amount: string}, sku_code: string}
+     * Turn target quantities into Alibaba inventory_list rows. The API changes stock by a
+     * delta in one warehouse (operate plus/sub), so compare with the stock Alibaba holds now.
+     *
+     * @param  array<string, mixed>  $resolved  Result of icbuInventoryItems()
+     * @return array{list: list<array<string, mixed>>, sent: list<string>, unchanged: int, failed: array<string, string>, auth: bool, error: string}
+     */
+    protected function icbuInventoryList(string $productId, array $resolved): array
+    {
+        $nodes = is_array($resolved['nodes'] ?? null) ? $resolved['nodes'] : [];
+        $lookup = is_array($resolved['lookup'] ?? null) ? $resolved['lookup'] : null;
+
+        $slotsBySku = [];
+        foreach ($nodes as $node) {
+            $id = $this->icbuNumericId($node['skuId'] ?? $node['sku_id'] ?? null) ?? (count($nodes) === 1 ? '-1' : null);
+            if ($id !== null) {
+                $slotsBySku[$id] = $this->icbuInventorySlots($node);
+            }
+        }
+
+        $list = [];
+        $sent = [];
+        $unchanged = 0;
+        $failed = [];
+
+        foreach ($resolved['items'] as $item) {
+            $skuCode = (string) ($item['sku_code'] ?? '');
+            $skuId = (string) $item['skuId'];
+            $slots = $slotsBySku[$skuId] ?? [];
+
+            if ($slots === []) {
+                if ($lookup === null) {
+                    $lookup = $this->icbuSkuIdsFromInventory($productId);
+                    if ($lookup['auth']) {
+                        return ['list' => [], 'sent' => [], 'unchanged' => 0, 'failed' => [], 'auth' => true, 'error' => $lookup['error']];
+                    }
+                }
+                $slots = $this->icbuInventorySlotsFromLookup(is_array($lookup['raw'] ?? null) ? $lookup['raw'] : [], $skuId);
+            }
+
+            if ($slots === []) {
+                $failed[$skuCode] = 'Alibaba warehouse code was not found, so inventory was not pushed.';
+                continue;
+            }
+
+            $target = max(0, (int) $item['inventory']);
+            $current = array_sum(array_column($slots, 'qty'));
+            $delta = $target - $current;
+            if ($delta === 0) {
+                $unchanged++;
+                continue;
+            }
+
+            if ($delta > 0) {
+                $chosen = $slots[0];
+                foreach ($slots as $slot) {
+                    if (stripos($slot['code'], 'US') === 0) {
+                        $chosen = $slot;
+                        break;
+                    }
+                }
+                $operate = 'plus';
+                $amount = $delta;
+            } else {
+                usort($slots, static fn (array $a, array $b): int => $b['qty'] <=> $a['qty']);
+                $chosen = $slots[0];
+                $operate = 'sub';
+                $amount = min(-$delta, (int) $chosen['qty']);
+                if ($amount <= 0) {
+                    $unchanged++;
+                    continue;
+                }
+            }
+
+            $list[] = [
+                'sku_id' => (int) $skuId,
+                'inventory_code' => $chosen['code'],
+                'inventory' => $amount,
+                'operate' => $operate,
+            ];
+            $sent[] = $skuCode;
+        }
+
+        return ['list' => $list, 'sent' => $sent, 'unchanged' => $unchanged, 'failed' => $failed, 'auth' => false, 'error' => ''];
+    }
+
+    /**
+     * Warehouse stock rows on one SKU node of /icbu/product/get.
+     *
+     * @param  array<string, mixed>  $node
+     * @return list<array{code: string, qty: int}>
+     */
+    protected function icbuInventorySlots(array $node): array
+    {
+        $list = $node['inventoryDTOList'] ?? $node['inventory_dto_list'] ?? $node['inventoryList'] ?? $node['inventory_list'] ?? [];
+        if (is_array($list) && $list !== [] && ! array_is_list($list)) {
+            $list = [$list];
+        }
+
+        $slots = [];
+        foreach (is_array($list) ? $list : [] as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $code = $this->icbuSlotCode($row);
+            if ($code === '') {
+                continue;
+            }
+            $slots[] = ['code' => $code, 'qty' => $this->icbuSlotQty($row)];
+        }
+
+        return $slots;
+    }
+
+    /**
+     * Pull warehouse stock for one SKU out of an /icbu/product/inventory/get response.
+     *
+     * @param  array<string, mixed>  $raw
+     * @return list<array{code: string, qty: int}>
+     */
+    protected function icbuInventorySlotsFromLookup(array $raw, string $skuId): array
+    {
+        $slots = [];
+        $walk = function (mixed $node, ?string $parentSku) use (&$walk, &$slots, $skuId): void {
+            if (! is_array($node)) {
+                return;
+            }
+            $ownSku = $this->icbuNumericId($node['skuId'] ?? $node['sku_id'] ?? null) ?? $parentSku;
+            $code = $this->icbuSlotCode($node);
+            if ($code !== '' && (array_key_exists('inventory', $node) || array_key_exists('quantity', $node) || array_key_exists('amount', $node))) {
+                $matches = $ownSku === null ? $skuId === '-1' : $ownSku === $skuId;
+                if ($matches) {
+                    $slots[] = ['code' => $code, 'qty' => $this->icbuSlotQty($node)];
+                }
+
+                return;
+            }
+            foreach ($node as $child) {
+                $walk($child, $ownSku);
+            }
+        };
+        $walk($raw, null);
+
+        return $slots;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function icbuSlotCode(array $row): string
+    {
+        foreach (['inventoryCode', 'inventory_code', 'storeCode', 'store_code', 'warehouseCode', 'warehouse_code'] as $key) {
+            if (isset($row[$key]) && is_scalar($row[$key]) && trim((string) $row[$key]) !== '') {
+                return trim((string) $row[$key]);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function icbuSlotQty(array $row): int
+    {
+        foreach (['inventory', 'quantity', 'amount'] as $key) {
+            $value = $row[$key] ?? null;
+            if (is_array($value)) {
+                $value = $value['amount'] ?? $value['value'] ?? null;
+            }
+            if (is_numeric($value)) {
+                return max(0, (int) round((float) $value));
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * @return array{productId: string, skuId: string, inventory: int, sku_code: string}
      */
     protected function icbuInventoryItem(string $productId, string $skuId, int $inventory, string $skuCode): array
     {
         return [
             'productId' => $productId,
             'skuId' => $skuId,
-            'inventory' => ['amount' => (string) max(0, $inventory)],
+            'inventory' => max(0, $inventory),
             'sku_code' => $skuCode,
         ];
     }
@@ -685,12 +899,12 @@ class AlibabaApiService extends AliExpressApiService
     }
 
     /**
-     * @return array{items: list<array<string, mixed>>, error: string, auth: bool}
+     * @return array{items: list<array<string, mixed>>, error: string, auth: bool, raw?: array<string, mixed>}
      */
     protected function icbuSkuIdsFromInventory(string $productId): array
     {
         $raw = $this->callRestGateway('/icbu/product/inventory/get', [
-            'inventory_get_request' => ['productId' => $productId],
+            'product_id' => $productId,
         ]);
         if ($this->isAuthError($raw)) {
             return ['items' => [], 'error' => (string) ($raw['message'] ?? 'Alibaba auth failed.'), 'auth' => true];
@@ -713,7 +927,7 @@ class AlibabaApiService extends AliExpressApiService
             }
         }
 
-        return ['items' => $items, 'error' => '', 'auth' => false];
+        return ['items' => $items, 'error' => '', 'auth' => false, 'raw' => $data];
     }
 
     /**
@@ -988,6 +1202,18 @@ class AlibabaApiService extends AliExpressApiService
         $raw = $this->callRestGateway($method, $params);
         if (! empty($raw['success'])) {
             return $raw;
+        }
+
+        // The REST gateway addresses APIs by path (/alibaba/seller/order/list); also try that form
+        // for dotted API names such as alibaba.seller.order.list.
+        if (empty($raw['network_error']) && ! $this->isAuthError($raw) && str_starts_with($method, 'alibaba.')) {
+            $alt = $this->callRestGateway('/'.str_replace('.', '/', $method), $params);
+            if (! empty($alt['success'])) {
+                return $alt;
+            }
+            if ($this->isAuthError($alt)) {
+                return $alt;
+            }
         }
 
         $sync = $this->callSync($method, $params);
