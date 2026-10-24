@@ -148,6 +148,12 @@
             cursor: pointer;
         }
         #ebayDilGroiModal .ebay-dg-add-btn { font-size: 12px; }
+        #ebay-lmp-cap-table .ebay-lmp-cap-input {
+            max-width: 72px;
+            display: inline-block;
+            text-align: right;
+            font-weight: 600;
+        }
         #ebay-cvr-groi-table .ebay-cvr-groi-input {
             max-width: 72px;
             display: inline-block;
@@ -251,6 +257,106 @@
         }
         #ebayDilGroiModal .ebay-dg-hist-wrap.is-open { display: block; margin-top: 10px; }
         #ebayDilGroiModal .ebay-dg-hist-canvas-wrap { height: 220px; }
+        /* ---- Compact one-screen layout: pies on top, rules (left) + slab tables (right), each scrolls on its own ---- */
+        #ebayDilGroiModal .modal-dialog { max-width: min(1280px, 96vw); }
+        #ebayDilGroiModal .modal-content { border: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 50px rgba(15, 23, 42, .25); }
+        #ebayDilGroiModal .modal-header {
+            background: linear-gradient(90deg, #6f42c1, #8b5cf6);
+            color: #fff;
+            border-bottom: 0;
+        }
+        #ebayDilGroiModal .modal-header .btn-close { filter: invert(1) grayscale(1) brightness(2); opacity: .9; }
+        #ebayDilGroiModal .modal-header .btn-outline-secondary { color: #fff; border-color: rgba(255,255,255,.6); font-size: 11px; padding: 1px 8px; }
+        #ebayDilGroiModal .modal-header .btn-outline-secondary:hover { background: rgba(255,255,255,.2); }
+        #ebayDilGroiModal .modal-body { background: #f1f5f9; padding-top: 10px; padding-bottom: 10px; }
+        #ebayDilGroiModal .modal-footer { background: #fff; }
+        #ebayDilGroiModal .ebay-dg-pies { gap: 10px; margin: 0 0 10px; flex-wrap: nowrap; }
+        #ebayDilGroiModal .ebay-dg-pie-wrap {
+            flex: 1 1 0;
+            min-width: 0;
+            padding: 6px 10px;
+            gap: 10px;
+            align-items: center;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+        }
+        #ebayDilGroiModal .ebay-dg-pie-canvas-wrap { width: 104px; height: 104px; flex: 0 0 104px; }
+        #ebayDilGroiModal .ebay-dg-hist-canvas-wrap { height: 150px; }
+        #ebayDilGroiModal .ebay-dg-pie-legend {
+            max-height: 108px;
+            display: grid;
+            grid-template-columns: 1fr;
+            align-content: center;
+        }
+        #ebayDilGroiModal .ebay-dg-pie-row { font-size: 10.5px; line-height: 1.2; padding: 0; }
+        #ebayDilGroiModal .ebay-dg-cols { display: flex; gap: 10px; align-items: stretch; }
+        #ebayDilGroiModal .ebay-dg-panel {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            min-width: 0;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+            overflow: hidden;
+        }
+        #ebayDilGroiModal .ebay-dg-panel-rules { flex: 1 1 42%; }
+        #ebayDilGroiModal .ebay-dg-panel-tables { flex: 1 1 58%; }
+        #ebayDilGroiModal .ebay-dg-panel-head {
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #334155;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        #ebayDilGroiModal .ebay-dg-panel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 12px; margin: 0; }
+        #ebayDilGroiModal .ebay-dg-rules { list-style: none; padding-left: 12px; }
+        #ebayDilGroiModal .ebay-dg-rules li {
+            position: relative;
+            margin-bottom: 4px;
+            padding-left: 12px;
+            font-size: 11.5px;
+            line-height: 1.35;
+            color: #475569 !important;
+        }
+        #ebayDilGroiModal .ebay-dg-rules li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: .5em;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: #8b5cf6;
+        }
+        #ebayDilGroiModal .ebay-dg-rules li strong:first-child { color: #6f42c1; }
+        #ebayDilGroiModal .ebay-dg-rules code { font-size: 10.5px; word-break: break-word; }
+        #ebayDilGroiModal .ebay-dg-rules-title { margin: 0 0 4px; }
+        #ebayDilGroiModal .table > :not(caption) > * > * { padding: 2px 6px; }
+        #ebayDilGroiModal .table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            font-size: 11px;
+            background: #eef2ff;
+            color: #334155;
+        }
+        #ebayDilGroiModal .table .form-control-sm { padding-top: 1px; padding-bottom: 1px; min-height: 24px; height: 26px; font-size: 12px; }
+        #ebayDilGroiModal .table-responsive { border-radius: 6px; }
+        @media (min-width: 992px) {
+            #ebayDilGroiModal .modal-dialog { height: calc(100vh - 1.5rem); margin: .75rem auto; }
+            #ebayDilGroiModal .modal-content { height: 100%; }
+            #ebayDilGroiModal .modal-body { display: flex; flex-direction: column; overflow: hidden; }
+            #ebayDilGroiModal .ebay-dg-pies { flex: 0 0 auto; }
+            #ebayDilGroiModal .ebay-dg-cols { flex: 1 1 auto; min-height: 0; }
+        }
+        @media (max-width: 991.98px) {
+            #ebayDilGroiModal .ebay-dg-pies,
+            #ebayDilGroiModal .ebay-dg-cols { flex-wrap: wrap; flex-direction: column; }
+            #ebayDilGroiModal .ebay-dg-panel-body { overflow: visible; }
+        }
         #ebay-dil-groi-btn {
             background: #6f42c1;
             border-color: #6f42c1;
@@ -294,8 +400,10 @@
                         </div>
                         @endunless
                     </div>
-                    <div class="ebay-dg-rules-title">Rules — when each condition applies</div>
-                    <ul class="small text-muted ebay-dg-rules">
+                    <div class="ebay-dg-cols">
+                    <div class="ebay-dg-panel ebay-dg-panel-rules">
+                    <div class="ebay-dg-panel-head"><i class="fas fa-list-ul me-1"></i> Rules — when each condition applies</div>
+                    <ul class="small text-muted ebay-dg-rules ebay-dg-panel-body">
 @if($ebaySprcDilZeroSoldUsesMinGroi)
                         @if(in_array($ebaySprcDilChannel, ['aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'doba'], true))
                         <li>
@@ -463,6 +571,15 @@
                             If the rule price is above Std Prc, S PRC = Std Prc.
                             A blank Std Prc leaves the calculated price.
                         </li>
+                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true))
+                        <li>
+                            <strong>When</strong> LMP is available and the calculated price is at or above LMP
+                            (and SGROI at LMP is at least 20%):
+                            S PRC = <strong>LMP − x%</strong>, where x comes from the SKU’s Dil band in the
+                            <strong>LMP cap</strong> table (below / between / above the two Dil limits, all editable).
+                            Std Prc is still the maximum.
+                        </li>
+                        @endif
                         <li>
                             <strong>When</strong> LMP is above Std Prc:
                             every calculated price is capped at <strong>Std Prc</strong>.
@@ -507,6 +624,15 @@
                             @endif
                         </li>
                     </ul>
+                    </div>
+                    <div class="ebay-dg-panel ebay-dg-panel-tables">
+                    <div class="ebay-dg-panel-head d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-layer-group me-1"></i> Dil slabs — Target {{ $ebaySprcDilTargetLabel }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary ebay-dg-add-btn py-0 px-2" id="ebay-dil-groi-add-btn">
+                            <i class="fas fa-plus me-1"></i> Add slab
+                        </button>
+                    </div>
+                    <div class="ebay-dg-panel-body">
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="ebay-dil-groi-table">
                             <thead class="table-light">
@@ -530,11 +656,8 @@
                             <canvas id="ebay-dg-hist"></canvas>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary ebay-dg-add-btn mt-2" id="ebay-dil-groi-add-btn">
-                        <i class="fas fa-plus me-1"></i> Add slab
-                    </button>
                     @if(!empty($ebaySprcDilCvrGroiAdj))
-                    <div class="ebay-dg-rules-title mt-3">CVR overlay — Target {{ $ebaySprcDilTargetLabel }}</div>
+                    <div class="ebay-dg-rules-title mt-2">CVR overlay — Target {{ $ebaySprcDilTargetLabel }}</div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="ebay-cvr-groi-table">
                             <thead class="table-light">
@@ -572,7 +695,60 @@
                         </table>
                     </div>
                     @endif
-                    <div class="small text-muted mt-2" id="ebay-dil-groi-status"></div>
+                    @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true))
+                    <div class="ebay-dg-rules-title mt-2"
+                        title="When the calculated price reaches LMP (and SGROI at LMP ≥ 20%): S PRC = LMP × (1 − x/100). x depends on the SKU's Dil.">
+                        LMP cap — S PRC = LMP − x% by Dil
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="ebay-lmp-cap-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Dil band</th>
+                                    <th class="text-center">Dil %</th>
+                                    <th class="text-end">LMP reduce %</th>
+                                    <th class="text-center" style="width:90px;" title="S PRC at the LMP cap, e.g. LMP $100 with 2% → $98.00">S PRC</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr data-row="low">
+                                    <td>Below</td>
+                                    <td class="text-center">
+                                        &lt;
+                                        <input type="number" min="0" step="1" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-low-lt" value="25">
+                                    </td>
+                                    <td class="text-end">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-low-pct" value="2">
+                                    </td>
+                                    <td class="text-center text-muted ebay-lmp-cap-eg-low">LMP × 0.98</td>
+                                </tr>
+                                <tr data-row="mid">
+                                    <td>Between</td>
+                                    <td class="text-center"><span class="ebay-lmp-cap-mid-range">25 – 50</span></td>
+                                    <td class="text-end">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-mid-pct" value="2">
+                                    </td>
+                                    <td class="text-center text-muted ebay-lmp-cap-eg-mid">LMP × 0.98</td>
+                                </tr>
+                                <tr data-row="high">
+                                    <td>Above</td>
+                                    <td class="text-center">
+                                        &gt;
+                                        <input type="number" min="0" step="1" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-high-gt" value="50">
+                                    </td>
+                                    <td class="text-end">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-high-pct" value="2">
+                                    </td>
+                                    <td class="text-center text-muted ebay-lmp-cap-eg-high">LMP × 0.98</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    @endif
+                    <div class="small text-muted mt-1" id="ebay-dil-groi-status"></div>
+                    </div>
+                    </div>
+                    </div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="ebay-dil-groi-save-btn"
@@ -790,6 +966,63 @@
             $tbl.find('.ebay-cvr-groi-up-gt').val(cfg.up_gt);
             $tbl.find('.ebay-cvr-groi-up-adj').val(cfg.up_adj);
         }
+        /** Sprc Dil LMP cap: S PRC = LMP − x% where x follows the SKU's Dil band (ebay1 / ebay2 / ebay3). */
+        const EBAY_LMP_CAP_DEFAULT = { low_lt: 25, high_gt: 50, low_pct: 2, mid_pct: 2, high_pct: 2 };
+        let ebayLmpCap = Object.assign({}, EBAY_LMP_CAP_DEFAULT);
+        function ebayNormalizeLmpCap(raw) {
+            const out = Object.assign({}, EBAY_LMP_CAP_DEFAULT);
+            if (!raw) return out;
+            Object.keys(out).forEach(function(k) {
+                const n = Number(raw[k]);
+                if (!isFinite(n) || n < 0 || raw[k] === '' || raw[k] === null) return;
+                out[k] = ebayDgRound2(/_pct$/.test(k) ? Math.min(99, n) : n);
+            });
+            if (out.high_gt < out.low_lt) out.high_gt = out.low_lt;
+            return out;
+        }
+        function ebayLmpCapNow() {
+            const $tbl = $('#ebay-lmp-cap-table');
+            if ($tbl.length) {
+                return ebayNormalizeLmpCap({
+                    low_lt: parseFloat($tbl.find('.ebay-lmp-cap-low-lt').val()),
+                    high_gt: parseFloat($tbl.find('.ebay-lmp-cap-high-gt').val()),
+                    low_pct: parseFloat($tbl.find('.ebay-lmp-cap-low-pct').val()),
+                    mid_pct: parseFloat($tbl.find('.ebay-lmp-cap-mid-pct').val()),
+                    high_pct: parseFloat($tbl.find('.ebay-lmp-cap-high-pct').val()),
+                });
+            }
+            return ebayNormalizeLmpCap(ebayLmpCap);
+        }
+        function ebayPaintLmpCapExamples(cfg) {
+            const $tbl = $('#ebay-lmp-cap-table');
+            if (!$tbl.length) return;
+            const f = function(p) { return 'LMP × ' + (1 - p / 100).toFixed(3).replace(/0+$/, '').replace(/\.$/, ''); };
+            $tbl.find('.ebay-lmp-cap-mid-range').text(cfg.low_lt + ' – ' + cfg.high_gt);
+            $tbl.find('.ebay-lmp-cap-eg-low').text(f(cfg.low_pct));
+            $tbl.find('.ebay-lmp-cap-eg-mid').text(f(cfg.mid_pct));
+            $tbl.find('.ebay-lmp-cap-eg-high').text(f(cfg.high_pct));
+        }
+        function ebayPaintLmpCapTable(cfg) {
+            cfg = ebayNormalizeLmpCap(cfg);
+            ebayLmpCap = cfg;
+            const $tbl = $('#ebay-lmp-cap-table');
+            if (!$tbl.length) return;
+            $tbl.find('.ebay-lmp-cap-low-lt').val(cfg.low_lt);
+            $tbl.find('.ebay-lmp-cap-high-gt').val(cfg.high_gt);
+            $tbl.find('.ebay-lmp-cap-low-pct').val(cfg.low_pct);
+            $tbl.find('.ebay-lmp-cap-mid-pct').val(cfg.mid_pct);
+            $tbl.find('.ebay-lmp-cap-high-pct').val(cfg.high_pct);
+            ebayPaintLmpCapExamples(cfg);
+        }
+        /** LMP reduce % for one grid row, from its Dil (OV L30 ÷ INV). */
+        function ebayLmpReducePctForRow(d) {
+            const cfg = ebayLmpCapNow();
+            const dil = ebayDgDil(d);
+            if (dil < cfg.low_lt) return cfg.low_pct;
+            if (dil > cfg.high_gt) return cfg.high_pct;
+            return cfg.mid_pct;
+        }
+        window.ebayLmpReducePctForRow = ebayLmpReducePctForRow;
         function ebayDgCvrBands() {
             const cfg = ebayCvrGroiAdjNow();
             const lo = cfg.down_lt;
@@ -2781,6 +3014,7 @@
                     ebayDilGroiRules = ebayEnsureZeroToZeroSlab(EBAY_DIL_GROI_DEFAULTS);
                 }
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
+                if (res && res.lmp_cap) ebayPaintLmpCapTable(res.lmp_cap);
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     ebayClearanceNroi = ebayDgRound2(Number(res.clearance_nroi));
                 }
@@ -2828,6 +3062,8 @@
             const rules = readEbayDilGroiRulesFromModal();
             const cvrAdj = ebayCvrGroiAdjNow();
             ebayCvrGroiAdj = cvrAdj;
+            const lmpCap = ebayLmpCapNow();
+            ebayLmpCap = lmpCap;
             if (ebayDgAutosaveXhr && typeof ebayDgAutosaveXhr.abort === 'function') {
                 try { ebayDgAutosaveXhr.abort(); } catch (e) { /* ignore */ }
             }
@@ -2839,7 +3075,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, clearance_nroi: ebayClearanceNroiNow(), _token: ebayDgCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, clearance_nroi: ebayClearanceNroiNow(), _token: ebayDgCsrf() }),
             });
             return ebayDgAutosaveXhr.then(function(res) {
                 ebayDgAutosaveXhr = null;
@@ -2962,6 +3198,13 @@
                 .on('input.ebayCvrGroi change.ebayCvrGroi', '#ebay-cvr-groi-table .ebay-cvr-groi-input', function() {
                     ebayCvrGroiAdj = ebayCvrGroiAdjNow();
                     renderEbayDilGroiCounts();
+                    ebayAfterDilGroiRulesChanged();
+                    ebayScheduleDilGroiAutosave();
+                });
+            $(document).off('input.ebayLmpCap change.ebayLmpCap', '#ebay-lmp-cap-table .ebay-lmp-cap-input')
+                .on('input.ebayLmpCap change.ebayLmpCap', '#ebay-lmp-cap-table .ebay-lmp-cap-input', function() {
+                    ebayLmpCap = ebayLmpCapNow();
+                    ebayPaintLmpCapExamples(ebayLmpCap);
                     ebayAfterDilGroiRulesChanged();
                     ebayScheduleDilGroiAutosave();
                 });

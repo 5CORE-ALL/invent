@@ -1118,7 +1118,8 @@
                 // Sprc Dil switch ON: S PRC at LMP lands on LMP × 0.98 (AmazonDilGroiRule::DIL_LMP_REDUCE_PCT).
                 // Std prc vs dil switch ON: S PRC = LMP.
                 const dilOn = (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil');
-                if (lmp > 0) out = +Number(dilOn ? lmp * (1 - 2 / 100) : lmp).toFixed(2);
+                const reducePct = (typeof window.ebayLmpReducePctForRow === 'function') ? window.ebayLmpReducePctForRow(rowData) : 2;
+                if (lmp > 0) out = +Number(dilOn ? lmp * (1 - reducePct / 100) : lmp).toFixed(2);
             }
             const lmpNow = ebayEffectiveLmp(rowData);
             if (window.SpriceLmpCap && typeof SpriceLmpCap.capToStdWhenNoLmp === 'function') {

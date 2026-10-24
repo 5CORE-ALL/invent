@@ -164,6 +164,7 @@ class EbayRuleSprice
         return ['rule' => 'dil', 'dil' => [
             'rules' => $rules,
             'cvr_adj' => $unpacked['cvr_adj'],
+            'lmp_cap' => $unpacked['lmp_cap'],
             // eBay 1 only: Diff = (Std Prc − Price) / Price above this % adds DIFF_ADJ_POINTS to the Target NROI.
             'diff_adj' => $channel === 'ebay1',
         ]];
@@ -253,9 +254,13 @@ class EbayRuleSprice
             $margin = AmazonDilGroiRule::TAKE_HOME;
         }
         // Sprc Dil (switch ON): S PRC at LMP lands on LMP × 0.98. Std prc vs dil: S PRC = LMP.
+        // The reduce % follows the SKU's Dil band (below / between / above) saved in the Sprc Dil modal.
+        $lmpReducePct = $dilOn
+            ? AmazonDilGroiRule::lmpCapReducePct((float) ($input['dil'] ?? 0), $context['dil']['lmp_cap'] ?? null)
+            : 0.0;
         $afterLmp = AmazonDilGroiRule::capSpriceToLmp(
             $rulePrice, $lmp, (float) ($input['lp'] ?? 0), (float) ($input['ship'] ?? 0), $margin, 0.0,
-            $dilOn ? AmazonDilGroiRule::DIL_LMP_REDUCE_PCT : 0.0
+            $lmpReducePct
         );
         $final = AmazonDilGroiRule::capToStdWhenNoLmp($afterLmp, $lmp, max($std, $rulePrice));
 

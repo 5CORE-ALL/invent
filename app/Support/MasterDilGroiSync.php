@@ -285,6 +285,7 @@ class MasterDilGroiSync
                 'rules' => $rules,
                 'cvr_adj' => $unpacked['cvr_adj'],
                 'clearance_nroi' => $unpacked['clearance_nroi'],
+                'lmp_cap' => $unpacked['lmp_cap'],
                 'is_default' => true,
             ];
         }
@@ -296,6 +297,7 @@ class MasterDilGroiSync
             'rules' => $rules,
             'cvr_adj' => $unpacked['cvr_adj'],
             'clearance_nroi' => $unpacked['clearance_nroi'],
+            'lmp_cap' => $unpacked['lmp_cap'],
             'is_default' => false,
         ];
     }
@@ -314,6 +316,9 @@ class MasterDilGroiSync
         }
         $existing = self::loadChannel($channel);
         $visibility = ['rules' => $rules, 'cvr_adj' => $existing['cvr_adj']];
+        if (is_array($existing['lmp_cap'] ?? null)) {
+            $visibility['lmp_cap'] = $existing['lmp_cap'];
+        }
         if (isset($existing['clearance_nroi']) && is_numeric($existing['clearance_nroi'])) {
             $visibility['clearance_nroi'] = $existing['clearance_nroi'];
         }

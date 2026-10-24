@@ -1850,6 +1850,7 @@ class ChannelPromoPricingController extends Controller
                 'rules' => AmazonDilGroiRule::defaultsForChannel($channel),
                 'cvr_adj' => $unpacked['cvr_adj'],
                 'clearance_nroi' => $unpacked['clearance_nroi'],
+                'lmp_cap' => $unpacked['lmp_cap'],
             ]);
         }
 
@@ -1862,6 +1863,7 @@ class ChannelPromoPricingController extends Controller
                 : $unpacked['rules'],
             'cvr_adj' => $unpacked['cvr_adj'],
             'clearance_nroi' => $unpacked['clearance_nroi'],
+            'lmp_cap' => $unpacked['lmp_cap'],
         ]);
     }
 
@@ -1903,7 +1905,16 @@ class ChannelPromoPricingController extends Controller
             ? AmazonDilGroiRule::normalizeCvrAdj($cvrIncoming)
             : $existing['cvr_adj'];
 
-        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj];
+        $lmpCapIncoming = $request->input('lmp_cap');
+        if (is_string($lmpCapIncoming)) {
+            $decodedLmpCap = json_decode($lmpCapIncoming, true);
+            $lmpCapIncoming = is_array($decodedLmpCap) ? $decodedLmpCap : null;
+        }
+        $lmpCap = is_array($lmpCapIncoming)
+            ? AmazonDilGroiRule::normalizeLmpCap($lmpCapIncoming)
+            : $existing['lmp_cap'];
+
+        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap];
         if ($request->exists('clearance_nroi')) {
             $rawNroi = $request->input('clearance_nroi');
             $visibility['clearance_nroi'] = is_numeric($rawNroi)
@@ -1931,6 +1942,7 @@ class ChannelPromoPricingController extends Controller
             'target_metric' => $this->dilTargetMetric($channel),
             'rules' => $rules,
             'cvr_adj' => $cvrAdj,
+            'lmp_cap' => $lmpCap,
             'clearance_nroi' => $visibility['clearance_nroi'] ?? null,
         ]);
     }

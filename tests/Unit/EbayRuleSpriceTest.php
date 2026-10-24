@@ -221,6 +221,28 @@ class EbayRuleSpriceTest extends TestCase
         $this->assertSame(90.0, $std['sprice']);
     }
 
+    public function test_sprc_dil_lmp_cap_reduce_pct_follows_the_dil_band(): void
+    {
+        $lmpCap = ['low_lt' => 25, 'high_gt' => 50, 'low_pct' => 2, 'mid_pct' => 5, 'high_pct' => 10];
+        $dil = ['rules' => [AmazonDilGroiRule::make(0, 0, 40), AmazonDilGroiRule::make(0.1, 1000, 40)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null), 'lmp_cap' => $lmpCap];
+        $context = ['rule' => 'dil', 'dil' => $dil];
+        // Rule price 107.14 is over LMP 90 (SGROI at LMP ≥ 20%) → S PRC = LMP less the band's %.
+        $base = ['lp' => 50, 'ship' => 5, 'lmp' => 90, 'percentage' => 0.8, 'ads' => 0.10, 'inv' => 10, 'cvr' => 8, 'cvr_60' => 8];
+        $this->assertSame(88.2, EbayRuleSprice::price($this->pricer(), $this->input(['dil' => 10] + $base), $context)['sprice']);
+        $this->assertSame(85.5, EbayRuleSprice::price($this->pricer(), $this->input(['dil' => 30] + $base), $context)['sprice']);
+        $this->assertSame(81.0, EbayRuleSprice::price($this->pricer(), $this->input(['dil' => 60] + $base), $context)['sprice']);
+    }
+
+    public function test_lmp_cap_config_is_normalized_and_defaults_to_2_percent(): void
+    {
+        $this->assertSame(2.0, AmazonDilGroiRule::lmpCapReducePct(40));
+        $cfg = AmazonDilGroiRule::normalizeLmpCap(['low_lt' => 60, 'high_gt' => 10, 'mid_pct' => 500, 'low_pct' => -1]);
+        $this->assertSame(60.0, $cfg['high_gt']);
+        $this->assertSame(99.0, $cfg['mid_pct']);
+        $this->assertSame(2.0, $cfg['low_pct']);
+        $this->assertSame(2.0, AmazonDilGroiRule::unpackStored(['rules' => [], 'cvr_adj' => []])['lmp_cap']['high_pct']);
+    }
+
     public function test_sprc_dil_adds_10_to_target_nroi_when_std_vs_price_diff_is_over_20_percent(): void
     {
         $dil = ['rules' => [AmazonDilGroiRule::make(0, 0, 40), AmazonDilGroiRule::make(0.1, 100, 40)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null), 'diff_adj' => true];

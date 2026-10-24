@@ -700,17 +700,80 @@ class AmazonDilGroiRule
     }
 
     /**
+     * Sprc Dil LMP cap (eBay): when S PRC reaches LMP, S PRC = LMP × (1 − pct/100). The pct depends on the SKU's Dil:
+     * Dil below low_lt → low_pct, Dil above high_gt → high_pct, otherwise (low_lt..high_gt) → mid_pct.
+     *
+     * @return array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float}
+     */
+    public static function defaultLmpCap(): array
+    {
+        return [
+            'low_lt' => 25.0,
+            'high_gt' => 50.0,
+            'low_pct' => self::DIL_LMP_REDUCE_PCT,
+            'mid_pct' => self::DIL_LMP_REDUCE_PCT,
+            'high_pct' => self::DIL_LMP_REDUCE_PCT,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $raw
+     * @return array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float}
+     */
+    public static function normalizeLmpCap(?array $raw): array
+    {
+        $out = self::defaultLmpCap();
+        if (! is_array($raw)) {
+            return $out;
+        }
+        foreach (array_keys($out) as $key) {
+            if (! isset($raw[$key]) || ! is_numeric($raw[$key])) {
+                continue;
+            }
+            $n = round((float) $raw[$key], 2);
+            if (! is_finite($n) || $n < 0) {
+                continue;
+            }
+            if (str_ends_with($key, '_pct') && $n > 99) {
+                $n = 99.0;
+            }
+            $out[$key] = $n;
+        }
+        if ($out['high_gt'] < $out['low_lt']) {
+            $out['high_gt'] = $out['low_lt'];
+        }
+
+        return $out;
+    }
+
+    /** LMP reduce % for a SKU's Dil % (see defaultLmpCap()). */
+    public static function lmpCapReducePct(float $dil, ?array $cfg = null): float
+    {
+        $c = self::normalizeLmpCap($cfg);
+        if ($dil < $c['low_lt']) {
+            return $c['low_pct'];
+        }
+        if ($dil > $c['high_gt']) {
+            return $c['high_pct'];
+        }
+
+        return $c['mid_pct'];
+    }
+
+    /**
      * @param  array<string, mixed>|null  $saved
-     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}}
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float}}
      */
     public static function unpackStored(?array $saved): array
     {
         $rulesRaw = $saved;
         $cvrRaw = null;
+        $lmpCapRaw = null;
         $clearanceNroi = null;
         if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
             $rulesRaw = $saved['rules'];
             $cvrRaw = is_array($saved['cvr_adj'] ?? null) ? $saved['cvr_adj'] : null;
+            $lmpCapRaw = is_array($saved['lmp_cap'] ?? null) ? $saved['lmp_cap'] : null;
             if (isset($saved['clearance_nroi']) && is_numeric($saved['clearance_nroi'])) {
                 $clearanceNroi = round(max(0, (float) $saved['clearance_nroi']), 2);
             }
@@ -721,6 +784,7 @@ class AmazonDilGroiRule
             'rules' => $rules,
             'cvr_adj' => self::normalizeCvrAdj($cvrRaw),
             'clearance_nroi' => $clearanceNroi,
+            'lmp_cap' => self::normalizeLmpCap($lmpCapRaw),
         ];
     }
 
