@@ -767,6 +767,7 @@
                     </select>
 
                     @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'buttons'])
+                    @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'buttons'])
 
                     <!-- Selected Rows Count -->
                     <span class="badge bg-primary fs-6 p-2 ms-2" id="selected-rows-count" style="display: none;">
@@ -1270,6 +1271,7 @@
     </div>
 
     @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'modals'])
+    @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'modals'])
 
 @endsection
 
@@ -1320,6 +1322,7 @@
         }
 
         @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'script'])
+        @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'script'])
 
         function amazonNormalizeSkuKey(sku) {
             return String(sku == null ? '' : sku).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
@@ -1675,11 +1678,11 @@
             return amazonComputeGpftAt(amazonDisplaySprice(rowData), rowData);
         }
 
-        /** SNPFT = live S GPFT − Ads% */
+        /** SNPFT = live S GPFT − Ads% (the Dynamic Rule slab for the S PRC when it is on, else the channel Ads%) */
         function amazonComputeSpft(rowData) {
             const sgpft = amazonComputeSgpft(rowData);
             if (sgpft == null || !isFinite(sgpft)) return null;
-            return sgpft - (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
+            return sgpft - amazonAdsPctAtPrice(amazonDisplaySprice(rowData));
         }
 
         /**
@@ -1963,8 +1966,8 @@
                     tr.append($('<td class="text-end"></td>').html(amazonModalCountEmphasisHtml(row['A_L30'])));
                     tr.append($('<td class="text-end"></td>').html(amazonModalCvrL30ColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(row['GPFT%'])));
-                    // PFT% = GPFT% − Ads% (channel TACOS)
-                    const modalPft = (parseFloat(row['GPFT%']) || 0) - (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
+                    // PFT% = GPFT% − Ads% (Dynamic Rule slab for the price when on, else channel TACOS)
+                    const modalPft = (parseFloat(row['GPFT%']) || 0) - amazonRowAdsPct(row);
                     tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(modalPft, 'npft')));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGroiColoredHtml(row['GROI%'])));
                     tr.append($('<td class="text-end"></td>').html(amazonModalLmpColoredHtml(row)));
@@ -5356,14 +5359,14 @@
                         title: "Ads %",
                         field: "ADS_PCT",
                         hozAlign: "center",
-                        headerTooltip: "Amz channel Ads% (Total Ad Spend / L30 Sales) — same as the Ads badge. NPFT% = GPFT% − Ads%.",
+                        headerTooltip: "Amz channel Ads% (Total Ad Spend / L30 Sales) — same as the Ads badge. With the Dynamic Rule on, the Ads % of the price slab the SKU falls in. NPFT% = GPFT% − Ads%.",
                         sorter: amazonMetricSorter(function(d) {
-                            return (d && d.is_parent_summary) ? null : (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
+                            return (d && d.is_parent_summary) ? null : amazonRowAdsPct(d);
                         }),
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
-                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
+                            const ads = amazonRowAdsPct(rowData);
                             return `<span style="font-weight:600;color:#fd7e14;">${ads.toFixed(1)}%</span>`;
                         },
                         width: 55
@@ -5374,13 +5377,13 @@
                         hozAlign: "center",
                         // Same value the cell shows (blank GPFT counts as 0, minus Ads%).
                         sorter: amazonMetricSorter(function(d) {
-                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
+                            const ads = amazonRowAdsPct(d);
                             const gpft = amazonComputeGpftAt(d && d.price, d);
                             return (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
                         }),
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
+                            const ads = amazonRowAdsPct(rowData);
                             const gpft = amazonComputeGpftAt(rowData && rowData.price, rowData);
                             const percent = (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
                             const _st = (window.MetricPctColors && MetricPctColors.styleFor('npft', percent)) || '';

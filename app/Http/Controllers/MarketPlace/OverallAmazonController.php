@@ -3190,6 +3190,68 @@ class OverallAmazonController extends Controller
     }
 
     /**
+     * Dynamic Ads % rule: price slabs (From $ ≤ price < To $) with an Ads %. Blank To = no upper limit.
+     *
+     * @return array{enabled: bool, slabs: list<array{min: float, max: float|null, pct: float}>}
+     */
+    private static function amazonNormalizeDynamicAdsRule(mixed $raw): array
+    {
+        $enabled = is_array($raw) && filter_var($raw['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $slabsIn = is_array($raw) && is_array($raw['slabs'] ?? null) ? $raw['slabs'] : [];
+        $slabs = [];
+        foreach (array_slice($slabsIn, 0, 50) as $s) {
+            if (! is_array($s) || ! is_numeric($s['pct'] ?? null)) {
+                continue;
+            }
+            $min = is_numeric($s['min'] ?? null) ? max(0.0, (float) $s['min']) : 0.0;
+            $max = (isset($s['max']) && $s['max'] !== '' && is_numeric($s['max'])) ? (float) $s['max'] : null;
+            if ($max !== null && $max <= $min) {
+                continue;
+            }
+            $slabs[] = [
+                'min' => round($min, 2),
+                'max' => $max === null ? null : round($max, 2),
+                'pct' => round(min(100.0, max(0.0, (float) $s['pct'])), 2),
+            ];
+        }
+        usort($slabs, fn ($a, $b) => $a['min'] <=> $b['min']);
+
+        return ['enabled' => $enabled, 'slabs' => $slabs];
+    }
+
+    /** Saved Dynamic Ads % rule (used to render the page and by the GET endpoint). */
+    public static function amazonDynamicAdsRuleConfig(): array
+    {
+        try {
+            $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_dynamic_ads_rule')->first();
+        } catch (\Throwable $e) {
+            $row = null;
+        }
+
+        return self::amazonNormalizeDynamicAdsRule($row?->visibility);
+    }
+
+    public function amazonDynamicAdsRuleGet()
+    {
+        return response()->json(['success' => true] + self::amazonDynamicAdsRuleConfig());
+    }
+
+    public function amazonDynamicAdsRuleSave(Request $request)
+    {
+        $payload = self::amazonNormalizeDynamicAdsRule([
+            'enabled' => $request->input('enabled'),
+            'slabs' => $request->input('slabs', []),
+        ]);
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'amazon_dynamic_ads_rule'],
+            ['visibility' => $payload, 'column_order' => ['slabs']]
+        );
+
+        return response()->json(['success' => true] + $payload);
+    }
+
+    /**
      * Daily slab counts for Std prc vs dil history dots. One snapshot per PDT day.
      */
     public function amazonStdPrcVsDilHistory(Request $request)
