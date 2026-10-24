@@ -368,7 +368,8 @@ class AmazonDilGroiRule
         float $lp,
         float $ship = 0.0,
         float $margin = self::TAKE_HOME,
-        float $std = 0.0
+        float $std = 0.0,
+        float $lmpReducePct = 0.0
     ): float {
         $s = round($sprice, 2);
         if (! ($s > 0)) {
@@ -377,11 +378,142 @@ class AmazonDilGroiRule
         if ($lmp > 0 && ($s + 0.0001) >= $lmp) {
             $sgroiAtLmp = self::sgroiAtPrice($lmp, $lp, $ship, $margin);
             if ($sgroiAtLmp === null || $sgroiAtLmp >= self::LMP_SGROI_MIN) {
-                $s = round($lmp, 2);
+                $s = self::lmpTargetPrice($lmp, $lmpReducePct);
             }
         }
 
         return self::capToStdWhenNoLmp($s, $lmp, $std);
+    }
+
+    /** Dil slabs of the "LMP Reduce" block when nothing is saved: Dil under 25 → 10% off LMP, otherwise 5% off LMP. */
+    public const LMP_REDUCE_DEFAULTS = [
+        ['min' => 0.0, 'max' => 25.0, 'pct' => 10.0],
+        ['min' => 25.0, 'max' => 9999.0, 'pct' => 5.0],
+    ];
+
+    /** Clearance SNROI slabs when nothing is saved: Dil up to 25 → 0%, over 25 up to 50 → 20%, over 50 → 30%. */
+    public const CLEARANCE_SNROI_DEFAULTS = [
+        ['min' => 0.0, 'max' => 25.0, 'nroi' => 0.0],
+        ['min' => 25.0, 'max' => 50.0, 'nroi' => 20.0],
+        ['min' => 50.0, 'max' => 9999.0, 'nroi' => 30.0],
+    ];
+
+    /**
+     * Clearance SNROI slabs: one { min, max, nroi } per Dil % slab. A blank nroi leaves clearance SKUs unpriced (as before).
+     * Nothing saved (null) → the defaults. A saved empty list → the block is off.
+     *
+     * @param  mixed  $incoming
+     * @return list<array{min:float,max:float,nroi:float|null}>
+     */
+    public static function normalizeClearanceSnroiRules($incoming): array
+    {
+        if ($incoming === null) {
+            return self::CLEARANCE_SNROI_DEFAULTS;
+        }
+        if (! is_array($incoming)) {
+            return [];
+        }
+        $rules = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item) || ! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
+                continue;
+            }
+            $min = (float) $item['min'];
+            $max = (float) $item['max'];
+            if ($max < $min) {
+                [$min, $max] = [$max, $min];
+            }
+            $nroi = is_numeric($item['nroi'] ?? null) ? round(min(9999, max(-100, (float) $item['nroi'])), 2) : null;
+            $rules[] = ['min' => round($min, 2), 'max' => round($max, 2), 'nroi' => $nroi];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Target SNROI % for a clearance SKU's Dil %, null when its slab has none.
+     * A slab covers min < Dil ≤ max (the first one also includes min), so Dil 25 is in the "up to 25" slab and 50 in "25 to 50".
+     *
+     * @param  list<array{min:float,max:float,nroi:float|null}>|null  $rules
+     */
+    public static function clearanceSnroiTarget(float $dil, ?array $rules): ?float
+    {
+        foreach (array_values($rules ?? []) as $i => $r) {
+            $min = (float) ($r['min'] ?? 0);
+            $max = (float) ($r['max'] ?? 0);
+            $hit = abs($max - $min) < 0.00001
+                ? abs($dil - $min) < 0.00001
+                : (($i === 0 ? $dil >= $min : $dil > $min) && $dil <= $max);
+            if ($hit) {
+                return isset($r['nroi']) && is_numeric($r['nroi']) ? (float) $r['nroi'] : null;
+            }
+        }
+
+        return null;
+    }
+
+    /** The price S PRC lands on when it reaches LMP: LMP less the reduce %. */
+    public static function lmpTargetPrice(float $lmp, float $reducePct = 0.0): float
+    {
+        $pct = is_finite($reducePct) ? min(99.0, max(0.0, $reducePct)) : 0.0;
+
+        return round($lmp * (1 - ($pct / 100)), 2);
+    }
+
+    /**
+     * LMP Reduce slabs: one { min, max, pct } per Dil % slab. A blank pct means no reduction for that slab.
+     * Nothing saved (null) → the defaults. A saved empty list → the block is off.
+     *
+     * @param  mixed  $incoming
+     * @return list<array{min:float,max:float,pct:float|null}>
+     */
+    public static function normalizeLmpReduceRules($incoming): array
+    {
+        if ($incoming === null) {
+            return self::LMP_REDUCE_DEFAULTS;
+        }
+        if (! is_array($incoming)) {
+            return [];
+        }
+        $rules = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item) || ! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
+                continue;
+            }
+            $min = (float) $item['min'];
+            $max = (float) $item['max'];
+            if ($max < $min) {
+                [$min, $max] = [$max, $min];
+            }
+            $pct = is_numeric($item['pct'] ?? null) ? round(min(99, max(0, (float) $item['pct'])), 2) : null;
+            $rules[] = ['min' => round($min, 2), 'max' => round($max, 2), 'pct' => $pct];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Reduce % for a SKU's Dil %, 0 when its slab has none. A slab covers min ≤ Dil < max (the last one also max).
+     * Same slab test as the Std prc vs dil modal.
+     *
+     * @param  list<array{min:float,max:float,pct:float|null}>|null  $rules
+     */
+    public static function lmpReducePct(float $dil, ?array $rules): float
+    {
+        $rules = array_values($rules ?? []);
+        $last = count($rules) - 1;
+        foreach ($rules as $i => $r) {
+            $min = (float) ($r['min'] ?? 0);
+            $max = (float) ($r['max'] ?? 0);
+            $hit = abs($max - $min) < 0.00001
+                ? abs($dil - $min) < 0.00001
+                : ($dil >= $min && ($i === $last ? $dil <= $max : $dil < $max));
+            if ($hit) {
+                return isset($r['pct']) && is_numeric($r['pct']) ? max(0.0, (float) $r['pct']) : 0.0;
+            }
+        }
+
+        return 0.0;
     }
 
     /** Same as the Amazon tabulator CVR L30 column (A L30 ÷ Sess30). */

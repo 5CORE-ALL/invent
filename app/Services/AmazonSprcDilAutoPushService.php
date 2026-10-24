@@ -265,9 +265,20 @@ class AmazonSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
-        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them.
+        // Clearance SKUs show "C" in S PRC. They are priced only from the Clearance SNROI block of Std prc vs dil
+        // (target SNROI by Dil slab). No block slab for their Dil, or the Dil GROI rule on, = no price saved or pushed.
+        $clearanceTarget = null;
         if ((new StdPrcVsDilPricer([], 'amazon'))->isClearanceRow($row)) {
-            return null;
+            if (\App\Support\SpriceActiveRule::forChannel('amazon') === 'dil') {
+                return null;
+            }
+            $clearanceTarget = AmazonDilGroiRule::clearanceSnroiTarget(
+                (float) ($row['dil'] ?? 0),
+                $stdPromo['clearance_snroi'] ?? null
+            );
+            if ($clearanceTarget === null) {
+                return null;
+            }
         }
 
         $dil = (float) ($row['dil'] ?? 0);
@@ -380,19 +391,24 @@ class AmazonSprcDilAutoPushService
 
         // SNROI Cap: a Dil slab with a Target SNROI % prices S PRC from that SNROI, not from the discounts. Std Prc
         // stays the maximum. The LMP cap below can still bring it down.
-        $snroiCap = StdPrcVsDilPricer::snroiCapTarget(
+        $snroiCap = $clearanceTarget ?? StdPrcVsDilPricer::snroiCapTarget(
             $dil,
             is_array($stdPromo['snroi_cap'] ?? null) ? $stdPromo['snroi_cap'] : []
         );
         $snroiCapped = false;
         if ($snroiCap !== null) {
+            // Clearance: the Clearance SNROI target replaces the SNROI Cap and the price rounds up so SNROI is never under it.
             $afterCap = StdPrcVsDilPricer::snroiTargetPrice(
                 $snroiCap,
                 $lp,
                 AmazonDilGroiRule::TAKE_HOME,
                 $ship,
-                max(0.0, (float) $ads) / 100
+                max(0.0, (float) $ads) / 100,
+                $clearanceTarget !== null
             );
+            if ($clearanceTarget !== null && $afterCap === null) {
+                return null;
+            }
             if ($afterCap !== null && $std > 0 && $afterCap > $std) {
                 $afterCap = round($std, 2);
             }
@@ -406,17 +422,20 @@ class AmazonSprcDilAutoPushService
         if ($totalDisc < 0 && $std > 0 && $sale !== null) {
             $stdCeiling = (float) $sale;
         }
+        // LMP Reduce: when S PRC reaches LMP it lands on LMP less the % of its Dil slab (block in Std prc vs dil).
+        $lmpReducePct = AmazonDilGroiRule::lmpReducePct($dil, $stdPromo['lmp_reduce'] ?? null);
         $capped = AmazonDilGroiRule::capSpriceToLmp(
             $effective,
             $lmp,
             $lp,
             $ship,
             AmazonDilGroiRule::TAKE_HOME,
-            $stdCeiling
+            $stdCeiling,
+            $lmpReducePct
         );
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
-            && abs($capped - round($lmp, 2)) <= 0.02;
+            && abs($capped - AmazonDilGroiRule::lmpTargetPrice($lmp, $lmpReducePct)) <= 0.02;
         $sprice = $capped;
 
         if (! is_finite($sprice) || $sprice < 0.01) {
@@ -875,7 +894,7 @@ class AmazonSprcDilAutoPushService
      */
     protected function loadStdPrcVsDil(): array
     {
-        $empty = ['dil' => [], 'age' => [], 'cvr' => [], 'buss' => [], 'snroi_cap' => [], 'zero_sold_disc' => 0];
+        $empty = ['dil' => [], 'age' => [], 'cvr' => [], 'buss' => [], 'snroi_cap' => [], 'lmp_reduce' => AmazonDilGroiRule::LMP_REDUCE_DEFAULTS, 'clearance_snroi' => AmazonDilGroiRule::CLEARANCE_SNROI_DEFAULTS, 'zero_sold_disc' => 0];
         try {
             $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_std_prc_vs_dil')->first();
         } catch (Throwable $e) {
@@ -892,6 +911,8 @@ class AmazonSprcDilAutoPushService
             'cvr' => is_array($saved['cvr'] ?? null) ? $saved['cvr'] : [],
             'buss' => is_array($saved['buss'] ?? null) ? $saved['buss'] : [],
             'snroi_cap' => StdPrcVsDilPricer::normalizeSnroiCapRules($saved['snroi_cap'] ?? null),
+            'lmp_reduce' => AmazonDilGroiRule::normalizeLmpReduceRules(array_key_exists('lmp_reduce', $saved) ? $saved['lmp_reduce'] : null),
+            'clearance_snroi' => AmazonDilGroiRule::normalizeClearanceSnroiRules(array_key_exists('clearance_snroi', $saved) ? $saved['clearance_snroi'] : null),
             'zero_sold_disc' => is_numeric($saved['zero_sold_disc'] ?? null) ? (float) $saved['zero_sold_disc'] : 0,
         ];
     }

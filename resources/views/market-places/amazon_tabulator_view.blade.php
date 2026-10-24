@@ -895,7 +895,7 @@
                         </span>
                         <span class="badge fs-6 p-2" id="amazon-clearance-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
-                            title="C = Clearance SKUs (Inv days clearance = YES). S PRC shows the rule price only, nothing is saved or pushed. Click to show only those SKUs. Click again to clear."
+                            title="C = Clearance SKUs (Inv days clearance = YES). They are priced from the Clearance SNROI block of Std prc vs dil (target SNROI by Dil). With no target for their Dil, S PRC shows the rule price only and nothing is saved or pushed. Click to show only those SKUs. Click again to clear."
                             aria-label="Clearance SKUs">C 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'amazon-lmp-missing-badge', 'lmpChannelKey' => 'amazon'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'amazon-price-gt-lmp-badge', 'pglChannelKey' => 'amazon', 'pglPriceField' => 'price'])
@@ -1475,7 +1475,11 @@
             let out = +Number(s).toFixed(2);
             if (amazonShouldCapSpriceToLmp(rowData, s)) {
                 const lmp = lmpWithShipping(rowData);
-                if (lmp > 0) out = +Number(lmp).toFixed(2);
+                if (lmp > 0) {
+                    // LMP Reduce block (Std prc vs dil): S PRC at LMP lands on LMP less the % of its Dil slab.
+                    const reducePct = (typeof window.amzStdLmpReducePct === 'function') ? Number(window.amzStdLmpReducePct(rowData)) || 0 : 0;
+                    out = +Number(lmp * (1 - (Math.min(99, Math.max(0, reducePct)) / 100))).toFixed(2);
+                }
             }
             return amazonCapToStdWhenNoLmp(rowData, out);
         }
@@ -1543,7 +1547,8 @@
         /** S PRC the column paints: ON rule, then the same LMP / Std cap. */
         function amazonShownSprice(rowData) {
             if (!rowData || rowData.is_parent_summary) return 0;
-            if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData)) return 0;
+            if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData)
+                && !(typeof amzClearanceHasPrice === 'function' && amzClearanceHasPrice(rowData))) return 0;
             let raw = 0;
             if (typeof amzDisplayedSprice === 'function') {
                 raw = Number(amzDisplayedSprice(rowData)) || 0;
@@ -1569,6 +1574,7 @@
         function amazonDisplaySprice(rowData) {
             if (!rowData || rowData.is_parent_summary) return 0;
             if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData)
+                && !(typeof amzClearanceHasPrice === 'function' && amzClearanceHasPrice(rowData))
                 && typeof amzClearanceViewSprice === 'function') {
                 const raw = Number(amzClearanceViewSprice(rowData)) || 0;
                 if (!(raw > 0)) return 0;
@@ -5050,9 +5056,12 @@
                             if (rowData.is_parent_summary) return '';
                             // Clearance SKUs: show the rule price with a red "C" in front. It is display only —
                             // no S PRC is saved or pushed for them.
-                            const isClearance = typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData);
-                            const clearanceBadge = isClearance
-                                ? '<span class="amazon-sprice-clearance" title="Clearance — price shown only, not saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>'
+                            const isClearanceAny = typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData);
+                            // A clearance SKU with a Clearance SNROI target is priced, saved and pushed; only the "C" mark stays.
+                            const clearancePriced = isClearanceAny && typeof amzClearanceHasPrice === 'function' && amzClearanceHasPrice(rowData);
+                            const isClearance = isClearanceAny && !clearancePriced;
+                            const clearanceBadge = isClearanceAny
+                                ? '<span class="amazon-sprice-clearance" title="' + (clearancePriced ? 'Clearance — priced from the Clearance SNROI block' : 'Clearance — price shown only, not saved or pushed') + '" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>'
                                 : '';
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const currentPrice = parseFloat(rowData.price) || 0;
@@ -5319,6 +5328,22 @@
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 65
+                    },
+                    {
+                        title: "Ads %",
+                        field: "ADS_PCT",
+                        hozAlign: "center",
+                        headerTooltip: "Amz channel Ads% (Total Ad Spend / L30 Sales) — same as the Ads badge. NPFT% = GPFT% − Ads%.",
+                        sorter: amazonMetricSorter(function(d) {
+                            return (d && d.is_parent_summary) ? null : (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
+                        }),
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
+                            return `<span style="font-weight:600;color:#fd7e14;">${ads.toFixed(1)}%</span>`;
+                        },
+                        width: 55
                     },
                     {
                         title: "NPFT%",

@@ -73,6 +73,18 @@
             background: #fff;
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
+        /* LMP Reduce block: its own colour so it stands apart from the discount panels. */
+        #amzStdPrcModal .amz-sp-col[data-amz-sp-panel="lmpreduce"] { background: #fff4e0; border-color: #f5c46b; }
+        #amzStdPrcModal .amz-sp-col[data-amz-sp-panel="lmpreduce"] .amz-sp-pie-title { color: #9a5b00; }
+        #amzStdPrcModal .amz-sp-col[data-amz-sp-panel="lmpreduce"] .table thead th { background: #fde6b8; color: #7a4600; }
+        #amzStdPrcModal .amz-sp-col[data-amz-sp-panel="lmpreduce"] .amz-sp-min-btn { background: #fde6b8; color: #7a4600; }
+        #amzStdPrcModal .amz-sp-col[data-amz-sp-panel="lmpreduce"] .amz-sp-sub { font-size: 11px; color: #8a6d3b; margin: 0 0 8px; }
+        /* Clearance SNROI block: rose, so it differs from the discount panels and the amber LMP Reduce block. */
+        #amzStdPrcModal .amz-sp-col[data-amz-sp-panel="clrsnroi"] { background: #fdecef; border-color: #f1a7b5; }
+        #amzStdPrcModal .amz-sp-col[data-amz-sp-panel="clrsnroi"] .amz-sp-pie-title { color: #9f1239; }
+        #amzStdPrcModal .amz-sp-col[data-amz-sp-panel="clrsnroi"] .table thead th { background: #f9cfd8; color: #7f1030; }
+        #amzStdPrcModal .amz-sp-col[data-amz-sp-panel="clrsnroi"] .amz-sp-min-btn { background: #f9cfd8; color: #7f1030; }
+        #amzStdPrcModal .amz-sp-col[data-amz-sp-panel="clrsnroi"] .amz-sp-sub { font-size: 11px; color: #9f4258; margin: 0 0 8px; }
         #amzStdPrcModal .amz-sp-col-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
         #amzStdPrcModal .amz-sp-col-head .amz-sp-pie-title { margin-bottom: 0; }
         #amzStdPrcModal .amz-sp-min-btn { border: 0; background: #f1f5f9; color: #334155; width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-weight: 700; flex-shrink: 0; }
@@ -360,7 +372,7 @@
                         <h5 class="modal-title fs-6 mb-0" id="amzStdPrcModalLabel">
                             <i class="fas fa-tags me-1"></i> Std prc vs dil
                         </h5>
-                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. A Dil slab with a SNROI Cap prices S PRC from the Target SNROI % (the discounts above are not used for it). Std Prc stays the maximum.</div>
+                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs are priced from the Clearance SNROI block (target SNROI by Dil); with no target for their Dil they stay on the discount price, shown only. A Dil slab with a SNROI Cap prices S PRC from the Target SNROI % (the discounts above are not used for it). Std Prc stays the maximum.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -587,6 +599,46 @@
                             <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-snroicap-add">Add slab</button>
                         </div>
 
+                        <div class="amz-sp-col" data-amz-sp-panel="lmpreduce">
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %. When S PRC reaches LMP, it is set to LMP less the Reduce % of its Dil slab (for example 10% off LMP when Dil is under 25, 5% off LMP above). Leave the Reduce % blank to keep S PRC = LMP for that slab.">LMP Reduce</div><button type="button" class="amz-sp-min-btn" title="Minimize LMP Reduce" aria-label="Minimize LMP Reduce">−</button></div>
+                            <div class="amz-sp-sub">If S PRC = LMP, S PRC = LMP − Reduce %.</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="text-center">Dil from</th>
+                                            <th class="text-center">Dil to</th>
+                                            <th class="text-center">At LMP</th>
+                                            <th class="text-end">Reduce %</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amz-sp-lmpreduce-tbody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-lmpreduce-add">Add slab</button>
+                        </div>
+
+                        <div class="amz-sp-col" data-amz-sp-panel="clrsnroi">
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %, for SKUs marked C (Inv Days clearance = YES). Target is the SNROI % their S PRC is priced at, instead of the discounts. Dil up to 25 → 0%, over 25 up to 50 → 20%, over 50 → 30%. A slab covers Dil over From and up to To. S PRC rounds up to the cent so SNROI is never under the target; Std Prc stays the maximum. Leave Target blank to keep clearance SKUs unpriced for that slab.">Clearance SNROI</div><button type="button" class="amz-sp-min-btn" title="Minimize Clearance SNROI" aria-label="Minimize Clearance SNROI">−</button></div>
+                            <div class="amz-sp-sub">Clearance (C) SKUs: S PRC = Target SNROI by Dil.</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="text-center">Dil over</th>
+                                            <th class="text-center">Dil to</th>
+                                            <th class="text-center">C SKUs</th>
+                                            <th class="text-end">Target SNROI %</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amz-sp-clrsnroi-tbody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-clrsnroi-add">Add slab</button>
+                        </div>
+
                         <div class="amz-sp-col" data-amz-sp-panel="all">
                             <div class="amz-sp-col-head"><div class="amz-sp-pie-title">All discounts</div><button type="button" class="amz-sp-min-btn" title="Minimize All discounts" aria-label="Minimize All discounts">−</button></div>
                             <div class="amz-sp-pie">
@@ -652,6 +704,19 @@
         let amzStdZeroSoldDisc = 0;
         // SNROI Cap: one { min, max, cap } per Dil slab. cap = Target SNROI %, null = off.
         let amzStdSnroiCap = [];
+        // LMP Reduce: one { min, max, pct } per Dil slab. When S PRC reaches LMP it becomes LMP less pct %. pct = null is off.
+        const AMZ_STD_LMP_REDUCE_DEFAULTS = [
+            { min: 0, max: 25, pct: 10 },
+            { min: 25, max: 9999, pct: 5 },
+        ];
+        let amzStdLmpReduce = AMZ_STD_LMP_REDUCE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        // Clearance SNROI: one { min, max, nroi } per Dil slab, for C SKUs. nroi = Target SNROI %, null = unpriced.
+        const AMZ_STD_CLEARANCE_SNROI_DEFAULTS = [
+            { min: 0, max: 25, nroi: 0 },
+            { min: 25, max: 50, nroi: 20 },
+            { min: 50, max: 9999, nroi: 30 },
+        ];
+        let amzStdClearanceSnroi = AMZ_STD_CLEARANCE_SNROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzStdCvrCfg = Object.assign({}, AMZ_STD_CVR_DEFAULT);
         const amzStdPieCharts = {};
         let amzStdPieGen = 0;
@@ -883,6 +948,165 @@
         window.amzStdApplySnroiCap = amzStdApplySnroiCap;
         window.amzStdSnroiCapRulesLive = amzStdSnroiCapRulesLive;
 
+        function amzStdNormLmpReduce(r) {
+            let min = Number(r && r.min);
+            let max = Number(r && r.max);
+            if (!isFinite(min) || !isFinite(max)) return null;
+            if (max < min) { const swap = min; min = max; max = swap; }
+            const raw = r ? r.pct : null;
+            let pct = (raw === null || raw === undefined || raw === '') ? NaN : Number(raw);
+            pct = isFinite(pct) ? Math.min(99, Math.max(0, pct)) : null;
+            return { min: min, max: max, pct: pct };
+        }
+        function amzStdLmpReduceRow(rule) {
+            const num = function(cls, val) {
+                return '<input type="number" step="0.1" class="form-control form-control-sm amz-sp-input ' + cls + '" value="' + amzStdEsc(val) + '">';
+            };
+            return '<tr><td class="text-center">' + num('amz-sp-lmpreduce-min', rule.min) + '</td>'
+                + '<td class="text-center">' + num('amz-sp-lmpreduce-max', rule.max) + '</td>'
+                + '<td class="amz-sp-count amz-sp-lmpreduce-count">0</td>'
+                + '<td class="text-end"><input type="number" min="0" max="99" step="0.1" placeholder="off" class="form-control form-control-sm amz-sp-input amz-sp-lmpreduce-pct" value="' + amzStdEsc(rule.pct == null ? '' : rule.pct) + '"></td>'
+                + '<td class="text-center"><button type="button" class="btn btn-sm amz-sp-del amz-sp-lmpreduce-del" title="Remove">&times;</button></td></tr>';
+        }
+        function amzStdReadLmpReduce() {
+            const rules = [];
+            $('#amz-sp-lmpreduce-tbody tr').each(function() {
+                const rule = amzStdNormLmpReduce({
+                    min: $(this).find('.amz-sp-lmpreduce-min').val(),
+                    max: $(this).find('.amz-sp-lmpreduce-max').val(),
+                    pct: $(this).find('.amz-sp-lmpreduce-pct').val(),
+                });
+                if (rule) rules.push(rule);
+            });
+            return rules;
+        }
+        function amzStdPaintLmpReduce() {
+            $('#amz-sp-lmpreduce-tbody').html((amzStdLmpReduce || []).map(amzStdLmpReduceRow).join('')).data('painted', true);
+        }
+        /** Slabs as typed in the open modal, else the saved ones. */
+        function amzStdLmpReduceRulesLive() {
+            if ($('#amz-sp-lmpreduce-tbody').data('painted')) return amzStdReadLmpReduce();
+            return amzStdLmpReduce;
+        }
+        /** Index of the LMP Reduce slab for this SKU's Dil %, or -1. Same slab test as the server (AmazonDilGroiRule::lmpReducePct). */
+        function amzStdLmpReduceSlab(d, rules) {
+            const n = Number((typeof amzPefDil === 'function') ? amzPefDil(d) : 0);
+            if (!isFinite(n) || !rules || !rules.length) return -1;
+            const last = rules.length - 1;
+            for (let i = 0; i < rules.length; i++) {
+                const r = rules[i];
+                if (!r) continue;
+                const min = Number(r.min);
+                const max = Number(r.max);
+                if (!isFinite(min) || !isFinite(max)) continue;
+                const hit = Math.abs(max - min) < 0.00001 ? Math.abs(n - min) < 0.00001 : (n >= min && (i === last ? n <= max : n < max));
+                if (hit) return i;
+            }
+            return -1;
+        }
+        /** Reduce % for this SKU (0 when its slab has none). */
+        function amzStdLmpReducePct(d, rules) {
+            rules = rules || amzStdLmpReduce;
+            const idx = amzStdLmpReduceSlab(d, rules);
+            if (idx < 0 || rules[idx].pct == null) return 0;
+            const pct = Number(rules[idx].pct);
+            return isFinite(pct) && pct > 0 ? Math.min(99, pct) : 0;
+        }
+        window.amzStdLmpReducePct = amzStdLmpReducePct;
+        window.amzStdLmpReduceRulesLive = amzStdLmpReduceRulesLive;
+
+        function amzStdNormClearanceSnroi(r) {
+            let min = Number(r && r.min);
+            let max = Number(r && r.max);
+            if (!isFinite(min) || !isFinite(max)) return null;
+            if (max < min) { const swap = min; min = max; max = swap; }
+            const raw = r ? r.nroi : null;
+            let nroi = (raw === null || raw === undefined || raw === '') ? NaN : Number(raw);
+            nroi = isFinite(nroi) ? Math.min(9999, Math.max(-100, nroi)) : null;
+            return { min: min, max: max, nroi: nroi };
+        }
+        function amzStdClearanceSnroiRow(rule) {
+            const num = function(cls, val) {
+                return '<input type="number" step="0.1" class="form-control form-control-sm amz-sp-input ' + cls + '" value="' + amzStdEsc(val) + '">';
+            };
+            return '<tr><td class="text-center">' + num('amz-sp-clrsnroi-min', rule.min) + '</td>'
+                + '<td class="text-center">' + num('amz-sp-clrsnroi-max', rule.max) + '</td>'
+                + '<td class="amz-sp-count amz-sp-clrsnroi-count">0</td>'
+                + '<td class="text-end"><input type="number" min="-100" step="0.1" placeholder="off" class="form-control form-control-sm amz-sp-input amz-sp-clrsnroi-nroi" value="' + amzStdEsc(rule.nroi == null ? '' : rule.nroi) + '"></td>'
+                + '<td class="text-center"><button type="button" class="btn btn-sm amz-sp-del amz-sp-clrsnroi-del" title="Remove">&times;</button></td></tr>';
+        }
+        function amzStdReadClearanceSnroi() {
+            const rules = [];
+            $('#amz-sp-clrsnroi-tbody tr').each(function() {
+                const rule = amzStdNormClearanceSnroi({
+                    min: $(this).find('.amz-sp-clrsnroi-min').val(),
+                    max: $(this).find('.amz-sp-clrsnroi-max').val(),
+                    nroi: $(this).find('.amz-sp-clrsnroi-nroi').val(),
+                });
+                if (rule) rules.push(rule);
+            });
+            return rules;
+        }
+        function amzStdPaintClearanceSnroi() {
+            $('#amz-sp-clrsnroi-tbody').html((amzStdClearanceSnroi || []).map(amzStdClearanceSnroiRow).join('')).data('painted', true);
+        }
+        /** Slabs as typed in the open modal, else the saved ones. */
+        function amzStdClearanceSnroiRulesLive() {
+            if ($('#amz-sp-clrsnroi-tbody').data('painted')) return amzStdReadClearanceSnroi();
+            return amzStdClearanceSnroi;
+        }
+        /**
+         * Index of the Clearance SNROI slab for this SKU's Dil %, or -1. A slab covers Dil over From and up to To
+         * (the first one also includes From): Dil 25 is in "up to 25", Dil 50 in "25 to 50". Same as the server
+         * (AmazonDilGroiRule::clearanceSnroiTarget).
+         */
+        function amzStdClearanceSnroiSlab(d, rules) {
+            const n = Number((typeof amzPefDil === 'function') ? amzPefDil(d) : 0);
+            if (!isFinite(n) || !rules || !rules.length) return -1;
+            for (let i = 0; i < rules.length; i++) {
+                const r = rules[i];
+                if (!r) continue;
+                const min = Number(r.min);
+                const max = Number(r.max);
+                if (!isFinite(min) || !isFinite(max)) continue;
+                const hit = Math.abs(max - min) < 0.00001
+                    ? Math.abs(n - min) < 0.00001
+                    : ((i === 0 ? n >= min : n > min) && n <= max);
+                if (hit) return i;
+            }
+            return -1;
+        }
+        /** Target SNROI % for a clearance (C) SKU, or null (not clearance, no slab, or the slab is blank). */
+        function amzStdClearanceTarget(d, rules) {
+            if (typeof amzStdIsClearance !== 'function' || !d || !amzStdIsClearance(d)) return null;
+            rules = rules || amzStdClearanceSnroi;
+            const idx = amzStdClearanceSnroiSlab(d, rules);
+            if (idx < 0 || rules[idx].nroi == null) return null;
+            const t = Number(rules[idx].nroi);
+            return isFinite(t) ? t : null;
+        }
+        /**
+         * Clearance SKU price from its Target SNROI. Same SNROI as the SNROI Cap, rounded UP to the cent so SNROI is never
+         * under the target (0% must not land at -0.01%). Std Prc stays the maximum.
+         */
+        function amzStdApplyClearanceSnroi(d, price, rules) {
+            const target = amzStdClearanceTarget(d, rules);
+            if (target == null) return price;
+            const lp = parseFloat(d && d.LP_productmaster) || 0;
+            const ship = parseFloat(d && d.Ship_productmaster) || 0;
+            const margin = amzStdRowMargin(d);
+            const adsFrac = amzStdAdsPct() / 100;
+            const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
+            if (!(lp > 0) || !(net > 0)) return price;
+            let solved = Math.ceil((((lp * (1 + target / 100)) + ship) / net) * 100 - 0.00001) / 100;
+            const std = Number(d && d.STANDARD_PRICE) || 0;
+            if (std > 0 && solved > std) solved = Math.round(std * 100) / 100;
+            return solved > 0 ? solved : price;
+        }
+        window.amzStdClearanceTarget = amzStdClearanceTarget;
+        window.amzStdApplyClearanceSnroi = amzStdApplyClearanceSnroi;
+        window.amzStdClearanceSnroiRulesLive = amzStdClearanceSnroiRulesLive;
+
         function amzStdNormRange(r) {
             let min = Number(r && r.min);
             let max = Number(r && r.max);
@@ -952,6 +1176,8 @@
                 reviews: reviews,
                 buss: amzStdReadRanges('#amz-sp-buss-tbody', '.amz-sp-buss-min', '.amz-sp-buss-max', '.amz-sp-buss-disc'),
                 snroiCap: amzStdSnroiCapRulesLive(),
+                lmpReduce: amzStdLmpReduceRulesLive(),
+                clearanceSnroi: amzStdClearanceSnroiRulesLive(),
                 zeroSoldDisc: (function() { const n = Number($('#amz-sp-zs-disc').val()); return isFinite(n) ? amzStdDisc(n) : 0; })(),
                 reviewMax: reviewMax,
                 noReviewsNoDiscount: $('#amz-sp-no-reviews-no-disc').is(':checked'),
@@ -994,6 +1220,8 @@
             amzStdPaintRanges('#amz-sp-rev-tbody', 'amz-sp-rev', reviews);
             amzStdPaintRanges('#amz-sp-buss-tbody', 'amz-sp-buss', amzStdBussRules);
             amzStdPaintSnroiCap();
+            amzStdPaintLmpReduce();
+            amzStdPaintClearanceSnroi();
             $('#amz-sp-zs-disc').val(amzStdZeroSoldDisc);
             const maxRev = (typeof amzReviewDiscMax !== 'undefined') ? amzReviewDiscMax : 4;
             $('#amz-sp-review-max').val(maxRev);
@@ -1351,6 +1579,10 @@
             draft.buss.forEach(function(r, i) { bussCounts['u' + i] = 0; });
             bussCounts.outside = 0;
             const snroiCapCounts = { off: 0 };
+            const lmpReduceCounts = {};
+            const clearanceCounts = {};
+            (draft.clearanceSnroi || []).forEach(function(r, i) { clearanceCounts['c' + i] = 0; });
+            (draft.lmpReduce || []).forEach(function(r, i) { lmpReduceCounts['m' + i] = 0; });
             (draft.snroiCap || []).forEach(function(r, i) { snroiCapCounts['n' + i] = 0; });
             const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
             const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
@@ -1431,13 +1663,28 @@
                 if (std > 0) {
                     let sprice = Math.round(std * (1 - (sum / 100)) * 100) / 100;
                     // SNROI Cap: after all discounts, never let SNROI go above the Target SNROI % of the SKU's Dil slab.
-                    const capIdx = amzStdSnroiCapSlab(d, draft.snroiCap);
-                    const cappedPrice = amzStdApplySnroiCap(d, sprice, draft.snroiCap);
+                    // Clearance (C) SKUs are priced from the Clearance SNROI block instead of the discounts and this cap.
+                    const clrTarget = amzStdClearanceTarget(d, draft.clearanceSnroi);
+                    if (clrTarget != null) {
+                        const clrIdx = amzStdClearanceSnroiSlab(d, draft.clearanceSnroi);
+                        if (clrIdx >= 0) clearanceCounts['c' + clrIdx] += 1;
+                        sprice = amzStdApplyClearanceSnroi(d, sprice, draft.clearanceSnroi);
+                    }
+                    const capIdx = clrTarget != null ? -1 : amzStdSnroiCapSlab(d, draft.snroiCap);
+                    const cappedPrice = clrTarget != null ? sprice : amzStdApplySnroiCap(d, sprice, draft.snroiCap);
                     if (capIdx >= 0 && Math.abs(cappedPrice - sprice) > 0.004) {
                         snroiCapCounts['n' + capIdx] += 1;
                         sprice = cappedPrice;
                     } else {
                         snroiCapCounts.off += 1;
+                    }
+                    // LMP Reduce: S PRC that reaches LMP lands on LMP less the Reduce % of its Dil slab.
+                    if (typeof amazonShouldCapSpriceToLmp === 'function' && amazonShouldCapSpriceToLmp(d, sprice)) {
+                        const lmpIdx = amzStdLmpReduceSlab(d, draft.lmpReduce);
+                        const lmpPct = lmpIdx >= 0 ? Number(draft.lmpReduce[lmpIdx].pct) : 0;
+                        const lmpNow = (typeof lmpWithShipping === 'function') ? Number(lmpWithShipping(d)) : 0;
+                        if (lmpIdx >= 0) lmpReduceCounts['m' + lmpIdx] += 1;
+                        if (lmpNow > 0) sprice = Math.round(lmpNow * (1 - (isFinite(lmpPct) && lmpPct > 0 ? lmpPct : 0) / 100) * 100) / 100;
                     }
                     const profit = amzStdUnitProfit(d, sprice);
                     const net = profit - (sprice * adsPct / 100);
@@ -1483,6 +1730,12 @@
             });
             $('#amz-sp-snroicap-tbody tr').each(function(i) {
                 $(this).find('.amz-sp-snroicap-count').text(snroiCapCounts['n' + i] || 0);
+            });
+            $('#amz-sp-lmpreduce-tbody tr').each(function(i) {
+                $(this).find('.amz-sp-lmpreduce-count').text(lmpReduceCounts['m' + i] || 0);
+            });
+            $('#amz-sp-clrsnroi-tbody tr').each(function(i) {
+                $(this).find('.amz-sp-clrsnroi-count').text(clearanceCounts['c' + i] || 0);
             });
             $('#amz-sp-cvr-down2-count').text(cvrCounts.down2 || 0);
             $('#amz-sp-cvr-down-count').text(cvrCounts.down || 0);
@@ -1621,6 +1874,8 @@
                 amzStdCvrCfg = amzStdNormCvr(res.cvr);
                 amzStdBussRules = (res.buss || AMZ_STD_BUSS_DEFAULTS).map(function(r) { return amzStdNormRange(r); }).filter(Boolean);
                 amzStdSnroiCap = (res.snroi_cap || []).map(amzStdNormCap).filter(Boolean);
+                if (Array.isArray(res.lmp_reduce)) amzStdLmpReduce = res.lmp_reduce.map(amzStdNormLmpReduce).filter(Boolean);
+                if (Array.isArray(res.clearance_snroi)) amzStdClearanceSnroi = res.clearance_snroi.map(amzStdNormClearanceSnroi).filter(Boolean);
                 amzStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? amzStdDisc(res.zero_sold_disc) : 0;
                 if (!amzStdDilRules.length) amzStdDilRules = AMZ_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!amzStdAgeRules.length) amzStdAgeRules = AMZ_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -1640,6 +1895,8 @@
             amzStdCvrCfg = draft.cvr;
             amzStdBussRules = draft.buss.length ? draft.buss : amzStdBussRules;
             amzStdSnroiCap = draft.snroiCap || [];
+            amzStdLmpReduce = draft.lmpReduce || [];
+            amzStdClearanceSnroi = draft.clearanceSnroi || [];
             amzStdZeroSoldDisc = amzStdDisc(draft.zeroSoldDisc);
             if (typeof amzReviewDiscRules !== 'undefined') {
                 amzReviewDiscRules = draft.reviews.map(function(r) {
@@ -1659,7 +1916,7 @@
                 url: '/amazon-std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss, snroi_cap_sent: 1, snroi_cap: (draft.snroiCap || []).map(function(r) { return { min: r.min, max: r.max, cap: r.cap == null ? '' : r.cap }; }), zero_sold_disc: draft.zeroSoldDisc },
+                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss, snroi_cap_sent: 1, snroi_cap: (draft.snroiCap || []).map(function(r) { return { min: r.min, max: r.max, cap: r.cap == null ? '' : r.cap }; }), clearance_snroi_sent: 1, clearance_snroi: (draft.clearanceSnroi || []).map(function(r) { return { min: r.min, max: r.max, nroi: r.nroi == null ? '' : r.nroi }; }), lmp_reduce_sent: 1, lmp_reduce: (draft.lmpReduce || []).map(function(r) { return { min: r.min, max: r.max, pct: r.pct == null ? '' : r.pct }; }), zero_sold_disc: draft.zeroSoldDisc },
             });
             const revSave = $.ajax({
                 url: '/amazon-review-disc',
@@ -1674,6 +1931,8 @@
                 if (res && res.cvr) amzStdCvrCfg = amzStdNormCvr(res.cvr);
                 if (res && res.buss) amzStdBussRules = res.buss.map(amzStdNormRange).filter(Boolean);
                 if (res && res.snroi_cap) amzStdSnroiCap = res.snroi_cap.map(amzStdNormCap).filter(Boolean);
+                if (res && Array.isArray(res.lmp_reduce)) amzStdLmpReduce = res.lmp_reduce.map(amzStdNormLmpReduce).filter(Boolean);
+                if (res && Array.isArray(res.clearance_snroi)) amzStdClearanceSnroi = res.clearance_snroi.map(amzStdNormClearanceSnroi).filter(Boolean);
                 if (res && isFinite(Number(res.zero_sold_disc))) amzStdZeroSoldDisc = amzStdDisc(res.zero_sold_disc);
                 if (typeof table !== 'undefined' && table && typeof amzTableRedrawPreserveScroll === 'function') {
                     amzTableRedrawPreserveScroll(true);
@@ -1817,6 +2076,8 @@
                 amzStdPieGen++;
                 // Unsaved cap edits must not leak into the page's pricing after the modal closes.
                 $('#amz-sp-snroicap-tbody').removeData('painted');
+                $('#amz-sp-lmpreduce-tbody').removeData('painted');
+                $('#amz-sp-clrsnroi-tbody').removeData('painted');
                 $('#amz-sp-hist-wrap').removeClass('is-open');
                 if (amzStdHistChart) { amzStdHistChart.destroy(); amzStdHistChart = null; }
                 Object.keys(amzStdPieCharts).forEach(function(id) {
@@ -1865,7 +2126,21 @@
                 $('#amz-sp-snroicap-tbody').html(rules.map(amzStdSnroiCapRow).join('')).data('painted', true);
                 amzStdRefreshModal();
             });
-            $(document).off('click.amzspdel').on('click.amzspdel', '#amzStdPrcModal .amz-sp-snroicap-del, #amzStdPrcModal .amz-sp-dil-del, #amzStdPrcModal .amz-sp-age-del, #amzStdPrcModal .amz-sp-rev-del, #amzStdPrcModal .amz-sp-buss-del', function() {
+            $('#amz-sp-lmpreduce-add').off('click.amzsp').on('click.amzsp', function() {
+                const rules = amzStdReadLmpReduce();
+                const last = rules.length ? rules[rules.length - 1].max : 0;
+                rules.push({ min: last, max: last + 25, pct: null });
+                $('#amz-sp-lmpreduce-tbody').html(rules.map(amzStdLmpReduceRow).join('')).data('painted', true);
+                amzStdRefreshModal();
+            });
+            $('#amz-sp-clrsnroi-add').off('click.amzsp').on('click.amzsp', function() {
+                const rules = amzStdReadClearanceSnroi();
+                const last = rules.length ? rules[rules.length - 1].max : 0;
+                rules.push({ min: last, max: last + 25, nroi: null });
+                $('#amz-sp-clrsnroi-tbody').html(rules.map(amzStdClearanceSnroiRow).join('')).data('painted', true);
+                amzStdRefreshModal();
+            });
+            $(document).off('click.amzspdel').on('click.amzspdel', '#amzStdPrcModal .amz-sp-clrsnroi-del, #amzStdPrcModal .amz-sp-lmpreduce-del, #amzStdPrcModal .amz-sp-snroicap-del, #amzStdPrcModal .amz-sp-dil-del, #amzStdPrcModal .amz-sp-age-del, #amzStdPrcModal .amz-sp-rev-del, #amzStdPrcModal .amz-sp-buss-del', function() {
                 $(this).closest('tr').remove();
                 amzStdRefreshModal();
             });

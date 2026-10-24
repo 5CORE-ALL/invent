@@ -173,6 +173,63 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(70.0, $out['sprice'], 0.001);
     }
 
+    public function test_lmp_reduce_takes_ten_percent_off_lmp_when_dil_is_under_25(): void
+    {
+        // Std $100 is above LMP $70, so S PRC = LMP. Dil 2.5 is under 25 → LMP less 10% = $63.
+        $out = $this->compute($this->lmpReduceRow(2.5), 0.0, ['lmp_reduce' => AmazonDilGroiRule::LMP_REDUCE_DEFAULTS]);
+
+        $this->assertNotNull($out);
+        $this->assertTrue($out['lmp_capped']);
+        $this->assertEqualsWithDelta(63.0, $out['sprice'], 0.001);
+    }
+
+    public function test_lmp_reduce_takes_five_percent_off_lmp_when_dil_is_25_or_more(): void
+    {
+        // Dil 40 is in the 25+ slab → LMP less 5% = $66.50.
+        $out = $this->compute($this->lmpReduceRow(40), 0.0, ['lmp_reduce' => AmazonDilGroiRule::LMP_REDUCE_DEFAULTS]);
+
+        $this->assertNotNull($out);
+        $this->assertTrue($out['lmp_capped']);
+        $this->assertEqualsWithDelta(66.5, $out['sprice'], 0.001);
+    }
+
+    public function test_lmp_reduce_blank_slab_keeps_s_prc_at_lmp(): void
+    {
+        $slabs = [['min' => 0, 'max' => 25, 'pct' => null], ['min' => 25, 'max' => 9999, 'pct' => 5.0]];
+        $out = $this->compute($this->lmpReduceRow(2.5), 0.0, ['lmp_reduce' => $slabs]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(70.0, $out['sprice'], 0.001);
+    }
+
+    public function test_lmp_reduce_does_not_touch_a_price_below_lmp(): void
+    {
+        $row = $this->lmpReduceRow(2.5);
+        $row['lmp'] = 150;
+        $out = $this->compute($row, 0.0, ['lmp_reduce' => AmazonDilGroiRule::LMP_REDUCE_DEFAULTS]);
+
+        $this->assertNotNull($out);
+        $this->assertFalse($out['lmp_capped']);
+        $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function lmpReduceRow(float $dil): array
+    {
+        return [
+            'inv' => 10,
+            'dil' => $dil,
+            'lp' => 40,
+            'ship' => 8,
+            'standard_price' => 100,
+            'cvr' => 0,
+            'review_count' => 0,
+            'lmp' => 70,
+        ];
+    }
+
     public function test_lmp_does_not_cap_when_sgroi_at_lmp_is_below_20(): void
     {
         $out = $this->compute([
@@ -439,6 +496,67 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         ], 13.79);
 
         $this->assertNull($out);
+    }
+
+    public function test_clearance_sku_is_priced_from_the_clearance_snroi_slab_of_its_dil(): void
+    {
+        $promo = ['clearance_snroi' => AmazonDilGroiRule::CLEARANCE_SNROI_DEFAULTS];
+        // LP 40, Ship 8, take-home 0.80, no Ads. Price at SNROI t% = (40 x (1 + t/100) + 8) / 0.80.
+        foreach ([[2.5, 60.0], [25, 60.0], [26, 70.0], [50, 70.0], [51, 75.0], [300, 75.0]] as [$dil, $price]) {
+            $out = $this->compute($this->clearanceRow($dil), 0.0, $promo);
+            $this->assertNotNull($out, 'dil '.$dil);
+            $this->assertEqualsWithDelta($price, $out['sprice'], 0.001, 'dil '.$dil);
+            $this->assertTrue($out['snroi_capped']);
+        }
+    }
+
+    public function test_clearance_snroi_rounds_up_so_snroi_is_never_under_the_target(): void
+    {
+        $row = $this->clearanceRow(2.5);
+        $row['lp'] = 28.18;
+        $row['ship'] = 6;
+        $out = $this->compute($row, 0.0, ['clearance_snroi' => AmazonDilGroiRule::CLEARANCE_SNROI_DEFAULTS]);
+
+        $this->assertNotNull($out);
+        $this->assertGreaterThanOrEqual(0.0, (($out['sprice'] * 0.80) - 6 - 28.18) / 28.18 * 100);
+        $this->assertEqualsWithDelta(42.73, $out['sprice'], 0.001);
+    }
+
+    public function test_clearance_with_a_blank_slab_or_no_block_gets_no_sprice(): void
+    {
+        $blank = [['min' => 0, 'max' => 25, 'nroi' => null], ['min' => 25, 'max' => 9999, 'nroi' => 20.0]];
+        $this->assertNull($this->compute($this->clearanceRow(2.5), 0.0, ['clearance_snroi' => $blank]));
+        $this->assertNull($this->compute($this->clearanceRow(2.5), 0.0, ['clearance_snroi' => []]));
+        $this->assertNull($this->compute($this->clearanceRow(2.5)));
+    }
+
+    public function test_clearance_snroi_ignores_the_discounts_and_the_snroi_cap_block(): void
+    {
+        $out = $this->compute($this->clearanceRow(2.5), 0.0, [
+            'clearance_snroi' => AmazonDilGroiRule::CLEARANCE_SNROI_DEFAULTS,
+            'snroi_cap' => [['min' => 0, 'max' => 9999, 'cap' => 50.0]],
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(60.0, $out['sprice'], 0.001);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function clearanceRow(float $dil): array
+    {
+        return [
+            'inv' => 10,
+            'dil' => $dil,
+            'lp' => 40,
+            'ship' => 8,
+            'standard_price' => 100,
+            'cvr' => 0,
+            'review_count' => 0,
+            'lmp' => 0,
+            'clearance' => 'YES',
+        ];
     }
 
     /**

@@ -429,4 +429,55 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertFalse(AmazonDilGroiRule::sameRules($a, $b));
         $this->assertTrue(AmazonDilGroiRule::sameRules($a, $a));
     }
+    public function test_lmp_reduce_defaults_ten_percent_under_dil_25_else_five(): void
+    {
+        $rules = AmazonDilGroiRule::normalizeLmpReduceRules(null);
+
+        $this->assertSame(10.0, AmazonDilGroiRule::lmpReducePct(0, $rules));
+        $this->assertSame(10.0, AmazonDilGroiRule::lmpReducePct(24.99, $rules));
+        $this->assertSame(5.0, AmazonDilGroiRule::lmpReducePct(25, $rules));
+        $this->assertSame(5.0, AmazonDilGroiRule::lmpReducePct(300, $rules));
+    }
+
+    public function test_lmp_reduce_lowers_the_lmp_cap_by_the_dil_slab_percent(): void
+    {
+        // Dil $50 > LMP $30, SGROI at LMP ≥ 20 → S PRC = LMP, then LMP less 10% / 5%.
+        $this->assertEqualsWithDelta(27.0, AmazonDilGroiRule::capSpriceToLmp(50, 30, 10, 0, 0.80, 0, 10.0), 0.001);
+        $this->assertEqualsWithDelta(28.5, AmazonDilGroiRule::capSpriceToLmp(50, 30, 10, 0, 0.80, 0, 5.0), 0.001);
+        $this->assertEqualsWithDelta(30.0, AmazonDilGroiRule::capSpriceToLmp(50, 30, 10, 0, 0.80, 0, 0.0), 0.001);
+
+        // Under LMP nothing changes. SGROI at LMP under 20 keeps Dil.
+        $this->assertEqualsWithDelta(18.81, AmazonDilGroiRule::capSpriceToLmp(18.81, 24.95, 7.0, 1.748, 0.80, 0, 10.0), 0.001);
+        $this->assertEqualsWithDelta(50.0, AmazonDilGroiRule::capSpriceToLmp(50, 12, 10, 0, 0.80, 0, 10.0), 0.001);
+    }
+
+    public function test_lmp_reduce_blank_slab_pct_and_empty_list_turn_it_off(): void
+    {
+        $rules = AmazonDilGroiRule::normalizeLmpReduceRules([['min' => 0, 'max' => 25, 'pct' => '']]);
+        $this->assertNull($rules[0]['pct']);
+        $this->assertSame(0.0, AmazonDilGroiRule::lmpReducePct(10, $rules));
+        $this->assertSame([], AmazonDilGroiRule::normalizeLmpReduceRules([]));
+        $this->assertSame(0.0, AmazonDilGroiRule::lmpReducePct(10, []));
+    }
+    public function test_clearance_snroi_slabs_are_up_to_25_then_up_to_50_then_above(): void
+    {
+        $rules = AmazonDilGroiRule::normalizeClearanceSnroiRules(null);
+
+        $this->assertSame(0.0, AmazonDilGroiRule::clearanceSnroiTarget(0, $rules));
+        $this->assertSame(0.0, AmazonDilGroiRule::clearanceSnroiTarget(25, $rules));
+        $this->assertSame(20.0, AmazonDilGroiRule::clearanceSnroiTarget(25.01, $rules));
+        $this->assertSame(20.0, AmazonDilGroiRule::clearanceSnroiTarget(50, $rules));
+        $this->assertSame(30.0, AmazonDilGroiRule::clearanceSnroiTarget(50.01, $rules));
+        $this->assertSame(30.0, AmazonDilGroiRule::clearanceSnroiTarget(400, $rules));
+    }
+
+    public function test_clearance_snroi_blank_target_and_empty_list_mean_unpriced(): void
+    {
+        $rules = AmazonDilGroiRule::normalizeClearanceSnroiRules([['min' => 0, 'max' => 25, 'nroi' => '']]);
+        $this->assertNull($rules[0]['nroi']);
+        $this->assertNull(AmazonDilGroiRule::clearanceSnroiTarget(10, $rules));
+        $this->assertSame([], AmazonDilGroiRule::normalizeClearanceSnroiRules([]));
+        $this->assertNull(AmazonDilGroiRule::clearanceSnroiTarget(10, []));
+        $this->assertNull(AmazonDilGroiRule::clearanceSnroiTarget(10, null));
+    }
 }

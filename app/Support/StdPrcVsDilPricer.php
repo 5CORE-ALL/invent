@@ -207,13 +207,15 @@ class StdPrcVsDilPricer
      * The price whose SNROI is the target: (LP × (1 + target%) + ship) ÷ (margin − ads), rounded down to the cent.
      * Null when LP or the net margin is missing, so the caller keeps its discount price.
      */
-    public static function snroiTargetPrice(float $target, float $lp, float $margin, float $ship = 0.0, float $ads = 0.0): ?float
+    public static function snroiTargetPrice(float $target, float $lp, float $margin, float $ship = 0.0, float $ads = 0.0, bool $roundUp = false): ?float
     {
         $net = $margin - $ads;
         if (! ($lp > 0) || ! ($net > 0)) {
             return null;
         }
-        $price = floor(((($lp * (1 + $target / 100)) + $ship) / $net) * 100 + 0.00001) / 100;
+        $cents = ((($lp * (1 + $target / 100)) + $ship) / $net) * 100;
+        // Cap: round down so SNROI never goes above the target. Floor (clearance): round up so it never falls under it.
+        $price = ($roundUp ? ceil($cents - 0.00001) : floor($cents + 0.00001)) / 100;
 
         return $price > 0 ? $price : null;
     }

@@ -3220,7 +3220,16 @@
             // SNROI Cap: a Dil slab with a Target SNROI % prices S PRC from that SNROI, not from the discounts.
             // Std Prc stays the maximum. The sale price follows so the push writes the capped price.
             let snroiCapped = false;
-            if (effective > 0 && typeof amzStdApplySnroiCap === 'function') {
+            // Clearance (C) SKUs: the Clearance SNROI block (target SNROI by Dil) replaces the discounts and the SNROI Cap.
+            const clearancePriced = typeof amzClearanceHasPrice === 'function' && amzClearanceHasPrice(d);
+            if (effective > 0 && clearancePriced && typeof amzStdApplyClearanceSnroi === 'function') {
+                const afterClr = amzPefRound2(amzStdApplyClearanceSnroi(d, effective));
+                if (afterClr > 0 && Math.abs(afterClr - effective) > 0.0001) {
+                    effective = afterClr;
+                    sale = afterClr;
+                    snroiCapped = true;
+                }
+            } else if (effective > 0 && typeof amzStdApplySnroiCap === 'function') {
                 const afterCap = amzPefRound2(amzStdApplySnroiCap(d, effective));
                 if (afterCap > 0 && Math.abs(afterCap - effective) > 0.0001) {
                     effective = afterCap;
@@ -3344,6 +3353,16 @@
             return typeof amzStdIsClearance === 'function' && !!d && amzStdIsClearance(d);
         }
         window.amzIsClearanceSku = amzIsClearanceSku;
+        /**
+         * Clearance SKU that has a Clearance SNROI target (Std prc vs dil block) for its Dil slab: it gets a real S PRC,
+         * saved and pushed like any other SKU. With no target it stays display-only ("C"). Dil GROI rule on = never priced.
+         */
+        function amzClearanceHasPrice(d) {
+            if (!amzIsClearanceSku(d)) return false;
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') return false;
+            return typeof amzStdClearanceTarget === 'function' && amzStdClearanceTarget(d) != null;
+        }
+        window.amzClearanceHasPrice = amzClearanceHasPrice;
         /** Rule price shown next to "C" on clearance SKUs. Display only — never saved or pushed. */
         function amzClearanceViewSprice(d) {
             if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
@@ -3357,8 +3376,8 @@
         window.amzClearanceViewSprice = amzClearanceViewSprice;
         function amzLiveRuleSprice(d) {
             if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
-            // Clearance SKUs have no S PRC. The column shows "C".
-            if (amzIsClearanceSku(d)) return 0;
+            // Clearance SKUs have no S PRC unless the Clearance SNROI block has a target for their Dil. The column shows "C".
+            if (amzIsClearanceSku(d) && !amzClearanceHasPrice(d)) return 0;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                 const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
                 const raw = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
@@ -3416,7 +3435,7 @@
         }
         /** Visible S PRC = live discounted / LMP-capped rule price. Does not mutate stored SPRICE. */
         function amzDisplayedSprice(d) {
-            if (amzIsClearanceSku(d)) return 0;
+            if (amzIsClearanceSku(d) && !amzClearanceHasPrice(d)) return 0;
             const live = amzLiveRuleSprice(d);
             if (live > 0) return live;
             const stored = parseFloat(d && d.SPRICE) || 0;
@@ -3574,7 +3593,7 @@
             return Math.abs((Number(stored) || 0) - live) > 0.009;
         }
         function amzRuleSpricePlanForRow(d) {
-            if (amzIsClearanceSku(d)) return null;
+            if (amzIsClearanceSku(d) && !amzClearanceHasPrice(d)) return null;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                 const live = amzLiveRuleSprice(d);
                 if (!(live > 0)) return null;
