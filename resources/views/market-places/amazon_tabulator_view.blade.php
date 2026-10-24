@@ -5420,6 +5420,35 @@
                         width: 55
                     },
                     {
+                        title: "NPFT$",
+                        field: "npft_amt",
+                        hozAlign: "center",
+                        headerTooltip: "NPFT$ of 1 pc at the current sale price = Price × NPFT% ÷ 100 (= Price × 0.80 − ship − LP − Price × Ads%).",
+                        // Same value the cell shows. Parent rows are blank.
+                        sorter: amazonMetricSorter(function(d) {
+                            if (!d || d.is_parent_summary) return null;
+                            const price = parseFloat(d.price);
+                            if (!isFinite(price) || price <= 0) return null;
+                            const ads = amazonRowAdsPct(d);
+                            const gpft = amazonComputeGpftAt(price, d);
+                            const pct = (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
+                            return price * pct / 100;
+                        }),
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const price = parseFloat(rowData.price);
+                            if (!isFinite(price) || price <= 0) return '';
+                            const ads = amazonRowAdsPct(rowData);
+                            const gpft = amazonComputeGpftAt(price, rowData);
+                            const pct = (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
+                            const amt = price * pct / 100;
+                            const color = amt < 0 ? '#a00211' : '#28a745';
+                            return `<span style="font-weight:600;color:${color};">${amt < 0 ? '-' : ''}$${Math.abs(amt).toFixed(2)}</span>`;
+                        },
+                        width: 62
+                    },
+                    {
                         title: "NPFT%",
                         field: "PFT%",
                         hozAlign: "center",
