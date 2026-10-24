@@ -3916,6 +3916,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/bgt-inv-rule', [AmazonAdsController::class, 'saveBgtInvRule'])->name('amazon.ads.bgt-inv-rule.save');
     Route::get('/amazon-ads/bgt-gpft-rule', [AmazonAdsController::class, 'getBgtGpftRule'])->name('amazon.ads.bgt-gpft-rule');
     Route::post('/amazon-ads/bgt-gpft-rule', [AmazonAdsController::class, 'saveBgtGpftRule'])->name('amazon.ads.bgt-gpft-rule.save');
+    Route::get('/amazon-ads/bgt-flag-rule', [AmazonAdsController::class, 'getBgtFlagRule'])->name('amazon.ads.bgt-flag-rule');
+    Route::post('/amazon-ads/bgt-flag-rule', [AmazonAdsController::class, 'saveBgtFlagRule'])->name('amazon.ads.bgt-flag-rule.save');
     Route::post('/amazon-ads/bgt-counts', [AmazonAdsController::class, 'saveBgtCounts'])->name('amazon.ads.bgt-counts.save');
     Route::get('/amazon-ads/bgt-counts', [AmazonAdsController::class, 'getBgtCounts'])->name('amazon.ads.bgt-counts');
     Route::post('/amazon-ads/bgt-counts/refresh', [AmazonAdsController::class, 'refreshBgtCounts'])->name('amazon.ads.bgt-counts.refresh');
@@ -5229,6 +5231,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-metrics-history', [EbayController::class, 'getMetricsHistory'])->name('ebay.metrics.history');
     Route::get('/ebay-badge-chart-data', [EbayController::class, 'getEbayBadgeChartData'])->name('ebay.badge.chart.data');
     Route::get('/ebay-badge-prev-day', [EbayController::class, 'getEbayBadgePrevDay'])->name('ebay.badge.prev.day');
+    Route::post('/ebay-badge-client-metrics', [EbayController::class, 'storeEbayBadgeClientMetrics'])->name('ebay.badge.client.metrics');
     Route::get('/ebay-ads-spend', [EbayController::class, 'getEbayAdsSpend'])->name('ebay.ads.spend');
     Route::get('/ebay-kw-pmt-spend-totals', [EbayController::class, 'getKwPmtSpendTotals'])->name('ebay.kw.pmt.spend.totals');
     Route::post('/update-ebay-rating', [EbayController::class, 'updateEbayRating']);

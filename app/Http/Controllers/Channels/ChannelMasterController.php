@@ -8599,6 +8599,22 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * eBay channel Total Ad Spend and ad-attributed sales (KW + PMT) from one pull of
+     * fetchAdMetricsFromTables('ebay'). ACOS% = spend ÷ ad sales.
+     *
+     * @return array{spend: float, sales: float}
+     */
+    public function getEbayMasterAdTotals(): array
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebay');
+
+        return [
+            'spend' => (float) ($metrics['Total Ad Spend'] ?? 0),
+            'sales' => (float) ($metrics['ad_sales'] ?? 0),
+        ];
+    }
+
+    /**
      * eBay KW / PMT / total spend breakdown — same source as /all-marketplace-master
      * and /ebay/campaign-ads (via fetchAdMetricsFromTables('ebay')).
      *

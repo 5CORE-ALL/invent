@@ -231,10 +231,12 @@
             vertical-align: middle;
             cursor: default;
         }
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="activeAgain"] .tabulator-col-content {
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="activeAgain"] .tabulator-col-content,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="acosFlag"] .tabulator-col-content {
             align-items: center;
         }
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="activeAgain"] .tabulator-col-title {
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="activeAgain"] .tabulator-col-title,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="acosFlag"] .tabulator-col-title {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
@@ -1723,7 +1725,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="amazonAdsBgtRulesModalLabel">BGT Rules</h5>
-                        <div class="amz-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT. Save and apply writes every rule, then refreshes the page. Auto Push &amp; Pull, when on, pulls live Amazon BGT and BID and pushes only mismatches.</div>
+                        <div class="amz-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT + Bgt FLAG. Save and apply writes every rule, then refreshes the page. Auto Push &amp; Pull, when on, pulls live Amazon BGT and BID and pushes only mismatches.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1731,7 +1733,7 @@
                     <div class="amz-bgt-col amz-bgt-sumbar" data-amz-bgt-panel="sum">
                             <div class="amz-bgt-col-head">
                                 <div>
-                                    <div class="amz-bgt-title" title="SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT. The total is floored. A total of 0 pauses the campaign.">Sum</div>
+                                    <div class="amz-bgt-title" title="SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT + Bgt FLAG. The total is floored. A total of 0 pauses the campaign.">Sum</div>
                                     <div class="amz-bgt-sum-sub">Each badge is one daily budget: campaign count, and what that group costs per day. Daily budget is the sum.</div>
                                 </div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
@@ -1929,6 +1931,30 @@
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtGpftRuleAddBandBtn">Add slab</button>
                             <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtGpftRuleModalError" role="alert"></p>
+                        </div>
+
+                        <div class="amz-bgt-col" data-amz-bgt-panel="flag">
+                            <div class="amz-bgt-col-head">
+                                <div class="amz-bgt-title" title="Only campaigns with a green flag (L30 spend and L30 ACOS% below GPFT%, the Flag column). The slab input is the gap = GPFT% − ACOS% in percentage points. First matching slab wins, top to bottom. Negative From, To, and Bgt are allowed. Default budgets are 0 until you set them. Campaigns without a flag get nothing from this rule.">BGT Vs FLAG</div>
+                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs FLAG" aria-label="Minimize BGT Vs FLAG">−</button></span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtFlagRuleTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th title="Gap = GPFT% − ACOS% (percentage points)">From %</th>
+                                            <th>To %</th>
+                                            <th>Bgt</th>
+                                            <th class="text-center">Count</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amazonAdsBgtFlagRuleBandsBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtFlagRuleAddBandBtn">Add slab</button>
+                            <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtFlagRuleModalError" role="alert"></p>
                         </div>
 
                         <div class="amz-bgt-col" data-amz-bgt-panel="spend">
@@ -2174,6 +2200,8 @@
             var bgtInvRuleSaveUrl = @json(route('amazon.ads.bgt-inv-rule.save'));
             var bgtGpftRuleGetUrl = @json(route('amazon.ads.bgt-gpft-rule'));
             var bgtGpftRuleSaveUrl = @json(route('amazon.ads.bgt-gpft-rule.save'));
+            var bgtFlagRuleGetUrl = @json(route('amazon.ads.bgt-flag-rule'));
+            var bgtFlagRuleSaveUrl = @json(route('amazon.ads.bgt-flag-rule.save'));
             var bgtSpendRuleGetUrl = @json(route('amazon.ads.bgt-spend-rule'));
             var bgtSpendRuleSaveUrl = @json(route('amazon.ads.bgt-spend-rule.save'));
             var sbidRuleGetUrl = @json(route('amazon.ads.sbid-rule'));
@@ -2204,6 +2232,7 @@
             window.amazonAdsBgtDilRule = @json($amazonAdsBgtDilRule ?? null);
             window.amazonAdsBgtInvRule = @json($amazonAdsBgtInvRule ?? null);
             window.amazonAdsBgtGpftRule = @json($amazonAdsBgtGpftRule ?? null);
+            window.amazonAdsBgtFlagRule = @json($amazonAdsBgtFlagRule ?? null);
             window.amazonAdsBgtSpendRule = @json($amazonAdsBgtSpendRule ?? null);
             window.amazonAdsBgtCounts = @json($amazonAdsBgtCounts ?? null);
             window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
@@ -2216,9 +2245,9 @@
             var amzU7PieChart = null;
             var amzU7PieRefreshTimer = null;
 
-            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_inv_color', 'bgt_inv_label', 'bgt_inv_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value'];
+            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_inv_color', 'bgt_inv_label', 'bgt_inv_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value', 'bgt_flag_color', 'bgt_flag_label', 'bgt_flag_value'];
             var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'acosFlag', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -2266,7 +2295,7 @@
                 return isNaN(t) ? null : t;
             }
             function amzSumSbgtFromRow(row) {
-                var parts = [row && row.bgtViews, row && row.bgtCvr, row && row.bgtAcos, row && row.bgtPrc, row && row.bgtReviews, row && row.bgtDil, row && row.bgtInv, row && row.bgtGpft];
+                var parts = [row && row.bgtViews, row && row.bgtCvr, row && row.bgtAcos, row && row.bgtPrc, row && row.bgtReviews, row && row.bgtDil, row && row.bgtInv, row && row.bgtGpft, row && row.bgtFlag];
                 var sum = 0, has = false;
                 for (var i = 0; i < parts.length; i++) {
                     if (parts[i] === null || parts[i] === undefined || parts[i] === '') continue;
@@ -2697,20 +2726,20 @@
                     + ' <span style="vertical-align:middle;"><i class="fas ' + arrowIcon + '" style="color:' + arrowColor + ';font-size:12px;"></i></span>'
                     + '</span>';
             }
-            /** ACOS% cell: same as fmtAcos, plus a green flag when ACOS% is below the row's GPFT% (needs spend, so idle campaigns are not flagged). */
+            /** Green flag when ACOS% is below the row's GPFT% (server rule: needs L30 spend, so idle campaigns are not flagged). */
             function amzAcosBelowGpft(row) {
-                if (!row) return false;
+                return !!(row && (row.acosFlag === 1 || row.acosFlag === '1' || row.acosFlag === true));
+            }
+            /** Flag column cell: the green flag that used to sit inside the ACOS% cell. */
+            function fmtAcosFlag(cell) {
+                var row = cell.getRow ? cell.getRow().getData() : null;
+                if (!amzAcosBelowGpft(row)) return '';
                 var a = parseFloat(row.ACOS);
                 var g = parseFloat(row.acosGpft);
-                var spend = parseFloat(row.cost != null ? row.cost : row.spend);
-                return isFinite(a) && isFinite(g) && isFinite(spend) && spend > 0 && a < g;
-            }
-            function fmtAcosFlag(cell) {
-                var html = fmtAcos(cell);
-                var row = cell.getRow ? cell.getRow().getData() : null;
-                if (!amzAcosBelowGpft(row)) return html;
-                var tip = 'ACOS ' + Math.round(parseFloat(row.ACOS)) + '% is below GPFT ' + Math.round(parseFloat(row.acosGpft)) + '%';
-                return '<span style="white-space:nowrap;" title="' + tip + '">' + html + ' <i class="fas fa-flag" style="color:#16a34a;font-size:11px;"></i></span>';
+                var tip = (isFinite(a) && isFinite(g))
+                    ? 'ACOS ' + Math.round(a) + '% is below GPFT ' + Math.round(g) + '%'
+                    : 'ACOS% is below GPFT%';
+                return '<span title="' + tip + '"><i class="fas fa-flag" style="color:#16a34a;font-size:12px;"></i></span>';
             }
             function fmtAcos(cell) {
                 var v = cell.getValue();
@@ -2766,12 +2795,13 @@
                 var dilBgt = amzBgtPartNum(row && row.bgtDil);
                 var invBgt = amzBgtPartNum(row && row.bgtInv);
                 var gpftBgt = amzBgtPartNum(row && row.bgtGpft);
+                var flagBgt = amzBgtPartNum(row && row.bgtFlag);
                 var bgt = parseFloat(row && row.bgt);
                 var inSync = isFinite(bgt) && Math.round(bgt) === t;
                 var color = t === 0 ? '#dc2626' : (inSync ? '#64748b' : '#0f766e');
-                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT';
-                var partsSum = (isFinite(views) ? views : 0) + (isFinite(cvr) ? cvr : 0) + (isFinite(acos) ? acos : 0) + (isFinite(prc) ? prc : 0) + (isFinite(rev) ? rev : 0) + (isFinite(dilBgt) ? dilBgt : 0) + (isFinite(invBgt) ? invBgt : 0) + (isFinite(gpftBgt) ? gpftBgt : 0);
-                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0) + ' + ' + (isFinite(dilBgt) ? dilBgt : 0) + ' + ' + (isFinite(invBgt) ? invBgt : 0) + ' + ' + (isFinite(gpftBgt) ? gpftBgt : 0);
+                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT + Bgt FLAG';
+                var partsSum = (isFinite(views) ? views : 0) + (isFinite(cvr) ? cvr : 0) + (isFinite(acos) ? acos : 0) + (isFinite(prc) ? prc : 0) + (isFinite(rev) ? rev : 0) + (isFinite(dilBgt) ? dilBgt : 0) + (isFinite(invBgt) ? invBgt : 0) + (isFinite(gpftBgt) ? gpftBgt : 0) + (isFinite(flagBgt) ? flagBgt : 0);
+                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0) + ' + ' + (isFinite(dilBgt) ? dilBgt : 0) + ' + ' + (isFinite(invBgt) ? invBgt : 0) + ' + ' + (isFinite(gpftBgt) ? gpftBgt : 0) + ' + ' + (isFinite(flagBgt) ? flagBgt : 0);
                 if (Math.abs(partsSum - Math.round(partsSum)) > 0.0001) {
                     tip += ' = ' + (Math.round(partsSum * 100) / 100) + ' → floored to ' + t;
                 }
@@ -2886,6 +2916,20 @@
                 var label = String((row && row.bgt_gpft_label) || '').trim();
                 var tip = 'Bgt GPFT from the campaign Avg GPFT%';
                 if (isFinite(gpft)) tip += ' · GPFT ' + Math.round(gpft) + '%';
+                if (label) tip += ' · ' + label;
+                return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
+            }
+            function fmtBgtFlag(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var t = amzBgtPartNum(v);
+                if (isNaN(t)) return amzDash();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var color = (row && row.bgt_flag_color) ? String(row.bgt_flag_color) : '#6c757d';
+                var gap = parseFloat(row && row.bgt_flag_value);
+                var label = String((row && row.bgt_flag_label) || '').trim();
+                var tip = 'Bgt FLAG: flagged campaign only, from GPFT% − ACOS%';
+                if (isFinite(gap)) tip += ' · gap ' + (Math.round(gap * 10) / 10) + ' pts';
                 if (label) tip += ' · ' + label;
                 return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
             }
@@ -3230,7 +3274,7 @@
                 }
                 if (c === 'sbgt') {
                     col.title = 'SBGT';
-                    col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT. Auto-pushes daily budget when this sum differs from BGT. SBGT 0 pauses the campaign ($0 cannot be pushed).';
+                    col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT + Bgt FLAG. Auto-pushes daily budget when this sum differs from BGT. SBGT 0 pauses the campaign ($0 cannot be pushed).';
                     col.formatter = fmtSbgtSum;
                     col.width = 56;
                     col.minWidth = 50;
@@ -3292,6 +3336,14 @@
                     col.minWidth = 60;
                     return;
                 }
+                if (c === 'bgtFlag') {
+                    col.title = 'Bgt Flag';
+                    col.headerTooltip = 'Suggested budget from BGT Vs FLAG Rule — flagged campaigns only (ACOS% below GPFT%), by the gap GPFT% − ACOS%. Blank when the campaign has no flag.';
+                    col.formatter = fmtBgtFlag;
+                    col.width = 68;
+                    col.minWidth = 60;
+                    return;
+                }
                 if (c === 'Prchase') { col.title = 'Ads Sold'; col.formatter = fmtDashInt; return; }
                 if (c === 'Cvr') { col.title = 'Ads CVR'; col.headerTooltip = 'Ads Sold ÷ Ads Clicks × 100 (same L30 row)'; col.formatter = fmtCvr; col.minWidth = 64; return; }
                 if (c === 'ltCvr') {
@@ -3329,13 +3381,24 @@
                 if (c === 'Label' || c === 'label') { col.title = 'ACOS%'; col.headerTooltip = 'ACOS %'; return; }
                 if (c === 'acosGpft') {
                     col.title = 'GPFT%';
-                    col.headerTooltip = 'GPFT% of the campaign SKU, same as /amazon-tabulator-view. A PARENT campaign shows its parent GPFT% (average of its child SKUs). ACOS% gets a green flag when it is below this.';
+                    col.headerTooltip = 'GPFT% of the campaign SKU, same as /amazon-tabulator-view. A PARENT campaign shows its parent GPFT% (average of its child SKUs). The Flag column shows a green flag when ACOS% is below this.';
                     col.formatter = fmtSkuGpft;
                     col.width = 58;
                     col.minWidth = 52;
                     return;
                 }
-                if (c === 'ACOS') { col.title = 'ACOS%'; col.headerTooltip = 'ACOS % = SPL30 ÷ SL 30 × 100. Spend with Ads Sold 0 is saved as 100% for BGT / SBGT / filters. Green flag = ACOS% is below the GPFT% column.'; col.formatter = fmtAcosFlag; return; }
+                if (c === 'ACOS') { col.title = 'ACOS%'; col.headerTooltip = 'ACOS % = SPL30 ÷ SL 30 × 100. Spend with Ads Sold 0 is saved as 100% for BGT / SBGT / filters. See the Flag column for ACOS% below GPFT%.'; col.formatter = fmtAcos; return; }
+                if (c === 'acosFlag') {
+                    col.title = 'ACOS Flag';
+                    col.headerTooltip = 'Green flag = L30 ACOS% is below the GPFT% column (the campaign needs L30 spend). Sort to bring flagged campaigns to the top.';
+                    col.titleFormatter = function () {
+                        return '<i class="fas fa-flag" style="color:#16a34a;font-size:13px;"></i>';
+                    };
+                    col.formatter = fmtAcosFlag;
+                    col.width = 40;
+                    col.minWidth = 36;
+                    return;
+                }
                 if (c === 'ltAcos') {
                     col.title = 'LT ACOS';
                     col.headerTooltip = 'Lifetime ACOS = total cost ÷ total sales on daily Amazon report rows. Spend with no sales is 100%.';
@@ -6231,6 +6294,7 @@
                 if (typeof amzBgtDilRefreshCounts === 'function') amzBgtDilRefreshCounts();
                 if (typeof amzBgtInvRefreshCounts === 'function') amzBgtInvRefreshCounts();
                 if (typeof amzBgtGpftRefreshCounts === 'function') amzBgtGpftRefreshCounts();
+                if (typeof amzBgtFlagRefreshCounts === 'function') amzBgtFlagRefreshCounts();
                 if (typeof amzBgtSpendRefreshCounts === 'function') amzBgtSpendRefreshCounts();
                 if (typeof amzSbidPaint === 'function') amzSbidPaint();
             }
@@ -6361,6 +6425,7 @@
             }
             var amzBgtInvBands = [];
             var amzBgtGpftBands = [];
+            var amzBgtFlagBands = [];
             function amzBgtSeedRuleBands() {
                 if (amzBgtSeedRuleBands.done) return;
                 amzBgtSeedRuleBands.done = true;
@@ -6377,6 +6442,7 @@
                 if (!amzBgtDilBands.length) amzBgtDilBands = amzBgtDilNormalizeBands((window.amazonAdsBgtDilRule && window.amazonAdsBgtDilRule.bands) || []);
                 if (!amzBgtInvBands.length) amzBgtInvBands = amzBgtInvNormalizeBands((window.amazonAdsBgtInvRule && window.amazonAdsBgtInvRule.bands) || []);
                 if (!amzBgtGpftBands.length) amzBgtGpftBands = amzBgtGpftNormalizeBands((window.amazonAdsBgtGpftRule && window.amazonAdsBgtGpftRule.bands) || []);
+                if (!amzBgtFlagBands.length) amzBgtFlagBands = amzBgtFlagNormalizeBands((window.amazonAdsBgtFlagRule && window.amazonAdsBgtFlagRule.bands) || []);
             }
             function amzBgtCountingNote() {
                 if (amzBgtUniverse.failed) {
@@ -6402,7 +6468,7 @@
             }
             var amzBgtBandRangePairs = [
                 ['acos_from', 'acos_to'], ['views_from', 'views_to'], ['cvr_from', 'cvr_to'], ['prc_from', 'prc_to'],
-                ['rev_from', 'rev_to'], ['dil_from', 'dil_to'], ['inv_from', 'inv_to'], ['spend_from', 'spend_to'], ['gpft_from', 'gpft_to']
+                ['rev_from', 'rev_to'], ['dil_from', 'dil_to'], ['inv_from', 'inv_to'], ['spend_from', 'spend_to'], ['gpft_from', 'gpft_to'], ['flag_from', 'flag_to']
             ];
             function amzBgtRangesOf(bands) {
                 return (bands || []).map(function (b) {
@@ -6446,9 +6512,15 @@
                 }
                 return -1;
             }
-            function amzBgtCountByBands(bands, fromKey, toKey, valueOfRow) {
+            function amzBgtCountByBands(bands, fromKey, toKey, valueOfRow, onlyWithValue) {
                 var rows = amzBgtCountRows();
                 if (!rows) return null;
+                var partial = !!rows._partial;
+                // onlyWithValue (BGT Vs FLAG): rows without a value (campaigns with no flag) are not part of this rule at all.
+                if (onlyWithValue) {
+                    rows = rows.filter(function (row) { return valueOfRow(row) !== null; });
+                    rows._partial = partial;
+                }
                 var counts = (bands || []).map(function () { return 0; });
                 var unmatched = 0;
                 rows.forEach(function (row) {
@@ -6621,7 +6693,8 @@
                     ['dil_from', 'dil_to'],
                     ['inv_from', 'inv_to'],
                     ['spend_from', 'spend_to'],
-                    ['gpft_from', 'gpft_to']
+                    ['gpft_from', 'gpft_to'],
+                    ['flag_from', 'flag_to']
                 ];
                 for (var i = 0; i < pairs.length; i++) {
                     if (!band || band[pairs[i][0]] == null || band[pairs[i][0]] === '' || band[pairs[i][1]] == null || band[pairs[i][1]] === '') continue;
@@ -6632,7 +6705,7 @@
             var AMZ_BGT_BAND_TBODY = {
                 acos: 'amazonAdsBgtRuleBandsBody', views: 'amazonAdsBgtViewsRuleBandsBody', cvr: 'amazonAdsBgtCvrRuleBandsBody',
                 prc: 'amazonAdsBgtPrcRuleBandsBody', reviews: 'amazonAdsBgtReviewsRuleBandsBody', dil: 'amazonAdsBgtDilRuleBandsBody',
-                inv: 'amazonAdsBgtInvRuleBandsBody', gpft: 'amazonAdsBgtGpftRuleBandsBody', spend: 'amazonAdsBgtSpendRuleBandsBody'
+                inv: 'amazonAdsBgtInvRuleBandsBody', gpft: 'amazonAdsBgtGpftRuleBandsBody', flag: 'amazonAdsBgtFlagRuleBandsBody', spend: 'amazonAdsBgtSpendRuleBandsBody'
             };
             // Campaign count per slab, written into the slab table itself (Count column + a Total footer).
             function amzBgtWriteBandCounts(key, rows, total, note) {
@@ -6730,7 +6803,8 @@
                     reviews: amzBgtBandAmount(amzBgtReviewsBands, amzBgtReviewsBandIndexForRating(amzBgtReviewsRatingOfRow(row), amzBgtReviewsBands), 'bgt'),
                     dil: amzBgtBandAmount(amzBgtDilBands, amzBgtFirstBandIndex(amzBgtDilValueOfRow(row), amzBgtDilBands, 'dil_from', 'dil_to'), 'bgt'),
                     inv: amzBgtBandAmount(amzBgtInvBands, amzBgtFirstBandIndex(amzBgtInvValueOfRow(row), amzBgtInvBands, 'inv_from', 'inv_to'), 'bgt'),
-                    gpft: amzBgtBandAmount(amzBgtGpftBands, amzBgtFirstBandIndex(amzBgtGpftValueOfRow(row), amzBgtGpftBands, 'gpft_from', 'gpft_to'), 'bgt')
+                    gpft: amzBgtBandAmount(amzBgtGpftBands, amzBgtFirstBandIndex(amzBgtGpftValueOfRow(row), amzBgtGpftBands, 'gpft_from', 'gpft_to'), 'bgt'),
+                    flag: amzBgtBandAmount(amzBgtFlagBands, amzBgtFirstBandIndex(amzBgtFlagValueOfRow(row), amzBgtFlagBands, 'flag_from', 'flag_to'), 'bgt')
                 };
             }
             function amzBgtFloorSum(parts) {
@@ -6886,7 +6960,8 @@
                     { key: 'reviews', label: 'Reviews' },
                     { key: 'dil', label: 'Dil' },
                     { key: 'inv', label: 'Inv' },
-                    { key: 'gpft', label: 'GPFT' }
+                    { key: 'gpft', label: 'GPFT' },
+                    { key: 'flag', label: 'Flag' }
                 ];
                 var partCount = {};
                 var partSum = {};
@@ -7038,8 +7113,8 @@
             }
             function amzBgtApplySavedSum(sum) {
                 if (!sum || !Array.isArray(sum.rows)) return false;
-                // A sum saved before the GPFT part existed has no GPFT row and a total that leaves it out. Recount instead.
-                if (!Array.isArray(sum.parts) || !sum.parts.some(function (p) { return p && p.label === 'GPFT'; })) return false;
+                // A sum saved before the GPFT or Flag part existed has no such row and a total that leaves it out. Recount instead.
+                if (!Array.isArray(sum.parts) || !sum.parts.some(function (p) { return p && p.label === 'GPFT'; }) || !sum.parts.some(function (p) { return p && p.label === 'Flag'; })) return false;
                 var legend = document.getElementById('amz-bgt-leg-sum');
                 var canvas = document.getElementById('amz-bgt-chart-sum');
                 var tbody = document.getElementById('amz-bgt-sum-tbody');
@@ -8320,6 +8395,123 @@
                 });
             }
 
+            // ---- BGT Vs FLAG Rule (flagged campaigns only; gap = GPFT% − ACOS% → Bgt); dynamic slabs, negatives allowed ----
+            var AMZ_BGT_FLAG_DEFAULTS = [
+                { flag_from: 25, flag_to: 9999, bgt: 0, label: 'Pink', color: '#e83e8c' },
+                { flag_from: 10, flag_to: 25, bgt: 0, label: 'Green', color: '#28a745' },
+                { flag_from: 0, flag_to: 10, bgt: 0, label: 'Blue', color: '#2563eb' }
+            ];
+            var AMZ_BGT_FLAG_LABELS = ['Pink', 'Green', 'Blue', 'Yellow', 'Purple', 'Red'];
+            var AMZ_BGT_FLAG_COLORS = ['#e83e8c', '#28a745', '#2563eb', '#ffc107', '#7c3aed', '#a00211'];
+            function amzBgtFlagNormalizeBands(existing) {
+                var prev = Array.isArray(existing) ? existing : [];
+                var out = [];
+                prev.forEach(function (keep) {
+                    if (!keep || typeof keep !== 'object') return;
+                    var from = parseFloat(keep.flag_from);
+                    var to = parseFloat(keep.flag_to);
+                    var bgt = parseFloat(keep.bgt);
+                    out.push({
+                        flag_from: isFinite(from) ? from : '',
+                        flag_to: isFinite(to) ? to : '',
+                        bgt: isFinite(bgt) ? bgt : '',
+                        label: keep.label != null ? String(keep.label) : '',
+                        color: keep.color || '#6c757d'
+                    });
+                });
+                return out.length ? out : AMZ_BGT_FLAG_DEFAULTS.map(function (d) { return Object.assign({}, d); });
+            }
+            function amzBgtFlagNewBand() {
+                var next = amzBgtNextAddedSlab(amzBgtFlagBands, 'flag_from', 'flag_to', 'bgt');
+                var i = amzBgtFlagBands.length;
+                return {
+                    flag_from: next.from,
+                    flag_to: next.to,
+                    bgt: next.amt,
+                    label: AMZ_BGT_FLAG_LABELS[i] || ('Slab ' + (i + 1)),
+                    color: AMZ_BGT_FLAG_COLORS[i] || AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
+                };
+            }
+            // Gap (GPFT% − ACOS%) of a flagged campaign; null for a campaign with no flag.
+            function amzBgtFlagValueOfRow(row) {
+                var raw = row ? row.bgt_flag_value : null;
+                if (raw === null || raw === undefined || raw === '') return null;
+                var n = parseFloat(raw);
+                return isFinite(n) ? n : null;
+            }
+            function amzBgtFlagCounts(bands) {
+                return amzBgtCountByBands(bands, 'flag_from', 'flag_to', amzBgtFlagValueOfRow, true);
+            }
+            function amzBgtFlagRefreshCounts() {
+                var counts = amzBgtFlagCounts(amzBgtFlagBands);
+                amzBgtRefreshCountCells('amazonAdsBgtFlagRuleBandsBody', counts);
+                amzBgtPaintColumn('flag', amzBgtFlagBands, counts);
+            }
+            function amzRenderBgtFlagBands(bands) {
+                var tbody = document.getElementById('amazonAdsBgtFlagRuleBandsBody');
+                if (!tbody) return;
+                var canDelete = bands.length > 1;
+                tbody.innerHTML = '';
+                bands.forEach(function (band, i) {
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="text-muted small">' + (i + 1) + '</td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.flag_from != null ? band.flag_from : '') + '" data-idx="' + i + '" data-field="flag_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.flag_to != null ? band.flag_to : '') + '" data-idx="' + i + '" data-field="flag_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 and negatives are allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
+                    tbody.appendChild(tr);
+                });
+                tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
+                    var writeBand = function (el) {
+                        var idx = +el.dataset.idx, fld = el.dataset.field;
+                        if (!amzBgtFlagBands[idx]) return;
+                        amzBgtFlagBands[idx][fld] = (el.value === '' || el.value === '-' ? '' : parseFloat(el.value));
+                    };
+                    inp.addEventListener('input', function () {
+                        writeBand(this);
+                        amzBgtFlagRefreshCounts();
+                    });
+                    inp.addEventListener('change', function () {
+                        writeBand(this);
+                        amzBgtFlagRefreshCounts();
+                    });
+                });
+                tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (amzBgtFlagBands.length <= 1) return;
+                        amzBgtFlagBands.splice(+this.dataset.removeIdx, 1);
+                        amzRenderBgtFlagBands(amzBgtFlagBands);
+                    });
+                });
+                amzBgtFlagRefreshCounts();
+            }
+            function amzLoadBgtFlagBandsFromRule(rule) {
+                var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
+                amzBgtFlagBands = amzBgtFlagNormalizeBands(bands);
+                amzRenderBgtFlagBands(amzBgtFlagBands);
+            }
+            function amzRefreshBgtFlagRuleFromServer(cb) {
+                amzBgtFetchRule(bgtFlagRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtFlagRule = body.rule;
+                    if (cb) cb();
+                });
+            }
+            var bgtFlagModalEl = document.getElementById('amazonAdsBgtRulesModal');
+            if (bgtFlagModalEl) {
+                bgtFlagModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsBgtFlagRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                });
+            }
+            var bgtFlagAddBtn = document.getElementById('amazonAdsBgtFlagRuleAddBandBtn');
+            if (bgtFlagAddBtn) {
+                bgtFlagAddBtn.addEventListener('click', function () {
+                    amzBgtFlagBands.push(amzBgtFlagNewBand());
+                    amzRenderBgtFlagBands(amzBgtFlagBands);
+                });
+            }
+
             // ---- Spend Rule (L30 cost → Bgt); dynamic slabs ----
             var AMZ_BGT_SPEND_DEFAULTS = [
                 { spend_from: 50, spend_to: 9999, bgt: 3, label: 'Pink', color: '#e83e8c' },
@@ -8551,6 +8743,7 @@
                     { label: 'BGT Vs Dil', url: bgtDilRuleSaveUrl, body: 'amazonAdsBgtDilRuleBandsBody', bands: amzBgtDilBands, from: 'dil_from', to: 'dil_to', amt: 'bgt', store: 'amazonAdsBgtDilRule', load: amzLoadBgtDilBandsFromRule },
                     { label: 'Inv Rule', url: bgtInvRuleSaveUrl, body: 'amazonAdsBgtInvRuleBandsBody', bands: amzBgtInvBands, from: 'inv_from', to: 'inv_to', amt: 'bgt', store: 'amazonAdsBgtInvRule', load: amzLoadBgtInvBandsFromRule },
                     { label: 'BGT Vs GPFT%', url: bgtGpftRuleSaveUrl, body: 'amazonAdsBgtGpftRuleBandsBody', bands: amzBgtGpftBands, from: 'gpft_from', to: 'gpft_to', amt: 'bgt', store: 'amazonAdsBgtGpftRule', load: amzLoadBgtGpftBandsFromRule },
+                    { label: 'BGT Vs FLAG', url: bgtFlagRuleSaveUrl, body: 'amazonAdsBgtFlagRuleBandsBody', bands: amzBgtFlagBands, from: 'flag_from', to: 'flag_to', amt: 'bgt', store: 'amazonAdsBgtFlagRule', load: amzLoadBgtFlagBandsFromRule },
                     { label: 'Spend Rule', url: bgtSpendRuleSaveUrl, body: 'amazonAdsBgtSpendRuleBandsBody', bands: amzBgtSpendBands, from: 'spend_from', to: 'spend_to', amt: 'bgt', store: 'amazonAdsBgtSpendRule', load: amzLoadBgtSpendBandsFromRule }
                 ];
                 var jobs = [];
@@ -8659,6 +8852,7 @@
             amzLoadBgtDilBandsFromRule(window.amazonAdsBgtDilRule || {});
             amzLoadBgtInvBandsFromRule(window.amazonAdsBgtInvRule || {});
             amzLoadBgtGpftBandsFromRule(window.amazonAdsBgtGpftRule || {});
+            amzLoadBgtFlagBandsFromRule(window.amazonAdsBgtFlagRule || {});
             amzLoadBgtSpendBandsFromRule(window.amazonAdsBgtSpendRule || {});
             amzBgtPollStoredCounts();
             (function () {

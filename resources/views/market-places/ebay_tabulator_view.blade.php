@@ -57,6 +57,96 @@
             align-items: center;
         }
 
+        /* Grouped summary blocks — same look as the Yesterday / L30 / Projected blocks on /amazon-tabulator-view */
+        #summary-stats.amz-sum-grid {
+            max-width: 100%;
+            min-width: 0;
+            overflow: visible;
+            display: grid;
+            grid-template-columns: repeat(10, minmax(0, 1fr));
+            gap: 0.5rem;
+            align-items: start;
+            background: transparent !important;
+            padding: 0 !important;
+        }
+        #summary-stats .amz-sum-block {
+            min-width: 0;
+            border-radius: 12px;
+            padding: 0.55rem 0.6rem 0.65rem;
+            border: 1px solid #facc15;
+            background: #fef9c3;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        }
+        #summary-stats .amz-sum-block-title {
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            line-height: 1;
+            margin: 0 0 0.35rem;
+            color: #854d0e;
+        }
+        #summary-stats .amz-sum-block--yesterday { grid-column: 1 / 3; grid-row: 1; }
+        #summary-stats .amz-sum-block--l30 { grid-column: 3 / 7; grid-row: 1; }
+        #summary-stats .amz-sum-block--projected { grid-column: 7 / 11; grid-row: 1; }
+        #summary-stats .amz-sum-block--listing { grid-column: 1 / 3; grid-row: 2; }
+        #summary-stats .amz-sum-block--sold { grid-column: 3 / 5; grid-row: 2; }
+        #summary-stats .amz-sum-block--alerts { grid-column: 5 / 11; grid-row: 2; }
+        #summary-stats .amz-sum-row {
+            display: grid;
+            align-items: stretch;
+            gap: 0.4rem;
+            width: 100%;
+            max-width: 100%;
+            overflow: visible;
+        }
+        #summary-stats .amz-sum-row--yesterday,
+        #summary-stats .amz-sum-row--listing,
+        #summary-stats .amz-sum-row--sold { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        #summary-stats .amz-sum-row--l30 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        #summary-stats .amz-sum-row--projected { grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); }
+        #summary-stats .amz-sum-row--alerts { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+        #summary-stats .amz-sum-row > .badge {
+            width: 100%;
+            min-width: 0;
+            max-width: none;
+            min-height: 42px;
+            height: 100%;
+            font-size: 0.85rem !important;
+            line-height: 1.2 !important;
+            padding: 0.4rem 0.45rem !important;
+            border-radius: 0.375rem !important;
+            font-weight: bold !important;
+            box-sizing: border-box;
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+            text-decoration: none;
+        }
+        #summary-stats .amz-sum-row > .badge.d-none { display: none !important; }
+        @media (max-width: 1399.98px) {
+            #summary-stats.amz-sum-grid { grid-template-columns: 1fr 1fr; }
+            #summary-stats .amz-sum-block--yesterday,
+            #summary-stats .amz-sum-block--l30,
+            #summary-stats .amz-sum-block--projected,
+            #summary-stats .amz-sum-block--listing,
+            #summary-stats .amz-sum-block--sold,
+            #summary-stats .amz-sum-block--alerts { grid-column: auto; grid-row: auto; }
+            #summary-stats .amz-sum-block--l30,
+            #summary-stats .amz-sum-block--projected,
+            #summary-stats .amz-sum-block--alerts { grid-column: 1 / -1; }
+        }
+        @media (max-width: 767.98px) {
+            #summary-stats.amz-sum-grid { grid-template-columns: 1fr; }
+            #summary-stats .amz-sum-block--l30,
+            #summary-stats .amz-sum-block--projected,
+            #summary-stats .amz-sum-block--alerts { grid-column: 1; }
+            #summary-stats .amz-sum-row--l30 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            #summary-stats .amz-sum-row--projected { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+
         /* Sku Link LMP (mirrors /amazon-tabulator-view) */
         .linked-sku-badge-wrap { display: inline-flex; align-items: center; gap: 2px; }
         .linked-sku-badge-wrap .sku-link-lmp-remove { font-size: 0.55rem; opacity: 0.65; padding: 0; margin-left: 2px; }
@@ -845,91 +935,181 @@
 
                 </div>
 
-                <!-- Summary Stats (layout matches Ebay 2 Analytics summary row) -->
-                <div id="summary-stats" class="bg-light rounded">
-                    <div class="d-flex flex-wrap gap-2" role="group" aria-label="Summary metrics">
-                        <!-- Filtered rows count -->
-                        <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
-                            style="color: white; font-weight: bold;"
-                            title="Number of rows currently shown after filters">Rows: 0</span>
-
-                        <!-- Sold Filter Badges (badge click = filter; dot click = rolling history) -->
-                        <span class="badge fs-6 p-2 bg-danger ebay1-badge-chart" id="zero-sold-count-badge"
-                            data-metric="zero_sold_count" data-live-value="0"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click badge to filter 0 sold (INV>0). Click dot for rolling history.">0 Sold: 0<span class="summary-trend-dot none" data-metric="zero_sold_count" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="more-sold-count-badge"
-                            data-metric="sold_count" data-live-value="0"
-                            style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
-                            title="Click badge to filter items with sales (INV>0). Click dot for rolling history.">> 0 Sold: 0<span class="summary-trend-dot none" data-metric="sold_count" title="Rolling history"></span></span>
-
-                        <!-- Financial Metrics -->
-                        <span class="badge fs-6 p-2 bg-primary ebay1-badge-chart" id="total-sales-amt-badge"
-                            data-metric="total_sales_amt" data-live-value="{{ (float) ($ordersL30TotalSales ?? 0) }}" data-format="money"
-                            style="color: black; font-weight: bold; cursor: pointer;"
-                            title="L30 sales from real eBay orders. Click dot for rolling history.">Sales: ${{ number_format((float) ($ordersL30TotalSales ?? 0)) }}<span class="summary-trend-dot none" data-metric="total_sales_amt" title="Rolling history"></span></span>
-                        
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="qty-sold-badge"
-                            data-metric="total_ebay_l30" data-live-value="{{ (int) ($ordersL30TotalQty ?? 0) }}"
-                            style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
-                            title="L30 units sold. Click dot for rolling history.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}<span class="summary-trend-dot none" data-metric="total_ebay_l30" title="Rolling history"></span></span>
-
-                        <!-- Percentage Metrics -->
-                        <span class="badge fs-6 p-2 bg-info ebay1-badge-chart" id="avg-gpft-badge"
-                            data-metric="gpft_percent" data-live-value="{{ round((float) ($ordersL30Gpft ?? 0)) }}" data-format="pct"
-                            style="color: black; font-weight: bold; cursor: pointer;"
-                            title="GPFT%. Click dot for rolling history.">GPFT: {{ round((float) ($ordersL30Gpft ?? 0)) }}%<span class="summary-trend-dot none" data-metric="gpft_percent" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 bg-secondary ebay1-badge-chart" id="groi-percent-badge"
-                            data-metric="groi_percent" data-live-value="{{ round((float) ($ordersL30Groi ?? 0)) }}" data-format="pct"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="GROI%. Click dot for rolling history.">GROI: {{ round((float) ($ordersL30Groi ?? 0)) }}%<span class="summary-trend-dot none" data-metric="groi_percent" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="ads-percent-badge"
-                            data-metric="tcos_percent" data-live-value="{{ round((float) ($channelAdsPercent ?? 0)) }}" data-format="pct" data-invert="1"
-                            style="background-color: #d63384; color: white; font-weight: bold; cursor: pointer;"
-                            title="Ads%. Lower is better (inverted 3-color). Click dot for rolling history.">Ads {{ round((float) ($channelAdsPercent ?? 0)) }}%<span class="summary-trend-dot none" data-metric="tcos_percent" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="y-spend-badge"
-                            data-metric="y_spend" data-live-value="{{ round((float) ($ySpendTotal ?? 0)) }}" data-format="money"
-                            style="background-color:#be123c;color:#fff;font-weight:bold;cursor:pointer;"
-                            title="Sum of yesterday's ad spend (keyword CPC + promoted listing fees). Each campaign and listing is counted once. Click dot for rolling history.">Y Spend: ${{ number_format((float) ($ySpendTotal ?? 0)) }}<span class="summary-trend-dot none" data-metric="y_spend" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="y-ads-percent-badge"
-                            data-metric="y_ads_percent" data-live-value="{{ number_format((float) ($yAdsPercent ?? 0), 1, '.', '') }}" data-format="pct" data-invert="1"
-                            style="background-color:#9d174d;color:#fff;font-weight:bold;cursor:pointer;"
-                            title="Y Ads% = Y Spend ÷ Y Sales. Y Sales is yesterday's store sales (${{ number_format((float) ($ySalesTotal ?? 0), 2) }}), the same Y Sales badge on /ebay/daily-sales. Lower is better. Click dot for rolling history.">Y Ads%: {{ number_format((float) ($yAdsPercent ?? 0), 1) }}%<span class="summary-trend-dot none" data-metric="y_ads_percent" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="npft-percent-badge"
-                            data-metric="npft_percent" data-live-value="{{ number_format((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0), 1, '.', '') }}" data-format="pct"
-                            style="background-color: #0f766e; color: white; font-weight: bold; cursor: pointer;"
-                            title="NPFT% = GPFT% − Ads%. Click dot for rolling history.">NPFT: {{ number_format((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0), 1) }}%<span class="summary-trend-dot none" data-metric="npft_percent" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="nroi-percent-badge"
-                            data-metric="nroi_percent" data-live-value="{{ round((float) ($ordersL30Nroi ?? 0)) }}" data-format="pct"
-                            style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
-                            title="NROI%. Click dot for rolling history.">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%<span class="summary-trend-dot none" data-metric="nroi_percent" title="Rolling history"></span></span>
-
-                        <!-- eBay Metrics -->
-                        <span class="badge fs-6 p-2 bg-danger ebay1-badge-chart" id="avg-cvr-badge"
-                            data-metric="cvr_percent" data-live-value="0" data-format="pct"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="CVR%. Click dot for rolling history.">CVR: 0%<span class="summary-trend-dot none" data-metric="cvr_percent" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 bg-info ebay1-badge-chart" id="total-views-badge"
-                            data-metric="total_views" data-live-value="0"
-                            style="color: black; font-weight: bold; cursor: pointer;"
-                            title="Views. Click dot for rolling history.">Views: 0<span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span></span>
-                        @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
-                        <span class="badge fs-6 p-2" id="ebay1-blue-triangle-badge"
-                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue alert: INV > 0 and Price ≠ S PRC. Click to show only those SKUs.">
-                            <i class="fas fa-exclamation-triangle"></i> 0
-                        </span>
-                        @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'ebay1-clearance-badge'])
-                        <span class="badge fs-6 p-2" id="ebay1-red-triangle-badge"
-                            style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Red triangle: Price &gt; LMP and INV &gt; 0. Click to show only those rows. Click again to clear.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-lmp-missing-badge"
-                            data-lmp-channel="ebay"
-                            data-metric="lmp_missing_count" data-invert="1" data-live-value="0" data-format="number"
-                            style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
-                            title="LMP M.: INV &gt; 0 SKUs with no LMP data. INV = 0 is not counted. Green = 0 missing. Click badge to filter. Click dot for rolling history.">
-                            <span class="summary-trend-dot none" data-metric="lmp_missing_count" title="Rolling history"></span>LMP M. 0</span>
+                <!-- Summary Stats — grouped blocks (same layout as /amazon-tabulator-view). Every metric badge has a history dot before its label. -->
+                @php
+                    $ebPr = $ebayProjected ?? [];
+                    $ebPSales = (float) ($ebPr['p_sales'] ?? 0);
+                    $ebSalesL30 = (float) ($ordersL30TotalSales ?? 0);
+                    $ebPVsPct = $ebSalesL30 > 0 ? (($ebPSales - $ebSalesL30) / $ebSalesL30) * 100 : null;
+                    $ebTrendDot = function (string $metric) {
+                        return '<span class="summary-trend-dot none" data-metric="' . $metric . '" title="Rolling history"></span>';
+                    };
+                @endphp
+                <div id="summary-stats" class="mt-2 amz-sum-grid">
+                    <div class="amz-sum-block amz-sum-block--yesterday">
+                        <div class="amz-sum-block-title">Yesterday</div>
+                        <div class="amz-sum-row amz-sum-row--yesterday" role="group" aria-label="Yesterday metrics">
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="y-spend-badge"
+                                data-metric="y_spend" data-live-value="{{ round((float) ($ySpendTotal ?? 0)) }}" data-format="money"
+                                style="background-color:#be123c;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="Sum of yesterday's ad spend (keyword CPC + promoted listing fees). Each campaign and listing is counted once. Click badge or dot for rolling history.">{!! $ebTrendDot('y_spend') !!}Y Spend: ${{ number_format((float) ($ySpendTotal ?? 0)) }}</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="y-ads-percent-badge"
+                                data-metric="y_ads_percent" data-live-value="{{ number_format((float) ($yAdsPercent ?? 0), 1, '.', '') }}" data-format="pct" data-invert="1"
+                                style="background-color:#9d174d;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="Y Ads% = Y Spend ÷ Y Sales. Y Sales is yesterday's store sales (${{ number_format((float) ($ySalesTotal ?? 0), 2) }}), the same Y Sales badge on /ebay/daily-sales. Lower is better. Click badge or dot for rolling history.">{!! $ebTrendDot('y_ads_percent') !!}Y Ads%: {{ number_format((float) ($yAdsPercent ?? 0), 1) }}%</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="y-sales-badge"
+                                data-metric="y_sales" data-live-value="{{ round((float) ($ySalesTotal ?? 0), 2) }}" data-format="money"
+                                style="background-color:#4c1d95;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="Yesterday's store sales (Pacific day) — same Y Sales as /ebay/daily-sales. Click badge or dot for rolling history.">{!! $ebTrendDot('y_sales') !!}Y Sales: ${{ number_format((float) ($ySalesTotal ?? 0)) }}</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="y-sales-pct-badge"
+                                data-metric="y_sales_percent" data-live-value="{{ number_format((float) ($ySalesPercent ?? 0), 1, '.', '') }}" data-format="pct"
+                                style="background-color:#17a2b8;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="Y Sales vs the L30 daily average: ((L30 Sales / 30) − Y Sales) / (L30 Sales / 30) × 100. Positive means yesterday is below a typical day. Click badge or dot for rolling history.">{!! $ebTrendDot('y_sales_percent') !!}Y Sales%: {{ number_format((float) ($ySalesPercent ?? 0), 1) }}%</span>
+                        </div>
+                    </div>
+                    <div class="amz-sum-block amz-sum-block--l30">
+                        <div class="amz-sum-block-title">L30</div>
+                        <div class="amz-sum-row amz-sum-row--l30" role="group" aria-label="L30 metrics">
+                            <span class="badge fs-6 p-2 bg-primary ebay1-badge-chart" id="total-sales-amt-badge"
+                                data-metric="total_sales_amt" data-live-value="{{ (float) ($ordersL30TotalSales ?? 0) }}" data-format="money"
+                                style="color: black; font-weight: bold; cursor: pointer;"
+                                title="L30 sales from real eBay orders. Click badge or dot for rolling history.">{!! $ebTrendDot('total_sales_amt') !!}Sales: ${{ number_format((float) ($ordersL30TotalSales ?? 0)) }}</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="qty-sold-badge"
+                                data-metric="total_ebay_l30" data-live-value="{{ (int) ($ordersL30TotalQty ?? 0) }}"
+                                style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
+                                title="L30 units sold. Click badge or dot for rolling history.">{!! $ebTrendDot('total_ebay_l30') !!}Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}</span>
+                            <span class="badge fs-6 p-2 bg-info ebay1-badge-chart" id="avg-gpft-badge"
+                                data-metric="gpft_percent" data-live-value="{{ round((float) ($ordersL30Gpft ?? 0)) }}" data-format="pct"
+                                style="color: black; font-weight: bold; cursor: pointer;"
+                                title="GPFT%. Click badge or dot for rolling history.">{!! $ebTrendDot('gpft_percent') !!}GPFT: {{ round((float) ($ordersL30Gpft ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 bg-secondary ebay1-badge-chart" id="groi-percent-badge"
+                                data-metric="groi_percent" data-live-value="{{ round((float) ($ordersL30Groi ?? 0)) }}" data-format="pct"
+                                style="color: white; font-weight: bold; cursor: pointer;"
+                                title="GROI%. Click badge or dot for rolling history.">{!! $ebTrendDot('groi_percent') !!}GROI: {{ round((float) ($ordersL30Groi ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="npft-percent-badge"
+                                data-metric="npft_percent" data-live-value="{{ number_format((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0), 1, '.', '') }}" data-format="pct"
+                                style="background-color: #0f766e; color: white; font-weight: bold; cursor: pointer;"
+                                title="NPFT% = GPFT% − Ads%. Click badge or dot for rolling history.">{!! $ebTrendDot('npft_percent') !!}NPFT: {{ number_format((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0), 1) }}%</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="nroi-percent-badge"
+                                data-metric="nroi_percent" data-live-value="{{ round((float) ($ordersL30Nroi ?? 0)) }}" data-format="pct"
+                                style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
+                                title="NROI%. Click badge or dot for rolling history.">{!! $ebTrendDot('nroi_percent') !!}NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ads-percent-badge"
+                                data-metric="tcos_percent" data-live-value="{{ round((float) ($channelAdsPercent ?? 0)) }}" data-format="pct" data-invert="1"
+                                style="background-color: #d63384; color: white; font-weight: bold; cursor: pointer;"
+                                title="Ads% (Total Ad Spend / L30 Sales). Lower is better (inverted 3-color). Click badge or dot for rolling history.">{!! $ebTrendDot('tcos_percent') !!}Ads {{ round((float) ($channelAdsPercent ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-ads-sales-badge"
+                                data-metric="ads_sales" data-live-value="{{ round((float) ($ebayAdSales ?? 0), 2) }}" data-format="money"
+                                style="background-color:#0d6efd;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="eBay ad-attributed sales (keyword + promoted listings). Same Ad Sales as All Marketplace Master. Click badge or dot for rolling history.">{!! $ebTrendDot('ads_sales') !!}Ads sales: ${{ number_format((float) ($ebayAdSales ?? 0)) }}</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-acos-badge"
+                                data-metric="acos_percent" data-live-value="{{ number_format((float) ($ebayAcosPercent ?? 0), 1, '.', '') }}" data-format="pct" data-invert="1"
+                                style="background-color:#dc3545;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="ACOS% = Ad Spend ÷ Ad Sales × 100. Same ACOS as All Marketplace Master. Lower is better. Click badge or dot for rolling history.">{!! $ebTrendDot('acos_percent') !!}ACOS: {{ number_format((float) ($ebayAcosPercent ?? 0), 1) }}%</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-l30-spend-badge"
+                                data-metric="l30_spend" data-live-value="{{ round((float) ($ebayAdSpend ?? 0), 2) }}" data-format="money"
+                                style="background-color:#6f42c1;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="eBay L30 ad spend. Same Total Ad Spend as All Marketplace Master (the numerator of Ads%). Click badge or dot for rolling history.">{!! $ebTrendDot('l30_spend') !!}L30 spend: ${{ number_format((float) ($ebayAdSpend ?? 0)) }}</span>
+                        </div>
+                    </div>
+                    <div class="amz-sum-block amz-sum-block--projected">
+                        <div class="amz-sum-block-title">Projected</div>
+                        <div class="amz-sum-row amz-sum-row--projected" role="group" aria-label="Projected metrics">
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-p-sales-badge"
+                                data-metric="p_sales" data-live-value="{{ $ebPSales }}" data-format="money"
+                                style="background-color:#0d6efd;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30, from real eBay orders. % is P-Sales vs L30 Sales. Click badge or dot for rolling history.">{!! $ebTrendDot('p_sales') !!}Sales: ${{ number_format($ebPSales) }}@if($ebPVsPct !== null)<span style="margin-left:.3rem;font-size:.75rem;color:{{ abs($ebPVsPct) < 0.1 ? '#e2e8f0' : ($ebPVsPct > 0 ? '#86efac' : '#fca5a5') }};">{{ abs($ebPVsPct) < 0.1 ? '0%' : ($ebPVsPct > 0 ? '+' : '−') . number_format(abs($ebPVsPct), 0) . '%' }}</span>@endif</span>
+                            <span class="badge bg-info fs-6 p-2 ebay1-badge-chart" id="ebay-p-qty-badge"
+                                data-metric="p_qty" data-live-value="{{ (float) ($ebPr['p_qty'] ?? 0) }}" data-format="int"
+                                style="color:black;font-weight:bold;cursor:pointer;"
+                                title="P Qty = L7 units ÷ 7 × 30 (real eBay orders). Click badge or dot for rolling history.">{!! $ebTrendDot('p_qty') !!}Qty: {{ number_format((float) ($ebPr['p_qty'] ?? 0)) }}</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-p-groi-badge"
+                                data-metric="p_groi_percent" data-live-value="{{ (float) ($ebPr['p_groi'] ?? 0) }}" data-format="pct"
+                                style="background-color:#0d6efd;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="P-GROI% = projected PFT ÷ projected COGS. Both scale from L7 (× 30 ÷ 7), so this is L7 PFT ÷ L7 COGS from real eBay orders. Click badge or dot for rolling history.">{!! $ebTrendDot('p_groi_percent') !!}GROI%: {{ (int) round((float) ($ebPr['p_groi'] ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-p-npft-badge"
+                                data-metric="p_npft_percent" data-live-value="{{ (float) ($ebPr['p_npft'] ?? 0) }}" data-format="pct"
+                                style="background-color:#0d6efd;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="Projected NPFT% = L7 GPFT% − P Ads%. Ad spend is the current L30 spend over P-Sales. Click badge or dot for rolling history.">{!! $ebTrendDot('p_npft_percent') !!}Npft%: {{ (int) round((float) ($ebPr['p_npft'] ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-p-nroi-badge"
+                                data-metric="p_nroi_percent" data-live-value="{{ (float) ($ebPr['p_nroi'] ?? 0) }}" data-format="pct"
+                                style="background-color:#0d6efd;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="P-NROI% = (projected PFT − L30 ad spend) ÷ projected COGS. Click badge or dot for rolling history.">{!! $ebTrendDot('p_nroi_percent') !!}NROI%: {{ (int) round((float) ($ebPr['p_nroi'] ?? 0)) }}%</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-p-ads-badge"
+                                data-metric="p_ads_percent" data-live-value="{{ (float) ($ebPr['p_ads'] ?? 0) }}" data-format="pct" data-invert="1"
+                                style="background-color:#c2410c;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="P Ads% = L30 ad spend ÷ P-Sales × 100 (total projected sales). Lower is better. Click badge or dot for rolling history.">{!! $ebTrendDot('p_ads_percent') !!}P Ads%: {{ number_format((float) ($ebPr['p_ads'] ?? 0), 1) }}%</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-p-views-badge"
+                                data-metric="p_views" data-live-value="0" data-format="int"
+                                style="background-color:#0d6efd;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="P Views = Σ Views × (P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. Click badge or dot for rolling history.">{!! $ebTrendDot('p_views') !!}Views: 0</span>
+                        </div>
+                    </div>
+                    <div class="amz-sum-block amz-sum-block--listing">
+                        <div class="amz-sum-block-title">Listing</div>
+                        <div class="amz-sum-row amz-sum-row--listing" role="group" aria-label="Listing metrics">
+                            <span class="badge fs-6 p-2 bg-info ebay1-badge-chart" id="total-views-badge"
+                                data-metric="total_views" data-live-value="0"
+                                style="color: black; font-weight: bold; cursor: pointer;"
+                                title="Views. Click badge or dot for rolling history.">{!! $ebTrendDot('total_views') !!}Views: 0</span>
+                            <span class="badge fs-6 p-2 bg-danger ebay1-badge-chart" id="avg-cvr-badge"
+                                data-metric="cvr_percent" data-live-value="0" data-format="pct"
+                                style="color: white; font-weight: bold; cursor: pointer;"
+                                title="CVR%. Click badge or dot for rolling history.">{!! $ebTrendDot('cvr_percent') !!}CVR: 0%</span>
+                            @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
+                        </div>
+                    </div>
+                    <div class="amz-sum-block amz-sum-block--sold">
+                        <div class="amz-sum-block-title">Rows &amp; Sold</div>
+                        <div class="amz-sum-row amz-sum-row--sold" role="group" aria-label="Rows and sold counts">
+                            <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
+                                style="color: white; font-weight: bold;"
+                                title="Number of rows currently shown after filters">Rows: 0</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="more-sold-count-badge"
+                                data-metric="sold_count" data-live-value="0"
+                                style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
+                                title="Click badge to filter items with sales (INV>0). Click dot for rolling history.">{!! $ebTrendDot('sold_count') !!}> 0 Sold: 0</span>
+                            <span class="badge fs-6 p-2 bg-danger ebay1-badge-chart" id="zero-sold-count-badge"
+                                data-metric="zero_sold_count" data-live-value="0"
+                                style="color: white; font-weight: bold; cursor: pointer;"
+                                title="Click badge to filter 0 sold (INV>0). Click dot for rolling history.">{!! $ebTrendDot('zero_sold_count') !!}0 Sold: 0</span>
+                        </div>
+                    </div>
+                    <div class="amz-sum-block amz-sum-block--alerts">
+                        <div class="amz-sum-block-title">Price &amp; LMP alerts</div>
+                        <div class="amz-sum-row amz-sum-row--alerts" role="group" aria-label="Price and LMP alerts">
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-blue-triangle-badge"
+                                data-filter-badge="1" data-metric="blue_triangle_count" data-invert="1" data-live-value="0" data-format="number"
+                                style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Blue alert: INV > 0 and Price ≠ S PRC. Click badge to show only those SKUs. Click dot for rolling history.">{!! $ebTrendDot('blue_triangle_count') !!}<i class="fas fa-exclamation-triangle"></i> 0</span>
+                            @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'ebay1-clearance-badge'])
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-red-triangle-badge"
+                                data-filter-badge="1" data-metric="red_triangle_count" data-invert="1" data-live-value="0" data-format="number"
+                                style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Red triangle: Price &gt; LMP and INV &gt; 0. Click badge to show only those rows. Click again to clear. Click dot for rolling history.">{!! $ebTrendDot('red_triangle_count') !!}<i class="fas fa-exclamation-triangle"></i> 0</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-purple-triangle-badge"
+                                data-filter-badge="1" data-plt-channel="ebay" data-plt-price-field="eBay Price"
+                                data-metric="price_lt80_lmp_count" data-invert="1" data-live-value="0" data-format="number"
+                                style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
+                                title="price &lt; 80% of LMP: SKUs where Price is more than 20% below LMP (purple triangle). Green = 0. Click badge to filter. Click dot for rolling history.">{!! $ebTrendDot('price_lt80_lmp_count') !!}<i class="fas fa-exclamation-triangle"></i> 0</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-ended-listing-badge"
+                                data-filter-badge="1" data-metric="ended_listing_count" data-invert="1" data-live-value="0" data-format="number"
+                                style="background-color:#6c757d;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Ended listings: SKUs whose eBay listing has ended. Click badge to filter (SKU view). Click again to clear. Click dot for rolling history.">{!! $ebTrendDot('ended_listing_count') !!}<i class="fas fa-exclamation-triangle"></i> 0</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-price-eq-lmp-badge"
+                                data-filter-badge="1" data-metric="price_eq_lmp_count" data-live-value="0" data-format="number"
+                                style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Price = LMP: SKUs (INV &gt; 0) where our eBay Price equals the LMP. Click badge to filter. Click again to clear. Click dot for rolling history.">{!! $ebTrendDot('price_eq_lmp_count') !!}<i class="fas fa-equals"></i> 0</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-sprice-eq-lmp-badge"
+                                data-filter-badge="1" data-metric="sprice_eq_lmp_count" data-live-value="0" data-format="number"
+                                style="background-color:#6610f2;color:#fff;font-weight:700;cursor:pointer;"
+                                title="S PRC = LMP: SKUs where S PRC equals the LMP. Click badge to filter. Click again to clear. Click dot for rolling history.">{!! $ebTrendDot('sprice_eq_lmp_count') !!}S PRC <i class="fas fa-equals"></i> LMP: 0</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-lmp-missing-badge"
+                                data-lmp-channel="ebay"
+                                data-metric="lmp_missing_count" data-invert="1" data-live-value="0" data-format="number"
+                                style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
+                                title="LMP M.: INV &gt; 0 SKUs with no LMP data. INV = 0 is not counted. Green = 0 missing. Click badge to filter. Click dot for rolling history.">{!! $ebTrendDot('lmp_missing_count') !!}LMP M. 0</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1308,6 +1488,8 @@
         const Y_SPEND_TOTAL = {{ (float) ($ySpendTotal ?? 0) }};
         const Y_SALES_TOTAL = {{ (float) ($ySalesTotal ?? 0) }};
         const Y_ADS_PERCENT = {{ (float) ($yAdsPercent ?? 0) }};
+        /** Projected 30-day sales (L7 pace). P Views = Σ views × P-Sales ÷ L30 Sales. */
+        const EBAY_P_SALES = {{ (float) (($ebayProjected['p_sales'] ?? 0)) }};
         /** Take-home from marketplace_percentages (Ebay). Used when a row has no percentage. */
         const EBAY_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
 
@@ -1588,9 +1770,31 @@
             cvr_percent: 'CVR%',
             total_views: 'Views',
             lmp_missing_count: 'LMP M.',
+            y_sales: 'Y Sales',
+            y_sales_percent: 'Y Sales%',
+            ads_sales: 'Ads sales',
+            acos_percent: 'ACOS%',
+            l30_spend: 'L30 spend',
+            p_sales: 'P Sales',
+            p_qty: 'P Qty',
+            p_groi_percent: 'P GROI%',
+            p_npft_percent: 'P NPFT%',
+            p_nroi_percent: 'P NROI%',
+            p_ads_percent: 'P Ads%',
+            p_views: 'P Views',
+            blue_triangle_count: 'Blue ▲ (Price ≠ S PRC)',
+            red_triangle_count: 'Red ▲ (Price > LMP)',
+            price_lt80_lmp_count: 'Purple ▲ (Price < 80% LMP)',
+            price_eq_lmp_count: 'Price = LMP',
+            sprice_eq_lmp_count: 'S PRC = LMP',
+            ended_listing_count: 'Ended listings',
         };
         /** Metrics where lower is better → invert 3-color (up=red, down=green) */
-        const ebay1BadgeInvertMetrics = { tcos_percent: true, y_ads_percent: true, lmp_missing_count: true };
+        const ebay1BadgeInvertMetrics = {
+            tcos_percent: true, y_ads_percent: true, lmp_missing_count: true,
+            acos_percent: true, p_ads_percent: true, blue_triangle_count: true, red_triangle_count: true,
+            price_lt80_lmp_count: true, ended_listing_count: true
+        };
         let ebay1ChartInstance = null;
         let ebay1ChartAjax = null;
         let ebay1ChartDays = 30;
@@ -1765,6 +1969,29 @@
                 if (!isFinite(live)) live = parseFloat($(this).data('live-value'));
                 applyEbay1SummaryTrendDot(metric, live);
             });
+        }
+
+        /**
+         * Counts only the browser can work out (they depend on live S PRC / LMP rules) are posted once the grid
+         * has loaded, so each of those badges gets a history dot. Debounced, and skipped when nothing changed.
+         */
+        let ebay1ClientReportTimer = null;
+        let ebay1ClientReportSig = '';
+        function ebay1ReportClientBadges(counts) {
+            if (!Array.isArray(allTableData) || !allTableData.length) return;
+            const sig = JSON.stringify(counts);
+            if (sig === ebay1ClientReportSig) return;
+            clearTimeout(ebay1ClientReportTimer);
+            ebay1ClientReportTimer = setTimeout(function() {
+                if (document.visibilityState === 'hidden') return;
+                ebay1ClientReportSig = sig;
+                $.ajax({
+                    url: '/ebay-badge-client-metrics',
+                    method: 'POST',
+                    data: Object.assign({ _token: $('meta[name="csrf-token"]').attr('content') }, counts),
+                    error: function() { ebay1ClientReportSig = ''; }
+                });
+            }, 3000);
         }
 
         function loadEbay1BadgePrevDay(done) {
@@ -2539,6 +2766,8 @@
         let lmpMissingFilterActive = false;
         let priceLt80LmpFilterActive = false;
         let endedListingFilterActive = false;
+        let priceEqLmpFilterActive = false;
+        let spriceEqLmpFilterActive = false;
 
         /** Parent / summary rows are not selectable. Child SKUs often have Parent = "PARENT 10 FR" — that is the parent name, not a parent row. */
         function ebayIsParentRowData(d) {
@@ -3500,7 +3729,8 @@
                 if ($(e.target).closest('.summary-trend-dot').length) return;
                 const id = this.id || '';
                 // These badges still use body click for table filters
-                if (id === 'zero-sold-count-badge' || id === 'more-sold-count-badge' || id === 'ebay1-lmp-missing-badge') {
+                if (id === 'zero-sold-count-badge' || id === 'more-sold-count-badge' || id === 'ebay1-lmp-missing-badge'
+                    || this.hasAttribute('data-filter-badge')) {
                     return;
                 }
                 e.stopPropagation();
@@ -3666,13 +3896,15 @@
             });
 
             // Badge click handlers for filtering
-            $('#zero-sold-count-badge').on('click', function() {
+            $('#zero-sold-count-badge').on('click', function(e) {
+                if ($(e.target).closest('.summary-trend-dot').length) return;
                 zeroSoldFilterActive = !zeroSoldFilterActive;
                 moreSoldFilterActive = false;
                 applyFilters();
             });
 
-            $('#more-sold-count-badge').on('click', function() {
+            $('#more-sold-count-badge').on('click', function(e) {
+                if ($(e.target).closest('.summary-trend-dot').length) return;
                 moreSoldFilterActive = !moreSoldFilterActive;
                 zeroSoldFilterActive = false;
                 applyFilters();
@@ -3745,59 +3977,76 @@
                     outline: endedListingFilterActive ? '3px solid #0d6efd' : '',
                     outlineOffset: endedListingFilterActive ? '2px' : ''
                 });
+                $('#ebay1-price-eq-lmp-badge').css({
+                    outline: priceEqLmpFilterActive ? '3px solid #ffc107' : '',
+                    outlineOffset: priceEqLmpFilterActive ? '2px' : ''
+                });
+                $('#ebay1-sprice-eq-lmp-badge').css({
+                    outline: spriceEqLmpFilterActive ? '3px solid #ffc107' : '',
+                    outlineOffset: spriceEqLmpFilterActive ? '2px' : ''
+                });
             }
-            $('#ebay1-blue-triangle-badge').on('click', function() {
-                blueTriangleFilterActive = !blueTriangleFilterActive;
-                if (blueTriangleFilterActive) {
-                    redTriangleFilterActive = false;
-                    lmpMissingFilterActive = false;
-                    priceLt80LmpFilterActive = false;
-                    endedListingFilterActive = false;
-                }
+            /** INV > 0 and our eBay Price equals the LMP (to the cent). */
+            function ebay1PriceEqLmp(data) {
+                if (!data || ebayIsParentRowData(data)) return false;
+                if (!((parseFloat(data.INV) || 0) > 0)) return false;
+                const price = parseFloat(data['eBay Price']) || 0;
+                const lmp = ebayEffectiveLmp(data);
+                return price > 0 && lmp > 0 && Math.abs(price - lmp) < 0.005;
+            }
+            /** S PRC equals the LMP (to the cent). */
+            function ebay1SpriceEqLmp(data) {
+                if (!data || ebayIsParentRowData(data)) return false;
+                const sprice = Number(ebay1RowSpriceForAlert(data)) || 0;
+                const lmp = ebayEffectiveLmp(data);
+                return sprice > 0 && lmp > 0 && Math.abs(sprice - lmp) < 0.005;
+            }
+            /** One alert filter at a time (blue / red / purple / ended / = LMP / S PRC = LMP / LMP M.). */
+            function ebay1ToggleAlertFilter(key) {
+                const was = {
+                    blue: blueTriangleFilterActive, red: redTriangleFilterActive, lmpMissing: lmpMissingFilterActive,
+                    purple: priceLt80LmpFilterActive, ended: endedListingFilterActive,
+                    priceEq: priceEqLmpFilterActive, spriceEq: spriceEqLmpFilterActive
+                }[key];
+                const on = !was;
+                blueTriangleFilterActive = on && key === 'blue';
+                redTriangleFilterActive = on && key === 'red';
+                lmpMissingFilterActive = on && key === 'lmpMissing';
+                priceLt80LmpFilterActive = on && key === 'purple';
+                endedListingFilterActive = on && key === 'ended';
+                priceEqLmpFilterActive = on && key === 'priceEq';
+                spriceEqLmpFilterActive = on && key === 'spriceEq';
+                if (on && key === 'red') $('#inventory-filter').val('more');
+                if (on && key === 'ended') $('#view-mode-filter').val('sku');
                 applyFilters();
+            }
+            $('#ebay1-blue-triangle-badge').on('click', function(e) {
+                if ($(e.target).closest('.summary-trend-dot').length) return;
+                ebay1ToggleAlertFilter('blue');
             });
-            $('#ebay1-red-triangle-badge').on('click', function() {
-                redTriangleFilterActive = !redTriangleFilterActive;
-                if (redTriangleFilterActive) {
-                    blueTriangleFilterActive = false;
-                    lmpMissingFilterActive = false;
-                    priceLt80LmpFilterActive = false;
-                    endedListingFilterActive = false;
-                    $('#inventory-filter').val('more');
-                }
-                applyFilters();
+            $('#ebay1-red-triangle-badge').on('click', function(e) {
+                if ($(e.target).closest('.summary-trend-dot').length) return;
+                ebay1ToggleAlertFilter('red');
             });
             $('#ebay1-lmp-missing-badge').on('click', function(e) {
                 if ($(e.target).closest('.summary-trend-dot').length) return;
-                lmpMissingFilterActive = !lmpMissingFilterActive;
-                if (lmpMissingFilterActive) {
-                    blueTriangleFilterActive = false;
-                    redTriangleFilterActive = false;
-                    priceLt80LmpFilterActive = false;
-                    endedListingFilterActive = false;
-                }
-                applyFilters();
+                ebay1ToggleAlertFilter('lmpMissing');
             });
-            $('#ebay1-purple-triangle-badge').on('click', function() {
-                priceLt80LmpFilterActive = !priceLt80LmpFilterActive;
-                if (priceLt80LmpFilterActive) {
-                    blueTriangleFilterActive = false;
-                    redTriangleFilterActive = false;
-                    lmpMissingFilterActive = false;
-                    endedListingFilterActive = false;
-                }
-                applyFilters();
+            $('#ebay1-purple-triangle-badge').on('click', function(e) {
+                if ($(e.target).closest('.summary-trend-dot').length) return;
+                ebay1ToggleAlertFilter('purple');
             });
-            $('#ebay1-ended-listing-badge').on('click', function() {
-                endedListingFilterActive = !endedListingFilterActive;
-                if (endedListingFilterActive) {
-                    blueTriangleFilterActive = false;
-                    redTriangleFilterActive = false;
-                    lmpMissingFilterActive = false;
-                    priceLt80LmpFilterActive = false;
-                    $('#view-mode-filter').val('sku');
-                }
-                applyFilters();
+            $('#ebay1-ended-listing-badge').on('click', function(e) {
+                if ($(e.target).closest('.summary-trend-dot').length) return;
+                ebay1ToggleAlertFilter('ended');
+            });
+            $('#ebay1-price-eq-lmp-badge').on('click', function(e) {
+                if ($(e.target).closest('.summary-trend-dot').length) return;
+                ebay1ToggleAlertFilter('priceEq');
+            });
+            $('#ebay1-sprice-eq-lmp-badge').on('click', function(e) {
+                if ($(e.target).closest('.summary-trend-dot').length) return;
+                ebay1ToggleAlertFilter('spriceEq');
             });
             // SKU chart days filter (Rolling Lx · PT — same pattern as all-marketplace-master)
             $('#sku-chart-days-filter').on('change', function() {
@@ -6348,6 +6597,16 @@
                         return ebay1HasRedTriangle(data);
                     });
                 }
+                if (priceEqLmpFilterActive) {
+                    table.addFilter(function(data) {
+                        return ebay1PriceEqLmp(data);
+                    });
+                }
+                if (spriceEqLmpFilterActive) {
+                    table.addFilter(function(data) {
+                        return ebay1SpriceEqLmp(data);
+                    });
+                }
                 if (lmpMissingFilterActive && window.LmpMissingBadge) {
                     table.addFilter(function(data) {
                         return LmpMissingBadge.isMissingLmp(data);
@@ -6523,7 +6782,7 @@
                 function setSummaryBadge($el, label, liveVal) {
                     const $dot = $el.find('.summary-trend-dot').detach();
                     $el.text(label);
-                    if ($dot.length) $el.append($dot);
+                    if ($dot.length) $el.prepend($dot);
                     if (liveVal != null && isFinite(liveVal)) {
                         $el.attr('data-live-value', liveVal);
                     }
@@ -6582,6 +6841,8 @@
                 let blueTriangleCount = 0;
                 let redTriangleCount = 0;
                 let endedListingCount = 0;
+                let priceEqCount = 0;
+                let spriceEqCount = 0;
                 const blueSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
                     ? allTableData
                     : allData;
@@ -6589,16 +6850,23 @@
                     if (ebay1BlueTriangleBadgeRow(row)) blueTriangleCount++;
                     if (ebay1HasRedTriangle(row)) redTriangleCount++;
                     if (ebay1IsEndedListing(row)) endedListingCount++;
+                    if (ebay1PriceEqLmp(row)) priceEqCount++;
+                    if (ebay1SpriceEqLmp(row)) spriceEqCount++;
                 });
-                $('#ebay1-ended-listing-badge').html(
-                    '<i class="fas fa-exclamation-triangle"></i> ' + endedListingCount.toLocaleString()
-                );
-                $('#ebay1-blue-triangle-badge').html(
-                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
-                );
-                $('#ebay1-red-triangle-badge').html(
-                    '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
-                );
+                // Count badges keep their history dot (it sits before the label).
+                function paintCountBadge(sel, html, n) {
+                    const $b = $(sel);
+                    const $d = $b.find('.summary-trend-dot').detach();
+                    $b.html(html);
+                    if ($d.length) $b.prepend($d);
+                    $b.attr('data-live-value', n);
+                }
+                const triIcon = '<i class="fas fa-exclamation-triangle"></i> ';
+                paintCountBadge('#ebay1-ended-listing-badge', triIcon + endedListingCount.toLocaleString(), endedListingCount);
+                paintCountBadge('#ebay1-blue-triangle-badge', triIcon + blueTriangleCount.toLocaleString(), blueTriangleCount);
+                paintCountBadge('#ebay1-red-triangle-badge', triIcon + redTriangleCount.toLocaleString(), redTriangleCount);
+                paintCountBadge('#ebay1-price-eq-lmp-badge', '<i class="fas fa-equals"></i> ' + priceEqCount.toLocaleString(), priceEqCount);
+                paintCountBadge('#ebay1-sprice-eq-lmp-badge', 'S PRC <i class="fas fa-equals"></i> LMP: ' + spriceEqCount.toLocaleString(), spriceEqCount);
                 if (window.PriceGtLmpBadge) {
                     PriceGtLmpBadge.paint('#ebay1-red-triangle-badge', redTriangleCount);
                     PriceGtLmpBadge.report('ebay', redTriangleCount);
@@ -6607,9 +6875,22 @@
                 if (window.LmpMissingBadge) {
                     LmpMissingBadge.update('#ebay1-lmp-missing-badge', allData, 'ebay');
                 }
+                let purpleCount = 0;
                 if (window.PriceLt80LmpBadge) {
-                    PriceLt80LmpBadge.update('#ebay1-purple-triangle-badge', allData, 'ebay', 'eBay Price');
+                    purpleCount = PriceLt80LmpBadge.update('#ebay1-purple-triangle-badge', allData, 'ebay', 'eBay Price');
                 }
+                // Projected Views = Σ Views × (P-Sales ÷ L30 Sales) — same 30-day pace as P-Sales.
+                const pViews = ORDERS_L30_TOTAL_SALES > 0 ? Math.round(totalViews * (EBAY_P_SALES / ORDERS_L30_TOTAL_SALES)) : 0;
+                setSummaryBadge($('#ebay-p-views-badge'), 'Views: ' + pViews.toLocaleString(), pViews);
+                ebay1ReportClientBadges({
+                    p_views: pViews,
+                    blue_triangle_count: blueTriangleCount,
+                    red_triangle_count: redTriangleCount,
+                    price_lt80_lmp_count: purpleCount,
+                    price_eq_lmp_count: priceEqCount,
+                    sprice_eq_lmp_count: spriceEqCount,
+                    ended_listing_count: endedListingCount
+                });
                 syncEbay1TriangleBadgeState();
 
                 syncEbay1SummaryTrendDots();

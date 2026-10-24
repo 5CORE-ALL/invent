@@ -50,6 +50,23 @@ use App\Support\Marketplace\EbayListingEnded;
 
 class EbayController extends Controller
 {
+    /**
+     * Badges added with the grouped-block summary (Y Sales, Ads sales, ACOS, L30 spend, Projected, alert counts).
+     * They are written to the daily ebay snapshot so every badge gets a history dot + chart.
+     */
+    private const EBAY_BLOCK_BADGE_METRICS = [
+        'y_sales', 'y_sales_percent', 'ads_sales', 'acos_percent', 'l30_spend',
+        'p_sales', 'p_qty', 'p_groi_percent', 'p_npft_percent', 'p_nroi_percent', 'p_ads_percent',
+        'p_views', 'blue_triangle_count', 'red_triangle_count', 'price_lt80_lmp_count', 'price_eq_lmp_count',
+        'sprice_eq_lmp_count', 'ended_listing_count',
+    ];
+
+    /** Counts only the browser can compute (they need live S PRC / LMP rules). Reported by the page, kept on re-snapshot. */
+    private const EBAY_CLIENT_BADGE_METRICS = [
+        'p_views', 'blue_triangle_count', 'red_triangle_count', 'price_lt80_lmp_count', 'price_eq_lmp_count',
+        'sprice_eq_lmp_count', 'ended_listing_count',
+    ];
+
     protected $apiController;
 
     /** Ads% reused while a Dil batch writes many SKUs. */
@@ -91,8 +108,13 @@ class EbayController extends Controller
         // /ebay/campaign-ads) ÷ the SAME real-orders L30 sales shown in the Sales badge,
         // so the Ads% is consistent with this page's Sales (not the marketplace_daily_metrics
         // sales the /all-marketplace-master value uses).
-        $ebayAdSpend = app(ChannelMasterController::class)->getEbayMasterAdSpend();
-        $channelAdsPercent = $this->tabulatorChannelAdsPercent((float) ($agg['sales'] ?? 0));
+        $adTotals = app(ChannelMasterController::class)->getEbayMasterAdTotals();
+        $ebayAdSpend = (float) $adTotals['spend'];
+        $ebayAdSales = (float) $adTotals['sales'];
+        $ebayAcosPercent = $ebayAdSales > 0 ? round(($ebayAdSpend / $ebayAdSales) * 100, 1) : 0.0;
+        $channelAdsPercent = ((float) ($agg['sales'] ?? 0)) > 0
+            ? round(($ebayAdSpend / (float) $agg['sales']) * 100, 1)
+            : 0.0;
         $ySpendBadge = EbayYesterdaySpend::channelTotals();
 
         // NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same shape as Amazon NROI badge
@@ -100,6 +122,11 @@ class EbayController extends Controller
         $ordersL30Nroi = $agg['cogs'] > 0
             ? round((($agg['pft'] - $ebayAdSpend) / $agg['cogs']) * 100, 1)
             : 0.0;
+
+        // Y Sales% = how far yesterday sits below a typical L30 day: ((L30 / 30) − Y Sales) / (L30 / 30) × 100.
+        $ySalesTotal = (float) ($ySpendBadge['y_sales'] ?? 0);
+        $l30Daily = ((float) ($agg['sales'] ?? 0)) / 30.0;
+        $ySalesPercent = $l30Daily > 0 ? round((($l30Daily - $ySalesTotal) / $l30Daily) * 100, 1) : 0.0;
 
         return view("market-places.ebay_tabulator_view", [
             'ebayTakeHome'        => MarketplacePercentage::takeHomeDecimal('Ebay'),
@@ -115,19 +142,14 @@ class EbayController extends Controller
             'ySpendTotal'         => $ySpendBadge['y_spend'],
             'ySalesTotal'         => $ySpendBadge['y_sales'],
             'yAdsPercent'         => $ySpendBadge['y_ads_percent'],
+            'ySalesPercent'       => $ySalesPercent,
+            'ebayAdSales'         => round($ebayAdSales, 2),
+            'ebayAcosPercent'     => $ebayAcosPercent,
+            'ebayProjected'       => $this->ebayTabulatorProjected($agg, $ebayAdSpend),
             'lastGoodCvrViews'    => (float) (ChannelMasterViewsGuard::lastTrusted('ebay')['views'] ?? 0),
         ]);
     }
 
-    /**
-     * L30 Sales / Qty / PFT / COGS / GPFT% / GROI% computed from the exact same rows
-     * /ebay/daily-sales renders (EbaySalesController::getData), aggregated the same way
-     * that page's summary does. Guarantees the tabulator badges match /ebay/daily-sales:
-     *   - Sales  = Σ per-order total (tax incl.), once per order, excl. CANCELED/FULLY_REFUNDED
-     *   - Qty    = Σ item quantity (same exclusions)
-     *   - GPFT%  = Σ T PFT / Σ (qty × unit price) × 100
-     *   - GROI%  = Σ T PFT / Σ COGS × 100
-     */
     /**
      * Ads% the eBay 1 S PRC cell uses: Total Ad Spend ÷ this page's real-orders L30 sales, 1 decimal.
      */
@@ -141,9 +163,56 @@ class EbayController extends Controller
         return $sales > 0 ? round(($spend / $sales) * 100, 1) : 0.0;
     }
 
+    /**
+     * Projected (30-day pace from the last 7 days) badges for /ebay-tabulator-view.
+     *
+     * Same idea as the Projected block on /amazon-tabulator-view: P-Sales = (L7 ÷ 7) × 30, where L7 is
+     * the 7 Pacific days ending yesterday (same clock as Y Sales / L7 Sales). Projected PFT and COGS scale
+     * the same way, so P-GROI% is L7 PFT ÷ L7 COGS. Ad spend is the current L30 ad spend (not projected),
+     * so P Ads% = L30 spend ÷ P-Sales and P NPFT% = L7 GPFT% − P Ads%.
+     *
+     * @param  array<string, mixed>  $agg  fetchEbayL30OrdersAggregate()
+     * @return array{p_sales: float, p_qty: float, p_groi: float, p_npft: float, p_nroi: float, p_ads: float, l7_sales: float}
+     */
+    private function ebayTabulatorProjected(array $agg, float $adSpend): array
+    {
+        $l7 = $agg['l7'] ?? [];
+        $scale = 30.0 / 7.0;
+        $l7Sales = (float) ($l7['sales'] ?? 0);
+        $pSales = $l7Sales * $scale;
+        $pQty = (float) ($l7['qty'] ?? 0) * $scale;
+        $pPft = (float) ($l7['pft'] ?? 0) * $scale;
+        $pCogs = (float) ($l7['cogs'] ?? 0) * $scale;
+        $lineSales = (float) ($l7['line_sales'] ?? 0);
+
+        $pAds = $pSales > 0 ? ($adSpend / $pSales) * 100.0 : 0.0;
+        $pGpft = $lineSales > 0 ? ((float) ($l7['pft'] ?? 0) / $lineSales) * 100.0 : 0.0;
+
+        return [
+            'p_sales' => round($pSales, 2),
+            'p_qty' => round($pQty, 2),
+            'p_groi' => $pCogs > 0 ? round($pPft / $pCogs * 100.0, 1) : 0.0,
+            'p_npft' => $pSales > 0 ? round($pGpft - $pAds, 1) : 0.0,
+            'p_nroi' => $pCogs > 0 ? round(($pPft - $adSpend) / $pCogs * 100.0, 1) : 0.0,
+            'p_ads' => round($pAds, 1),
+            'l7_sales' => round($l7Sales, 2),
+        ];
+    }
+
+    /**
+     * L30 Sales / Qty / PFT / COGS / GPFT% / GROI% computed from the exact same rows
+     * /ebay/daily-sales renders (EbaySalesController::getData), aggregated the same way
+     * that page's summary does. Guarantees the tabulator badges match /ebay/daily-sales:
+     *   - Sales  = Σ per-order total (tax incl.), once per order, excl. CANCELED/FULLY_REFUNDED
+     *   - Qty    = Σ item quantity (same exclusions)
+     *   - GPFT%  = Σ T PFT / Σ (qty × unit price) × 100
+     *   - GROI%  = Σ T PFT / Σ COGS × 100
+     * 'l7' holds the same sums for the 7 Pacific days ending yesterday (Projected block).
+     */
     private function fetchEbayL30OrdersAggregate(): array
     {
-        $empty = ['sales' => 0.0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0, 'gpft' => 0.0, 'groi' => 0.0];
+        $emptyL7 = ['sales' => 0.0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0, 'line_sales' => 0.0];
+        $empty = ['sales' => 0.0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0, 'gpft' => 0.0, 'groi' => 0.0, 'l7' => $emptyL7];
         try {
             if (! Schema::hasTable('ebay_orders') || ! Schema::hasTable('ebay_order_items')) {
                 return $empty;
@@ -169,6 +238,12 @@ class EbayController extends Controller
             $cogs = 0.0;
             $l30Sales = 0.0;
             $orderSales = 0.0;
+
+            // L7 = the 7 Pacific days ending yesterday (same clock as Y Sales). Feeds the Projected block.
+            $tz = 'America/Los_Angeles';
+            $l7End = Carbon::now($tz)->subDay()->toDateString();
+            $l7Start = Carbon::now($tz)->subDays(7)->toDateString();
+            $l7 = $emptyL7;
 
             foreach ($orders as $order) {
                 $raw = is_array($order->raw_data)
@@ -197,6 +272,20 @@ class EbayController extends Controller
                     }
                 }
                 $orderSales += round($orderTotal, 2);
+
+                $inL7 = false;
+                $created = (is_array($raw) ? ($raw['creationDate'] ?? null) : null) ?: $order->order_date;
+                if ($created) {
+                    try {
+                        $day = Carbon::parse($created)->setTimezone($tz)->toDateString();
+                        $inL7 = $day >= $l7Start && $day <= $l7End;
+                    } catch (\Throwable $e) {
+                        $inL7 = false;
+                    }
+                }
+                if ($inL7) {
+                    $l7['sales'] += round($orderTotal, 2);
+                }
 
                 foreach ($order->items as $item) {
                     $pm = $productMasters[$item->sku] ?? null;
@@ -229,10 +318,24 @@ class EbayController extends Controller
                     $pft += $linePft;
                     $cogs += $lineCogs;
                     $l30Sales += $price;
+
+                    if ($inL7) {
+                        $l7['qty'] += (int) $quantity;
+                        $l7['pft'] += $linePft;
+                        $l7['cogs'] += $lineCogs;
+                        $l7['line_sales'] += $price;
+                    }
                 }
             }
 
             return [
+                'l7'    => [
+                    'sales'      => round($l7['sales'], 2),
+                    'qty'        => (int) $l7['qty'],
+                    'pft'        => round($l7['pft'], 2),
+                    'cogs'       => round($l7['cogs'], 2),
+                    'line_sales' => round($l7['line_sales'], 2),
+                ],
                 'sales' => round($orderSales, 2),
                 'qty'   => $qty,
                 'pft'   => round($pft, 2),
@@ -2691,6 +2794,7 @@ class EbayController extends Controller
                 'lmp_missing_count',
                 'y_spend',
                 'y_ads_percent',
+                ...self::EBAY_BLOCK_BADGE_METRICS,
             ];
 
             if (! in_array($metric, $allowedMetrics, true)) {
@@ -2797,6 +2901,10 @@ class EbayController extends Controller
                 }
                 // Y Spend / Y Ads% start the day they are first saved. Do not plot older days as 0.
                 if (in_array($metric, ['y_spend', 'y_ads_percent'], true) && ! array_key_exists($metric, $summary)) {
+                    return null;
+                }
+                // Grouped-block badges (Y Sales, Ads sales, ACOS, Projected, alert counts) also start when first saved.
+                if (in_array($metric, self::EBAY_BLOCK_BADGE_METRICS, true) && ! array_key_exists($metric, $summary)) {
                     return null;
                 }
 
@@ -3414,6 +3522,11 @@ class EbayController extends Controller
                     'y_spend' => array_key_exists('y_spend', $s) ? floatval($s['y_spend']) : null,
                     'y_ads_percent' => array_key_exists('y_ads_percent', $s) ? floatval($s['y_ads_percent']) : null,
             ];
+            foreach (self::EBAY_BLOCK_BADGE_METRICS as $blockKey) {
+                $metrics[$blockKey] = (array_key_exists($blockKey, $s) && is_numeric($s[$blockKey]))
+                    ? floatval($s[$blockKey])
+                    : null;
+            }
 
             // The history chart swaps the saved snapshot value for the real-orders figure of that day
             // (marketplace_daily_metrics). The badge dot has to compare against the same number, or the
@@ -4224,6 +4337,65 @@ class EbayController extends Controller
     }
 
     /**
+     * Snapshot values for the grouped-block badges that the server can compute.
+     *
+     * @param  array<string, mixed>  $ordersAgg  fetchEbayL30OrdersAggregate()
+     * @return array<string, float>
+     */
+    private function ebayBadgeExtras(array $ordersAgg, float $adSpend, float $adSales): array
+    {
+        $out = [];
+        $yBadge = EbayYesterdaySpend::channelTotals();
+        $ySales = (float) ($yBadge['y_sales'] ?? 0);
+        $l30Sales = (float) ($ordersAgg['sales'] ?? 0);
+        $l30Daily = $l30Sales / 30.0;
+        $out['y_sales'] = round($ySales, 2);
+        $out['y_sales_percent'] = $l30Daily > 0 ? round((($l30Daily - $ySales) / $l30Daily) * 100, 1) : 0.0;
+        $out['ads_sales'] = round($adSales, 2);
+        $out['acos_percent'] = $adSales > 0 ? round(($adSpend / $adSales) * 100, 1) : 0.0;
+        $out['l30_spend'] = round($adSpend, 2);
+
+        $p = $this->ebayTabulatorProjected($ordersAgg, $adSpend);
+        $out['p_sales'] = $p['p_sales'];
+        $out['p_qty'] = $p['p_qty'];
+        $out['p_groi_percent'] = $p['p_groi'];
+        $out['p_npft_percent'] = $p['p_npft'];
+        $out['p_nroi_percent'] = $p['p_nroi'];
+        $out['p_ads_percent'] = $p['p_ads'];
+
+        return $out;
+    }
+
+    /**
+     * The page POSTs the badge counts only the browser can work out (they depend on live S PRC / LMP rules).
+     * They are merged into today's ebay snapshot so those badges get a history dot like the rest.
+     */
+    public function storeEbayBadgeClientMetrics(Request $request)
+    {
+        $today = now()->toDateString();
+        $incoming = [];
+        foreach (self::EBAY_CLIENT_BADGE_METRICS as $key) {
+            $v = $request->input($key);
+            if ($v !== null && is_numeric($v) && (float) $v >= 0) {
+                $incoming[$key] = round((float) $v, 2);
+            }
+        }
+        if ($incoming === []) {
+            return response()->json(['success' => false, 'message' => 'No metrics'], 422);
+        }
+
+        $row = AmazonChannelSummary::firstOrNew(['channel' => 'ebay', 'snapshot_date' => $today]);
+        $data = is_array($row->summary_data) ? $row->summary_data : [];
+        $row->summary_data = array_merge($data, $incoming);
+        if (! $row->exists) {
+            $row->notes = 'Badge counts reported by the page';
+        }
+        $row->save();
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
      * Auto-save daily eBay summary snapshot (channel-wise)
      * Matches JavaScript updateSummary() logic exactly
      */
@@ -4367,9 +4539,13 @@ class EbayController extends Controller
             $totalInvAvailable = $totalFbaInv;
 
             // Prefer real-orders L30 (same source as live summary badges) when available.
+            // $badgeExtras = the grouped-block badges (Y Sales, Ads sales, ACOS, L30 spend, Projected) for history dots.
+            $badgeExtras = [];
             try {
                 $ordersAgg = $this->fetchEbayL30OrdersAggregate();
-                $ebayAdSpend = (float) app(ChannelMasterController::class)->getEbayMasterAdSpend();
+                $adTotals = app(ChannelMasterController::class)->getEbayMasterAdTotals();
+                $ebayAdSpend = (float) $adTotals['spend'];
+                $badgeExtras = $this->ebayBadgeExtras($ordersAgg, $ebayAdSpend, (float) $adTotals['sales']);
                 if (($ordersAgg['sales'] ?? 0) > 0) {
                     $totalSalesAmt = (float) $ordersAgg['sales'];
                     $totalEbayL30 = (float) ($ordersAgg['qty'] ?? $totalEbayL30);
@@ -4407,7 +4583,7 @@ class EbayController extends Controller
                 'more_amz_count' => 0,
                 'prc_gt_lmp_count' => $prcGtLmpCount,
                 'lmp_missing_count' => $this->ebay1CountLmpMissing($products),
-                
+
                 // Financial Totals
                 'grand_total_kw_spend' => round($grandTotalKwSpend, 2),
                 'grand_total_pmt_spend' => round($grandTotalPmtSpend, 2),
@@ -4458,6 +4634,17 @@ class EbayController extends Controller
                 ],
             ];
             
+            $summaryData = array_merge($summaryData, $badgeExtras ?? []);
+            // Counts the page reported today (blue / purple / = / S PRC = LMP / ended / P Views) are not
+            // computable here. Re-saving the snapshot on each page load must not wipe them.
+            $prevToday = AmazonChannelSummary::where('channel', 'ebay')->where('snapshot_date', $today)->first();
+            $prevData = $prevToday && is_array($prevToday->summary_data) ? $prevToday->summary_data : [];
+            foreach (self::EBAY_CLIENT_BADGE_METRICS as $clientKey) {
+                if (array_key_exists($clientKey, $prevData) && is_numeric($prevData[$clientKey])) {
+                    $summaryData[$clientKey] = $prevData[$clientKey];
+                }
+            }
+
             // Save or update as JSON (channel-wise)
             AmazonChannelSummary::updateOrCreate(
                 [

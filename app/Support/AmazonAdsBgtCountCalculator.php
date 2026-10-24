@@ -32,6 +32,9 @@ final class AmazonAdsBgtCountCalculator
         $inv = AmazonAdsBgtInvRule::resolvedRule()['bands'] ?? [];
         $spend = AmazonAdsBgtSpendRule::resolvedRule()['bands'] ?? [];
         $gpft = AmazonAdsBgtGpftRule::resolvedRule()['bands'] ?? [];
+        $flag = AmazonAdsBgtFlagRule::resolvedRule()['bands'] ?? [];
+        // BGT Vs FLAG counts flagged campaigns only (rows carry bgt_flag_value = GPFT% − ACOS%).
+        $flaggedRows = array_values(array_filter($campaigns, fn (array $row): bool => $this->num($row['bgt_flag_value'] ?? null) !== null));
 
         $columns = [
             'acos' => $this->tally($campaigns, $acos, 'acos_from', 'acos_to', fn (array $row): ?float => $this->num($row['ltAcos'] ?? null)),
@@ -43,12 +46,13 @@ final class AmazonAdsBgtCountCalculator
             'inv' => $this->tally($campaigns, $inv, 'inv_from', 'inv_to', fn (array $row): ?float => $this->picked($row, 'bgt_inv_value', 'Inv')),
             'spend' => $this->tally($campaigns, $spend, 'spend_from', 'spend_to', fn (array $row): ?float => $this->picked($row, 'cost', 'spend')),
             'gpft' => $this->tally($campaigns, $gpft, 'gpft_from', 'gpft_to', fn (array $row): ?float => $this->picked($row, 'bgt_gpft_value', 'gpft')),
+            'flag' => $this->tally($flaggedRows, $flag, 'flag_from', 'flag_to', fn (array $row): ?float => $this->num($row['bgt_flag_value'] ?? null)),
         ];
 
         $saved = [
             'filter' => self::STATUS,
             'columns' => $columns,
-            'sum' => $this->sum($campaigns, $views, $cvr, $acos, $prc, $reviews, $dil, $inv, $gpft),
+            'sum' => $this->sum($campaigns, $views, $cvr, $acos, $prc, $reviews, $dil, $inv, $gpft, $flag),
         ];
         AmazonAdsBgtCountStore::write($saved);
 
@@ -226,9 +230,10 @@ final class AmazonAdsBgtCountCalculator
      * @param  list<array<string, mixed>>  $dil
      * @param  list<array<string, mixed>>  $inv
      * @param  list<array<string, mixed>>  $gpft
+     * @param  list<array<string, mixed>>  $flag
      * @return array<string, mixed>
      */
-    private function sum(array $rows, array $views, array $cvr, array $acos, array $prc, array $reviews, array $dil, array $inv, array $gpft = []): array
+    private function sum(array $rows, array $views, array $cvr, array $acos, array $prc, array $reviews, array $dil, array $inv, array $gpft = [], array $flag = []): array
     {
         $order = [
             ['key' => 'views', 'label' => 'Views'],
@@ -239,6 +244,7 @@ final class AmazonAdsBgtCountCalculator
             ['key' => 'dil', 'label' => 'Dil'],
             ['key' => 'inv', 'label' => 'Inv'],
             ['key' => 'gpft', 'label' => 'GPFT'],
+            ['key' => 'flag', 'label' => 'Flag'],
         ];
         $partCount = [];
         $partSum = [];
@@ -259,6 +265,7 @@ final class AmazonAdsBgtCountCalculator
                 'dil' => $this->amount($dil, $this->bandIndex($this->dilOf($row), $dil, 'dil_from', 'dil_to'), 'bgt'),
                 'inv' => $this->amount($inv, $this->bandIndex($this->picked($row, 'bgt_inv_value', 'Inv'), $inv, 'inv_from', 'inv_to'), 'bgt'),
                 'gpft' => $this->amount($gpft, $this->bandIndex($this->picked($row, 'bgt_gpft_value', 'gpft'), $gpft, 'gpft_from', 'gpft_to'), 'bgt'),
+                'flag' => $this->amount($flag, $this->bandIndex($this->num($row['bgt_flag_value'] ?? null), $flag, 'flag_from', 'flag_to'), 'bgt'),
             ];
             foreach ($order as $part) {
                 $n = $parts[$part['key']];
@@ -276,7 +283,8 @@ final class AmazonAdsBgtCountCalculator
                 $parts['reviews'],
                 $parts['dil'],
                 $parts['inv'],
-                $parts['gpft']
+                $parts['gpft'],
+                $parts['flag']
             );
             // A campaign no slab gives a budget to has $0, so every campaign is counted.
             $total ??= 0;
