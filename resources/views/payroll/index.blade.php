@@ -65,16 +65,21 @@
     .table-payroll { font-size: .85rem; }
     /* Increment tab */
     .inc-wrap { padding: .35rem .25rem; }
-    .inc-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: 1rem; }
+    .inc-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem .75rem; margin-bottom: .85rem; }
     .inc-title { margin: 0; font-size: 1.15rem; font-weight: 700; color: #1f2937; }
     .inc-subtitle { margin: .1rem 0 0; font-size: .8rem; color: #6b7280; }
-    .inc-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+    .inc-controls { display: flex; flex-wrap: nowrap; align-items: center; gap: .5rem; flex: 0 0 auto; }
     .inc-controls .form-select, .inc-controls .form-control { height: 34px; font-size: .85rem; }
-    .inc-controls .form-select { min-width: 190px; }
-    .inc-search { position: relative; }
+    .inc-controls .form-select { width: 170px; min-width: 0; flex: 0 0 170px; }
+    .inc-search { position: relative; flex: 0 0 190px; }
     .inc-search i { position: absolute; left: .6rem; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
-    .inc-search input { padding-left: 1.9rem; min-width: 180px; }
-    .inc-btn-add { height: 34px; display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; font-weight: 600; }
+    .inc-search input { width: 100%; padding-left: 1.9rem; }
+    .inc-btn-add { height: 34px; display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
+    @media (max-width: 991.98px) {
+        .inc-controls { flex-wrap: wrap; width: 100%; }
+        .inc-search { flex: 1 1 160px; }
+        .inc-controls .form-select { flex: 1 1 150px; width: auto; }
+    }
     .inc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .75rem; margin-bottom: 1rem; }
     .inc-stat { border: 1px solid #e5e7eb; border-radius: 10px; padding: .75rem 1rem; background: #fff; }
     .inc-stat .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; }
@@ -425,7 +430,7 @@
                             <span class="input-group-text" id="incModalCurrency">₹</span>
                             <input type="number" id="incModalAmount" class="form-control" min="0" step="0.01" placeholder="0" required>
                         </div>
-                        <div class="form-text">Added on top of Salary PP for the selected month. Saving replaces any existing increment.</div>
+                        <div class="form-text">Added on top of Salary PP for the selected month. Saving replaces any existing increment. No hours recorded yet? It is still saved and counts in salary once hours start.</div>
                     </div>
                     <div class="text-danger small mt-2" id="incModalError" hidden></div>
                 </div>

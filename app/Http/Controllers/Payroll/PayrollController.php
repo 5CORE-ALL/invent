@@ -285,8 +285,9 @@ class PayrollController extends Controller
 
     /**
      * Set (add / replace / clear) a user's increment for a payroll month. If the user has
-     * no sheet row for that month yet, one is created the same way the Salary tab does it
-     * (only possible when the user has recorded hours for the month).
+     * no sheet row for that month yet, one is created: a normal row when hours are already
+     * recorded, otherwise a 0-hour row that picks up hours (and counts the increment in
+     * salary) as soon as they start being recorded.
      */
     public function storeIncrement(Request $request): JsonResponse
     {
@@ -308,16 +309,26 @@ class PayrollController extends Controller
         $row = $find();
 
         if (! $row) {
+            // Nothing to clear when the user has no row and the amount is 0.
+            if ((float) $validated['increment'] === 0.0) {
+                return response()->json(['success' => true]);
+            }
+
             $this->payroll->syncEmployeesFromUsers($month, [(int) $validated['user_id']]);
             $row = $find();
         }
 
         if (! $row) {
-            $name = User::withTrashed()->find($validated['user_id'])?->name ?? 'This employee';
+            // No recorded hours yet: store the increment on a 0-hour row. It counts in
+            // salary automatically once hours start being recorded.
+            $user = User::withTrashed()->find($validated['user_id']);
+            $row = $user ? $this->payroll->createZeroHourRow($month, $user) : null;
+        }
 
+        if (! $row) {
             return response()->json([
                 'success' => false,
-                'message' => "{$name} has no payroll row (no recorded hours) for {$month->month_label}, so an increment cannot be added yet.",
+                'message' => 'Could not add this employee to the payroll month.',
             ], 422);
         }
 

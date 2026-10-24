@@ -675,6 +675,12 @@ class PayrollService
                 continue;
             }
 
+            // An increment was recorded ahead of any logged hours: keep the row so the
+            // increment counts in salary as soon as hours start coming in.
+            if ((float) $row->increment !== 0.0) {
+                continue;
+            }
+
             if (! $this->rowHasPayableHours($row, $teamLogger, $attendance)) {
                 $removeIds[] = $row->id;
             }
@@ -778,6 +784,33 @@ class PayrollService
             'bank_2' => $salary?->bank_2,
             'upi_id' => $salary?->upi_id,
         ];
+    }
+
+    /**
+     * Create a sheet row for a user who has no recorded hours yet (hours = 0), so an
+     * increment can be stored ahead of time. Live hours fill in later through the normal
+     * hours refresh, and the stored increment is included in salary from then on.
+     */
+    public function createZeroHourRow(PayrollMonth $month, User $user): ?PayrollEmployeeSalary
+    {
+        $existing = PayrollEmployeeSalary::where('payroll_month_id', $month->id)
+            ->where('user_id', $user->id)
+            ->first();
+        if ($existing) {
+            return $existing;
+        }
+
+        $user->loadMissing('userSalary');
+        $teamLogger = $this->teamLoggerDataForMonth($month->month_label);
+
+        return PayrollEmployeeSalary::create(array_merge(
+            $this->newRowAttributes($month, $user, $teamLogger, 0.0),
+            [
+                'payroll_month_id' => $month->id,
+                'user_id' => $user->id,
+                'is_new_hire' => false,
+            ]
+        ));
     }
 
     public function syncEmployeesFromUsers(PayrollMonth $month, array $userIds = [], bool $newHiresOnly = false): int
