@@ -5622,6 +5622,38 @@
                             return `<span${tip}>$${value.toFixed(2)}</span>`;
                         },
                         width: 60
+                    },
+                    {
+                        title: "KW S",
+                        field: "kw_spend_l30",
+                        hozAlign: "center",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
+                        headerTooltip: "Parent rows: L30 spend (SPL30 on /amazon-ads/all) of the \"PARENT <parent> KW\" campaign.",
+                        formatter: function(cell) {
+                            if (!cell.getRow().getData().is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const n = parseFloat(val);
+                            if (!Number.isFinite(n)) return '';
+                            return `<span>$${n.toFixed(2)}</span>`;
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "PT S",
+                        field: "pt_spend_l30",
+                        hozAlign: "center",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
+                        headerTooltip: "Parent rows: L30 spend (SPL30 on /amazon-ads/all) of the \"PARENT <parent> PT\" campaign.",
+                        formatter: function(cell) {
+                            if (!cell.getRow().getData().is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const n = parseFloat(val);
+                            if (!Number.isFinite(n)) return '';
+                            return `<span>$${n.toFixed(2)}</span>`;
+                        },
+                        width: 70
                     }
                 ]
             });
@@ -6790,6 +6822,11 @@
                 if (shipIdx !== -1) {
                     valid.splice(shipIdx, 1);
                     valid.push('Ship_productmaster');
+                    ['kw_spend_l30', 'pt_spend_l30'].forEach(function(f) {
+                        const i = valid.indexOf(f);
+                        if (i !== -1) valid.splice(i, 1);
+                        if (existing.indexOf(f) !== -1) valid.push(f);
+                    });
                 }
 
                 amazonApplyingColumnOrder = true;

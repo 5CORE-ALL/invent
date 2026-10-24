@@ -802,6 +802,7 @@ class OverallAmazonController extends Controller
             }
         }
         $finalResult = [];
+        $parentKwPtSpend = $this->amazonParentKwPtSpendL30Map();
 
         foreach ($groupedByParent as $parent => $rows) {
             foreach ($rows as $row) {
@@ -876,6 +877,10 @@ class OverallAmazonController extends Controller
                 'percentage' => $percentage,
                 'LP_productmaster' => '',
                 'Ship_productmaster' => '',
+                'kw_spend_l30' => isset($parentKwPtSpend['kw'][self::normalizeCampaignName((string) $parent)])
+                    ? round($parentKwPtSpend['kw'][self::normalizeCampaignName((string) $parent)], 2) : null,
+                'pt_spend_l30' => isset($parentKwPtSpend['pt'][self::normalizeCampaignName((string) $parent)])
+                    ? round($parentKwPtSpend['pt'][self::normalizeCampaignName((string) $parent)], 2) : null,
                 'GPFT%' => $rows->count() > 0 ? round($rows->avg('GPFT%'), 2) : 0,
                 'PFT%' => $rows->count() > 0 ? round($rows->avg('PFT%'), 2) : 0,
                 'GROI%' => $rows->count() > 0 ? round($rows->avg('GROI%'), 2) : 0,
@@ -3892,6 +3897,49 @@ class OverallAmazonController extends Controller
         }
 
         return $map;
+    }
+
+    /**
+     * L30 spend (SPL30, same value as /amazon-ads/all) of "PARENT <parent> KW" / "PARENT <parent> PT"
+     * Sponsored Products campaigns, keyed by normalized parent name.
+     *
+     * @return array{kw: array<string, float>, pt: array<string, float>}
+     */
+    private function amazonParentKwPtSpendL30Map(): array
+    {
+        $out = ['kw' => [], 'pt' => []];
+
+        try {
+            if (! Schema::hasTable('amazon_sp_campaign_reports')) {
+                return $out;
+            }
+            $ids = DB::table('amazon_sp_campaign_reports')
+                ->selectRaw('MAX(id) as id')
+                ->where('report_date_range', 'L30')
+                ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+                ->whereRaw("UPPER(campaignName) LIKE 'PARENT %'")
+                ->groupBy('campaign_id')
+                ->pluck('id');
+            foreach ($ids->chunk(2000) as $chunk) {
+                foreach (DB::table('amazon_sp_campaign_reports')->whereIn('id', $chunk)->get(['campaignName', 'cost', 'spend']) as $r) {
+                    $name = self::normalizeCampaignName($r->campaignName);
+                    if (! preg_match('/^PARENT\s+(.+?)\s+(KW|PT)$/', $name, $m)) {
+                        continue;
+                    }
+                    $spend = (float) ($r->cost ?? 0);
+                    if ($spend <= 0) {
+                        $spend = (float) ($r->spend ?? 0);
+                    }
+                    $bucket = $m[2] === 'KW' ? 'kw' : 'pt';
+                    $parentKey = self::normalizeCampaignName($m[1]);
+                    $out[$bucket][$parentKey] = ($out[$bucket][$parentKey] ?? 0.0) + $spend;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon tabulator: failed loading parent KW/PT L30 spend', ['error' => $e->getMessage()]);
+        }
+
+        return $out;
     }
 
     /**
