@@ -1161,6 +1161,9 @@
         const price = temu2FullPriceFromRow(d);
         return price > 0 ? +(price * 0.12).toFixed(2) : 0;
     }
+    /** Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above 20% adds +10 to the Target SNROI. Price = Temu Price. */
+    window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+    window.ebayDiffLivePrice = function(d) { return temu2FullPriceFromRow(d) || 0; };
     /** Disc $ = Std Prc × Disc % (Disc % = PRMT %). */
     function temu3DiscAmt(d) {
         const std = parseFloat(d && d.STANDARD_PRICE) || 0;
@@ -1942,6 +1945,7 @@
     }
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'temu3'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'temu3'])
+    @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'temu3'])
     const chPromoSnroiPriceCache = {};
     function chPromoRound2Local(n) {
         return (typeof chPromoRound2 === 'function')
@@ -2109,7 +2113,9 @@
         if (!zeroSoldOwns && lmp > 0 && sprice + 0.0001 >= lmp) {
             const atLmp = (typeof temuSpriceCalcParts === 'function') ? temuSpriceCalcParts(row, lmp) : null;
             if (!atLmp || atLmp.sgroi == null || atLmp.sgroi >= 20) {
-                sprice = +(lmp * 0.98).toFixed(2);
+                // x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as eBay.
+                const bandPct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(row)) : NaN;
+                sprice = +(lmp * (1 - ((isFinite(bandPct) && bandPct >= 0 ? bandPct : 2) / 100))).toFixed(2);
                 lmpAlert = true;
             }
         }
@@ -3921,6 +3927,8 @@
                     title: "Price",
                     field: "temu_price_display",
                     hozAlign: "center",
+                    cellMouseEnter: function(e, cell) { temuRuleTipShow('price', cell); },
+                    cellMouseLeave: function() { temuRuleTipScheduleHide(); },
                     minWidth: 90,
                     sorter: temuSortBy(function(d) {
                         const base = parseFloat(d.base_price) || 0;
@@ -3936,7 +3944,7 @@
                         const displayPrice = +temu2FullPriceFromBase(basePrice).toFixed(2);
                         const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
                         const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
-                        return `<span title="(Base × 1.1364)${(basePrice * TEMU_FULL_PRICE_MULT) <= 26.99 ? ' + $2.99' : ''}">$${displayPrice.toFixed(2)}</span>${lmpTri}${purpleTri}`;
+                        return `<span>$${displayPrice.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                     }
                 },
                 {
@@ -4202,6 +4210,8 @@
                 {
                     title: "S PRC",
                     field: "sprice",
+                    cellMouseEnter: function(e, cell) { temuRuleTipShow('sprice', cell); },
+                    cellMouseLeave: function() { temuRuleTipScheduleHide(); },
                     download: true,
                     accessorDownload: function(value, data) {
                         const model = typeof temuSpriceCellModel === 'function' ? temuSpriceCellModel(data) : null;

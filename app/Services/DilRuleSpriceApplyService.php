@@ -26,6 +26,7 @@ use App\Models\WalmartMetrics;
 use App\Models\WayfairDataView;
 use App\Models\WayfairPricingPrice;
 use App\Support\AmazonDilGroiRule;
+use App\Support\EbayRuleSprice;
 use App\Support\ProductMasterTemuShip;
 use App\Support\PushedListingPrice;
 use Illuminate\Support\Facades\Log;
@@ -75,6 +76,9 @@ class DilRuleSpriceApplyService
     public const DAILY_ONLY_CHANNELS = ['wayfair'];
 
     private readonly string $channel;
+
+    /** LMP cap (reduce % by Dil band) saved in the Sprc Dil modal; null = default 2%. */
+    private ?array $lmpCap = null;
 
     private bool $applyStdPrcVsDil = false;
 
@@ -315,6 +319,17 @@ class DilRuleSpriceApplyService
             }
         }
 
+        // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above 20% adds +10 to the Target. Temu 3 Price = full Temu Price.
+        if ($this->channel === 'temu3') {
+            $diffPct = EbayRuleSprice::stdPriceDiffPct(
+                (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0),
+                TemuShopifySalesService::computeFullTemuPrice((float) ($row['live'] ?? 0))
+            );
+            if ($diffPct !== null && $diffPct > EbayRuleSprice::DIFF_ADJ_GT_PCT) {
+                $groi += EbayRuleSprice::DIFF_ADJ_POINTS;
+            }
+        }
+
         $ship = ! empty($cfg['exclude_ship']) ? 0.0 : (float) ($row['ship'] ?? 0);
         $raw = $this->spriceFromGroi($lp, $ship, (float) $groi, $margin);
         if (! is_finite($raw) || $raw < 0.01) {
@@ -323,8 +338,11 @@ class DilRuleSpriceApplyService
 
         $lmp = (float) ($row['lmp'] ?? 0);
         $std = (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0);
-        // Temu 3 uses Amazon's LMP rule: a price that reaches LMP lands on LMP × 0.98 (same as the page).
-        $lmpReducePct = $this->channel === 'temu3' ? AmazonDilGroiRule::DIL_LMP_REDUCE_PCT : 0.0;
+        // Temu 3 uses the eBay / Amazon LMP rule: a price that reaches LMP lands on LMP − x%, x by the SKU's Dil band
+        // (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as the page.
+        $lmpReducePct = $this->channel === 'temu3'
+            ? AmazonDilGroiRule::lmpCapReducePct($dil, $this->lmpCap)
+            : 0.0;
         $sprice = AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, $std, $lmpReducePct);
 
         if (! empty($cfg['amz_floor'])) {
@@ -866,6 +884,7 @@ class DilRuleSpriceApplyService
             ->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
+        $this->lmpCap = $unpacked['lmp_cap'] ?? null;
         if ($unpacked['rules'] === []) {
             $unpacked['rules'] = AmazonDilGroiRule::defaultsForChannel($this->channel);
         } elseif (AmazonDilGroiRule::usesZeroToZero($this->channel)) {

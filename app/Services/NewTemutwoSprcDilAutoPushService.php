@@ -299,7 +299,7 @@ class NewTemutwoSprcDilAutoPushService
         $lmpCapped = false;
         $promoPrc = round($priceAfterDisc, 2);
         if (! $lmpDiscApplied) {
-            [$promoPrc, $lmpCapped] = $this->promoWithLmpRule($promoPrc, $lmp, $lp, $ship);
+            [$promoPrc, $lmpCapped] = $this->promoWithLmpRule($promoPrc, $lmp, $lp, $ship, (float) ($row['dil'] ?? 0));
         }
 
         return $this->finishTarget($priceAfterDisc, $promoPrc, $lmpCapped, $snroiCapped);
@@ -337,7 +337,7 @@ class NewTemutwoSprcDilAutoPushService
      *
      * @return array{0: float, 1: bool}  [S Promo Prc, rule applied]
      */
-    protected function promoWithLmpRule(float $promo, float $lmp, float $lp, float $ship): array
+    protected function promoWithLmpRule(float $promo, float $lmp, float $lp, float $ship, float $dilPct = 0.0): array
     {
         $promo = round($promo, 2);
         if ($lmp > 0 && ($promo + 0.0001) >= $lmp) {
@@ -345,11 +345,39 @@ class NewTemutwoSprcDilAutoPushService
                 ? ((($lmp * TemuShopifySalesService::DECREASE_TAKEHOME) - $ship - $lp) / $lp) * 100
                 : null;
             if ($sgroiAtLmp === null || $sgroiAtLmp >= AmazonDilGroiRule::LMP_SGROI_MIN) {
-                return [round($lmp * (1 - (AmazonDilGroiRule::DIL_LMP_REDUCE_PCT / 100)), 2), true];
+                // x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as eBay and the page.
+                $reduce = AmazonDilGroiRule::lmpCapReducePct($dilPct, $this->lmpCapConfig());
+                return [round($lmp * (1 - ($reduce / 100)), 2), true];
             }
         }
 
         return [$promo, false];
+    }
+
+    /** @var array|null LMP cap saved in the Sprc Dil modal (reduce % by Dil band). */
+    private ?array $lmpCapCfg = null;
+
+    private bool $lmpCapLoaded = false;
+
+    /**
+     * LMP cap config (reduce % by Dil band) from the Sprc Dil modal. Null = default 2% for every band.
+     * Read once per run. It is used whichever S PRC rule the switch has ON.
+     */
+    protected function lmpCapConfig(): ?array
+    {
+        if ($this->lmpCapLoaded) {
+            return $this->lmpCapCfg;
+        }
+        $this->lmpCapLoaded = true;
+        try {
+            $row = \App\Models\ChannelTabulatorColumnSetting::query()->where('channel_name', 'newtemutwo_dil_vs_groi')->first();
+            $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+            $this->lmpCapCfg = $unpacked['lmp_cap'] ?? null;
+        } catch (Throwable $e) {
+            Log::warning('[NewTemutwoSprcDilAutoPush] LMP cap load failed', ['error' => $e->getMessage()]);
+        }
+
+        return $this->lmpCapCfg;
     }
 
     /** @var array{rules: array, cvr_adj: array|null}|null */
@@ -411,6 +439,15 @@ class NewTemutwoSprcDilAutoPushService
             (float) ($row['cvr_60'] ?? 0),
             $dil['cvr_adj']
         );
+        // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above 20% adds +10 to the Target. Price = full Temu Price.
+        $liveBase = (float) ($row['live_base'] ?? 0);
+        $diffPct = \App\Support\EbayRuleSprice::stdPriceDiffPct(
+            $std,
+            $liveBase > 0 ? TemuShopifySalesService::computeFullTemuPrice($liveBase) : 0.0
+        );
+        if ($diffPct !== null && $diffPct > \App\Support\EbayRuleSprice::DIFF_ADJ_GT_PCT) {
+            $target += \App\Support\EbayRuleSprice::DIFF_ADJ_POINTS;
+        }
         $price = round(
             (($lp * (1 + $target / 100)) + $ship + ($std * $adsPct / 100)) / TemuShopifySalesService::DECREASE_TAKEHOME,
             2
@@ -421,7 +458,7 @@ class NewTemutwoSprcDilAutoPushService
         // Std Prc less S 12% $ is the most it can be. A target that needs more holds there with no discount.
         $maxPromo = round($std - round($std * 0.12, 2), 2);
         $promo = min($price, $maxPromo);
-        [$promoPrc, $lmpCapped] = $this->promoWithLmpRule($promo, $lmp, $lp, $ship);
+        [$promoPrc, $lmpCapped] = $this->promoWithLmpRule($promo, $lmp, $lp, $ship, (float) ($row['dil'] ?? 0));
 
         return $this->finishTarget($promo, $promoPrc, $lmpCapped, true);
     }

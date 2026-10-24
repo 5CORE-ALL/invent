@@ -39,6 +39,9 @@
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'vinted', 'instagram', 'depop', 'alibaba'], true);
+    // eBay rules that Temu now shares: Diff +10 to the Target, and the LMP cap % by Dil band.
+    $ebaySprcDilDiffAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3'], true);
+    $ebaySprcDilLmpCapOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
@@ -432,7 +435,7 @@
                             : apply that Adj {{ $ebaySprcDilTargetLabel }} to the Target {{ $ebaySprcDilTargetLabel }} (Count updates as you edit).
                         </li>
                         @endif
-                        @if($ebaySprcDilChannel === 'ebay1')
+                        @if(!empty($ebaySprcDilDiffAdjOn))
                         <li>
                             <strong>When</strong> the <strong>Diff</strong> column
                             (<code>(Std Prc − Price) / Price</code>) is <strong>&gt; 20%</strong>:
@@ -506,7 +509,7 @@
                             (Count updates as you edit).
                         </li>
                         @endif
-                        @if($ebaySprcDilChannel === 'ebay1')
+                        @if(!empty($ebaySprcDilDiffAdjOn))
                         <li>
                             <strong>When</strong> the <strong>Diff</strong> column
                             (<code>(Std Prc − Price) / Price</code>) is <strong>&gt; 20%</strong>:
@@ -695,7 +698,7 @@
                         </table>
                     </div>
                     @endif
-                    @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true))
+                    @if(!empty($ebaySprcDilLmpCapOn))
                     <div class="ebay-dg-rules-title mt-2"
                         title="When the calculated price reaches LMP (and SGROI at LMP ≥ 20%): S PRC = LMP × (1 − x/100). x depends on the SKU's Dil.">
                         LMP cap — S PRC = LMP − x% by Dil
@@ -1307,10 +1310,12 @@
         /** eBay 1 only: Diff = (Std Prc − Price) / Price > 20% adds +10 to the Target. */
         const EBAY_DIFF_ADJ_GT_PCT = 20;
         const EBAY_DIFF_ADJ_POINTS = 10;
+        const EBAY_DIFF_ADJ_ON = @json(!empty($ebaySprcDilDiffAdjOn));
         function ebayDilGroiDiffAdj(d) {
-            if (EBAY_DIL_GROI_CHANNEL !== 'ebay1' || !d) return 0;
-            const std = parseFloat(d.STANDARD_PRICE) || 0;
-            const price = parseFloat(d['eBay Price']) || 0;
+            if (!EBAY_DIFF_ADJ_ON || !d) return 0;
+            // eBay reads STANDARD_PRICE and eBay Price. A page that prices another way (Temu) sets window.ebayDiffStdPrice(d) / ebayDiffLivePrice(d).
+            const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : (parseFloat(d.STANDARD_PRICE) || 0);
+            const price = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : (parseFloat(d['eBay Price']) || 0);
             if (!(std > 0) || !(price > 0)) return 0;
             return (((std - price) / price) * 100 > EBAY_DIFF_ADJ_GT_PCT) ? EBAY_DIFF_ADJ_POINTS : 0;
         }

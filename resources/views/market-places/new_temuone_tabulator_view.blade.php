@@ -2199,6 +2199,7 @@
             }, 8000);
         }
     }
+    @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'nto'])
     function ntoRowSku(d) {
         return String((d && (d['(Child) sku'] || d.SKU || d.sku)) || '').trim();
     }
@@ -2354,8 +2355,16 @@
     }
     /** Same as Amazon (AMZ_DIL_LMP_REDUCE_PCT): when the price reaches LMP it lands on LMP × 0.98. */
     const NTO_LMP_REDUCE_PCT = 2;
+    /** Same as eBay: the LMP reduce % follows the SKU's Dil band set in the Sprc Dil modal (LMP cap table; default 2%). */
+    function ntoLmpReducePct(d) {
+        const n = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(d)) : NaN;
+        return isFinite(n) && n >= 0 ? n : NTO_LMP_REDUCE_PCT;
+    }
+    /** Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above 20% adds +10 to the Target SNROI. Price = Temu Price. */
+    window.ebayDiffStdPrice = function(d) { return (typeof ntoRowSpriceStart === 'function' ? ntoRowSpriceStart(d) : null) || parseFloat(d && d.STANDARD_PRICE) || 0; };
+    window.ebayDiffLivePrice = function(d) { return parseFloat(d && d.t_price) || 0; };
     /**
-     * LMP Alert Prc = LMP × 0.98. Same rule as Amazon (amazonShouldCapSpriceToLmp / amazonCapSpriceToLmp):
+     * LMP Alert Prc = LMP × (1 − x%), x from the Dil band (default 2% = LMP × 0.98). Same rule as Amazon (amazonShouldCapSpriceToLmp / amazonCapSpriceToLmp):
      * it applies when the base S Promo Prc is at or above LMP, and SGROI at LMP is at least 20%
      * (Temu take-home 0.95: (LMP × 0.95 − Temu Ship − LP) / LP). Otherwise blank, S Promo Prc stays as calculated.
      */
@@ -2370,7 +2379,7 @@
                 const sgroiAtLmp = ((lmp * 0.95 - ship - lp) / lp) * 100;
                 if (sgroiAtLmp < 20) return null;
             }
-            return +(lmp * (1 - NTO_LMP_REDUCE_PCT / 100)).toFixed(2);
+            return +(lmp * (1 - ntoLmpReducePct(d) / 100)).toFixed(2);
         });
     }
     /** Shown S Promo Prc. When the LMP rule applies it is LMP × 0.98 (the LMP Alert Prc), as on Amazon. */
@@ -3704,6 +3713,8 @@
                     title: 'Temu Price',
                     field: 't_price',
                     hozAlign: 'center',
+                    cellMouseEnter: function(e, cell) { temuRuleTipShow('price', cell); },
+                    cellMouseLeave: function() { temuRuleTipScheduleHide(); },
                     width: 70,
                     sorter: 'number',
                     headerTooltip: 'Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99',
@@ -3724,7 +3735,7 @@
                             ? PriceGtLmpBadge.triangleHtml(live, lmp) : '');
                         const purpleTri = (window.PriceLt80LmpBadge
                             ? PriceLt80LmpBadge.triangleHtml(live, lmp) : '');
-                        return '<span style="font-weight: 600;" title="' + tip + '">$' + tPrice.toFixed(2) + '</span>'
+                        return '<span style="font-weight: 600;">$' + tPrice.toFixed(2) + '</span>'
                             + redTri + purpleTri;
                     }
                 },
@@ -4113,13 +4124,15 @@
                     title: 'S Promo Prc',
                     field: 's_price_after_disc',
                     hozAlign: 'center',
+                    cellMouseEnter: function(e, cell) { temuRuleTipShow('sprice', cell); },
+                    cellMouseLeave: function() { temuRuleTipScheduleHide(); },
                     width: 100,
                     sorter: function(a, b, aRow, bRow) {
                         const x = ntoRowSPriceAfterDisc(aRow.getData() || {});
                         const y = ntoRowSPriceAfterDisc(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'S Promo Prc = Std Prc − S 12% $ − S Disc $. When LMP Alert Prc is showing, this cell is that price (LMP × 0.98, same as Amazon). SPFT, SGROI%, SGPFT%, SNROI%, and SNPFT% use this price.',
+                    headerTooltip: 'S Promo Prc = Std Prc − S 12% $ − S Disc $. When LMP Alert Prc is showing, this cell is that price (LMP − x% by Dil band, default LMP × 0.98). SPFT, SGROI%, SGPFT%, SNROI%, and SNPFT% use this price.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const p = ntoRowSPriceAfterDisc(row);
@@ -4127,13 +4140,13 @@
                         const alert = ntoRowLmpAlertPrc(row);
                         let tip;
                         if (alert != null) {
-                            tip = 'LMP $' + (temuLmpRefPrice(row) || 0).toFixed(2) + ' × 0.98 = $' + p.toFixed(2);
+                            tip = 'LMP $' + (temuLmpRefPrice(row) || 0).toFixed(2) + ' × ' + (1 - ntoLmpReducePct(row) / 100).toFixed(3).replace(/0+$/, '') + ' = $' + p.toFixed(2);
                         } else {
                             const s = ntoRowSpriceStart(row) || 0;
                             tip = 'Std Prc $' + s.toFixed(2) + ' − S 12% $' + ntoRowSTwelvePct(row).toFixed(2)
                                 + ' − S Disc $' + ntoRowSDiscAmt(row).toFixed(2) + ' = $' + p.toFixed(2);
                         }
-                        return '<span style="font-weight: 600;" title="' + tip + '">$' + p.toFixed(2) + '</span>';
+                        return '<span style="font-weight: 600;">$' + p.toFixed(2) + '</span>';
                     }
                 },
                 {
@@ -4146,7 +4159,7 @@
                         const y = ntoRowLmpAlertPrc(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'LMP Alert Prc = LMP × 0.98 (same as Amazon) when S Promo Prc is at or above LMP and SGROI at LMP is at least 20%. A red triangle marks that alert.',
+                    headerTooltip: 'LMP Alert Prc = LMP − x% (x by Dil band in Sprc Dil, default 2% = LMP × 0.98) when S Promo Prc is at or above LMP and SGROI at LMP is at least 20%. A red triangle marks that alert.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const alert = ntoRowLmpAlertPrc(row);
@@ -4154,7 +4167,7 @@
                         const lmp = temuLmpRefPrice(row);
                         const promo = ntoRowSPromoPrcBase(row) || 0;
                         const tip = 'S Promo Prc $' + promo.toFixed(2) + ' reaches LMP $' + lmp.toFixed(2)
-                            + ' → $' + lmp.toFixed(2) + ' × 0.98 = $' + alert.toFixed(2);
+                            + ' → $' + lmp.toFixed(2) + ' × ' + (1 - ntoLmpReducePct(row) / 100).toFixed(3).replace(/0+$/, '') + ' = $' + alert.toFixed(2);
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;font-weight:600;" title="' + tip + '">$'
                             + alert.toFixed(2)
                             + '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="'
