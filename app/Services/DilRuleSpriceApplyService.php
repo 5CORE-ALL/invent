@@ -80,6 +80,9 @@ class DilRuleSpriceApplyService
     /** LMP cap (reduce % by Dil band) saved in the Sprc Dil modal; null = default 2%. */
     private ?array $lmpCap = null;
 
+    /** Diff rule (gt_pct / points) saved in the Sprc Dil modal; null = default 20% / +10. */
+    private ?array $diffAdj = null;
+
     private bool $applyStdPrcVsDil = false;
 
     public function __construct(string $channel = 'newegg')
@@ -319,15 +322,13 @@ class DilRuleSpriceApplyService
             }
         }
 
-        // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above 20% adds +10 to the Target. Temu 3 Price = full Temu Price.
+        // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above the saved % adds the saved points to the Target (default 20% / +10). Temu 3 Price = full Temu Price.
         if ($this->channel === 'temu3') {
             $diffPct = EbayRuleSprice::stdPriceDiffPct(
                 (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0),
                 TemuShopifySalesService::computeFullTemuPrice((float) ($row['live'] ?? 0))
             );
-            if ($diffPct !== null && $diffPct > EbayRuleSprice::DIFF_ADJ_GT_PCT) {
-                $groi += EbayRuleSprice::DIFF_ADJ_POINTS;
-            }
+            $groi += AmazonDilGroiRule::diffAdjPoints($diffPct, $this->diffAdj);
         }
 
         $ship = ! empty($cfg['exclude_ship']) ? 0.0 : (float) ($row['ship'] ?? 0);
@@ -885,6 +886,7 @@ class DilRuleSpriceApplyService
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
         $this->lmpCap = $unpacked['lmp_cap'] ?? null;
+        $this->diffAdj = $unpacked['diff_adj'] ?? null;
         if ($unpacked['rules'] === []) {
             $unpacked['rules'] = AmazonDilGroiRule::defaultsForChannel($this->channel);
         } elseif (AmazonDilGroiRule::usesZeroToZero($this->channel)) {

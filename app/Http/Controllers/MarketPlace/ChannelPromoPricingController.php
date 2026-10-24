@@ -1851,6 +1851,7 @@ class ChannelPromoPricingController extends Controller
                 'cvr_adj' => $unpacked['cvr_adj'],
                 'clearance_nroi' => $unpacked['clearance_nroi'],
                 'lmp_cap' => $unpacked['lmp_cap'],
+                'diff_adj' => $unpacked['diff_adj'],
             ]);
         }
 
@@ -1864,6 +1865,7 @@ class ChannelPromoPricingController extends Controller
             'cvr_adj' => $unpacked['cvr_adj'],
             'clearance_nroi' => $unpacked['clearance_nroi'],
             'lmp_cap' => $unpacked['lmp_cap'],
+            'diff_adj' => $unpacked['diff_adj'],
         ]);
     }
 
@@ -1914,7 +1916,16 @@ class ChannelPromoPricingController extends Controller
             ? AmazonDilGroiRule::normalizeLmpCap($lmpCapIncoming)
             : $existing['lmp_cap'];
 
-        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap];
+        $diffAdjIncoming = $request->input('diff_adj');
+        if (is_string($diffAdjIncoming)) {
+            $decodedDiffAdj = json_decode($diffAdjIncoming, true);
+            $diffAdjIncoming = is_array($decodedDiffAdj) ? $decodedDiffAdj : null;
+        }
+        $diffAdj = is_array($diffAdjIncoming)
+            ? AmazonDilGroiRule::normalizeDiffAdj($diffAdjIncoming)
+            : $existing['diff_adj'];
+
+        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap, 'diff_adj' => $diffAdj];
         if ($request->exists('clearance_nroi')) {
             $rawNroi = $request->input('clearance_nroi');
             $visibility['clearance_nroi'] = is_numeric($rawNroi)
@@ -1943,6 +1954,7 @@ class ChannelPromoPricingController extends Controller
             'rules' => $rules,
             'cvr_adj' => $cvrAdj,
             'lmp_cap' => $lmpCap,
+            'diff_adj' => $diffAdj,
             'clearance_nroi' => $visibility['clearance_nroi'] ?? null,
         ]);
     }

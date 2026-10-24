@@ -514,4 +514,17 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertNull(AmazonDilGroiRule::clearanceSnroiTarget(10, []));
         $this->assertNull(AmazonDilGroiRule::clearanceSnroiTarget(10, null));
     }
+
+    public function test_diff_adj_defaults_normalizes_and_decides_points(): void
+    {
+        $this->assertSame(['gt_pct' => 20.0, 'points' => 10.0], AmazonDilGroiRule::normalizeDiffAdj(null));
+        $this->assertSame(['gt_pct' => 15.5, 'points' => -5.0], AmazonDilGroiRule::normalizeDiffAdj(['gt_pct' => '15.5', 'points' => -5, 'x' => 1]));
+        $this->assertSame(['gt_pct' => 20.0, 'points' => 10.0], AmazonDilGroiRule::normalizeDiffAdj(['gt_pct' => 'abc', 'points' => '']));
+        $this->assertSame(10.0, AmazonDilGroiRule::diffAdjPoints(25.0));
+        $this->assertSame(0.0, AmazonDilGroiRule::diffAdjPoints(20.0));
+        $this->assertSame(0.0, AmazonDilGroiRule::diffAdjPoints(null));
+        $this->assertSame(3.0, AmazonDilGroiRule::diffAdjPoints(11.0, ['gt_pct' => 10, 'points' => 3]));
+        $this->assertSame(['gt_pct' => 20.0, 'points' => 10.0], AmazonDilGroiRule::unpackStored(['rules' => [], 'cvr_adj' => []])['diff_adj']);
+        $this->assertSame(30.0, AmazonDilGroiRule::unpackStored(['rules' => [], 'diff_adj' => ['gt_pct' => 30]])['diff_adj']['gt_pct']);
+    }
 }

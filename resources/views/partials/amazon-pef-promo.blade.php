@@ -843,8 +843,11 @@
                             apply that Adj NROI to the Dil slab Target NROI (Count updates as you edit).
                         </li>
                         <li>
-                            <strong>When</strong> <code>(Std Prc − Price) / Price</code> is <strong>&gt; 20%</strong>:
-                            add <strong>+10</strong> to the Target NROI.
+                            <strong>When</strong> the <strong>Std Diff</strong> column
+                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt;</strong>
+                            <input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle amz-diff-adj-input amz-diff-adj-gt" style="width:68px;" value="20" title="Diff threshold %">%:
+                            add <strong>+</strong><input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle amz-diff-adj-input amz-diff-adj-points" style="width:68px;" value="10" title="Points added to the Target NROI">
+                            to the Target NROI.
                         </li>
                         <li>
                             <strong>When</strong> a price is calculated from a Dil slab match:
@@ -1734,9 +1737,37 @@
             if (trend === 'up' && cvr > cfg.up_gt) return cfg.up_adj;
             return 0;
         }
-        /** Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above 20% adds +10 to the Target NROI. */
-        const AMZ_DIFF_ADJ_GT_PCT = 20;
-        const AMZ_DIFF_ADJ_POINTS = 10;
+        /** Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above gt_pct adds `points` to the Target NROI. Saved in the modal (default 20 / +10). */
+        const AMZ_DIFF_ADJ_DEFAULT = { gt_pct: 20, points: 10 };
+        let amzDiffAdj = Object.assign({}, AMZ_DIFF_ADJ_DEFAULT);
+        function amzNormalizeDiffAdj(raw) {
+            const out = Object.assign({}, AMZ_DIFF_ADJ_DEFAULT);
+            if (!raw) return out;
+            Object.keys(out).forEach(function(k) {
+                const n = Number(raw[k]);
+                if (!isFinite(n) || raw[k] === '' || raw[k] === null) return;
+                out[k] = Math.round(n * 100) / 100;
+            });
+            return out;
+        }
+        function amzDiffAdjNow() {
+            const $gt = $('.amz-diff-adj-gt').first();
+            if ($gt.length) {
+                return amzNormalizeDiffAdj({
+                    gt_pct: parseFloat($gt.val()),
+                    points: parseFloat($('.amz-diff-adj-points').first().val()),
+                });
+            }
+            return amzNormalizeDiffAdj(amzDiffAdj);
+        }
+        function amzPaintDiffAdj(cfg) {
+            cfg = amzNormalizeDiffAdj(cfg);
+            amzDiffAdj = cfg;
+            $('.amz-diff-adj-gt').val(cfg.gt_pct);
+            $('.amz-diff-adj-points').val(cfg.points);
+        }
+        // The hover card and Std Diff column read the setting through the same hook the eBay pages use.
+        window.ebayDiffAdjCfg = function() { return amzDiffAdj; };
         function amzStdPrcDiffPct(d) {
             const std = (typeof amazonStdPrice === 'function') ? amazonStdPrice(d) : (parseFloat(d && d.STANDARD_PRICE) || 0);
             const price = parseFloat(d && d.price) || 0;
@@ -1746,7 +1777,7 @@
         function amzDilGroiDiffAdj(d) {
             if (!d) return 0;
             const pct = amzStdPrcDiffPct(d);
-            return (pct !== null && pct > AMZ_DIFF_ADJ_GT_PCT) ? AMZ_DIFF_ADJ_POINTS : 0;
+            return (pct !== null && pct > amzDiffAdj.gt_pct) ? amzDiffAdj.points : 0;
         }
         function amzDilGroiApplyCvrAdj(slabGroi, d) {
             const groi = amzPefRound2((Number(slabGroi) || 0) + amzDilGroiCvrAdj(d) + amzDilGroiDiffAdj(d));
@@ -2384,6 +2415,7 @@
                 }
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
                 if (res && res.lmp_cap) amzPaintLmpCapTable(res.lmp_cap);
+                if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
                 }
@@ -2407,6 +2439,8 @@
             amzCvrGroiAdj = cvrAdj;
             const lmpCap = amzLmpCapNow();
             amzLmpCap = lmpCap;
+            const diffAdj = amzDiffAdjNow();
+            amzDiffAdj = diffAdj;
             return $.ajax({
                 url: '/channel-promo-pricing/amazon/dil-groi',
                 method: 'POST',
@@ -2415,7 +2449,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
             }).then(function(res) {
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
@@ -2429,6 +2463,7 @@
                 }
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
                 if (res && res.lmp_cap) amzPaintLmpCapTable(res.lmp_cap);
+                if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 amzAfterDilGroiRulesChanged();
                 $('#amz-dil-groi-status').text('Saved via API and applied. S PRC written from Sprc Dil.');
                 return res;
@@ -5053,6 +5088,11 @@
                 .on('input.amzLmpCap change.amzLmpCap', '#amz-lmp-cap-table .amz-lmp-cap-input', function() {
                     amzLmpCap = amzLmpCapNow();
                     amzPaintLmpCapExamples(amzLmpCap);
+                    amzAfterDilGroiRulesChanged();
+                });
+            $(document).off('input.amzDiffAdj change.amzDiffAdj', '.amz-diff-adj-input')
+                .on('input.amzDiffAdj change.amzDiffAdj', '.amz-diff-adj-input', function() {
+                    amzDiffAdj = amzDiffAdjNow();
                     amzAfterDilGroiRulesChanged();
                 });
             $('#amzDilGroiModal').off('shown.bs.modal.amzdg').on('shown.bs.modal.amzdg', function() {

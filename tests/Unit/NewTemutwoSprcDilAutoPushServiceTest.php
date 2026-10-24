@@ -63,7 +63,8 @@ class NewTemutwoSprcDilAutoPushServiceTest extends TestCase
         $out = $svc->computeTarget($this->row(['lmp' => 80]), $this->pricer());
 
         $this->assertNotNull($out);
-        $this->assertSame(80.0, $out['sprice']);
+        // LMP 80 × (1 − 2%) = 78.40 (default reduce %; the Sprc Dil modal can set it by Dil band).
+        $this->assertSame(78.4, $out['sprice']);
         $this->assertTrue($out['lmp_capped']);
     }
 
@@ -84,7 +85,7 @@ class NewTemutwoSprcDilAutoPushServiceTest extends TestCase
     public function test_lmp_cap_skipped_when_sgroi_at_lmp_is_below_20(): void
     {
         $svc = new NewTemutwoSprcDilAutoPushService();
-        $out = $svc->computeTarget($this->row(['lp' => 60, 'lmp' => 80]), $this->pricer());
+        $out = $svc->computeTarget($this->row(['lp' => 65, 'lmp' => 80]), $this->pricer());
 
         $this->assertNotNull($out);
         $this->assertSame(90.0, $out['sprice']);

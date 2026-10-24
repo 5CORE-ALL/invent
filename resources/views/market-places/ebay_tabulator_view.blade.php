@@ -2604,6 +2604,11 @@
                 'background:' + meta.color + ';flex-shrink:0;" title="' + escAttr(tip) + '"></span>';
         }
 
+        /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+        function ebayDiffCfgNow() {
+            const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+            return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+        }
         /** Diff % = (Std Prc − eBay Price) / eBay Price × 100; null when either value is missing. */
         function ebayStdPrcDiffPct(rowData) {
             if (!rowData || rowData.is_parent_summary) return null;
@@ -2613,14 +2618,14 @@
             return ((std - price) / price) * 100;
         }
 
-        /** Renders the Diff cell: Pink bg > 20%, Red bg < -5%, else Green. Styles the cell element itself. */
+        /** Renders the Diff cell: Pink bg above the Sprc Dil Diff threshold (default 20%), Red bg < -5%, else Green. Styles the cell element itself. */
         function ebayRenderStdPrcDiff(el, rowData) {
             const pct = ebayStdPrcDiffPct(rowData);
             let html = '';
             let bg = '';
             let color = '';
             if (pct !== null) {
-                if (pct > 20) { bg = '#ffb6d9'; color = '#000'; }
+                if (pct > ebayDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
                 else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
                 else { bg = '#28a745'; color = '#fff'; }
                 html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
@@ -2686,11 +2691,11 @@
                     const diffPct = (typeof ebayStdPrcDiffPct === 'function') ? ebayStdPrcDiffPct(d) : null;
                     if (meta.diffAdj) {
                         steps.push(ebayRuleStep('ok', '3 · Diff rule',
-                            'Diff ' + diffPct.toFixed(1) + '% is above 20% → <b>+' + meta.diffAdj + '</b> to Target SNROI'));
+                            'Diff ' + diffPct.toFixed(1) + '% is above ' + ebayDiffCfgNow().gt_pct + '% → <b>' + (meta.diffAdj > 0 ? '+' : '') + meta.diffAdj + '</b> to Target SNROI'));
                     } else {
                         steps.push(ebayRuleStep('skip', '3 · Diff rule',
                             diffPct === null ? 'Needs both Std Prc and Price. Not applied.'
-                                : ('Diff ' + diffPct.toFixed(1) + '% is not above 20%. No +10')));
+                                : ('Diff ' + diffPct.toFixed(1) + '% is not above ' + ebayDiffCfgNow().gt_pct + '%. No ' + (ebayDiffCfgNow().points > 0 ? '+' : '') + ebayDiffCfgNow().points)));
                     }
                     steps.push(ebayRuleStep('info', '4 · Target SNROI', 'Final target <b>' + meta.groi + '%</b>'));
                     const lp = (typeof ebayDgLp === 'function') ? ebayDgLp(d) : 0;
@@ -4989,7 +4994,7 @@
                         hozAlign: "center",
                         width: 62,
                         headerSort: true,
-                        headerTooltip: "Diff = (Std Prc − Price) / Price. Pink > 20%, Red < −5%, otherwise Green.",
+                        headerTooltip: "Diff = (Std Prc − Price) / Price. Pink = above the Diff threshold set in Sprc Dil (default 20%, adds points to the Target SNROI), Red < −5%, otherwise Green.",
                         sorter: function(a, b, aRow, bRow) {
                             const av = ebayStdPrcDiffPct(aRow.getData());
                             const bv = ebayStdPrcDiffPct(bRow.getData());

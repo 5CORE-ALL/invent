@@ -359,6 +359,16 @@ class NewTemutwoSprcDilAutoPushService
 
     private bool $lmpCapLoaded = false;
 
+    /** @var array|null Diff rule (gt_pct / points) saved in the Sprc Dil modal; null = default 20% / +10. */
+    private ?array $diffAdjCfg = null;
+
+    protected function diffAdjConfig(): ?array
+    {
+        $this->lmpCapConfig();
+
+        return $this->diffAdjCfg;
+    }
+
     /**
      * LMP cap config (reduce % by Dil band) from the Sprc Dil modal. Null = default 2% for every band.
      * Read once per run. It is used whichever S PRC rule the switch has ON.
@@ -373,8 +383,13 @@ class NewTemutwoSprcDilAutoPushService
             $row = \App\Models\ChannelTabulatorColumnSetting::query()->where('channel_name', 'newtemutwo_dil_vs_groi')->first();
             $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
             $this->lmpCapCfg = $unpacked['lmp_cap'] ?? null;
+            $this->diffAdjCfg = $unpacked['diff_adj'] ?? null;
         } catch (Throwable $e) {
-            Log::warning('[NewTemutwoSprcDilAutoPush] LMP cap load failed', ['error' => $e->getMessage()]);
+            try {
+                Log::warning('[NewTemutwoSprcDilAutoPush] LMP cap / Diff rule load failed', ['error' => $e->getMessage()]);
+            } catch (Throwable) {
+                // No logger available (unit tests): the defaults stay.
+            }
         }
 
         return $this->lmpCapCfg;
@@ -407,7 +422,11 @@ class NewTemutwoSprcDilAutoPushService
                 ];
             }
         } catch (Throwable $e) {
-            Log::warning('[NewTemutwoSprcDilAutoPush] Sprc Dil rule load failed', ['error' => $e->getMessage()]);
+            try {
+                Log::warning('[NewTemutwoSprcDilAutoPush] Sprc Dil rule load failed', ['error' => $e->getMessage()]);
+            } catch (Throwable) {
+                // No logger available (unit tests): Std prc vs dil stays.
+            }
         }
 
         return $this->dilCtx;
@@ -439,15 +458,13 @@ class NewTemutwoSprcDilAutoPushService
             (float) ($row['cvr_60'] ?? 0),
             $dil['cvr_adj']
         );
-        // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above 20% adds +10 to the Target. Price = full Temu Price.
+        // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above the saved % adds the saved points to the Target (default 20% / +10). Price = full Temu Price.
         $liveBase = (float) ($row['live_base'] ?? 0);
         $diffPct = \App\Support\EbayRuleSprice::stdPriceDiffPct(
             $std,
             $liveBase > 0 ? TemuShopifySalesService::computeFullTemuPrice($liveBase) : 0.0
         );
-        if ($diffPct !== null && $diffPct > \App\Support\EbayRuleSprice::DIFF_ADJ_GT_PCT) {
-            $target += \App\Support\EbayRuleSprice::DIFF_ADJ_POINTS;
-        }
+        $target += AmazonDilGroiRule::diffAdjPoints($diffPct, $this->diffAdjConfig());
         $price = round(
             (($lp * (1 + $target / 100)) + $ship + ($std * $adsPct / 100)) / TemuShopifySalesService::DECREASE_TAKEHOME,
             2

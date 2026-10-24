@@ -761,19 +761,71 @@ class AmazonDilGroiRule
     }
 
     /**
+     * Sprc Dil Diff rule: when Diff = (Std Prc − Price) / Price is above gt_pct, add `points` to the Target NROI.
+     *
+     * @return array{gt_pct:float,points:float}
+     */
+    public static function defaultDiffAdj(): array
+    {
+        return ['gt_pct' => 20.0, 'points' => 10.0];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $raw
+     * @return array{gt_pct:float,points:float}
+     */
+    public static function normalizeDiffAdj(?array $raw): array
+    {
+        $out = self::defaultDiffAdj();
+        if (! is_array($raw)) {
+            return $out;
+        }
+        foreach (array_keys($out) as $key) {
+            if (! isset($raw[$key]) || ! is_numeric($raw[$key])) {
+                continue;
+            }
+            $n = round((float) $raw[$key], 2);
+            if (! is_finite($n)) {
+                continue;
+            }
+            // The threshold can be negative (Price above Std); points can be negative too.
+            $out[$key] = $n;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Points the Diff rule adds to the Target NROI for a Diff % (null Diff adds nothing).
+     *
+     * @param  array<string, mixed>|null  $cfg
+     */
+    public static function diffAdjPoints(?float $diffPct, ?array $cfg = null): float
+    {
+        if ($diffPct === null) {
+            return 0.0;
+        }
+        $c = self::normalizeDiffAdj($cfg);
+
+        return $diffPct > $c['gt_pct'] ? $c['points'] : 0.0;
+    }
+
+    /**
      * @param  array<string, mixed>|null  $saved
-     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float}}
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},diff_adj:array{gt_pct:float,points:float}}
      */
     public static function unpackStored(?array $saved): array
     {
         $rulesRaw = $saved;
         $cvrRaw = null;
         $lmpCapRaw = null;
+        $diffAdjRaw = null;
         $clearanceNroi = null;
         if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
             $rulesRaw = $saved['rules'];
             $cvrRaw = is_array($saved['cvr_adj'] ?? null) ? $saved['cvr_adj'] : null;
             $lmpCapRaw = is_array($saved['lmp_cap'] ?? null) ? $saved['lmp_cap'] : null;
+            $diffAdjRaw = is_array($saved['diff_adj'] ?? null) ? $saved['diff_adj'] : null;
             if (isset($saved['clearance_nroi']) && is_numeric($saved['clearance_nroi'])) {
                 $clearanceNroi = round(max(0, (float) $saved['clearance_nroi']), 2);
             }
@@ -785,6 +837,7 @@ class AmazonDilGroiRule
             'cvr_adj' => self::normalizeCvrAdj($cvrRaw),
             'clearance_nroi' => $clearanceNroi,
             'lmp_cap' => self::normalizeLmpCap($lmpCapRaw),
+            'diff_adj' => self::normalizeDiffAdj($diffAdjRaw),
         ];
     }
 

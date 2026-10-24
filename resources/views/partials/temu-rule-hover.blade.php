@@ -30,6 +30,13 @@
             return (1 - p / 100).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
         }
 
+        /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+        function temuRuleDiffCfg() {
+            const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+            return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+        }
+        function temuRuleDiffPts(p) { return (p > 0 ? '+' : '') + p; }
+
         /** Steps 1–4: Dil slab, CVR overlay, Diff rule and the final Target SNROI. Returns the target, or null when none. */
         function temuRuleDilTargetSteps(d, steps) {
             if (typeof ebayDgIsChild !== 'function' || !ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) {
@@ -62,12 +69,12 @@
             const diffPct = (std > 0 && price > 0) ? ((std - price) / price) * 100 : null;
             if (diffAdj) {
                 steps.push(temuRuleStep('ok', '3 · Diff rule',
-                    'Diff ' + diffPct.toFixed(1) + '% (Std Prc ' + temuRuleMoney(std) + ' vs Temu Price ' + temuRuleMoney(price) + ') is above 20% → <b>+'
-                    + diffAdj + '</b> to Target SNROI'));
+                    'Diff ' + diffPct.toFixed(1) + '% (Std Prc ' + temuRuleMoney(std) + ' vs Temu Price ' + temuRuleMoney(price) + ') is above ' + temuRuleDiffCfg().gt_pct + '% → <b>'
+                    + temuRuleDiffPts(diffAdj) + '</b> to Target SNROI'));
             } else {
                 steps.push(temuRuleStep('skip', '3 · Diff rule',
                     diffPct === null ? 'Needs both Std Prc and Temu Price. Not applied.'
-                        : ('Diff ' + diffPct.toFixed(1) + '% is not above 20%. No +10')));
+                        : ('Diff ' + diffPct.toFixed(1) + '% is not above ' + temuRuleDiffCfg().gt_pct + '%. No ' + temuRuleDiffPts(temuRuleDiffCfg().points))));
             }
             const target = Number(ebayDilGroiApplyCvrAdj(rule.groi, d));
             steps.push(temuRuleStep('info', '4 · Target SNROI', 'Final target <b>' + (isFinite(target) ? target : '—') + '%</b>'));
@@ -117,9 +124,9 @@
             }
             const diff = (o.std > 0 && price > 0) ? ((o.std - price) / price) * 100 : null;
             if (diff !== null) {
-                steps.push(temuRuleStep(diff > 20 || diff < -5 ? 'warn' : 'ok', '3 · vs Std Prc',
+                steps.push(temuRuleStep(diff > temuRuleDiffCfg().gt_pct || diff < -5 ? 'warn' : 'ok', '3 · vs Std Prc',
                     'Std Prc ' + temuRuleMoney(o.std) + ' vs Temu Price → Diff <b>' + diff.toFixed(1) + '%</b>'
-                    + (diff > 20 ? ' (above 20%: Sprc Dil adds +10 to the Target SNROI)' : (diff < -5 ? ' (Price is above Std Prc)' : ' (normal)')) + '.'));
+                    + (diff > temuRuleDiffCfg().gt_pct ? ' (above ' + temuRuleDiffCfg().gt_pct + '%: Sprc Dil adds ' + temuRuleDiffPts(temuRuleDiffCfg().points) + ' to the Target SNROI)' : (diff < -5 ? ' (Price is above Std Prc)' : ' (normal)')) + '.'));
             } else {
                 steps.push(temuRuleStep('skip', '3 · vs Std Prc', 'Needs both Std Prc and Temu Price.'));
             }
@@ -247,10 +254,10 @@
             const diffAdj = amzDilGroiDiffAdj(d);
             const diffPct = amzStdPrcDiffPct(d);
             if (diffAdj) {
-                steps.push(temuRuleStep('ok', '3 · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% is above 20% → <b>+' + diffAdj + '</b> to Target NROI'));
+                steps.push(temuRuleStep('ok', '3 · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% is above ' + temuRuleDiffCfg().gt_pct + '% → <b>' + temuRuleDiffPts(diffAdj) + '</b> to Target NROI'));
             } else {
                 steps.push(temuRuleStep('skip', '3 · Diff rule',
-                    diffPct === null ? 'Needs both Std Prc and Price. Not applied.' : ('Diff ' + diffPct.toFixed(1) + '% is not above 20%. No +10')));
+                    diffPct === null ? 'Needs both Std Prc and Price. Not applied.' : ('Diff ' + diffPct.toFixed(1) + '% is not above ' + temuRuleDiffCfg().gt_pct + '%. No ' + temuRuleDiffPts(temuRuleDiffCfg().points))));
             }
             const target = Number(amzDilGroiApplyCvrAdj(slabNroi, d));
             steps.push(temuRuleStep('info', '4 · Target NROI', 'Final target <b>' + (isFinite(target) ? target : '—') + '%</b>'));
@@ -340,9 +347,9 @@
                 }
                 const diff = amzStdPrcDiffPct(d);
                 if (diff !== null) {
-                    steps.push(temuRuleStep(diff > 20 || diff < -5 ? 'warn' : 'ok', '3 · vs Std Prc',
+                    steps.push(temuRuleStep(diff > temuRuleDiffCfg().gt_pct || diff < -5 ? 'warn' : 'ok', '3 · vs Std Prc',
                         'Std Prc ' + temuRuleMoney(std) + ' vs Price → Diff <b>' + diff.toFixed(1) + '%</b>'
-                        + (diff > 20 ? ' (above 20%: Sprc Dil adds +10 to the Target NROI)' : (diff < -5 ? ' (Price is above Std Prc)' : ' (normal)')) + '.'));
+                        + (diff > temuRuleDiffCfg().gt_pct ? ' (above ' + temuRuleDiffCfg().gt_pct + '%: Sprc Dil adds ' + temuRuleDiffPts(temuRuleDiffCfg().points) + ' to the Target NROI)' : (diff < -5 ? ' (Price is above Std Prc)' : ' (normal)')) + '.'));
                 } else {
                     steps.push(temuRuleStep('skip', '3 · vs Std Prc', 'Needs both Std Prc and Price.'));
                 }

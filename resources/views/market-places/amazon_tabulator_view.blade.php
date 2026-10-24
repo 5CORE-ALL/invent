@@ -1848,14 +1848,14 @@
             if (!(std > 0) || !(price > 0)) return null;
             return ((std - price) / price) * 100;
         }
-        /** Diff cell: pink > 20%, red < -5%, else green. Styles the cell element itself. */
+        /** Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
         function amazonRenderStdPrcDiff(el, rowData) {
             const pct = amazonStdPrcDiffPct(rowData);
             let bg = '';
             let color = '';
             let html = '';
             if (pct !== null) {
-                if (pct > 20) { bg = '#ffb6d9'; color = '#000'; }
+                if (pct > ((typeof window.ebayDiffAdjCfg === 'function' && isFinite(Number(window.ebayDiffAdjCfg().gt_pct))) ? Number(window.ebayDiffAdjCfg().gt_pct) : 20)) { bg = '#ffb6d9'; color = '#000'; }
                 else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
                 else { bg = '#28a745'; color = '#fff'; }
                 html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
@@ -4986,7 +4986,7 @@
                         hozAlign: "center",
                         width: 70,
                         headerSort: true,
-                        headerTooltip: "Diff = (Std Prc − Price) / Price. Pink > 20% (Sprc Dil adds +10 to the Target NROI), Red < −5% (Price is above Std Prc), otherwise Green.",
+                        headerTooltip: "Diff = (Std Prc − Price) / Price. Pink = above the Diff threshold set in Sprc Dil (default 20%, adds points to the Target NROI), Red < −5% (Price is above Std Prc), otherwise Green.",
                         sorter: amazonMetricSorter(function(d) { return amazonStdPrcDiffPct(d); }),
                         formatter: function(cell) {
                             return amazonRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());

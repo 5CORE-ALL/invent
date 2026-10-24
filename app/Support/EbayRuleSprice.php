@@ -165,8 +165,9 @@ class EbayRuleSprice
             'rules' => $rules,
             'cvr_adj' => $unpacked['cvr_adj'],
             'lmp_cap' => $unpacked['lmp_cap'],
-            // eBay 1 only: Diff = (Std Prc − Price) / Price above this % adds DIFF_ADJ_POINTS to the Target NROI.
-            'diff_adj' => $channel === 'ebay1',
+            // eBay 1 only: Diff = (Std Prc − Price) / Price above diff_adj.gt_pct adds diff_adj.points to the Target NROI
+            // (both saved in the Sprc Dil modal; default 20% and +10). Null = rule off for this channel.
+            'diff_adj' => $channel === 'ebay1' ? $unpacked['diff_adj'] : null,
         ]];
     }
 
@@ -208,9 +209,8 @@ class EbayRuleSprice
         );
         if (! empty($dil['diff_adj'])) {
             $diffPct = self::stdPriceDiffPct((float) ($input['std'] ?? 0), (float) ($input['price'] ?? 0));
-            if ($diffPct !== null && $diffPct > self::DIFF_ADJ_GT_PCT) {
-                $nroi += self::DIFF_ADJ_POINTS;
-            }
+            // true = default 20% / +10; an array is the saved Sprc Dil setting.
+            $nroi += AmazonDilGroiRule::diffAdjPoints($diffPct, is_array($dil['diff_adj']) ? $dil['diff_adj'] : null);
         }
         $margin = (float) ($input['percentage'] ?? 0);
         if ($margin > 1) {

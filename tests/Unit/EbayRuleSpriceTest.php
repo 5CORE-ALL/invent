@@ -261,6 +261,21 @@ class EbayRuleSpriceTest extends TestCase
         $this->assertSame(107.14, $off['rule_price']);
     }
 
+    public function test_sprc_dil_diff_rule_uses_the_saved_threshold_and_points(): void
+    {
+        $dil = ['rules' => [AmazonDilGroiRule::make(0, 0, 40), AmazonDilGroiRule::make(0.1, 100, 40)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null)];
+        $base = ['lp' => 50, 'ship' => 5, 'lmp' => 0, 'percentage' => 0.8, 'ads' => 0.10, 'inv' => 10, 'dil' => 5, 'cvr' => 8, 'cvr_60' => 8, 'std' => 120];
+
+        // Diff = (120 − 100) / 100 = 20%: not above the default 20%, so no boost.
+        $dil['diff_adj'] = AmazonDilGroiRule::defaultDiffAdj();
+        $same = EbayRuleSprice::price($this->pricer(), $this->input($base + ['price' => 100]), ['rule' => 'dil', 'dil' => $dil]);
+        $this->assertSame(107.14, $same['rule_price']);
+        // Saved threshold 10% and +20 points: Target 60% → (50 × 1.6 + 5) ÷ 0.70 = 121.43
+        $dil['diff_adj'] = ['gt_pct' => 10, 'points' => 20];
+        $custom = EbayRuleSprice::price($this->pricer(), $this->input($base + ['price' => 100]), ['rule' => 'dil', 'dil' => $dil]);
+        $this->assertSame(121.43, $custom['rule_price']);
+    }
+
     public function test_sprc_dil_switch_skips_a_sku_without_inventory(): void
     {
         $dil = ['rules' => [AmazonDilGroiRule::make(0, 100, 40)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null)];

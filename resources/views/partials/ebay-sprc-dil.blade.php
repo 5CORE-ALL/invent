@@ -438,8 +438,10 @@
                         @if(!empty($ebaySprcDilDiffAdjOn))
                         <li>
                             <strong>When</strong> the <strong>Diff</strong> column
-                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt; 20%</strong>:
-                            add <strong>+10</strong> to the Target {{ $ebaySprcDilTargetLabel }}.
+                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt;</strong>
+                            <input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-gt" style="width:68px;" value="20" title="Diff threshold %">%:
+                            add <strong>+</strong><input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-points" style="width:68px;" value="10" title="Points added to the Target">
+                            to the Target {{ $ebaySprcDilTargetLabel }}.
                         </li>
                         @endif
                         @if(!empty($ebaySprcDilUsesAmzFloor))
@@ -512,8 +514,10 @@
                         @if(!empty($ebaySprcDilDiffAdjOn))
                         <li>
                             <strong>When</strong> the <strong>Diff</strong> column
-                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt; 20%</strong>:
-                            add <strong>+10</strong> to the Target {{ $ebaySprcDilTargetLabel }}.
+                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt;</strong>
+                            <input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-gt" style="width:68px;" value="20" title="Diff threshold %">%:
+                            add <strong>+</strong><input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-points" style="width:68px;" value="10" title="Points added to the Target">
+                            to the Target {{ $ebaySprcDilTargetLabel }}.
                         </li>
                         @endif
                         @if(!empty($ebaySprcDilIsMacys))
@@ -1307,17 +1311,44 @@
             if (trend === 'up' && cvr > cfg.up_gt) return cfg.up_adj;
             return 0;
         }
-        /** eBay 1 only: Diff = (Std Prc − Price) / Price > 20% adds +10 to the Target. */
-        const EBAY_DIFF_ADJ_GT_PCT = 20;
-        const EBAY_DIFF_ADJ_POINTS = 10;
+        /** Diff rule: Diff = (Std Prc − Price) / Price above gt_pct adds `points` to the Target. Both are saved in the modal (default 20 / +10). */
+        const EBAY_DIFF_ADJ_DEFAULT = { gt_pct: 20, points: 10 };
         const EBAY_DIFF_ADJ_ON = @json(!empty($ebaySprcDilDiffAdjOn));
+        let ebayDiffAdj = Object.assign({}, EBAY_DIFF_ADJ_DEFAULT);
+        function ebayNormalizeDiffAdj(raw) {
+            const out = Object.assign({}, EBAY_DIFF_ADJ_DEFAULT);
+            if (!raw) return out;
+            Object.keys(out).forEach(function(k) {
+                const n = Number(raw[k]);
+                if (!isFinite(n) || raw[k] === '' || raw[k] === null) return;
+                out[k] = ebayDgRound2(n);
+            });
+            return out;
+        }
+        function ebayDiffAdjNow() {
+            const $gt = $('.ebay-diff-adj-gt').first();
+            if ($gt.length) {
+                return ebayNormalizeDiffAdj({
+                    gt_pct: parseFloat($gt.val()),
+                    points: parseFloat($('.ebay-diff-adj-points').first().val()),
+                });
+            }
+            return ebayNormalizeDiffAdj(ebayDiffAdj);
+        }
+        function ebayPaintDiffAdj(cfg) {
+            cfg = ebayNormalizeDiffAdj(cfg);
+            ebayDiffAdj = cfg;
+            $('.ebay-diff-adj-gt').val(cfg.gt_pct);
+            $('.ebay-diff-adj-points').val(cfg.points);
+        }
+        window.ebayDiffAdjCfg = function() { return ebayDiffAdj; };
         function ebayDilGroiDiffAdj(d) {
             if (!EBAY_DIFF_ADJ_ON || !d) return 0;
             // eBay reads STANDARD_PRICE and eBay Price. A page that prices another way (Temu) sets window.ebayDiffStdPrice(d) / ebayDiffLivePrice(d).
             const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : (parseFloat(d.STANDARD_PRICE) || 0);
             const price = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : (parseFloat(d['eBay Price']) || 0);
             if (!(std > 0) || !(price > 0)) return 0;
-            return (((std - price) / price) * 100 > EBAY_DIFF_ADJ_GT_PCT) ? EBAY_DIFF_ADJ_POINTS : 0;
+            return (((std - price) / price) * 100 > ebayDiffAdj.gt_pct) ? ebayDiffAdj.points : 0;
         }
         function ebayDilGroiApplyCvrAdj(slabGroi, d) {
             const groi = ebayDgRound2((Number(slabGroi) || 0) + ebayDilGroiCvrAdj(d) + ebayDilGroiDiffAdj(d));
@@ -1706,7 +1737,7 @@
                 tip += ' ' + sign + meta.cvrAdj + ' (' + why + ')';
             }
             if (meta.diffAdj) {
-                tip += ' +' + meta.diffAdj + ' (Diff > ' + EBAY_DIFF_ADJ_GT_PCT + '%)';
+                tip += ' ' + (meta.diffAdj > 0 ? '+' : '') + meta.diffAdj + ' (Diff > ' + ebayDiffAdj.gt_pct + '%)';
             }
             if (meta.cvrAdj || meta.diffAdj) {
                 tip += ' → ' + meta.groi + '%';
@@ -3020,6 +3051,7 @@
                 }
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
                 if (res && res.lmp_cap) ebayPaintLmpCapTable(res.lmp_cap);
+                if (res && res.diff_adj) ebayPaintDiffAdj(res.diff_adj);
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     ebayClearanceNroi = ebayDgRound2(Number(res.clearance_nroi));
                 }
@@ -3069,6 +3101,8 @@
             ebayCvrGroiAdj = cvrAdj;
             const lmpCap = ebayLmpCapNow();
             ebayLmpCap = lmpCap;
+            const diffAdj = ebayDiffAdjNow();
+            ebayDiffAdj = diffAdj;
             if (ebayDgAutosaveXhr && typeof ebayDgAutosaveXhr.abort === 'function') {
                 try { ebayDgAutosaveXhr.abort(); } catch (e) { /* ignore */ }
             }
@@ -3080,7 +3114,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, clearance_nroi: ebayClearanceNroiNow(), _token: ebayDgCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, clearance_nroi: ebayClearanceNroiNow(), _token: ebayDgCsrf() }),
             });
             return ebayDgAutosaveXhr.then(function(res) {
                 ebayDgAutosaveXhr = null;
@@ -3210,6 +3244,15 @@
                 .on('input.ebayLmpCap change.ebayLmpCap', '#ebay-lmp-cap-table .ebay-lmp-cap-input', function() {
                     ebayLmpCap = ebayLmpCapNow();
                     ebayPaintLmpCapExamples(ebayLmpCap);
+                    ebayAfterDilGroiRulesChanged();
+                    ebayScheduleDilGroiAutosave();
+                });
+            $(document).off('input.ebayDiffAdj change.ebayDiffAdj', '.ebay-diff-adj-input')
+                .on('input.ebayDiffAdj change.ebayDiffAdj', '.ebay-diff-adj-input', function() {
+                    ebayDiffAdj = ebayDiffAdjNow();
+                    // The other copy of the input (Std / Dil panel) follows.
+                    $('.ebay-diff-adj-gt').not(document.activeElement).val(ebayDiffAdj.gt_pct);
+                    $('.ebay-diff-adj-points').not(document.activeElement).val(ebayDiffAdj.points);
                     ebayAfterDilGroiRulesChanged();
                     ebayScheduleDilGroiAutosave();
                 });
