@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Chargeback Issues', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'CC Chargeback', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -910,7 +910,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Chargeback Issues',
+        'page_title' => 'CC Chargeback',
         'sub_title' => 'Customer Care',
     ])
 
@@ -918,7 +918,7 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Chargeback Issues</h4>
+                <h4>CC Chargeback</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <button type="button" class="btn btn-sm btn-primary" id="cb-add">
                         <i class="fa-solid fa-plus"></i> Add Issue

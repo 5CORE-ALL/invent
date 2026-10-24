@@ -256,7 +256,7 @@
                             <a href="{{ route('veeqo.billing') }}" class="{{ request()->routeIs('veeqo.billing') ? 'active' : '' }}">Veeqo Billing</a>
                         </li>
                         <li>
-                            <a href="{{ route('veeqo.chargebacks') }}" class="{{ request()->routeIs('veeqo.chargebacks') ? 'active' : '' }}">Veeqo Chargebacks</a>
+                            <a href="{{ route('veeqo.chargebacks') }}" class="{{ request()->routeIs('veeqo.chargebacks') ? 'active' : '' }}">Shipping Chargebacks</a>
                         </li>
                     </ul>
                 </div>
@@ -665,7 +665,7 @@
                             <a href="{{ route('customer.care.dispatch.carrier.issue') }}">Carrier Scan Issues</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.dispatch.chargeback.issues') }}">Chargeback Issues</a>
+                            <a href="{{ route('customer.care.dispatch.chargeback.issues') }}">CC Chargeback</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.listing.errors.issues') }}">Listing Errors Issues</a>

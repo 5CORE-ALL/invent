@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Veeqo Chargebacks'])
+@extends('layouts.vertical', ['title' => 'Shipping Chargebacks'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -53,6 +53,18 @@
         .btn-sku-report:hover { color:#fff; filter:brightness(1.08); transform:translateY(-1px); }
         #vcSkuModal .modal-content { border:none; border-radius:0; overflow:hidden; background:#f8fafc; }
         #vcSkuModal .modal-body { display:flex; flex-direction:column; }
+        .vc-import .modal-header { background:linear-gradient(135deg,#f59e0b,#ea580c); color:#fff; border:none; }
+        .vc-imp-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:.5rem; }
+        .vc-imp-opt { position:relative; margin:0; cursor:pointer; }
+        .vc-imp-opt input { position:absolute; opacity:0; }
+        .vc-imp-opt span { display:flex; flex-direction:column; gap:2px; border:2px solid #e2e8f0; border-radius:10px; padding:.55rem .7rem; transition:all .15s; }
+        .vc-imp-opt b { font-size:.88rem; color:#0f172a; }
+        .vc-imp-opt small { font-size:.72rem; color:#64748b; }
+        .vc-imp-opt:hover span { border-color:#fdba74; }
+        .vc-imp-opt input:checked + span { border-color:#ea580c; background:#fff7ed; box-shadow:0 0 0 3px rgba(234,88,12,.15); }
+        .vc-imp-opt input:focus-visible + span { outline:2px solid #ea580c; outline-offset:2px; }
+        .vc-imp-help { font-size:.78rem; color:#475569; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.55rem .7rem; }
+        .vc-imp-help code { font-size:.72rem; color:#9a3412; }
         .sr-tm-btn { border:none; border-radius:6px; padding:2px 9px; font-size:11px; font-weight:800; color:#fff; background:linear-gradient(135deg,#4f46e5,#db2777); box-shadow:0 2px 6px rgba(79,70,229,.35); }
         .sr-tm-btn:hover { filter:brightness(1.1); }
         .sr-cchip { display:inline-block; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:700; color:#fff; margin:1px 3px 1px 0; white-space:nowrap; }
@@ -134,8 +146,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     @include('layouts.shared/page-title', [
-        'page_title' => 'Veeqo Chargebacks',
-        'sub_title' => 'Carrier label adjustments on Veeqo / Buy Shipping labels (Amazon Finances)',
+        'page_title' => 'Shipping Chargebacks',
+        'sub_title' => 'Carrier label charges and adjustments from Veeqo, Amazon, TikTok, Shopify and Temu',
     ])
 
     <div class="row">
@@ -152,6 +164,12 @@
                                 <option value="">All</option>
                                 <option value="veeqo_csv">Veeqo card (CSV)</option>
                                 <option value="amazon_api">Amazon settlement (API)</option>
+                                <option value="tiktok_api">TikTok 1 (API)</option>
+                                <option value="tiktok2_api">TikTok 2 (API)</option>
+                                <option value="shopify_csv">Shopify (CSV)</option>
+                                <option value="temu1_csv">Temu 1 (CSV)</option>
+                                <option value="temu2_csv">Temu 2 (CSV)</option>
+                                <option value="temu3_csv">Temu 3 (CSV)</option>
                             </select>
                         </label>
                         <div class="vc-field">Type
@@ -181,8 +199,8 @@
                         <button type="button" class="btn btn-sm btn-sku-report" id="vcSkuReport" title="Chargebacks per SKU for the last 12 months"><i class="fas fa-chart-bar"></i> Report SKU wise</button>
                         <button type="button" class="btn btn-sm btn-primary" id="vcExport"><i class="fas fa-download"></i> Export page</button>
                         <button type="button" class="btn btn-sm btn-success" id="vcSync" title="Pull the last 30 days from Amazon Finances"><i class="fas fa-sync"></i> Sync Amazon</button>
-                        <button type="button" class="btn btn-sm btn-warning" id="vcImport" title="Veeqo → Reports → transactions CSV (reports-*.csv)"><i class="fas fa-file-upload"></i> Import Veeqo CSV</button>
-                        <input type="file" id="vcImportFile" accept=".csv,text/csv" class="d-none">
+                        <button type="button" class="btn btn-sm btn-dark" id="vcSyncTikTok" title="Pull the last 30 days of TikTok 1 and TikTok 2 shipping charges from the TikTok Finance API (also runs daily)"><i class="fab fa-tiktok"></i> Sync TikTok</button>
+                        <button type="button" class="btn btn-sm btn-warning" id="vcImport" title="Upload a Veeqo, Shopify or Temu shipping charges CSV"><i class="fas fa-file-upload"></i> Import CSV</button>
                     </div>
                     <div class="vc-sync mb-2" id="vcSyncInfo"></div>
 
@@ -227,6 +245,37 @@
                         Orders with several SKUs count for each SKU and their amount is split evenly. Units sold = 12-month sales across all channels. Avg chargeback total = total chargeback ÷ units sold. Chargeback % = chargeback count ÷ units sold. Chargeback%TC = chargeback count ÷ total chargeback count of all SKUs.
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="vcImportModal" tabindex="-1" aria-labelledby="vcImportLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content vc-import">
+                <div class="modal-header">
+                    <h6 class="modal-title mb-0" id="vcImportLabel"><i class="fas fa-file-upload me-2"></i>Import shipping charges CSV</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="vcImportForm">
+                    <div class="modal-body">
+                        <label class="form-label fw-semibold mb-2">Which CSV are you uploading?</label>
+                        <div class="vc-imp-grid mb-3" role="radiogroup">
+                            <label class="vc-imp-opt"><input type="radio" name="vcImpPlatform" value="veeqo" checked><span><b>Veeqo</b><small>Reports → transactions</small></span></label>
+                            <label class="vc-imp-opt"><input type="radio" name="vcImpPlatform" value="shopify"><span><b>Shopify</b><small>Bills → charges</small></span></label>
+                            <label class="vc-imp-opt"><input type="radio" name="vcImpPlatform" value="temu1"><span><b>Temu 1</b><small>Transactions</small></span></label>
+                            <label class="vc-imp-opt"><input type="radio" name="vcImpPlatform" value="temu2"><span><b>Temu 2</b><small>Transactions</small></span></label>
+                            <label class="vc-imp-opt"><input type="radio" name="vcImpPlatform" value="temu3"><span><b>Temu 3</b><small>Transactions</small></span></label>
+                        </div>
+                        <div class="vc-imp-help mb-3" id="vcImpHelp"></div>
+                        <label class="form-label fw-semibold" for="vcImportFile">CSV file</label>
+                        <input type="file" id="vcImportFile" class="form-control" accept=".csv,text/csv" required>
+                        <div class="small mt-2 d-none" id="vcImpResult"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-warning fw-semibold" id="vcImpSubmit"><i class="fas fa-upload me-1"></i>Upload</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -303,7 +352,7 @@
                     col('Order #', 'order_number', { frozen: true, minWidth: 150 }),
                     moneyCol('Chargeback', 'total_amount'),
                     col('Reason', 'reason', { minWidth: 170 }),
-                    col('Source', 'source', { minWidth: 100, formatter: c => c.getValue() === 'veeqo_csv' ? '<span class="badge bg-warning text-dark">Veeqo CSV</span>' : '<span class="badge bg-info text-dark">Amazon API</span>' }),
+                    col('Source', 'source', { minWidth: 100, formatter: c => SOURCE_BADGES[c.getValue()] || esc(c.getValue() || '') }),
                     plain('Channel', 'v_channel'),
                     col('Carrier', 'carrier'),
                     col('Service', 'service', { minWidth: 180 }),
@@ -367,7 +416,7 @@
                 table = new Tabulator('#veeqo-chargebacks-table', {
                     layout: 'fitDataStretch',
                     height: 'calc(100vh - 330px)',
-                    placeholder: 'No chargebacks for these filters.',
+                    placeholder: 'No rows for these filters. Check that the Type selection includes types from the chosen Source, and the Debit / Credit and date filters.',
                     pagination: true,
                     paginationMode: 'remote',
                     paginationSize: 100,
@@ -391,8 +440,28 @@
                 ['LabmanLabelPurchase', 'Label purchase', 'Amazon'],
                 ['LabmanLabelRefund', 'Label refund', 'Amazon'],
                 ['LabmanLabelReturn', 'Return label', 'Amazon'],
+                ['TikTok Shipping Fee Adjustment', 'Shipping fee adjustment', 'TikTok'],
+                ['TikTok Shipping Fee Compensation', 'Shipping fee compensation', 'TikTok'],
+                ['TikTok Logistics Reimbursement', 'Logistics reimbursement', 'TikTok'],
+                ['TikTok Shipping Fee Rebate', 'Shipping fee rebate', 'TikTok'],
+                ['TikTok Sample Shipping Fee', 'Sample shipping fee', 'TikTok'],
+                ['TikTok Shipping Label', 'Shipping label (order)', 'TikTok'],
+                ['Shopify Label Price Adjustment', 'Label price adjustment', 'Shopify'],
+                ['Shopify Shipping Label', 'Label purchase', 'Shopify'],
+                ['Temu Label Purchase Adjustment', 'Label purchase adjustment', 'Temu'],
             ];
-            const CHARGEBACK_TYPES = ['Chargeback Debit - Outbound', 'Chargeback Credit - Outbound', 'LabmanLabelChargeBack'];
+            const CHARGEBACK_TYPES = ['Chargeback Debit - Outbound', 'Chargeback Credit - Outbound', 'LabmanLabelChargeBack', 'TikTok Shipping Fee Adjustment', 'TikTok Shipping Fee Compensation', 'Shopify Label Price Adjustment', 'Temu Label Purchase Adjustment'];
+            const SOURCE_LABELS = { veeqo_csv: 'Veeqo CSV', amazon_api: 'Amazon API', tiktok_api: 'TikTok 1 API', tiktok2_api: 'TikTok 2 API', shopify_csv: 'Shopify CSV', temu1_csv: 'Temu 1 CSV', temu2_csv: 'Temu 2 CSV', temu3_csv: 'Temu 3 CSV' };
+            const SOURCE_BADGES = {
+                veeqo_csv: '<span class="badge bg-warning text-dark">Veeqo CSV</span>',
+                amazon_api: '<span class="badge bg-info text-dark">Amazon API</span>',
+                tiktok_api: '<span class="badge bg-dark">TikTok 1 API</span>',
+                tiktok2_api: '<span class="badge bg-secondary">TikTok 2 API</span>',
+                shopify_csv: '<span class="badge bg-success">Shopify CSV</span>',
+                temu1_csv: '<span class="badge" style="background:#ea580c">Temu 1 CSV</span>',
+                temu2_csv: '<span class="badge" style="background:#c2410c">Temu 2 CSV</span>',
+                temu3_csv: '<span class="badge" style="background:#9a3412">Temu 3 CSV</span>',
+            };
             let typeOptions = TYPE_OPTIONS.slice();
             let selectedTypes = (function () {
                 try {
@@ -402,6 +471,19 @@
                 return CHARGEBACK_TYPES.slice();
             })();
             let typesDirty = false;
+
+            const SOURCE_GROUP = { veeqo_csv: 'Veeqo', amazon_api: 'Amazon', tiktok_api: 'TikTok', tiktok2_api: 'TikTok', shopify_csv: 'Shopify', temu1_csv: 'Temu', temu2_csv: 'Temu', temu3_csv: 'Temu' };
+
+            // A source only has its own types, so a selection made for another platform would show nothing.
+            function alignTypesToSource() {
+                const group = SOURCE_GROUP[document.getElementById('vcSource').value];
+                if (!group || selectedTypes.length === 0) return;
+                const groupTypes = typeOptions.filter(o => o[2] === group).map(o => o[0]);
+                if (selectedTypes.some(t => groupTypes.includes(t))) return;
+                const chargebacks = groupTypes.filter(t => CHARGEBACK_TYPES.includes(t));
+                selectedTypes = chargebacks.length ? chargebacks : groupTypes;
+                renderTypeMenu();
+            }
 
             function typeButtonText() {
                 if (selectedTypes.length === 0 || selectedTypes.length === typeOptions.length) return 'All label adjustments';
@@ -498,7 +580,10 @@
                     badge('Credits', money(t.credit_total || 0), 'vc-credit') +
                     badge('Net', money(t.net_total || 0), Number(t.net_total) < 0 ? 'vc-debit' : 'vc-credit') +
                     badge('Veeqo card net', money(t.veeqo_net || 0), Number(t.veeqo_net) < 0 ? 'vc-debit' : 'vc-credit') +
-                    badge('Amazon settlement net', money(t.amazon_net || 0), Number(t.amazon_net) < 0 ? 'vc-debit' : 'vc-credit');
+                    badge('Amazon settlement net', money(t.amazon_net || 0), Number(t.amazon_net) < 0 ? 'vc-debit' : 'vc-credit') +
+                    badge('TikTok net', money(t.tiktok_net || 0), Number(t.tiktok_net) < 0 ? 'vc-debit' : 'vc-credit') +
+                    badge('Shopify net', money(t.shopify_net || 0), Number(t.shopify_net) < 0 ? 'vc-debit' : 'vc-credit') +
+                    badge('Temu net', money(t.temu_net || 0), Number(t.temu_net) < 0 ? 'vc-debit' : 'vc-credit');
 
                 const f = json.filters || {};
                 renderTypeMenu(f.types);
@@ -512,6 +597,10 @@
                     ? ' · Veeqo CSV ' + day(s.csv_first) + ' → ' + day(s.csv_last) + ' (imported ' + String(s.csv_imported_at).replace('T', ' ').slice(0, 16) + ')'
                     : ' · no Veeqo CSV imported yet';
                 if (s.api_first) info += ' · Amazon API ' + day(s.api_first) + ' → ' + day(s.api_last) + ' (synced ' + String(s.api_synced_at).replace('T', ' ').slice(0, 16) + ')';
+                if (s.tiktok_last) info += ' · TikTok API to ' + day(s.tiktok_last) + ' (synced ' + String(s.tiktok_synced_at).replace('T', ' ').slice(0, 16) + ')';
+                (s.imports || []).forEach(function (im) {
+                    info += ' · ' + (SOURCE_LABELS[im.source] || im.source) + ' ' + day(im.first) + ' → ' + day(im.last) + ' (imported ' + String(im.imported_at).replace('T', ' ').slice(0, 16) + ')';
+                });
                 document.getElementById('vcSyncInfo').textContent = info;
 
                 const comps = json.components || [];
@@ -540,12 +629,12 @@
                 }
             }
 
-            async function syncNow(btn) {
+            async function syncNow(btn, url) {
                 btn.disabled = true;
                 const html = btn.innerHTML;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing…';
                 try {
-                    const res = await fetch('{{ route('veeqo.chargebacks.sync') }}', {
+                    const res = await fetch(url, {
                         method: 'POST',
                         headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
                     });
@@ -706,15 +795,44 @@
                 skuModal.hide();
             }
 
-            async function importCsv(input) {
+            const IMPORT_HELP = {
+                veeqo: 'Veeqo → Reports → shipping transactions, file like <code>reports-…_AsiaKolkata_original.csv</code>. Columns: <code>Type, Transaction ID, Value, Created Date, Order ID</code>. Only Chargeback Debit/Credit rows are kept.',
+                shopify: 'Shopify admin → Settings → Billing → Bills/charges export. Columns: <code>Charge category, Description, Amount, Order, Charge date</code>. Label purchases and Shipping Label Price Adjustments are imported.',
+                temu: 'Temu Seller Center → Finance → Transactions by custom date range. Columns: <code>Date, Transaction type, Order ID, Total</code>. Shipping label purchase adjustments are imported.',
+            };
+            let importModal = null;
+
+            function showImportHelp() {
+                const p = document.querySelector('input[name="vcImpPlatform"]:checked').value;
+                document.getElementById('vcImpHelp').innerHTML = IMPORT_HELP[p.startsWith('temu') ? 'temu' : p];
+            }
+
+            function openImportModal() {
+                if (!importModal) importModal = new bootstrap.Modal(document.getElementById('vcImportModal'));
+                document.getElementById('vcImportFile').value = '';
+                const out = document.getElementById('vcImpResult');
+                out.className = 'small mt-2 d-none';
+                out.textContent = '';
+                showImportHelp();
+                importModal.show();
+            }
+
+            async function importCsv(e) {
+                e.preventDefault();
+                const input = document.getElementById('vcImportFile');
                 const file = input.files && input.files[0];
                 if (!file) return;
-                const btn = document.getElementById('vcImport');
+                const platform = document.querySelector('input[name="vcImpPlatform"]:checked').value;
+                const btn = document.getElementById('vcImpSubmit');
+                const out = document.getElementById('vcImpResult');
                 const html = btn.innerHTML;
                 btn.disabled = true;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing…';
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Importing…';
+                out.className = 'small mt-2 text-muted';
+                out.textContent = 'Uploading ' + file.name + '…';
                 const form = new FormData();
                 form.append('file', file);
+                form.append('platform', platform);
                 try {
                     const res = await fetch('{{ route('veeqo.chargebacks.import') }}', {
                         method: 'POST',
@@ -722,14 +840,18 @@
                         body: form,
                     });
                     const json = await res.json().catch(() => ({}));
-                    alert(json.message || (res.ok ? 'Import finished.' : 'Import failed (' + res.status + ').'));
-                    refresh();
-                } catch (e) {
-                    alert('Import failed: ' + e.message);
+                    out.className = 'small mt-2 fw-semibold ' + (res.ok ? 'text-success' : 'text-danger');
+                    out.textContent = json.message || (res.ok ? 'Import finished.' : 'Import failed (' + res.status + ').');
+                    if (res.ok) {
+                        input.value = '';
+                        refresh();
+                    }
+                } catch (err) {
+                    out.className = 'small mt-2 fw-semibold text-danger';
+                    out.textContent = 'Import failed: ' + err.message;
                 } finally {
                     btn.disabled = false;
                     btn.innerHTML = html;
-                    input.value = '';
                 }
             }
 
@@ -792,19 +914,25 @@
                 document.getElementById('vcSkuExport').addEventListener('click', function () {
                     if (skuTable) skuTable.download('csv', 'veeqo_chargebacks_by_sku.csv');
                 });
-                document.getElementById('vcImport').addEventListener('click', () => document.getElementById('vcImportFile').click());
-                document.getElementById('vcImportFile').addEventListener('change', function () { importCsv(this); });
+                document.getElementById('vcImport').addEventListener('click', openImportModal);
+                document.querySelectorAll('input[name="vcImpPlatform"]').forEach(r => r.addEventListener('change', showImportHelp));
+                document.getElementById('vcImportForm').addEventListener('submit', importCsv);
                 renderTypeMenu();
                 document.getElementById('vcTypeBtn').closest('.dropdown').addEventListener('hidden.bs.dropdown', function () {
                     if (typesDirty) { typesDirty = false; refresh(); }
                 });
-                ['vcFrom', 'vcTo', 'vcSource', 'vcReason', 'vcDirection', 'vcStatus'].forEach(id => document.getElementById(id).addEventListener('change', refresh));
+                ['vcFrom', 'vcTo', 'vcReason', 'vcDirection', 'vcStatus'].forEach(id => document.getElementById(id).addEventListener('change', refresh));
+                document.getElementById('vcSource').addEventListener('change', function () {
+                    alignTypesToSource();
+                    refresh();
+                });
                 let timer = null;
                 document.getElementById('vcSearch').addEventListener('input', function () {
                     clearTimeout(timer);
                     timer = setTimeout(refresh, 350);
                 });
-                document.getElementById('vcSync').addEventListener('click', function () { syncNow(this); });
+                document.getElementById('vcSync').addEventListener('click', function () { syncNow(this, '{{ route('veeqo.chargebacks.sync') }}'); });
+                document.getElementById('vcSyncTikTok').addEventListener('click', function () { syncNow(this, '{{ route('veeqo.chargebacks.sync-tiktok') }}'); });
                 document.getElementById('vcExport').addEventListener('click', function () {
                     if (table) table.download('csv', 'veeqo_chargebacks_page.csv');
                 });
