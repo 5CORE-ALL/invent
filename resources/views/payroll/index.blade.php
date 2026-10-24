@@ -133,6 +133,19 @@
     .inc-bulk-list td { padding: .4rem .75rem; border-bottom: 1px solid #f1f5f9; }
     .inc-bulk-list .num { text-align: right; white-space: nowrap; }
     .inc-bulk-list tr.is-conflict td { color: #92400e; background: #fffbeb; }
+    .inc-table th.inc-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+    .inc-table th.inc-sortable:hover { color: #4338ca; }
+    .inc-table th.inc-sortable .arr { display: inline-block; margin-left: .25rem; font-size: .7rem; color: #c4c7ce; }
+    .inc-table th.inc-sortable.is-sorted { color: #4338ca; }
+    .inc-table th.inc-sortable.is-sorted .arr { color: #4338ca; }
+    .inc-table .chk { width: 40px; text-align: center; padding-left: .75rem; padding-right: 0; }
+    .inc-table .chk input { cursor: pointer; }
+    .inc-table tbody tr.is-selected { background: #eef2ff; }
+    .inc-bulk-edit { display: inline-flex; align-items: center; gap: .3rem; font-size: .78rem; font-weight: 600; padding: .2rem .65rem; }
+    .inc-card-head .mid { display: flex; align-items: center; gap: .5rem; margin-left: auto; margin-right: .75rem; }
+    .inc-be-chips { display: flex; flex-wrap: wrap; gap: .4rem; max-height: 140px; overflow-y: auto; padding: .5rem; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; }
+    .inc-be-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .15rem .6rem .15rem .2rem; border-radius: 999px; background: #fff; border: 1px solid #e5e7eb; font-size: .8rem; }
+    .inc-be-chip .inc-avatar { width: 22px; height: 22px; font-size: .6rem; }
     .inc-empty { text-align: center; padding: 2.5rem 1rem; color: #6b7280; border: 1px dashed #d1d5db; border-radius: 10px; background: #fafafa; }
     .inc-empty .big { font-size: 2rem; line-height: 1; margin-bottom: .4rem; }
     .inc-empty .t { font-weight: 600; color: #374151; margin-bottom: .25rem; }
@@ -494,6 +507,34 @@
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="incBulkSave">Copy Selected to Next Month</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="incrementBulkEditModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="formIncrementBulkEdit">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Increment — <span id="incBEMonth"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="small fw-semibold mb-1" id="incBECount"></div>
+                    <div class="inc-be-chips mb-3" id="incBEChips"></div>
+                    <label class="form-label small fw-semibold">Increment amount (same for all selected)</label>
+                    <div class="input-group">
+                        <span class="input-group-text" id="incBECurrency">₹</span>
+                        <input type="number" id="incBEAmount" class="form-control" min="0" step="0.01" placeholder="0" required>
+                    </div>
+                    <div class="form-text" id="incBEHint"></div>
+                    <div class="text-danger small mt-2" id="incBEError" hidden></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="incBESave">Save for Selected</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -1282,12 +1323,61 @@
     function avatarHtml(u) {
         const ini = esc(initials(u.name));
         if (!u.avatar_url) return '<span class="inc-avatar">' + ini + '</span>';
-        return '<span class="inc-avatar has-img"><img src="' + esc(u.avatar_url) + '" alt="" loading="lazy"'
+        return '<span class="inc-avatar has-img"><img src="' + esc(u.avatar_url) + '" alt="" class="rounded-circle" loading="lazy"'
             + ' onerror="var p=this.parentNode;p.classList.remove(\'has-img\');p.textContent=\'' + ini.replace(/'/g, '') + '\';"></span>';
     }
 
     function findIncMonth(id) {
         return (incrementData?.months || []).find((m) => String(m.month_id) === String(id));
+    }
+
+    // Column sorting for the month tables (click Employee / Increment headers).
+    let incSort = { key: 'name', dir: 'asc' };
+
+    function incSortUsers(users) {
+        const dir = incSort.dir === 'desc' ? -1 : 1;
+        const byName = (a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base', numeric: true });
+        return users.slice().sort((a, b) => {
+            if (incSort.key === 'increment') {
+                const d = (Number(a.increment || 0) - Number(b.increment || 0)) * dir;
+                return d !== 0 ? d : byName(a, b);
+            }
+            return byName(a, b) * dir;
+        });
+    }
+
+    function incSortTh(label, key, cls) {
+        const active = incSort.key === key;
+        const arrow = active ? (incSort.dir === 'asc' ? '▲' : '▼') : '⇅';
+        return '<th class="inc-sortable' + (active ? ' is-sorted' : '') + (cls ? ' ' + cls : '') + '" data-sort="' + key + '" title="Sort by ' + label + '">'
+            + label + '<span class="arr">' + arrow + '</span></th>';
+    }
+
+    // ----- Row selection for bulk edit (per month card) -----
+    const incSel = {};
+    function incSelSet(monthId) { return (incSel[monthId] = incSel[monthId] || new Set()); }
+
+    // DOM is the source of truth: only rows visible in the card can be selected.
+    function incRefreshCard(card) {
+        const monthId = Number(card.dataset.month);
+        const rows = Array.from(card.querySelectorAll('.inc-row-chk'));
+        const set = incSelSet(monthId);
+        set.clear();
+        rows.forEach((c) => {
+            if (c.checked) set.add(Number(c.value));
+            c.closest('tr')?.classList.toggle('is-selected', c.checked);
+        });
+        const all = card.querySelector('.inc-card-all');
+        if (all) {
+            all.checked = rows.length > 0 && set.size === rows.length;
+            all.indeterminate = set.size > 0 && set.size < rows.length;
+        }
+        const btn = card.querySelector('.inc-bulk-edit');
+        if (btn) {
+            btn.hidden = set.size === 0;
+            const lbl = btn.querySelector('.lbl');
+            if (lbl) lbl.textContent = set.size > 1 ? 'Edit ' + set.size + ' selected' : 'Edit selected';
+        }
     }
 
     function renderIncrements() {
@@ -1305,7 +1395,7 @@
 
         // Every employee is listed (0 when no increment); the name search narrows the list.
         const months = sourceMonths.map((m) => {
-            const users = (m.users || []).filter((u) => !term || String(u.name).toLowerCase().includes(term));
+            const users = incSortUsers((m.users || []).filter((u) => !term || String(u.name).toLowerCase().includes(term)));
             const totals = {};
             let withInc = 0;
             users.forEach((u) => {
@@ -1363,7 +1453,11 @@
         grid.className = 'inc-grid' + (months.length === 1 ? ' is-single' : '');
         grid.innerHTML = months.map((m) => {
             const editable = canManage && !m.is_locked;
-            const rowsHtml = m.users.map((u, i) => '<tr>'
+            const selSet = incSelSet(m.month_id);
+            const rowsHtml = m.users.map((u, i) => '<tr class="' + (editable && selSet.has(Number(u.user_id)) ? 'is-selected' : '') + '">'
+                + (canManage ? '<td class="chk">' + (editable
+                    ? '<input type="checkbox" class="inc-row-chk" value="' + u.user_id + '"' + (selSet.has(Number(u.user_id)) ? ' checked' : '') + '>'
+                    : '') + '</td>' : '')
                 + '<td class="idx">' + (i + 1) + '</td>'
                 + '<td><span class="inc-person">' + avatarHtml(u) + esc(u.name) + '</span></td>'
                 + '<td class="num"><span class="' + (Number(u.increment) ? 'inc-amt' : 'inc-zero') + '">' + esc(fmt(u.increment || 0, u.region)) + '</span></td>'
@@ -1372,17 +1466,22 @@
                     + (Number(u.increment) ? '<button type="button" class="inc-icon-btn danger inc-remove" title="Remove increment" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="ri-delete-bin-line"></i></button>' : '')
                     : '<span class="text-muted" title="Month is locked">🔒</span>') + '</td>' : '')
                 + '</tr>').join('');
-            const emptyRow = m.users.length ? '' : '<tr><td colspan="' + (canManage ? 4 : 3) + '" class="text-center text-muted py-4">No employees in this month.</td></tr>';
-            return '<div class="inc-card">'
+            const emptyRow = m.users.length ? '' : '<tr><td colspan="' + (canManage ? 5 : 3) + '" class="text-center text-muted py-4">No employees in this month.</td></tr>';
+            return '<div class="inc-card" data-month="' + m.month_id + '">'
                 + '<div class="inc-card-head"><span><span class="m">' + esc(m.month_label) + '</span><span class="c">' + m.withInc + ' of ' + m.users.length + ' with increment</span></span>'
+                + (editable ? '<span class="mid"><button type="button" class="btn btn-sm btn-primary inc-bulk-edit" hidden title="Edit the selected employees together"><i class="ri-pencil-line"></i> <span class="lbl"></span></button></span>' : '')
                 + '<span class="t">' + esc(formatTotals(m.totals)) + '</span></div>'
-                + '<table class="inc-table"><thead><tr><th class="idx">#</th><th>Employee</th><th class="num">Increment</th>'
+                + '<table class="inc-table"><thead><tr>'
+                + (canManage ? '<th class="chk">' + (editable ? '<input type="checkbox" class="inc-card-all" title="Select all">' : '') + '</th>' : '')
+                + '<th class="idx">#</th>' + incSortTh('Employee', 'name') + incSortTh('Increment', 'increment', 'num')
                 + (canManage ? '<th class="act"></th>' : '') + '</tr></thead><tbody>' + rowsHtml + emptyRow + '</tbody>'
-                + (m.users.length > 1 ? '<tfoot><tr><td></td><td>Total</td><td class="num">' + esc(formatTotals(m.totals)) + '</td>' + (canManage ? '<td></td>' : '') + '</tr></tfoot>' : '')
+                + (m.users.length > 1 ? '<tfoot><tr>' + (canManage ? '<td></td>' : '') + '<td></td><td>Total</td><td class="num">' + esc(formatTotals(m.totals)) + '</td>' + (canManage ? '<td></td>' : '') + '</tr></tfoot>' : '')
                 + '</table></div>';
         }).join('');
         box.innerHTML = '';
         box.appendChild(grid);
+        // Sync each card's bulk bar / header checkbox, and drop selections no longer on screen.
+        grid.querySelectorAll('.inc-card').forEach((card) => incRefreshCard(card));
     }
 
     function fillIncrementMonthSelect() {
@@ -1605,6 +1704,94 @@
                 alert(err.message || 'Failed to remove increment.');
                 remove.disabled = false;
             }
+        }
+    });
+
+    document.getElementById('incrementList')?.addEventListener('click', (e) => {
+        const th = e.target.closest('th.inc-sortable');
+        if (!th) return;
+        const key = th.dataset.sort;
+        if (incSort.key === key) {
+            incSort.dir = incSort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+            // Names start A-Z; amounts start highest first.
+            incSort = { key, dir: key === 'increment' ? 'desc' : 'asc' };
+        }
+        renderIncrements();
+    });
+
+    // ----- Bulk edit: same increment for every selected employee -----
+    document.getElementById('incrementList')?.addEventListener('change', (e) => {
+        const card = e.target.closest('.inc-card');
+        if (!card) return;
+        if (e.target.classList.contains('inc-card-all')) {
+            card.querySelectorAll('.inc-row-chk').forEach((c) => { c.checked = e.target.checked; });
+            incRefreshCard(card);
+        } else if (e.target.classList.contains('inc-row-chk')) {
+            incRefreshCard(card);
+        }
+    });
+
+    const incBEEl = document.getElementById('incrementBulkEditModal');
+    const incBEAmount = document.getElementById('incBEAmount');
+    const incBEError = document.getElementById('incBEError');
+    let incBEState = null;
+
+    function openBulkEdit(monthId) {
+        const month = findIncMonth(monthId);
+        const ids = Array.from(incSelSet(monthId));
+        if (!month || !ids.length || !incBEEl) return;
+        const emps = ids.map((id) => (month.employees || []).find((x) => Number(x.user_id) === id)).filter(Boolean);
+        incBEState = { monthId: Number(monthId), userIds: emps.map((x) => Number(x.user_id)) };
+
+        document.getElementById('incBEMonth').textContent = month.month_label;
+        document.getElementById('incBECount').textContent = emps.length + ' employee' + (emps.length === 1 ? '' : 's') + ' selected';
+        document.getElementById('incBEChips').innerHTML = emps.map((u) =>
+            '<span class="inc-be-chip">' + avatarHtml(u) + esc(u.name) + '</span>').join('');
+
+        const regions = Array.from(new Set(emps.map((x) => x.region)));
+        document.getElementById('incBECurrency').textContent = regions.length === 1
+            ? (fmt(0, regions[0]).replace(/[0-9,.\s]+$/, '').trim() || '₹') : '₹';
+        document.getElementById('incBEHint').textContent = regions.length > 1
+            ? 'Selected employees are in different countries — the same number is applied to each in their own currency.'
+            : 'This amount replaces the current increment of every selected employee for ' + month.month_label + '.';
+
+        const amounts = Array.from(new Set(emps.map((x) => Number(x.increment || 0))));
+        incBEAmount.value = amounts.length === 1 && amounts[0] ? amounts[0] : '';
+        incBEError.hidden = true;
+        bootstrap.Modal.getOrCreateInstance(incBEEl).show();
+        setTimeout(() => { incBEAmount.focus(); incBEAmount.select(); }, 300);
+    }
+
+    document.getElementById('incrementList')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.inc-bulk-edit');
+        if (!btn) return;
+        openBulkEdit(btn.closest('.inc-card')?.dataset.month);
+    });
+
+    document.getElementById('formIncrementBulkEdit')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!incBEState) return;
+        const amount = parseFloat(incBEAmount.value);
+        incBEError.hidden = true;
+        if (isNaN(amount) || amount < 0) { incBEError.textContent = 'Enter a valid amount.'; incBEError.hidden = false; return; }
+        const btn = document.getElementById('incBESave');
+        btn.disabled = true;
+        try {
+            await api(`${base}/increments/bulk`, 'POST', {
+                payroll_month_id: incBEState.monthId,
+                user_ids: incBEState.userIds,
+                increment: amount,
+            });
+            bootstrap.Modal.getInstance(incBEEl)?.hide();
+            incSelSet(incBEState.monthId).clear();
+            await loadIncrements();
+            salarySheetStale = true;
+        } catch (err) {
+            incBEError.textContent = err.message || 'Failed to save increments.';
+            incBEError.hidden = false;
+        } finally {
+            btn.disabled = false;
         }
     });
 

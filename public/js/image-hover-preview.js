@@ -124,23 +124,24 @@
         var circle = !!(img.classList && (img.classList.contains('rounded-circle') || img.classList.contains('task-avatar-hover')));
         popup.classList.toggle('is-circle', circle);
         popup.classList.toggle('is-large', !circle && !!(img.closest && img.closest('[data-hover-zoom]')));
-        if (circle) {
-            popup.style.width = '240px';
-            popup.style.height = '240px';
-            popup.style.maxWidth = '240px';
-            popup.style.maxHeight = '240px';
-            popup.style.borderRadius = '50%';
-            popup.style.objectFit = 'cover';
-            popup.style.padding = '0';
-        } else {
-            popup.style.width = '';
-            popup.style.height = '';
-            popup.style.maxWidth = '';
-            popup.style.maxHeight = '';
-            popup.style.borderRadius = '';
-            popup.style.objectFit = '';
-            popup.style.padding = '';
-        }
+        // head-css forces "width/height:auto !important; object-fit:contain !important" on the popup,
+        // so the circle styles must be applied with !important too or the preview stays rectangular.
+        var circleProps = {
+            'width': '240px',
+            'height': '240px',
+            'max-width': '240px',
+            'max-height': '240px',
+            'border-radius': '50%',
+            'object-fit': 'cover',
+            'padding': '0'
+        };
+        Object.keys(circleProps).forEach(function (prop) {
+            if (circle) {
+                popup.style.setProperty(prop, circleProps[prop], 'important');
+            } else {
+                popup.style.removeProperty(prop);
+            }
+        });
         popup.src = img.currentSrc || img.src;
         popup.style.display = 'block';
         cx = e.clientX;

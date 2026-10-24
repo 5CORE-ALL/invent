@@ -420,6 +420,54 @@ class PayrollController extends Controller
     }
 
     /**
+     * Bulk edit: give the same increment amount to every selected employee for one month.
+     */
+    public function bulkSetIncrements(Request $request): JsonResponse
+    {
+        $this->authorizeManage();
+
+        $validated = $request->validate([
+            'payroll_month_id' => 'required|integer|exists:payroll_months,id',
+            'user_ids' => 'required|array|min:1',
+            'user_ids.*' => 'integer|exists:users,id',
+            'increment' => 'required|numeric|min:0',
+        ]);
+
+        $month = PayrollMonth::findOrFail($validated['payroll_month_id']);
+        $this->ensureUnlocked($month);
+
+        $amount = (float) $validated['increment'];
+        $editor = $request->user()?->name;
+        $updated = 0;
+        $failed = 0;
+
+        foreach (array_unique($validated['user_ids']) as $userId) {
+            $row = $this->applyIncrement($month, (int) $userId, $amount, $editor);
+            if ($row) {
+                $updated++;
+            } elseif ($amount !== 0.0) {
+                $failed++;
+            }
+        }
+
+        if ($updated > 0) {
+            $this->payroll->recalculateMonth($month);
+        }
+
+        $message = "Increment saved for {$updated} employee(s) in {$month->month_label}.";
+        if ($failed > 0) {
+            $message .= " {$failed} could not be added.";
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'updated' => $updated,
+            'failed' => $failed,
+        ]);
+    }
+
+    /**
      * Bulk: copy the increments of one month to another (e.g. "same increment for next
      * month"). user_ids limits it to chosen employees (an empty list copies nobody); omit it
      * entirely to copy everyone who has an increment in the source month. Existing target increments are kept unless overwrite=1.
