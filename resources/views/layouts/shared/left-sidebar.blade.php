@@ -92,6 +92,11 @@
                             </a>
                         </li>
                         <li>
+                            <a href="{{ route('dynamic-messages.index') }}" class="{{ request()->routeIs('dynamic-messages.*') ? 'active' : '' }}">
+                                <i class="ri-mail-send-line me-2"></i>Dynamic Messages
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('feedback.index') }}" class="{{ request()->routeIs('feedback.*') ? 'active' : '' }}">
                                 <i class="ri-feedback-line me-2"></i>Feedback
                             </a>

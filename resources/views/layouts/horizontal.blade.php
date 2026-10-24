@@ -70,6 +70,7 @@
     @include('partials.follow-up-nudge-modal')
     @include('partials.department-feedback-modal')
     @auth
+        @include('partials.dynamic-message-modal')
         @if(!empty($agent_update_available))
             @include('partials.attendance-agent-update-modal')
         @endif

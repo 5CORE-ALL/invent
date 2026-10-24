@@ -3724,6 +3724,28 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/announcements/delete/{id}', 'destroy')->name('announcements.delete');
     });
 
+    // Dynamic messages: pre-saved messages sent to pre-saved users from page data / events.
+    // Rules are editable by president@5core.com only (enforced in the controller).
+    Route::controller(\App\Http\Controllers\DynamicMessageController::class)
+        ->prefix('dynamic-messages')->name('dynamic-messages.')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/mine', 'mine')->name('mine');
+            Route::get('/pending', 'pending')->name('pending');
+            Route::post('/{id}/acknowledge', 'acknowledge')->whereNumber('id')->name('acknowledge');
+
+            Route::get('/rules', 'rules')->name('rules');
+            Route::post('/rules', 'storeRule')->name('rules.store');
+            Route::put('/rules/{id}', 'updateRule')->whereNumber('id')->name('rules.update');
+            Route::post('/rules/{id}/toggle', 'toggleRule')->whereNumber('id')->name('rules.toggle');
+            Route::post('/rules/{id}/preview', 'previewRule')->whereNumber('id')->name('rules.preview');
+            Route::post('/rules/{id}/run', 'runRule')->whereNumber('id')->name('rules.run');
+            Route::delete('/rules/{id}', 'destroyRule')->whereNumber('id')->name('rules.destroy');
+            Route::get('/log', 'log')->name('log');
+
+            Route::get('/replies', 'replies')->name('replies');
+            Route::post('/replies/{id}/seen', 'markReplySeen')->whereNumber('id')->name('replies.seen');
+        });
+
     Route::controller(DepartmentFeedbackController::class)->group(function () {
         Route::get('/feedback', 'index')->name('feedback.index');
         Route::post('/feedback', 'store')->name('feedback.store');
@@ -7922,6 +7944,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/month/{payrollMonth}/salary-slip/{user}', [PayrollController::class, 'downloadSalarySlip'])->name('salary-slip.download');
         Route::get('/increments', [PayrollController::class, 'incrementsList'])->name('increments.list');
         Route::post('/increments', [PayrollController::class, 'storeIncrement'])->name('increments.store');
+        Route::post('/increments/copy', [PayrollController::class, 'copyIncrements'])->name('increments.copy');
         Route::get('/increments/export', [PayrollController::class, 'exportIncrements'])->name('increments.export');
         Route::get('/previous-records', [PayrollController::class, 'previousRecords'])->name('previous-records');
         Route::post('/previous-records', [PayrollController::class, 'storePreviousRecord'])->name('previous-records.store');

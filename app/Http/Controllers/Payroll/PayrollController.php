@@ -205,63 +205,42 @@ class PayrollController extends Controller
         ]);
     }
 
-    /**
-     * Increment tab data: every payroll month with its increment rows, totals and the
-     * employees that can be given an increment. Totals are kept per currency region
-     * (india / china / usa) because they are not interchangeable.
-     */
-    public function incrementsList(): JsonResponse
+    /** Public URL of a user's profile image, or null when they have none (UI falls back to initials). */
+    protected function incrementAvatarUrl(?User $user): ?string
     {
+        $avatar = trim((string) ($user?->avatar ?? ''));
+        if ($avatar === '') {
+            return null;
+        }
+
+        if (str_starts_with($avatar, 'http://') || str_starts_with($avatar, 'https://') || str_starts_with($avatar, '/')) {
+            return $avatar;
+        }
+
+        return asset('storage/'.$avatar);
+    }
+
+    /**
+     * Shared by the Increment tab and its Excel export: every payroll month (newest first)
+     * with the full employee list shown on the Salary tab for that month. Employees with no
+     * increment carry 0. Unlocked months also list active salary users who have no sheet row
+     * yet (row_id null) so an increment can be added for them.
+     *
+     * @return array{months: \Illuminate\Support\Collection, salary_users: \Illuminate\Support\Collection}
+     */
+    protected function incrementMonths(?int $onlyMonthId = null): array
+    {
+        $allMonths = PayrollMonth::orderByDesc('period_start')->orderByDesc('id')
+            ->when($onlyMonthId, fn ($q) => $q->where('id', $onlyMonthId))
+            ->get();
+
         $salaryRows = PayrollEmployeeSalary::with('user')
+            ->whereIn('payroll_month_id', $allMonths->pluck('id'))
             ->get()
             ->filter(fn ($r) => $r->user?->name)
             ->groupBy('payroll_month_id');
 
-        $allMonths = PayrollMonth::orderByDesc('period_start')->orderByDesc('id')->get();
-
-        $defaultLabel = $this->payroll->defaultMonthLabel();
-        $defaultMonth = $allMonths->firstWhere('month_label', $defaultLabel) ?? $allMonths->first();
-
-        $grandTotals = [];
-        $grandCount = 0;
-
-        $months = $allMonths->map(function (PayrollMonth $m) use ($salaryRows, &$grandTotals, &$grandCount) {
-            $rows = $salaryRows->get($m->id, collect());
-            $totals = [];
-
-            $employees = $rows
-                ->sortBy(fn ($r) => mb_strtolower($r->user->name))
-                ->map(fn ($r) => [
-                    'row_id' => $r->id,
-                    'user_id' => $r->user_id,
-                    'name' => $r->user->name,
-                    'region' => $r->user->salaryRegion(),
-                    'increment' => round((float) $r->increment, 2),
-                ])
-                ->values();
-
-            $users = $employees
-                ->filter(fn ($e) => $e['increment'] != 0)
-                ->values();
-
-            foreach ($users as $u) {
-                $totals[$u['region']] = ($totals[$u['region']] ?? 0) + $u['increment'];
-                $grandTotals[$u['region']] = ($grandTotals[$u['region']] ?? 0) + $u['increment'];
-                $grandCount++;
-            }
-
-            return [
-                'month_id' => $m->id,
-                'month_label' => $m->month_label,
-                'is_locked' => (bool) $m->is_locked,
-                'users' => $users,
-                'employees' => $employees,
-                'totals' => (object) $totals,
-            ];
-        })->values();
-
-        // Everyone who appears on the Salary tab (active + shown in salary), so any of
-        // them can be picked in the Add Increment popup even if this month has no row yet.
+        // Everyone who appears on the Salary tab (active + shown in salary).
         $salaryUsers = User::query()
             ->where('is_active', true)
             ->where('show_in_salary', true)
@@ -271,23 +250,139 @@ class PayrollController extends Controller
                 'user_id' => $u->id,
                 'name' => $u->name,
                 'region' => $u->salaryRegion(),
+                'avatar_url' => $this->incrementAvatarUrl($u),
             ])
             ->values();
 
+        $months = $allMonths->map(function (PayrollMonth $m) use ($salaryRows, $salaryUsers) {
+            $employees = $salaryRows->get($m->id, collect())
+                ->map(fn ($r) => [
+                    'row_id' => $r->id,
+                    'user_id' => $r->user_id,
+                    'name' => $r->user->name,
+                    'region' => $r->user->salaryRegion(),
+                    'avatar_url' => $this->incrementAvatarUrl($r->user),
+                    'increment' => round((float) $r->increment, 2),
+                ])
+                ->keyBy('user_id');
+
+            if (! $m->is_locked) {
+                foreach ($salaryUsers as $u) {
+                    if (! $employees->has($u['user_id'])) {
+                        $employees->put($u['user_id'], [
+                            'row_id' => null,
+                            'user_id' => $u['user_id'],
+                            'name' => $u['name'],
+                            'region' => $u['region'],
+                            'avatar_url' => $u['avatar_url'],
+                            'increment' => 0.0,
+                        ]);
+                    }
+                }
+            }
+
+            $employees = $employees
+                ->sortBy(fn ($e) => mb_strtolower($e['name']))
+                ->values();
+
+            $totals = [];
+            $count = 0;
+            foreach ($employees as $e) {
+                if ($e['increment'] != 0) {
+                    $totals[$e['region']] = ($totals[$e['region']] ?? 0) + $e['increment'];
+                    $count++;
+                }
+            }
+
+            return [
+                'month_id' => $m->id,
+                'month_label' => $m->month_label,
+                'is_locked' => (bool) $m->is_locked,
+                'users' => $employees,
+                'employees' => $employees,
+                'increment_count' => $count,
+                'totals' => $totals,
+            ];
+        })->values();
+
+        return ['months' => $months, 'salary_users' => $salaryUsers];
+    }
+
+    /**
+     * Increment tab data. Totals are kept per currency region (india / china / usa)
+     * because they are not interchangeable.
+     */
+    public function incrementsList(): JsonResponse
+    {
+        ['months' => $months, 'salary_users' => $salaryUsers] = $this->incrementMonths();
+
+        $defaultLabel = $this->payroll->defaultMonthLabel();
+        $defaultMonth = $months->firstWhere('month_label', $defaultLabel) ?? $months->first();
+
+        $grandTotals = [];
+        $grandCount = 0;
+        foreach ($months as $m) {
+            $grandCount += $m['increment_count'];
+            foreach ($m['totals'] as $region => $amount) {
+                $grandTotals[$region] = ($grandTotals[$region] ?? 0) + $amount;
+            }
+        }
+
         return response()->json([
-            'months' => $months,
+            'months' => $months->map(fn ($m) => array_merge($m, ['totals' => (object) $m['totals']]))->values(),
             'salary_users' => $salaryUsers,
-            'default_month_id' => $defaultMonth?->id,
+            'default_month_id' => $defaultMonth['month_id'] ?? null,
             'grand_totals' => (object) $grandTotals,
             'grand_count' => $grandCount,
         ]);
     }
 
     /**
-     * Set (add / replace / clear) a user's increment for a payroll month. If the user has
-     * no sheet row for that month yet, one is created: a normal row when hours are already
+     * Set a user's increment on a month's sheet WITHOUT recalculating the month (callers
+     * recalculate once). Creates the row when missing: a normal row when hours are already
      * recorded, otherwise a 0-hour row that picks up hours (and counts the increment in
      * salary) as soon as they start being recorded.
+     *
+     * @return PayrollEmployeeSalary|null null when nothing was stored (e.g. 0 and no row)
+     */
+    protected function applyIncrement(PayrollMonth $month, int $userId, float $amount, ?string $editor): ?PayrollEmployeeSalary
+    {
+        $find = fn () => PayrollEmployeeSalary::where('payroll_month_id', $month->id)
+            ->where('user_id', $userId)
+            ->first();
+
+        $row = $find();
+
+        if (! $row) {
+            // Nothing to clear when the user has no row and the amount is 0.
+            if ($amount === 0.0) {
+                return null;
+            }
+
+            $this->payroll->syncEmployeesFromUsers($month, [$userId]);
+            $row = $find();
+        }
+
+        if (! $row) {
+            $user = User::withTrashed()->find($userId);
+            $row = $user ? $this->payroll->createZeroHourRow($month, $user) : null;
+        }
+
+        if (! $row) {
+            return null;
+        }
+
+        $row->update([
+            'increment' => $amount,
+            'edited_by' => $editor,
+            'edited_at' => now(),
+        ]);
+
+        return $row;
+    }
+
+    /**
+     * Set (add / replace / clear) a user's increment for a payroll month.
      */
     public function storeIncrement(Request $request): JsonResponse
     {
@@ -302,46 +397,95 @@ class PayrollController extends Controller
         $month = PayrollMonth::findOrFail($validated['payroll_month_id']);
         $this->ensureUnlocked($month);
 
-        $find = fn () => PayrollEmployeeSalary::where('payroll_month_id', $month->id)
-            ->where('user_id', $validated['user_id'])
-            ->first();
-
-        $row = $find();
+        $amount = (float) $validated['increment'];
+        $row = $this->applyIncrement($month, (int) $validated['user_id'], $amount, $request->user()?->name);
 
         if (! $row) {
-            // Nothing to clear when the user has no row and the amount is 0.
-            if ((float) $validated['increment'] === 0.0) {
+            if ($amount === 0.0) {
                 return response()->json(['success' => true]);
             }
 
-            $this->payroll->syncEmployeesFromUsers($month, [(int) $validated['user_id']]);
-            $row = $find();
-        }
-
-        if (! $row) {
-            // No recorded hours yet: store the increment on a 0-hour row. It counts in
-            // salary automatically once hours start being recorded.
-            $user = User::withTrashed()->find($validated['user_id']);
-            $row = $user ? $this->payroll->createZeroHourRow($month, $user) : null;
-        }
-
-        if (! $row) {
             return response()->json([
                 'success' => false,
                 'message' => 'Could not add this employee to the payroll month.',
             ], 422);
         }
 
-        $row->update([
-            'increment' => $validated['increment'],
-            'edited_by' => $request->user()?->name,
-            'edited_at' => now(),
-        ]);
         $this->payroll->recalculateMonth($month);
 
         return response()->json([
             'success' => true,
             'row' => $this->employeeRowPayload($row->fresh()->load('user')),
+        ]);
+    }
+
+    /**
+     * Bulk: copy the increments of one month to another (e.g. "same increment for next
+     * month"). user_ids limits it to chosen employees; omit it to copy everyone who has an
+     * increment in the source month. Existing target increments are kept unless overwrite=1.
+     */
+    public function copyIncrements(Request $request): JsonResponse
+    {
+        $this->authorizeManage();
+
+        $validated = $request->validate([
+            'from_month_id' => 'required|integer|exists:payroll_months,id',
+            'to_month_id' => 'required|integer|exists:payroll_months,id|different:from_month_id',
+            'user_ids' => 'nullable|array',
+            'user_ids.*' => 'integer',
+            'overwrite' => 'nullable|boolean',
+        ]);
+
+        $from = PayrollMonth::findOrFail($validated['from_month_id']);
+        $to = PayrollMonth::findOrFail($validated['to_month_id']);
+        $this->ensureUnlocked($to);
+
+        $overwrite = (bool) ($validated['overwrite'] ?? false);
+
+        $sources = PayrollEmployeeSalary::where('payroll_month_id', $from->id)
+            ->where('increment', '!=', 0)
+            ->when(! empty($validated['user_ids']), fn ($q) => $q->whereIn('user_id', $validated['user_ids']))
+            ->get();
+
+        $existing = PayrollEmployeeSalary::where('payroll_month_id', $to->id)
+            ->get()
+            ->keyBy('user_id');
+
+        $editor = $request->user()?->name;
+        $copied = 0;
+        $skipped = 0;
+        $failed = 0;
+
+        foreach ($sources as $src) {
+            $current = $existing->get($src->user_id);
+            if (! $overwrite && $current && (float) $current->increment !== 0.0) {
+                $skipped++;
+
+                continue;
+            }
+
+            $row = $this->applyIncrement($to, (int) $src->user_id, (float) $src->increment, $editor);
+            $row ? $copied++ : $failed++;
+        }
+
+        if ($copied > 0) {
+            $this->payroll->recalculateMonth($to);
+        }
+
+        $message = "{$copied} increment(s) copied to {$to->month_label}.";
+        if ($skipped > 0) {
+            $message .= " {$skipped} skipped (already had an increment).";
+        }
+        if ($failed > 0) {
+            $message .= " {$failed} could not be added.";
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'copied' => $copied,
+            'skipped' => $skipped,
+            'failed' => $failed,
         ]);
     }
 
@@ -1364,24 +1508,14 @@ class PayrollController extends Controller
         $this->authorizeManage();
 
         $monthParam = (string) $request->query('month', 'all');
+        $onlyId = ($monthParam !== 'all' && ctype_digit($monthParam)) ? (int) $monthParam : null;
 
-        $monthsQuery = PayrollMonth::orderByDesc('period_start')->orderByDesc('id');
-        if ($monthParam !== 'all' && ctype_digit($monthParam)) {
-            $monthsQuery->where('id', (int) $monthParam);
-        }
-        $months = $monthsQuery->get();
+        $months = $this->incrementMonths($onlyId)['months'];
 
-        $rowsByMonth = PayrollEmployeeSalary::with('user')
-            ->whereIn('payroll_month_id', $months->pluck('id'))
-            ->whereNotNull('increment')
-            ->where('increment', '!=', 0)
-            ->get()
-            ->filter(fn ($r) => $r->user?->name)
-            ->groupBy('payroll_month_id');
-
-        $singleMonth = $monthParam !== 'all' && $months->count() === 1;
+        $singleMonth = $onlyId !== null && $months->count() === 1;
         if (! $singleMonth) {
-            $months = $months->filter(fn ($m) => $rowsByMonth->has($m->id))->values();
+            // All Months: only months that actually have an increment.
+            $months = $months->filter(fn ($m) => $m['increment_count'] > 0)->values();
         }
 
         $regionMeta = [
@@ -1401,7 +1535,7 @@ class PayrollController extends Controller
         $headers = ['#', 'Employee', 'Country', 'Currency', 'Increment'];
 
         foreach ($months as $month) {
-            $title = trim(str_replace(['\\', '/', '?', '*', '[', ']', ':'], ' ', (string) $month->month_label)) ?: 'Month '.$month->id;
+            $title = trim(str_replace(['\\', '/', '?', '*', '[', ']', ':'], ' ', (string) $month['month_label'])) ?: 'Month '.$month['month_id'];
             $title = mb_substr($title, 0, 31);
             $base = $title;
             for ($n = 2; in_array(mb_strtolower($title), $usedTitles, true); $n++) {
@@ -1424,34 +1558,35 @@ class PayrollController extends Controller
             ]);
             $sheet->getRowDimension(1)->setRowHeight(24);
 
-            $rows = $rowsByMonth->get($month->id, collect())
-                ->sortBy(fn ($r) => mb_strtolower($r->user->name))
-                ->values();
+            $rows = $month['employees'];
 
             $r = 2;
             $totals = [];
             foreach ($rows as $i => $row) {
-                $region = $row->user->salaryRegion();
+                $region = $row['region'];
                 $meta = $regionMeta[$region] ?? $regionMeta['india'];
-                $amount = (float) $row->increment;
+                $amount = (float) $row['increment'];
                 $totals[$region] = ($totals[$region] ?? 0) + $amount;
 
                 $sheet->setCellValue('A'.$r, $i + 1);
-                $sheet->setCellValue('B'.$r, $row->user->name);
+                $sheet->setCellValue('B'.$r, $row['name']);
                 $sheet->setCellValue('C'.$r, $meta['label']);
                 $sheet->setCellValue('D'.$r, $meta['currency']);
                 $sheet->setCellValue('E'.$r, $amount);
                 $sheet->getStyle('E'.$r)->getNumberFormat()->setFormatCode($meta['format']);
 
-                // Zebra striping for readability.
+                // Zebra striping for readability; employees with no increment are greyed out.
                 if ($i % 2 === 1) {
                     $sheet->getStyle('A'.$r.':E'.$r)->getFill()->setFillType($fill)->getStartColor()->setRGB('EAF1FB');
+                }
+                if ($amount == 0.0) {
+                    $sheet->getStyle('B'.$r.':E'.$r)->getFont()->getColor()->setRGB('9CA3AF');
                 }
                 $r++;
             }
 
             if ($rows->isEmpty()) {
-                $sheet->setCellValue('A2', 'No increments in this month.');
+                $sheet->setCellValue('A2', 'No employees in this month.');
                 $sheet->mergeCells('A2:E2');
                 $sheet->getStyle('A2')->getFont()->setItalic(true);
                 $r = 3;
@@ -1501,7 +1636,7 @@ class PayrollController extends Controller
         $spreadsheet->setActiveSheetIndex(0);
 
         $filename = $singleMonth
-            ? 'increments_'.str_replace(' ', '_', (string) $months->first()->month_label).'.xlsx'
+            ? 'increments_'.str_replace(' ', '_', (string) $months->first()['month_label']).'.xlsx'
             : 'increments_all_months.xlsx';
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
 

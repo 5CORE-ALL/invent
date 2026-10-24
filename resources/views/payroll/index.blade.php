@@ -75,7 +75,7 @@
     .inc-search i { position: absolute; left: .6rem; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
     .inc-search input { width: 100%; padding-left: 1.9rem; }
     .inc-btn-add { height: 34px; display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
-    @media (max-width: 991.98px) {
+    @media (max-width: 1199.98px) {
         .inc-controls { flex-wrap: wrap; width: 100%; }
         .inc-search { flex: 1 1 160px; }
         .inc-controls .form-select { flex: 1 1 150px; width: auto; }
@@ -106,8 +106,13 @@
     .inc-table .act { width: 76px; text-align: right; white-space: nowrap; }
     .inc-table th.num, .inc-table th.act { text-align: right; }
     .inc-amt { font-weight: 600; color: #047857; }
+    .inc-zero { color: #9ca3af; }
     .inc-person { display: inline-flex; align-items: center; gap: .6rem; }
     .inc-avatar { width: 28px; height: 28px; border-radius: 50%; background: #e0e7ff; color: #3730a3; display: inline-flex; align-items: center; justify-content: center; font-size: .72rem; font-weight: 700; flex-shrink: 0; }
+    .inc-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+    .inc-avatar.has-img { background: #e5e7eb; overflow: hidden; }
+    .inc-combo-item .who { display: inline-flex; align-items: center; gap: .5rem; min-width: 0; }
+    .inc-combo-item .inc-avatar { width: 24px; height: 24px; font-size: .65rem; }
     .inc-icon-btn { border: 0; background: transparent; padding: .15rem .3rem; border-radius: 6px; color: #6b7280; line-height: 1; font-size: 1rem; }
     .inc-icon-btn:hover { background: #eef2ff; color: #4338ca; }
     .inc-icon-btn.danger:hover { background: #fee2e2; color: #b91c1c; }
@@ -122,6 +127,12 @@
     .inc-combo-item .meta { font-size: .72rem; color: #6b7280; white-space: nowrap; }
     .inc-combo-item .meta.has { color: #047857; font-weight: 600; }
     .inc-combo-empty { padding: .75rem; text-align: center; color: #6b7280; font-size: .82rem; }
+    .inc-bulk-list { max-height: 300px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
+    .inc-bulk-list table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .inc-bulk-list th { position: sticky; top: 0; background: #f9fafb; z-index: 1; padding: .45rem .75rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; border-bottom: 1px solid #e5e7eb; text-align: left; }
+    .inc-bulk-list td { padding: .4rem .75rem; border-bottom: 1px solid #f1f5f9; }
+    .inc-bulk-list .num { text-align: right; white-space: nowrap; }
+    .inc-bulk-list tr.is-conflict td { color: #92400e; background: #fffbeb; }
     .inc-empty { text-align: center; padding: 2.5rem 1rem; color: #6b7280; border: 1px dashed #d1d5db; border-radius: 10px; background: #fafafa; }
     .inc-empty .big { font-size: 2rem; line-height: 1; margin-bottom: .4rem; }
     .inc-empty .t { font-weight: 600; color: #374151; margin-bottom: .25rem; }
@@ -319,6 +330,9 @@
                         <a href="#" class="btn btn-sm btn-success inc-btn-add" id="btnDownloadIncrements" title="Download Excel (one tab per month)">
                             <i class="ri-file-excel-2-line"></i> Download Excel
                         </a>
+                        <button type="button" class="btn btn-sm btn-outline-primary inc-btn-add" id="btnBulkIncrement" title="Copy increments from one month to another">
+                            <i class="ri-file-copy-line"></i> Bulk Copy
+                        </button>
                         <button type="button" class="btn btn-sm btn-primary inc-btn-add" id="btnAddIncrement">
                             <i class="ri-add-line"></i> Add Increment
                         </button>
@@ -439,6 +453,42 @@
                     <button type="submit" class="btn btn-primary" id="incModalSave">Save Increment</button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="incrementBulkModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Bulk Copy Increments</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Copy from</label>
+                        <select id="incBulkFrom" class="form-select"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Copy to</label>
+                        <select id="incBulkTo" class="form-select"></select>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="incBulkOverwrite">
+                        <label class="form-check-label small" for="incBulkOverwrite">Overwrite if the target month already has an increment</label>
+                    </div>
+                    <span class="small text-muted" id="incBulkCount"></span>
+                </div>
+                <div class="inc-bulk-list" id="incBulkList"></div>
+                <div class="text-danger small mt-2" id="incBulkError" hidden></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="incBulkSave">Copy Selected</button>
+            </div>
         </div>
     </div>
 </div>
@@ -1223,6 +1273,14 @@
         return ((parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
     }
 
+    // Profile image (falls back to initials when missing or if the image fails to load).
+    function avatarHtml(u) {
+        const ini = esc(initials(u.name));
+        if (!u.avatar_url) return '<span class="inc-avatar">' + ini + '</span>';
+        return '<span class="inc-avatar has-img"><img src="' + esc(u.avatar_url) + '" alt="" loading="lazy"'
+            + ' onerror="var p=this.parentNode;p.classList.remove(\'has-img\');p.textContent=\'' + ini.replace(/'/g, '') + '\';"></span>';
+    }
+
     function findIncMonth(id) {
         return (incrementData?.months || []).find((m) => String(m.month_id) === String(id));
     }
@@ -1237,39 +1295,55 @@
         const selected = select ? select.value : 'all';
         const term = (document.getElementById('incrementSearch')?.value || '').toLowerCase().trim();
         const single = selected !== 'all' ? findIncMonth(selected) : null;
-        const sourceMonths = single ? [single] : (incrementData.months || []);
+        // "All Months" only lists months that have at least one increment; a single month always shows.
+        const sourceMonths = single ? [single] : (incrementData.months || []).filter((m) => (m.increment_count || 0) > 0);
 
-        // Apply the name search, then drop months that end up empty in "All Months" view.
+        // Every employee is listed (0 when no increment); the name search narrows the list.
         const months = sourceMonths.map((m) => {
             const users = (m.users || []).filter((u) => !term || String(u.name).toLowerCase().includes(term));
             const totals = {};
-            users.forEach((u) => { totals[u.region] = (totals[u.region] || 0) + Number(u.amount ?? u.increment ?? 0); });
-            return Object.assign({}, m, { users, totals });
+            let withInc = 0;
+            users.forEach((u) => {
+                const amt = Number(u.increment || 0);
+                if (amt) { totals[u.region] = (totals[u.region] || 0) + amt; withInc++; }
+            });
+            return Object.assign({}, m, { users, totals, withInc });
         }).filter((m) => single || m.users.length);
 
         const totals = {};
         let entries = 0;
         months.forEach((m) => {
-            entries += m.users.length;
+            entries += m.withInc;
             Object.keys(m.totals).forEach((r) => { totals[r] = (totals[r] || 0) + m.totals[r]; });
         });
 
         if (subtitle) {
             subtitle.textContent = single
-                ? 'Increments given in ' + single.month_label + '.'
-                : 'Employees with a salary increment, month wise.';
+                ? 'All employees for ' + single.month_label + ' — 0 where no increment.'
+                : 'Month wise increments for all employees — 0 where no increment.';
         }
 
-        const statusBadge = single
-            ? '<span class="inc-badge ' + (single.is_locked ? 'locked' : 'open') + '">'
-                + (single.is_locked ? '🔒 Locked' : '● Open') + '</span>'
-            : '<span class="text-muted" style="font-size:1rem;font-weight:600;">' + months.length + '</span>';
+        // Third card: the month (with year) + its status, or "All Months" with the covered range.
+        let monthCard;
+        if (single) {
+            monthCard = '<div class="inc-stat"><div class="k">Month</div>'
+                + '<div class="v">' + esc(single.month_label)
+                + ' <span class="inc-badge ' + (single.is_locked ? 'locked' : 'open') + '" style="vertical-align:middle;margin-left:.35rem;">'
+                + (single.is_locked ? '🔒 Locked' : '● Open') + '</span></div></div>';
+        } else {
+            const newest = months[0]?.month_label;
+            const oldest = months[months.length - 1]?.month_label;
+            const range = months.length > 1 ? esc(oldest) + ' – ' + esc(newest) : esc(newest || '');
+            monthCard = '<div class="inc-stat"><div class="k">Month</div>'
+                + '<div class="v">All Months</div>'
+                + '<div class="small text-muted mt-1">' + range + (months.length ? ' · ' + months.length + ' month' + (months.length === 1 ? '' : 's') : '') + '</div></div>';
+        }
 
         if (summary) {
             summary.innerHTML = '<div class="inc-stats">'
                 + '<div class="inc-stat is-primary"><div class="k">Total Increment</div><div class="v">' + esc(formatTotals(totals)) + '</div></div>'
                 + '<div class="inc-stat"><div class="k">Employees with increment</div><div class="v">' + entries + '</div></div>'
-                + '<div class="inc-stat"><div class="k">' + (single ? 'Payroll month status' : 'Months') + '</div><div class="v">' + statusBadge + '</div></div>'
+                + monthCard
                 + '</div>';
         }
 
@@ -1286,16 +1360,16 @@
             const editable = canManage && !m.is_locked;
             const rowsHtml = m.users.map((u, i) => '<tr>'
                 + '<td class="idx">' + (i + 1) + '</td>'
-                + '<td><span class="inc-person"><span class="inc-avatar">' + esc(initials(u.name)) + '</span>' + esc(u.name) + '</span></td>'
-                + '<td class="num"><span class="inc-amt">' + esc(fmt(u.increment, u.region)) + '</span></td>'
+                + '<td><span class="inc-person">' + avatarHtml(u) + esc(u.name) + '</span></td>'
+                + '<td class="num"><span class="' + (Number(u.increment) ? 'inc-amt' : 'inc-zero') + '">' + esc(fmt(u.increment || 0, u.region)) + '</span></td>'
                 + (canManage ? '<td class="act">' + (editable
-                    ? '<button type="button" class="inc-icon-btn inc-edit" title="Edit" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="ri-pencil-line"></i></button>'
-                    + '<button type="button" class="inc-icon-btn danger inc-remove" title="Remove increment" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="ri-delete-bin-line"></i></button>'
+                    ? '<button type="button" class="inc-icon-btn inc-edit" title="' + (Number(u.increment) ? 'Edit' : 'Add increment') + '" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="' + (Number(u.increment) ? 'ri-pencil-line' : 'ri-add-circle-line') + '"></i></button>'
+                    + (Number(u.increment) ? '<button type="button" class="inc-icon-btn danger inc-remove" title="Remove increment" data-month="' + m.month_id + '" data-user="' + u.user_id + '"><i class="ri-delete-bin-line"></i></button>' : '')
                     : '<span class="text-muted" title="Month is locked">🔒</span>') + '</td>' : '')
                 + '</tr>').join('');
-            const emptyRow = m.users.length ? '' : '<tr><td colspan="' + (canManage ? 4 : 3) + '" class="text-center text-muted py-4">No increments in this month yet.</td></tr>';
+            const emptyRow = m.users.length ? '' : '<tr><td colspan="' + (canManage ? 4 : 3) + '" class="text-center text-muted py-4">No employees in this month.</td></tr>';
             return '<div class="inc-card">'
-                + '<div class="inc-card-head"><span><span class="m">' + esc(m.month_label) + '</span><span class="c">' + m.users.length + ' employee' + (m.users.length === 1 ? '' : 's') + '</span></span>'
+                + '<div class="inc-card-head"><span><span class="m">' + esc(m.month_label) + '</span><span class="c">' + m.withInc + ' of ' + m.users.length + ' with increment</span></span>'
                 + '<span class="t">' + esc(formatTotals(m.totals)) + '</span></div>'
                 + '<table class="inc-table"><thead><tr><th class="idx">#</th><th>Employee</th><th class="num">Increment</th>'
                 + (canManage ? '<th class="act"></th>' : '') + '</tr></thead><tbody>' + rowsHtml + emptyRow + '</tbody>'
@@ -1356,10 +1430,10 @@
         const m = findIncMonth(monthId);
         const byUser = {};
         (incrementData?.salary_users || []).forEach((u) => {
-            byUser[u.user_id] = { user_id: u.user_id, name: u.name, region: u.region, increment: 0 };
+            byUser[u.user_id] = { user_id: u.user_id, name: u.name, region: u.region, avatar_url: u.avatar_url, increment: 0 };
         });
         (m?.employees || []).forEach((e) => {
-            byUser[e.user_id] = { user_id: e.user_id, name: e.name, region: e.region, increment: e.increment || 0 };
+            byUser[e.user_id] = { user_id: e.user_id, name: e.name, region: e.region, avatar_url: e.avatar_url, increment: e.increment || 0 };
         });
         return Object.values(byUser).sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
     }
@@ -1389,7 +1463,7 @@
         } else {
             incComboList.innerHTML = incComboItems.map((e, i) =>
                 '<div class="inc-combo-item' + (i === incComboActive ? ' is-active' : '') + '" data-idx="' + i + '">'
-                + '<span>' + esc(e.name) + '</span>'
+                + '<span class="who">' + avatarHtml(e) + '<span>' + esc(e.name) + '</span></span>'
                 + '<span class="meta' + (e.increment ? ' has' : '') + '">'
                 + (e.increment ? 'Current ' + esc(fmt(e.increment, e.region)) : esc(countryLabel(e.region))) + '</span></div>'
             ).join('');
@@ -1526,6 +1600,132 @@
                 alert(err.message || 'Failed to remove increment.');
                 remove.disabled = false;
             }
+        }
+    });
+
+    // ----- Bulk copy increments (e.g. same increment for next month) -----
+    const incBulkEl = document.getElementById('incrementBulkModal');
+    const incBulkFrom = document.getElementById('incBulkFrom');
+    const incBulkTo = document.getElementById('incBulkTo');
+    const incBulkList = document.getElementById('incBulkList');
+    const incBulkOverwrite = document.getElementById('incBulkOverwrite');
+    const incBulkError = document.getElementById('incBulkError');
+
+    function incBulkRender() {
+        const from = findIncMonth(incBulkFrom.value);
+        const to = findIncMonth(incBulkTo.value);
+        const sources = (from?.employees || []).filter((e) => Number(e.increment));
+        const targetByUser = {};
+        (to?.employees || []).forEach((e) => { targetByUser[e.user_id] = e; });
+        incBulkError.hidden = true;
+
+        if (!sources.length) {
+            incBulkList.innerHTML = '<div class="inc-empty" style="border:0;">No increments in ' + esc(from?.month_label || 'this month') + ' to copy.</div>';
+            incBulkUpdateCount();
+            return;
+        }
+
+        incBulkList.innerHTML = '<table><thead><tr>'
+            + '<th style="width:34px;"><input type="checkbox" id="incBulkAll" checked title="Select all"></th>'
+            + '<th>Employee</th><th class="num">Increment</th><th>In ' + esc(to?.month_label || 'target') + '</th></tr></thead><tbody>'
+            + sources.map((e) => {
+                const t = targetByUser[e.user_id];
+                const has = t && Number(t.increment);
+                return '<tr class="' + (has ? 'is-conflict' : '') + '" data-user="' + e.user_id + '" data-conflict="' + (has ? 1 : 0) + '">'
+                    + '<td><input type="checkbox" class="inc-bulk-chk" value="' + e.user_id + '" checked></td>'
+                    + '<td><span class="inc-person">' + avatarHtml(e) + esc(e.name) + '</span></td>'
+                    + '<td class="num"><span class="inc-amt">' + esc(fmt(e.increment, e.region)) + '</span></td>'
+                    + '<td>' + (has ? 'Already ' + esc(fmt(t.increment, t.region)) : '<span class="text-muted">—</span>') + '</td>'
+                    + '</tr>';
+            }).join('')
+            + '</tbody></table>';
+        incBulkUpdateCount();
+    }
+
+    function incBulkSelectedIds() {
+        return Array.from(incBulkList.querySelectorAll('.inc-bulk-chk:checked')).map((c) => Number(c.value));
+    }
+
+    function incBulkUpdateCount() {
+        const total = incBulkList.querySelectorAll('.inc-bulk-chk').length;
+        const sel = incBulkSelectedIds().length;
+        document.getElementById('incBulkCount').textContent = total ? sel + ' of ' + total + ' selected' : '';
+        document.getElementById('incBulkSave').disabled = sel === 0;
+        const all = document.getElementById('incBulkAll');
+        if (all) all.checked = total > 0 && sel === total;
+    }
+
+    incBulkList?.addEventListener('change', (e) => {
+        if (e.target.id === 'incBulkAll') {
+            incBulkList.querySelectorAll('.inc-bulk-chk').forEach((c) => { c.checked = e.target.checked; });
+        }
+        incBulkUpdateCount();
+    });
+
+    function incBulkDefaultTarget(fromId) {
+        // "Next month" = the month after the source in time (list is newest first).
+        const months = incrementData?.months || [];
+        const idx = months.findIndex((m) => String(m.month_id) === String(fromId));
+        const next = idx > 0 ? months[idx - 1] : null;
+        const open = months.filter((m) => !m.is_locked && String(m.month_id) !== String(fromId));
+        if (next && !next.is_locked) return String(next.month_id);
+        return open.length ? String(open[0].month_id) : '';
+    }
+
+    function incBulkFillTargets() {
+        const months = (incrementData?.months || []).filter((m) => !m.is_locked && String(m.month_id) !== String(incBulkFrom.value));
+        incBulkTo.innerHTML = months.map((m) => '<option value="' + m.month_id + '">' + esc(m.month_label) + '</option>').join('');
+        const want = incBulkDefaultTarget(incBulkFrom.value);
+        if (want) incBulkTo.value = want;
+    }
+
+    function openBulkModal() {
+        if (!incrementData || !incBulkEl) return;
+        const months = incrementData.months || [];
+        incBulkFrom.innerHTML = months.map((m) => '<option value="' + m.month_id + '">' + esc(m.month_label) + ((m.increment_count || 0) ? ' (' + m.increment_count + ')' : '') + '</option>').join('');
+        const sel = document.getElementById('incrementMonthSelect')?.value;
+        const preferred = sel && sel !== 'all' ? sel : incrementData.default_month_id;
+        incBulkFrom.value = months.some((m) => String(m.month_id) === String(preferred)) ? String(preferred) : (months[0] ? String(months[0].month_id) : '');
+        incBulkOverwrite.checked = false;
+        incBulkFillTargets();
+        if (!incBulkTo.options.length) { alert('There is no unlocked month to copy increments into.'); return; }
+        incBulkRender();
+        bootstrap.Modal.getOrCreateInstance(incBulkEl).show();
+    }
+
+    document.getElementById('btnBulkIncrement')?.addEventListener('click', openBulkModal);
+    incBulkFrom?.addEventListener('change', () => { incBulkFillTargets(); incBulkRender(); });
+    incBulkTo?.addEventListener('change', incBulkRender);
+
+    document.getElementById('incBulkSave')?.addEventListener('click', async () => {
+        const ids = incBulkSelectedIds();
+        if (!ids.length) return;
+        const toLabel = findIncMonth(incBulkTo.value)?.month_label || 'the target month';
+        const fromLabel = findIncMonth(incBulkFrom.value)?.month_label || 'the source month';
+        if (!confirm('Copy ' + ids.length + ' increment(s) from ' + fromLabel + ' to ' + toLabel + '?')) return;
+        const btn = document.getElementById('incBulkSave');
+        btn.disabled = true;
+        incBulkError.hidden = true;
+        try {
+            const res = await api(`${base}/increments/copy`, 'POST', {
+                from_month_id: Number(incBulkFrom.value),
+                to_month_id: Number(incBulkTo.value),
+                user_ids: ids,
+                overwrite: incBulkOverwrite.checked,
+            });
+            bootstrap.Modal.getInstance(incBulkEl)?.hide();
+            const keepSelect = document.getElementById('incrementMonthSelect');
+            if (keepSelect) { incrementMonthChosen = true; }
+            await loadIncrements();
+            // Jump to the month that was just filled so the result is visible.
+            if (keepSelect) { keepSelect.value = String(incBulkTo.value); renderIncrements(); }
+            salarySheetStale = true;
+            alert(res.message || 'Increments copied.');
+        } catch (err) {
+            incBulkError.textContent = err.message || 'Failed to copy increments.';
+            incBulkError.hidden = false;
+        } finally {
+            btn.disabled = false;
         }
     });
 

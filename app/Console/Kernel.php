@@ -3780,6 +3780,24 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Pre-saved dynamic messages (rules managed by president@5core.com at /dynamic-messages).
+        $schedule->command('dynamic-messages:run')
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('dynamic-messages-run')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Pre-saved dynamic tasks, assignor Amarjit (rules managed by president@5core.com at /dynamic-tasks).
+        $schedule->command('dynamic-tasks:run')
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('dynamic-tasks-run')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Backup only. The reliable fire is /etc/cron.d/cron-run-missed,
         // because this slot is itself skipped when schedule:run is late.
         // Must NOT use $ist() (06:15 is before the window; 20:15 is after).
