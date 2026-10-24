@@ -458,6 +458,104 @@ class AmazonDilGroiRule
         return null;
     }
 
+    /**
+     * Saved Dynamic Rule (Ads % by price slab) of /amazon-tabulator-view. Disabled when missing or unreadable.
+     *
+     * @return array{enabled: bool, slabs: list<array{min: float, max: float|null, pct: float}>}
+     */
+    public static function loadDynamicAdsRule(): array
+    {
+        try {
+            return \App\Http\Controllers\MarketPlace\OverallAmazonController::amazonDynamicAdsRuleConfig();
+        } catch (\Throwable) {
+            return ['enabled' => false, 'slabs' => []];
+        }
+    }
+
+    /**
+     * Ads % segments covering every price: the slabs (first match wins, From ≤ price < To) and the channel Ads %
+     * for the gaps. Null when the rule is off, so callers keep the single channel Ads %.
+     *
+     * @param  array{enabled?: bool, slabs?: list<array{min: float, max: float|null, pct: float}>}|null  $rule
+     * @return list<array{min: float, max: float, pct: float}>|null
+     */
+    public static function dynamicAdsSegments(?array $rule, float $channelAdsPct): ?array
+    {
+        if (! is_array($rule) || empty($rule['enabled']) || empty($rule['slabs'])) {
+            return null;
+        }
+        $slabs = $rule['slabs'];
+        usort($slabs, fn ($a, $b) => (float) $a['min'] <=> (float) $b['min']);
+        $segs = [];
+        $cursor = 0.0;
+        foreach ($slabs as $s) {
+            $min = max((float) $s['min'], $cursor);
+            $max = ($s['max'] === null || $s['max'] === '') ? INF : (float) $s['max'];
+            if ($max <= $min) {
+                continue;
+            }
+            if ($min > $cursor) {
+                $segs[] = ['min' => $cursor, 'max' => $min, 'pct' => $channelAdsPct];
+            }
+            $segs[] = ['min' => $min, 'max' => $max, 'pct' => (float) $s['pct']];
+            $cursor = $max;
+            if (is_infinite($max)) {
+                break;
+            }
+        }
+        if (! is_infinite($cursor)) {
+            $segs[] = ['min' => $cursor, 'max' => INF, 'pct' => $channelAdsPct];
+        }
+
+        return $segs;
+    }
+
+    /** Ads % for a price: its slab's %, else the channel Ads %. Same lookup as the page's Ads % column. */
+    public static function dynamicAdsPctAtPrice(float $price, ?array $rule, float $channelAdsPct): float
+    {
+        $segs = self::dynamicAdsSegments($rule, $channelAdsPct);
+        if ($segs === null || ! ($price > 0)) {
+            return $channelAdsPct;
+        }
+        foreach ($segs as $seg) {
+            if ($price >= $seg['min'] && $price < $seg['max']) {
+                return $seg['pct'];
+            }
+        }
+
+        return $channelAdsPct;
+    }
+
+    /**
+     * Price that hits a target when the Ads % depends on the price (Dynamic Rule slabs).
+     * $solveAt(adsPct) gives the price for one fixed Ads %. Segments are tried from the lowest price up and the first
+     * price that lands inside its own slab wins. When the target is already met at the start of a slab, that start is used.
+     * With the rule off it is just $solveAt(channel Ads %).
+     *
+     * @param  callable(float): ?float  $solveAt
+     */
+    public static function priceWithDynamicAds(callable $solveAt, float $channelAdsPct, ?array $rule): ?float
+    {
+        $segs = self::dynamicAdsSegments($rule, $channelAdsPct);
+        if ($segs === null) {
+            return $solveAt($channelAdsPct);
+        }
+        foreach ($segs as $seg) {
+            $cand = $solveAt($seg['pct']);
+            if ($cand === null || ! is_finite($cand) || ! ($cand > 0)) {
+                continue;
+            }
+            if ($cand < $seg['min']) {
+                $cand = $seg['min'];
+            }
+            if ($cand < $seg['max']) {
+                return $cand;
+            }
+        }
+
+        return $solveAt($channelAdsPct);
+    }
+
     /** The price S PRC lands on when it reaches LMP: LMP less the reduce %. */
     public static function lmpTargetPrice(float $lmp, float $reducePct = 0.0): float
     {

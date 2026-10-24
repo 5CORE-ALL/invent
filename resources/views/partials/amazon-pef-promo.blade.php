@@ -1356,10 +1356,15 @@
             if (!(lp > 0)) return 0;
             const ship = parseFloat(d.Ship_productmaster) || 0;
             const nroi = isFinite(Number(nroiPct)) ? Number(nroiPct) : 0;
-            const denom = 0.80 - (amzAmazonAdsPct() / 100);
-            if (!(denom > 0)) return 0;
-            const price = (lp * (1 + nroi / 100) + ship) / denom;
-            return (isFinite(price) && price > 0) ? amzPefRound2(price) : 0;
+            // Ads % follows the Dynamic Rule slab the price lands in (channel Ads% when the rule is off).
+            const solveAt = function(adsPct) {
+                const denom = 0.80 - (adsPct / 100);
+                if (!(denom > 0)) return 0;
+                const price = (lp * (1 + nroi / 100) + ship) / denom;
+                return (isFinite(price) && price > 0) ? amzPefRound2(price) : 0;
+            };
+            const solved = (typeof amzDynAdsSolve === 'function') ? amzDynAdsSolve(solveAt, amzAmazonAdsPct()) : solveAt(amzAmazonAdsPct());
+            return solved > 0 ? solved : 0;
         }
         function amzSpriceFromTargetGroi(d, roiPct) {
             return amzSpriceFromTargetNroi(d, roiPct);

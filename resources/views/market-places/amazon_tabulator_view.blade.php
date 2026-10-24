@@ -1655,7 +1655,8 @@
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
             const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
-            const adsFrac = (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0) / 100;
+            // Ads % of the Dynamic Rule slab this price falls in (channel Ads% when the rule is off or no slab matches).
+            const adsFrac = amazonAdsPctAtPrice(sprice) / 100;
             const grossPft = (sprice * margin) - ship - lp;
             const adSpend = sprice * adsFrac;
             return ((grossPft - adSpend) / lp) * 100;
@@ -2797,7 +2798,8 @@
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
             const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
-            const adsFrac = (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0) / 100;
+            // Ads % of the Dynamic Rule slab this price falls in (channel Ads% when the rule is off or no slab matches).
+            const adsFrac = amazonAdsPctAtPrice(sprice) / 100;
             const grossPft = (sprice * margin) - ship - lp;
             const adSpend = sprice * adsFrac;
             return ((grossPft - adSpend) / lp) * 100;
@@ -5328,7 +5330,7 @@
                         title: "NROI%",
                         field: "NROI",
                         hozAlign: "center",
-                        headerTooltip: "NROI% = (gross PFT$ − ad spend$) / LP × 100. Same formula as the NROI badge / SNROI, using current Amazon price.",
+                        headerTooltip: "NROI% = (gross PFT$ − ad spend$) / LP × 100, using current Amazon price. Ad spend uses the Dynamic Rule slab Ads % when it is on, else the channel Ads%.",
                         sorter: amazonMetricSorter(amazonComputeNroi),
                         formatter: function(cell) {
                             const percent = amazonComputeNroi(cell.getRow().getData());
@@ -5514,6 +5516,7 @@
                         title: "SNROI%",
                         field: "SROI",
                         hozAlign: "center",
+                        headerTooltip: "SNROI% = (gross PFT$ at S PRC − ad spend$) / LP × 100. Ad spend uses the Dynamic Rule slab Ads % when it is on, else the channel Ads%.",
                         // Same formula as NROI badge: (PFT$ − Ad Spend$) / COGS × 100
                         sorter: amazonMetricSorter(amazonComputeNetSroi),
                         formatter: function(cell) {

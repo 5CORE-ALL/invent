@@ -23,7 +23,7 @@
                 <div class="modal-body">
                     <div class="form-check form-switch mb-3">
                         <input class="form-check-input" type="checkbox" role="switch" id="amz-dyn-ads-enabled">
-                        <label class="form-check-label fw-semibold" for="amz-dyn-ads-enabled">Use these slabs for the Ads % column (also NPFT% and SNPFT%)</label>
+                        <label class="form-check-label fw-semibold" for="amz-dyn-ads-enabled">Use these slabs for the Ads % column (also NPFT%, SNPFT%, NROI% and SNROI%)</label>
                     </div>
                     <table class="table table-sm align-middle mb-2" id="amz-dyn-ads-table">
                         <thead>
@@ -53,11 +53,20 @@
         // ---- Dynamic Rule: Ads % by price slab ----
         let amzDynAds = @json(\App\Http\Controllers\MarketPlace\OverallAmazonController::amazonDynamicAdsRuleConfig());
 
-        /** Slab for a price: From ≤ price < To (blank To = no limit). null when none. */
+        /** The saved rule, or null while the page script is still starting up. */
+        function amzDynAdsRuleSafe() {
+            try { return amzDynAds || null; } catch (e) { return null; }
+        }
+        function amzDynAdsChannelPct() {
+            if (typeof amzAmazonAdsPct === 'function') return Number(amzAmazonAdsPct()) || 0;
+            try { return parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0; } catch (e) { return 0; }
+        }
+        /** Slab for a price: From ≤ price < To (blank To = no limit), first match. null when none. */
         function amazonDynAdsSlabFor(price) {
+            const rule = amzDynAdsRuleSafe();
             const p = parseFloat(price);
-            if (!amzDynAds || !amzDynAds.enabled || !isFinite(p) || p <= 0) return null;
-            const slabs = amzDynAds.slabs || [];
+            if (!rule || !rule.enabled || !isFinite(p) || p <= 0) return null;
+            const slabs = rule.slabs || [];
             for (let i = 0; i < slabs.length; i++) {
                 const s = slabs[i];
                 const max = (s.max === null || s.max === undefined || s.max === '') ? Infinity : parseFloat(s.max);
@@ -69,10 +78,44 @@
         function amazonAdsPctAtPrice(price) {
             const s = amazonDynAdsSlabFor(price);
             if (s) return parseFloat(s.pct) || 0;
-            return parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
+            return amzDynAdsChannelPct();
         }
         function amazonRowAdsPct(rowData) {
             return amazonAdsPctAtPrice(rowData && rowData.price);
+        }
+        /** Price ranges that each have one Ads % (slabs, with the channel Ads % in the gaps). null when the rule is off. */
+        function amzDynAdsSegments(channelPct) {
+            const rule = amzDynAdsRuleSafe();
+            if (!rule || !rule.enabled || !(rule.slabs || []).length) return null;
+            const segs = [];
+            let cursor = 0;
+            for (let i = 0; i < rule.slabs.length; i++) {
+                const s = rule.slabs[i];
+                const min = Math.max(parseFloat(s.min) || 0, cursor);
+                const max = (s.max === null || s.max === undefined || s.max === '') ? Infinity : parseFloat(s.max);
+                if (!(max > min)) continue;
+                if (min > cursor) segs.push({ min: cursor, max: min, pct: channelPct });
+                segs.push({ min: min, max: max, pct: parseFloat(s.pct) || 0 });
+                cursor = max;
+                if (!isFinite(max)) break;
+            }
+            if (isFinite(cursor)) segs.push({ min: cursor, max: Infinity, pct: channelPct });
+            return segs;
+        }
+        /**
+         * Price that hits a target when the Ads % depends on the price. solveAt(adsPct) gives the price for one fixed
+         * Ads %. Lowest price whose own slab agrees wins (same as AmazonDilGroiRule::priceWithDynamicAds on the server).
+         */
+        function amzDynAdsSolve(solveAt, channelPct) {
+            const segs = amzDynAdsSegments(channelPct);
+            if (!segs) return solveAt(channelPct);
+            for (let i = 0; i < segs.length; i++) {
+                let cand = Number(solveAt(segs[i].pct));
+                if (!isFinite(cand) || !(cand > 0)) continue;
+                if (cand < segs[i].min) cand = segs[i].min;
+                if (cand < segs[i].max) return cand;
+            }
+            return solveAt(channelPct);
         }
 
         function amzDynAdsEsc(v) {

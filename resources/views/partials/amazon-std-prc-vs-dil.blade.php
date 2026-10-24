@@ -963,10 +963,16 @@
             const lp = parseFloat(d && d.LP_productmaster) || 0;
             const ship = parseFloat(d && d.Ship_productmaster) || 0;
             const margin = amzStdRowMargin(d);
-            const adsFrac = amzStdAdsPct() / 100;
-            const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
-            if (!(lp > 0) || !(net > 0)) return price;
-            let solved = Math.floor((((lp * (1 + target / 100)) + ship) / net) * 100 + 0.00001) / 100;
+            if (!(lp > 0)) return price;
+            // Ads % follows the Dynamic Rule slab the price lands in (channel Ads% when the rule is off).
+            const solveAt = function(adsPct) {
+                const adsFrac = adsPct / 100;
+                const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
+                if (!(net > 0)) return 0;
+                return Math.floor((((lp * (1 + target / 100)) + ship) / net) * 100 + 0.00001) / 100;
+            };
+            let solved = (typeof amzDynAdsSolve === 'function') ? amzDynAdsSolve(solveAt, amzStdAdsPct()) : solveAt(amzStdAdsPct());
+            if (!(solved > 0)) return price;
             const std = Number(d && d.STANDARD_PRICE) || 0;
             if (std > 0 && solved > std) solved = Math.round(std * 100) / 100;
             return solved > 0 ? solved : price;
@@ -1123,10 +1129,16 @@
             const lp = parseFloat(d && d.LP_productmaster) || 0;
             const ship = parseFloat(d && d.Ship_productmaster) || 0;
             const margin = amzStdRowMargin(d);
-            const adsFrac = amzStdAdsPct() / 100;
-            const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
-            if (!(lp > 0) || !(net > 0)) return price;
-            let solved = Math.ceil((((lp * (1 + target / 100)) + ship) / net) * 100 - 0.00001) / 100;
+            if (!(lp > 0)) return price;
+            // Ads % follows the Dynamic Rule slab the price lands in (channel Ads% when the rule is off).
+            const solveAt = function(adsPct) {
+                const adsFrac = adsPct / 100;
+                const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
+                if (!(net > 0)) return 0;
+                return Math.ceil((((lp * (1 + target / 100)) + ship) / net) * 100 - 0.00001) / 100;
+            };
+            let solved = (typeof amzDynAdsSolve === 'function') ? amzDynAdsSolve(solveAt, amzStdAdsPct()) : solveAt(amzStdAdsPct());
+            if (!(solved > 0)) return price;
             const std = Number(d && d.STANDARD_PRICE) || 0;
             if (std > 0 && solved > std) solved = Math.round(std * 100) / 100;
             return solved > 0 ? solved : price;
@@ -1723,7 +1735,7 @@
                         if (lmpNow > 0) sprice = Math.round(lmpNow * (1 - (isFinite(lmpPct) && lmpPct > 0 ? lmpPct : 0) / 100) * 100) / 100;
                     }
                     const profit = amzStdUnitProfit(d, sprice);
-                    const net = profit - (sprice * adsPct / 100);
+                    const net = profit - (sprice * ((typeof amazonAdsPctAtPrice === 'function') ? amazonAdsPctAtPrice(sprice) : adsPct) / 100);
                     const lp = parseFloat(d.LP_productmaster) || 0;
                     const al30 = (typeof amzPefAL30 === 'function') ? amzPefAL30(d) : 0;
                     const ov30 = (typeof amzPefOvL30 === 'function') ? amzPefOvL30(d) : 0;

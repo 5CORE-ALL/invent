@@ -309,7 +309,12 @@ class AmazonSprcDilAutoPushService
                 AmazonDilGroiRule::cvrTrend($cvrL30, $cvrL45),
                 $cvrAdj
             );
-            $dilPrice = AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, $ads);
+            // Dynamic Rule (Ads % by price slab): solve the price against the Ads % of the slab it lands in.
+            $dilPrice = AmazonDilGroiRule::priceWithDynamicAds(
+                fn (float $a): ?float => AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, $a),
+                (float) $ads,
+                $this->dynamicAdsRule()
+            );
             if ($dilPrice !== null && ! ($dilPrice >= 0.01)) {
                 $dilPrice = null;
             }
@@ -406,13 +411,17 @@ class AmazonSprcDilAutoPushService
         $snroiCapped = false;
         if ($snroiCap !== null) {
             // Clearance: the Clearance SNROI target replaces the SNROI Cap and the price rounds up so SNROI is never under it.
-            $afterCap = StdPrcVsDilPricer::snroiTargetPrice(
-                $snroiCap,
-                $lp,
-                AmazonDilGroiRule::TAKE_HOME,
-                $ship,
-                max(0.0, (float) $ads) / 100,
-                $clearanceTarget !== null
+            $afterCap = AmazonDilGroiRule::priceWithDynamicAds(
+                fn (float $a): ?float => StdPrcVsDilPricer::snroiTargetPrice(
+                    $snroiCap,
+                    $lp,
+                    AmazonDilGroiRule::TAKE_HOME,
+                    $ship,
+                    max(0.0, $a) / 100,
+                    $clearanceTarget !== null
+                ),
+                max(0.0, (float) $ads),
+                $this->dynamicAdsRule()
             );
             if ($clearanceTarget !== null && $afterCap === null) {
                 return null;
@@ -1167,6 +1176,15 @@ class AmazonSprcDilAutoPushService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /** @var array{enabled: bool, slabs: array}|null */
+    private ?array $dynamicAdsRuleCache = null;
+
+    /** Dynamic Rule (Ads % by price slab) saved on /amazon-tabulator-view. Loaded once per service instance. */
+    protected function dynamicAdsRule(): array
+    {
+        return $this->dynamicAdsRuleCache ??= AmazonDilGroiRule::loadDynamicAdsRule();
     }
 
     /** Channel Master Amazon Ads% — same source as /amazon-tabulator-view SNROI. */

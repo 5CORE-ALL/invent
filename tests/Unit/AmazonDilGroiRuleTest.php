@@ -471,6 +471,40 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame(30.0, AmazonDilGroiRule::clearanceSnroiTarget(400, $rules));
     }
 
+    public function test_dynamic_ads_solves_the_price_against_its_own_slab(): void
+    {
+        $rule = ['enabled' => true, 'slabs' => [
+            ['min' => 0.0, 'max' => 20.0, 'pct' => 0.0],
+            ['min' => 20.0, 'max' => null, 'pct' => 13.0],
+        ]];
+        $solve = fn (float $lp, float $ship, float $target) => fn (float $a): ?float => AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $target, $a);
+
+        // Lands under $20 with 0% Ads.
+        $this->assertSame(17.5, AmazonDilGroiRule::priceWithDynamicAds($solve(10, 1, 30), 13.3, $rule));
+        // Would be $25.63 with 0% Ads, which is in the 13% slab, so it is solved with 13%.
+        $this->assertSame(30.6, AmazonDilGroiRule::priceWithDynamicAds($solve(15, 1, 30), 13.3, $rule));
+        // Rule off, or no slabs: the channel Ads % alone.
+        $off = ['enabled' => false, 'slabs' => $rule['slabs']];
+        $this->assertSame(
+            AmazonDilGroiRule::suggestedPriceFromNroi(15, 1, 30, 13.3),
+            AmazonDilGroiRule::priceWithDynamicAds($solve(15, 1, 30), 13.3, $off)
+        );
+        $this->assertSame(13.3, AmazonDilGroiRule::dynamicAdsPctAtPrice(25, $off, 13.3));
+    }
+
+    public function test_dynamic_ads_uses_slab_start_when_higher_slab_has_lower_ads(): void
+    {
+        $rule = ['enabled' => true, 'slabs' => [
+            ['min' => 0.0, 'max' => 20.0, 'pct' => 30.0],
+            ['min' => 20.0, 'max' => null, 'pct' => 0.0],
+        ]];
+        $solve = fn (float $a): ?float => AmazonDilGroiRule::suggestedPriceFromNroi(14, 0, 0, $a);
+        // 30% Ads needs $28 (not under $20); 0% Ads needs $17.50 (under its slab start), so the slab start $20.
+        $this->assertSame(20.0, AmazonDilGroiRule::priceWithDynamicAds($solve, 13.3, $rule));
+        $this->assertSame(30.0, AmazonDilGroiRule::dynamicAdsPctAtPrice(19.99, $rule, 13.3));
+        $this->assertSame(0.0, AmazonDilGroiRule::dynamicAdsPctAtPrice(20, $rule, 13.3));
+    }
+
     public function test_clearance_snroi_blank_target_and_empty_list_mean_unpriced(): void
     {
         $rules = AmazonDilGroiRule::normalizeClearanceSnroiRules([['min' => 0, 'max' => 25, 'nroi' => '']]);
