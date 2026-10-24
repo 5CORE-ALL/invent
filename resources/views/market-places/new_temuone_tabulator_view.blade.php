@@ -2308,7 +2308,7 @@
     /**
      * S Promo Prc that lands exactly on the Sprc Dil Target SNROI (Temu formula, same as the SNROI% column):
      *   SNROI = ((S Promo Prc × 0.95 − Temu Ship − LP) − Std Prc × Ads%) / LP × 100
-     *   S Promo Prc = (LP × (1 + target/100) + Ship + Std × Ads%) / 0.95, rounded down to the cent.
+     *   S Promo Prc = (LP × (1 + target/100) + Ship + Std × Ads%) / 0.95, rounded to the nearest cent.
      */
     function ntoRowDilTargetPrc(d) {
         return ntoMemo(d, 'dilPrc', function() {
@@ -2319,7 +2319,9 @@
             if (!(std > 0) || !(lp > 0)) return null;
             const ship = parseFloat(d && d.temu_ship) || 0;
             const adsFrac = (typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 0) / 100;
-            const prc = Math.floor((((lp * (1 + target / 100)) + ship + (std * adsFrac)) / 0.95) * 100 + 0.00001) / 100;
+            // Nearest cent, not rounded down: on a low-LP SKU one cent moves SNROI% by about a point, and rounding down
+            // always landed just under the target (134% for a 135% target).
+            const prc = Math.round(((((lp * (1 + target / 100)) + ship + (std * adsFrac)) / 0.95) * 100) - 0.00001) / 100;
             return prc > 0 ? prc : null;
         });
     }
