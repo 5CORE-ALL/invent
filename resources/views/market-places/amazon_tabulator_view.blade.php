@@ -514,8 +514,37 @@
 
         /* LMP ignore: dim ignored competitors; they don't count toward L1 */
         #lmpModal tr.lmp-ignored-row {
-            opacity: 0.55;
+            opacity: 0.75;
             background: #f1f3f5 !important;
+        }
+        /* Larger, bolder competitor table text for readability */
+        #lmpModal #lmpDataList table {
+            font-size: 15px;
+        }
+        #lmpModal #lmpDataList tbody td {
+            font-size: 15px;
+            font-weight: 700;
+            vertical-align: middle;
+        }
+        #lmpModal #lmpDataList tbody td span,
+        #lmpModal #lmpDataList tbody td strong,
+        #lmpModal #lmpDataList tbody td .badge {
+            font-size: 15px !important;
+            font-weight: 700 !important;
+        }
+        #lmpModal #lmpDataList tbody td small {
+            font-size: 12px !important;
+            font-weight: 600 !important;
+        }
+        #lmpModal #lmpDataList tbody td .badge {
+            padding: 0.4em 0.6em;
+        }
+        #lmpModal #lmpDataList thead th {
+            font-size: 14px;
+            font-weight: 700;
+        }
+        #lmpModal #lmpDataList thead th small {
+            font-size: 12px;
         }
         #lmpModal tr.lmp-ignored-row td {
             text-decoration: line-through;
@@ -540,7 +569,7 @@
             background: #334155 !important;
             color: #fff !important;
             border-color: #475569 !important;
-            font-weight: 600;
+            font-weight: 700;
         }
         #lmpModal.modal {
             --tz-modal-width: 100%;
@@ -7477,10 +7506,10 @@
                     
                     const revenue = item.monthly_revenue ? `<span style="color: #28a745; font-weight: 600;">$${parseFloat(item.monthly_revenue).toFixed(0)}</span>` : '<span style="color: #999;">—</span>';
                     const units = item.monthly_units_sold ? `<span style="color: #007bff; font-weight: 600;">${parseInt(item.monthly_units_sold)}</span>` : '<span style="color: #999;">—</span>';
-                    const buyBox = item.buy_box_owner ? `<span style="font-size: 11px;">${item.buy_box_owner}</span>` : '<span style="color: #999;">—</span>';
+                    const buyBox = item.buy_box_owner ? `<span style="font-size: 14px; font-weight: 700;">${item.buy_box_owner}</span>` : '<span style="color: #999;">—</span>';
                     const sellerType = item.seller_type ? `<span class="badge bg-${item.seller_type === 'FBA' ? 'warning' : 'secondary'}">${item.seller_type}</span>` : '<span style="color: #999;">—</span>';
                     
-                    const rating = item.rating ? `<span style="color: #ffc107;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>` : '<span style="color: #999;">—</span>';
+                    const rating = item.rating ? `<span style="color: #e0a800; font-weight: 700;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>` : '<span style="color: #999;">—</span>';
                     const reviews = item.reviews ? `<span>${parseInt(item.reviews).toLocaleString()}</span>` : '<span style="color: #999;">—</span>';
 
                     let deliveryHtml = '<span style="color: #999;">—</span>';
@@ -7495,7 +7524,7 @@
                         } else if (paidMatch) {
                             deliveryHtml = `<span style="color: #dc3545; font-weight: 600;" title="${escAttr(delText)}">$${paidMatch[1]} ship</span>`;
                         } else {
-                            deliveryHtml = `<span style="font-size: 10px;" title="${escAttr(delText)}">${delText.substring(0, 22)}${delText.length > 22 ? '…' : ''}</span>`;
+                            deliveryHtml = `<span style="font-size: 13px; font-weight: 700;" title="${escAttr(delText)}">${delText.substring(0, 22)}${delText.length > 22 ? '…' : ''}</span>`;
                         }
                     }
 
@@ -7517,7 +7546,7 @@
                             stockHtml = `<span style="color:#28a745;font-weight:600;" title="${tip}">In Stock</span>`;
                         } else {
                             const short = stockText.length > 18 ? stockText.substring(0, 18) + '…' : stockText;
-                            stockHtml = `<span style="font-size:10px;" title="${tip}">${escAttr(short)}</span>`;
+                            stockHtml = `<span style="font-size:13px;font-weight:700;" title="${tip}">${escAttr(short)}</span>`;
                         }
                     }
                     
@@ -7526,7 +7555,7 @@
                             <td class="text-center"><strong>${index + 1}</strong></td>
                             <td class="text-center">${imageHtml}</td>
                             <td>
-                                <span class="text-primary" style="font-weight: 600; font-size: 11px;">${item.asin || 'N/A'}</span>
+                                <span class="text-primary" style="font-weight: 700; font-size: 14px;">${item.asin || 'N/A'}</span>
                             </td>
                             <td class="text-center" style="width: 44px;">${titleCell}</td>
                             <td class="text-center" style="width: 44px;">${sellerCell}</td>
@@ -7536,7 +7565,7 @@
                             <td class="text-center lmp-std-npft-cell">${modalNpftHtml}</td>
                             <td class="text-center">${revenue}</td>
                             <td class="text-center">${units}</td>
-                            <td style="font-size: 11px;">${buyBox}</td>
+                            <td style="font-size: 14px; font-weight: 700;">${buyBox}</td>
                             <td class="text-center">${sellerType}</td>
                              <td class="text-center">${rating}</td>
                             <td class="text-center">${reviews}</td>
