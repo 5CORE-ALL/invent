@@ -797,6 +797,8 @@ class OverallAmazonController extends Controller
 
         foreach ($groupedByParent as $parent => $rows) {
             foreach ($rows as $row) {
+                // No parent: TCOS% is the SKU's own spend ÷ sales (overwritten below for parented SKUs).
+                $row->TCOS_PCT = self::skuAcosPercent($row->ad_spend ?? null, $row->T_Sale_l30 ?? 0);
                 $finalResult[] = $row;
             }
 
@@ -902,6 +904,13 @@ class OverallAmazonController extends Controller
             $childPrices = $rows->pluck('price')->filter(fn($p) => is_numeric($p) && $p > 0);
             $sumRow['price'] = $childPrices->count() > 0 ? round($childPrices->avg(), 2) : 0;
             $sumRow['ACOS'] = self::skuAcosPercent($sumRow['ad_spend'] ?? 0, $sumRow['T_Sale_l30'] ?? 0);
+
+            // TCOS% = parent spend ÷ parent sales; child SKU rows show the same parent %.
+            $parentTcos = self::skuAcosPercent($sumRow['ad_spend'] ?? 0, $sumRow['T_Sale_l30'] ?? 0);
+            $sumRow['TCOS_PCT'] = $parentTcos;
+            foreach ($rows as $childRow) {
+                $childRow->TCOS_PCT = $parentTcos;
+            }
 
             $finalResult[] = (object) $sumRow;
         }

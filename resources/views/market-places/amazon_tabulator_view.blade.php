@@ -1669,6 +1669,29 @@
             return amazonComputeGpftAt(amazonDisplaySprice(rowData), rowData);
         }
 
+        /** L30 gross profit $ − the row's own L30 ad spend $ (parent rows use summed values). */
+        function amazonTcNetProfit(rowData) {
+            if (!rowData) return null;
+            const pft = parseFloat(rowData.Total_pft);
+            if (!isFinite(pft)) return null;
+            const spend = parseFloat(rowData.ad_spend);
+            return pft - (isFinite(spend) ? spend : 0);
+        }
+        /** TC NPFT% = (L30 profit $ − ad spend $) ÷ L30 sales $ × 100. No channel Ads%. */
+        function amazonComputeTcNpft(rowData) {
+            const net = amazonTcNetProfit(rowData);
+            const sales = parseFloat(rowData && rowData.T_Sale_l30);
+            if (net === null || !(sales > 0)) return null;
+            return (net / sales) * 100;
+        }
+        /** TC NROI% = (L30 profit $ − ad spend $) ÷ L30 COGS $ × 100. No channel Ads%. */
+        function amazonComputeTcNroi(rowData) {
+            const net = amazonTcNetProfit(rowData);
+            const cogs = parseFloat(rowData && rowData.T_COGS);
+            if (net === null || !(cogs > 0)) return null;
+            return (net / cogs) * 100;
+        }
+
         /** SNPFT = live S GPFT − Ads% */
         function amazonComputeSpft(rowData) {
             const sgpft = amazonComputeSgpft(rowData);
@@ -5330,6 +5353,40 @@
                         width: 65
                     },
                     {
+                        title: "Spend",
+                        field: "ad_spend",
+                        hozAlign: "center",
+                        headerSortStartingDir: "desc",
+                        headerTooltip: "Ad spend L30 for this SKU (Spend L30). Same value ACOS uses.",
+                        sorter: amazonMetricSorter(function(d) {
+                            const v = parseFloat(d && d.ad_spend);
+                            return isFinite(v) ? v : null;
+                        }),
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getRow().getData().ad_spend);
+                            if (!isFinite(v) || v <= 0) return '<span style="color:#999;">—</span>';
+                            return `<span style="font-weight:600;">$${v.toFixed(2)}</span>`;
+                        },
+                        width: 65
+                    },
+                    {
+                        title: "TCos %",
+                        field: "TCOS_PCT",
+                        hozAlign: "center",
+                        headerSortStartingDir: "desc",
+                        headerTooltip: "TCOS% = Spend ÷ Sales (L30). Calculated on the parent row (parent spend ÷ parent sales); child SKUs show their parent's %.",
+                        sorter: amazonMetricSorter(function(d) {
+                            const v = parseFloat(d && d.TCOS_PCT);
+                            return isFinite(v) ? v : null;
+                        }),
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getRow().getData().TCOS_PCT);
+                            if (!isFinite(v)) return '<span style="color:#999;">—</span>';
+                            return `<span style="font-weight:600;">${v.toFixed(1)}%</span>`;
+                        },
+                        width: 65
+                    },
+                    {
                         title: "Ads %",
                         field: "ADS_PCT",
                         hozAlign: "center",
@@ -5364,6 +5421,36 @@
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
+                    },
+                    {
+                        title: "TC NPFT%",
+                        field: "TC_NPFT",
+                        hozAlign: "center",
+                        headerSortStartingDir: "desc",
+                        headerTooltip: "TC NPFT% = (L30 gross profit $ − the row's actual L30 ad spend $) ÷ L30 sales $ × 100. Uses real spend, not the Ads% column.",
+                        sorter: amazonMetricSorter(amazonComputeTcNpft),
+                        formatter: function(cell) {
+                            const percent = amazonComputeTcNpft(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '<span style="color:#999;">—</span>';
+                            const _st = (window.MetricPctColors && MetricPctColors.styleFor('npft', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 65
+                    },
+                    {
+                        title: "TC NROI%",
+                        field: "TC_NROI",
+                        hozAlign: "center",
+                        headerSortStartingDir: "desc",
+                        headerTooltip: "TC NROI% = (L30 gross profit $ − the row's actual L30 ad spend $) ÷ L30 COGS $ × 100. Uses real spend, not the Ads% column.",
+                        sorter: amazonMetricSorter(amazonComputeTcNroi),
+                        formatter: function(cell) {
+                            const percent = amazonComputeTcNroi(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '<span style="color:#999;">—</span>';
+                            const _st = (window.MetricPctColors && MetricPctColors.styleFor('nroi', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 70
                     },
                     {
                         title: "ACOS",
