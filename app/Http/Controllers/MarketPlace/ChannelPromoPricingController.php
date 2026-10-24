@@ -276,6 +276,8 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
         $rule = \App\Support\SpriceActiveRule::save($channel, (string) $request->input('rule', 'std'));
+        // eBay 1/2/3: switching Std prc vs dil <-> Sprc Dil re-saves S PRC from the rule that is now ON.
+        \App\Support\EbayRuleSpriceApply::dispatch($channel);
 
         return response()->json([
             'success' => true,
@@ -1486,6 +1488,10 @@ class ChannelPromoPricingController extends Controller
             'shopify_b2c' => \App\Services\ShopifyB2cSprcDilAutoPushService::class,
         ];
         try {
+            if (in_array($channel, \App\Support\EbayRuleSprice::CHANNELS, true)) {
+                // eBay 1/2/3: re-save every S PRC from the new rules now (no push).
+                return \App\Support\EbayRuleSpriceApply::runNow($channel);
+            }
             if ($channel === 'tiktok' || $channel === 'tiktok2') {
                 $service = \App\Services\TiktokSprcDilAutoPushService::forChannel($channel);
             } elseif (isset($services[$channel])) {
@@ -1946,6 +1952,9 @@ class ChannelPromoPricingController extends Controller
         if ($channel === 'macys' || $channel === 'macy') {
             \App\Support\MacysRuleSpriceApply::dispatch();
         }
+
+        // eBay 1/2/3: re-save S PRC from the new Dil rules right after this response (no push, no waiting).
+        \App\Support\EbayRuleSpriceApply::dispatch($channel);
 
         return response()->json([
             'success' => true,

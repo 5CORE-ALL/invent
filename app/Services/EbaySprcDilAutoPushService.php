@@ -46,6 +46,7 @@ class EbaySprcDilAutoPushService
         $lock = Cache::lock('ebay-sprc-dil-auto-push-run-'.$channel, 1800);
         if (! $lock->get()) {
             $log('eBay S PRC run already in progress for '.$channel.' — skipped.');
+            $stats['errors'][] = 'lock: already running';
 
             return ['stats' => $stats, 'changes' => []];
         }

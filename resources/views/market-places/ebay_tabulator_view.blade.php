@@ -1482,9 +1482,12 @@
             if (!rowData || rowData.is_parent_summary) return 0;
             try {
                 if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                    // Rules not loaded yet: the defaults would flash a wrong price, so show the saved one.
+                    if (window._ebayDilRulesLoaded !== true) return 0;
                     const meta = (typeof ebayDilGroiMetaForRow === 'function') ? ebayDilGroiMetaForRow(rowData) : null;
                     return (meta && meta.rawSprc > 0) ? Number(meta.rawSprc) : 0;
                 }
+                if (window.__chStdSettled !== true) return 0;
                 if (typeof window.chStdPriceForRow === 'function') {
                     const n = Number(window.chStdPriceForRow(rowData)) || 0;
                     return n > 0 ? n : 0;
@@ -1492,6 +1495,12 @@
             } catch (e) { /* rule not loaded yet */ }
             return 0;
         }
+        /** Switch Sprc Dil <-> Std prc vs dil: repaint every S PRC dependent cell from the rule now ON. The server
+         *  re-saves S PRC right after the switch is saved (EbayRuleSpriceApply). */
+        window.spriceOnRuleSwitched = function() {
+            try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
+            try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
+        };
         function ebayCapSpriceToLmp(rowData, sprice) {
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
@@ -1519,8 +1528,24 @@
             const n = Number(raw);
             return (isFinite(n) && n > 0) ? Math.round(n * 100) / 100 : 0;
         }
+        /**
+         * S PRC shown on the page (and used by S GROI, S NROI, SGPFT, the summaries): the LIVE rule price with the
+         * LMP cap and the Std Prc maximum, like Amazon. Changing a rule repaints at once; the server saves the same
+         * price right after (EbayRuleSpriceApply). Falls back to the saved S PRC while the rules are not loaded or the
+         * row has no rule price.
+         */
         function ebayDisplayedSprice(rowData) {
-            return ebayRawRuleSprice(rowData);
+            const saved = ebayRawRuleSprice(rowData);
+            if (!rowData || rowData.is_parent_summary) return saved;
+            try {
+                const raw = ebay1LiveRuleSprice(rowData);
+                if (raw > 0) {
+                    const capped = Number(ebayCapSpriceToLmp(rowData, raw));
+                    const live = (isFinite(capped) && capped > 0) ? capped : raw;
+                    return Math.round(live * 100) / 100;
+                }
+            } catch (e) { /* use the saved price */ }
+            return saved;
         }
         window.ebaySgroiAtPrice = ebaySgroiAtPrice;
         window.ebayShouldCapSpriceToLmp = ebayShouldCapSpriceToLmp;
@@ -2730,7 +2755,8 @@
             // Caps applied after the rule price (same order as the grid: LMP cap, then Std Prc maximum)
             let afterLmp = raw;
             if (raw > 0 || !dilOn) {
-                const base = dilOn ? raw : saved;
+                const stdLive = dilOn ? 0 : ((typeof ebay1LiveRuleSprice === 'function') ? ebay1LiveRuleSprice(d) : 0);
+                const base = dilOn ? raw : (stdLive > 0 ? stdLive : saved);
                 const n = dilOn ? '6' : '2';
                 if (!(lmp > 0)) {
                     steps.push(ebayRuleStep('skip', n + ' · LMP cap', 'No LMP available, so no LMP cap.'));
@@ -2752,7 +2778,7 @@
                             + (dilOn ? 'LMP − ' + pct + '% (Dil band)' : 'LMP') + ' = <b>' + ebayRuleMoney(afterLmp) + '</b>'));
                     }
                 }
-                const stdBase = dilOn ? (afterLmp > 0 ? afterLmp : raw) : saved;
+                const stdBase = dilOn ? (afterLmp > 0 ? afterLmp : raw) : (stdLive > 0 ? stdLive : saved);
                 const sn = dilOn ? '7' : '3';
                 if (!(std > 0)) {
                     steps.push(ebayRuleStep('skip', sn + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
@@ -2774,12 +2800,10 @@
             }
 
             let finalNote = '';
-            if (dilOn && raw > 0) {
-                const computed = (typeof ebayCapSpriceToLmp === 'function') ? ebayCapSpriceToLmp(d, raw) : 0;
-                if (computed > 0 && saved > 0 && Math.abs(computed - saved) > 0.009) {
-                    finalNote = 'The saved S PRC ' + ebayRuleMoney(saved) + ' differs from what the rules give now ('
-                        + ebayRuleMoney(computed) + '). It updates on the next save, or it was set before the rule values changed.';
-                }
+            const serverSaved = (typeof ebayRawRuleSprice === 'function') ? ebayRawRuleSprice(d) : 0;
+            if (saved > 0 && serverSaved > 0 && Math.abs(serverSaved - saved) > 0.009) {
+                finalNote = 'The page shows the live rule price ' + ebayRuleMoney(saved) + '. The saved S PRC is still '
+                    + ebayRuleMoney(serverSaved) + '; the server re-saves it from the rules right after a rule change.';
             }
             return {
                 title: 'S PRC ' + ebayRuleMoney(saved),
@@ -3683,11 +3707,14 @@
                 if (!data || ebay1IsAlertParentRow(data)) return false;
                 if (!(Number(String(data.INV == null ? '' : data.INV).replace(/[,\s\u00A0]/g, '')) > 0)) return false;
                 if (ebay1IsEndedListing(data)) return false;
-                // Judge on the S PRC the server saved (what the runner / blue push actually sends), not on
-                // the page's own recalculation, so the badge and the pushes cannot disagree.
-                const sprice = (data.SPRICE_SERVER !== undefined)
-                    ? (Number(data.SPRICE_SERVER) || 0)
-                    : ebay1RowSpriceForAlert(data);
+                // Live rule price (same as the S PRC cell), so a rule change moves the badge at once like Amazon.
+                // The server saves the same price right after the change, and the blue push sends the saved one.
+                let sprice = Number(ebayDisplayedSprice(data)) || 0;
+                if (!(sprice > 0)) {
+                    sprice = (data.SPRICE_SERVER !== undefined)
+                        ? (Number(data.SPRICE_SERVER) || 0)
+                        : ebay1RowSpriceForAlert(data);
+                }
                 const price = parseFloat(data['eBay Price']) || 0;
                 return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
             }

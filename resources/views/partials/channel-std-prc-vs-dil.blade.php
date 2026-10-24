@@ -2357,6 +2357,7 @@
                     chStdAutoApplied = true;
                     chStdEnsureColumns();
                     chStdRepaintDiscColumns();
+                    window.__chStdSettled = true; // rules + clearance loaded: pages may price live from them
                     // Rows rendered before the rules / Amazon map finished loading keep their zero discounts if a cell
                     // was missed above, so re-render every rendered row once the data is ready.
                     try {
