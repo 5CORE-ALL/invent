@@ -103,7 +103,7 @@ class AmazonAdsController extends Controller
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
         'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos',
         'pageCvr', 'viewsL30', 'viewsL7',
-        'ACOS', 'ltAcos',
+        'ACOS', 'ltAcos', 'ltSpend', 'ltSales',
     ];
 
     /**
@@ -465,7 +465,7 @@ class AmazonAdsController extends Controller
         $canAcos = in_array('cost', $baseCols, true)
             && (in_array('sales30d', $baseCols, true) || in_array('sales', $baseCols, true));
         if ($canAcos) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'ACOS' && $c !== 'ltAcos'));
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => ! in_array($c, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales'], true)));
             $idxSales30 = array_search('yAcos', $ordered, true);
             if ($idxSales30 === false) {
                 $idxSales30 = array_search('ySales', $ordered, true);
@@ -474,11 +474,11 @@ class AmazonAdsController extends Controller
                 $idxSales30 = array_search('sales30d', $ordered, true);
             }
             if ($idxSales30 !== false) {
-                array_splice($ordered, $idxSales30 + 1, 0, ['ACOS', 'ltAcos']);
+                array_splice($ordered, $idxSales30 + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales']);
             } else {
                 $idxSales = array_search('sales', $ordered, true);
                 if ($idxSales !== false) {
-                    array_splice($ordered, $idxSales + 1, 0, ['ACOS', 'ltAcos']);
+                    array_splice($ordered, $idxSales + 1, 0, ['ACOS', 'ltAcos', 'ltSpend', 'ltSales']);
                 }
             }
         }
@@ -2392,6 +2392,73 @@ class AmazonAdsController extends Controller
             $cost = (float) ($r['life_cost'] ?? 0);
             $sales = (float) ($r['life_sales'] ?? 0);
             $map[$cid."\0".$ad] = self::lifetimeAcosPercent($cost, $sales);
+        }
+
+        return $map;
+    }
+
+    /**
+     * Lifetime spend and sales for the visible page: total cost / total sales on daily API rows
+     * (`report_date_range` YYYY-MM-DD). Same rows and columns as LT ACOS.
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  iterable<int, object>  $pageRows
+     * @return array<string, array{spend: ?float, sales: ?float}>
+     */
+    private static function prefetchLifetimeSpendSalesForPageRows(string $table, array $dbColumns, iterable $pageRows): array
+    {
+        if (! in_array('campaign_id', $dbColumns, true) || ! in_array('report_date_range', $dbColumns, true)) {
+            return [];
+        }
+        $costCol = in_array('cost', $dbColumns, true) ? 'cost' : (in_array('spend', $dbColumns, true) ? 'spend' : null);
+        $salesCol = in_array('sales30d', $dbColumns, true) ? 'sales30d' : (in_array('sales', $dbColumns, true) ? 'sales' : null);
+        if ($costCol === null && $salesCol === null) {
+            return [];
+        }
+        $hasAdType = in_array('ad_type', $dbColumns, true);
+        $cids = [];
+        foreach ($pageRows as $row) {
+            $rowArr = (array) $row;
+            $cid = isset($rowArr['campaign_id']) ? trim((string) $rowArr['campaign_id']) : '';
+            if ($cid !== '') {
+                $cids[$cid] = true;
+            }
+        }
+        $cidList = array_keys($cids);
+        if ($cidList === []) {
+            return [];
+        }
+
+        $select = ['campaign_id'];
+        if ($costCol !== null) {
+            $select[] = DB::raw('SUM(`'.$costCol.'`) as life_cost');
+        }
+        if ($salesCol !== null) {
+            $select[] = DB::raw('SUM(`'.$salesCol.'`) as life_sales');
+        }
+        if ($hasAdType) {
+            $select[] = 'ad_type';
+        }
+        $q = DB::table($table)
+            ->select($select)
+            ->whereIn('campaign_id', $cidList)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10');
+        $q->groupBy($hasAdType ? ['campaign_id', 'ad_type'] : ['campaign_id']);
+
+        $map = [];
+        foreach ($q->get() as $fr) {
+            $r = (array) $fr;
+            $cid = isset($r['campaign_id']) ? trim((string) $r['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($r['ad_type'] ?? '')) : '';
+            $cost = isset($r['life_cost']) && $r['life_cost'] !== null ? (float) $r['life_cost'] : null;
+            $sales = isset($r['life_sales']) && $r['life_sales'] !== null ? (float) $r['life_sales'] : null;
+            $map[$cid."\0".$ad] = [
+                'spend' => ($cost !== null && is_finite($cost)) ? round($cost, 2) : null,
+                'sales' => ($sales !== null && is_finite($sales)) ? round($sales, 2) : null,
+            ];
         }
 
         return $map;
@@ -6898,6 +6965,7 @@ class AmazonAdsController extends Controller
         $hasCpcAvg = in_array('CPCAvg', $columns, true) && (! $forBgtUniverse || $forSbidUniverse);
         $hasLtCvr = ! $forBgtUniverse && in_array('ltCvr', $columns, true);
         $hasLtAcos = ! $forSbidUniverse && in_array('ltAcos', $columns, true);
+        $hasLtSpendSales = ! $forSbidUniverse && (in_array('ltSpend', $columns, true) || in_array('ltSales', $columns, true));
         $needRuleStatus = in_array('ruleStatus', $columns, true);
         $needActiveAgain = in_array('activeAgain', $columns, true);
         $needSkuMetrics = $needRuleStatus || $needActiveAgain || in_array('sbgt', $columns, true)
@@ -6993,6 +7061,9 @@ class AmazonAdsController extends Controller
         $ltAcosMap = $hasLtAcos
             ? self::prefetchLifetimeAcosForPageRows($table, $dbColumns, $rows)
             : [];
+        $ltSpendSalesMap = $hasLtSpendSales
+            ? self::prefetchLifetimeSpendSalesForPageRows($table, $dbColumns, $rows)
+            : [];
         $skuInvByCid = [];
         $skuInvCids = [];
         foreach ($rows as $invRow) {
@@ -7083,6 +7154,12 @@ class AmazonAdsController extends Controller
                 $arr['ltAcos'] = ($cid !== '' && array_key_exists($cid."\0".$adKeyAcos, $ltAcosMap))
                     ? $ltAcosMap[$cid."\0".$adKeyAcos]
                     : null;
+            }
+            if ($hasLtSpendSales) {
+                $adKeyLtSs = in_array('ad_type', $dbColumns, true) ? trim((string) ($adTypeStr ?? '')) : '';
+                $ltSs = ($cid !== '') ? ($ltSpendSalesMap[$cid."\0".$adKeyLtSs] ?? null) : null;
+                $arr['ltSpend'] = $ltSs['spend'] ?? null;
+                $arr['ltSales'] = $ltSs['sales'] ?? null;
             }
             if ($hasCpc2) {
                 $day2 = self::calendarDayOffsetFromCpc1Anchor($rowArr, $dbColumns, $table, 1);
@@ -8024,7 +8101,7 @@ class AmazonAdsController extends Controller
             'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain',
             'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'sbgt',
             'CPC3', 'CPCAvg', 'CPC2', 'ltCvr', 'L1cost', 'L1clicks',
-            'pageCvr', 'viewsL30', 'viewsL7', 'ltAcos',
+            'pageCvr', 'viewsL30', 'viewsL7', 'ltAcos', 'ltSpend', 'ltSales',
         ];
         if (! in_array($column, $handled, true)) {
             return null;
@@ -8039,6 +8116,7 @@ class AmazonAdsController extends Controller
         $needsCpcDay = $column === 'CPC2' || $column === 'CPC3';
         $needsCpcAvg = $column === 'CPCAvg';
         $needsLtCvr = $column === 'ltCvr';
+        $needsLtSpendSales = $column === 'ltSpend' || $column === 'ltSales';
         $needsL1 = $column === 'L1cost' || $column === 'L1clicks';
 
         $names = [];
@@ -8064,6 +8142,7 @@ class AmazonAdsController extends Controller
         $ltAcosMap = $needsLtAcos ? self::prefetchLifetimeAcosForPageRows($table, $dbColumns, $list) : [];
         $ltCvrMap = $needsLtCvr ? self::prefetchLifetimeCvrForPageRows($table, $dbColumns, $list) : [];
         $cpcAvgMap = $needsCpcAvg ? self::prefetchLifetimeAvgCpcForPageRows($table, $dbColumns, $list) : [];
+        $ltSpendSalesMap = $needsLtSpendSales ? self::prefetchLifetimeSpendSalesForPageRows($table, $dbColumns, $list) : [];
         $cpcDayCache = $needsCpcDay
             ? self::prefetchCostPerClickForPageRows($table, $dbColumns, $list, $column === 'CPC2', $column === 'CPC3')
             : [];
@@ -8169,6 +8248,10 @@ class AmazonAdsController extends Controller
                 $keys[] = AmazonAdsBgtCvrRule::apply($cvrIn)['bgt'];
             } elseif ($column === 'ltAcos') {
                 $keys[] = $ltAcos;
+            } elseif ($column === 'ltSpend' || $column === 'ltSales') {
+                $keys[] = ($cidRaw !== '' && isset($ltSpendSalesMap[$lk]))
+                    ? ($ltSpendSalesMap[$lk][$column === 'ltSpend' ? 'spend' : 'sales'] ?? null)
+                    : null;
             } elseif ($column === 'bgtAcos') {
                 $keys[] = is_numeric($ltAcos) ? AmazonAcosSbgtRule::bgtAcosDecimal((float) $ltAcos) : null;
             } elseif ($column === 'sbgt') {
