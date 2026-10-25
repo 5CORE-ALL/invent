@@ -1297,6 +1297,10 @@
         return stored > 0 ? Math.round(stored * 100) / 100 : 0;
     }
 
+    function shopifyB2cIsClearance(data) {
+        return typeof window.chStdIsClearance === 'function' && !!window.chStdIsClearance(data);
+    }
+
     /** LMP (non-ignored) is below A Price. */
     function shopifyB2cLmpBelowAmz(data) {
         const amz = shopifyB2cCents(shopifyB2cAmzPrice(data));
@@ -1311,6 +1315,8 @@
     function shopifyB2cDisplayedSprice(data) {
         const v = shopifyB2cRawSavedSprice(data);
         if (!(v > 0)) return 0;
+        // Clearance: only the Clearance Target NROI% applies, so no Amz raise (the server saved the final price).
+        if (shopifyB2cIsClearance(data)) return v;
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
         if (amz > 0 && (shopifyB2cLmpBelowAmz(data) || v + 0.0001 < amz)) return amz;
         return v;
@@ -1330,7 +1336,7 @@
 
     /** Amz cap: S PRC is A Price because the rule price or LMP was below it (server flag AMZ_CAPPED, or computed here). */
     function shopifyB2cHasAmzCap(data) {
-        if (!data || isShopifyB2cParentRow(data)) return false;
+        if (!data || isShopifyB2cParentRow(data) || shopifyB2cIsClearance(data)) return false;
         const amz = shopifyB2cAmzPrice(data);
         const shown = shopifyB2cDisplayedSprice(data);
         if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) > 0.015) return false;
@@ -2786,7 +2792,8 @@
 
         // S PRC is saved + pushed by the server (shopify-b2c:sprc-dil-auto-push). The page only shows it.
         window.CH_STD_SERVER_OWNED = true;
-        // Clearance SKUs (Inv days clearance = YES) keep every rule on this page: priced and pushed like any other SKU, with a red C after the price.
+        // Clearance SKUs (Inv days clearance = YES) are priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes, and
+        // pushed like any other SKU, with a red C after the price. Read by channel-std-prc-vs-dil, ebay-sprc-dil and temu-rule-hover.
         window.CH_CLEARANCE_KEEPS_RULES = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2c', 'channelPromoTakehome' => 0.95])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
@@ -3416,7 +3423,7 @@
                         if (isShopifyB2cParentRow(rowData)) {
                             return '';
                         }
-                        // Clearance SKUs keep the normal rule price and are pushed like any other SKU. A red C follows the price.
+                        // Clearance SKUs show the price from the Clearance Target NROI% (saved and pushed by the server). A red C follows the price.
                         const value = shopifyB2cShownSprice(rowData);
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;

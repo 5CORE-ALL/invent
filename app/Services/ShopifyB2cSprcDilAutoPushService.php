@@ -24,7 +24,9 @@ use Throwable;
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI instead of the discounts,
  *  then the LMP cap and the Amz cap below still apply to it. Std Prc stays the maximum.
- *  Clearance SKUs are priced and pushed like any other SKU on this page (the page shows a red C after the price).
+ *  Clearance SKUs (Inv days clearance = YES) are priced only from the Clearance Target NROI% (last row of the Sprc Dil
+ *  modal), in Std prc vs dil and Sprc Dil alike: (LP × (1 + NROI%) + Ship) ÷ (0.95 − Ads%). No slab, Diff, CVR, LMP, Std
+ *  or Amz rule touches them. They are saved and pushed like any other SKU and the page shows a red C after the price.
  *
  * Then the Amz cap (same as the old page), on the LMP-capped price: LMP below A Price → A Price;
  * price above A Price stays; price at/below A Price → A Price.
@@ -172,6 +174,11 @@ class ShopifyB2cSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
+        // Clearance: only the Clearance Target NROI% prices it, whichever rule is active. Needs LP, not Std Prc.
+        if (($pricer ?? new StdPrcVsDilPricer([], 'shopify_b2c'))->isClearanceRow($row)) {
+            return $this->finishClearance($row, $adsPct);
+        }
+
         $dilOn = $dilContext !== null;
         $std = (float) ($row['standard_price'] ?? 0);
         // Std prc vs dil prices off Std Prc. Sprc Dil prices off the Dil slab, so a blank Std Prc only means "no maximum".
@@ -289,6 +296,53 @@ class ShopifyB2cSprcDilAutoPushService
             'diff_adj' => $diffAdj,
             'target' => $target,
             'price' => ($price !== null && $price >= 0.01) ? $price : null,
+        ];
+    }
+
+    /** Clearance Target NROI% saved with the Shopify B2C Sprc Dil rules (last row of the modal). Default 0. */
+    public static function clearanceNroi(): float
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'shopify_b2c_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $n = $unpacked['clearance_nroi'] ?? null;
+
+        return (is_numeric($n) && (float) $n >= 0) ? (float) $n : 0.0;
+    }
+
+    /**
+     * Clearance price, no cap of any kind: (LP × (1 + Clearance NROI%) + Ship) ÷ (0.95 − Ads%).
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,sgpft:float,snpft:float,sroi:float,snroi:float}|null
+     */
+    protected function finishClearance(array $row, float $adsPct): ?array
+    {
+        $lp = (float) ($row['lp'] ?? 0);
+        $ship = (float) ($row['ship'] ?? 0);
+        // A row may carry its own clearance_nroi (tests); otherwise the saved Sprc Dil modal value.
+        $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi']) ? (float) $row['clearance_nroi'] : self::clearanceNroi();
+        $price = AmazonDilGroiRule::suggestedPrice($lp, $ship, $nroi, max(0.0, $adsPct), self::MARGIN);
+        if ($price === null || ! ($price >= 0.01)) {
+            return null;
+        }
+        $sprice = round($price, 2);
+        $margin = self::MARGIN;
+        $gross = ($sprice * $margin) - $lp - $ship;
+        $sgpft = ($gross / $sprice) * 100;
+        $sroi = $lp > 0 ? ($gross / $lp) * 100 : 0.0;
+        $snroi = $lp > 0 ? (($gross - ($sprice * ($adsPct / 100))) / $lp) * 100 : 0.0;
+
+        return [
+            'sprice' => $sprice,
+            'rule_price' => $sprice,
+            'uncapped' => $sprice,
+            'amz_capped' => false,
+            'lmp_capped' => false,
+            'base' => round((float) ($row['standard_price'] ?? 0), 2),
+            'sgpft' => $sgpft,
+            'snpft' => $sgpft - $adsPct,
+            'sroi' => $sroi,
+            'snroi' => $snroi,
         ];
     }
 

@@ -714,7 +714,7 @@
             const rowTitle = 'S PRC ' + temuRuleMoney(final);
             const rowSub = sku + ' · ' + (dilOn ? 'Sprc Dil rule' : 'Std prc vs dil rule');
 
-            if (SB_IS_NE && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)
+            if ((SB_IS_NE || window.CH_CLEARANCE_KEEPS_RULES === true) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)
                 && typeof window.ebayClearancePriceForRow === 'function') {
                 const cp = Number(window.ebayClearancePriceForRow(d)) || 0;
                 steps.push(temuRuleStep('info', 'Clearance',

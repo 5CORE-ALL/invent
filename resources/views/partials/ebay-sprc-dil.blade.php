@@ -1647,7 +1647,8 @@
         function ebayDilGroiMetaForRow(d) {
             if (!ebayDgIsChild(d)) return null;
             // A SKU under clearance (Inv days clearance = YES) gets no Sprc Dil price: no slab, Diff, LMP, Std or Amz rule applies.
-            if (window.CH_CLEARANCE_KEEPS_RULES !== true && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) return null;
+            // (A page that sets CH_CLEARANCE_KEEPS_RULES prices it from the Clearance Target NROI% in ebaySprcDilForRow instead.)
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) return null;
             // Mercari: Dil 0% + L30 = 0 still gets the 0 Sold / nearest-slab S PRC
             // even when INV is 0 (Dil column is forced to 0% whenever INV is 0).
             if (!(ebayDgInv(d) > 0) && !ebayDgIsMercari()) return null;
@@ -1752,6 +1753,11 @@
             return tip + (meta.lmpCapped ? ' → LMP $' : ' → $') + Number(meta.sprc).toFixed(2);
         }
         function ebaySprcDilForRow(d) {
+            // Shopify B2C: a clearance SKU is priced from the Clearance Target NROI% (the server saves the same number).
+            if (window.CH_CLEARANCE_KEEPS_RULES === true && ebayDgIsChild(d)
+                && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+                return ebayClearancePriceForRow(d);
+            }
             const meta = ebayDilGroiMetaForRow(d);
             return meta ? meta.sprc : 0;
         }

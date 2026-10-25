@@ -128,13 +128,28 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertTrue($out['lmp_capped']);
     }
 
-    public function test_clearance_sku_is_priced_like_any_other_sku(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
-        // Shopify B2C keeps every rule for clearance SKUs: they are saved and pushed, and the page shows a red C.
-        $clr = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['clearance' => true]), $this->pricer());
-        $plain = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['clearance' => false]), $this->pricer());
+        // LP 20, Ship 3, take-home 0.95, Clearance NROI 10%: (20 × 1.10 + 3) ÷ 0.95 = 26.32. No age / dil / std rule applies.
+        $svc = new ShopifyB2cSprcDilAutoPushService;
+        $clr = $svc->computeTarget($this->row(['clearance' => true, 'clearance_nroi' => 10]), $this->pricer());
         $this->assertNotNull($clr);
-        $this->assertSame($plain['sprice'], $clr['sprice']);
+        $this->assertEqualsWithDelta(26.32, $clr['sprice'], 0.001);
+        $this->assertFalse($clr['lmp_capped']);
+        $this->assertFalse($clr['amz_capped']);
+        $this->assertEqualsWithDelta(10.0, $clr['snroi'], 0.2);
+    }
+
+    public function test_clearance_ignores_lmp_amz_and_std_caps_and_needs_no_std_price(): void
+    {
+        $svc = new ShopifyB2cSprcDilAutoPushService;
+        $out = $svc->computeTarget(
+            $this->row(['clearance' => true, 'clearance_nroi' => 10, 'lmp' => 20, 'amz' => 60, 'standard_price' => 0]),
+            $this->pricer()
+        );
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(26.32, $out['sprice'], 0.001);
+        $this->assertNull($svc->computeTarget($this->row(['clearance' => true, 'clearance_nroi' => 10, 'lp' => 0]), $this->pricer()));
     }
 
     /**
@@ -234,7 +249,7 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertSame(100.0, $std['sprice']);
     }
 
-    public function test_sprc_dil_keeps_the_amz_cap_and_prices_clearance(): void
+    public function test_sprc_dil_keeps_the_amz_cap_and_clearance_uses_its_own_nroi(): void
     {
         $svc = new ShopifyB2cSprcDilAutoPushService;
         // Dil price 34.74 is below A Price 60 → the Amz cap raises S PRC to A Price, like Std prc vs dil.
@@ -242,10 +257,10 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertSame(60.0, $amz['sprice']);
         $this->assertTrue($amz['amz_capped']);
 
-        $clr = $svc->computeTarget($this->row(['cvr' => 8, 'views' => 100, 'clearance' => true]), null, 0.0, $this->dilCtx());
-        $plain = $svc->computeTarget($this->row(['cvr' => 8, 'views' => 100]), null, 0.0, $this->dilCtx());
+        // Clearance ignores the slab, CVR overlay and Amz cap: only the Clearance NROI% prices it, in Sprc Dil mode too.
+        $clr = $svc->computeTarget($this->row(['cvr' => 8, 'views' => 100, 'amz' => 60, 'clearance' => true, 'clearance_nroi' => 10]), null, 0.0, $this->dilCtx());
         $this->assertNotNull($clr);
-        $this->assertSame($plain['sprice'], $clr['sprice']);
+        $this->assertEqualsWithDelta(26.32, $clr['sprice'], 0.001);
         $this->assertNull($svc->computeTarget($this->row(['lp' => 0, 'cvr' => 8, 'views' => 100]), null, 0.0, $this->dilCtx()));
     }
 

@@ -2053,9 +2053,9 @@ class ChannelPromoPricingController extends Controller
 
         // eBay 1/2/3: re-save S PRC from the new Dil rules right after this response (no push, no waiting).
         \App\Support\EbayRuleSpriceApply::dispatch($channel);
-        // Shopify B2C: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
-        if (\App\Support\ShopifyB2cRuleSpriceApply::handles($channel)
-            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+        // Shopify B2C: re-save S PRC from the new rules right after this response (no push, no waiting). Whichever rule is ON,
+        // because the Clearance Target NROI% in this modal prices clearance SKUs in both Std prc vs dil and Sprc Dil.
+        if (\App\Support\ShopifyB2cRuleSpriceApply::handles($channel)) {
             \App\Support\ShopifyB2cRuleSpriceApply::dispatch($channel);
         }
 
