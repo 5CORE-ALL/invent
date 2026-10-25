@@ -1053,6 +1053,8 @@ class Shopifyb2cController extends Controller
             $processedItem["has_custom_sprice"] = false;
             $processedItem["AMZ_SUGG_APPLIED"] = false;
             $processedItem["AMZ_CAPPED"] = false;
+            // The rule price before the LMP / Std Prc / Amz caps (saved by shopify-b2c:sprc-dil-auto-push). 0 = not saved yet.
+            $processedItem["SPRICE_RULE_PRICE"] = 0;
             $processedItem["cpn_pct"] = 0;
 
             $valuesArr = $viewBySku[$skuKey] ?? ($viewBySku[$sku] ?? null);
@@ -1062,6 +1064,7 @@ class Shopifyb2cController extends Controller
                 $processedItem["has_custom_sprice"] = $processedItem["SPRICE"] > 0;
                 $processedItem["AMZ_SUGG_APPLIED"] = !empty($valuesArr["AMZ_SUGG_APPLIED"]);
                 $processedItem["AMZ_CAPPED"] = !empty($valuesArr["AMZ_CAPPED"]);
+                $processedItem["SPRICE_RULE_PRICE"] = isset($valuesArr["SPRICE_RULE_PRICE"]) ? floatval($valuesArr["SPRICE_RULE_PRICE"]) : 0;
                 $processedItem["cpn_pct"] = isset($valuesArr["PEF_CPN_PCT"]) && is_numeric($valuesArr["PEF_CPN_PCT"])
                     ? round((float) $valuesArr["PEF_CPN_PCT"], 2)
                     : 0;

@@ -278,11 +278,28 @@ class ChannelPromoPricingController extends Controller
         $rule = \App\Support\SpriceActiveRule::save($channel, (string) $request->input('rule', 'std'));
         // eBay 1/2/3: switching Std prc vs dil <-> Sprc Dil re-saves S PRC from the rule that is now ON.
         \App\Support\EbayRuleSpriceApply::dispatch($channel);
+        // Shopify B2C: same, S PRC is re-saved from the rule that is now ON (not pushed).
+        \App\Support\ShopifyB2cRuleSpriceApply::dispatch($channel);
 
         return response()->json([
             'success' => true,
             'channel' => $channel,
             'rule' => $rule,
+        ]);
+    }
+
+    /** True while a rule change is still re-saving S PRC on the server. The page polls this, then reloads its rows. */
+    public function ruleApplyStatus(string $channel): JsonResponse
+    {
+        $channel = \App\Support\SpriceActiveRule::normalize($channel);
+        if (! \App\Support\ShopifyB2cRuleSpriceApply::handles($channel)) {
+            return response()->json(['success' => true, 'channel' => $channel, 'running' => false]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'channel' => $channel,
+            'running' => \App\Support\ShopifyB2cRuleSpriceApply::running(),
         ]);
     }
 
@@ -1955,6 +1972,11 @@ class ChannelPromoPricingController extends Controller
 
         // eBay 1/2/3: re-save S PRC from the new Dil rules right after this response (no push, no waiting).
         \App\Support\EbayRuleSpriceApply::dispatch($channel);
+        // Shopify B2C: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
+        if (\App\Support\ShopifyB2cRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\ShopifyB2cRuleSpriceApply::dispatch($channel);
+        }
 
         return response()->json([
             'success' => true,

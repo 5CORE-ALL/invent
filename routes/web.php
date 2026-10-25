@@ -6157,6 +6157,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/page-reload-push', [ChannelPromoPricingController::class, 'savePageReloadPushSetting'])->name('channel.promo.page-reload-push.save');
     Route::get('/channel-promo-pricing/{channel}/sprice-active-rule', [ChannelPromoPricingController::class, 'spriceActiveRule'])->name('channel.promo.sprice-active-rule.get');
     Route::post('/channel-promo-pricing/{channel}/sprice-active-rule', [ChannelPromoPricingController::class, 'saveSpriceActiveRule'])->name('channel.promo.sprice-active-rule.save');
+    Route::get('/channel-promo-pricing/{channel}/rule-apply-status', [ChannelPromoPricingController::class, 'ruleApplyStatus'])->name('channel.promo.rule-apply-status');
     Route::get('/channel-promo-pricing/{channel}/ignore-neg-snroi', [ChannelPromoPricingController::class, 'ignoreNegSnroiSetting'])->name('channel.promo.ignore-neg-snroi.get');
     Route::post('/channel-promo-pricing/{channel}/ignore-neg-snroi', [ChannelPromoPricingController::class, 'saveIgnoreNegSnroiSetting'])->name('channel.promo.ignore-neg-snroi.save');
     Route::post('/channel-push-sprice/{channel}', [ChannelPromoPricingController::class, 'queuePushSprice'])->name('channel.push-sprice.queue');

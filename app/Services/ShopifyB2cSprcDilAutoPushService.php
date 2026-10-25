@@ -6,7 +6,10 @@ use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cController;
 use App\Models\Shopifyb2cDataView;
 use App\Support\AmazonDilGroiRule;
+use App\Models\ChannelTabulatorColumnSetting;
+use App\Support\EbayRuleSprice;
 use App\Support\PushedListingPrice;
+use App\Support\SpriceActiveRule;
 use App\Support\StdPrcVsDilPricer;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -54,8 +57,12 @@ class ShopifyB2cSprcDilAutoPushService
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('shopify_b2c');
         $adsPct = $this->channelAdsPercent();
+        // The page switch (same as Amazon): Std prc vs dil <-> Sprc Dil. Only the ON rule fills S PRC.
+        $dilContext = SpriceActiveRule::forChannel('shopify_b2c') === 'dil' ? self::dilContext() : null;
 
-        $this->log($logger, 'Loaded Shopify B2C Std prc vs dil (shopify_b2c_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap + Amz cap. Ads%='.$adsPct);
+        $this->log($logger, $dilContext !== null
+            ? 'Sprc Dil switch ON → Dil slab Target SNROI + CVR overlay + Diff rule + LMP cap (Dil band) + Std max + Amz cap. Ads%='.$adsPct
+            : 'Loaded Shopify B2C Std prc vs dil (shopify_b2c_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap + Amz cap. Ads%='.$adsPct);
 
         $stats = [
             'candidates' => 0,
@@ -91,7 +98,7 @@ class ShopifyB2cSprcDilAutoPushService
             $total = count($rows);
             foreach ($rows as $i => $row) {
                 try {
-                    $computed = $this->computeTarget($row, $pricer, $adsPct);
+                    $computed = $this->computeTarget($row, $pricer, $adsPct, $dilContext);
                     if ($computed === null) {
                         $stats['skipped']++;
                         continue;
@@ -149,19 +156,26 @@ class ShopifyB2cSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule (Std is the maximum), LMP cap, then the Amz cap.
+     * Page S PRC formula (INV > 0 child SKUs): the rule price of the ON switch, LMP cap, then the Amz cap.
+     *  - Std prc vs dil switch ON ($dilContext = null): Std rule (Std is the maximum), LMP cap = LMP.
+     *  - Sprc Dil switch ON ($dilContext from dilContext()): Dil slab Target SNROI + CVR overlay + Diff rule, LMP cap
+     *    = LMP × (1 − x%) with x by the SKU's Dil band, Std Prc is the maximum (same as Amazon / eBay).
+     * The Amz cap is the same in both and runs last.
      *
      * @param  array<string, mixed>  $row
+     * @param  array{rules:array,cvr_adj:array,lmp_cap:array,diff_adj:array}|null  $dilContext
      * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,sgpft:float,snpft:float,sroi:float,snroi:float}|null
      */
-    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, float $adsPct = 0.0): ?array
+    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, float $adsPct = 0.0, ?array $dilContext = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
             return null;
         }
+        $dilOn = $dilContext !== null;
         $std = (float) ($row['standard_price'] ?? 0);
-        if (! ($std > 0)) {
+        // Std prc vs dil prices off Std Prc. Sprc Dil prices off the Dil slab, so a blank Std Prc only means "no maximum".
+        if (! $dilOn && ! ($std > 0)) {
             return null;
         }
         // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
@@ -172,6 +186,18 @@ class ShopifyB2cSprcDilAutoPushService
         $ship = (float) ($row['ship'] ?? 0);
         $margin = self::MARGIN;
         $lmp = (float) ($row['lmp'] ?? 0);
+
+        if ($dilOn) {
+            $effective = self::dilPrice($row, $dilContext, $adsPct);
+            if ($effective === null || ! ($effective > 0)) {
+                return null;
+            }
+            // Sprc Dil solves a price from a Target SNROI that knows nothing about Std, so Std Prc caps it.
+            $stdCeiling = $std;
+            $lmpReducePct = AmazonDilGroiRule::lmpCapReducePct((float) ($row['dil'] ?? 0), $dilContext['lmp_cap'] ?? null);
+
+            return $this->finish($row, $effective, $stdCeiling, $lmpReducePct, $adsPct);
+        }
 
         $pricer ??= StdPrcVsDilPricer::forChannel('shopify_b2c');
         // Age / Dil / B / 0 Sold / CVR / Rev discounts, or the SNROI Cap price when the Dil slab has a Target SNROI %.
@@ -201,19 +227,122 @@ class ShopifyB2cSprcDilAutoPushService
             return null;
         }
 
-        // Same capping /shopify-b2c-pricing always used:
-        //  1. LMP cap on the rule price (LMP lower and SGROI at LMP ≥ 20%, Std Prc is the maximum).
-        //  2. Amz cap (A Price from the Amazon datasheet), on the LMP-capped price:
-        //       - LMP below A Price                → S PRC = A Price
-        //       - capped price above A Price       → capped price stays
-        //       - capped price at/below A Price    → S PRC = A Price
+        return $this->finish($row, (float) $effective, max($std, (float) $effective), 0.0, $adsPct);
+    }
+
+    /**
+     * Sprc Dil price (switch ON), the same chain as the page's Sprc Dil column and Amazon / eBay:
+     *  1. Dil slab (nearest slab outside the table) → Target SNROI
+     *  2. CVR overlay: CVR < down_lt → down_adj, CVR > up_gt → up_adj (needs views and B2C L30 > 0), floored at 0
+     *  3. Diff rule: Diff = (Std Prc − Price) / Price above gt_pct adds `points`
+     *  4. price = (LP × (1 + target%) + Ship) ÷ (0.95 − Ads%)
+     * LP is required. Null with no slab.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{rules:array,cvr_adj:array,lmp_cap:array,diff_adj:array}  $ctx
+     */
+    public static function dilPrice(array $row, array $ctx, float $adsPct = 0.0): ?float
+    {
+        $meta = self::dilMeta($row, $ctx, $adsPct);
+
+        return $meta['price'] ?? null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array{rules:array,cvr_adj:array,lmp_cap:array,diff_adj:array}  $ctx
+     * @return array{slab:float,cvr_adj:float,diff_adj:float,target:float,price:?float}|null
+     */
+    public static function dilMeta(array $row, array $ctx, float $adsPct = 0.0): ?array
+    {
+        if (! ((float) ($row['inv'] ?? 0) > 0)) {
+            return null;
+        }
+        $slab = AmazonDilGroiRule::matchOrNearest((float) ($row['dil'] ?? 0), $ctx['rules'] ?? []);
+        if ($slab === null) {
+            return null;
+        }
+        $slabTarget = (float) ($slab['nroi'] ?? $slab['groi']);
+        $cvrCfg = AmazonDilGroiRule::normalizeCvrAdj(is_array($ctx['cvr_adj'] ?? null) ? $ctx['cvr_adj'] : null);
+        $cvrAdj = 0.0;
+        // Shopify B2C has no L60 CVR: Down / Up follow the thresholds. No views or B2C L30 = 0 skips the overlay.
+        if ((float) ($row['views'] ?? 0) > 0 && (float) ($row['b2c_l30'] ?? 0) > 0) {
+            $cvr = (float) ($row['cvr'] ?? 0);
+            if ($cvr < $cvrCfg['down_lt']) {
+                $cvrAdj = $cvrCfg['down_adj'];
+            } elseif ($cvr > $cvrCfg['up_gt']) {
+                $cvrAdj = $cvrCfg['up_adj'];
+            }
+        }
+        // Floor at 0 after the CVR overlay, then add the Diff points (same order as the page).
+        $afterCvr = max(0.0, round($slabTarget + $cvrAdj, 2));
+        $diffPct = EbayRuleSprice::stdPriceDiffPct((float) ($row['standard_price'] ?? 0), (float) ($row['price'] ?? 0));
+        $diffAdj = AmazonDilGroiRule::diffAdjPoints($diffPct, is_array($ctx['diff_adj'] ?? null) ? $ctx['diff_adj'] : null);
+        $target = max(0.0, round($afterCvr + $diffAdj, 2));
+        $price = AmazonDilGroiRule::suggestedPrice(
+            (float) ($row['lp'] ?? 0),
+            (float) ($row['ship'] ?? 0),
+            $target,
+            max(0.0, $adsPct),
+            self::MARGIN
+        );
+
+        return [
+            'slab' => $slabTarget,
+            'cvr_adj' => $cvrAdj,
+            'diff_adj' => $diffAdj,
+            'target' => $target,
+            'price' => ($price !== null && $price >= 0.01) ? $price : null,
+        ];
+    }
+
+    /**
+     * The Sprc Dil modal settings saved for Shopify B2C: Dil slabs, CVR overlay, LMP cap (reduce % by Dil band), Diff rule.
+     *
+     * @return array{rules:array,cvr_adj:array,lmp_cap:array,diff_adj:array}
+     */
+    public static function dilContext(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'shopify_b2c_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $rules = $unpacked['rules'] === []
+            ? AmazonDilGroiRule::defaultsForChannel('shopify_b2c')
+            : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+
+        return [
+            'rules' => $rules,
+            'cvr_adj' => $unpacked['cvr_adj'],
+            'lmp_cap' => $unpacked['lmp_cap'],
+            'diff_adj' => $unpacked['diff_adj'],
+        ];
+    }
+
+    /**
+     * The caps every Shopify B2C S PRC goes through, whichever rule priced it:
+     *  1. LMP cap on the rule price (LMP lower and SGROI at LMP ≥ 20%). Std prc vs dil: S PRC = LMP. Sprc Dil: LMP × (1 − x%).
+     *  2. Std Prc ceiling.
+     *  3. Amz cap (A Price from the Amazon datasheet), on the LMP-capped price:
+     *       - LMP below A Price                → S PRC = A Price
+     *       - capped price above A Price       → capped price stays
+     *       - capped price at/below A Price    → S PRC = A Price
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,sgpft:float,snpft:float,sroi:float,snroi:float}|null
+     */
+    protected function finish(array $row, float $effective, float $stdCeiling, float $lmpReducePct, float $adsPct): ?array
+    {
+        $std = (float) ($row['standard_price'] ?? 0);
+        $lp = (float) ($row['lp'] ?? 0);
+        $ship = (float) ($row['ship'] ?? 0);
+        $margin = self::MARGIN;
+        $lmp = (float) ($row['lmp'] ?? 0);
         $amz = round((float) ($row['amz'] ?? 0), 2);
         $effective = round($effective, 2);
-        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, max($std, $effective));
-        $capped = round(AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, max($std, $effective)), 2);
+        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $stdCeiling);
+        $capped = round(AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $stdCeiling, $lmpReducePct), 2);
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
-            && abs($capped - round($lmp, 2)) <= 0.02;
+            && abs($capped - AmazonDilGroiRule::lmpTargetPrice($lmp, $lmpReducePct)) <= 0.02;
         $amzCapped = false;
         $final = $capped;
         if ($amz > 0) {
@@ -240,6 +369,8 @@ class ShopifyB2cSprcDilAutoPushService
 
         return [
             'sprice' => $sprice,
+            // The rule price before any cap. The page uses it to show the LMP / Std Prc cap triangles and the hover card.
+            'rule_price' => $effective,
             'uncapped' => round($uncapped, 2),
             'amz_capped' => $amzCapped,
             'lmp_capped' => $lmpCapped,
@@ -328,6 +459,7 @@ class ShopifyB2cSprcDilAutoPushService
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),
                 'sprice' => (float) ($r['SPRICE'] ?? 0),
                 'amz_capped' => ! empty($r['AMZ_CAPPED']),
+                'rule_price' => (float) ($r['SPRICE_RULE_PRICE'] ?? 0),
             ];
 
             if ($limit !== null && $limit > 0 && count($out) >= $limit) {
@@ -348,8 +480,15 @@ class ShopifyB2cSprcDilAutoPushService
      */
     protected function isUnchanged(array $row, array $computed): bool
     {
-        return PushedListingPrice::same($row['sprice'] ?? 0, $computed['sprice'])
-            && ! empty($row['amz_capped']) === ! empty($computed['amz_capped']);
+        if (! PushedListingPrice::same($row['sprice'] ?? 0, $computed['sprice'])
+            || ! empty($row['amz_capped']) !== ! empty($computed['amz_capped'])) {
+            return false;
+        }
+        // The rule price (before the caps) drives the page's cap triangles. Rows saved before it existed are refreshed
+        // when their S PRC next changes; once saved it must follow the rule too.
+        $savedRule = (float) ($row['rule_price'] ?? 0);
+
+        return ! ($savedRule > 0) || abs($savedRule - (float) ($computed['rule_price'] ?? $savedRule)) < 0.005;
     }
 
     /**
@@ -379,6 +518,7 @@ class ShopifyB2cSprcDilAutoPushService
         $existing['AMZ_SUGG_APPLIED'] = false;
         $existing['AMZ_CAPPED'] = (bool) $computed['amz_capped'];
         $existing['SPRICE_UNCAPPED'] = round((float) $computed['uncapped'], 2);
+        $existing['SPRICE_RULE_PRICE'] = round((float) ($computed['rule_price'] ?? $computed['sprice']), 2);
         $existing['PEF_PRMT_PCT'] = 0;
         $existing['PEF_CPN_PCT'] = 0;
         $existing['SPRICE_STATUS'] = 'saved';

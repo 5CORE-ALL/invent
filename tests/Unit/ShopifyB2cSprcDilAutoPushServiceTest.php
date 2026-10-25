@@ -134,6 +134,124 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull((new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['clearance' => true]), $this->pricer()));
     }
 
+    /**
+     * Sprc Dil modal settings: slab 0–100 → Target SNROI 50, default CVR overlay, Diff rule above 20% adds +10,
+     * LMP cap 2% / 3% / 5% by Dil band (<25 / 25–50 / >50).
+     *
+     * @return array{rules:array,cvr_adj:array,lmp_cap:array,diff_adj:array}
+     */
+    private function dilCtx(array $over = []): array
+    {
+        return array_merge([
+            'rules' => [['key' => '0-100', 'label' => '0-100', 'min' => 0.0, 'max' => 100.0, 'groi' => 50.0, 'nroi' => 50.0]],
+            'cvr_adj' => ['down_lt' => 7.0, 'down_adj' => -10.0, 'up_gt' => 10.0, 'up_adj' => 10.0],
+            'lmp_cap' => ['low_lt' => 25.0, 'high_gt' => 50.0, 'low_pct' => 2.0, 'mid_pct' => 3.0, 'high_pct' => 5.0],
+            'diff_adj' => ['gt_pct' => 20.0, 'points' => 10.0],
+        ], $over);
+    }
+
+    public function test_sprc_dil_prices_from_the_dil_slab_target_snroi(): void
+    {
+        // CVR 8% is inside 7–10 (no overlay), no Price → no Diff. Target 50: (20 × 1.5 + 3) / 0.95 = 34.74.
+        $out = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['cvr' => 8, 'views' => 100]), null, 0.0, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(34.74, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_ignores_std_prc_vs_dil_discounts_and_works_without_std(): void
+    {
+        $out = (new ShopifyB2cSprcDilAutoPushService)->computeTarget(
+            $this->row(['cvr' => 8, 'views' => 100, 'standard_price' => 0]),
+            $this->pricer(['snroi_cap' => $this->capSlabs(1000)]),
+            0.0,
+            $this->dilCtx()
+        );
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(34.74, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_cvr_overlay_and_diff_rule_order(): void
+    {
+        $svc = new ShopifyB2cSprcDilAutoPushService;
+        // CVR 5% (< 7) takes 10 off: 40 → (20 × 1.4 + 3) / 0.95 = 32.63.
+        $down = $svc->computeTarget($this->row(['cvr' => 5, 'views' => 100]), null, 0.0, $this->dilCtx());
+        $this->assertEqualsWithDelta(32.63, $down['sprice'], 0.001);
+
+        // Diff: Std 100 vs Price 70 = 42.9% (> 20) adds +10 after the CVR overlay: 40 + 10 = 50 → 34.74.
+        $diff = $svc->computeTarget($this->row(['cvr' => 5, 'views' => 100, 'price' => 70]), null, 0.0, $this->dilCtx());
+        $this->assertEqualsWithDelta(34.74, $diff['sprice'], 0.001);
+
+        // Slab 5 + CVR −10 floors at 0 first, then +10 → 10. The Diff +10 must not be eaten by the CVR −10.
+        $floor = $svc->computeTarget(
+            $this->row(['cvr' => 5, 'views' => 100, 'price' => 70]),
+            null,
+            0.0,
+            $this->dilCtx(['rules' => [['key' => '0-100', 'label' => '0-100', 'min' => 0.0, 'max' => 100.0, 'groi' => 5.0, 'nroi' => 5.0]]])
+        );
+        $this->assertEqualsWithDelta((20 * 1.10 + 3) / 0.95, $floor['sprice'], 0.01);
+
+        // Diff 11.1% is below the 20% threshold: nothing is added.
+        $none = $svc->computeTarget($this->row(['cvr' => 8, 'views' => 100, 'price' => 90]), null, 0.0, $this->dilCtx());
+        $this->assertEqualsWithDelta(34.74, $none['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_skips_cvr_overlay_with_no_views_or_zero_sold(): void
+    {
+        $svc = new ShopifyB2cSprcDilAutoPushService;
+        $noViews = $svc->computeTarget($this->row(['cvr' => 0, 'views' => 0]), null, 0.0, $this->dilCtx());
+        $zeroSold = $svc->computeTarget($this->row(['cvr' => 0, 'views' => 100, 'b2c_l30' => 0]), null, 0.0, $this->dilCtx());
+
+        $this->assertEqualsWithDelta(34.74, $noViews['sprice'], 0.001);
+        $this->assertEqualsWithDelta(34.74, $zeroSold['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_lmp_cap_uses_the_dil_band_reduce_percent_and_std_maximum(): void
+    {
+        $svc = new ShopifyB2cSprcDilAutoPushService;
+        // Dil 20 (< 25) → 2%. Dil price 34.74 ≥ LMP 30, SGROI at LMP is high → 30 × 0.98 = 29.40.
+        $low = $svc->computeTarget($this->row(['cvr' => 8, 'views' => 100, 'lmp' => 30]), null, 0.0, $this->dilCtx());
+        $this->assertEqualsWithDelta(29.40, $low['sprice'], 0.001);
+        $this->assertTrue($low['lmp_capped']);
+
+        // Dil 30 (25–50) → 3%; Dil 60 (> 50) → 5%.
+        $mid = $svc->computeTarget($this->row(['cvr' => 8, 'views' => 100, 'lmp' => 30, 'dil' => 30]), null, 0.0, $this->dilCtx());
+        $this->assertEqualsWithDelta(29.10, $mid['sprice'], 0.001);
+        $high = $svc->computeTarget($this->row(['cvr' => 8, 'views' => 100, 'lmp' => 30, 'dil' => 60]), null, 0.0, $this->dilCtx());
+        $this->assertEqualsWithDelta(28.50, $high['sprice'], 0.001);
+
+        // Std Prc is the maximum: Target 500 wants (20 × 6 + 3) / 0.95 = 129.47 but Std is 100.
+        $std = $svc->computeTarget(
+            $this->row(['cvr' => 8, 'views' => 100]),
+            null,
+            0.0,
+            $this->dilCtx(['rules' => [['key' => '0-100', 'label' => '0-100', 'min' => 0.0, 'max' => 100.0, 'groi' => 500.0, 'nroi' => 500.0]]])
+        );
+        $this->assertSame(100.0, $std['sprice']);
+    }
+
+    public function test_sprc_dil_keeps_the_amz_cap_and_skips_clearance(): void
+    {
+        $svc = new ShopifyB2cSprcDilAutoPushService;
+        // Dil price 34.74 is below A Price 60 → the Amz cap raises S PRC to A Price, like Std prc vs dil.
+        $amz = $svc->computeTarget($this->row(['cvr' => 8, 'views' => 100, 'amz' => 60]), null, 0.0, $this->dilCtx());
+        $this->assertSame(60.0, $amz['sprice']);
+        $this->assertTrue($amz['amz_capped']);
+
+        $this->assertNull($svc->computeTarget($this->row(['cvr' => 8, 'views' => 100, 'clearance' => true]), null, 0.0, $this->dilCtx()));
+        $this->assertNull($svc->computeTarget($this->row(['lp' => 0, 'cvr' => 8, 'views' => 100]), null, 0.0, $this->dilCtx()));
+    }
+
+    public function test_sprc_dil_uses_the_nearest_slab_outside_the_table(): void
+    {
+        // Dil 150 is above the last slab (0–100): the nearest slab still gives a target.
+        $out = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['cvr' => 8, 'views' => 100, 'dil' => 150]), null, 0.0, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(34.74, $out['sprice'], 0.001);
+    }
+
     /** @return list<array{min:float,max:float,cap:float|null}> */
     private function capSlabs(?float $cap): array
     {
