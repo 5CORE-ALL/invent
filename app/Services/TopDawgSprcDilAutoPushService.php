@@ -4,10 +4,13 @@ namespace App\Services;
 
 use App\Http\Controllers\MarketPlace\TopDawgPricingController;
 use App\Models\ChannelMasterCalculatedData;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\TopDawgDataView;
 use App\Support\AmazonDilGroiRule;
+use App\Support\EbayRuleSprice;
 use App\Support\NegativeSnroiPushGuard;
 use App\Support\PushedListingPrice;
+use App\Support\SpriceActiveRule;
 use App\Support\StdPrcVsDilPricer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -63,10 +66,15 @@ class TopDawgSprcDilAutoPushService
         int $errorCooldownMinutes = 120,
         int $maxPushes = 0
     ): array {
+        StdPrcVsDilPricer::flush();
         $pricer = StdPrcVsDilPricer::forChannel('topdawg');
         $adsPct = $this->channelAdsPercent();
+        // The page switch decides the S PRC rule: Std prc vs dil, or the Sprc Dil modal (slab + Diff, Std max; no LMP, TopDawg has none).
+        $dilContext = SpriceActiveRule::usesStdPrc('topdawg') ? null : $this->loadDilContext();
 
-        $this->log($logger, 'Loaded TopDawg Std prc vs dil (topdawg_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc, Ads%='.$adsPct);
+        $this->log($logger, $dilContext !== null
+            ? 'TopDawg S PRC rule = Sprc Dil (Dil slab Target GROI + Diff, Std max, no Ship, no Ads, no LMP)'
+            : 'Loaded TopDawg Std prc vs dil (topdawg_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc, Ads%='.$adsPct);
 
         $stats = [
             'candidates' => 0,
@@ -112,7 +120,7 @@ class TopDawgSprcDilAutoPushService
             foreach ($rows as $i => $row) {
                 try {
                     $row['ads_pct'] = $adsPct;
-                    $computed = $this->computeTarget($row, $pricer);
+                    $computed = $this->computeTarget($row, $pricer, $dilContext);
                     if ($computed === null) {
                         if ($onlySkus !== null) {
                             $this->log($logger, $row['sku'].': no target (INV, Std Prc, or calc − Ship is not above $0) — S PRC left as is');
@@ -258,13 +266,19 @@ class TopDawgSprcDilAutoPushService
      * TopDawg profit has no Ship. Ads % is the Channel Master value (row key ads_pct).
      *
      * @param  array<string, mixed>  $row
+     * With a $dilContext (the Sprc Dil switch is ON) the Sprc Dil modal rules price it instead.
+     *
+     * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array}|null  $dilContext
      * @return array{sprice:float,uncapped:float,amz_capped:bool,base:float,margin:float,lp:float,ads:float}|null
      */
-    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null): ?array
+    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, ?array $dilContext = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
             return null;
+        }
+        if ($dilContext !== null) {
+            return $this->computeDilTarget($row, $dilContext);
         }
         $std = (float) ($row['standard_price'] ?? 0);
         if (! ($std > 0)) {
@@ -322,6 +336,81 @@ class TopDawgSprcDilAutoPushService
             'margin' => $margin,
             'lp' => $lp,
             'ads' => $adsPct,
+        ];
+    }
+
+    /**
+     * Sprc Dil switch ON: the Dil slab Target GROI (CVR overlay with prior CVR 0, floored at 0, plus the Diff points)
+     * priced as (LP × (1 + t/100)) ÷ margin, then Std Prc as the maximum. TopDawg has no Ship, no Ads and no LMP in this
+     * price, and clearance SKUs are priced like any other (same as the Std rule on this channel). Same as the page.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array}  $ctx
+     * @return array{sprice:float,uncapped:float,amz_capped:bool,base:float,margin:float,lp:float,ads:float}|null
+     */
+    protected function computeDilTarget(array $row, array $ctx): ?array
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.95;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        $std = round((float) ($row['standard_price'] ?? 0), 2);
+        $dil = (float) ($row['dil'] ?? 0);
+
+        $rule = AmazonDilGroiRule::match($dil, $ctx['rules']);
+        if ($rule === null) {
+            return null;
+        }
+        $target = AmazonDilGroiRule::adjustGroiForCvrArrow((float) $rule['groi'], (float) ($row['cvr'] ?? 0), 0.0, $ctx['cvr_adj'] ?? null);
+        $target = max(0.0, round($target, 2));
+        $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
+        $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
+
+        $raw = round(($lp * (1 + $target / 100)) / $margin, 2);
+        if (! is_finite($raw) || $raw < 0.01) {
+            return null;
+        }
+        $price = ($std > 0 && $raw > $std) ? $std : $raw;
+        if (! is_finite($price) || $price < 0.01) {
+            return null;
+        }
+
+        return [
+            'sprice' => round($price, 2),
+            'uncapped' => $raw,
+            'amz_capped' => false,
+            'base' => $std,
+            'margin' => $margin,
+            'lp' => $lp,
+            'ads' => 0.0,
+        ];
+    }
+
+    /**
+     * The Sprc Dil modal settings saved for TopDawg: slabs, CVR overlay and the Diff rule.
+     *
+     * @return array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array}
+     */
+    protected function loadDilContext(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'topdawg_dil_vs_groi')->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        $unpacked = AmazonDilGroiRule::unpackStored($saved);
+        $rules = $unpacked['rules'] === []
+            ? AmazonDilGroiRule::defaultsForChannel('topdawg')
+            : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+
+        return [
+            'rules' => $rules,
+            'cvr_adj' => $unpacked['cvr_adj'] ?? null,
+            'diff_adj' => $unpacked['diff_adj'] ?? null,
         ];
     }
 

@@ -114,6 +114,7 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'aliexpress'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#aeLmpModal'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'aliexpress'])
     </style>
 @endsection
 
@@ -310,6 +311,7 @@
                             <i class="fas fa-file-csv"></i>
                         </button>
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'aliexpress'])
+                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'aliexpress'])
                         <a href="{{ route('aliexpress.lmp') }}" class="btn btn-sm btn-outline-info">
                             <i class="fas fa-table"></i> LMP sheet
                         </a>
@@ -598,12 +600,14 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'aliexpress'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'aliexpress'])
 @endsection
 
 @section('script-bottom')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
     <script>
         // S PRC is saved + pushed by the server (aliexpress:sprc-dil-auto-push). The page only shows it.
         window.CH_STD_SERVER_OWNED = true;
@@ -611,6 +615,11 @@
         window.CH_PROMO_ADS_FN = function() { return 0; };
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'aliexpress'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+        // AliExpress has no "Stop < N%" control on this page and the server job has no SGROI stop, so Sprc Dil must not skip SKUs for it.
+        window.aeStopLowSgroi = false;
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'aliexpress'])
+        @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'aliexpress', 'temuRuleLiveLabel' => 'Price'])
         let table = null;
         let allTableData = [];
         let summaryDataCache = [];
@@ -751,7 +760,8 @@
             return '<span' + tip + ' style="' + style + '">' + Math.round(v) + '%</span>';
         }
 
-        function aeRuleSpriceRaw(data) {
+        /** Saved S PRC (what the server holds). */
+        function aeSavedSprice(data) {
             if (!data || data.is_parent) return 0;
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;
@@ -760,6 +770,144 @@
             const sprice = parseFloat(data.sprice || data.SPRICE) || 0;
             return sprice > 0 ? Math.round(sprice * 100) / 100 : 0;
         }
+        function aeSpriceRule() {
+            return (typeof window.spriceActiveRule === 'function') ? window.spriceActiveRule() : 'std';
+        }
+        /** LMP (lowest landed, non-ignored) for the caps and the hover. */
+        function aeRowLmp(data) {
+            const n = aeEffectiveLmp(data);
+            return n > 0 ? Math.round(n * 100) / 100 : 0;
+        }
+        /** AliExpress has no A Price / Amz cap. */
+        function aeAmzPrice() { return 0; }
+        /** SGROI at a price with the AE take-home %, LP and Ship: ((price x margin - LP - Ship) / LP) x 100. null without LP or price. */
+        function aeSgroiAtPrice(data, price) {
+            const p = parseFloat(price);
+            const lp = (typeof chPromoLp === 'function') ? Number(chPromoLp(data)) : (parseFloat(data && data.lp) || 0);
+            if (!(p > 0) || !(lp > 0)) return null;
+            const ship = (typeof chPromoShipCost === 'function') ? Number(chPromoShipCost(data)) : (parseFloat(data && data.ship) || 0);
+            const margin = (typeof chPromoTakehomeMargin === 'function') ? Number(chPromoTakehomeMargin(data)) : (parseFloat(data && data._margin) || 0.89);
+            return ((p * margin - lp - ship) / lp) * 100;
+        }
+        /** Sprc Dil price before the LMP cap and the Std Prc maximum: Dil slab + Diff points, with Ship. 0 when the rule gives none. */
+        function aeDilRawSprice(data) {
+            if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
+            const meta = ebayDilGroiMetaForRow(data);
+            const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
+            return n > 0 ? Math.round(n * 100) / 100 : 0;
+        }
+        /**
+         * LMP cap, same as /amazon-tabulator-view: price at/above LMP and SGROI at LMP >= 20% -> S PRC = LMP x (1 - x%).
+         * x = the SKU's Dil band (Sprc Dil modal, LMP cap table) for Sprc Dil; 0 for Std prc vs dil (S PRC = LMP).
+         */
+        function aeApplyLmpCap(data, price, reducePct) {
+            let out = Math.round((parseFloat(price) || 0) * 100) / 100;
+            if (!(out > 0)) return 0;
+            const lmp = aeRowLmp(data);
+            if (lmp > 0 && out + 0.0001 >= lmp) {
+                const sg = aeSgroiAtPrice(data, lmp);
+                if (sg === null || sg >= 20) {
+                    const pct = isFinite(Number(reducePct)) ? Number(reducePct) : 0;
+                    out = Math.round(lmp * (1 - pct / 100) * 100) / 100;
+                }
+            }
+            return out;
+        }
+        /** Sprc Dil switch ON: the Dil price, the LMP cap by Dil band, then Std Prc as the maximum. */
+        function aeCapDilSprice(data, raw) {
+            const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 2;
+            let out = aeApplyLmpCap(data, raw, isFinite(pct) ? pct : 2);
+            const std = parseFloat(data && data.STANDARD_PRICE) || 0;
+            if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
+            return out;
+        }
+        /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules are loading or the row has none. */
+        function aeLiveRuleSprice(data) {
+            if (!data || data.is_parent) return 0;
+            try {
+                if (aeSpriceRule() === 'dil') {
+                    if (window._ebayDilRulesLoaded !== true) return 0;
+                    if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
+                    const meta = ebayDilGroiMetaForRow(data);
+                    if (!meta) return 0;
+                    // Dil above every slab (INV > 0): Std Prc, or LMP when Std Prc is above LMP. Already worked out in the meta.
+                    if (meta.outOfSlabStd) return meta.sprc > 0 ? Math.round(Number(meta.sprc) * 100) / 100 : 0;
+                    const raw = aeDilRawSprice(data);
+                    return raw > 0 ? aeCapDilSprice(data, raw) : 0;
+                }
+                if (window.__chStdSettled !== true) return 0;
+                if (typeof window.chStdPriceForRow === 'function') {
+                    const std = Number(window.chStdPriceForRow(data)) || 0;
+                    if (std > 0) return aeApplyLmpCap(data, std, 0);
+                }
+            } catch (e) { /* rules not loaded yet */ }
+            return 0;
+        }
+        window.aeLiveRuleSprice = aeLiveRuleSprice;
+        /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
+        function aeRuleSpriceRaw(data) {
+            if (!data || data.is_parent) return 0;
+            const live = aeLiveRuleSprice(data);
+            if (live > 0) return live;
+            return aeSavedSprice(data);
+        }
+        function aeShownSprice(data) { return aeRuleSpriceRaw(data); }
+        /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+        function aeDiffCfgNow() {
+            const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+            return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+        }
+        /** Std Diff % = (Std Prc - Price) / Price x 100, same as /amazon-tabulator-view. null when either is missing. */
+        function aeStdPrcDiffPct(rowData) {
+            if (!rowData || rowData.is_parent) return null;
+            const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+            const price = parseFloat(rowData.price) || 0;
+            if (!(std > 0) || !(price > 0)) return null;
+            return ((std - price) / price) * 100;
+        }
+        /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+        function aeRenderStdPrcDiff(el, rowData) {
+            const pct = aeStdPrcDiffPct(rowData);
+            let html = '';
+            let bg = '';
+            let color = '';
+            if (pct !== null) {
+                if (pct > aeDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+                else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+                else { bg = '#28a745'; color = '#fff'; }
+                html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+            }
+            if (el) {
+                el.style.backgroundColor = bg;
+                el.style.color = color;
+            }
+            return html;
+        }
+        // The Sprc Dil Diff rule reads Std Prc and the AliExpress price from these two columns.
+        window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+        window.ebayDiffLivePrice = function(d) { return parseFloat(d && d.price) || 0; };
+        /** Repaint every S PRC dependent cell from the rule now ON (switch, or a rule edit). No row writes, no scroll jump. */
+        function aeRefreshSpriceCells() {
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+            try {
+                (table.getRows('visible') || []).forEach(function(row) {
+                    try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+                });
+            } catch (e) { /* ignore */ }
+            if (typeof updateSummary === 'function') {
+                try { updateSummary(); } catch (e2) { /* ignore */ }
+            }
+        }
+        window.aeRefreshSpriceCells = aeRefreshSpriceCells;
+        // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
+        window.spriceOnRuleSwitched = function() {
+            aeRefreshSpriceCells();
+            if (typeof aeNotify === 'function') aeNotify('S PRC now follows ' + (aeSpriceRule() === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'));
+        };
+        // A Sprc Dil edit (slab, Diff, LMP cap) was saved: the cells repaint from the new rule; the server saves it too.
+        window.ebayOnDilRulesSaved = function() { aeRefreshSpriceCells(); };
+        // Rules load after the first paint: repaint once so no S PRC stays blank.
+        $(document).on('chStd:settled', function() { aeRefreshSpriceCells(); });
         function aeShouldCapSpriceToLmp(data) {
             if (typeof chPromoShouldCapSpriceToLmp === 'function') {
                 return chPromoShouldCapSpriceToLmp(data);
@@ -2236,10 +2384,23 @@
                         }
                     },
                     {
+                        title: "Std Diff",
+                        field: "std_prc_diff",
+                        hozAlign: "center",
+                        width: 62,
+                        headerTooltip: "Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target SNROI), red = below −5%, green = the rest.",
+                        sorter: tabSortBlankLast(function(d) { return aeStdPrcDiffPct(d); }),
+                        formatter: function(cell) {
+                            return aeRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                        }
+                    },
+                    {
                         title: "Price",
                         field: "price",
                         sorter: "number",
                         hozAlign: "right",
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2405,10 +2566,12 @@
                     {
                         title: "Sprice",
                         field: "sprice",
-                        sorter: "number",
+                        sorter: tabSortBlankLast(function(d) { if (d.is_parent) return null; const v = aeRuleSpriceRaw(d); return v > 0 ? v : null; }),
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC saved by the server job (aliexpress:sprc-dil-auto-push, 04:15 and 20:15 IST): Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
+                        headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with Diff, Ship included, LMP cap by Dil band, Std Prc as the maximum; Dil above every slab = Std Prc, or LMP when Std Prc is above LMP) or Std prc vs dil (Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap). Turning one ON turns the other OFF. The server saves it right after a switch or rule edit and pushes at 04:15 and 20:15 IST. Blue triangle = S PRC ≠ Price. Red = capped at LMP, brown = capped at Std Prc. Hover for every rule used.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2429,6 +2592,15 @@
                                 ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
                                     + (lmpNow > 0 ? lmpNow.toFixed(2) : '') + '"></i>')
                                 : '';
+                            // Cap marks (same rules as /amazon-tabulator-view), Sprc Dil only: orange = LMP above Std Prc, brown = Std Prc max.
+                            let capTris = '';
+                            if (aeSpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function') {
+                                const rawDil = aeDilRawSprice(d);
+                                if (rawDil > 0) {
+                                    const flags = chClr.capFlags({ raw: rawDil, shown: sprice, lmp: lmpNow, std: parseFloat(d.STANDARD_PRICE) || 0, sgroiAtLmp: aeSgroiAtPrice(d, lmpNow) });
+                                    capTris = flags ? (flags.reviewTri + flags.stdTri) : '';
+                                }
+                            }
                             const blueTri = (!atOrAboveLmp && live > 0 && sprice > 0
                                 && Math.round(live * 100) !== Math.round(sprice * 100))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
@@ -2439,7 +2611,7 @@
                                 ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
                                 : '<span style="font-weight:600;">' + formatted + '</span>';
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                + priceHtml + blueTri + redTri + '</span>';
+                                + priceHtml + blueTri + redTri + capTris + '</span>';
                         }
                     },
                     {
@@ -2945,6 +3117,16 @@
             });
 
             // Build dropdown and apply server visibility once the table is built
+            // Std Diff follows the row when Std Prc or the Price changes.
+            table.on('rowUpdated', function(row) {
+                try {
+                    const c = row.getCell('std_prc_diff');
+                    if (!c) return;
+                    const el = c.getElement();
+                    el.innerHTML = aeRenderStdPrcDiff(el, row.getData());
+                } catch (e) { /* ignore */ }
+            });
+
             table.on('tableBuilt', function() {
                 aeApplyColumnVisibilityFromServer();
                 aeBuildColumnDropdown();

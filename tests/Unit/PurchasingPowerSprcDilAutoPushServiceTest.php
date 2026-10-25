@@ -155,4 +155,90 @@ class PurchasingPowerSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertSame(90.0, $out['sprice']);
     }
+
+    /** @return array{rules:list<array<string,mixed>>,diff_adj:array} */
+    private function dilCtx(): array
+    {
+        return [
+            'rules' => [
+                ['key' => '0-0', 'label' => '0%', 'min' => 0.0, 'max' => 0.0, 'groi' => 40.0],
+                ['key' => '0.1-50', 'label' => '0.1–50%', 'min' => 0.1, 'max' => 50.0, 'groi' => 60.0],
+            ],
+            'diff_adj' => ['gt_pct' => 20, 'points' => 10],
+        ];
+    }
+
+    public function test_sprc_dil_price_is_the_slab_target_with_ship_bb_and_no_discounts(): void
+    {
+        // Dil 20% -> Target 60%. LP 20, Ship BB 5, take-home 0.80: (20 x 1.6 + 5) / 0.80 = 46.25. Std Prc 100 is not reached.
+        $out = $this->service()->computeTarget(
+            $this->row(['ship' => 5, 'margin' => 0.80, 'price' => 100]),
+            null,
+            $this->dilCtx()
+        );
+
+        $this->assertNotNull($out);
+        $this->assertSame(46.25, $out['sprice']);
+        $this->assertFalse($out['amz_capped']);
+    }
+
+    public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
+    {
+        // Std 100 vs PP Price 70 -> Diff 42.9% (> 20): Target 60 + 10 = 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
+        $out = $this->service()->computeTarget(
+            $this->row(['ship' => 5, 'margin' => 0.80, 'price' => 70]),
+            null,
+            $this->dilCtx()
+        );
+
+        $this->assertNotNull($out);
+        $this->assertSame(48.75, $out['sprice']);
+    }
+
+    public function test_sprc_dil_pp_l30_zero_uses_the_minimum_target(): void
+    {
+        // PP L30 = 0 -> minimum Target 40%: (20 x 1.4 + 0) / 0.80 = 35.00 (Std 100 vs Price 100: no Diff).
+        $out = $this->service()->computeTarget(
+            $this->row(['pp_l30' => 0, 'margin' => 0.80, 'price' => 100]),
+            null,
+            $this->dilCtx()
+        );
+
+        $this->assertNotNull($out);
+        $this->assertSame(35.0, $out['sprice']);
+    }
+
+    public function test_sprc_dil_std_is_the_maximum_then_amz_floor_last(): void
+    {
+        // LP 80 -> (80 x 1.6) / 0.80 = 160 > Std 100 -> held at 100. A Price 120 is above it -> Amz floor 120.
+        $capped = $this->service()->computeTarget($this->row(['lp' => 80, 'margin' => 0.80, 'price' => 100]), null, $this->dilCtx());
+        $this->assertSame(100.0, $capped['sprice']);
+
+        $floored = $this->service()->computeTarget($this->row(['lp' => 80, 'margin' => 0.80, 'price' => 100, 'amz' => 120]), null, $this->dilCtx());
+        $this->assertSame(120.0, $floored['sprice']);
+        $this->assertTrue($floored['amz_capped']);
+    }
+
+    public function test_sprc_dil_has_no_lmp_cap_even_when_a_row_carries_an_lmp(): void
+    {
+        // Purchasing Power has no LMP: an lmp value on the row (it never has one) must not change the price.
+        $with = $this->service()->computeTarget($this->row(['ship' => 5, 'margin' => 0.80, 'price' => 100, 'lmp' => 30]), null, $this->dilCtx());
+        $without = $this->service()->computeTarget($this->row(['ship' => 5, 'margin' => 0.80, 'price' => 100]), null, $this->dilCtx());
+
+        $this->assertSame($without['sprice'], $with['sprice']);
+    }
+
+    public function test_sprc_dil_clearance_and_no_inventory_have_no_target(): void
+    {
+        $svc = $this->service();
+        $this->assertNull($svc->computeTarget($this->row(['clearance' => true]), null, $this->dilCtx()));
+        $this->assertNull($svc->computeTarget($this->row(['inv' => 0]), null, $this->dilCtx()));
+    }
+
+    public function test_std_prc_vs_dil_is_unchanged_without_a_dil_context(): void
+    {
+        $out = $this->service()->computeTarget($this->row(), $this->pricer());
+
+        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+    }
 }

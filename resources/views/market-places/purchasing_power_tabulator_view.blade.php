@@ -31,6 +31,7 @@
             cursor: help;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'purchasing_power'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'purchasing_power'])
     </style>
 @endsection
 
@@ -106,6 +107,7 @@
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'purchasing_power'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'purchasing_power'])
                 </div>
 
@@ -168,6 +170,7 @@
     </div>
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'purchasing_power'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'purchasing_power'])
 @endsection
 
 @section('script-bottom')
@@ -178,6 +181,9 @@
     // The SNROI% column here is (S PRC x take-home - Ship BB - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
     window.CH_PROMO_ADS_FN = function() { return 0; };
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'purchasing_power'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'purchasing_power'])
+    @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
+    @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'purchasing_power', 'temuRuleLiveLabel' => 'PP Price'])
     const COLUMN_VIS_KEY = "pp_tabulator_column_visibility";
     let table = null;
     let allTableData = [];
@@ -330,12 +336,124 @@
             const flag = data && data.AMZ_CAPPED;
             return (flag === true || flag === 1 || flag === '1' || flag === 'true') && Math.abs(saved - amz) <= 0.015;
         }
+        function ppDilOn() {
+            return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+        }
+        /** Take-home % for the Dil price: the page's Purchasing Power margin. */
+        function ppMarginOf() { return PP_MARGIN > 0 ? PP_MARGIN : 0.65; }
+        /** Sprc Dil price before the Std Prc maximum and the A Price floor: Dil slab + Diff points. 0 when the rule gives none. */
+        function ppDilRawSprice(data) {
+            if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
+            const meta = ebayDilGroiMetaForRow(data);
+            const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
+            return n > 0 ? Math.round(n * 100) / 100 : 0;
+        }
+        /** Sprc Dil, no LMP (Purchasing Power has no LMP data): Std Prc is the maximum. */
+        function ppCapDilSprice(data, raw) {
+            let out = Math.round((parseFloat(raw) || 0) * 100) / 100;
+            if (!(out > 0)) return 0;
+            const std = parseFloat(data && data.STANDARD_PRICE) || 0;
+            if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
+            return out;
+        }
+        /** The rule price of the ON switch with its caps (Std max for Sprc Dil, then the A Price floor), live. 0 while rules load. */
+        function ppLiveRuleSprice(data) {
+            if (!data || ppIsParentRow(data)) return 0;
+            try {
+                let out = 0;
+                if (ppDilOn()) {
+                    if (window._ebayDilRulesLoaded !== true) return 0;
+                    const raw = ppDilRawSprice(data);
+                    out = raw > 0 ? ppCapDilSprice(data, raw) : 0;
+                } else {
+                    if (window.__chStdSettled !== true) return 0;
+                    out = (typeof window.chStdPriceForRow === 'function') ? (Number(window.chStdPriceForRow(data)) || 0) : 0;
+                    out = out > 0 ? Math.round(out * 100) / 100 : 0;
+                }
+                if (!(out > 0)) return 0;
+                const amz = ppAmazonPrice(data);
+                return (amz > 0 && out < amz - 0.0001) ? amz : out;
+            } catch (e) { /* rules not loaded yet */ }
+            return 0;
+        }
+        window.ppLiveRuleSprice = ppLiveRuleSprice;
+        /**
+         * The LIVE rule price with its caps, like Amazon, so a switch or rule edit repaints at once. The server saves and pushes
+         * the same price right after. Falls back to the saved S PRC (with the A Price floor) while the rules load.
+         */
         function ppDisplayedSprice(data) {
+            const live = ppLiveRuleSprice(data);
+            if (live > 0) return live;
             const saved = ppSavedSprice(data);
             if (!(saved > 0)) return 0;
             const amz = ppAmazonPrice(data);
             return (amz > 0 && saved < amz - 0.015) ? amz : saved;
         }
+        // Names the shared rule hover card uses (partials/temu-rule-hover, kind 'purchasing_power').
+        function ppShownSprice(data) { return ppDisplayedSprice(data); }
+        function ppAmzPrice(data) { return ppAmazonPrice(data); }
+        /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+        function ppDiffCfgNow() {
+            const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+            return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+        }
+        /** Std Diff % = (Std Prc - PP Price) / PP Price x 100, same as /amazon-tabulator-view. null when either is missing. */
+        function ppStdPrcDiffPct(rowData) {
+            if (!rowData || ppIsParentRow(rowData)) return null;
+            const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+            const price = parseFloat(rowData['PP Price']) || 0;
+            if (!(std > 0) || !(price > 0)) return null;
+            return ((std - price) / price) * 100;
+        }
+        /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+        function ppRenderStdPrcDiff(el, rowData) {
+            const pct = ppStdPrcDiffPct(rowData);
+            let html = '';
+            let bg = '';
+            let color = '';
+            if (pct !== null) {
+                if (pct > ppDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+                else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+                else { bg = '#28a745'; color = '#fff'; }
+                html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+            }
+            if (el) {
+                el.style.backgroundColor = bg;
+                el.style.color = color;
+            }
+            return html;
+        }
+        // The Sprc Dil Diff rule reads Std Prc and the Purchasing Power listing price from these two columns.
+        window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+        window.ebayDiffLivePrice = function(d) { return parseFloat(d && d['PP Price']) || 0; };
+        /** Repaint every S PRC dependent cell from the rule now ON (switch, or a rule edit). No row writes, no scroll jump. */
+        function ppRefreshSpriceCells() {
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+            try {
+                (table.getRows('visible') || []).forEach(function(row) {
+                    try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+                });
+            } catch (e) { /* ignore */ }
+            if (typeof updateSummary === 'function') {
+                try { updateSummary(); } catch (e2) { /* ignore */ }
+            }
+        }
+        window.ppRefreshSpriceCells = ppRefreshSpriceCells;
+        // The rule hover card (partials/temu-rule-hover) lives outside this closure and reads these by name.
+        window.ppDilOn = ppDilOn;
+        window.ppShownSprice = ppShownSprice;
+        window.ppAmzPrice = ppAmzPrice;
+        window.ppMarginOf = ppMarginOf;
+        window.ppStdPrcDiffPct = ppStdPrcDiffPct;
+        // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server re-saves S PRC right after the switch is saved.
+        window.spriceOnRuleSwitched = function() {
+            ppRefreshSpriceCells();
+            if (typeof showToast === 'function') showToast('S PRC now follows ' + (ppDilOn() ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
+        };
+        // A Sprc Dil edit (slab, Diff) was saved: the cells repaint from it; the server saves the same price right after.
+        window.ebayOnDilRulesSaved = function() { ppRefreshSpriceCells(); };
+        // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
+        $(document).on('chStd:settled', function() { ppRefreshSpriceCells(); });
         window.ppDisplayedSprice = ppDisplayedSprice;
         function ppSpriceMetrics(data, sprice) {
             const price = (sprice != null && sprice !== '') ? Number(sprice) : ppDisplayedSprice(data);
@@ -543,7 +661,15 @@
                     }
                 },
                 {
+                    title: 'Std Diff', field: 'std_prc_diff', hozAlign: 'center', width: 62,
+                    headerTooltip: 'Std Diff = (Std Prc − PP Price) / PP Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target SNROI), red = below −5%, green = the rest.',
+                    sorter: tabSortBlankLast(function(d) { return ppStdPrcDiffPct(d); }),
+                    formatter: function(cell) { return ppRenderStdPrcDiff(cell.getElement(), cell.getRow().getData()); }
+                },
+                {
                     title: 'Price', field: 'PP Price', hozAlign: 'center', sorter: 'number', width: 70,
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                     headerTooltip: 'Purchasing Power listed price from MCM OF21 (purchasing_power_products). Hover a cell for its source.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
@@ -639,8 +765,11 @@
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
-                    editable: false, sorter: 'number', width: 120,
-                    headerTooltip: 'S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews, Std Prc is the maximum, never below A Price (Amz). A Dil slab with a Target SNROI % prices S PRC from that SNROI. Clearance SKUs show C and are not priced. Saved and pushed by the server twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price.',
+                    editable: false, width: 120,
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
+                    sorter: tabSortBlankLast(function(d) { if (ppIsParentRow(d)) return null; const v = ppDisplayedSprice(d); return v > 0 ? v : null; }),
+                    headerTooltip: 'The ON switch fills this column. Sprc Dil: Dil slab Target SNROI (+ Diff points when Std Diff is above the threshold), Std Prc as the maximum. Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews (or the SNROI Cap price). Either way never below A Price (Amz). No LMP rule: Purchasing Power has no LMP. Clearance SKUs show C and are not priced. Repaints at once on a switch or rule edit; the server saves it right after, and saves and pushes twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price. Brown = capped at Std Prc. Hover for every rule used.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';
@@ -678,11 +807,21 @@
                         const clearanceMark = isClearance
                             ? '<span class="pp-sprice-clearance" title="Clearance" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${amzLbl}${redTri}${blueTri}</span>`;
+                        // Std Prc cap mark (same rules as /amazon-tabulator-view), Sprc Dil only. No LMP triangles: Purchasing Power has no LMP.
+                        let stdTri = '';
+                        if (ppDilOn() && window.chClr && typeof chClr.capFlags === 'function') {
+                            const rawDil = ppDilRawSprice(d);
+                            if (rawDil > 0) {
+                                const f = chClr.capFlags({ raw: rawDil, shown: value, lmp: 0, std: parseFloat(d.STANDARD_PRICE) || 0, sgroiAtLmp: null });
+                                stdTri = f.stdTri || '';
+                            }
+                        }
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${amzLbl}${redTri}${blueTri}${stdTri}</span>`;
                     }
                 },
                 {
-                    title: 'SGPFT%', field: 'SGPFT', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'SGPFT%', field: 'SGPFT', hozAlign: 'center', width: 50,
+                    sorter: tabSortBlankLast(function(d) { return (!ppIsParentRow(d) && ppDisplayedSprice(d) > 0) ? ppSpriceMetrics(d).sgpft : null; }),
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         const live = ppSpriceMetrics(d);
@@ -694,7 +833,8 @@
                     }
                 },
                 {
-                    title: 'SNPFT%', field: 'SPFT', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'SNPFT%', field: 'SPFT', hozAlign: 'center', width: 50,
+                    sorter: tabSortBlankLast(function(d) { return (!ppIsParentRow(d) && ppDisplayedSprice(d) > 0) ? ppSpriceMetrics(d).sgpft : null; }),
                     formatter: function(cell) {
                         // Purchasing Power has no ads — SNPFT% = SGPFT%
                         const d = cell.getRow().getData();
@@ -707,7 +847,8 @@
                     }
                 },
                 {
-                    title: 'SROI%', field: 'SROI', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'SROI%', field: 'SROI', hozAlign: 'center', width: 50,
+                    sorter: tabSortBlankLast(function(d) { return (!ppIsParentRow(d) && ppDisplayedSprice(d) > 0) ? ppSpriceMetrics(d).sroi : null; }),
                     headerTooltip: 'Gross S ROI from S PRC. Same $ as GROI% using S PRC + Ship BB.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
@@ -720,7 +861,8 @@
                     }
                 },
                 {
-                    title: 'SNROI%', field: 'SNROI', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'SNROI%', field: 'SNROI', hozAlign: 'center', width: 50,
+                    sorter: tabSortBlankLast(function(d) { return (!ppIsParentRow(d) && ppDisplayedSprice(d) > 0) ? ppSpriceMetrics(d).sroi : null; }),
                     headerTooltip: 'Dil Target Rule. SNROI% from S PRC so SNROI = slab Target SNROI. Purchasing Power has no Ads% — SNROI% = SROI%.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
@@ -1120,6 +1262,15 @@
         }
 
         table.on('tableBuilt', function() { buildColumnDropdown(); applyColumnVisibilityFromServer(); });
+        // Std Diff follows the row when Std Prc or the PP Price changes.
+        table.on('rowUpdated', function(row) {
+            try {
+                const c = row.getCell('std_prc_diff');
+                if (!c) return;
+                const el = c.getElement();
+                el.innerHTML = ppRenderStdPrcDiff(el, row.getData());
+            } catch (e) { /* ignore */ }
+        });
         table.on('dataLoaded', function(data) {
             // ParentExpand.expand() replaces the table data with a single parent's
             // children, which fires dataLoaded again. Without this guard allTableData would

@@ -104,6 +104,7 @@
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'wayfair-price-lt80-lmp-badge', 'pltChannelKey' => 'wayfair', 'pltPriceField' => 'price'])
                         <span class="badge fs-6 p-2" id="wayfair-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Price.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'wayfair-clearance-badge'])
                         <span class="badge bg-success fs-6 p-2" id="wf-more-sold-badge" style="color:black;font-weight:700;cursor:pointer;" title="Click to filter: sold &gt; 0">Sold &gt;0: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="wf-zero-sold-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter: 0 sold (al30)">0 Sold: 0</span>
 
@@ -311,6 +312,7 @@
 @section('script-bottom')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
     <script>
         let table = null;
         let allTableData = [];
@@ -397,13 +399,124 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'wayfair'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'wayfair'])
-        function wayfairRowSpriceForAlert(data) {
+        @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'wayfair', 'temuRuleLiveLabel' => 'Price'])
+        /** Saved S PRC (what the server holds). */
+        function wfSavedSprice(data) {
+            if (!data) return 0;
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;
                 if (saved > 0) return saved;
             }
-            return parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
+            return parseFloat(data.sprice != null ? data.sprice : data.SPRICE) || 0;
         }
+        function wfSpriceRule() {
+            return (typeof window.spriceActiveRule === 'function') ? window.spriceActiveRule() : 'std';
+        }
+        /** Sprc Dil price before the Std Prc maximum: Dil slab + Diff points. 0 when the rule gives none. */
+        function wfDilRawSprice(data) {
+            if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
+            const meta = ebayDilGroiMetaForRow(data);
+            const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
+            return n > 0 ? Math.round(n * 100) / 100 : 0;
+        }
+        /** Wayfair has no LMP data, so no LMP rule applies on this page. */
+        function wfRowLmp() { return 0; }
+        /** No A Price / Amz cap on Wayfair. */
+        function wfAmzPrice() { return 0; }
+        /** Sprc Dil switch ON: the Dil price (Dil slab + Diff points) with Std Prc as the maximum. No LMP cap. */
+        function wfCapDilSprice(data, raw) {
+            let out = Math.round((parseFloat(raw) || 0) * 100) / 100;
+            if (!(out > 0)) return 0;
+            const std = parseFloat(data && data.STANDARD_PRICE) || 0;
+            if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
+            return out;
+        }
+        /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules are loading or the row has none. */
+        function wfLiveRuleSprice(data) {
+            if (!data || isWayfairParentRow(data)) return 0;
+            try {
+                if (wfSpriceRule() === 'dil') {
+                    if (window._ebayDilRulesLoaded !== true) return 0;
+                    const raw = wfDilRawSprice(data);
+                    return raw > 0 ? wfCapDilSprice(data, raw) : 0;
+                }
+                if (window.__chStdSettled !== true) return 0;
+                if (typeof window.chStdPriceForRow === 'function') {
+                    const std = Number(window.chStdPriceForRow(data)) || 0;
+                    if (std > 0) return Math.round(std * 100) / 100;
+                }
+            } catch (e) { /* rules not loaded yet */ }
+            return 0;
+        }
+        window.wfLiveRuleSprice = wfLiveRuleSprice;
+        /**
+         * Cell / triangle / SGROI: the LIVE rule price with its caps, like Amazon, so a switch or rule edit repaints at once.
+         * Falls back to the saved S PRC while the rules are loading or the row has no rule price.
+         */
+        function wayfairRowSpriceForAlert(data) {
+            if (!data || isWayfairParentRow(data)) return 0;
+            const live = wfLiveRuleSprice(data);
+            if (live > 0) return live;
+            return wfSavedSprice(data);
+        }
+        const wfShownSprice = wayfairRowSpriceForAlert;
+        /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+        function wfDiffCfgNow() {
+            const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+            return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+        }
+        /** Std Diff % = (Std Prc - Price) / Price x 100, same as /amazon-tabulator-view. null when either is missing. */
+        function wfStdPrcDiffPct(rowData) {
+            if (!rowData || isWayfairParentRow(rowData)) return null;
+            const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+            const price = parseFloat(rowData.price) || 0;
+            if (!(std > 0) || !(price > 0)) return null;
+            return ((std - price) / price) * 100;
+        }
+        /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+        function wfRenderStdPrcDiff(el, rowData) {
+            const pct = wfStdPrcDiffPct(rowData);
+            let html = '';
+            let bg = '';
+            let color = '';
+            if (pct !== null) {
+                if (pct > wfDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+                else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+                else { bg = '#28a745'; color = '#fff'; }
+                html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+            }
+            if (el) {
+                el.style.backgroundColor = bg;
+                el.style.color = color;
+            }
+            return html;
+        }
+        // The Sprc Dil Diff rule reads Std Prc and the Wayfair price from these two columns.
+        window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+        window.ebayDiffLivePrice = function(d) { return parseFloat(d && d.price) || 0; };
+        /** Repaint every S PRC dependent cell from the rule now ON (switch, or a rule edit). No row writes, no scroll jump. */
+        function wfRefreshSpriceCells() {
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+            try {
+                (table.getRows('visible') || []).forEach(function(row) {
+                    try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+                });
+            } catch (e) { /* ignore */ }
+            if (typeof updateSummary === 'function') {
+                try { updateSummary(); } catch (e2) { /* ignore */ }
+            }
+        }
+        window.wfRefreshSpriceCells = wfRefreshSpriceCells;
+        // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
+        window.spriceOnRuleSwitched = function() {
+            wfRefreshSpriceCells();
+            if (typeof showToast === 'function') showToast('S PRC now follows ' + (wfSpriceRule() === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
+        };
+        // A Sprc Dil edit (slab, Diff) was saved: the cells repaint from the new rule; the server saves it too.
+        window.ebayOnDilRulesSaved = function() { wfRefreshSpriceCells(); };
+        // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
+        $(document).on('chStd:settled', function() { wfRefreshSpriceCells(); });
         window.wayfairRowSpriceForAlert = wayfairRowSpriceForAlert;
         function wayfairHasBlueTriangle(data) {
             if (isWayfairParentRow(data)) return false;
@@ -1232,6 +1345,10 @@
                     return wayfairHasBlueTriangle(data);
                 });
             }
+            // Clearance "C" header badge filter (Inv days clearance = YES)
+            if (window.chClr && chClr.filterOn()) {
+                table.addFilter(function(data) { return chClr.filterFn(data); });
+            }
 
             updateSummary();
         }
@@ -1603,7 +1720,20 @@
                         }
                     },
                     {
+                        title: 'Std Diff',
+                        field: 'std_prc_diff',
+                        hozAlign: 'center',
+                        width: 62,
+                        headerTooltip: 'Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target GROI), red = below −5%, green = the rest.',
+                        sorter: tabSortBlankLast(function(d) { return wfStdPrcDiffPct(d); }),
+                        formatter: function(cell) {
+                            return wfRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                        }
+                    },
+                    {
                         title: 'Price', field: 'price', sorter: 'number', hozAlign: 'right',
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -1758,45 +1888,44 @@
                     },
                     {
                         title: 'S PRC', field: 'sprice', hozAlign: 'right',
-                        // Sort by the value the cell shows (Sprc Dil / promo S PRC), not the raw saved `sprice`.
-                        sorter: function(a, b, aRow, bRow) {
-                            const val = function(row) {
-                                const d = row.getData();
-                                if (d.is_parent) return -Infinity;
-                                let v = (typeof chPromoTableSprice === 'function')
-                                    ? Number(chPromoTableSprice(d)) || 0
-                                    : 0;
-                                if (!(v > 0)) v = parseFloat(d.sprice) || 0;
-                                return v;
-                            };
-                            const x = val(aRow), y = val(bRow);
-                            if (x === y) return 0;
-                            return x < y ? -1 : 1;
-                        },
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
+                        // Sort by the value the cell shows (the ON rule's live price), blanks last.
+                        sorter: tabSortBlankLast(function(d) { if (d.is_parent) return null; const v = wayfairRowSpriceForAlert(d); return v > 0 ? v : null; }),
                         editable: false,
-                        headerTooltip: 'Not editable. S PRC from Sprc Dil. W L30 = 0 still uses the Dil-matching slab. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                        headerTooltip: 'Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target GROI with Diff, Std Prc as the maximum; no LMP rule, Wayfair has no LMP) or Std prc vs dil. Turning one ON turns the other OFF. Clearance SKUs show C. Blue triangle = S PRC ≠ Price. Brown = capped at Std Prc. Hover for every rule used. Ship not used.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            let value = (typeof chPromoTableSprice === 'function')
-                                ? Number(chPromoTableSprice(d)) || 0
-                                : parseFloat(cell.getValue() || 0);
-                            if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
+                            const value = wayfairRowSpriceForAlert(d);
+                            const clrMark = window.chClr ? chClr.markHtml(d) : '';
+                            if (!(value > 0)) return clrMark || '';
                             const live = parseFloat(d.price) || 0;
-                            const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
-                            if (!(value > 0)) return '';
-                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
-                            const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                            const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
+                            // Cap marks (same rules as /amazon-tabulator-view), Sprc Dil only. Wayfair has no LMP, so only the brown Std Prc maximum applies.
+                            let flags = null;
+                            if (wfSpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function') {
+                                const rawDil = wfDilRawSprice(d);
+                                if (rawDil > 0) {
+                                    flags = chClr.capFlags({
+                                        raw: rawDil,
+                                        shown: value,
+                                        lmp: 0,
+                                        std: parseFloat(d.STANDARD_PRICE) || 0,
+                                        sgroiAtLmp: null
+                                    });
+                                }
+                            }
+                            const capTris = flags ? (flags.redTri + flags.reviewTri + flags.stdTri) : '';
+                            const capColor = flags && flags.color ? flags.color : '';
                             const formatted = money(value);
-                            const priceHtml = overLmp
-                                ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
+                            const priceHtml = capColor
+                                ? '<span style="color:' + capColor + ';font-weight:600;">' + formatted + '</span>'
                                 : '<span style="font-weight:600;">' + formatted + '</span>';
                             const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + blueTri + '</span>';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + clrMark + blueTri + capTris + '</span>';
                         }
                     },
                     {
@@ -1903,6 +2032,7 @@
                     },
                 ],
                 dataLoaded: function(data) {
+                    if (window.chClr && typeof chClr.refresh === 'function') chClr.refresh();
                     allTableData = Array.isArray(data) ? data : [];
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     wfResetSkuColHoverWidth();
@@ -1931,9 +2061,27 @@
             }
 
             table.on('tableBuilt', function() {
+                // Header "C n" badge: count of clearance SKUs, click to filter them. Cells repaint once the clearance list is loaded.
+                if (window.chClr && typeof chClr.init === 'function') {
+                    chClr.init({
+                        badgeId: 'wayfair-clearance-badge',
+                        getTable: function() { return table; },
+                        applyFilters: applyFilters
+                    });
+                }
                 Promise.resolve(wfApplyColumnVisibilityFromServer()).then(function() {
                     wfBuildColumnDropdown();
                 });
+            });
+
+            // Std Diff follows the row when Std Prc or the Price changes.
+            table.on('rowUpdated', function(row) {
+                try {
+                    const c = row.getCell('std_prc_diff');
+                    if (!c) return;
+                    const el = c.getElement();
+                    el.innerHTML = wfRenderStdPrcDiff(el, row.getData());
+                } catch (e) { /* ignore */ }
             });
 
             table.on('scrollVertical', wfRemoveImagePreview);

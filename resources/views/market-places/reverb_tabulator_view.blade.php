@@ -280,6 +280,7 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'reverb'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
         .sprice-lmp-alert {
             color: #dc3545;
@@ -577,6 +578,7 @@
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'reverb-clearance-badge'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'reverb-price-gt-lmp-badge', 'pglChannelKey' => 'reverb', 'pglPriceField' => 'RV Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'reverb-price-lt80-lmp-badge', 'pltChannelKey' => 'reverb', 'pltPriceField' => 'RV Price'])
                     </div>
@@ -697,6 +699,7 @@
                         <i class="fas fa-file-excel"></i>
                     </button>
 
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'reverb'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb'])
 
                     <div class="btn-group flex-shrink-0">
@@ -868,6 +871,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'reverb'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'reverb'])
 
     <div class="modal fade" id="reverbDilVsSBumpModal" tabindex="-1" aria-labelledby="reverbDilVsSBumpModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-md">
@@ -988,6 +992,9 @@
     window.CH_STD_SERVER_OWNED = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'reverb'])
+    @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
+    @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'reverb', 'temuRuleLiveLabel' => 'RV Price'])
 
     function reverbPrmtPctOf(d) {
         const n = parseFloat(d && (d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied));
@@ -1113,13 +1120,155 @@
         const sku = String(d && (d['(Child) sku'] || d.sku || d.SKU) || '');
         return !!(d && (d.is_parent_summary || d.is_parent || (sku && sku.toUpperCase().indexOf('PARENT') !== -1)));
     }
-        function reverbRowSpriceForAlert(data) {
+    /** Saved S PRC (what the server holds). */
+    function reverbSavedSprice(data) {
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
             if (saved > 0) return saved;
         }
         return parseFloat(data && data.SPRICE) || 0;
     }
+    function reverbSpriceRule() {
+        return (typeof window.spriceActiveRule === 'function') ? window.spriceActiveRule() : 'std';
+    }
+    /** LMP (non-ignored) for the caps and the hover. */
+    function reverbRowLmp(data) {
+        if (window.SpriceLmpCap && typeof SpriceLmpCap.lmpOf === 'function') {
+            const n = Number(SpriceLmpCap.lmpOf(data));
+            if (n > 0) return Math.round(n * 100) / 100;
+        }
+        const raw = parseFloat(data && data.lmp_price) || 0;
+        return raw > 0 ? Math.round(raw * 100) / 100 : 0;
+    }
+    /** Reverb has no A Price / Amz cap. */
+    function reverbAmzPrice() { return 0; }
+    /** SGROI at a price: ((price x take-home - LP - Ship) / LP) x 100. null without LP or price. */
+    function reverbSgroiAtPrice(data, price) {
+        const p = parseFloat(price);
+        const lp = parseFloat(data && (data.LP_productmaster != null && data.LP_productmaster !== '' ? data.LP_productmaster : data.LP));
+        if (!(p > 0) || !(lp > 0)) return null;
+        const ship = parseFloat(data && (data.Ship_productmaster != null && data.Ship_productmaster !== '' ? data.Ship_productmaster : data.Ship)) || 0;
+        return ((p * reverbTakeRate(data) - lp - ship) / lp) * 100;
+    }
+    /** Sprc Dil price before the LMP cap and the Std Prc maximum: Dil slab + Diff points, with Ship and Ads. 0 when the rule gives none. */
+    function reverbDilRawSprice(data) {
+        if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
+        const meta = ebayDilGroiMetaForRow(data);
+        const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
+        return n > 0 ? Math.round(n * 100) / 100 : 0;
+    }
+    /**
+     * LMP cap, same as /amazon-tabulator-view: price at/above LMP and SGROI at LMP >= 20% -> S PRC = LMP x (1 - x%).
+     * x = the SKU's Dil band (Sprc Dil modal, LMP cap table) for Sprc Dil; 0 for Std prc vs dil (S PRC = LMP).
+     */
+    function reverbApplyLmpCap(data, price, reducePct) {
+        let out = Math.round((parseFloat(price) || 0) * 100) / 100;
+        if (!(out > 0)) return 0;
+        const lmp = reverbRowLmp(data);
+        if (lmp > 0 && out + 0.0001 >= lmp) {
+            const sg = reverbSgroiAtPrice(data, lmp);
+            if (sg === null || sg >= 20) {
+                const pct = isFinite(Number(reducePct)) ? Number(reducePct) : 0;
+                out = Math.round(lmp * (1 - pct / 100) * 100) / 100;
+            }
+        }
+        return out;
+    }
+    /** Sprc Dil switch ON: the Dil price, the LMP cap by Dil band, then Std Prc as the maximum. */
+    function reverbCapDilSprice(data, raw) {
+        const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 2;
+        let out = reverbApplyLmpCap(data, raw, isFinite(pct) ? pct : 2);
+        const std = parseFloat(data && data.STANDARD_PRICE) || 0;
+        if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
+        return out;
+    }
+    /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules are loading or the row has none. */
+    function reverbLiveRuleSprice(data) {
+        if (!data || isReverbParentRow(data)) return 0;
+        try {
+            if (reverbSpriceRule() === 'dil') {
+                if (window._ebayDilRulesLoaded !== true) return 0;
+                const raw = reverbDilRawSprice(data);
+                return raw > 0 ? reverbCapDilSprice(data, raw) : 0;
+            }
+            if (window.__chStdSettled !== true) return 0;
+            if (typeof window.chStdPriceForRow === 'function') {
+                const std = Number(window.chStdPriceForRow(data)) || 0;
+                if (std > 0) return reverbApplyLmpCap(data, std, 0);
+            }
+        } catch (e) { /* rules not loaded yet */ }
+        return 0;
+    }
+    window.reverbLiveRuleSprice = reverbLiveRuleSprice;
+    /**
+     * Cell / triangle / SGROI: the LIVE rule price with its caps, like Amazon, so a switch or rule edit repaints at once.
+     * The server saves the same price right after (ReverbRuleSpriceApply). Falls back to the saved S PRC while the rules
+     * are loading or the row has no rule price.
+     */
+    function reverbRowSpriceForAlert(data) {
+        if (!data || isReverbParentRow(data)) return 0;
+        const live = reverbLiveRuleSprice(data);
+        if (live > 0) return live;
+        return reverbSavedSprice(data);
+    }
+    // Names the shared rule hover card uses (partials/temu-rule-hover, kind 'reverb').
+    const reverbShownSprice = reverbRowSpriceForAlert;
+    /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+    function reverbDiffCfgNow() {
+        const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+        return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+    }
+    /** Std Diff % = (Std Prc - RV Price) / RV Price x 100, same as /amazon-tabulator-view. null when either is missing. */
+    function reverbStdPrcDiffPct(rowData) {
+        if (!rowData || isReverbParentRow(rowData)) return null;
+        const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+        const price = parseFloat(rowData['RV Price']) || 0;
+        if (!(std > 0) || !(price > 0)) return null;
+        return ((std - price) / price) * 100;
+    }
+    /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+    function reverbRenderStdPrcDiff(el, rowData) {
+        const pct = reverbStdPrcDiffPct(rowData);
+        let html = '';
+        let bg = '';
+        let color = '';
+        if (pct !== null) {
+            if (pct > reverbDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+            else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+            else { bg = '#28a745'; color = '#fff'; }
+            html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+        }
+        if (el) {
+            el.style.backgroundColor = bg;
+            el.style.color = color;
+        }
+        return html;
+    }
+    // The Sprc Dil Diff rule reads Std Prc and the live Reverb price from these two columns.
+    window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+    window.ebayDiffLivePrice = function(d) { return parseFloat(d && d['RV Price']) || 0; };
+    /** Repaint every S PRC dependent cell from the rule now ON (switch, or a rule edit). No row writes, no scroll jump. */
+    function reverbRefreshSpriceCells() {
+        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+        try {
+            (table.getRows('visible') || []).forEach(function(row) {
+                try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+            });
+        } catch (e) { /* ignore */ }
+        if (typeof updateSummary === 'function') {
+            try { updateSummary(); } catch (e2) { /* ignore */ }
+        }
+    }
+    window.reverbRefreshSpriceCells = reverbRefreshSpriceCells;
+    // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
+    window.spriceOnRuleSwitched = function() {
+        reverbRefreshSpriceCells();
+        if (typeof showToast === 'function') showToast('S PRC now follows ' + (reverbSpriceRule() === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
+    };
+    // A Sprc Dil edit (slab, Diff, LMP cap) was saved: the cells repaint from the new rule; the server saves it too.
+    window.ebayOnDilRulesSaved = function() { reverbRefreshSpriceCells(); };
+    // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
+    $(document).on('chStd:settled', function() { reverbRefreshSpriceCells(); });
     window.reverbRowSpriceForAlert = reverbRowSpriceForAlert;
     function reverbHasBlueTriangle(data) {
         if (isReverbParentRow(data)) return false;
@@ -1193,15 +1342,15 @@
     }
 
     function reverbComputeSgpft(rowData) {
-        const m = reverbComputePriceMetrics(rowData && rowData.SPRICE, rowData);
+        const m = reverbComputePriceMetrics(reverbRowSpriceForAlert(rowData), rowData);
         return m.gpft;
     }
     function reverbComputeSroi(rowData) {
-        const m = reverbComputePriceMetrics(rowData && rowData.SPRICE, rowData);
+        const m = reverbComputePriceMetrics(reverbRowSpriceForAlert(rowData), rowData);
         return m.groi;
     }
     function reverbComputeSnpft(rowData) {
-        const m = reverbComputePriceMetrics(rowData && rowData.SPRICE, rowData);
+        const m = reverbComputePriceMetrics(reverbRowSpriceForAlert(rowData), rowData);
         return m.npft;
     }
 
@@ -1210,7 +1359,7 @@
      *   (gross profit $ − ad spend $) / COGS × 100
      */
     function reverbComputeNetSroi(rowData) {
-        const m = reverbComputePriceMetrics(rowData && rowData.SPRICE, rowData);
+        const m = reverbComputePriceMetrics(reverbRowSpriceForAlert(rowData), rowData);
         return m.nroi;
     }
 
@@ -2947,10 +3096,23 @@
                     }
                 },
                 {
+                    title: "Std Diff",
+                    field: "std_prc_diff",
+                    hozAlign: "center",
+                    width: 62,
+                    headerTooltip: "Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target SNROI), red = below −5%, green = the rest.",
+                    sorter: tabSortBlankLast(function(d) { return reverbStdPrcDiffPct(d); }),
+                    formatter: function(cell) {
+                        return reverbRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                    }
+                },
+                {
                     title: "Price",
                     field: "RV Price",
                     hozAlign: "center",
                     sorter: "number",
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
@@ -3191,26 +3353,23 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. Saved by the server at 4:25 AM and 8:25 PM IST: Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap (same as Amazon), then pushed to Reverb. The page does not need to be open. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
+                    headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with Diff, LMP cap by Dil band, Std Prc as the maximum) or Std prc vs dil (Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap). Turning one ON turns the other OFF. The server saves it right after a switch or rule edit and pushes at 4:25 AM and 8:25 PM IST. Clearance SKUs show C. Blue triangle = S PRC ≠ Price. Red = capped at LMP, brown = capped at Std Prc. Hover for every rule used.",
                     editable: false,
-                    sorter: "number",
+                    sorter: tabSortBlankLast(function(d) { if (isReverbParentRow(d)) return null; const v = reverbRowSpriceForAlert(d); return v > 0 ? v : null; }),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isReverbParentRow(rowData)) return '';
                         // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
                         if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
-                            return '<span title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                            return window.chClr ? chClr.markHtml(rowData) : '<span title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
                         }
-                        let value = (typeof chPromoTableSprice === 'function')
-                            ? Number(chPromoTableSprice(rowData)) || 0
-                            : parseFloat(cell.getValue() || 0);
-                        if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
-                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
+                        const value = reverbRowSpriceForAlert(rowData);
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData['RV Price']) || 0;
-                        const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
-                        
+
                         let bgColor = '';
                         if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
                         else if (status === 'applied') bgColor = 'background-color: #d4edda;';
@@ -3219,19 +3378,38 @@
 
                         if (!(value > 0)) return '';
 
+                        // Cap marks (same rules as /amazon-tabulator-view), Sprc Dil only: red = LMP, orange = LMP above Std Prc, brown = Std Prc max.
+                        let flags = null;
+                        if (reverbSpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function') {
+                            const rawDil = reverbDilRawSprice(rowData);
+                            const lmpNow = reverbRowLmp(rowData);
+                            if (rawDil > 0) {
+                                flags = chClr.capFlags({
+                                    raw: rawDil,
+                                    shown: value,
+                                    lmp: lmpNow,
+                                    std: parseFloat(rowData.STANDARD_PRICE) || 0,
+                                    sgroiAtLmp: reverbSgroiAtPrice(rowData, lmpNow)
+                                });
+                            }
+                        }
+                        const cap = (!flags && window.SpriceLmpCap) ? SpriceLmpCap.apply(rowData, value) : null;
+                        const lmp = cap ? cap.lmp : reverbRowLmp(rowData);
+                        const overLmp = flags ? false : (cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp));
+                        const capTris = flags ? (flags.redTri + flags.reviewTri + flags.stdTri) : '';
+                        const capColor = flags && flags.color ? flags.color : '';
                         const formatted = '$' + value.toFixed(2);
-                        const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                        const priceHtml = overLmp
-                            ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
+                        const priceHtml = (overLmp || capColor)
+                            ? `<span style="color:${capColor || '#dc3545'};font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
                             : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}${capTris}</span>`;
                     },
-                    width: 96
+                    width: 110
                 },
                 {
                     title: "SROI%",
@@ -3654,6 +3832,10 @@
                 table.addFilter(function(data) {
                     return reverbHasBlueTriangle(data);
                 });
+            }
+            // Clearance "C" header badge filter (Inv days clearance = YES)
+            if (window.chClr && chClr.filterOn()) {
+                table.addFilter(function(data) { return chClr.filterFn(data); });
             }
 
             updateSummary();
@@ -4416,7 +4598,25 @@
         }
 
         // Wait for table to be built — apply saved columns first (same as Amazon).
+        // Std Diff follows the row when Std Prc or the Price changes.
+        table.on('rowUpdated', function(row) {
+            try {
+                const c = row.getCell('std_prc_diff');
+                if (!c) return;
+                const el = c.getElement();
+                el.innerHTML = reverbRenderStdPrcDiff(el, row.getData());
+            } catch (e) { /* ignore */ }
+        });
+
         table.on('tableBuilt', function() {
+            // Header "C n" badge: count of clearance SKUs, click to filter them.
+            if (window.chClr && typeof chClr.init === 'function') {
+                chClr.init({
+                    badgeId: 'reverb-clearance-badge',
+                    getTable: function() { return table; },
+                    applyFilters: applyFilters
+                });
+            }
             try {
                 if (table.getColumn('push_prmt')) table.deleteColumn('push_prmt');
             } catch (e) { /* already gone */ }
@@ -4441,6 +4641,7 @@
         });
 
         table.on('dataLoaded', function() {
+            if (window.chClr && typeof chClr.refresh === 'function') chClr.refresh();
             setTimeout(function() {
                 applyReverbUrlBadgeFilter();
                 updateSummary();

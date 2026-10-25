@@ -136,13 +136,68 @@ class MacysRuleSpriceApplyServiceTest extends TestCase
         $this->assertNull($out);
     }
 
+    public function test_sprc_dil_diff_rule_adds_points_to_target(): void
+    {
+        $out = $this->compute($this->dilRow(['std' => 30, 'mc_price' => 20]), [AmazonDilGroiRule::make(0.1, 25, 100)], $this->dilCtx());
+        // Diff = 50% > 20 → target 110 → (10 × 2.1) ÷ 0.8
+        $this->assertEqualsWithDelta(26.25, $out['sprice'], 0.01);
+    }
+
+    public function test_sprc_dil_lmp_cap_uses_lmp_times_dil_band(): void
+    {
+        $out = $this->compute($this->dilRow(['lmp' => 24]), [AmazonDilGroiRule::make(0.1, 25, 100)], $this->dilCtx());
+        // Rule price 25 ≥ LMP 24, SGROI at LMP 92% → LMP × 0.98
+        $this->assertEqualsWithDelta(23.52, $out['sprice'], 0.01);
+    }
+
+    public function test_sprc_dil_lmp_cap_skipped_when_sgroi_at_lmp_is_low(): void
+    {
+        $out = $this->compute($this->dilRow(['lmp' => 12.4]), [AmazonDilGroiRule::make(0.1, 25, 100)], $this->dilCtx());
+        // SGROI at LMP = (12.4 × 0.8 − 10) ÷ 10 = −8% → no LMP cap, rule price stays
+        $this->assertEqualsWithDelta(25.0, $out['sprice'], 0.01);
+    }
+
+    public function test_sprc_dil_std_prc_is_the_maximum(): void
+    {
+        $out = $this->compute($this->dilRow(['std' => 20, 'mc_price' => 20]), [AmazonDilGroiRule::make(0.1, 25, 100)], $this->dilCtx());
+        $this->assertEqualsWithDelta(20.0, $out['sprice'], 0.01);
+    }
+
+    public function test_sprc_dil_amazon_floor_still_runs_last(): void
+    {
+        $out = $this->compute($this->dilRow(['lmp' => 24, 'amz' => 30]), [AmazonDilGroiRule::make(0.1, 25, 100)], $this->dilCtx());
+        $this->assertEqualsWithDelta(30.0, $out['sprice'], 0.01);
+    }
+
+    public function test_without_dil_context_nothing_changes(): void
+    {
+        $out = $this->compute($this->dilRow(['lmp' => 24, 'std' => 20, 'mc_price' => 10]), [AmazonDilGroiRule::make(0.1, 25, 100)]);
+        $this->assertEqualsWithDelta(25.0, $out['sprice'], 0.01);
+    }
+
+    /** @return array<string, mixed> */
+    private function dilRow(array $extra = []): array
+    {
+        return array_merge(['inv' => 10, 'dil' => 3, 'mc_l30' => 2, 'lp' => 10, 'ship' => 0, 'amz' => 0], $extra);
+    }
+
+    /** @return array{lmp_cap:array,diff_adj:array} */
+    private function dilCtx(): array
+    {
+        return [
+            'lmp_cap' => ['low_lt' => 25, 'high_gt' => 50, 'low_pct' => 2, 'mid_pct' => 2, 'high_pct' => 2],
+            'diff_adj' => ['gt_pct' => 20, 'points' => 10],
+        ];
+    }
+
     /**
      * @param  array<string, mixed>  $row
      * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
+     * @param  array{lmp_cap:array,diff_adj:array}|null  $dilContext
      * @return array{sprice:float}|null
      */
-    private function compute(array $row, array $dilRules): ?array
+    private function compute(array $row, array $dilRules, ?array $dilContext = null): ?array
     {
-        return app(MacysRuleSpriceApplyService::class)->computeTarget($row, $dilRules, 0.80);
+        return app(MacysRuleSpriceApplyService::class)->computeTarget($row, $dilRules, 0.80, $dilContext);
     }
 }

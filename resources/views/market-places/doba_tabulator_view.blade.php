@@ -706,7 +706,10 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'doba'])
-        function dobaDisplayedSprice(data) {
+        @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'doba', 'temuRuleLiveLabel' => 'PRICE'])
+        /** Saved S PRC (what the server holds). */
+        function dobaSavedSprice(data) {
             if (!data || isDobaParentRow(data)) return 0;
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;
@@ -717,6 +720,107 @@
             }
             return parseFloat(data.sprice != null ? data.sprice : data.SPRICE) || 0;
         }
+        function dobaSpriceRule() {
+            return (typeof window.spriceActiveRule === 'function') ? window.spriceActiveRule() : 'std';
+        }
+        /** Sprc Dil price before the Std Prc maximum: Dil slab + Diff points, with Ship. 0 when the rule gives none. */
+        function dobaDilRawSprice(data) {
+            if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
+            const meta = ebayDilGroiMetaForRow(data);
+            const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
+            return n > 0 ? Math.round(n * 100) / 100 : 0;
+        }
+        /** Doba has no LMP data, so no LMP rule applies on this page. */
+        function dobaRowLmp() { return 0; }
+        /** No A Price / Amz cap on Doba. */
+        function dobaAmzPrice() { return 0; }
+        /** Sprc Dil switch ON: the Dil price (Dil slab + Diff points) with Std Prc as the maximum. No LMP cap. */
+        function dobaCapDilSprice(data, raw) {
+            let out = Math.round((parseFloat(raw) || 0) * 100) / 100;
+            if (!(out > 0)) return 0;
+            const std = parseFloat(data && (data.STANDARD_PRICE != null ? data.STANDARD_PRICE : data.standard_price)) || 0;
+            if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
+            return out;
+        }
+        /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules are loading or the row has none. */
+        function dobaLiveRuleSprice(data) {
+            if (!data || isDobaParentRow(data)) return 0;
+            try {
+                if (dobaSpriceRule() === 'dil') {
+                    if (window._ebayDilRulesLoaded !== true) return 0;
+                    const raw = dobaDilRawSprice(data);
+                    return raw > 0 ? dobaCapDilSprice(data, raw) : 0;
+                }
+                if (window.__chStdSettled !== true) return 0;
+                if (typeof window.chStdPriceForRow === 'function') {
+                    const std = Number(window.chStdPriceForRow(data)) || 0;
+                    if (std > 0) return Math.round(std * 100) / 100;
+                }
+            } catch (e) { /* rules not loaded yet */ }
+            return 0;
+        }
+        window.dobaLiveRuleSprice = dobaLiveRuleSprice;
+        /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
+        function dobaDisplayedSprice(data) {
+            if (!data || isDobaParentRow(data)) return 0;
+            const live = dobaLiveRuleSprice(data);
+            if (live > 0) return live;
+            return dobaSavedSprice(data);
+        }
+        const dobaShownSprice = dobaDisplayedSprice;
+        /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+        function dobaDiffCfgNow() {
+            const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+            return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+        }
+        /** Std Diff % = (Std Prc - Price) / Price x 100, same as /amazon-tabulator-view. null when either is missing. */
+        function dobaStdPrcDiffPct(rowData) {
+            if (!rowData || isDobaParentRow(rowData)) return null;
+            const std = parseFloat(rowData.STANDARD_PRICE != null ? rowData.STANDARD_PRICE : rowData.standard_price) || 0;
+            const price = parseFloat(rowData['doba Price']) || 0;
+            if (!(std > 0) || !(price > 0)) return null;
+            return ((std - price) / price) * 100;
+        }
+        /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+        function dobaRenderStdPrcDiff(el, rowData) {
+            const pct = dobaStdPrcDiffPct(rowData);
+            let html = '';
+            let bg = '';
+            let color = '';
+            if (pct !== null) {
+                if (pct > dobaDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+                else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+                else { bg = '#28a745'; color = '#fff'; }
+                html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+            }
+            if (el) {
+                el.style.backgroundColor = bg;
+                el.style.color = color;
+            }
+            return html;
+        }
+        // The Sprc Dil Diff rule reads Std Prc and the Doba price from these two columns.
+        window.ebayDiffStdPrice = function(d) { return parseFloat(d && (d.STANDARD_PRICE != null ? d.STANDARD_PRICE : d.standard_price)) || 0; };
+        window.ebayDiffLivePrice = function(d) { return parseFloat(d && d['doba Price']) || 0; };
+        /** Repaint every S PRC dependent cell from the rule now ON (switch, or a rule edit). No row writes, no scroll jump. */
+        function dobaRefreshSpriceCells() {
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+            try {
+                (table.getRows('visible') || []).forEach(function(row) {
+                    try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+                });
+            } catch (e) { /* ignore */ }
+            if (typeof updateSummary === 'function') {
+                try { updateSummary(); } catch (e2) { /* ignore */ }
+            }
+        }
+        window.dobaRefreshSpriceCells = dobaRefreshSpriceCells;
+        // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
+        window.spriceOnRuleSwitched = function() { dobaRefreshSpriceCells(); };
+        // A Sprc Dil edit (slab, Diff) was saved: the cells repaint from the new rule; the server saves it too.
+        window.ebayOnDilRulesSaved = function() { dobaRefreshSpriceCells(); };
+        // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
+        $(document).on('chStd:settled', function() { dobaRefreshSpriceCells(); });
         function dobaAdsPercentForNet() {
             if (typeof ebayDilAdsPct === 'function') {
                 const n = parseFloat(ebayDilAdsPct());
@@ -2407,9 +2511,22 @@
                         }
                     },
                     {
+                        title: "Std Diff",
+                        field: "std_prc_diff",
+                        hozAlign: "center",
+                        width: 62,
+                        headerTooltip: "Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target NROI), red = below −5%, green = the rest.",
+                        sorter: tabSortBlankLast(function(d) { return dobaStdPrcDiffPct(d); }),
+                        formatter: function(cell) {
+                            return dobaRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                        }
+                    },
+                    {
                         title: "PRICE",
                         field: "doba Price",
                         width: 80,
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
@@ -2518,7 +2635,9 @@
                         sorter: dobaNumberSorter,
                         visible: true,
                         editable: false,
-                        headerTooltip: "Not editable. Auto-saved from Sprc Dil so SNROI = Dil + CVR Target NROI. Dil = OV L30 ÷ Shop INV. Dil = 0 uses the 0–0 slab. Doba L30 = 0 still uses the Dil-matching slab. S PRC = (LP × (1 + NROI%/100) + Ship) / (0.95 − Ads%/100). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP (no blue when red).",
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
+                        headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target NROI with Diff, Ship included, Std Prc as the maximum; no LMP rule, Doba has no LMP) or Std prc vs dil. Turning one ON turns the other OFF. The server saves it too. Blue triangle = S PRC ≠ Price. Brown = capped at Std Prc. Hover for every rule used.",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaParentRow(rowData)) {
@@ -2545,7 +2664,16 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                            // Cap mark (same rule as /amazon-tabulator-view), Sprc Dil only. Doba has no LMP, so only the brown Std Prc maximum applies.
+                            let capTris = '';
+                            if (dobaSpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function') {
+                                const rawDil = dobaDilRawSprice(rowData);
+                                if (rawDil > 0) {
+                                    const flags = chClr.capFlags({ raw: rawDil, shown: value, lmp: 0, std: parseFloat(rowData.STANDARD_PRICE) || 0, sgroiAtLmp: null });
+                                    capTris = flags ? flags.stdTri : '';
+                                }
+                            }
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}${capTris}</span>`;
                         }
                     },
                     {
@@ -2560,7 +2688,7 @@
                                 const rolled = parseFloat(rd.s_self_pick) || 0;
                                 return rolled > 0 ? ('$' + rolled.toFixed(2)) : '';
                             }
-                            const sprice = parseFloat(rd.sprice) || 0;
+                            const sprice = dobaDisplayedSprice(rd) || parseFloat(rd.sprice) || 0;
                             const ship = parseFloat(rd.Ship_productmaster) || 0;
                             const value = sprice > 0 ? Math.max(0, sprice - ship) : 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
@@ -3357,6 +3485,16 @@
             }
 
             // SPRICE is not editable — auto-saved from Sprc Dil (same as TikTok).
+
+            // Std Diff follows the row when Std Prc or the Price changes.
+            table.on('rowUpdated', function(row) {
+                try {
+                    const c = row.getCell('std_prc_diff');
+                    if (!c) return;
+                    const el = c.getElement();
+                    el.innerHTML = dobaRenderStdPrcDiff(el, row.getData());
+                } catch (e) { /* ignore */ }
+            });
 
             // Wait for table to be built
             table.on('tableBuilt', function() {

@@ -17,6 +17,7 @@
             box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 0 0 5px currentColor;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'topdawg'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'topdawg'])
     </style>
 @endsection
 
@@ -191,6 +192,7 @@
                             <i class="fas fa-exchange-alt"></i> Price %
                         </button>
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'topdawg'])
+                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'topdawg'])
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
                         </button>
@@ -245,6 +247,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'topdawg'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'topdawg'])
 @endsection
 
 @section('script-bottom')
@@ -253,6 +256,9 @@
     // S PRC is saved + pushed by the server (topdawg:sprc-dil-auto-push). The page only shows it.
     window.CH_STD_SERVER_OWNED = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'topdawg'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'topdawg'])
+    @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
+    @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'topdawg', 'temuRuleLiveLabel' => 'Price'])
     const TD_MAP_TOLERANCE = 3;
     const TD_PERCENTAGE    = {{ $topdawgPercentage }} / 100;
     // Pinned to /topdawg/sales-dashboard Total Revenue / PFT% / ROI%.
@@ -271,7 +277,8 @@
     function tdIsParentRow(d) {
         return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
     }
-    function tdRawSprice(data) {
+    /** Saved S PRC (what the server holds). */
+    function tdSavedSprice(data) {
         if (!data || tdIsParentRow(data)) return 0;
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
@@ -282,12 +289,125 @@
         }
         return parseFloat(data.SPRICE) || 0;
     }
+    function tdSpriceRule() {
+        return (typeof window.spriceActiveRule === 'function') ? window.spriceActiveRule() : 'std';
+    }
+    /** Sprc Dil price before the Std Prc maximum: Dil slab + Diff points. 0 when the rule gives none. */
+    function tdDilRawSprice(data) {
+        if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
+        const meta = ebayDilGroiMetaForRow(data);
+        const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
+        return n > 0 ? Math.round(n * 100) / 100 : 0;
+    }
+    /** TopDawg has no LMP data, so no LMP rule applies on this page. */
+    function tdRowLmp() { return 0; }
+    /** No A Price / Amz cap on TopDawg. */
+    function tdAmzPrice() { return 0; }
+    /** Sprc Dil switch ON: the Dil price (Dil slab + Diff points) with Std Prc as the maximum. No LMP cap. */
+    function tdCapDilSprice(data, raw) {
+        let out = Math.round((parseFloat(raw) || 0) * 100) / 100;
+        if (!(out > 0)) return 0;
+        const std = parseFloat(data && data.STANDARD_PRICE) || 0;
+        if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
+        return out;
+    }
+    /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules are loading or the row has none. */
+    function tdLiveRuleSprice(data) {
+        if (!data || tdIsParentRow(data)) return 0;
+        try {
+            if (tdSpriceRule() === 'dil') {
+                if (window._ebayDilRulesLoaded !== true) return 0;
+                const raw = tdDilRawSprice(data);
+                return raw > 0 ? tdCapDilSprice(data, raw) : 0;
+            }
+            if (window.__chStdSettled !== true) return 0;
+            if (typeof window.chStdPriceForRow === 'function') {
+                const std = Number(window.chStdPriceForRow(data)) || 0;
+                if (std > 0) return Math.round(std * 100) / 100;
+            }
+        } catch (e) { /* rules not loaded yet */ }
+        return 0;
+    }
+    window.tdLiveRuleSprice = tdLiveRuleSprice;
+    /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
+    function tdRawSprice(data) {
+        if (!data || tdIsParentRow(data)) return 0;
+        const live = tdLiveRuleSprice(data);
+        if (live > 0) return live;
+        return tdSavedSprice(data);
+    }
     function tdDisplayedSprice(data) {
         return tdRawSprice(data);
     }
     function tdRowSpriceForAlert(data) {
         return tdDisplayedSprice(data);
     }
+    const tdShownSprice = tdDisplayedSprice;
+    /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+    function tdDiffCfgNow() {
+        const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+        return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+    }
+    /** Std Diff % = (Std Prc - Price) / Price x 100, same as /amazon-tabulator-view. null when either is missing. */
+    function tdStdPrcDiffPct(rowData) {
+        if (!rowData || tdIsParentRow(rowData)) return null;
+        const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+        const price = parseFloat(rowData['TD Price']) || 0;
+        if (!(std > 0) || !(price > 0)) return null;
+        return ((std - price) / price) * 100;
+    }
+    /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+    function tdRenderStdPrcDiff(el, rowData) {
+        const pct = tdStdPrcDiffPct(rowData);
+        let html = '';
+        let bg = '';
+        let color = '';
+        if (pct !== null) {
+            if (pct > tdDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+            else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+            else { bg = '#28a745'; color = '#fff'; }
+            html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+        }
+        if (el) {
+            el.style.backgroundColor = bg;
+            el.style.color = color;
+        }
+        return html;
+    }
+    // The Sprc Dil Diff rule reads Std Prc and the TopDawg price from these two columns.
+    window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+    window.ebayDiffLivePrice = function(d) { return parseFloat(d && d['TD Price']) || 0; };
+    /** GPFT% / GROI% at the shown S PRC (no ship, no ads on TopDawg). null when there is no S PRC. */
+    function tdLiveSpriceMetrics(d) {
+        const sp = tdDisplayedSprice(d);
+        const lp = parseFloat(d && d.LP_productmaster) || 0;
+        const m = parseFloat(d && d.percentage) || 0;
+        if (!(sp > 0) || !(m > 0)) return { sgpft: null, sroi: null };
+        const profit = sp * m - lp;
+        return { sgpft: (profit / sp) * 100, sroi: lp > 0 ? (profit / lp) * 100 : 0 };
+    }
+    /** Repaint every S PRC dependent cell from the rule now ON (switch, or a rule edit). No row writes, no scroll jump. */
+    function tdRefreshSpriceCells() {
+        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+        try {
+            (table.getRows('visible') || []).forEach(function(row) {
+                try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+            });
+        } catch (e) { /* ignore */ }
+        if (typeof updateSummary === 'function') {
+            try { updateSummary(); } catch (e2) { /* ignore */ }
+        }
+    }
+    window.tdRefreshSpriceCells = tdRefreshSpriceCells;
+    // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
+    window.spriceOnRuleSwitched = function() {
+        tdRefreshSpriceCells();
+        if (typeof tdShowToast === 'function') tdShowToast('S PRC now follows ' + (tdSpriceRule() === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
+    };
+    // A Sprc Dil edit (slab, Diff) was saved: the cells repaint from the new rule; the server saves it too.
+    window.ebayOnDilRulesSaved = function() { tdRefreshSpriceCells(); };
+    // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
+    $(document).on('chStd:settled', function() { tdRefreshSpriceCells(); });
     window.tdDisplayedSprice = tdDisplayedSprice;
     function tdHasBlueTriangle(data) {
         if (tdIsParentRow(data)) return false;
@@ -982,7 +1102,13 @@
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                             dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(d) : '') + '</span>';
                     }},
+                { title: 'Std Diff', field: 'std_prc_diff', hozAlign: 'center', width: 62,
+                    headerTooltip: 'Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target GROI), red = below −5%, green = the rest.',
+                    sorter: tabSortBlankLast(function(d) { return tdStdPrcDiffPct(d); }),
+                    formatter: function(cell) { return tdRenderStdPrcDiff(cell.getElement(), cell.getRow().getData()); } },
                 { title: 'Price', field: 'TD Price', hozAlign: 'center', width: 70, sorter: 'number',
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                     formatter: c => {
                         const v = parseFloat(c.getValue()) || 0;
                         const rowData = c.getRow().getData();
@@ -1051,9 +1177,12 @@
                     }},
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
-                    title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 92, sorter: 'number',
+                    title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 92,
+                    sorter: tabSortBlankLast(function(d) { if (tdIsParentRow(d)) return null; const v = tdDisplayedSprice(d); return v > 0 ? v : null; }),
                     editable: false,
-                    headerTooltip: 'Not editable. Saved by the server at 4:30 AM and 8:30 PM IST: Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, then Ship is reduced from S PRC (S PRC = calc − Ship, saved over the old S PRC), then pushed to TopDawg. TopDawg queues each price for review (1–24h). The page does not need to be open. Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
+                    headerTooltip: 'Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target GROI with Diff, Std Prc as the maximum; no LMP rule, TopDawg has no LMP) or Std prc vs dil (Ship taken off). Turning one ON turns the other OFF. The server saves it at 4:30 AM and 8:30 PM IST and pushes it to TopDawg, which queues each price for review (1–24h). Blue triangle = S PRC ≠ Price. Brown = capped at Std Prc. Hover for every rule used.',
                     formatter: c => {
                         const rowData = c.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
@@ -1079,18 +1208,28 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Saved S PRC ≥ LMP $'
                                 + Number(lmp).toFixed(2) + '"></i>'
                             : '';
+                        // Cap mark (same rule as /amazon-tabulator-view), Sprc Dil only. TopDawg has no LMP, so only the brown Std Prc maximum applies.
+                        let capTris = '';
+                        if (tdSpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function') {
+                            const rawDil = tdDilRawSprice(rowData);
+                            if (rawDil > 0) {
+                                const flags = chClr.capFlags({ raw: rawDil, shown: value, lmp: 0, std: parseFloat(rowData.STANDARD_PRICE) || 0, sgroiAtLmp: null });
+                                capTris = flags ? flags.stdTri : '';
+                            }
+                        }
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}${capTris}</span>`;
                     }
                 },
                 {
-                    title: 'SGPFT%', field: 'SGPFT', hozAlign: 'center', width: 55, sorter: 'number',
+                    title: 'SGPFT%', field: 'SGPFT', hozAlign: 'center', width: 55,
                     headerTooltip: 'GPFT% at S PRC (no ship): ((S PRC × margin − LP) / S PRC) × 100.',
+                    sorter: tabSortBlankLast(function(d) { return tdLiveSpriceMetrics(d).sgpft; }),
                     formatter: c => {
-                        const v = c.getValue();
+                        const v = tdLiveSpriceMetrics(c.getRow().getData()).sgpft;
                         if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
                         const percent = parseFloat(v);
                         if (isNaN(percent)) return '';
@@ -1104,11 +1243,12 @@
                     }
                 },
                 {
-                    title: 'SNPFT%', field: 'SNPFT', hozAlign: 'center', width: 55, sorter: 'number',
+                    title: 'SNPFT%', field: 'SNPFT', hozAlign: 'center', width: 55,
                     headerTooltip: 'TopDawg has no Ads% — SNPFT% = SGPFT%.',
+                    sorter: tabSortBlankLast(function(d) { return tdLiveSpriceMetrics(d).sgpft; }),
                     formatter: c => {
-                        const percent = parseFloat(c.getRow().getData().SGPFT);
-                        if (isNaN(percent)) return '<span class="text-muted">-</span>';
+                        const percent = tdLiveSpriceMetrics(c.getRow().getData()).sgpft;
+                        if (percent === null || isNaN(percent)) return '<span class="text-muted">-</span>';
                         let color = '';
                         if (percent < 10) color = '#a00211';
                         else if (percent < 15) color = '#ffc107';
@@ -1119,10 +1259,11 @@
                     }
                 },
                 {
-                    title: 'SROI%', field: 'SROI', hozAlign: 'center', width: 55, sorter: 'number',
+                    title: 'SROI%', field: 'SROI', hozAlign: 'center', width: 55,
                     tooltip: 'GROI % at SPRICE (same formula as GROI%, no ship)',
+                    sorter: tabSortBlankLast(function(d) { return tdLiveSpriceMetrics(d).sroi; }),
                     formatter: c => {
-                        const v = c.getValue();
+                        const v = tdLiveSpriceMetrics(c.getRow().getData()).sroi;
                         if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
                         const percent = parseFloat(v);
                         if (isNaN(percent)) return '';
@@ -1135,11 +1276,12 @@
                     }
                 },
                 {
-                    title: 'SNROI%', field: 'SNROI', hozAlign: 'center', width: 55, sorter: 'number',
+                    title: 'SNROI%', field: 'SNROI', hozAlign: 'center', width: 55,
                     headerTooltip: 'TopDawg has no Ads% — SNROI% = SROI%.',
+                    sorter: tabSortBlankLast(function(d) { return tdLiveSpriceMetrics(d).sroi; }),
                     formatter: c => {
-                        const percent = parseFloat(c.getRow().getData().SROI);
-                        if (isNaN(percent)) return '<span class="text-muted">-</span>';
+                        const percent = tdLiveSpriceMetrics(c.getRow().getData()).sroi;
+                        if (percent === null || isNaN(percent)) return '<span class="text-muted">-</span>';
                         let color = '';
                         if (percent < 40) color = '#a00211';
                         else if (percent < 75) color = '#ffc107';
@@ -1344,6 +1486,16 @@
         table.on('tableBuilt', function() {
             tdBuildColumnDropdown();
             tdApplyColumnVisibilityFromServer();
+        });
+
+        // Std Diff follows the row when Std Prc or the Price changes.
+        table.on('rowUpdated', function(row) {
+            try {
+                const c = row.getCell('std_prc_diff');
+                if (!c) return;
+                const el = c.getElement();
+                el.innerHTML = tdRenderStdPrcDiff(el, row.getData());
+            } catch (e) { /* ignore */ }
         });
 
         // Per-column checkbox toggle — save instantly after every change.

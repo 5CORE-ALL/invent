@@ -280,6 +280,22 @@ class ChannelPromoPricingController extends Controller
         \App\Support\EbayRuleSpriceApply::dispatch($channel);
         // Shopify B2C: same, S PRC is re-saved from the rule that is now ON (not pushed).
         \App\Support\ShopifyB2cRuleSpriceApply::dispatch($channel);
+        // Macys: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
+        if ($channel === 'macys' || $channel === 'macy') {
+            \App\Support\MacysRuleSpriceApply::dispatchAfterResponse();
+        }
+        // Purchasing Power: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
+        \App\Support\PurchasingPowerRuleSpriceApply::dispatch($channel);
+        // Wayfair: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed or uploaded).
+        \App\Support\WayfairRuleSpriceApply::dispatch($channel);
+        // Reverb: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
+        \App\Support\ReverbRuleSpriceApply::dispatch($channel);
+        // TopDawg: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
+        \App\Support\TopDawgRuleSpriceApply::dispatch($channel);
+        // Doba: same, S PRC is re-saved from the rule that is now ON right after this response (save only, Doba has no auto push).
+        \App\Support\DobaRuleSpriceApply::dispatch($channel);
+        // AliExpress: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
+        \App\Support\AliexpressRuleSpriceApply::dispatch($channel);
 
         return response()->json([
             'success' => true,
@@ -1479,7 +1495,7 @@ class ChannelPromoPricingController extends Controller
         // Macys: the page writes S PRC from the browser, and the background job re-saves it from the new rules at
         // once (SNROI Cap included), so the saved S PRC follows the rules even when the page is closed.
         if ($channel === 'macys' || $channel === 'macy') {
-            \App\Support\MacysRuleSpriceApply::dispatch();
+            \App\Support\MacysRuleSpriceApply::dispatchAfterResponse();
         }
 
         return response()->json(array_merge(['success' => true, 'sprice_refreshed' => $spriceRefreshed], $payload));
@@ -1967,7 +1983,37 @@ class ChannelPromoPricingController extends Controller
         );
 
         if ($channel === 'macys' || $channel === 'macy') {
-            \App\Support\MacysRuleSpriceApply::dispatch();
+            \App\Support\MacysRuleSpriceApply::dispatchAfterResponse();
+        }
+        // Purchasing Power: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
+        if (\App\Support\PurchasingPowerRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\PurchasingPowerRuleSpriceApply::dispatch($channel);
+        }
+        // Wayfair: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no upload, no waiting).
+        if (\App\Support\WayfairRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\WayfairRuleSpriceApply::dispatch($channel);
+        }
+        // Reverb: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
+        if (\App\Support\ReverbRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\ReverbRuleSpriceApply::dispatch($channel);
+        }
+        // TopDawg: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
+        if (\App\Support\TopDawgRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\TopDawgRuleSpriceApply::dispatch($channel);
+        }
+        // Doba: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (save only, no waiting).
+        if (\App\Support\DobaRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\DobaRuleSpriceApply::dispatch($channel);
+        }
+        // AliExpress: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
+        if (\App\Support\AliexpressRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\AliexpressRuleSpriceApply::dispatch($channel);
         }
 
         // eBay 1/2/3: re-save S PRC from the new Dil rules right after this response (no push, no waiting).

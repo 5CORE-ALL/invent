@@ -60,6 +60,30 @@
                 if (typeof window.shopifyB2bRefreshSpriceCells === 'function') {
                     try { window.shopifyB2bRefreshSpriceCells(); } catch (e2) { /* ignore */ }
                 }
+                if (typeof window.macysRefreshSpriceCells === 'function') {
+                    try { window.macysRefreshSpriceCells(); } catch (e5) { /* ignore */ }
+                }
+                if (typeof window.ppRefreshSpriceCells === 'function') {
+                    try { window.ppRefreshSpriceCells(); } catch (e6) { /* ignore */ }
+                }
+                if (typeof window.dpRefreshSpriceCells === 'function') {
+                    try { window.dpRefreshSpriceCells(); } catch (e7) { /* ignore */ }
+                }
+                if (typeof window.wfRefreshSpriceCells === 'function') {
+                    try { window.wfRefreshSpriceCells(); } catch (e8) { /* ignore */ }
+                }
+                if (typeof window.aeRefreshSpriceCells === 'function') {
+                    try { window.aeRefreshSpriceCells(); } catch (e12) { /* ignore */ }
+                }
+                if (typeof window.dobaRefreshSpriceCells === 'function') {
+                    try { window.dobaRefreshSpriceCells(); } catch (e11) { /* ignore */ }
+                }
+                if (typeof window.tdRefreshSpriceCells === 'function') {
+                    try { window.tdRefreshSpriceCells(); } catch (e10) { /* ignore */ }
+                }
+                if (typeof window.reverbRefreshSpriceCells === 'function') {
+                    try { window.reverbRefreshSpriceCells(); } catch (e9) { /* ignore */ }
+                }
                 if (spriceRuleResolve) {
                     const done = spriceRuleResolve;
                     spriceRuleResolve = null;

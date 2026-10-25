@@ -127,4 +127,72 @@ class TopDawgSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(0.85, $out['margin'], 0.0001);
     }
+
+    /** @return array<string, mixed> */
+    private function dilCtx(): array
+    {
+        return [
+            'rules' => [
+                ['key' => '0-0', 'label' => '0%', 'min' => 0.0, 'max' => 0.0, 'groi' => 40.0],
+                ['key' => '0.1-50', 'label' => '0.1–50%', 'min' => 0.1, 'max' => 50.0, 'groi' => 60.0],
+            ],
+            'cvr_adj' => ['down_lt' => 7, 'down_adj' => -5, 'up_gt' => 10, 'up_adj' => 5],
+            'diff_adj' => ['gt_pct' => 20, 'points' => 10],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function dilRow(array $over = []): array
+    {
+        return $this->row(array_merge(['ads_pct' => 5, 'ship' => 3, 'price' => 100, 'cvr' => 8], $over));
+    }
+
+    public function test_sprc_dil_price_is_the_slab_target_without_ship_or_ads(): void
+    {
+        $out = (new TopDawgSprcDilAutoPushService)->computeTarget($this->dilRow(), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        // Target 60%: (20 x 1.6) / 0.95 = 33.68. Ship and Ads are not in the TopDawg price. Std 100 is far above.
+        $this->assertEqualsWithDelta(33.68, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
+    {
+        // Std 100 vs TD Price 70 -> Diff 42.9% (> 20): Target 60 + 10 = 70%. (20 x 1.7) / 0.95 = 35.79.
+        $out = (new TopDawgSprcDilAutoPushService)->computeTarget($this->dilRow(['price' => 70]), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(35.79, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_has_no_lmp_cap_and_std_price_is_the_maximum(): void
+    {
+        $svc = new TopDawgSprcDilAutoPushService;
+        $withLmp = $svc->computeTarget($this->dilRow(['lmp' => 20]), null, $this->dilCtx());
+        $this->assertNotNull($withLmp);
+        $this->assertEqualsWithDelta(33.68, $withLmp['sprice'], 0.001);
+
+        $capped = $svc->computeTarget($this->dilRow(['standard_price' => 30]), null, $this->dilCtx());
+        $this->assertNotNull($capped);
+        $this->assertEqualsWithDelta(30.00, $capped['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_prices_clearance_skus_and_skips_no_inv_or_out_of_slab(): void
+    {
+        $svc = new TopDawgSprcDilAutoPushService;
+        $clr = $svc->computeTarget($this->dilRow(['clearance' => true]), null, $this->dilCtx());
+        $this->assertNotNull($clr);
+        $this->assertEqualsWithDelta(33.68, $clr['sprice'], 0.001);
+
+        $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
+        $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 80]), null, $this->dilCtx()));
+    }
+
+    public function test_no_dil_context_leaves_the_std_prc_behaviour_unchanged(): void
+    {
+        $out = (new TopDawgSprcDilAutoPushService)->computeTarget($this->row(), $this->pricer());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+    }
 }

@@ -4,8 +4,11 @@ namespace App\Services;
 
 use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Models\AliexpressDataView;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Support\AmazonDilGroiRule;
+use App\Support\EbayRuleSprice;
 use App\Support\PushedListingPrice;
+use App\Support\SpriceActiveRule;
 use App\Support\StdPrcVsDilPricer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -49,9 +52,14 @@ class AliexpressSprcDilAutoPushService
         bool $pushAll = false,
         int $cooldownMinutes = 120
     ): array {
+        StdPrcVsDilPricer::flush();
         $pricer = StdPrcVsDilPricer::forChannel('aliexpress');
+        // The page switch decides the S PRC rule: Std prc vs dil, or the Sprc Dil modal (slab + Diff + LMP cap by Dil band + Std max).
+        $dilContext = SpriceActiveRule::usesStdPrc('aliexpress') ? null : $this->loadDilContext();
 
-        $this->log($logger, 'Loaded AliExpress Std prc vs dil (aliexpress_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap');
+        $this->log($logger, $dilContext !== null
+            ? 'AliExpress S PRC rule = Sprc Dil (Dil slab Target SNROI + Diff, LMP cap by Dil band, Std max; out of slab = Std Prc or LMP)'
+            : 'Loaded AliExpress Std prc vs dil (aliexpress_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap');
 
         $stats = [
             'candidates' => 0,
@@ -97,7 +105,7 @@ class AliexpressSprcDilAutoPushService
         try {
             foreach ($rows as $i => $row) {
                 try {
-                    $computed = $this->computeTarget($row, $pricer);
+                    $computed = $this->computeTarget($row, $pricer, $dilContext);
                     if ($computed === null) {
                         $stats['skipped']++;
                         continue;
@@ -181,14 +189,20 @@ class AliexpressSprcDilAutoPushService
     /**
      * Page S PRC formula (INV > 0 child SKUs): Std rule, then LMP cap, Std is the maximum.
      *
+     * With a $dilContext (the Sprc Dil switch is ON) the Sprc Dil modal rules price it instead.
+     *
      * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}|null  $dilContext
      * @return array{sprice:float,lmp_capped:bool,base:float,sgpft:int,sroi:int}|null
      */
-    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null): ?array
+    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, ?array $dilContext = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
             return null;
+        }
+        if ($dilContext !== null) {
+            return $this->computeDilTarget($row, $dilContext);
         }
         $std = (float) ($row['standard_price'] ?? 0);
         if (! ($std > 0)) {
@@ -244,6 +258,89 @@ class AliexpressSprcDilAutoPushService
             'base' => round($std, 2),
             'sgpft' => (int) round(($profit / $sprice) * 100),
             'sroi' => $lp > 0 ? (int) round(($profit / $lp) * 100) : 0,
+        ];
+    }
+
+    /**
+     * Sprc Dil switch ON, same as the page (ebay-sprc-dil + /amazon-tabulator-view order):
+     * Dil slab Target SNROI, Diff points, then price = (LP x (1 + Target%) + Ship) / take-home (no Ads on AliExpress),
+     * LMP cap (price at/above LMP and SGROI at LMP >= 20% -> LMP x (1 - x%), x by the SKU's Dil band), Std Prc as the maximum.
+     * AliExpress only: Dil outside every slab -> S PRC = Std Prc, and LMP when Std Prc is above LMP (no SGROI test, no Stop).
+     * Clearance SKUs are priced like any other. No CVR overlay on AliExpress.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}  $ctx
+     * @return array{sprice:float,lmp_capped:bool,base:float,sgpft:int,sroi:int}|null
+     */
+    protected function computeDilTarget(array $row, array $ctx): ?array
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.89;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        $ship = (float) ($row['ship'] ?? 0);
+        $std = round((float) ($row['standard_price'] ?? 0), 2);
+        $lmp = (float) ($row['lmp'] ?? 0);
+        $dil = (float) ($row['dil'] ?? 0);
+
+        $rule = AmazonDilGroiRule::match($dil, $ctx['rules']);
+        $lmpCapped = false;
+        if ($rule === null) {
+            if (! ($std > 0)) {
+                return null;
+            }
+            $lmpCapped = $lmp > 0 && $std + 0.0001 > $lmp;
+            $sprice = $lmpCapped ? round($lmp, 2) : $std;
+        } else {
+            if (! ($lp > 0)) {
+                return null;
+            }
+            $target = max(0.0, round((float) $rule['groi'], 2));
+            $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
+            $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
+
+            $raw = round(($lp * (1 + $target / 100) + $ship) / $margin, 2);
+            if (! is_finite($raw) || $raw < 0.01) {
+                return null;
+            }
+            $reducePct = AmazonDilGroiRule::lmpCapReducePct($dil, $ctx['lmp_cap'] ?? null);
+            $sprice = round(AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, $std, $reducePct), 2);
+            $lmpCapped = $lmp > 0 && ($raw - $sprice) > 0.009 && abs($sprice - round($lmp * (1 - $reducePct / 100), 2)) <= 0.02;
+        }
+        if (! is_finite($sprice) || $sprice < 0.01) {
+            return null;
+        }
+        $profit = ($sprice * $margin) - $lp - $ship;
+
+        return [
+            'sprice' => $sprice,
+            'lmp_capped' => $lmpCapped,
+            'base' => $std,
+            'sgpft' => (int) round(($profit / $sprice) * 100),
+            'sroi' => $lp > 0 ? (int) round(($profit / $lp) * 100) : 0,
+        ];
+    }
+
+    /**
+     * The Sprc Dil modal settings saved for AliExpress: slabs, Diff rule and LMP cap.
+     *
+     * @return array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}
+     */
+    protected function loadDilContext(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'aliexpress_dil_vs_groi')->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        $unpacked = AmazonDilGroiRule::unpackStored($saved);
+        $rules = $unpacked['rules'] === []
+            ? AmazonDilGroiRule::defaultsForChannel('aliexpress')
+            : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+
+        return [
+            'rules' => $rules,
+            'cvr_adj' => $unpacked['cvr_adj'] ?? null,
+            'diff_adj' => $unpacked['diff_adj'] ?? null,
+            'lmp_cap' => $unpacked['lmp_cap'] ?? null,
         ];
     }
 

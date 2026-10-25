@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\ReverbSprcDilAutoPushService;
+use App\Support\AmazonDilGroiRule;
 use App\Support\StdPrcVsDilPricer;
 use PHPUnit\Framework\TestCase;
 
@@ -151,5 +152,92 @@ class ReverbSprcDilAutoPushServiceTest extends TestCase
 
         $this->assertNotNull($out);
         $this->assertSame(90.0, $out['sprice']);
+    }
+
+    /** @return array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array} */
+    private function dilCtx(): array
+    {
+        return [
+            'rules' => [
+                ['key' => '0-0', 'label' => '0%', 'min' => 0.0, 'max' => 0.0, 'groi' => 40.0],
+                ['key' => '0.1-50', 'label' => '0.1–50%', 'min' => 0.1, 'max' => 50.0, 'groi' => 60.0],
+            ],
+            'cvr_adj' => ['down_lt' => 7, 'down_adj' => -5, 'up_gt' => 10, 'up_adj' => 5],
+            'diff_adj' => ['gt_pct' => 20, 'points' => 10],
+            'lmp_cap' => null,
+        ];
+    }
+
+    private function dilRow(array $over = []): array
+    {
+        return $this->row(array_merge(['ads_pct' => 5, 'price' => 100, 'cvr' => 8], $over));
+    }
+
+    public function test_sprc_dil_price_is_the_slab_target_with_ship_and_ads(): void
+    {
+        $out = (new ReverbSprcDilAutoPushService)->computeTarget($this->dilRow(), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        // Target 60%: (20 x 1.6 + 3) / (0.85 - 0.05) = 43.75. Std 100 is far above, no LMP.
+        $this->assertEqualsWithDelta(43.75, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
+    }
+
+    public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
+    {
+        // Std 100 vs RV Price 70 -> Diff 42.9% (> 20): Target 60 + 10 = 70%. (20 x 1.7 + 3) / 0.80 = 46.25.
+        $out = (new ReverbSprcDilAutoPushService)->computeTarget($this->dilRow(['price' => 70]), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(46.25, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_lmp_cap_lands_on_lmp_minus_the_dil_band_pct(): void
+    {
+        // Dil 20 is in the low band. Price 43.75 is at/above LMP 40 and SGROI at LMP = (40 x 0.85 - 3 - 20) / 20 = 55% >= 20.
+        $out = (new ReverbSprcDilAutoPushService)->computeTarget($this->dilRow(['lmp' => 40]), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $pct = AmazonDilGroiRule::lmpCapReducePct(20.0, null);
+        $this->assertEqualsWithDelta(round(40 * (1 - $pct / 100), 2), $out['sprice'], 0.001);
+        $this->assertTrue($out['lmp_capped']);
+    }
+
+    public function test_sprc_dil_lmp_below_the_sgroi_floor_does_not_cap(): void
+    {
+        // SGROI at LMP 28 = (28 x 0.85 - 3 - 20) / 20 = 4% < 20: keep the Dil price.
+        $out = (new ReverbSprcDilAutoPushService)->computeTarget($this->dilRow(['lmp' => 28]), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(43.75, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
+    }
+
+    public function test_sprc_dil_std_price_is_the_maximum(): void
+    {
+        $out = (new ReverbSprcDilAutoPushService)->computeTarget($this->dilRow(['standard_price' => 40]), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(40.00, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_works_without_a_std_price_and_skips_clearance_and_out_of_slab_skus(): void
+    {
+        $svc = new ReverbSprcDilAutoPushService;
+        $noStd = $svc->computeTarget($this->dilRow(['standard_price' => 0]), null, $this->dilCtx());
+        $this->assertNotNull($noStd);
+        $this->assertEqualsWithDelta(43.75, $noStd['sprice'], 0.001);
+
+        $this->assertNull($svc->computeTarget($this->dilRow(['clearance' => true]), null, $this->dilCtx()));
+        $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
+        $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 80]), null, $this->dilCtx()));
+    }
+
+    public function test_no_dil_context_leaves_the_std_prc_behaviour_unchanged(): void
+    {
+        $out = (new ReverbSprcDilAutoPushService)->computeTarget($this->row(), $this->pricer(), null);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
     }
 }

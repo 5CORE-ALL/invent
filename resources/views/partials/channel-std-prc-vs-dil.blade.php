@@ -2626,6 +2626,14 @@
                 }
                 if (typeof updateSummary === 'function') updateSummary();
                 if (typeof window.shopifyB2bRefreshSpriceCells === 'function') window.shopifyB2bRefreshSpriceCells();
+                if (typeof window.macysRefreshSpriceCells === 'function') window.macysRefreshSpriceCells();
+                if (typeof window.ppRefreshSpriceCells === 'function') window.ppRefreshSpriceCells();
+                if (typeof window.dpRefreshSpriceCells === 'function') window.dpRefreshSpriceCells();
+                if (typeof window.wfRefreshSpriceCells === 'function') window.wfRefreshSpriceCells();
+                if (typeof window.reverbRefreshSpriceCells === 'function') window.reverbRefreshSpriceCells();
+                if (typeof window.tdRefreshSpriceCells === 'function') window.tdRefreshSpriceCells();
+                if (typeof window.dobaRefreshSpriceCells === 'function') window.dobaRefreshSpriceCells();
+                if (typeof window.aeRefreshSpriceCells === 'function') window.aeRefreshSpriceCells();
             };
             const pending = chStdSavePrices(updates);
             if (pending && typeof pending.always === 'function') pending.always(redraw);

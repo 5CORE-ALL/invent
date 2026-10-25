@@ -329,6 +329,16 @@ class DilRuleSpriceApplyService
                 TemuShopifySalesService::computeFullTemuPrice((float) ($row['live'] ?? 0))
             );
             $groi += AmazonDilGroiRule::diffAdjPoints($diffPct, $this->diffAdj);
+        } elseif (in_array($this->channel, ['wayfair', 'doba'], true)) {
+            // Wayfair / Doba: same Diff rule against the channel price (the page's Std Diff column). Floor the target at 0 like the page.
+            $diffPct = EbayRuleSprice::stdPriceDiffPct(
+                (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0),
+                (float) ($row['live'] ?? 0)
+            );
+            $groi = max(0.0, (float) $groi) + AmazonDilGroiRule::diffAdjPoints($diffPct, $this->diffAdj);
+            if ($groi < 0) {
+                $groi = 0.0;
+            }
         }
 
         $ship = ! empty($cfg['exclude_ship']) ? 0.0 : (float) ($row['ship'] ?? 0);

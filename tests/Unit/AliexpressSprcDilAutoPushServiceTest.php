@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\AliexpressSprcDilAutoPushService;
+use App\Support\AmazonDilGroiRule;
 use App\Support\StdPrcVsDilPricer;
 use PHPUnit\Framework\TestCase;
 
@@ -150,5 +151,110 @@ class AliexpressSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertSame(80.0, $out['sprice']);
         $this->assertTrue($out['lmp_capped']);
+    }
+
+    /** @return array<string, mixed> */
+    private function dilCtx(): array
+    {
+        return [
+            'rules' => [
+                ['key' => '0-0', 'label' => '0%', 'min' => 0.0, 'max' => 0.0, 'groi' => 40.0],
+                ['key' => '0.1-50', 'label' => '0.1–50%', 'min' => 0.1, 'max' => 50.0, 'groi' => 60.0],
+            ],
+            'cvr_adj' => null,
+            'diff_adj' => ['gt_pct' => 20, 'points' => 10],
+            'lmp_cap' => null,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function dilRow(array $over = []): array
+    {
+        return $this->row(array_merge(['price' => 100], $over));
+    }
+
+    public function test_sprc_dil_price_is_the_slab_target_with_ship_and_no_ads(): void
+    {
+        $out = (new AliexpressSprcDilAutoPushService)->computeTarget($this->dilRow(), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        // Target 60%: (20 x 1.6 + 3) / 0.89 = 39.33. Std 100 is far above, no LMP.
+        $this->assertEqualsWithDelta(39.33, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
+    }
+
+    public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
+    {
+        // Std 100 vs Price 70 -> Diff 42.9% (> 20): Target 70%. (20 x 1.7 + 3) / 0.89 = 41.57.
+        $out = (new AliexpressSprcDilAutoPushService)->computeTarget($this->dilRow(['price' => 70]), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(41.57, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_lmp_cap_lands_on_lmp_minus_the_dil_band_pct(): void
+    {
+        // SGROI at LMP 35 = (35 x 0.89 - 3 - 20) / 20 = 40.75% >= 20, and 39.33 is above 35.
+        $out = (new AliexpressSprcDilAutoPushService)->computeTarget($this->dilRow(['lmp' => 35]), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $pct = AmazonDilGroiRule::lmpCapReducePct(20.0, null);
+        $this->assertEqualsWithDelta(round(35 * (1 - $pct / 100), 2), $out['sprice'], 0.001);
+        $this->assertTrue($out['lmp_capped']);
+    }
+
+    public function test_sprc_dil_lmp_below_the_sgroi_floor_does_not_cap(): void
+    {
+        // SGROI at LMP 28 = (28 x 0.89 - 3 - 20) / 20 = 9.6% < 20: keep the Dil price.
+        $out = (new AliexpressSprcDilAutoPushService)->computeTarget($this->dilRow(['lmp' => 28]), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(39.33, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
+    }
+
+    public function test_sprc_dil_std_price_is_the_maximum(): void
+    {
+        $out = (new AliexpressSprcDilAutoPushService)->computeTarget($this->dilRow(['standard_price' => 30]), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(30.0, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_above_every_slab_prices_at_std_and_at_lmp_when_std_is_above_lmp(): void
+    {
+        $svc = new AliexpressSprcDilAutoPushService;
+
+        $std = $svc->computeTarget($this->dilRow(['dil' => 60]), null, $this->dilCtx());
+        $this->assertNotNull($std);
+        $this->assertEqualsWithDelta(100.0, $std['sprice'], 0.001);
+        $this->assertFalse($std['lmp_capped']);
+
+        // Std 100 > LMP 90: S PRC = LMP, with no SGROI test and no band reduction.
+        $lmp = $svc->computeTarget($this->dilRow(['dil' => 60, 'lmp' => 90]), null, $this->dilCtx());
+        $this->assertNotNull($lmp);
+        $this->assertEqualsWithDelta(90.0, $lmp['sprice'], 0.001);
+        $this->assertTrue($lmp['lmp_capped']);
+
+        $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 60, 'standard_price' => 0]), null, $this->dilCtx()));
+    }
+
+    public function test_sprc_dil_prices_clearance_and_zero_sold_rows_and_skips_no_inventory(): void
+    {
+        $svc = new AliexpressSprcDilAutoPushService;
+
+        $clearance = $svc->computeTarget($this->dilRow(['clearance' => true, 'al30' => 0]), null, $this->dilCtx());
+        $this->assertNotNull($clearance);
+        $this->assertEqualsWithDelta(39.33, $clearance['sprice'], 0.001);
+
+        $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
+    }
+
+    public function test_without_a_dil_context_the_std_rule_still_prices(): void
+    {
+        $out = (new AliexpressSprcDilAutoPushService)->computeTarget($this->row(), $this->pricer(), null);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
     }
 }

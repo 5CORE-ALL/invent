@@ -1165,6 +1165,37 @@
     /** Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above 20% adds +10 to the Target SNROI. Price = Temu Price. */
     window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
     window.ebayDiffLivePrice = function(d) { return temu2FullPriceFromRow(d) || 0; };
+    /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+    function temu3DiffCfgNow() {
+        const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+        return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+    }
+    /** Std Diff % = (Std Prc - Price) / Price x 100, same as /amazon-tabulator-view. null when either is missing or on a parent row. */
+    function temu3StdPrcDiffPct(d) {
+        if (!d || d.is_parent) return null;
+        const std = window.ebayDiffStdPrice(d);
+        const price = window.ebayDiffLivePrice(d);
+        if (!(std > 0) || !(price > 0)) return null;
+        return ((std - price) / price) * 100;
+    }
+    /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+    function temu3RenderStdPrcDiff(el, d) {
+        const pct = temu3StdPrcDiffPct(d);
+        let html = '';
+        let bg = '';
+        let color = '';
+        if (pct !== null) {
+            if (pct > temu3DiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+            else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+            else { bg = '#28a745'; color = '#fff'; }
+            html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+        }
+        if (el) {
+            el.style.backgroundColor = bg;
+            el.style.color = color;
+        }
+        return html;
+    }
     /** Disc $ = Std Prc × Disc % (Disc % = PRMT %). */
     function temu3DiscAmt(d) {
         const std = parseFloat(d && d.STANDARD_PRICE) || 0;
@@ -3927,6 +3958,17 @@
                     }
                 },
                 {
+                    title: "Std Diff",
+                    field: "std_prc_diff",
+                    hozAlign: "center",
+                    width: 62,
+                    headerTooltip: "Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target SNROI), red = below −5%, green = the rest.",
+                    sorter: temuSortBy(function(d) { const v = temu3StdPrcDiffPct(d); return v === null ? 0 : v; }),
+                    formatter: function(cell) {
+                        return temu3RenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                    }
+                },
+                {
                     title: "Price",
                     field: "temu_price_display",
                     hozAlign: "center",
@@ -5767,6 +5809,16 @@
                 })
                 .catch(err => console.error('Error applying column visibility:', err));
         }
+
+        // Std Diff follows the row when Std Prc or the Price changes.
+        table.on('rowUpdated', function(row) {
+            try {
+                const c = row.getCell('std_prc_diff');
+                if (!c) return;
+                const el = c.getElement();
+                el.innerHTML = temu3RenderStdPrcDiff(el, row.getData());
+            } catch (e) { /* ignore */ }
+        });
 
         table.on('tableBuilt', function() {
             Promise.resolve(applyColumnVisibilityFromServer())

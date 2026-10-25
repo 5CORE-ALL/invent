@@ -87,6 +87,75 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(37.50, $out['sprice'], 0.01);
     }
 
+    public function test_wayfair_diff_above_threshold_adds_points_to_target(): void
+    {
+        $out = $this->compute('wayfair', [
+            'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'cvr' => 8, 'lp' => 20, 'ship' => 8, 'lmp' => 0,
+            'live' => 30, 'std_price' => 45,
+        ]);
+
+        $this->assertNotNull($out);
+        // Diff = (45 - 30) / 30 = 50% > 20%: GROI 50 + 10 = 60, (20 * 1.6) / 0.80 = 40.00, under Std 45.
+        $this->assertEqualsWithDelta(60.0, $out['groi'], 0.01);
+        $this->assertEqualsWithDelta(40.00, $out['sprice'], 0.01);
+    }
+
+    public function test_wayfair_diff_below_threshold_adds_nothing(): void
+    {
+        $out = $this->compute('wayfair', [
+            'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'cvr' => 8, 'lp' => 20, 'ship' => 8, 'lmp' => 0,
+            'live' => 39, 'std_price' => 40,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(50.0, $out['groi'], 0.01);
+        $this->assertEqualsWithDelta(37.50, $out['sprice'], 0.01);
+    }
+
+    public function test_wayfair_std_price_is_the_maximum(): void
+    {
+        $out = $this->compute('wayfair', [
+            'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'cvr' => 8, 'lp' => 20, 'ship' => 8, 'lmp' => 0,
+            'live' => 30, 'std_price' => 38,
+        ]);
+
+        $this->assertNotNull($out);
+        // Diff 26.7% adds +10 -> 40.00, held at Std Prc 38.00.
+        $this->assertEqualsWithDelta(38.00, $out['sprice'], 0.01);
+    }
+
+    public function test_doba_diff_above_threshold_adds_points_to_target_with_ship(): void
+    {
+        $out = $this->compute('doba', [
+            'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'cvr' => 8, 'lp' => 20, 'ship' => 8, 'lmp' => 0,
+            'live' => 30, 'std_price' => 70,
+        ]);
+
+        $this->assertNotNull($out);
+        // Diff = (70 - 30) / 30 = 133% > 20%: GROI 50 + 10 = 60, (20 * 1.6 + 8) / 0.80 = 50.00, under Std 70. Ship is in the price on Doba.
+        $this->assertEqualsWithDelta(60.0, $out['groi'], 0.01);
+        $this->assertEqualsWithDelta(50.00, $out['sprice'], 0.01);
+    }
+
+    public function test_doba_diff_below_threshold_adds_nothing_and_std_price_is_the_maximum(): void
+    {
+        $below = $this->compute('doba', [
+            'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'cvr' => 8, 'lp' => 20, 'ship' => 8, 'lmp' => 0,
+            'live' => 55, 'std_price' => 60,
+        ]);
+        $this->assertNotNull($below);
+        $this->assertEqualsWithDelta(50.0, $below['groi'], 0.01);
+        $this->assertEqualsWithDelta(47.50, $below['sprice'], 0.01);
+
+        $capped = $this->compute('doba', [
+            'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'cvr' => 8, 'lp' => 20, 'ship' => 8, 'lmp' => 0,
+            'live' => 30, 'std_price' => 45,
+        ]);
+        $this->assertNotNull($capped);
+        // Diff 50% adds +10 -> 50.00, held at Std Prc 45.00.
+        $this->assertEqualsWithDelta(45.00, $capped['sprice'], 0.01);
+    }
+
     public function test_temu_zero_sold_uses_order_l30_not_shopify_ov(): void
     {
         $out = $this->compute('temu', [

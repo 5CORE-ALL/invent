@@ -4,7 +4,10 @@ namespace App\Services;
 
 use App\Http\Controllers\MarketPlace\PurchasingPowerController;
 use App\Models\PurchasingPowerDataView;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Support\AmazonDilGroiRule;
+use App\Support\EbayRuleSprice;
+use App\Support\SpriceActiveRule;
 use App\Support\NegativeSnroiPushGuard;
 use App\Support\PushedListingPrice;
 use App\Support\StdPrcVsDilPricer;
@@ -25,6 +28,9 @@ use Throwable;
  *  Std Prc is the maximum, then the Amz rule: S PRC never sits below the Amazon price (A Price). Same rule
  *  the page labels "Amz" and MacysAmazonPriceCap applies to the push.
  *  Ship BB is part of profit (same as the page). Purchasing Power has no ads and no LMP, so neither is used.
+ *  Sprc Dil switch ON (same as /amazon-tabulator-view, without the LMP cap since this page has no LMP):
+ *   Dil slab Target (PP L30 = 0 uses the minimum Target) + Diff points (Std Diff above the saved threshold) →
+ *   (LP × (1 + Target%) + Ship BB) ÷ take-home, Std Prc as the maximum, then the A Price floor. No Std prc vs dil discounts.
  *  Never pushes a price whose SNROI is below 0 (NegativeSnroiPushGuard). The S PRC is still saved.
  *
  * Flow, same as Amazon:
@@ -62,9 +68,15 @@ class PurchasingPowerSprcDilAutoPushService
         int $errorCooldownMinutes = 120,
         int $maxPushes = 0
     ): array {
+        // Rules saved a moment ago (a queue worker keeps the old ones in memory) must be read again.
+        StdPrcVsDilPricer::flush();
         $pricer = StdPrcVsDilPricer::forChannel('purchasing_power');
+        // Only one rule fills S PRC: the switch decides.
+        $dilContext = SpriceActiveRule::usesStdPrc('purchasing_power') ? null : $this->loadDilContext();
 
-        $this->log($logger, 'Loaded Purchasing Power Std prc vs dil (purchasing_power_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Amz rule');
+        $this->log($logger, $dilContext !== null
+            ? 'Sprc Dil is ON (purchasing_power_dil_vs_groi) → Dil slab Target + Diff, Std max, Amz rule'
+            : 'Loaded Purchasing Power Std prc vs dil (purchasing_power_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Amz rule');
 
         $stats = [
             'candidates' => 0,
@@ -123,7 +135,7 @@ class PurchasingPowerSprcDilAutoPushService
         try {
             foreach ($rows as $i => $row) {
                 try {
-                    $computed = $this->computeTarget($row, $pricer);
+                    $computed = $this->computeTarget($row, $pricer, $dilContext);
                     if ($onlySkus !== null && $onlySkus !== []) {
                         // Single-SKU run: show the inputs and the result, so a row that looks wrong can be traced.
                         $this->log($logger, $this->explainRow($row, $computed));
@@ -280,18 +292,21 @@ class PurchasingPowerSprcDilAutoPushService
      * @param  array<string, mixed>  $row
      * @return array{sprice:float,uncapped:float,amz_capped:bool,base:float,margin:float,lp:float,ship:float}|null
      */
-    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null): ?array
+    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, ?array $dilContext = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
             return null;
         }
-        $std = (float) ($row['standard_price'] ?? 0);
-        if (! ($std > 0)) {
-            return null;
-        }
         // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
         if ((new StdPrcVsDilPricer([], 'purchasing_power'))->isClearanceRow($row)) {
+            return null;
+        }
+        if ($dilContext !== null) {
+            return $this->computeDilTarget($row, $dilContext);
+        }
+        $std = (float) ($row['standard_price'] ?? 0);
+        if (! ($std > 0)) {
             return null;
         }
         $lp = (float) ($row['lp'] ?? 0);
@@ -353,6 +368,93 @@ class PurchasingPowerSprcDilAutoPushService
             'lp' => $lp,
             'ship' => $ship,
         ];
+    }
+
+    /**
+     * Sprc Dil switch ON, same maths as the page (Dil slab Target + Diff, Std max, A Price floor). No LMP rule:
+     * Purchasing Power has no LMP data.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>,diff_adj:array}  $ctx
+     * @return array{sprice:float,uncapped:float,amz_capped:bool,base:float,margin:float,lp:float,ship:float}|null
+     */
+    protected function computeDilTarget(array $row, array $ctx): ?array
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.65;
+        }
+        $rules = $ctx['rules'];
+        $dil = (float) ($row['dil'] ?? 0);
+        $sold = (float) ($row['pp_l30'] ?? 0);
+        $std = round((float) ($row['standard_price'] ?? 0), 2);
+        $amz = round((float) ($row['amz'] ?? 0), 2);
+        $lp = (float) ($row['lp'] ?? 0);
+        $ship = (float) ($row['ship'] ?? 0);
+
+        $rule = AmazonDilGroiRule::match($dil, $rules);
+        $target = null;
+        if ($sold <= 0) {
+            $target = AmazonDilGroiRule::minTarget($rules);
+        } elseif ($rule !== null) {
+            $target = (float) $rule['groi'];
+        }
+
+        if ($target === null) {
+            // Out of every slab and the SKU sells: Std Prc is the rule price.
+            if (! ($std > 0)) {
+                return null;
+            }
+            $uncapped = $std;
+        } else {
+            if (! ($lp > 0)) {
+                return null;
+            }
+            $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
+            $target = max(0.0, round($target, 2)) + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null);
+            $raw = round(($lp * (1 + $target / 100) + $ship) / $margin, 2);
+            if (! is_finite($raw) || $raw < 0.01) {
+                return null;
+            }
+            // No LMP: only Std Prc as the maximum.
+            $uncapped = round(AmazonDilGroiRule::capSpriceToLmp($raw, 0.0, $lp, $ship, $margin, $std, 0.0), 2);
+        }
+
+        $amzCapped = $amz > 0 && $uncapped + 0.0001 < $amz;
+        $final = $amzCapped ? $amz : $uncapped;
+        if (! is_finite($final) || $final < 0.01) {
+            return null;
+        }
+
+        return [
+            'sprice' => round($final, 2),
+            'uncapped' => round($uncapped, 2),
+            'amz_capped' => $amzCapped,
+            'base' => round($std, 2),
+            'margin' => $margin,
+            'lp' => $lp,
+            'ship' => $ship,
+        ];
+    }
+
+    /**
+     * The Sprc Dil modal settings saved for Purchasing Power: slabs and the Diff rule.
+     *
+     * @return array{rules:list<array<string,mixed>>,diff_adj:array}
+     */
+    protected function loadDilContext(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'purchasing_power_dil_vs_groi')->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        $unpacked = AmazonDilGroiRule::unpackStored($saved);
+        $rules = $unpacked['rules'] === []
+            ? AmazonDilGroiRule::defaultsForChannel('purchasing_power')
+            : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+
+        return ['rules' => $rules, 'diff_adj' => $unpacked['diff_adj']];
     }
 
     /**

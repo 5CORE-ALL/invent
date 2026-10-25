@@ -12,6 +12,7 @@ use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\AmazonDilGroiRule;
+use App\Support\EbayRuleSprice;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -26,6 +27,12 @@ class MacysRuleSpriceApplyService
 {
     private bool $applyStdPrcVsDil = false;
 
+    /** Sprc Dil modal settings (Diff rule, LMP cap by Dil band). Null while Std prc vs dil is the ON rule. */
+    private ?array $dilContext = null;
+
+    /** @var array<string, float> Google LMP by SKU, same value the page shows (only loaded for Sprc Dil). */
+    private array $lmpBySku = [];
+
     /**
      * @param  list<string>|null  $onlySkus
      * @param  callable(string): void|null  $logger
@@ -37,6 +44,8 @@ class MacysRuleSpriceApplyService
         \App\Support\StdPrcVsDilPricer::flush();
         $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc('macys');
         $dilRules = $this->loadDilGroiRules();
+        $this->dilContext = $this->applyStdPrcVsDil ? null : $this->loadDilContext();
+        $this->lmpBySku = $this->dilContext !== null ? $this->loadLmpBySku() : [];
         $margin = MarketplacePercentage::takeHomeForPromoChannel('macys');
         if (! ($margin > 0)) {
             $margin = 0.80;
@@ -96,7 +105,8 @@ class MacysRuleSpriceApplyService
                             return false;
                         }
                         try {
-                            $computed = $this->computeTarget($row, $dilRules, $margin);
+                            $row['lmp'] = $this->lmpBySku[strtoupper((string) ($row['sku'] ?? ''))] ?? 0.0;
+                            $computed = $this->computeTarget($row, $dilRules, $margin, $this->dilContext);
                             $saved = (float) ($row['saved_sprice'] ?? 0);
                             $live = (float) ($row['mc_price'] ?? 0);
                             if ($computed === null && $saved > 0 && $live > 0 && abs($saved - $live) < 0.005) {
@@ -147,7 +157,7 @@ class MacysRuleSpriceApplyService
      * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
      * @return array{sprice: float}|null
      */
-    public function computeTarget(array $row, array $dilRules, float $margin): ?array
+    public function computeTarget(array $row, array $dilRules, float $margin, ?array $dilContext = null): ?array
     {
         if ($this->applyStdPrcVsDil) {
             // SNROI Cap: judge the same number as the page's SNROI% column, (S PRC × take-home − Ship − LP) ÷ LP.
@@ -191,9 +201,29 @@ class MacysRuleSpriceApplyService
         }
 
         $ship = (float) ($row['ship'] ?? 0);
+        // Sprc Dil modal rules (same as /amazon-tabulator-view): the Diff rule adds its points to the Target GROI.
+        if ($dilContext !== null) {
+            $diffPct = EbayRuleSprice::stdPriceDiffPct((float) ($row['std'] ?? 0), (float) ($row['mc_price'] ?? 0));
+            $groi = max(0.0, round($groi, 2)) + AmazonDilGroiRule::diffAdjPoints($diffPct, $dilContext['diff_adj'] ?? null);
+        }
+
         $raw = round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
         if (! is_finite($raw) || $raw < 0.01) {
             return null;
+        }
+
+        // LMP cap (Dil price at/above LMP and SGROI at LMP >= 20%: S PRC = LMP x (1 - x%), x by the Dil band), then Std Prc
+        // as the maximum. The A Price floor below stays the last step.
+        if ($dilContext !== null) {
+            $raw = round(AmazonDilGroiRule::capSpriceToLmp(
+                $raw,
+                (float) ($row['lmp'] ?? 0),
+                $lp,
+                $ship,
+                $margin,
+                (float) ($row['std'] ?? 0),
+                AmazonDilGroiRule::lmpCapReducePct((float) ($row['dil'] ?? 0), $dilContext['lmp_cap'] ?? null)
+            ), 2);
         }
 
         $sprice = ($amz > 0 && $raw < $amz) ? $amz : $raw;
@@ -343,6 +373,48 @@ class MacysRuleSpriceApplyService
         }
 
         return AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+    }
+
+    /**
+     * The Sprc Dil modal settings saved for Macys: Diff rule and LMP cap (reduce % by Dil band).
+     *
+     * @return array{lmp_cap:array,diff_adj:array}
+     */
+    protected function loadDilContext(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'macys_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+
+        return ['lmp_cap' => $unpacked['lmp_cap'], 'diff_adj' => $unpacked['diff_adj']];
+    }
+
+    /**
+     * Google LMP per SKU, taken from the same rows /macys-pricing shows (Sku Link LMP groups, ignored LMPs).
+     *
+     * @return array<string, float>
+     */
+    protected function loadLmpBySku(): array
+    {
+        $out = [];
+        try {
+            $response = app(\App\Http\Controllers\MarketPlace\MacyController::class)
+                ->getViewMacysTabulatorData(\Illuminate\Http\Request::create('/macys-data-json', 'GET'));
+            $payload = json_decode($response->getContent(), true);
+            foreach ((array) ($payload['data'] ?? []) as $r) {
+                if (! is_array($r) || ! empty($r['is_parent_summary'])) {
+                    continue;
+                }
+                $sku = strtoupper(trim((string) ($r['(Child) sku'] ?? '')));
+                $lmp = (float) ($r['lmp_price'] ?? 0);
+                if ($sku !== '' && $lmp > 0) {
+                    $out[$sku] = $lmp;
+                }
+            }
+        } catch (Throwable $e) {
+            Log::warning('[MacysRuleSpriceApply] LMP lookup failed', ['error' => $e->getMessage()]);
+        }
+
+        return $out;
     }
 
     /** @param  list<string>  $skus */

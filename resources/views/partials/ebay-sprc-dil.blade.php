@@ -40,8 +40,9 @@
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'vinted', 'instagram', 'depop', 'alibaba'], true);
     // eBay rules that Temu now shares: Diff +10 to the Target, and the LMP cap % by Dil band.
-    $ebaySprcDilDiffAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b'], true);
-    $ebaySprcDilLmpCapOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b'], true);
+    $ebaySprcDilDiffAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'depop', 'purchasing_power', 'wayfair', 'reverb', 'topdawg', 'doba', 'aliexpress', 'faire'], true);
+    // Pages with no LMP data (Depop, Purchasing Power, Wayfair) get no LMP cap rule (TopDawg too). Reverb has LMP, so it gets the full LMP cap table.
+    $ebaySprcDilLmpCapOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'reverb', 'aliexpress'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
@@ -461,7 +462,6 @@
                         <li>
                             <strong>When</strong> Dil is above the last To (INV &gt; 0), including when {{ $ebaySprcDilSoldLabel }} = 0:
                             S PRC = <strong>Std Prc</strong>. If Std &gt; LMP, S PRC = <strong>LMP</strong>.
-                            If that price’s SGROI is below <strong>Stop &lt; N%</strong>, skip (no S PRC).
                         </li>
                         @endif
                         <li>
@@ -2396,7 +2396,16 @@
             if (typeof table === 'undefined' || !table) return;
             const scroll = ebayDgCaptureScroll();
             if ((typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c())
-                || (typeof ebayDgIsShopifyB2b === 'function' && ebayDgIsShopifyB2b())) {
+                || (typeof ebayDgIsShopifyB2b === 'function' && ebayDgIsShopifyB2b())
+                || (typeof ebayDgIsMacys === 'function' && ebayDgIsMacys())
+                || EBAY_DIL_GROI_CHANNEL === 'depop'
+                || EBAY_DIL_GROI_CHANNEL === 'wayfair'
+                || EBAY_DIL_GROI_CHANNEL === 'reverb'
+                || EBAY_DIL_GROI_CHANNEL === 'topdawg'
+                || EBAY_DIL_GROI_CHANNEL === 'doba'
+                || EBAY_DIL_GROI_CHANNEL === 'aliexpress'
+                || EBAY_DIL_GROI_CHANNEL === 'faire'
+                || EBAY_DIL_GROI_CHANNEL === 'purchasing_power') {
                 ebayDgRefreshVisibleRows();
             } else {
                 try { table.redraw(true); } catch (e) { /* ignore */ }
@@ -2498,6 +2507,7 @@
             // Shopify S PRC / SNROI already read live Dil. Mass row.update + redraw jumps the table to the top.
             if ((typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c())
                 || (typeof ebayDgIsShopifyB2b === 'function' && ebayDgIsShopifyB2b())
+                || (typeof ebayDgIsMacys === 'function' && ebayDgIsMacys())
                 || (typeof ebayDgIsEbay123 === 'function' && ebayDgIsEbay123())) {
                 ebayDgRefreshVisibleRows();
                 if (typeof window.updateSummary === 'function') {

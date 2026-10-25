@@ -2365,6 +2365,37 @@
     /** Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above 20% adds +10 to the Target SNROI. Price = Temu Price. */
     window.ebayDiffStdPrice = function(d) { return (typeof ntoRowSpriceStart === 'function' ? ntoRowSpriceStart(d) : null) || parseFloat(d && d.STANDARD_PRICE) || 0; };
     window.ebayDiffLivePrice = function(d) { return parseFloat(d && d.t_price) || 0; };
+    /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+    function ntoDiffCfgNow() {
+        const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+        return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+    }
+    /** Std Diff % = (Std Prc - Temu Price) / Temu Price x 100, same as /amazon-tabulator-view. null when either is missing or on a parent row. */
+    function ntoStdPrcDiffPct(d) {
+        if (!d || (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d))) return null;
+        const std = window.ebayDiffStdPrice(d);
+        const price = window.ebayDiffLivePrice(d);
+        if (!(std > 0) || !(price > 0)) return null;
+        return ((std - price) / price) * 100;
+    }
+    /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+    function ntoRenderStdPrcDiff(el, d) {
+        const pct = ntoStdPrcDiffPct(d);
+        let html = '';
+        let bg = '';
+        let color = '';
+        if (pct !== null) {
+            if (pct > ntoDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+            else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+            else { bg = '#28a745'; color = '#fff'; }
+            html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+        }
+        if (el) {
+            el.style.backgroundColor = bg;
+            el.style.color = color;
+        }
+        return html;
+    }
     /**
      * LMP Alert Prc = LMP × (1 − x%), x from the Dil band (default 2% = LMP × 0.98). Same rule as Amazon (amazonShouldCapSpriceToLmp / amazonCapSpriceToLmp):
      * it applies when the base S Promo Prc is at or above LMP, and SGROI at LMP is at least 20%
@@ -3716,6 +3747,17 @@
                     }
                 },
                 {
+                    title: 'Std Diff',
+                    field: 'std_prc_diff',
+                    hozAlign: 'center',
+                    width: 62,
+                    headerTooltip: 'Std Diff = (Std Prc − Temu Price) / Temu Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target SNROI), red = below −5%, green = the rest.',
+                    sorter: tabSortBlankLast(function(d) { return ntoStdPrcDiffPct(d); }),
+                    formatter: function(cell) {
+                        return ntoRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                    }
+                },
+                {
                     title: 'Temu Price',
                     field: 't_price',
                     hozAlign: 'center',
@@ -4338,6 +4380,16 @@
         table.on('tableBuilt', function() {
             applyColumnVisibilityFromServer();
             buildColumnDropdown();
+        });
+
+        // Std Diff follows the row when Std Prc or the Temu Price changes.
+        table.on('rowUpdated', function(row) {
+            try {
+                const c = row.getCell('std_prc_diff');
+                if (!c) return;
+                const el = c.getElement();
+                el.innerHTML = ntoRenderStdPrcDiff(el, row.getData());
+            } catch (e) { /* ignore */ }
         });
 
         table.on('dataLoaded', function() {

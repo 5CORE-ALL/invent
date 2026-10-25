@@ -114,6 +114,7 @@
                     <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: white; font-weight: bold;" title="GROI% / ROI% from visible rows.">GROI: 0%</span>
                     <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold; display: none;">Price: $0</span>
                     <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                    @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'macys-clearance-badge'])
                     @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'macys-lmp-missing-badge', 'lmpChannelKey' => 'macys'])
                     @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'macys-price-gt-lmp-badge', 'pglChannelKey' => 'macys', 'pglPriceField' => 'MC Price'])
                     @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'macys-price-lt80-lmp-badge', 'pltChannelKey' => 'macys', 'pltPriceField' => 'MC Price'])
@@ -332,6 +333,8 @@
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'macys'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+    @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
+    @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'macys', 'temuRuleLiveLabel' => 'MC Price'])
     const COLUMN_VIS_KEY = "macys_tabulator_column_visibility";
     let table = null;
     let lmpMissingFilterActive = false;
@@ -357,9 +360,82 @@
     function macysRowSpriceForAlert(data) {
         return macysDisplayedSprice(data);
     }
-    /** Cell / triangle / SGROI: saved SPRICE only. Dil is the Sprc Dil column. */
+    /** Switch ON = Sprc Dil. */
+    function macysDilOn() {
+        return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+    }
+    /** LMP (non-ignored) for the caps and the hover. */
+    function macysRowLmp(data) {
+        if (window.SpriceLmpCap && typeof SpriceLmpCap.lmpOf === 'function') {
+            const n = Number(SpriceLmpCap.lmpOf(data));
+            if (n > 0) return Math.round(n * 100) / 100;
+        }
+        const raw = parseFloat(data && data.lmp_price) || 0;
+        return raw > 0 ? Math.round(raw * 100) / 100 : 0;
+    }
+    /** SGROI at a price: ((price x take-home - LP - Ship) / LP) x 100. null without LP or price. */
+    function macysSgroiAtPrice(data, price) {
+        const p = parseFloat(price);
+        const lp = parseFloat(data && data.LP_productmaster);
+        if (!(p > 0) || !(lp > 0)) return null;
+        const ship = parseFloat(data.Ship_productmaster) || 0;
+        return ((p * getMacysMargin(data) - lp - ship) / lp) * 100;
+    }
+    /**
+     * Sprc Dil switch ON, same as /amazon-tabulator-view:
+     *  - Dil price at/above LMP and SGROI at LMP >= 20%: S PRC = LMP x (1 - x%), x by the SKU's Dil band (Sprc Dil modal, LMP cap table).
+     *  - Std Prc is the maximum when it is set.
+     * The A Price floor (S PRC never below A Price) runs after this, as before.
+     */
+    function macysCapDilSprice(data, raw) {
+        let out = Math.round((parseFloat(raw) || 0) * 100) / 100;
+        if (!(out > 0)) return 0;
+        const lmp = macysRowLmp(data);
+        if (lmp > 0 && out + 0.0001 >= lmp) {
+            const sg = macysSgroiAtPrice(data, lmp);
+            if (sg === null || sg >= 20) {
+                const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 2;
+                out = Math.round(lmp * (1 - (isFinite(pct) ? pct : 2) / 100) * 100) / 100;
+            }
+        }
+        const std = parseFloat(data && data.STANDARD_PRICE) || 0;
+        if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
+        return out;
+    }
+    /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules are loading or the row has none. */
+    function macysLiveRuleSprice(data) {
+        if (!data || isMacysParentRow(data)) return 0;
+        try {
+            if (macysDilOn()) {
+                if (window._ebayDilRulesLoaded !== true) return 0;
+                const raw = macysUncappedDil(data);
+                if (!(raw > 0)) return 0;
+                let out = macysCapDilSprice(data, raw);
+                const amz = macysAmazonPriceForRow(data);
+                if (amz > 0 && out < amz) out = amz;
+                return out;
+            }
+            if (window.__chStdSettled !== true) return 0;
+            if (typeof window.chStdPriceForRow === 'function') {
+                const std = Number(window.chStdPriceForRow(data)) || 0;
+                if (std > 0) {
+                    const f = (typeof chPromoFinalSpriceToSave === 'function') ? Number(chPromoFinalSpriceToSave(data, std)) : std;
+                    return f > 0 ? Math.round(f * 100) / 100 : 0;
+                }
+            }
+        } catch (e) { /* rules not loaded yet */ }
+        return 0;
+    }
+    window.macysLiveRuleSprice = macysLiveRuleSprice;
+    /**
+     * Cell / triangle / SGROI / push: the LIVE rule price with its caps, like Amazon, so a rule change repaints at once.
+     * The server saves the same price right after (MacysRuleSpriceApply). Falls back to the saved S PRC while the rules
+     * are loading or the row has no rule price.
+     */
     function macysDisplayedSprice(data) {
         if (!data || isMacysParentRow(data)) return 0;
+        const live = macysLiveRuleSprice(data);
+        if (live > 0) return live;
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
             if (saved > 0) return saved;
@@ -387,7 +463,8 @@
     /** Dil / rule S PRC is below A Price and the shown S PRC was raised to Amazon. */
     function macysHasAmzCap(data) {
         if (isMacysParentRow(data)) return false;
-        const discounted = macysUncappedDil(data);
+        let discounted = macysUncappedDil(data);
+        if (discounted > 0 && macysDilOn()) discounted = macysCapDilSprice(data, discounted);
         const amz = macysAmazonPriceForRow(data);
         if (!(discounted > 0) || !(amz > 0) || discounted >= amz - 0.0001) return false;
         const shown = macysRowSpriceForAlert(data);
@@ -401,6 +478,75 @@
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
     window.macysHasBlueTriangle = macysHasBlueTriangle;
+    // Names the shared rule hover card uses (partials/temu-rule-hover, kind 'macys').
+    const macysShownSprice = macysDisplayedSprice;
+    function macysAmzPrice(data) { return macysAmazonPriceForRow(data); }
+
+    /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+    function macysDiffCfgNow() {
+        const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+        return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+    }
+    /** Std Diff % = (Std Prc - MC Price) / MC Price x 100, same as /amazon-tabulator-view. null when either is missing. */
+    function macysStdPrcDiffPct(rowData) {
+        if (!rowData || isMacysParentRow(rowData)) return null;
+        const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+        const price = parseFloat(rowData['MC Price']) || 0;
+        if (!(std > 0) || !(price > 0)) return null;
+        return ((std - price) / price) * 100;
+    }
+    /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+    function macysRenderStdPrcDiff(el, rowData) {
+        const pct = macysStdPrcDiffPct(rowData);
+        let html = '';
+        let bg = '';
+        let color = '';
+        if (pct !== null) {
+            if (pct > macysDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+            else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+            else { bg = '#28a745'; color = '#fff'; }
+            html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+        }
+        if (el) {
+            el.style.backgroundColor = bg;
+            el.style.color = color;
+        }
+        return html;
+    }
+    // The Sprc Dil Diff rule reads Std Prc and the live Macy's price from these two columns.
+    window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+    window.ebayDiffLivePrice = function(d) { return parseFloat(d && d['MC Price']) || 0; };
+
+    /** S GPFT / S GROI from the shown S PRC (no Ads on Macys): same take-home, Ship and LP as the GPFT / GROI columns. */
+    function macysSMetrics(rowData) {
+        const p = macysDisplayedSprice(rowData);
+        const lp = parseFloat(rowData && rowData.LP_productmaster) || 0;
+        const ship = parseFloat(rowData && rowData.Ship_productmaster) || 0;
+        if (!(p > 0)) return { sgpft: null, sroi: null };
+        const gross = p * getMacysMargin(rowData) - ship - lp;
+        return { sgpft: (gross / p) * 100, sroi: lp > 0 ? (gross / lp) * 100 : null };
+    }
+
+    /** Repaint every S PRC dependent cell from the rule now ON (switch, or a rule edit). No row writes, no scroll jump. */
+    function macysRefreshSpriceCells() {
+        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+        try {
+            (table.getRows('visible') || []).forEach(function(row) {
+                try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+            });
+        } catch (e) { /* ignore */ }
+        if (typeof updateSummary === 'function') {
+            try { updateSummary(); } catch (e2) { /* ignore */ }
+        }
+    }
+    window.macysRefreshSpriceCells = macysRefreshSpriceCells;
+    // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server re-saves S PRC right after the switch is saved.
+    window.spriceOnRuleSwitched = function() {
+        macysRefreshSpriceCells();
+        if (typeof showToast === 'function') showToast('S PRC now follows ' + (macysDilOn() ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
+    };
+    // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
+    $(document).on('chStd:settled', function() { macysRefreshSpriceCells(); });
     function syncMacysTriangleBadgeState() {
         $('#macys-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -1728,9 +1874,29 @@
                     }
                 },
                 {
+                    title: "Std Diff",
+                    field: "std_prc_diff",
+                    hozAlign: "center",
+                    width: 62,
+                    headerTooltip: "Std Diff = (Std Prc - MC Price) / MC Price x 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target GROI), red = below -5%, green = the rest.",
+                    sorter: function(a, b, aRow, bRow) {
+                        const va = macysStdPrcDiffPct(aRow.getData());
+                        const vb = macysStdPrcDiffPct(bRow.getData());
+                        if (va === null && vb === null) return 0;
+                        if (va === null) return 1;
+                        if (vb === null) return -1;
+                        return va - vb;
+                    },
+                    formatter: function(cell) {
+                        return macysRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                    }
+                },
+                {
                     title: "Price",
                     field: "MC Price",
                     hozAlign: "center",
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -2018,7 +2184,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "MC L30 = 0 still uses the Dil-matching slab (Dil = OV L30 ÷ Shopify INV). If that S PRC < A Price, S PRC = A Price.",
+                    headerTooltip: "Dil → Target GROI slabs (same rule as /amazon-tabulator-view). MC L30 = 0 still uses the Dil-matching slab (Dil = OV L30 ÷ Shopify INV). Diff above the threshold adds its points. If that S PRC < A Price, S PRC = A Price. This is the S PRC when the switch is on Sprc Dil (after the LMP cap and Std Prc maximum).",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isMacysParentRow(rowData)) return '';
@@ -2042,9 +2208,18 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC from Dil slab (OV L30 ÷ Shopify INV) when MC L30 > 0, or min GROI when MC L30 = 0. Out of box + sold uses Std Prc. If that price < A Price, S PRC = A Price.",
+                    headerTooltip: "The switch picks the rule and S PRC follows it at once. Sprc Dil: Dil slab Target GROI (OV L30 ÷ Shopify INV) when MC L30 > 0, or min GROI when MC L30 = 0, plus the Diff rule; at/above LMP (SGROI at LMP ≥ 20%) it becomes LMP × (1 − x%) by Dil band; Std Prc is the maximum. Std prc vs dil: Std Prc less its discounts. Out of box + sold uses Std Prc. If the price < A Price, S PRC = A Price. Clearance SKUs show C. Blue triangle = S PRC ≠ MC Price. Red = at/above LMP, orange = LMP above Std Prc, brown = capped at Std Prc. Hover for every rule used. Saved by the server right after a rule change.",
                     editable: false,
-                    sorter: "number",
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
+                    sorter: function(a, b, aRow, bRow) {
+                        const va = macysDisplayedSprice(aRow.getData());
+                        const vb = macysDisplayedSprice(bRow.getData());
+                        if (!(va > 0) && !(vb > 0)) return 0;
+                        if (!(va > 0)) return 1;
+                        if (!(vb > 0)) return -1;
+                        return va - vb;
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isMacysParentRow(rowData)) return '';
@@ -2063,13 +2238,33 @@
                         else if (status === 'error') bgColor = 'background-color: #f8d7da;';
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
-                        if (!(value > 0)) return '';
-                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                        const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                        const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
+                        const clrMark = window.chClr ? chClr.markHtml(rowData) : '';
+                        if (!(value > 0)) return clrMark;
+                        // Sprc Dil: cap marks like /amazon-tabulator-view (red = LMP, orange = LMP above Std Prc, brown = Std Prc max).
+                        // Std prc vs dil keeps the existing LMP mark.
+                        let flags = null;
+                        if (macysDilOn() && window.chClr && typeof chClr.capFlags === 'function' && !macysHasAmzCap(rowData)) {
+                            const rawDil = macysUncappedDil(rowData);
+                            if (rawDil > 0) {
+                                const lmpNow = macysRowLmp(rowData);
+                                flags = chClr.capFlags({
+                                    raw: rawDil,
+                                    shown: value,
+                                    lmp: lmpNow,
+                                    std: parseFloat(rowData.STANDARD_PRICE) || 0,
+                                    sgroiAtLmp: macysSgroiAtPrice(rowData, lmpNow)
+                                });
+                            }
+                        }
+                        const cap = (!flags && window.SpriceLmpCap) ? SpriceLmpCap.apply(rowData, value) : null;
+                        const overLmp = flags ? !!flags.color : (cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp));
+                        const redTri = flags
+                            ? (flags.redTri + flags.reviewTri + flags.stdTri)
+                            : (overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '');
+                        const capColor = flags ? flags.color : (overLmp ? '#dc3545' : '');
                         const formatted = '$' + value.toFixed(2);
-                        const priceHtml = overLmp
-                            ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
+                        const priceHtml = capColor
+                            ? `<span style="color:${capColor};font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
                             : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         const amz = macysAmazonPriceForRow(rowData);
                         const amzLbl = macysHasAmzCap(rowData)
@@ -2080,7 +2275,7 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ MC Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${clrMark}${redTri}${blueTri}</span>`;
                     },
                     width: 118
                 },
@@ -2157,9 +2352,13 @@
                     title: "SGPFT",
                     field: "SGPFT",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        return (macysSMetrics(aRow.getData()).sgpft ?? -1e9) - (macysSMetrics(bRow.getData()).sgpft ?? -1e9);
+                    },
                     formatter: function(cell) {
-                        const value = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        if (isMacysParentRow(rowData)) return '';
+                        const value = macysSMetrics(rowData).sgpft;
                         if (value === null || value === undefined) return '';
                         const percent = parseFloat(value);
                         const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
@@ -2171,11 +2370,14 @@
                     title: "SNPFT",
                     field: "SPFT",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        return (macysSMetrics(aRow.getData()).sgpft ?? -1e9) - (macysSMetrics(bRow.getData()).sgpft ?? -1e9);
+                    },
                     formatter: function(cell) {
                         // Macys has no ads — SNPFT = SGPFT
                         const rowData = cell.getRow().getData();
-                        const percent = parseFloat(rowData.SGPFT ?? cell.getValue());
+                        if (isMacysParentRow(rowData)) return '';
+                        const percent = parseFloat(macysSMetrics(rowData).sgpft);
                         if (!isFinite(percent)) return '';
                         const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
                         return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
@@ -2186,10 +2388,14 @@
                     title: "SNROI",
                     field: "SROI",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        return (macysSMetrics(aRow.getData()).sroi ?? -1e9) - (macysSMetrics(bRow.getData()).sroi ?? -1e9);
+                    },
                     formatter: function(cell) {
                         // Macys has no ads — SNROI = gross SROI (no Ads% cut)
-                        const value = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        if (isMacysParentRow(rowData)) return '';
+                        const value = macysSMetrics(rowData).sroi;
                         if (value === null || value === undefined) return '';
                         const percent = parseFloat(value);
                         if (!isFinite(percent)) return '';
@@ -2301,6 +2507,16 @@
             navigator.clipboard.writeText(sku).then(() => {
                 showToast(`Copied: ${sku}`, 'success');
             });
+        });
+
+        // Std Diff follows the row when Std Prc or the live Price changes.
+        table.on('rowUpdated', function(row) {
+            try {
+                const c = row.getCell('std_prc_diff');
+                if (!c) return;
+                const el = c.getElement();
+                el.innerHTML = macysRenderStdPrcDiff(el, row.getData());
+            } catch (e) { /* ignore */ }
         });
 
         // Apply filters
@@ -2430,6 +2646,11 @@
                 table.addFilter(function(data) {
                     return macysHasAmzCap(data);
                 });
+            }
+
+            // Clearance "C" header badge filter (Inv days clearance = YES)
+            if (window.chClr && chClr.filterOn()) {
+                table.addFilter(chClr.filterFn);
             }
 
             updateSummary();
@@ -2714,6 +2935,14 @@
         table.on('tableBuilt', function() {
             buildColumnDropdown();
             applyColumnVisibilityFromServer();
+            // Header "C n" badge: count of clearance SKUs, click to filter them. Cells repaint once the clearance list is loaded.
+            if (window.chClr && typeof chClr.init === 'function') {
+                chClr.init({
+                    badgeId: 'macys-clearance-badge',
+                    getTable: function() { return table; },
+                    applyFilters: applyFilters
+                });
+            }
         });
 
         function macysWipeAllSpriceCells() {
@@ -2751,6 +2980,7 @@
         }
 
         table.on('dataLoaded', function() {
+            if (window.chClr && typeof chClr.refresh === 'function') chClr.refresh();
             setTimeout(function() {
                 applyFilters();
             }, 100);
