@@ -64,10 +64,13 @@ class PlsSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_sku_has_no_target_like_amazon(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
-        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
-        $this->assertNull($this->target($this->row(['standard_price' => 120, 'lp' => 70, 'ship' => 10, 'clearance' => true])));
+        // (70 × 1.10 + 10) ÷ 0.80 = 108.75 although Std Prc is 100: no discount or Std Prc rule applies. Same in Sprc Dil.
+        $row = $this->row(['standard_price' => 100, 'lp' => 70, 'ship' => 10, 'clearance' => true, 'clearance_nroi' => 10]);
+        $this->assertEqualsWithDelta(108.75, $this->target($row)['sprice'], 0.001);
+        $this->assertEqualsWithDelta(108.75, (new PlsSprcDilAutoPushService)->computeTarget($row, null, $this->dilCtx())['sprice'], 0.001);
+        $this->assertNull($this->target($this->row(['lp' => 0, 'clearance' => true, 'clearance_nroi' => 10])));
     }
 
     public function test_lmp_has_no_effect_on_pls(): void
@@ -187,13 +190,12 @@ class PlsSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(30.0, $out['sprice'], 0.001);
     }
 
-    public function test_sprc_dil_above_every_slab_clearance_and_no_inventory_have_no_target(): void
+    public function test_sprc_dil_above_every_slab_and_no_inventory_have_no_target(): void
     {
         $svc = new PlsSprcDilAutoPushService;
 
         $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 60]), null, $this->dilCtx()));
         $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
-        $this->assertNull($svc->computeTarget($this->dilRow(['clearance' => true]), null, $this->dilCtx()));
     }
 
     public function test_without_a_dil_context_the_std_rule_still_prices(): void

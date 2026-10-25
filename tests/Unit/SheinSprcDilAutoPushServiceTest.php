@@ -66,10 +66,14 @@ class SheinSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_sku_has_no_target_like_amazon(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
-        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
-        $this->assertNull($this->target($this->row(['standard_price' => 120, 'lp' => 70, 'ship' => 10, 'clearance' => true])));
+        // (70 × 1.10 + 10) ÷ 0.80 = 108.75 although Std Prc is 100 and LMP is 50: no discount, LMP or Std rule applies.
+        $row = $this->row(['standard_price' => 100, 'lp' => 70, 'ship' => 10, 'lmp' => 50, 'clearance' => true, 'clearance_nroi' => 10]);
+        $out = $this->target($row);
+        $this->assertEqualsWithDelta(108.75, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
+        $this->assertNull($this->target($this->row(['lp' => 0, 'clearance' => true, 'clearance_nroi' => 10])));
     }
 
     public function test_lmp_below_the_price_caps_to_lmp(): void
@@ -228,9 +232,8 @@ class SheinSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(30.0, $std['sprice'], 0.001);
     }
 
-    public function test_sprc_dil_clearance_and_no_inventory_have_no_target(): void
+    public function test_sprc_dil_no_inventory_has_no_target(): void
     {
-        $this->assertNull($this->dilTarget($this->dilRow(['clearance' => true])));
         $this->assertNull($this->dilTarget($this->dilRow(['inv' => 0])));
     }
 

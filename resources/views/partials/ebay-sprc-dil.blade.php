@@ -3137,6 +3137,12 @@
          */
         async function ebayDgApplyAfterRulesSaved() {
             if (!ebayDilOwnsSprice()) return 0;
+            // A server-owned page: the server re-saves S PRC from the new rules right after the modal is saved. The page must not
+            // post its own S PRC saves (a clearance SKU has none to post, and a 0 wipe is rejected by some channels).
+            if (window.CH_STD_SERVER_OWNED === true) {
+                ebayDgRulesDirty = false;
+                return 0;
+            }
             if (ebayDgUsesBackgroundRuleApply() || ebayDgIsShopifyB2c()) {
                 ebayDgRulesDirty = false;
                 return 0;
@@ -3196,7 +3202,7 @@
                 postEbayDilGroiRules().then(function() {
                     if (seq !== ebayDgAutosaveSeq) return;
                     $('#ebay-dil-groi-status').text(
-                        ebayDilOwnsSprice() && !ebayDgUsesBackgroundRuleApply() && !ebayDgIsShopifyB2c()
+                        ebayDilOwnsSprice() && !ebayDgUsesBackgroundRuleApply() && !ebayDgIsShopifyB2c() && window.CH_STD_SERVER_OWNED !== true
                             ? 'Autosaved. S PRC updates from these targets when you press Save or close this window.'
                             : 'Autosaved. Rules only — S PRC was not changed.'
                     );

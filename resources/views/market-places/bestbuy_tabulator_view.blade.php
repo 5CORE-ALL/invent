@@ -415,6 +415,8 @@
 <script>
     // S PRC is saved + pushed by the server (bestbuy:sprc-dil-auto-push). The page only shows it.
     window.CH_STD_SERVER_OWNED = true;
+    // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes.
+    window.CH_CLEARANCE_KEEPS_RULES = true;
     // The SNROI% column here is (S PRC x take-home - Ship BB - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
     window.CH_PROMO_ADS_FN = function() { return 0; };
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'bestbuy'])
@@ -596,13 +598,16 @@
     }
     /**
      * The rule price of the ON switch worked out live: { pre, final }. pre = after the LMP cap (no Std max),
-     * final = after the Amz floor. null while the rules load, for a clearance SKU, or when the row has none.
+     * final = after the Amz floor. null while the rules load or when the row has none.
      */
     function bestbuyLiveRuleParts(data) {
         if (!data || isBestbuyParentRow(data)) return null;
         try {
-            // Clearance SKUs show "C": no S PRC is saved or pushed for them.
-            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) return null;
+            // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff, LMP, Std or A Price rule.
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
+                const cp = typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;
+                return cp > 0 ? { pre: cp, final: cp } : null;
+            }
             let pre = 0;
             if (bestbuySpriceRule() === 'dil') {
                 if (window._ebayDilRulesLoaded !== true) return null;
@@ -690,6 +695,7 @@
     /** Amz rule: S PRC was raised to A Price (server flag AMZ_CAPPED, or a saved S PRC still under A Price). */
     function bestbuyHasAmzCap(data) {
         if (isBestbuyParentRow(data)) return false;
+        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) return false;
         const amz = bestbuyAmazonPrice(data);
         const shown = bestbuyDisplayedSprice(data);
         if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) > 0.015) return false;
@@ -2337,9 +2343,16 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isBestbuyParentRow(rowData)) return '';
-                        // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
+                        // Clearance SKU: price from the Clearance Target NROI% followed by the red C (blue triangle when it differs from BB Price). No cap marks.
                         if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
-                            return '<span class="bestbuy-sprice-clearance" title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                            const cv = bestbuyDisplayedSprice(rowData);
+                            const cMark = (window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '';
+                            if (!(cv > 0)) return cMark;
+                            const cLive = parseFloat(rowData['BB Price']) || 0;
+                            const cBlue = (cLive > 0 && Math.round(cv * 100) !== Math.round(cLive * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $' + cv.toFixed(2) + ' ≠ BB Price $' + cLive.toFixed(2) + '"></i>'
+                                : '';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;padding:2px 6px;">$' + cv.toFixed(2) + '</span>' + cMark + cBlue + '</span>';
                         }
                         let value = bestbuyDisplayedSprice(rowData);
                         const hasCustom = rowData.has_custom_sprice;

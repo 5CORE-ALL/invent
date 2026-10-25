@@ -71,10 +71,15 @@ class BestBuySprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_sku_has_no_target_like_amazon(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
-        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
-        $this->assertNull($this->service()->computeTarget($this->row(['lp' => 60, 'ship' => 4, 'clearance' => true]), $this->pricer()));
+        // (60 × 1.10 + 4) ÷ 0.80 = 87.50 although A Price is 120 and LMP is 50: no discount, LMP, Std or Amz rule applies.
+        $row = $this->row(['lp' => 60, 'ship' => 4, 'amz' => 120, 'lmp' => 50, 'clearance' => true, 'clearance_nroi' => 10]);
+        $out = $this->service()->computeTarget($row, $this->pricer());
+        $this->assertEqualsWithDelta(87.50, $out['sprice'], 0.001);
+        $this->assertFalse($out['amz_capped']);
+        $this->assertFalse($out['lmp_capped']);
+        $this->assertNull($this->service()->computeTarget($this->row(['lp' => 0, 'clearance' => true, 'clearance_nroi' => 10]), $this->pricer()));
     }
 
     public function test_lmp_caps_the_price_when_sgroi_at_lmp_is_healthy(): void
@@ -265,9 +270,8 @@ class BestBuySprcDilAutoPushServiceTest extends TestCase
         $this->assertFalse($above['amz_capped']);
     }
 
-    public function test_sprc_dil_clearance_and_no_inventory_have_no_target(): void
+    public function test_sprc_dil_no_inventory_has_no_target(): void
     {
-        $this->assertNull($this->dilTarget($this->dilRow(['clearance' => true])));
         $this->assertNull($this->dilTarget($this->dilRow(['inv' => 0])));
     }
 

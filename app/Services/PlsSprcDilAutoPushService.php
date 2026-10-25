@@ -25,7 +25,7 @@ use Throwable;
  * Same steps as AmazonSprcDilAutoPushService, with PLS as the source:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  PLS has no ads, so NPFT = GPFT. Clearance SKUs show "C" in S PRC: nothing is saved or pushed (same as Amazon).
+ *  PLS has no ads, so NPFT = GPFT. Clearance SKUs are priced only from the Clearance Target NROI% (Sprc Dil modal, last row), no cap.
  *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI, judged like the page's
  *  SNROI% column, (S PRC × PLS% − Ship − LP) ÷ LP with no Ads%, instead of the discounts. Std Prc stays the maximum.
  *  0 Sold = P L30 (pls_products.p_l30), the page's sold qty. Std Prc is the maximum.
@@ -246,20 +246,16 @@ class PlsSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
+        // Clearance SKUs (Inv days clearance = YES) are priced ONLY from the Clearance Target NROI% (Sprc Dil modal, last row), in
+        // Std prc vs dil and Sprc Dil alike: (LP × (1 + NROI%) + Ship) ÷ PLS%. No slab, Diff or Std rule.
+        if ((new StdPrcVsDilPricer([], 'pls'))->isClearanceRow($row)) {
+            return $this->computeClearanceTarget($row);
+        }
         if ($dilContext !== null) {
-            // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
-            if ((new StdPrcVsDilPricer([], 'pls'))->isClearanceRow($row)) {
-                return null;
-            }
-
             return $this->computeDilTarget($row, $dilContext);
         }
         $std = (float) ($row['standard_price'] ?? 0);
         if (! ($std > 0)) {
-            return null;
-        }
-        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
-        if ((new StdPrcVsDilPricer([], 'pls'))->isClearanceRow($row)) {
             return null;
         }
         $lp = (float) ($row['lp'] ?? 0);
@@ -315,10 +311,57 @@ class PlsSprcDilAutoPushService
     }
 
     /**
+     * Clearance SKU: (LP × (1 + Clearance NROI%) + Ship) ÷ PLS%. PLS has no Ads, LMP or Amz rule, and Std Prc does not cap it.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{sprice:float,uncapped:float,base:float,margin:float,lp:float,ship:float}|null
+     */
+    protected function computeClearanceTarget(array $row): ?array
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 1.0;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        $ship = (float) ($row['ship'] ?? 0);
+        // A row may carry its own clearance_nroi (tests); otherwise the saved Sprc Dil modal value.
+        $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi']) ? (float) $row['clearance_nroi'] : $this->clearanceNroi();
+        $price = round(($lp * (1 + max(0.0, $nroi) / 100) + $ship) / $margin, 2);
+        if (! is_finite($price) || $price < 0.01) {
+            return null;
+        }
+
+        return [
+            'sprice' => $price,
+            'uncapped' => $price,
+            'base' => round((float) ($row['standard_price'] ?? 0), 2),
+            'margin' => $margin,
+            'lp' => $lp,
+            'ship' => $ship,
+        ];
+    }
+
+    /** Clearance Target NROI% saved with the PLS Sprc Dil rules (last row of the modal). Default 0. */
+    protected function clearanceNroi(): float
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'pls_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $n = $unpacked['clearance_nroi'] ?? null;
+
+        return (is_numeric($n) && (float) $n >= 0) ? (float) $n : 0.0;
+    }
+
+    /**
      * Sprc Dil switch ON, same as the page (ebay-sprc-dil + /amazon-tabulator-view order):
      * Dil slab Target SNROI, Diff points, then price = (LP x (1 + Target%) + Ship) / PLS%. PLS has no Ads, no CVR
      * overlay, no LMP and no Amz rule. Std Prc is the maximum. A SKU whose Dil is outside every slab has no Sprc Dil
-     * price. Clearance SKUs get none (they show "C").
+     * price. Clearance SKUs never reach this (computeClearanceTarget).
      *
      * @param  array<string, mixed>  $row
      * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}  $ctx

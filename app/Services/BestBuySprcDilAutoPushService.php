@@ -25,7 +25,7 @@ use Throwable;
  *  CVR Disc is off: Best Buy has no session CVR (Amazon A L30 / Sess30 is not used).
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI instead of the discounts.
- *  Clearance SKUs show "C" in S PRC: nothing is saved or pushed (same as Amazon).
+ *  Clearance SKUs are priced only from the Clearance Target NROI% (Sprc Dil modal, last row): no LMP, Std or Amz rule.
  *  No Std Prc maximum. The LMP cap (SGROI at LMP ≥ 20%) applies.
  *  Last, the Amz rule: S PRC never sits below the Amazon price (A Price). That floor wins over the LMP cap.
  *  Ship BB is part of profit (same as the page). Best Buy has no ads, so none is used.
@@ -306,9 +306,10 @@ class BestBuySprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
-        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
+        // Clearance SKUs (Inv days clearance = YES) are priced ONLY from the Clearance Target NROI% (Sprc Dil modal, last row), in
+        // Std prc vs dil and Sprc Dil alike: (LP × (1 + NROI%) + Ship BB) ÷ take-home. No slab, Diff, LMP, Std or A Price rule.
         if ((new StdPrcVsDilPricer([], 'bestbuy'))->isClearanceRow($row)) {
-            return null;
+            return $this->computeClearanceTarget($row);
         }
         if ($dilContext !== null) {
             return $this->computeDilTarget($row, $dilContext);
@@ -385,6 +386,56 @@ class BestBuySprcDilAutoPushService
             'lp' => $lp,
             'ship' => $ship,
         ];
+    }
+
+    /**
+     * Clearance SKU: (LP × (1 + Clearance NROI%) + Ship BB) ÷ take-home. Best Buy has no Ads%. No LMP cap, no Std maximum and no
+     * Amz (A Price) floor.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,margin:float,lp:float,ship:float}|null
+     */
+    protected function computeClearanceTarget(array $row): ?array
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.80;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        $ship = (float) ($row['ship'] ?? 0);
+        // A row may carry its own clearance_nroi (tests); otherwise the saved Sprc Dil modal value.
+        $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi']) ? (float) $row['clearance_nroi'] : $this->clearanceNroi();
+        $price = round(($lp * (1 + max(0.0, $nroi) / 100) + $ship) / $margin, 2);
+        if (! is_finite($price) || $price < 0.01) {
+            return null;
+        }
+
+        return [
+            'sprice' => $price,
+            'uncapped' => $price,
+            'amz_capped' => false,
+            'lmp_capped' => false,
+            'base' => round((float) ($row['standard_price'] ?? 0), 2),
+            'margin' => $margin,
+            'lp' => $lp,
+            'ship' => $ship,
+        ];
+    }
+
+    /** Clearance Target NROI% saved with the Best Buy Sprc Dil rules (last row of the modal). Default 0. */
+    protected function clearanceNroi(): float
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'bestbuy_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $n = $unpacked['clearance_nroi'] ?? null;
+
+        return (is_numeric($n) && (float) $n >= 0) ? (float) $n : 0.0;
     }
 
     /**
