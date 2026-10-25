@@ -511,6 +511,7 @@
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'shopifyb2b-clearance-badge'])
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2b-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2b'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2b-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2b', 'pglPriceField' => 'Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'shopifyb2b-price-lt80-lmp-badge', 'pltChannelKey' => 'shopifyb2b', 'pltPriceField' => 'Price'])
@@ -693,6 +694,8 @@
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2b', 'channelPromoTakehome' => 0.95])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shopify_b2b'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+    @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
+    @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'shopifyb2b', 'temuRuleLiveLabel' => 'Price'])
 
     function shopifyB2bSpriceRule() {
         if (typeof window.spriceActiveRule === 'function') return window.spriceActiveRule();
@@ -711,14 +714,57 @@
     }
     window.shopifyB2bSpriceRule = shopifyB2bSpriceRule;
     window.shopifyB2bRefreshSpriceCells = shopifyB2bRefreshSpriceCells;
+    /** Sprc Dil price before the LMP cap and the Std Prc maximum. 0 when the rule gives none. */
+    function shopifyB2bDilRawSprice(data) {
+        if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
+        const meta = ebayDilGroiMetaForRow(data);
+        const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
+        return n > 0 ? Math.round(n * 100) / 100 : 0;
+    }
+    /** LMP (non-ignored) for the caps and the hover. */
+    function shopifyB2bRowLmp(data) {
+        if (window.SpriceLmpCap && typeof SpriceLmpCap.lmpOf === 'function') {
+            const n = Number(SpriceLmpCap.lmpOf(data));
+            if (n > 0) return Math.round(n * 100) / 100;
+        }
+        const raw = parseFloat(data && data.lmp_price) || 0;
+        return raw > 0 ? Math.round(raw * 100) / 100 : 0;
+    }
+    /** No A Price / Amz cap on Shopify B2B. */
+    function shopifyB2bAmzPrice() { return 0; }
+    /** SGROI at a price, B2B unit (no Ship): ((price × 0.95 − LP) / LP) × 100. null without LP or price. */
+    function shopifyB2bSgroiAtPrice(data, price) {
+        const p = parseFloat(price);
+        const lp = parseFloat(data && data.LP_productmaster);
+        if (!(p > 0) || !(lp > 0)) return null;
+        return ((p * 0.95 - lp) / lp) * 100;
+    }
+    /**
+     * Same as /amazon-tabulator-view, Sprc Dil switch ON:
+     *  - Dil price at/above LMP and SGROI at LMP >= 20%: S PRC = LMP x (1 - x%), x by the SKU's Dil band (Sprc Dil modal, LMP cap table).
+     *  - Std Prc is the maximum when it is set.
+     */
+    function shopifyB2bCapDilSprice(data, raw) {
+        let out = Math.round((parseFloat(raw) || 0) * 100) / 100;
+        if (!(out > 0)) return 0;
+        const lmp = shopifyB2bRowLmp(data);
+        if (lmp > 0 && out + 0.0001 >= lmp) {
+            const sg = shopifyB2bSgroiAtPrice(data, lmp);
+            if (sg === null || sg >= 20) {
+                const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 2;
+                out = Math.round(lmp * (1 - (isFinite(pct) ? pct : 2) / 100) * 100) / 100;
+            }
+        }
+        const std = parseFloat(data && data.STANDARD_PRICE) || 0;
+        if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
+        return out;
+    }
     function shopifyB2bDisplayedSprice(data) {
         if (!data || isShopifyB2bParentRow(data)) return 0;
         if (shopifyB2bSpriceRule() === 'dil') {
-            if (typeof ebaySprcDilForRow === 'function') {
-                const dil = Number(ebaySprcDilForRow(data)) || 0;
-                if (dil > 0) return dil;
-            }
-            return 0;
+            // Sprc Dil: the rule price (Dil slab + CVR + Diff), then the LMP cap by Dil band, then Std Prc as the maximum.
+            const raw = shopifyB2bDilRawSprice(data);
+            return raw > 0 ? shopifyB2bCapDilSprice(data, raw) : 0;
         }
         if (typeof window.chStdPriceForRow === 'function') {
             const stdRule = Number(window.chStdPriceForRow(data)) || 0;
@@ -842,6 +888,42 @@
     }
     window.shopifyB2bHasBlueTriangle = shopifyB2bHasBlueTriangle;
     window.shopifyB2bDisplayedSprice = shopifyB2bDisplayedSprice;
+    const shopifyB2bShownSprice = shopifyB2bDisplayedSprice;
+
+    /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+    function shopifyB2bDiffCfgNow() {
+        const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+        return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+    }
+    /** Std Diff % = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. null when either is missing. */
+    function shopifyB2bStdPrcDiffPct(rowData) {
+        if (!rowData || isShopifyB2bParentRow(rowData)) return null;
+        const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+        const price = parseFloat(rowData.Price) || 0;
+        if (!(std > 0) || !(price > 0)) return null;
+        return ((std - price) / price) * 100;
+    }
+    /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < −5%, else green. Styles the cell element itself. */
+    function shopifyB2bRenderStdPrcDiff(el, rowData) {
+        const pct = shopifyB2bStdPrcDiffPct(rowData);
+        let html = '';
+        let bg = '';
+        let color = '';
+        if (pct !== null) {
+            if (pct > shopifyB2bDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+            else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+            else { bg = '#28a745'; color = '#fff'; }
+            html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+        }
+        if (el) {
+            el.style.backgroundColor = bg;
+            el.style.color = color;
+        }
+        return html;
+    }
+    // The Sprc Dil Diff rule reads Std Prc and the live website Price from these two columns.
+    window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+    window.ebayDiffLivePrice = function(d) { return parseFloat(d && d.Price) || 0; };
     function syncShopifyB2bTriangleBadgeState() {
         $('#shopifyb2b-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -1874,9 +1956,22 @@
                     }
                 },
                 {
+                    title: "Std Diff",
+                    field: "std_prc_diff",
+                    hozAlign: "center",
+                    width: 62,
+                    headerTooltip: "Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target SNROI), red = below −5%, green = the rest.",
+                    sorter: tabSortBlankLast(function(d) { return shopifyB2bStdPrcDiffPct(d); }),
+                    formatter: function(cell) {
+                        return shopifyB2bRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                    }
+                },
+                {
                     title: "Price",
                     field: "Price",
                     hozAlign: "center",
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                     minWidth: 86,
                     sorter: "number",
                     headerTooltip: "Live website selling price from business5core.com",
@@ -2046,7 +2141,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. B2B L30 = 0 still uses the Dil-matching slab. Dil outside the table uses the nearest slab. CVR overlay: Down < 7% / Up > 10% (editable). 0 Sold and no views skip CVR. B2B formula excludes Ship.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs (same rule as /amazon-tabulator-view). B2B L30 = 0 still uses the Dil-matching slab. Dil outside the table uses the nearest slab. CVR overlay: Down < 7% / Up > 10% (editable). Diff above the threshold adds its points. 0 Sold and no views skip CVR. B2B formula excludes Ship. This is the S PRC when the switch is on Sprc Dil (after the LMP cap and Std Prc maximum).",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) return '';
@@ -2069,8 +2164,10 @@
                     field: "SPRICE",
                     hozAlign: "center",
                     editable: false,
-                    sorter: "number",
-                    headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil, or Std prc vs dil (Ship subtracted). Turning one ON turns the other OFF. Blue triangle = S PRC ≠ Price.",
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
+                    sorter: tabSortBlankLast(function(d) { if (isShopifyB2bParentRow(d)) return null; const v = shopifyB2bDisplayedSprice(d); return v > 0 ? v : null; }),
+                    headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with CVR and Diff, then LMP × (1 − x%) by Dil band when it reaches LMP and SGROI at LMP ≥ 20%, Std Prc as the maximum), or Std prc vs dil (Ship subtracted). Turning one ON turns the other OFF. Clearance SKUs show C. Blue triangle = S PRC ≠ Price. Red = at/above LMP, orange = LMP above Std Prc, brown = capped at Std Prc. Hover for every rule used.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) {
@@ -2087,14 +2184,32 @@
                         else if (status === 'error') bgColor = 'background-color: #f8d7da;';
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
-                        if (!(value > 0)) return '';
+                        if (!(value > 0)) return window.chClr ? chClr.markHtml(rowData) : '';
                         const formatted = '$' + value.toFixed(2);
-                        const priceHtml = `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                        // Cap marks (same rules as /amazon-tabulator-view), Sprc Dil only: red = LMP, orange = LMP above Std Prc, brown = Std Prc max.
+                        let flags = null;
+                        if (shopifyB2bSpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function') {
+                            const rawDil = shopifyB2bDilRawSprice(rowData);
+                            if (rawDil > 0) {
+                                const lmpNow = shopifyB2bRowLmp(rowData);
+                                flags = chClr.capFlags({
+                                    raw: rawDil,
+                                    shown: value,
+                                    lmp: lmpNow,
+                                    std: parseFloat(rowData.STANDARD_PRICE) || 0,
+                                    sgroiAtLmp: shopifyB2bSgroiAtPrice(rowData, lmpNow)
+                                });
+                            }
+                        }
+                        const capTris = flags ? (flags.redTri + flags.reviewTri + flags.stdTri) : '';
+                        const capColor = flags && flags.color ? 'color:' + flags.color + ';' : '';
+                        const clrMark = window.chClr ? chClr.markHtml(rowData) : '';
+                        const priceHtml = `<span style="font-weight: 600; ${capColor}${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clrMark}${blueTri}${capTris}</span>`;
                     },
                     width: 92
                 },
@@ -2468,6 +2583,11 @@
                 });
             }
 
+            // Clearance "C" header badge filter (Inv days clearance = YES)
+            if (window.chClr && chClr.filterOn()) {
+                table.addFilter(chClr.filterFn);
+            }
+
             // Row type filter: All Rows / Parents / SKUs (same as Amazon)
             const parentFilter = $('#parent-filter').val();
             if (parentFilter === 'parents') {
@@ -2767,9 +2887,28 @@
         // Wait for table to be built
         table.on('tableBuilt', function() {
             applyColumnVisibilityFromServer();
+            // Header "C n" badge: count of clearance SKUs, click to filter them. Cells repaint once the clearance list is loaded.
+            if (window.chClr && typeof chClr.init === 'function') {
+                chClr.init({
+                    badgeId: 'shopifyb2b-clearance-badge',
+                    getTable: function() { return table; },
+                    applyFilters: applyFilters
+                });
+            }
+        });
+
+        // Std Diff follows the row when Std Prc or the live Price changes.
+        table.on('rowUpdated', function(row) {
+            try {
+                const c = row.getCell('std_prc_diff');
+                if (!c) return;
+                const el = c.getElement();
+                el.innerHTML = shopifyB2bRenderStdPrcDiff(el, row.getData());
+            } catch (e) { /* ignore */ }
         });
 
         table.on('dataLoaded', function() {
+            if (window.chClr && typeof chClr.refresh === 'function') chClr.refresh();
             setTimeout(function() {
                 applyFilters();
                 updateSummary();
