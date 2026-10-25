@@ -1351,7 +1351,9 @@
             return (((std - price) / price) * 100 > ebayDiffAdj.gt_pct) ? ebayDiffAdj.points : 0;
         }
         function ebayDilGroiApplyCvrAdj(slabGroi, d) {
-            const groi = ebayDgRound2((Number(slabGroi) || 0) + ebayDilGroiCvrAdj(d) + ebayDilGroiDiffAdj(d));
+            // Same order as the server (EbayRuleSprice): floor the CVR-adjusted target at 0, then add the Diff points.
+            const afterCvr = Math.max(0, ebayDgRound2((Number(slabGroi) || 0) + ebayDilGroiCvrAdj(d)));
+            const groi = ebayDgRound2(afterCvr + ebayDilGroiDiffAdj(d));
             return groi < 0 ? 0 : groi;
         }
         /** Vinted / Instagram / Depop: channel L30 = 0 still uses the OV Dil % slab (OV L30 ÷ INV). */

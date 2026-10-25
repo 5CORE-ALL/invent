@@ -1780,7 +1780,10 @@
             return (pct !== null && pct > amzDiffAdj.gt_pct) ? amzDiffAdj.points : 0;
         }
         function amzDilGroiApplyCvrAdj(slabGroi, d) {
-            const groi = amzPefRound2((Number(slabGroi) || 0) + amzDilGroiCvrAdj(d) + amzDilGroiDiffAdj(d));
+            // Same order as the server (AmazonSprcDilAutoPushService): the CVR overlay is floored at 0 first, then the
+            // Diff points are added. Summing all three before the floor let a CVR -10 eat the Diff +10 on low slabs.
+            const afterCvr = Math.max(0, amzPefRound2((Number(slabGroi) || 0) + amzDilGroiCvrAdj(d)));
+            const groi = amzPefRound2(afterCvr + amzDilGroiDiffAdj(d));
             return groi < 0 ? 0 : groi;
         }
         function amzDilGroiCollectCounts(list) {
