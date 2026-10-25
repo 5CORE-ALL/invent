@@ -1872,7 +1872,8 @@
         function chStdPriceForRow(d, draft) {
             if (!d) return 0;
             // A SKU under clearance (Inv days clearance = YES) gets no rule price on any page: the page shows C, nothing is saved or pushed.
-            if (chStdIsClearance(d)) return 0;
+            // A page that sets CH_CLEARANCE_KEEPS_RULES (Shopify B2C) prices clearance SKUs like any other SKU.
+            if (window.CH_CLEARANCE_KEEPS_RULES !== true && chStdIsClearance(d)) return 0;
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return 0;
             // Product-master SKU with no Alibaba listing (no product id / price): nothing to push to.
             if (d.not_listed) return 0;

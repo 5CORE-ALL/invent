@@ -2786,6 +2786,8 @@
 
         // S PRC is saved + pushed by the server (shopify-b2c:sprc-dil-auto-push). The page only shows it.
         window.CH_STD_SERVER_OWNED = true;
+        // Clearance SKUs (Inv days clearance = YES) keep every rule on this page: priced and pushed like any other SKU, with a red C after the price.
+        window.CH_CLEARANCE_KEEPS_RULES = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2c', 'channelPromoTakehome' => 0.95])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
@@ -3414,10 +3416,7 @@
                         if (isShopifyB2cParentRow(rowData)) {
                             return '';
                         }
-                        // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
-                        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
-                            return '<span title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
-                        }
+                        // Clearance SKUs keep the normal rule price and are pushed like any other SKU. A red C follows the price.
                         const value = shopifyB2cShownSprice(rowData);
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
@@ -3471,7 +3470,9 @@
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
 
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
+                        const clearanceMark = (window.chClr && typeof chClr.markHtml === 'function') ? chClr.markHtml(rowData) : '';
+
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${amzLbl}${redTri}${blueTri}</span>`;
                     }
                 },
                 {

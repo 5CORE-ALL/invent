@@ -24,7 +24,7 @@ use Throwable;
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI instead of the discounts,
  *  then the LMP cap and the Amz cap below still apply to it. Std Prc stays the maximum.
- *  Clearance SKUs show "C" in S PRC: nothing is saved or pushed (same as Amazon).
+ *  Clearance SKUs are priced and pushed like any other SKU on this page (the page shows a red C after the price).
  *
  * Then the Amz cap (same as the old page), on the LMP-capped price: LMP below A Price → A Price;
  * price above A Price stays; price at/below A Price → A Price.
@@ -176,10 +176,6 @@ class ShopifyB2cSprcDilAutoPushService
         $std = (float) ($row['standard_price'] ?? 0);
         // Std prc vs dil prices off Std Prc. Sprc Dil prices off the Dil slab, so a blank Std Prc only means "no maximum".
         if (! $dilOn && ! ($std > 0)) {
-            return null;
-        }
-        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
-        if ((new StdPrcVsDilPricer([], 'shopify_b2c'))->isClearanceRow($row)) {
             return null;
         }
         $lp = (float) ($row['lp'] ?? 0);

@@ -128,10 +128,13 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertTrue($out['lmp_capped']);
     }
 
-    public function test_clearance_sku_has_no_target_like_amazon(): void
+    public function test_clearance_sku_is_priced_like_any_other_sku(): void
     {
-        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
-        $this->assertNull((new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['clearance' => true]), $this->pricer()));
+        // Shopify B2C keeps every rule for clearance SKUs: they are saved and pushed, and the page shows a red C.
+        $clr = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['clearance' => true]), $this->pricer());
+        $plain = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['clearance' => false]), $this->pricer());
+        $this->assertNotNull($clr);
+        $this->assertSame($plain['sprice'], $clr['sprice']);
     }
 
     /**
@@ -231,7 +234,7 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertSame(100.0, $std['sprice']);
     }
 
-    public function test_sprc_dil_keeps_the_amz_cap_and_skips_clearance(): void
+    public function test_sprc_dil_keeps_the_amz_cap_and_prices_clearance(): void
     {
         $svc = new ShopifyB2cSprcDilAutoPushService;
         // Dil price 34.74 is below A Price 60 → the Amz cap raises S PRC to A Price, like Std prc vs dil.
@@ -239,7 +242,10 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertSame(60.0, $amz['sprice']);
         $this->assertTrue($amz['amz_capped']);
 
-        $this->assertNull($svc->computeTarget($this->row(['cvr' => 8, 'views' => 100, 'clearance' => true]), null, 0.0, $this->dilCtx()));
+        $clr = $svc->computeTarget($this->row(['cvr' => 8, 'views' => 100, 'clearance' => true]), null, 0.0, $this->dilCtx());
+        $plain = $svc->computeTarget($this->row(['cvr' => 8, 'views' => 100]), null, 0.0, $this->dilCtx());
+        $this->assertNotNull($clr);
+        $this->assertSame($plain['sprice'], $clr['sprice']);
         $this->assertNull($svc->computeTarget($this->row(['lp' => 0, 'cvr' => 8, 'views' => 100]), null, 0.0, $this->dilCtx()));
     }
 

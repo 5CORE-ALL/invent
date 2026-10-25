@@ -714,7 +714,7 @@
             const rowTitle = 'S PRC ' + temuRuleMoney(final);
             const rowSub = sku + ' · ' + (dilOn ? 'Sprc Dil rule' : 'Std prc vs dil rule');
 
-            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+            if (window.CH_CLEARANCE_KEEPS_RULES !== true && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
                 steps.push(temuRuleStep('skip', 'Clearance',
                     'This SKU is on the Inv days clearance list (YES), so S PRC shows <b>C</b>. No S PRC is saved or pushed for it.'));
                 return { title: 'S PRC — (Clearance)', sub: rowSub, steps: steps, notes: notes, finalNote: '' };
