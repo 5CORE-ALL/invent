@@ -159,6 +159,10 @@ class MacysRuleSpriceApplyService
      */
     public function computeTarget(array $row, array $dilRules, float $margin, ?array $dilContext = null): ?array
     {
+        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: nothing is saved or pushed.
+        if ((new \App\Support\StdPrcVsDilPricer([], 'macys'))->isClearanceRow($row)) {
+            return null;
+        }
         if ($this->applyStdPrcVsDil) {
             // SNROI Cap: judge the same number as the page's SNROI% column, (S PRC × take-home − Ship − LP) ÷ LP.
             // Macys has no Ads%, so the cap takes none off. The take-home % is the one the page row carries.

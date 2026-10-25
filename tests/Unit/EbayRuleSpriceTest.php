@@ -174,10 +174,10 @@ class EbayRuleSpriceTest extends TestCase
         ]))['sprice']);
     }
 
-    public function test_clearance_keeps_the_discount_price(): void
+    public function test_clearance_sku_has_no_price_from_any_rule(): void
     {
         $pricer = $this->pricer(['buss' => [['min' => 0, 'max' => 9999, 'disc' => 50]]]);
-        $this->assertSame(50.0, EbayRuleSprice::price($pricer, $this->input(['lp' => 40, 'ship' => 5, 'clearance' => 'YES']))['sprice']);
+        $this->assertNull(EbayRuleSprice::price($pricer, $this->input(['lp' => 40, 'ship' => 5, 'clearance' => 'YES'])));
     }
 
     public function test_lmp_cap_applies_when_sgroi_at_lmp_is_20_or_more(): void

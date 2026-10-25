@@ -239,6 +239,10 @@ class EbayRuleSprice
      */
     public static function price(StdPrcVsDilPricer $pricer, array $input, ?array $context = null): ?array
     {
+        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: nothing is saved or pushed.
+        if ($pricer->isClearanceRow($input)) {
+            return null;
+        }
         $dilOn = is_array($context) && ($context['rule'] ?? 'std') === 'dil' && is_array($context['dil'] ?? null);
         $rulePrice = $dilOn ? self::dilPrice($input, $context['dil']) : $pricer->priceFromRow($input);
         if ($rulePrice === null || ! ($rulePrice > 0)) {

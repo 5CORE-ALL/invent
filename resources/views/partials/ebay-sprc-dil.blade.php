@@ -1646,6 +1646,8 @@
         }
         function ebayDilGroiMetaForRow(d) {
             if (!ebayDgIsChild(d)) return null;
+            // A SKU under clearance (Inv days clearance = YES) gets no Sprc Dil price: no slab, Diff, LMP, Std or Amz rule applies.
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) return null;
             // Mercari: Dil 0% + L30 = 0 still gets the 0 Sold / nearest-slab S PRC
             // even when INV is 0 (Dil column is forced to 0% whenever INV is 0).
             if (!(ebayDgInv(d) > 0) && !ebayDgIsMercari()) return null;

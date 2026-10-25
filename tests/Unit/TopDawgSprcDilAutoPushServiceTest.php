@@ -77,16 +77,13 @@ class TopDawgSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->row(['standard_price' => 0]), $this->pricer()));
     }
 
-    public function test_clearance_keeps_the_discount_price(): void
+    public function test_clearance_sku_has_no_target_like_amazon(): void
     {
-        $out = (new TopDawgSprcDilAutoPushService)->computeTarget(
+        // Clearance SKUs show "C" in S PRC. No rule prices them and nothing is saved or pushed.
+        $this->assertNull((new TopDawgSprcDilAutoPushService)->computeTarget(
             $this->row(['lp' => 70, 'ship' => 8, 'clearance' => true]),
             $this->pricer()
-        );
-
-        $this->assertNotNull($out);
-        // 90.00 discount price (clearance keeps it) − Ship 8 = 82.00
-        $this->assertEqualsWithDelta(82.00, $out['sprice'], 0.001);
+        ));
     }
 
     public function test_ship_is_reduced_from_sprice_after_the_calculation(): void
@@ -177,12 +174,10 @@ class TopDawgSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(30.00, $capped['sprice'], 0.001);
     }
 
-    public function test_sprc_dil_prices_clearance_skus_and_skips_no_inv_or_out_of_slab(): void
+    public function test_sprc_dil_skips_clearance_skus_no_inv_and_out_of_slab(): void
     {
         $svc = new TopDawgSprcDilAutoPushService;
-        $clr = $svc->computeTarget($this->dilRow(['clearance' => true]), null, $this->dilCtx());
-        $this->assertNotNull($clr);
-        $this->assertEqualsWithDelta(33.68, $clr['sprice'], 0.001);
+        $this->assertNull($svc->computeTarget($this->dilRow(['clearance' => true]), null, $this->dilCtx()));
 
         $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
         $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 80]), null, $this->dilCtx()));

@@ -847,6 +847,8 @@
         /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
         function aeRuleSpriceRaw(data) {
             if (!data || data.is_parent) return 0;
+            // A SKU under clearance gets no S PRC from any rule (the cell shows C).
+            if (window.chStdIsClearance && window.chStdIsClearance(data)) return 0;
             const live = aeLiveRuleSprice(data);
             if (live > 0) return live;
             return aeSavedSprice(data);
@@ -2575,6 +2577,7 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            if (window.chClr && chClr.isClearance(d)) return chClr.markHtml(d);
                             const raw = aeRuleSpriceRaw(d);
                             if (!(raw > 0)) return '';
                             const lmpNow = aeEffectiveLmp(d);

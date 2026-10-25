@@ -264,6 +264,10 @@ class DilRuleSpriceApplyService
      */
     public function computeTarget(array $row, array $dilRules, ?array $cvrAdj, float $margin): ?array
     {
+        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: nothing is saved or pushed.
+        if ((new \App\Support\StdPrcVsDilPricer([], $this->channel))->isClearanceRow($row)) {
+            return null;
+        }
         if ($this->applyStdPrcVsDil) {
             if ($margin > 0 && ! is_numeric($row['margin'] ?? null)) {
                 $row['margin'] = $margin;

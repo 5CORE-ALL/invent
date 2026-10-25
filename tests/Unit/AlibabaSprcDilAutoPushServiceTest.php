@@ -79,12 +79,10 @@ class AlibabaSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_keeps_the_discount_price(): void
+    public function test_clearance_sku_has_no_target_like_amazon(): void
     {
-        $out = $this->target($this->row(['standard_price' => 150, 'lp' => 100, 'clearance' => true]));
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(135.00, $out['sprice'], 0.001);
+        // Clearance SKUs show "C" in S PRC. No rule prices them and nothing is saved or pushed.
+        $this->assertNull($this->target($this->row(['standard_price' => 150, 'lp' => 100, 'clearance' => true])));
     }
 
     public function test_no_std_or_inventory_has_no_target(): void

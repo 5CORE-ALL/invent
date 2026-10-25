@@ -763,6 +763,8 @@
         /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
         function dobaDisplayedSprice(data) {
             if (!data || isDobaParentRow(data)) return 0;
+            // A SKU under clearance gets no S PRC from any rule (the cell shows C).
+            if (window.chStdIsClearance && window.chStdIsClearance(data)) return 0;
             const live = dobaLiveRuleSprice(data);
             if (live > 0) return live;
             return dobaSavedSprice(data);
@@ -2644,6 +2646,7 @@
                                 const parentSprice = parseFloat(rowData.sprice) || 0;
                                 return parentSprice > 0 ? ('$' + parentSprice.toFixed(2)) : '';
                             }
+                            if (window.chClr && chClr.isClearance(rowData)) return chClr.markHtml(rowData);
                             let value = dobaDisplayedSprice(rowData);
                             if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;

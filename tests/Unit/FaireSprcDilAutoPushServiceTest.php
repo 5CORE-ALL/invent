@@ -76,15 +76,13 @@ class FaireSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_keeps_the_discount_price(): void
+    public function test_clearance_sku_has_no_target_like_amazon(): void
     {
-        $out = (new FaireSprcDilAutoPushService)->computeTarget(
+        // Clearance SKUs show "C" in S PRC. No rule prices them and nothing is saved or pushed.
+        $this->assertNull((new FaireSprcDilAutoPushService)->computeTarget(
             $this->row(['lp' => 60, 'clearance' => true]),
             $this->pricer()
-        );
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+        ));
     }
 
     public function test_no_lmp_or_amz_rule(): void
@@ -221,9 +219,7 @@ class FaireSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 60]), null, $this->dilCtx()));
         $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
 
-        $clearance = $svc->computeTarget($this->dilRow(['clearance' => true]), null, $this->dilCtx());
-        $this->assertNotNull($clearance);
-        $this->assertEqualsWithDelta(42.67, $clearance['sprice'], 0.001);
+        $this->assertNull($svc->computeTarget($this->dilRow(['clearance' => true]), null, $this->dilCtx()));
     }
 
     public function test_without_a_dil_context_the_std_rule_still_prices(): void

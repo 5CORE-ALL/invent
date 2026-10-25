@@ -268,6 +268,10 @@ class FaireSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
+        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: the page shows C, nothing is saved or pushed.
+        if ((new StdPrcVsDilPricer([], 'faire'))->isClearanceRow($row)) {
+            return null;
+        }
         if ($dilContext !== null) {
             return $this->computeDilTarget($row, $dilContext);
         }

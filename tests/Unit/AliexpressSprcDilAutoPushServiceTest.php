@@ -62,15 +62,13 @@ class AliexpressSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->row(['standard_price' => 0]), $this->pricer()));
     }
 
-    public function test_clearance_keeps_the_discount_price(): void
+    public function test_clearance_sku_has_no_target_like_amazon(): void
     {
-        $out = (new AliexpressSprcDilAutoPushService)->computeTarget(
+        // Clearance SKUs show "C" in S PRC. No rule prices them and nothing is saved or pushed.
+        $this->assertNull((new AliexpressSprcDilAutoPushService)->computeTarget(
             $this->row(['lp' => 70, 'ship' => 8, 'clearance' => true]),
             $this->pricer()
-        );
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+        ));
     }
 
     public function test_lmp_cap_when_sgroi_at_lmp_is_at_least_20(): void
@@ -87,7 +85,7 @@ class AliexpressSprcDilAutoPushServiceTest extends TestCase
     {
         // LP 60, ship 5: SGROI at LMP 72 = ((72 × 0.89) − 5 − 60) / 60 = −1.3% < 20 → keep the rule price.
         $out = (new AliexpressSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 60, 'ship' => 5, 'lmp' => 72, 'clearance' => true]),
+            $this->row(['lp' => 60, 'ship' => 5, 'lmp' => 72]),
             $this->pricer()
         );
 
@@ -239,13 +237,11 @@ class AliexpressSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 60, 'standard_price' => 0]), null, $this->dilCtx()));
     }
 
-    public function test_sprc_dil_prices_clearance_and_zero_sold_rows_and_skips_no_inventory(): void
+    public function test_sprc_dil_skips_clearance_rows_and_no_inventory(): void
     {
         $svc = new AliexpressSprcDilAutoPushService;
 
-        $clearance = $svc->computeTarget($this->dilRow(['clearance' => true, 'al30' => 0]), null, $this->dilCtx());
-        $this->assertNotNull($clearance);
-        $this->assertEqualsWithDelta(39.33, $clearance['sprice'], 0.001);
+        $this->assertNull($svc->computeTarget($this->dilRow(['clearance' => true, 'al30' => 0]), null, $this->dilCtx()));
 
         $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
     }

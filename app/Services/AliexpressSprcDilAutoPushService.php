@@ -201,6 +201,10 @@ class AliexpressSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
+        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: the page shows C, nothing is saved or pushed.
+        if ((new StdPrcVsDilPricer([], 'aliexpress'))->isClearanceRow($row)) {
+            return null;
+        }
         if ($dilContext !== null) {
             return $this->computeDilTarget($row, $dilContext);
         }

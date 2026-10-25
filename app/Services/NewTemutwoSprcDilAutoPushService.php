@@ -205,6 +205,10 @@ class NewTemutwoSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
+        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: the page shows C, nothing is saved or pushed.
+        if ((new StdPrcVsDilPricer([], 'newtemutwo'))->isClearanceRow($row)) {
+            return null;
+        }
         $std = (float) ($row['standard_price'] ?? 0);
         if (! ($std > 0)) {
             return null;

@@ -544,6 +544,8 @@
         /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
         function mercWsDisplayedSprice(d) {
             if (!d) return 0;
+            // A SKU under clearance gets no S PRC from any rule (the cell shows C).
+            if (window.chStdIsClearance && window.chStdIsClearance(d)) return 0;
             const live = mercWsLiveRuleSprice(d);
             if (live > 0) return live;
             return mercWsSavedSprice(d);
@@ -948,6 +950,7 @@
                         headerTooltip: "Shown from the switch that is ON, worked out live: Sprc Dil (Dil slab Target NROI + Diff, Ship in the price, LMP cap by Dil band, Std Prc as the maximum) or Std prc vs dil (Std Prc less Age/Dil/… discounts). Falls back to the saved S PRC while rules load. Blue triangle = S PRC ≠ Price. Hover for every rule.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
+                            if (window.chClr && chClr.isClearance(d)) return chClr.markHtml(d);
                             const value = mercWsDisplayedSprice(d);
                             if (!(value > 0)) return '';
                             const live = parseFloat(d.price) || 0;

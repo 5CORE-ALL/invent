@@ -155,6 +155,11 @@
 @if($temuRuleHoverKind === 'nto')
         /** S Promo Prc on New Temu One / Two: every rule and exception behind the number. */
         function temuRuleExplainSprice(d) {
+            // A SKU under clearance (Inv days clearance = YES) gets no S PRC from any rule: no Dil, Std, Diff, LMP or Amz rule applies.
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+                return { title: 'S PRC — (Clearance)', sub: (d['(Child) sku'] || d.sku || ''), steps: [temuRuleStep('skip', 'Clearance',
+                    'This SKU is on the Inv days clearance list (YES), so S PRC shows <b>C</b>. No rule applies and no S PRC is saved or pushed for it.')], notes: [], finalNote: '' };
+            }
             const steps = [];
             const notes = [];
             const dilOn = ntoDilRuleOn();
@@ -377,6 +382,11 @@
 @elseif($temuRuleHoverKind === 'macys')
         /** S PRC on Macys: every rule and exception behind the number. */
         function temuRuleExplainSprice(d) {
+            // A SKU under clearance (Inv days clearance = YES) gets no S PRC from any rule: no Dil, Std, Diff, LMP or Amz rule applies.
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+                return { title: 'S PRC — (Clearance)', sub: (d['(Child) sku'] || d.sku || ''), steps: [temuRuleStep('skip', 'Clearance',
+                    'This SKU is on the Inv days clearance list (YES), so S PRC shows <b>C</b>. No rule applies and no S PRC is saved or pushed for it.')], notes: [], finalNote: '' };
+            }
             const steps = [];
             const notes = [];
             const dilOn = macysDilOn();
@@ -704,7 +714,7 @@
             const rowTitle = 'S PRC ' + temuRuleMoney(final);
             const rowSub = sku + ' · ' + (dilOn ? 'Sprc Dil rule' : 'Std prc vs dil rule');
 
-            if (!(SB_IS_TOPDAWG || SB_IS_DOBA || SB_IS_AE || SB_IS_FAIRE || SB_IS_MERC) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
                 steps.push(temuRuleStep('skip', 'Clearance',
                     'This SKU is on the Inv days clearance list (YES), so S PRC shows <b>C</b>. No S PRC is saved or pushed for it.'));
                 return { title: 'S PRC — (Clearance)', sub: rowSub, steps: steps, notes: notes, finalNote: '' };
@@ -852,6 +862,11 @@
 @elseif($temuRuleHoverKind === 'temu3')
         /** S PRC on Temu 3: every rule and exception behind the number. */
         function temuRuleExplainSprice(d) {
+            // A SKU under clearance (Inv days clearance = YES) gets no S PRC from any rule: no Dil, Std, Diff, LMP or Amz rule applies.
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+                return { title: 'S PRC — (Clearance)', sub: (d['(Child) sku'] || d.sku || ''), steps: [temuRuleStep('skip', 'Clearance',
+                    'This SKU is on the Inv days clearance list (YES), so S PRC shows <b>C</b>. No rule applies and no S PRC is saved or pushed for it.')], notes: [], finalNote: '' };
+            }
             const steps = [];
             const notes = [];
             const dilOn = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';

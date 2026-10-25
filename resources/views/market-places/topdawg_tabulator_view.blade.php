@@ -337,6 +337,8 @@
         return tdSavedSprice(data);
     }
     function tdDisplayedSprice(data) {
+        // A SKU under clearance gets no S PRC from any rule (the cell shows C).
+        if (window.chStdIsClearance && window.chStdIsClearance(data)) return 0;
         return tdRawSprice(data);
     }
     function tdRowSpriceForAlert(data) {
@@ -1186,6 +1188,7 @@
                     formatter: c => {
                         const rowData = c.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
+                        if (window.chClr && chClr.isClearance(rowData)) return chClr.markHtml(rowData);
                         let value = tdDisplayedSprice(rowData);
                         if (!(value > 0)) value = parseFloat(c.getValue() || 0);
                         const status = rowData.SPRICE_STATUS || '';
