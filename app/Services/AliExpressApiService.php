@@ -4206,7 +4206,7 @@ class AliExpressApiService
         }
 
         $success = $result['success'] ?? null;
-        $error = trim((string) ($result['error_message'] ?? $result['error_msg'] ?? $result['sub_msg'] ?? $result['message'] ?? ''));
+        $error = trim((string) ($result['error_message'] ?? $result['error_msg'] ?? $result['sub_msg'] ?? $result['message'] ?? $result['message_info'] ?? ''));
         if ($success === false || $success === 'false' || $success === 0 || $success === '0') {
             return $error !== '' ? $error : 'AliExpress API returned success=false.';
         }
