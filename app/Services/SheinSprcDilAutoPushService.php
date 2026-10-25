@@ -4,10 +4,13 @@ namespace App\Services;
 
 use App\Http\Controllers\MarketPlace\SheinController;
 use App\Models\ChannelMasterCalculatedData;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\SheinDataView;
 use App\Support\AmazonDilGroiRule;
+use App\Support\EbayRuleSprice;
 use App\Support\NegativeSnroiPushGuard;
 use App\Support\PushedListingPrice;
+use App\Support\SpriceActiveRule;
 use App\Support\StdPrcVsDilPricer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -69,10 +72,15 @@ class SheinSprcDilAutoPushService
         int $errorCooldownMinutes = 120,
         int $maxPushes = 0
     ): array {
+        StdPrcVsDilPricer::flush();
         $pricer = StdPrcVsDilPricer::forChannel(self::CHANNEL);
         $adsFrac = $this->channelAdsFrac();
+        // The page switch decides the S PRC rule: Std prc vs dil, or the Sprc Dil modal (slab + CVR overlay + Diff + LMP cap + Std max).
+        $dilContext = SpriceActiveRule::usesStdPrc(self::CHANNEL) ? null : $this->loadDilContext();
 
-        $this->log($logger, 'Loaded Shein Std prc vs dil (shein_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap + Std max');
+        $this->log($logger, $dilContext !== null
+            ? 'Shein S PRC rule = Sprc Dil (Dil slab Target SNROI + CVR overlay + Diff, Ship in the price, LMP cap by Dil band, Std max)'
+            : 'Loaded Shein Std prc vs dil (shein_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap + Std max');
 
         $stats = [
             'candidates' => 0,
@@ -111,7 +119,7 @@ class SheinSprcDilAutoPushService
         try {
             foreach ($rows as $i => $row) {
                 try {
-                    $computed = $this->computeTarget($row, $pricer, $adsFrac);
+                    $computed = $this->computeTarget($row, $pricer, $adsFrac, $dilContext);
                     if ($computed === null) {
                         $stats['skipped']++;
                         continue;
@@ -234,21 +242,27 @@ class SheinSprcDilAutoPushService
     /**
      * Page S PRC formula (INV > 0 child SKUs): Std rule, LMP cap, Std is the maximum.
      *
+     * With a $dilContext (the Sprc Dil switch is ON) the Sprc Dil modal rules price it instead.
+     *
      * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}|null  $dilContext
      * @return array{sprice:float,uncapped:float,lmp_capped:bool,base:float,margin:float,lp:float,ship:float,lmp:float}|null
      */
-    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, ?float $adsFrac = null): ?array
+    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, ?float $adsFrac = null, ?array $dilContext = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
             return null;
         }
-        $std = (float) ($row['standard_price'] ?? 0);
-        if (! ($std > 0)) {
-            return null;
-        }
         // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
         if ((new StdPrcVsDilPricer([], self::CHANNEL))->isClearanceRow($row)) {
+            return null;
+        }
+        if ($dilContext !== null) {
+            return $this->computeDilTarget($row, $dilContext);
+        }
+        $std = (float) ($row['standard_price'] ?? 0);
+        if (! ($std > 0)) {
             return null;
         }
         $lp = (float) ($row['lp'] ?? 0);
@@ -308,6 +322,92 @@ class SheinSprcDilAutoPushService
             'lp' => $lp,
             'ship' => $ship,
             'lmp' => round($lmp, 2),
+        ];
+    }
+
+    /**
+     * Sprc Dil switch ON, same as the page (ebay-sprc-dil + /amazon-tabulator-view order):
+     * Dil slab Target SNROI (the nearest slab when Dil is outside the table), CVR overlay (only with views, no L60 CVR so the
+     * level thresholds), Diff points, then price = (LP x (1 + Target%) + Ship) / take-home. No Ads, no Amz rule.
+     * Then the LMP cap (SGROI at LMP >= 20% -> LMP x (1 - Dil band %)), then Std Prc is the maximum.
+     * Clearance SKUs get none (they show "C").
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}  $ctx
+     * @return array{sprice:float,uncapped:float,lmp_capped:bool,base:float,margin:float,lp:float,ship:float,lmp:float}|null
+     */
+    protected function computeDilTarget(array $row, array $ctx): ?array
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 1.0;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        $ship = (float) ($row['ship'] ?? 0);
+        $std = round((float) ($row['standard_price'] ?? 0), 2);
+        $lmp = (float) ($row['lmp'] ?? 0);
+        $dil = (float) ($row['dil'] ?? 0);
+
+        $rule = AmazonDilGroiRule::matchOrNearest($dil, $ctx['rules']);
+        if ($rule === null) {
+            return null;
+        }
+        $target = (float) $rule['groi'];
+        if ((float) ($row['views'] ?? 0) > 0) {
+            $target = AmazonDilGroiRule::adjustGroiForCvrLevel($target, (float) ($row['cvr'] ?? 0), $ctx['cvr_adj'] ?? null);
+        }
+        $target = max(0.0, round($target, 2));
+        $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
+        $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
+
+        $raw = round(($lp * (1 + $target / 100) + $ship) / $margin, 2);
+        if (! is_finite($raw) || $raw < 0.01) {
+            return null;
+        }
+        $reducePct = AmazonDilGroiRule::lmpCapReducePct($dil, $ctx['lmp_cap'] ?? null);
+        $sprice = round(AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, $std, $reducePct), 2);
+        $lmpCapped = $lmp > 0 && ($raw - $sprice) > 0.009 && abs($sprice - round($lmp * (1 - $reducePct / 100), 2)) <= 0.02;
+        if (! is_finite($sprice) || $sprice < 0.01) {
+            return null;
+        }
+
+        return [
+            'sprice' => $sprice,
+            'uncapped' => $raw,
+            'lmp_capped' => $lmpCapped,
+            'base' => $std,
+            'margin' => $margin,
+            'lp' => $lp,
+            'ship' => $ship,
+            'lmp' => round($lmp, 2),
+        ];
+    }
+
+    /**
+     * The Sprc Dil modal settings saved for Shein: slabs, CVR overlay, Diff rule and LMP cap.
+     *
+     * @return array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}
+     */
+    protected function loadDilContext(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', self::CHANNEL.'_dil_vs_groi')->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        $unpacked = AmazonDilGroiRule::unpackStored($saved);
+        $rules = $unpacked['rules'] === []
+            ? AmazonDilGroiRule::defaultsForChannel(self::CHANNEL)
+            : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+
+        return [
+            'rules' => $rules,
+            'cvr_adj' => $unpacked['cvr_adj'] ?? null,
+            'diff_adj' => $unpacked['diff_adj'] ?? null,
+            'lmp_cap' => $unpacked['lmp_cap'] ?? null,
         ];
     }
 
@@ -394,6 +494,8 @@ class SheinSprcDilAutoPushService
                 // Same as the page Dil: raw (OV L30 / INV) × 100, not rounded before slab match.
                 'dil' => ((float) ($r['ov_l30'] ?? 0) / $inv) * 100,
                 'al30' => (float) ($r['al30'] ?? 0),
+                'views' => (float) ($r['views'] ?? 0),
+                'cvr' => (float) ($r['cvr'] ?? 0),
                 'lp' => (float) ($r['lp'] ?? 0),
                 'ship' => (float) ($r['ship'] ?? 0),
                 'margin' => (float) ($r['_margin'] ?? 0),

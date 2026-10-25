@@ -514,11 +514,15 @@
     <script>
         // The SGROI/SNROI column here is (S PRC x take-home - Ship - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
         window.CH_PROMO_ADS_FN = function() { return 0; };
+        // A SKU under clearance (Inv days clearance = YES) gets no S PRC from any rule: no Std prc vs dil price, no Sprc Dil price,
+        // nothing saved or pushed. The S PRC cell shows C. Read by channel-std-prc-vs-dil and ebay-sprc-dil.
+        window.CH_CLEARANCE_NO_RULES = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'newegg'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;
         let allTableData = [];
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'newegg'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'newegg', 'temuRuleLiveLabel' => 'Price'])
         let decreaseModeActive  = false;
         let increaseModeActive  = false;
         let samePriceModeActive = false;
@@ -826,7 +830,12 @@
         }
 
         /** Sprc Dil below A Price uses A Price. Sprc Dil at or above A Price stays. */
+        function neIsClearance(data) {
+            return typeof window.chStdIsClearance === 'function' && !!window.chStdIsClearance(data);
+        }
         function neShownSprice(data) {
+            // Clearance SKUs: no rule applies, so no S PRC (the cell shows C, nothing is saved or pushed).
+            if (neIsClearance(data)) return 0;
             return neApplyAmzFloor(data, neDisplayedSpriceRaw(data));
         }
         window.neShownSprice = neShownSprice;
@@ -902,6 +911,52 @@
             return '<span class="newegg-sprice-amz-lbl" title="' + title + '">Amz</span>';
         }
 
+        /** LMP the page caps against (competitor LMP with ignored entries left out). */
+        function neRowLmp(data) {
+            if (typeof chPromoLmp === 'function') {
+                const n = Number(chPromoLmp(data));
+                if (isFinite(n) && n > 0) return Math.round(n * 100) / 100;
+            }
+            const raw = parseFloat(data && (data.lmp_price || data.lmp || data.LMP)) || 0;
+            return raw > 0 ? Math.round(raw * 100) / 100 : 0;
+        }
+        function neIsParentRow(row) {
+            return (typeof chPromoIsParentRow === 'function') ? !!chPromoIsParentRow(row) : false;
+        }
+        /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+        function neDiffCfgNow() {
+            const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+            return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20 };
+        }
+        /** Std Diff % = (Std Prc - Price) / Price x 100, same as /amazon-tabulator-view. null when either is missing or on a parent row. */
+        function neStdPrcDiffPct(row) {
+            if (!row || neIsParentRow(row)) return null;
+            const std = parseFloat(row.STANDARD_PRICE) || 0;
+            const price = parseFloat(row.price) || 0;
+            if (!(std > 0) || !(price > 0)) return null;
+            return ((std - price) / price) * 100;
+        }
+        /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+        function neRenderStdPrcDiff(el, row) {
+            const pct = neStdPrcDiffPct(row);
+            let html = '';
+            let bg = '';
+            let color = '';
+            if (pct !== null) {
+                if (pct > neDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+                else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+                else { bg = '#28a745'; color = '#fff'; }
+                html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+            }
+            if (el) {
+                el.style.backgroundColor = bg;
+                el.style.color = color;
+            }
+            return html;
+        }
+        // The Sprc Dil Diff rule reads Std Prc and the Newegg price from these two.
+        window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+        window.ebayDiffLivePrice = function(d) { return parseFloat(d && d.price) || 0; };
         function neRowSpriceForAlert(data) {
             return neShownSprice(data);
         }
@@ -1556,7 +1611,21 @@
                                 dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(d) : '') + '</span>';
                         }
                     },
-                    moneyCol("Price", "price"),
+                    {
+                        title: "Std Diff",
+                        field: "std_prc_diff",
+                        hozAlign: "center",
+                        width: 62,
+                        headerTooltip: "Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target SNROI), red = below −5%, green = the rest.",
+                        sorter: tabSortBlankLast(function(d) { return neStdPrcDiffPct(d); }),
+                        formatter: function(cell) {
+                            return neRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                        }
+                    },
+                    Object.assign(moneyCol("Price", "price"), {
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); }
+                    }),
                     {
                         title: "A Prc", field: "a_price", hozAlign: "right", sorter: "number",
                         tooltip: "Amz live selling price (from amazon_datasheet)",
@@ -1755,11 +1824,16 @@
                     },
                     {
                         title: "SPrice", field: "sprice", hozAlign: "right", headerSort: true,
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         sorter: tabSortBlankLast(function(rd) { return neShownSprice(rd || {}); }, true),
                         editable: false,
                         headerTooltip: "Not editable. If Sprc Dil is below A Price, S PRC uses A Price. If Sprc Dil is at or above A Price, S PRC keeps Sprc Dil. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
+                            if (!neIsParentRow(d) && neIsClearance(d)) {
+                                return '<span class="newegg-sprice-clearance" title="Clearance (Inv days clearance = YES): no rule applies, no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                            }
                             let value = neShownSprice(d);
                             if (!isFinite(value) || !(value > 0)) return '<span style="color:#bbb;">—</span>';
                             const live = parseFloat(d.price) || 0;
@@ -2042,6 +2116,22 @@
             }
 
             // Save SPRICE / NR on edit.
+            // Clearance list loads after the first paint: repaint once so C shows and no clearance SKU keeps a rule price on screen.
+            $(document).on('chStd:settled', function() {
+                try { (table.getRows() || []).forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e2) { /* ignore */ }
+                try { if (typeof updateSummary === 'function') updateSummary(); } catch (e3) { /* ignore */ }
+            });
+
+            // Std Diff follows the row when Std Prc or the Price changes.
+            table.on('rowUpdated', function(row) {
+                try {
+                    const c = row.getCell('std_prc_diff');
+                    if (!c) return;
+                    const el = c.getElement();
+                    el.innerHTML = neRenderStdPrcDiff(el, row.getData());
+                } catch (e) { /* ignore */ }
+            });
+
             table.on("cellEdited", function(cell) {
                 const field = cell.getField();
                 const row = cell.getRow();

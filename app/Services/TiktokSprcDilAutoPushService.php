@@ -5,11 +5,14 @@ namespace App\Services;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\TikTokPricingController;
 use App\Models\ChannelMasterCalculatedData;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\TiktokShopDataView;
 use App\Models\TiktokTwoShopDataView;
 use App\Support\AmazonDilGroiRule;
+use App\Support\EbayRuleSprice;
 use App\Support\NegativeSnroiPushGuard;
 use App\Support\PushedListingPrice;
+use App\Support\SpriceActiveRule;
 use App\Support\StdPrcVsDilPricer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -94,10 +97,15 @@ class TiktokSprcDilAutoPushService
         int $errorCooldownMinutes = 120,
         int $maxPushes = 0
     ): array {
+        StdPrcVsDilPricer::flush();
         $pricer = StdPrcVsDilPricer::forChannel($this->channel);
         $adsFrac = $this->channelAdsFrac();
+        // The page switch decides the S PRC rule: Std prc vs dil, or the Sprc Dil modal (slab + CVR overlay + Diff + LMP cap by Dil band + Std max).
+        $dilContext = SpriceActiveRule::usesStdPrc($this->channel) ? null : $this->loadDilContext();
 
-        $this->log($logger, 'Loaded '.$this->label().' Std prc vs dil ('.$this->channel.'_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap + Std max');
+        $this->log($logger, $dilContext !== null
+            ? $this->label().' S PRC rule = Sprc Dil (Dil slab Target SNROI + CVR overlay + Diff, LMP cap by Dil band, Std max)'
+            : 'Loaded '.$this->label().' Std prc vs dil ('.$this->channel.'_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap + Std max');
 
         $stats = [
             'channel' => $this->channel,
@@ -137,7 +145,7 @@ class TiktokSprcDilAutoPushService
         try {
             foreach ($rows as $i => $row) {
                 try {
-                    $computed = $this->computeTarget($row, $pricer, $adsFrac);
+                    $computed = $this->computeTarget($row, $pricer, $adsFrac, $dilContext);
                     if ($computed === null) {
                         $stats['skipped']++;
                         continue;
@@ -256,21 +264,27 @@ class TiktokSprcDilAutoPushService
     /**
      * Page S PRC formula (INV > 0 child SKUs): Std rule, LMP cap, Std is the maximum.
      *
+     * With a $dilContext (the Sprc Dil switch is ON) the Sprc Dil modal rules price it instead.
+     *
      * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}|null  $dilContext
      * @return array{sprice:float,uncapped:float,lmp_capped:bool,base:float,margin:float,lp:float,ship:float,lmp:float}|null
      */
-    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, ?float $adsFrac = null): ?array
+    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, ?float $adsFrac = null, ?array $dilContext = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
             return null;
         }
-        $std = (float) ($row['standard_price'] ?? 0);
-        if (! ($std > 0)) {
-            return null;
-        }
         // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
         if ((new StdPrcVsDilPricer([], $this->channel))->isClearanceRow($row)) {
+            return null;
+        }
+        if ($dilContext !== null) {
+            return $this->computeDilTarget($row, $dilContext, $adsFrac);
+        }
+        $std = (float) ($row['standard_price'] ?? 0);
+        if (! ($std > 0)) {
             return null;
         }
         $lp = (float) ($row['lp'] ?? 0);
@@ -338,6 +352,103 @@ class TiktokSprcDilAutoPushService
             'lp' => $lp,
             'ship' => $ship,
             'lmp' => round($lmp, 2),
+        ];
+    }
+
+    /**
+     * Sprc Dil switch ON, same as the page (ebay-sprc-dil + /amazon-tabulator-view order):
+     * Dil slab Target SNROI, CVR overlay (no L60 CVR on the rows), Diff points, then
+     * price = (LP x (1 + Target%) + Ship) / (take-home - Ads%), Ads% = the listing TACOS% (TikTok 2 = 0),
+     * LMP cap (price at/above LMP and SGROI at LMP >= 20% -> LMP x (1 - x%), x by the SKU's Dil band), Std Prc as the maximum.
+     * A SKU whose Dil is outside every slab has no Sprc Dil price. Clearance SKUs never reach this (no S PRC).
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}  $ctx
+     * @return array{sprice:float,uncapped:float,lmp_capped:bool,base:float,margin:float,lp:float,ship:float,lmp:float}|null
+     */
+    protected function computeDilTarget(array $row, array $ctx, ?float $adsFrac = null): ?array
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.80;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        $ship = (float) ($row['ship'] ?? 0);
+        $std = round((float) ($row['standard_price'] ?? 0), 2);
+        $lmp = (float) ($row['lmp'] ?? 0);
+        $dil = (float) ($row['dil'] ?? 0);
+        if ($this->channel === 'tiktok2') {
+            $ads = 0.0;
+        } elseif (is_numeric($row['tacos'] ?? null)) {
+            $tacos = (float) $row['tacos'];
+            $ads = ($tacos > 0 && $tacos < 100) ? $tacos / 100 : 0.0;
+        } else {
+            $ads = $adsFrac ?? $this->channelAdsFrac();
+        }
+
+        $rule = AmazonDilGroiRule::match($dil, $ctx['rules']);
+        if ($rule === null) {
+            return null;
+        }
+        // Same order as the page: CVR overlay (no L60 CVR on TikTok), floor at 0, then the Diff points.
+        $target = AmazonDilGroiRule::adjustGroiForCvrArrow((float) $rule['groi'], (float) ($row['cvr'] ?? 0), 0.0, $ctx['cvr_adj'] ?? null);
+        $target = max(0.0, round($target, 2));
+        $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
+        $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
+
+        $denom = $margin - $ads;
+        if (! ($denom > 0)) {
+            return null;
+        }
+        $raw = round(($lp * (1 + $target / 100) + $ship) / $denom, 2);
+        if (! is_finite($raw) || $raw < 0.01) {
+            return null;
+        }
+
+        $reducePct = AmazonDilGroiRule::lmpCapReducePct($dil, $ctx['lmp_cap'] ?? null);
+        $capped = round(AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, $std, $reducePct), 2);
+        if (! is_finite($capped) || $capped < 0.01) {
+            return null;
+        }
+        $lmpCapped = $lmp > 0 && ($raw - $capped) > 0.009 && abs($capped - round($lmp * (1 - $reducePct / 100), 2)) <= 0.02;
+
+        return [
+            'sprice' => $capped,
+            'uncapped' => $raw,
+            'lmp_capped' => $lmpCapped,
+            'base' => $std,
+            'margin' => $margin,
+            'lp' => $lp,
+            'ship' => $ship,
+            'lmp' => round($lmp, 2),
+        ];
+    }
+
+    /**
+     * The Sprc Dil modal settings saved for this channel: slabs, CVR overlay, Diff rule and LMP cap.
+     *
+     * @return array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}
+     */
+    protected function loadDilContext(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', $this->channel.'_dil_vs_groi')->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        $unpacked = AmazonDilGroiRule::unpackStored($saved);
+        $rules = $unpacked['rules'] === []
+            ? AmazonDilGroiRule::defaultsForChannel($this->channel)
+            : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+
+        return [
+            'rules' => $rules,
+            'cvr_adj' => $unpacked['cvr_adj'] ?? null,
+            'diff_adj' => $unpacked['diff_adj'] ?? null,
+            'lmp_cap' => $unpacked['lmp_cap'] ?? null,
         ];
     }
 
@@ -426,6 +537,7 @@ class TiktokSprcDilAutoPushService
                 // Same as the page Dil: raw (OV L30 / INV) × 100, not rounded before slab match.
                 'dil' => ((float) ($r['L30'] ?? 0) / $inv) * 100,
                 'tt_l30' => (float) ($r['TT L30'] ?? 0),
+                'cvr' => (float) ($r['cvr'] ?? $r['CVR%'] ?? 0),
                 'lp' => (float) ($r['LP_productmaster'] ?? 0),
                 'ship' => (float) ($r['Ship_productmaster'] ?? 0),
                 'margin' => (float) ($r['percentage'] ?? 0),

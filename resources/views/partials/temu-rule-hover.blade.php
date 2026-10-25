@@ -44,7 +44,7 @@
 
         /** Steps 1–4: Dil slab, CVR overlay, Diff rule and the final Target SNROI. Returns the target, or null when none. */
         function temuRuleDilTargetSteps(d, steps) {
-            if (typeof ebayDgIsChild !== 'function' || !ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) {
+            if (typeof ebayDgIsChild !== 'function' || !ebayDgIsChild(d) || (!(ebayDgInv(d) > 0) && !(typeof ebayDgIsMercari === 'function' && ebayDgIsMercari()))) {
                 steps.push(temuRuleStep('skip', 'Sprc Dil', 'Needs a child SKU with INV &gt; 0 and an LP. This SKU has no Dil target.'));
                 return null;
             }
@@ -628,8 +628,8 @@
                 return { title: 'PP Price ' + temuRuleMoney(price), sub: (d['(Child) sku'] || '') + ' · where this price stands', steps: steps, notes: notes, finalNote: '' };
             }
         };
-@elseif(in_array($temuRuleHoverKind, ['shopifyb2c', 'shopifyb2b', 'depop', 'wayfair', 'reverb', 'topdawg', 'doba', 'aliexpress', 'faire'], true))
-        @php $sbDepop = in_array($temuRuleHoverKind, ['depop', 'wayfair', 'topdawg', 'faire'], true); $sbB2b = $temuRuleHoverKind === 'shopifyb2b' || $sbDepop; $sbp = $temuRuleHoverKind === 'faire' ? 'fr' : ($temuRuleHoverKind === 'aliexpress' ? 'ae' : ($temuRuleHoverKind === 'doba' ? 'doba' : ($temuRuleHoverKind === 'topdawg' ? 'td' : ($temuRuleHoverKind === 'wayfair' ? 'wf' : ($temuRuleHoverKind === 'reverb' ? 'reverb' : ($sbDepop ? 'dp' : ($sbB2b ? 'shopifyB2b' : 'shopifyB2c'))))))); @endphp
+@elseif(in_array($temuRuleHoverKind, ['shopifyb2c', 'shopifyb2b', 'depop', 'wayfair', 'reverb', 'topdawg', 'doba', 'aliexpress', 'faire', 'tiktok', 'mercari', 'pls', 'shein', 'bestbuy', 'newegg'], true))
+        @php $sbDepop = in_array($temuRuleHoverKind, ['depop', 'wayfair', 'topdawg', 'faire'], true); $sbB2b = $temuRuleHoverKind === 'shopifyb2b' || $sbDepop; $sbp = $temuRuleHoverKind === 'newegg' ? 'ne' : ($temuRuleHoverKind === 'bestbuy' ? 'bestbuy' : ($temuRuleHoverKind === 'shein' ? 'shein' : ($temuRuleHoverKind === 'pls' ? 'pls' : ($temuRuleHoverKind === 'mercari' ? 'mercWs' : ($temuRuleHoverKind === 'tiktok' ? 'tt' : ($temuRuleHoverKind === 'faire' ? 'fr' : ($temuRuleHoverKind === 'aliexpress' ? 'ae' : ($temuRuleHoverKind === 'doba' ? 'doba' : ($temuRuleHoverKind === 'topdawg' ? 'td' : ($temuRuleHoverKind === 'wayfair' ? 'wf' : ($temuRuleHoverKind === 'reverb' ? 'reverb' : ($sbDepop ? 'dp' : ($sbB2b ? 'shopifyB2b' : 'shopifyB2c'))))))))))))); @endphp
         // Shopify B2C and B2B share this card. B2B: no Ship in the price, the website (business5core.com) is the live Price,
         // no A Price / Amz cap, and Std prc vs dil uses LMP as a discount, not a cap.
         // Depop and Wayfair use this card too (neither has LMP data): no Ship, no Amz cap, LMP is a discount in Std prc vs dil, its own take-home % (not 0.95) and no Ads.
@@ -646,10 +646,28 @@
         const SB_IS_AE = @json($temuRuleHoverKind === 'aliexpress');
         // Faire uses this card too: no LMP data, no Ads, no A Price, no Ship in the Sprc Dil price (Ship is only taken off in Std prc vs dil), its own take-home % (_margin, default 0.75), clearance SKUs priced, Std Prc maximum.
         const SB_IS_FAIRE = @json($temuRuleHoverKind === 'faire');
+        // TikTok / TikTok 2 use this card too: Ship in the price, Ads% = the listing TACOS% (TikTok 2 = 0), LMP cap in both modes, Std Prc maximum, no A Price / Amz cap, take-home % from the row (default 0.80). Clearance SKUs get no S PRC.
+        const SB_IS_TT = @json($temuRuleHoverKind === 'tiktok');
+        // Mercari With Ship uses this card too: Ship in the price, no Ads, LMP cap in Sprc Dil only (Std prc vs dil keeps its own price, no LMP cap), Std Prc maximum in Sprc Dil, no A Price / Amz cap, take-home % from the row (factor), no clearance mark.
+        const SB_IS_MERC = @json($temuRuleHoverKind === 'mercari');
+        // PLS (ProLightSounds) uses this card too: Ship in the price, no Ads, no LMP data, no A Price / Amz cap, Std Prc maximum, take-home % = PLS% from the row, clearance SKUs get no S PRC.
+        const SB_IS_PLS = @json($temuRuleHoverKind === 'pls');
+        // Shein uses this card too: Ship in the price, no Ads, LMP cap in both modes, Std Prc maximum, no A Price / Amz cap, take-home % from the row (_margin), CVR overlay only with views, Dil outside the slabs uses the nearest slab, clearance SKUs get no S PRC.
+        const SB_IS_SHEIN = @json($temuRuleHoverKind === 'shein');
+        // Best Buy uses this card too: Ship BB in the price, no Ads, LMP cap in both modes, Std Prc maximum, Amz rule last (never below A Price), take-home % from the row (percentage, default 0.80), clearance SKUs get no S PRC.
+        const SB_IS_BB = @json($temuRuleHoverKind === 'bestbuy');
+        // Newegg uses this card too: Ship in the price, no Ads, LMP cap = LMP in both modes (the page's own cap, no Dil band reduce), Std Prc maximum, Amz rule last (never below A Price), take-home % from the row (factor), the page saves S PRC from the browser. A clearance SKU gets no rule at all (S PRC shows C).
+        const SB_IS_NE = @json($temuRuleHoverKind === 'newegg');
         // Pages with no LMP data show no LMP step.
-        const SB_NO_LMP = SB_IS_DEPOP || SB_IS_DOBA;
+        const SB_NO_LMP = SB_IS_DEPOP || SB_IS_DOBA || SB_IS_PLS;
         function sbMargin(d) {
             if (SB_IS_REVERB) return (typeof reverbTakeRate === 'function') ? Number(reverbTakeRate(d)) : 0.85;
+            if (SB_IS_NE) { return (typeof neRowFactor === 'function') ? neRowFactor(d) : 0.80; }
+            if (SB_IS_BB) { if (typeof ebayDilTakehomeMargin === 'function') { const m = Number(ebayDilTakehomeMargin(d)); if (m > 0) return m; } const f = parseFloat(d && (d.percentage != null ? d.percentage : d._margin)); return f > 0 ? (f > 1 ? f / 100 : f) : 0.80; }
+            if (SB_IS_SHEIN) { const m = parseFloat(d && d._margin); return m > 0 ? (m > 1 ? m / 100 : m) : 1.0; }
+            if (SB_IS_PLS) { if (typeof ebayDilTakehomeMargin === 'function') { const m = Number(ebayDilTakehomeMargin(d)); if (m > 0) return m; } const f = parseFloat(d && (d._margin != null ? d._margin : d.percentage)); return f > 0 ? (f > 1 ? f / 100 : f) : 1.0; }
+            if (SB_IS_MERC) { if (typeof ebayDilTakehomeMargin === 'function') { const m = Number(ebayDilTakehomeMargin(d)); if (m > 0) return m; } const f = parseFloat(d && (d.factor != null ? d.factor : d.percentage)); return f > 0 ? (f > 1 ? f / 100 : f) : 0.80; }
+            if (SB_IS_TT) { const m = parseFloat(d && d.percentage); return m > 0 ? (m > 1 ? m / 100 : m) : 0.80; }
             if (SB_IS_AE) { const m = parseFloat(d && d._margin); return m > 0 ? (m > 1 ? m / 100 : m) : 0.89; }
             if (!SB_IS_DEPOP) return 0.95;
             const own = parseFloat(SB_IS_TOPDAWG ? (d && d.percentage) : (d && d._margin));
@@ -659,7 +677,7 @@
             const m = (typeof chPromoTakehomeMargin === 'function') ? Number(chPromoTakehomeMargin(d)) : own;
             return m > 0 ? m : 0.87;
         }
-        function sbPriceOf(d) { if (SB_IS_REVERB) return parseFloat(d['RV Price']) || 0; if (SB_IS_TOPDAWG) return parseFloat(d['TD Price']) || 0; if (SB_IS_DOBA) return parseFloat(d['doba Price']) || 0; if (SB_IS_AE || SB_IS_FAIRE) return parseFloat(d.price) || 0; return parseFloat(SB_IS_DEPOP ? (d.price != null ? d.price : d.Price) : d.Price) || 0; }
+        function sbPriceOf(d) { if (SB_IS_REVERB) return parseFloat(d['RV Price']) || 0; if (SB_IS_TOPDAWG) return parseFloat(d['TD Price']) || 0; if (SB_IS_DOBA) return parseFloat(d['doba Price']) || 0; if (SB_IS_AE || SB_IS_FAIRE || SB_IS_MERC || SB_IS_PLS || SB_IS_NE) return parseFloat(d.price) || 0; if (SB_IS_SHEIN) return parseFloat(d.special_offer) || 0; if (SB_IS_BB) return parseFloat(d['BB Price']) || 0; if (SB_IS_TT) return parseFloat(d['TT Price']) || 0; return parseFloat(SB_IS_DEPOP ? (d.price != null ? d.price : d.Price) : d.Price) || 0; }
         /** Rule price before any cap: the one the server saved (SPRICE_RULE_PRICE), else what the rule gives live. */
         function sb2cRuleBasePrice(d, dilOn) {
             const saved = parseFloat(d.SPRICE_RULE_PRICE) || 0;
@@ -686,7 +704,7 @@
             const rowTitle = 'S PRC ' + temuRuleMoney(final);
             const rowSub = sku + ' · ' + (dilOn ? 'Sprc Dil rule' : 'Std prc vs dil rule');
 
-            if (!(SB_IS_TOPDAWG || SB_IS_DOBA || SB_IS_AE || SB_IS_FAIRE) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+            if (!(SB_IS_TOPDAWG || SB_IS_DOBA || SB_IS_AE || SB_IS_FAIRE || SB_IS_MERC) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
                 steps.push(temuRuleStep('skip', 'Clearance',
                     'This SKU is on the Inv days clearance list (YES), so S PRC shows <b>C</b>. No S PRC is saved or pushed for it.'));
                 return { title: 'S PRC — (Clearance)', sub: rowSub, steps: steps, notes: notes, finalNote: '' };
@@ -706,7 +724,7 @@
                 const meta = (target != null && typeof ebayDilGroiMetaForRow === 'function') ? ebayDilGroiMetaForRow(d) : null;
                 if (meta && meta.rawSprc > 0 && !(oosMeta && oosMeta.outOfSlabStd)) {
                     base = sb2cRuleBasePrice(d, true);
-                    const ads = SB_IS_REVERB ? (Number(typeof REVERB_CHANNEL_ADS_PCT !== 'undefined' ? REVERB_CHANNEL_ADS_PCT : 0) || 0) : SB_IS_DOBA ? ((typeof dobaAdsPercentForNet === 'function') ? (Number(dobaAdsPercentForNet()) || 0) : 0) : ((!SB_IS_DEPOP && typeof shopifyChannelAdsPct === 'function') ? (Number(shopifyChannelAdsPct()) || 0) : 0);
+                    const ads = SB_IS_TT ? ((typeof ttDilAdsPct === 'function') ? (Number(ttDilAdsPct(d)) || 0) : 0) : SB_IS_REVERB ? (Number(typeof REVERB_CHANNEL_ADS_PCT !== 'undefined' ? REVERB_CHANNEL_ADS_PCT : 0) || 0) : SB_IS_DOBA ? ((typeof dobaAdsPercentForNet === 'function') ? (Number(dobaAdsPercentForNet()) || 0) : 0) : ((!SB_IS_DEPOP && typeof shopifyChannelAdsPct === 'function') ? (Number(shopifyChannelAdsPct()) || 0) : 0);
                     steps.push(temuRuleStep('ok', '5 · Price from target',
                         '(LP ' + temuRuleMoney(lp) + ' × (1 + ' + target + '%)' + (SB_IS_B2B ? '' : ' + Ship ' + temuRuleMoney(ship)) + ') ÷ (' + sbMargin(d) + (SB_IS_DEPOP ? '' : ' − Ads ' + ads.toFixed(1) + '%') + ') = <b>' + temuRuleMoney(base) + '</b>'));
                 }
@@ -719,23 +737,25 @@
             }
 
             // LMP cap: Std prc vs dil → S PRC = LMP. Sprc Dil → LMP × (1 − x%), x by the SKU's Dil band.
-            const pct = dilOn ? temuRuleBandPct(d) : 0;
+            const pct = (dilOn && !SB_IS_NE) ? temuRuleBandPct(d) : 0;
             const sg = (lmp > 0 && lp > 0) ? ((lmp * sbMargin(d) - ship - lp) / lp) * 100 : null;
-            const lmpHit = !(SB_IS_B2B && !dilOn) && base > 0 && lmp > 0 && base + 0.0001 >= lmp && (sg === null || sg >= 20);
+            const lmpHit = !((SB_IS_B2B || SB_IS_MERC) && !dilOn) && base > 0 && lmp > 0 && base + 0.0001 >= lmp && (sg === null || sg >= 20);
             const afterLmpOnly = lmpHit ? +(lmp * (1 - Math.min(99, Math.max(0, pct)) / 100)).toFixed(2) : null;
             if (SB_NO_LMP) {
                 // Depop and Doba have no LMP data: no LMP step.
             } else if (SB_IS_B2B && !dilOn) {
                 steps.push(temuRuleStep('skip', n + ' · LMP', 'In Std prc vs dil, LMP is a discount (LMP Disc on the SKU\'s Dil slab, already in the price above). It does not cap S PRC.'));
+            } else if (SB_IS_MERC && !dilOn) {
+                steps.push(temuRuleStep('skip', n + ' · LMP', 'Std prc vs dil on this page prices off Std Prc through its discounts. LMP does not cap it. (Sprc Dil does cap at LMP by Dil band.)'));
             } else {
                 temuRuleLmpStep(steps, {
                     n: String(n), base: base, lmp: lmp, sgroiAtLmp: sg, pct: pct,
-                    src: dilOn ? 'Dil band, LMP cap table' : 'Std prc vs dil: S PRC = LMP',
+                    src: SB_IS_NE ? 'S PRC = LMP' : (dilOn ? 'Dil band, LMP cap table' : 'Std prc vs dil: S PRC = LMP'),
                     after: afterLmpOnly
                 });
             }
             const nS = n + (SB_NO_LMP ? -1 : 0);
-            let price = (SB_IS_B2B && !dilOn) ? base : (afterLmpOnly != null ? afterLmpOnly : base);
+            let price = ((SB_IS_B2B || SB_IS_MERC) && !dilOn) ? base : (afterLmpOnly != null ? afterLmpOnly : base);
 
             // Std Prc maximum: Sprc Dil prices from a Target SNROI, so Std Prc caps it. Std prc vs dil may price above Std on purpose.
             if (!(std > 0)) {
@@ -751,8 +771,8 @@
 
             // Amz cap, always last: LMP below A Price or price at/below A Price → A Price; price above A Price stays.
             const lmpBelowAmz = amz > 0 && lmp > 0 && lmp + 0.0001 < amz;
-            if (SB_IS_B2B || SB_IS_REVERB || SB_IS_DOBA || SB_IS_AE) {
-                // Shopify B2B, Reverb, Doba and AliExpress have no Amz cap.
+            if (SB_IS_B2B || SB_IS_REVERB || SB_IS_DOBA || SB_IS_AE || SB_IS_TT || SB_IS_MERC || SB_IS_PLS || SB_IS_SHEIN) {
+                // Shopify B2B, Reverb, Doba, AliExpress and TikTok have no Amz cap.
             } else if (!(amz > 0)) {
                 steps.push(temuRuleStep('skip', (n + 2) + ' · Amz cap', 'No A Price, so no Amz cap.'));
             } else if (lmpBelowAmz) {
@@ -767,9 +787,9 @@
 
             if (lmp > 0 && std > 0 && lmp > std + 0.0001) notes.push('LMP ' + temuRuleMoney(lmp) + ' is above Std Prc ' + temuRuleMoney(std) + '. Review the Std price.');
             if (!(parseFloat(d.INV != null ? d.INV : d.inv) > 0)) notes.push('INV is 0, so no S PRC is set for this SKU.');
-            if (!SB_IS_B2B && price > 0 && final > 0 && Math.abs(price - final) > 0.009) {
+            if (!SB_IS_B2B && !SB_IS_MERC && price > 0 && final > 0 && Math.abs(price - final) > 0.009) {
                 notes.push('The saved S PRC ' + temuRuleMoney(final) + ' differs from this calculation (' + temuRuleMoney(price)
-                    + '). The server re-saves S PRC after a rule change; reload in a moment.');
+                    + '). ' + (SB_IS_NE ? 'This page re-saves S PRC from the browser after a rule change; reload in a moment.' : 'The server re-saves S PRC after a rule change; reload in a moment.'));
             }
             return { title: rowTitle, sub: rowSub, steps: steps, notes: notes, finalNote: '' };
         }
@@ -784,7 +804,7 @@
                 const lmp = {{ $sbp }}RowLmp(d);
                 const amz = {{ $sbp }}AmzPrice(d);
                 const inv = parseFloat(d.INV != null ? d.INV : d.inv) || 0;
-                steps.push(temuRuleStep('info', '1 · Source', (SB_IS_FAIRE ? 'Price is the <b>Faire wholesale price</b>. It changes only when a new price is pushed to Faire.' : SB_IS_AE ? 'Price is the <b>live AliExpress listing price</b>. It changes only when a new price is pushed to AliExpress.' : SB_IS_DOBA ? 'Price is the <b>Doba listing price</b> (anticipated income from the Doba sync). It changes only when a new price is pushed to Doba.' : SB_IS_TOPDAWG ? 'Price is the <b>live TopDawg listing price</b> (TD Price). A pushed price goes to TopDawg review first (1–24h) before TD Price follows.' : SB_IS_REVERB ? 'Price is the <b>live Reverb listing price</b> (RV Price). It changes only when a new price is pushed to Reverb.' : SB_IS_WAYFAIR ? 'Price is the <b>Wayfair price</b> from the uploaded price sheet. It changes only when a new price sheet is uploaded.' : SB_IS_DEPOP ? 'Price is the <b>Depop listing price</b> from the Depop upload. It changes only when a new price is uploaded.' : SB_IS_B2B ? 'Price is the <b>live website price</b> (business5core.com). It changes only when a new price is pushed to the website.' : 'Price is the <b>live Shopify B2C listing price</b>. It changes only when a new price is pushed to Shopify.')));
+                steps.push(temuRuleStep('info', '1 · Source', (SB_IS_NE ? 'Price is the <b>live Newegg listing price</b>. A pushed price shows here after it is applied on Newegg.' : SB_IS_BB ? 'Price is the <b>Best Buy listed price</b> from the MCM OF21 sync. A pushed price shows here only after the next sync.' : SB_IS_SHEIN ? 'Sp. Price is the <b>live Shein special offer price</b>. It changes only when a new price is pushed to Shein.' : SB_IS_PLS ? 'Price is the <b>live ProLightSounds Shopify price</b>. It changes only when a new price is pushed to ProLightSounds.' : SB_IS_MERC ? 'Price is the <b>Mercari With Ship listing price</b> from the Mercari price / sold upload. It changes only when a new price is uploaded.' : SB_IS_TT ? 'Price is the <b>live TikTok Shop listing price</b> (TT Price). It changes only when a new price is pushed to TikTok.' : SB_IS_FAIRE ? 'Price is the <b>Faire wholesale price</b>. It changes only when a new price is pushed to Faire.' : SB_IS_AE ? 'Price is the <b>live AliExpress listing price</b>. It changes only when a new price is pushed to AliExpress.' : SB_IS_DOBA ? 'Price is the <b>Doba listing price</b> (anticipated income from the Doba sync). It changes only when a new price is pushed to Doba.' : SB_IS_TOPDAWG ? 'Price is the <b>live TopDawg listing price</b> (TD Price). A pushed price goes to TopDawg review first (1–24h) before TD Price follows.' : SB_IS_REVERB ? 'Price is the <b>live Reverb listing price</b> (RV Price). It changes only when a new price is pushed to Reverb.' : SB_IS_WAYFAIR ? 'Price is the <b>Wayfair price</b> from the uploaded price sheet. It changes only when a new price sheet is uploaded.' : SB_IS_DEPOP ? 'Price is the <b>Depop listing price</b> from the Depop upload. It changes only when a new price is uploaded.' : SB_IS_B2B ? 'Price is the <b>live website price</b> (business5core.com). It changes only when a new price is pushed to the website.' : 'Price is the <b>live Shopify B2C listing price</b>. It changes only when a new price is pushed to Shopify.')));
                 if (shown > 0) {
                     if (Math.abs(shown - price) <= 0.009) {
                         steps.push(temuRuleStep('ok', '2 · S PRC', 'S PRC ' + temuRuleMoney(shown) + ' is already live. Price matches S PRC.'));
@@ -813,7 +833,7 @@
                 } else {
                     steps.push(temuRuleStep('skip', '4 · vs LMP', 'No LMP available.'));
                 }
-                if (SB_IS_B2B || SB_IS_REVERB || SB_IS_DOBA || SB_IS_AE) {
+                if (SB_IS_B2B || SB_IS_REVERB || SB_IS_DOBA || SB_IS_AE || SB_IS_TT || SB_IS_MERC || SB_IS_PLS || SB_IS_SHEIN) {
                     // no A Price on Shopify B2B, Reverb, Doba or AliExpress
                 } else if (amz > 0 && price > 0) {
                     steps.push(temuRuleStep(price < amz ? 'warn' : 'ok', '5 · vs A Price',

@@ -1871,6 +1871,8 @@
         }
         function chStdPriceForRow(d, draft) {
             if (!d) return 0;
+            // A page that sets CH_CLEARANCE_NO_RULES: a clearance SKU gets no rule price (the page shows C, nothing is saved or pushed).
+            if (window.CH_CLEARANCE_NO_RULES === true && chStdIsClearance(d)) return 0;
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return 0;
             // Product-master SKU with no Alibaba listing (no product id / price): nothing to push to.
             if (d.not_listed) return 0;
@@ -2634,6 +2636,12 @@
                 if (typeof window.tdRefreshSpriceCells === 'function') window.tdRefreshSpriceCells();
                 if (typeof window.dobaRefreshSpriceCells === 'function') window.dobaRefreshSpriceCells();
                 if (typeof window.aeRefreshSpriceCells === 'function') window.aeRefreshSpriceCells();
+                if (typeof window.ttRefreshSpriceCells === 'function') window.ttRefreshSpriceCells();
+                if (typeof window.mercWsRefreshSpriceCells === 'function') window.mercWsRefreshSpriceCells();
+                if (typeof window.plsRefreshSpriceCells === 'function') window.plsRefreshSpriceCells();
+                if (typeof window.sheinRefreshSpriceCells === 'function') window.sheinRefreshSpriceCells();
+                if (typeof window.bestbuyRefreshSpriceCells === 'function') window.bestbuyRefreshSpriceCells();
+                if (typeof window.frRefreshSpriceCells === 'function') window.frRefreshSpriceCells();
             };
             const pending = chStdSavePrices(updates);
             if (pending && typeof pending.always === 'function') pending.always(redraw);

@@ -40,9 +40,9 @@
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'vinted', 'instagram', 'depop', 'alibaba'], true);
     // eBay rules that Temu now shares: Diff +10 to the Target, and the LMP cap % by Dil band.
-    $ebaySprcDilDiffAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'depop', 'purchasing_power', 'wayfair', 'reverb', 'topdawg', 'doba', 'aliexpress', 'faire'], true);
+    $ebaySprcDilDiffAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'depop', 'purchasing_power', 'wayfair', 'reverb', 'topdawg', 'doba', 'aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'pls', 'shein', 'bestbuy', 'newegg'], true);
     // Pages with no LMP data (Depop, Purchasing Power, Wayfair) get no LMP cap rule (TopDawg too). Reverb has LMP, so it gets the full LMP cap table.
-    $ebaySprcDilLmpCapOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'reverb', 'aliexpress'], true);
+    $ebaySprcDilLmpCapOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'reverb', 'aliexpress', 'tiktok', 'tiktok2', 'mercari_wship', 'shein', 'bestbuy'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
@@ -1621,7 +1621,10 @@
                 const p = chPromoSpriceFromTargetRoi(d, groi);
                 return p > 0 ? p : 0;
             }
-            const ads = ebayDilTargetsNroi() ? ebayDilAdsPct() : 0;
+            // A page whose Ads% is per SKU (TikTok: the listing's TACOS%) sets window.ebayDilRowAdsPct(d).
+            const ads = ebayDilTargetsNroi()
+                ? ((typeof window.ebayDilRowAdsPct === 'function') ? (Number(window.ebayDilRowAdsPct(d)) || 0) : ebayDilAdsPct())
+                : 0;
             if (ads > 0) {
                 const lp = ebayDgLp(d);
                 if (!(lp > 0)) return 0;
@@ -2405,6 +2408,12 @@
                 || EBAY_DIL_GROI_CHANNEL === 'doba'
                 || EBAY_DIL_GROI_CHANNEL === 'aliexpress'
                 || EBAY_DIL_GROI_CHANNEL === 'faire'
+                || EBAY_DIL_GROI_CHANNEL === 'tiktok'
+                || EBAY_DIL_GROI_CHANNEL === 'tiktok2'
+                || EBAY_DIL_GROI_CHANNEL === 'mercari_wship'
+                || EBAY_DIL_GROI_CHANNEL === 'pls'
+                || EBAY_DIL_GROI_CHANNEL === 'shein'
+                || EBAY_DIL_GROI_CHANNEL === 'bestbuy'
                 || EBAY_DIL_GROI_CHANNEL === 'purchasing_power') {
                 ebayDgRefreshVisibleRows();
             } else {

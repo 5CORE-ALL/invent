@@ -150,4 +150,95 @@ class SheinSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertSame(90.0, $out['sprice']);
     }
+
+    /** @return array<string, mixed> */
+    private function dilCtx(): array
+    {
+        return [
+            'rules' => [
+                ['key' => '0-0', 'label' => '0%', 'min' => 0.0, 'max' => 0.0, 'groi' => 40.0],
+                ['key' => '0.1-50', 'label' => '0.1–50%', 'min' => 0.1, 'max' => 50.0, 'groi' => 60.0],
+            ],
+            'cvr_adj' => ['down_lt' => 7, 'down_adj' => -5, 'up_gt' => 10, 'up_adj' => 5],
+            'diff_adj' => ['gt_pct' => 20, 'points' => 10],
+            'lmp_cap' => ['low_lt' => 25, 'high_gt' => 50, 'low_pct' => 5, 'mid_pct' => 5, 'high_pct' => 5],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function dilRow(array $over = []): array
+    {
+        return $this->row(array_merge(['price' => 100, 'views' => 0, 'cvr' => 8], $over));
+    }
+
+    private function dilTarget(array $row): ?array
+    {
+        return (new SheinSprcDilAutoPushService)->computeTarget($row, null, null, $this->dilCtx());
+    }
+
+    public function test_sprc_dil_price_is_the_slab_target_with_ship(): void
+    {
+        $out = $this->dilTarget($this->dilRow());
+
+        $this->assertNotNull($out);
+        // Target 60%: (20 x 1.6 + 5) / 0.80 = 46.25. Std 100 is far above.
+        $this->assertEqualsWithDelta(46.25, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
+    }
+
+    public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
+    {
+        // Std 100 vs Sp. Price 70 -> Diff 42.9% (> 20): Target 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
+        $out = $this->dilTarget($this->dilRow(['price' => 70]));
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(48.75, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_cvr_overlay_only_applies_with_views(): void
+    {
+        // CVR 5% < 7% (down): Adj -5 -> Target 55%. (20 x 1.55 + 5) / 0.80 = 45.00.
+        $withViews = $this->dilTarget($this->dilRow(['views' => 200, 'cvr' => 5]));
+        $this->assertNotNull($withViews);
+        $this->assertEqualsWithDelta(45.00, $withViews['sprice'], 0.001);
+
+        $noViews = $this->dilTarget($this->dilRow(['views' => 0, 'cvr' => 5]));
+        $this->assertNotNull($noViews);
+        $this->assertEqualsWithDelta(46.25, $noViews['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_dil_above_every_slab_uses_the_nearest_slab(): void
+    {
+        $out = $this->dilTarget($this->dilRow(['dil' => 80]));
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(46.25, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_lmp_cap_uses_the_dil_band_and_std_is_the_maximum(): void
+    {
+        // Price 46.25 is above LMP 40 and SGROI at LMP is 35% (>= 20): S PRC = LMP x (1 - 5%) = 38.00.
+        $out = $this->dilTarget($this->dilRow(['lmp' => 40]));
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(38.00, $out['sprice'], 0.001);
+        $this->assertTrue($out['lmp_capped']);
+
+        $std = $this->dilTarget($this->dilRow(['standard_price' => 30]));
+        $this->assertNotNull($std);
+        $this->assertEqualsWithDelta(30.0, $std['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_clearance_and_no_inventory_have_no_target(): void
+    {
+        $this->assertNull($this->dilTarget($this->dilRow(['clearance' => true])));
+        $this->assertNull($this->dilTarget($this->dilRow(['inv' => 0])));
+    }
+
+    public function test_without_a_dil_context_the_std_rule_still_prices(): void
+    {
+        $out = (new SheinSprcDilAutoPushService)->computeTarget($this->row(), $this->pricer(), 0.0, null);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+    }
 }

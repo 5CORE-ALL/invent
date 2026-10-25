@@ -162,6 +162,7 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shein'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#sheinLmpModal'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'shein'])
     </style>
 @endsection
 
@@ -264,6 +265,7 @@
                             <i class="fas fa-file-excel"></i>
                         </button>
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shein'])
+                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shein'])
 
                         {{-- Target ROI% (compact — same UX as /ebay2-tabulator-view) --}}
                         <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
@@ -534,12 +536,14 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shein'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'shein'])
 @endsection
 
 @section('script-bottom')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
     <script>
         // S PRC is saved + pushed by the server (shein:sprc-dil-auto-push). The page only shows it.
         window.CH_STD_SERVER_OWNED = true;
@@ -547,6 +551,9 @@
         window.CH_PROMO_ADS_FN = function() { return 0; };
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shein'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shein'])
+        @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'shein', 'temuRuleLiveLabel' => 'Sp. Price'])
         let table = null;
         let allTableData = [];
         let summaryDataCache = [];
@@ -621,8 +628,8 @@
             const color = kind === 'gpft' ? sheinGpftColor(v) : sheinRoiColor(v);
             return '<span style="' + sheinPctStyle(color) + '">' + Math.round(v) + '%</span>';
         }
-        /** Saved S PRC (written by the server job). Shown even when it equals Sp. Price. */
-        function sheinRuleSpriceRaw(data) {
+        /** Saved S PRC (what the server holds). Shown even when it equals Sp. Price. */
+        function sheinSavedSprice(data) {
             if (!data || data.is_parent) return 0;
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;
@@ -631,9 +638,138 @@
             const sprice = parseFloat(data.sprice || data.SPRICE) || 0;
             return sprice > 0 ? Math.round(sprice * 100) / 100 : 0;
         }
-        function sheinVisibleSprice(data) {
-            return sheinRuleSpriceRaw(data);
+        function sheinSpriceRule() {
+            return (typeof window.spriceActiveRule === 'function') ? window.spriceActiveRule() : 'std';
         }
+        /** LMP (lowest non-ignored competitor price) for the caps and the hover. */
+        function sheinRowLmp(data) {
+            const n = sheinEffectiveLmp(data);
+            return n > 0 ? Math.round(n * 100) / 100 : 0;
+        }
+        /** Shein has no A Price / Amz cap. */
+        function sheinAmzPrice() { return 0; }
+        /** SGROI at a price with the Shein take-home %, LP and Ship: ((price x margin - LP - Ship) / LP) x 100. null without LP or price. */
+        function sheinSgroiAtPrice(data, price) {
+            const p = parseFloat(price);
+            const lp = (typeof chPromoLp === 'function') ? Number(chPromoLp(data)) : (parseFloat(data && data.lp) || 0);
+            if (!(p > 0) || !(lp > 0)) return null;
+            const ship = (typeof chPromoShipCost === 'function') ? Number(chPromoShipCost(data)) : (parseFloat(data && data.ship) || 0);
+            const margin = (typeof chPromoTakehomeMargin === 'function') ? Number(chPromoTakehomeMargin(data)) : (parseFloat(data && data._margin) || 1);
+            return ((p * margin - lp - ship) / lp) * 100;
+        }
+        /** Sprc Dil price before the LMP cap and the Std Prc maximum: Dil slab (nearest slab outside the table) + CVR overlay (only with views) + Diff points, with Ship. 0 when the rule gives none. */
+        function sheinDilRawSprice(data) {
+            if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
+            const meta = ebayDilGroiMetaForRow(data);
+            const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
+            return n > 0 ? Math.round(n * 100) / 100 : 0;
+        }
+        /**
+         * LMP cap, same as /amazon-tabulator-view: price at/above LMP and SGROI at LMP >= 20% -> S PRC = LMP x (1 - x%).
+         * x = the SKU's Dil band (Sprc Dil modal, LMP cap table) for Sprc Dil; 0 for Std prc vs dil (S PRC = LMP).
+         */
+        function sheinApplyLmpCap(data, price, reducePct) {
+            let out = Math.round((parseFloat(price) || 0) * 100) / 100;
+            if (!(out > 0)) return 0;
+            const lmp = sheinRowLmp(data);
+            if (lmp > 0 && out + 0.0001 >= lmp) {
+                const sg = sheinSgroiAtPrice(data, lmp);
+                if (sg === null || sg >= 20) {
+                    const pct = isFinite(Number(reducePct)) ? Number(reducePct) : 0;
+                    out = Math.round(lmp * (1 - pct / 100) * 100) / 100;
+                }
+            }
+            return out;
+        }
+        /** Sprc Dil switch ON: the Dil price, the LMP cap by Dil band, then Std Prc as the maximum. */
+        function sheinCapDilSprice(data, raw) {
+            const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 2;
+            let out = sheinApplyLmpCap(data, raw, isFinite(pct) ? pct : 2);
+            const std = parseFloat(data && data.STANDARD_PRICE) || 0;
+            if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
+            return out;
+        }
+        /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules load, for a clearance SKU, or when the row has none. */
+        function sheinLiveRuleSprice(data) {
+            if (!data || data.is_parent) return 0;
+            try {
+                // Clearance SKUs show "C": no S PRC is saved or pushed for them.
+                if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) return 0;
+                if (sheinSpriceRule() === 'dil') {
+                    if (window._ebayDilRulesLoaded !== true) return 0;
+                    const raw = sheinDilRawSprice(data);
+                    return raw > 0 ? sheinCapDilSprice(data, raw) : 0;
+                }
+                if (window.__chStdSettled !== true) return 0;
+                if (typeof window.chStdPriceForRow === 'function') {
+                    const std = Number(window.chStdPriceForRow(data)) || 0;
+                    if (std > 0) return sheinApplyLmpCap(data, std, 0);
+                }
+            } catch (e) { /* rules not loaded yet */ }
+            return 0;
+        }
+        window.sheinLiveRuleSprice = sheinLiveRuleSprice;
+        /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
+        function sheinRuleSpriceRaw(data) {
+            if (!data || data.is_parent) return 0;
+            const live = sheinLiveRuleSprice(data);
+            if (live > 0) return live;
+            return sheinSavedSprice(data);
+        }
+        function sheinShownSprice(data) { return sheinRuleSpriceRaw(data); }
+        /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+        function sheinDiffCfgNow() {
+            const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+            return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+        }
+        /** Std Diff % = (Std Prc - Sp. Price) / Sp. Price x 100, same as /amazon-tabulator-view. null when either is missing. */
+        function sheinStdPrcDiffPct(rowData) {
+            if (!rowData || rowData.is_parent) return null;
+            const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+            const price = parseFloat(rowData.special_offer) || 0;
+            if (!(std > 0) || !(price > 0)) return null;
+            return ((std - price) / price) * 100;
+        }
+        /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+        function sheinRenderStdPrcDiff(el, rowData) {
+            const pct = sheinStdPrcDiffPct(rowData);
+            let html = '';
+            let bg = '';
+            let color = '';
+            if (pct !== null) {
+                if (pct > sheinDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+                else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+                else { bg = '#28a745'; color = '#fff'; }
+                html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+            }
+            if (el) {
+                el.style.backgroundColor = bg;
+                el.style.color = color;
+            }
+            return html;
+        }
+        // The Sprc Dil Diff rule reads Std Prc and the Shein Sp. Price from these two columns.
+        window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+        window.ebayDiffLivePrice = function(d) { return parseFloat(d && d.special_offer) || 0; };
+        /** Repaint every S PRC dependent cell from the rule now ON (switch, or a rule edit). No row writes, no scroll jump. */
+        function sheinRefreshSpriceCells() {
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+            try {
+                (table.getRows('visible') || []).forEach(function(row) {
+                    try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+                });
+            } catch (e) { /* ignore */ }
+            if (typeof updateSummary === 'function') {
+                try { updateSummary(); } catch (e2) { /* ignore */ }
+            }
+        }
+        window.sheinRefreshSpriceCells = sheinRefreshSpriceCells;
+        // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
+        window.spriceOnRuleSwitched = function() { sheinRefreshSpriceCells(); };
+        // A Sprc Dil edit (slab, CVR overlay, Diff, LMP cap) was saved: the cells repaint from the new rule; the server saves it too.
+        window.ebayOnDilRulesSaved = function() { sheinRefreshSpriceCells(); };
+        // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
+        $(document).on('chStd:settled', function() { sheinRefreshSpriceCells(); });
         window.sheinVisibleSprice = sheinVisibleSprice;
         function sheinNormSku(sku) {
             return String(sku || '').replace(/[\u00A0\u202F]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
@@ -1953,10 +2089,23 @@
                         }
                     },
                     {
+                        title: "Std Diff",
+                        field: "std_prc_diff",
+                        hozAlign: "center",
+                        width: 62,
+                        headerTooltip: "Std Diff = (Std Prc − Sp. Price) / Sp. Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target SNROI), red = below −5%, green = the rest.",
+                        sorter: tabSortBlankLast(function(d) { return sheinStdPrcDiffPct(d); }),
+                        formatter: function(cell) {
+                            return sheinRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                        }
+                    },
+                    {
                         title: "Sp. Price",
                         field: "special_offer",
                         sorter: "number",
                         hozAlign: "right",
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2152,10 +2301,12 @@
                                 : (parseFloat(value) || 0);
                             return shown > 0 ? +Number(shown).toFixed(2) : '';
                         },
-                        sorter: "number",
+                        sorter: tabSortBlankLast(function(d) { if (d.is_parent) return null; const v = sheinRuleSpriceRaw(d); return v > 0 ? v : null; }),
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC = Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), then capped to LMP when SGROI at LMP ≥ 20%. Std Prc is the maximum. Saved and pushed by the server (twice daily + every 10 min). Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
+                        headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with the CVR overlay and Diff, Ship in the price, LMP cap by Dil band, Std Prc as the maximum) or Std prc vs dil (Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), capped to LMP when SGROI at LMP ≥ 20%). Turning one ON turns the other OFF. The server saves it right after a switch or rule edit and pushes twice daily (and every 10 min for blue triangles). Red / orange / brown triangle = capped at LMP / LMP above Std Prc / capped at Std Prc. Blue triangle = S PRC ≠ Sp. Price. Hover for every rule used.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2170,7 +2321,17 @@
                             const atOrAboveLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
                             if (!(sprice > 0)) return '';
                             const live = parseFloat(d.special_offer) || 0;
-                            const redTri = atOrAboveLmp
+                            // Cap marks (same rules as /amazon-tabulator-view), Sprc Dil only: red = LMP, orange = LMP above Std Prc, brown = Std Prc max.
+                            let flags = null;
+                            if (sheinSpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function') {
+                                const rawDil = sheinDilRawSprice(d);
+                                if (rawDil > 0) {
+                                    flags = chClr.capFlags({ raw: rawDil, shown: sprice, lmp: lmpNow, std: parseFloat(d.STANDARD_PRICE) || 0, sgroiAtLmp: sheinSgroiAtPrice(d, lmpNow) });
+                                }
+                            }
+                            const capTris = flags ? (flags.redTri + flags.reviewTri + flags.stdTri) : '';
+                            const capColor = flags && flags.color ? flags.color : '';
+                            const redTri = (!flags && atOrAboveLmp)
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC ≥ LMP $'
                                     + (lmpNow > 0 ? lmpNow.toFixed(2) : '') + '"></i>'
                                 : '';
@@ -2180,11 +2341,11 @@
                                     + sprice.toFixed(2) + ' ≠ Sp. Price $' + live.toFixed(2) + '"></i>'
                                 : '';
                             const formatted = '$' + sprice.toFixed(2);
-                            const priceHtml = atOrAboveLmp
-                                ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
+                            const priceHtml = (!flags && atOrAboveLmp) || capColor
+                                ? '<span style="color:' + (capColor || '#dc3545') + ';font-weight:600;">' + formatted + '</span>'
                                 : '<span style="font-weight:600;">' + formatted + '</span>';
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                + priceHtml + blueTri + redTri + '</span>';
+                                + priceHtml + blueTri + redTri + capTris + '</span>';
                         }
                     },
                     {
@@ -2880,6 +3041,16 @@
                 setTimeout(run, 2500);
             }
             $(document).off('chStd:settled.sheinClearance').on('chStd:settled.sheinClearance', sheinRepaintClearance);
+
+            // Std Diff follows the row when Std Prc or the Sp. Price changes.
+            table.on('rowUpdated', function(row) {
+                try {
+                    const c = row.getCell('std_prc_diff');
+                    if (!c) return;
+                    const el = c.getElement();
+                    el.innerHTML = sheinRenderStdPrcDiff(el, row.getData());
+                } catch (e) { /* ignore */ }
+            });
 
             table.on('tableBuilt', function() {
                 aeApplyColumnVisibilityFromServer();

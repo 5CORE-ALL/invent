@@ -179,4 +179,102 @@ class BestBuySprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertSame(90.0, $out['sprice']);
     }
+
+    /** @return array<string, mixed> */
+    private function dilCtx(): array
+    {
+        return [
+            'rules' => [
+                ['key' => '0-0', 'label' => '0%', 'min' => 0.0, 'max' => 0.0, 'groi' => 40.0],
+                ['key' => '0.1-50', 'label' => '0.1–50%', 'min' => 0.1, 'max' => 50.0, 'groi' => 60.0],
+            ],
+            'diff_adj' => ['gt_pct' => 20, 'points' => 10],
+            'lmp_cap' => ['low_lt' => 25, 'high_gt' => 50, 'low_pct' => 5, 'mid_pct' => 5, 'high_pct' => 5],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function dilRow(array $over = []): array
+    {
+        return $this->row(array_merge(['ship' => 5, 'price' => 100], $over));
+    }
+
+    private function dilTarget(array $row): ?array
+    {
+        return $this->service()->computeTarget($row, null, $this->dilCtx());
+    }
+
+    public function test_sprc_dil_price_is_the_slab_target_with_ship_bb(): void
+    {
+        $out = $this->dilTarget($this->dilRow());
+
+        $this->assertNotNull($out);
+        // Target 60%: (20 x 1.6 + 5) / 0.80 = 46.25. Std 100 is far above.
+        $this->assertEqualsWithDelta(46.25, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
+        $this->assertFalse($out['amz_capped']);
+    }
+
+    public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
+    {
+        // Std 100 vs Price 70 -> Diff 42.9% (> 20): Target 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
+        $out = $this->dilTarget($this->dilRow(['price' => 70]));
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(48.75, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_dil_outside_every_slab_has_no_price(): void
+    {
+        $this->assertNull($this->dilTarget($this->dilRow(['dil' => 80])));
+    }
+
+    public function test_sprc_dil_lmp_cap_uses_the_dil_band_and_std_is_the_maximum(): void
+    {
+        // Price 46.25 is above LMP 40 and SGROI at LMP is 35% (>= 20): S PRC = LMP x (1 - 5%) = 38.00.
+        $out = $this->dilTarget($this->dilRow(['lmp' => 40]));
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(38.00, $out['sprice'], 0.001);
+        $this->assertTrue($out['lmp_capped']);
+
+        $std = $this->dilTarget($this->dilRow(['standard_price' => 30]));
+        $this->assertNotNull($std);
+        $this->assertEqualsWithDelta(30.0, $std['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_amz_rule_raises_to_a_price_and_wins_over_the_lmp_cap(): void
+    {
+        // Price 46.25 is below A Price 60: S PRC = A Price.
+        $amz = $this->dilTarget($this->dilRow(['amz' => 60]));
+        $this->assertNotNull($amz);
+        $this->assertEqualsWithDelta(60.0, $amz['sprice'], 0.001);
+        $this->assertTrue($amz['amz_capped']);
+
+        // LMP 40 caps it to 38.00, which is below A Price 45: A Price wins.
+        $both = $this->dilTarget($this->dilRow(['lmp' => 40, 'amz' => 45]));
+        $this->assertNotNull($both);
+        $this->assertEqualsWithDelta(45.0, $both['sprice'], 0.001);
+        $this->assertTrue($both['amz_capped']);
+        $this->assertFalse($both['lmp_capped']);
+
+        // Price above A Price stays.
+        $above = $this->dilTarget($this->dilRow(['amz' => 40]));
+        $this->assertNotNull($above);
+        $this->assertEqualsWithDelta(46.25, $above['sprice'], 0.001);
+        $this->assertFalse($above['amz_capped']);
+    }
+
+    public function test_sprc_dil_clearance_and_no_inventory_have_no_target(): void
+    {
+        $this->assertNull($this->dilTarget($this->dilRow(['clearance' => true])));
+        $this->assertNull($this->dilTarget($this->dilRow(['inv' => 0])));
+    }
+
+    public function test_without_a_dil_context_the_std_rule_still_prices(): void
+    {
+        $out = $this->service()->computeTarget($this->row(), $this->pricer(), null);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+    }
 }

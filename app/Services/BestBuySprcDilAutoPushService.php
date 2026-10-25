@@ -4,9 +4,12 @@ namespace App\Services;
 
 use App\Http\Controllers\MarketPlace\BestBuyPricingController;
 use App\Models\BestbuyUSADataView;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Support\AmazonDilGroiRule;
+use App\Support\EbayRuleSprice;
 use App\Support\NegativeSnroiPushGuard;
 use App\Support\PushedListingPrice;
+use App\Support\SpriceActiveRule;
 use App\Support\StdPrcVsDilPricer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -40,6 +43,8 @@ class BestBuySprcDilAutoPushService
 {
     public const LOCK_KEY = 'bestbuy-sprc-dil-auto-push-run';
 
+    public const CHANNEL = 'bestbuy';
+
     public function __construct(private readonly BestBuyApiService $bbApi) {}
 
     /** @var array<string, string> Why a requested SKU was left out of the candidates (--sku runs). */
@@ -65,7 +70,12 @@ class BestBuySprcDilAutoPushService
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('bestbuy');
 
-        $this->log($logger, 'Loaded Best Buy Std prc vs dil (bestbuy_std_prc_vs_dil) → Age/Dil/B/0 Sold/Rev Disc + LMP cap + Amz rule (CVR off)');
+        // The page switch decides the S PRC rule: Std prc vs dil, or the Sprc Dil modal (slab + Diff + LMP cap by Dil band + Std max).
+        $dilContext = SpriceActiveRule::usesStdPrc(self::CHANNEL) ? null : $this->loadDilContext();
+
+        $this->log($logger, $dilContext !== null
+            ? 'Best Buy S PRC rule = Sprc Dil (Dil slab Target SNROI + Diff, Ship BB in the price, LMP cap by Dil band, Std max, Amz rule last)'
+            : 'Loaded Best Buy Std prc vs dil (bestbuy_std_prc_vs_dil) → Age/Dil/B/0 Sold/Rev Disc + LMP cap + Amz rule (CVR off)');
 
         $stats = [
             'candidates' => 0,
@@ -124,7 +134,7 @@ class BestBuySprcDilAutoPushService
         try {
             foreach ($rows as $i => $row) {
                 try {
-                    $computed = $this->computeTarget($row, $pricer);
+                    $computed = $this->computeTarget($row, $pricer, $dilContext);
                     if ($onlySkus !== null && $onlySkus !== []) {
                         // Single-SKU run: show the inputs and the result, so a row that looks wrong can be traced.
                         $this->log($logger, $this->explainRow($row, $computed));
@@ -283,21 +293,28 @@ class BestBuySprcDilAutoPushService
      * Page S PRC formula (INV > 0 child SKUs): Std rule, Std is the maximum, LMP cap,
      * then the Amz rule (never below A Price). Ship BB included, no ads.
      *
+     * With a $dilContext (the Sprc Dil switch is ON) the Sprc Dil modal rules price it instead: Dil slab Target SNROI
+     * + Diff points, LMP cap = LMP x (1 - x%) by Dil band, Std Prc as the maximum, and the Amz rule last.
+     *
      * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>,diff_adj:?array,lmp_cap:?array}|null  $dilContext
      * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,margin:float,lp:float,ship:float}|null
      */
-    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null): ?array
+    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, ?array $dilContext = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
             return null;
         }
-        $std = (float) ($row['standard_price'] ?? 0);
-        if (! ($std > 0)) {
-            return null;
-        }
         // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
         if ((new StdPrcVsDilPricer([], 'bestbuy'))->isClearanceRow($row)) {
+            return null;
+        }
+        if ($dilContext !== null) {
+            return $this->computeDilTarget($row, $dilContext);
+        }
+        $std = (float) ($row['standard_price'] ?? 0);
+        if (! ($std > 0)) {
             return null;
         }
         $lp = (float) ($row['lp'] ?? 0);
@@ -367,6 +384,94 @@ class BestBuySprcDilAutoPushService
             'margin' => $margin,
             'lp' => $lp,
             'ship' => $ship,
+        ];
+    }
+
+    /**
+     * Sprc Dil switch ON: the Sprc Dil modal rules, same chain as the page.
+     *  1. Dil slab Target SNROI (no slab for the Dil % = no price). No CVR overlay: Best Buy has no session CVR.
+     *  2. + Diff points: (Std Prc - Price) / Price above the Diff threshold.
+     *  3. price = (LP x (1 + target%) + Ship BB) / take-home, no Ads.
+     *  4. LMP cap (SGROI at LMP >= 20%): LMP x (1 - x%) by the SKU's Dil band, then Std Prc as the maximum.
+     *  5. Amz rule last: never below A Price (wins over the LMP cap).
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>,diff_adj:?array,lmp_cap:?array}  $ctx
+     * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,margin:float,lp:float,ship:float}|null
+     */
+    protected function computeDilTarget(array $row, array $ctx): ?array
+    {
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.80;
+        }
+        $ship = (float) ($row['ship'] ?? 0);
+        $std = round((float) ($row['standard_price'] ?? 0), 2);
+        $lmp = (float) ($row['lmp'] ?? 0);
+        $dil = (float) ($row['dil'] ?? 0);
+
+        $rule = AmazonDilGroiRule::match($dil, $ctx['rules']);
+        if ($rule === null) {
+            return null;
+        }
+        $target = max(0.0, round((float) $rule['groi'], 2));
+        $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
+        $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
+
+        $raw = round(($lp * (1 + $target / 100) + $ship) / $margin, 2);
+        if (! is_finite($raw) || $raw < 0.01) {
+            return null;
+        }
+        $reducePct = AmazonDilGroiRule::lmpCapReducePct($dil, $ctx['lmp_cap'] ?? null);
+        $capped = round(AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, $std, $reducePct), 2);
+        $lmpCapped = $lmp > 0 && ($raw - $capped) > 0.009 && abs($capped - round($lmp * (1 - $reducePct / 100), 2)) <= 0.02;
+
+        $amz = round((float) ($row['amz'] ?? 0), 2);
+        $amzCapped = $amz > 0 && $capped + 0.0001 < $amz;
+        $final = $amzCapped ? $amz : $capped;
+        if ($amzCapped) {
+            $lmpCapped = false;
+        }
+        if (! is_finite($final) || $final < 0.01) {
+            return null;
+        }
+
+        return [
+            'sprice' => round($final, 2),
+            'uncapped' => $std > 0 ? round(min($raw, $std), 2) : $raw,
+            'amz_capped' => $amzCapped,
+            'lmp_capped' => $lmpCapped,
+            'base' => $std,
+            'margin' => $margin,
+            'lp' => $lp,
+            'ship' => $ship,
+        ];
+    }
+
+    /**
+     * The Sprc Dil modal settings saved for Best Buy: Dil slabs, Diff rule and LMP cap (reduce % by Dil band).
+     *
+     * @return array{rules:list<array<string,mixed>>,diff_adj:?array,lmp_cap:?array}
+     */
+    protected function loadDilContext(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', self::CHANNEL.'_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $rules = $unpacked['rules'] === []
+            ? AmazonDilGroiRule::defaultsForChannel(self::CHANNEL)
+            : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+
+        return [
+            'rules' => $rules,
+            'diff_adj' => $unpacked['diff_adj'] ?? null,
+            'lmp_cap' => $unpacked['lmp_cap'] ?? null,
         ];
     }
 

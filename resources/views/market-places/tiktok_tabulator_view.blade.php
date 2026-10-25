@@ -325,6 +325,7 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => $tiktokPromoChannel])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#ttLmpModal'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => $tiktokPromoChannel])
     </style>
 @endsection
 
@@ -467,6 +468,7 @@
                         PRc
                     </button>
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => $tiktokPromoChannel])
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => $tiktokPromoChannel])
 
                     {{-- Target ROI% bulk control — back-solves SPRICE so SROI = Target ROI%. --}}
                     {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin (TikTok take-home) --}}
@@ -1022,6 +1024,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => $tiktokPromoChannel])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => $tiktokPromoChannel])
 
 @endsection
 
@@ -1053,6 +1056,9 @@
         window.CH_STD_SERVER_OWNED = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => $tiktokPromoChannel])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => $tiktokPromoChannel])
+        @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'tiktok', 'temuRuleLiveLabel' => 'Price'])
         const DEFAULT_TIKTOK_MARGIN_PERCENT = Number(@json($tiktokPercentage ?? 80));
         const DEFAULT_TIKTOK_MARGIN_FACTOR = DEFAULT_TIKTOK_MARGIN_PERCENT / 100;
         // Ads section columns: hidden by default, only show when "Show Ads Columns" btn is clicked
@@ -1371,7 +1377,8 @@
             const stored = Number(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice);
             return (isFinite(stored) && stored > 0) ? stored : 0;
         }
-        function ttDisplayedSprice(rowData) {
+        /** Saved S PRC (what the server holds). */
+        function ttSavedSprice(rowData) {
             if (!rowData || ttIsParentRow(rowData)) return 0;
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(rowData)) || 0;
@@ -1381,6 +1388,142 @@
             if (stored > 0) return stored;
             return 0;
         }
+        function ttSpriceRule() {
+            return (typeof window.spriceActiveRule === 'function') ? window.spriceActiveRule() : 'std';
+        }
+        /** LMP (lowest competitor price + its shipping) for the cap and the hover. */
+        function ttRowLmp(d) {
+            const n = parseFloat(d && d.lmp_price);
+            return (isFinite(n) && n > 0) ? Math.round(n * 100) / 100 : 0;
+        }
+        /** No A Price / Amz cap on TikTok. */
+        function ttAmzPrice() { return 0; }
+        /** SGROI at a price: ((price x margin - Ship - LP) / LP) x 100. null without LP or price. */
+        function ttSgroiAtPrice(d, price) {
+            const p = parseFloat(price);
+            const lp = parseFloat(d && d.LP_productmaster);
+            if (!(p > 0) || !isFinite(lp) || lp <= 0) return null;
+            const ship = parseFloat(d && d.Ship_productmaster) || 0;
+            return (((p * getRowMarginFactor(d)) - ship - lp) / lp) * 100;
+        }
+        /** Sprc Dil price before the LMP cap and the Std Prc maximum: Dil slab + CVR overlay + Diff points, with Ship and Ads%. 0 when the rule gives none. */
+        function ttDilRawSprice(d) {
+            if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
+            const meta = ebayDilGroiMetaForRow(d);
+            const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
+            return n > 0 ? Math.round(n * 100) / 100 : 0;
+        }
+        /**
+         * LMP cap, same as /amazon-tabulator-view: price at/above LMP and SGROI at LMP >= 20% -> S PRC = LMP x (1 - x%).
+         * x = the SKU's Dil band (Sprc Dil modal, LMP cap table) for Sprc Dil; 0 for Std prc vs dil (S PRC = LMP).
+         */
+        function ttApplyLmpCap(d, price, reducePct) {
+            let out = Math.round((parseFloat(price) || 0) * 100) / 100;
+            if (!(out > 0)) return 0;
+            const lmp = ttRowLmp(d);
+            if (lmp > 0 && out + 0.0001 >= lmp) {
+                const sg = ttSgroiAtPrice(d, lmp);
+                if (sg === null || sg >= 20) {
+                    const pct = isFinite(Number(reducePct)) ? Number(reducePct) : 0;
+                    out = Math.round(lmp * (1 - pct / 100) * 100) / 100;
+                }
+            }
+            return out;
+        }
+        /** Sprc Dil switch ON: the Dil price, the LMP cap by Dil band, then Std Prc as the maximum. */
+        function ttCapDilSprice(d, raw) {
+            const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(d)) : 2;
+            let out = ttApplyLmpCap(d, raw, isFinite(pct) ? pct : 2);
+            const std = parseFloat(d && d.STANDARD_PRICE) || 0;
+            if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
+            return out;
+        }
+        /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules are loading, for a clearance SKU, or when the row has none. */
+        function ttLiveRuleSprice(d) {
+            if (!d || ttIsParentRow(d)) return 0;
+            try {
+                // Clearance SKUs show "C": no S PRC is saved or pushed for them.
+                if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) return 0;
+                if (ttSpriceRule() === 'dil') {
+                    if (window._ebayDilRulesLoaded !== true) return 0;
+                    const raw = ttDilRawSprice(d);
+                    return raw > 0 ? ttCapDilSprice(d, raw) : 0;
+                }
+                if (window.__chStdSettled !== true) return 0;
+                if (typeof window.chStdPriceForRow === 'function') {
+                    const std = Number(window.chStdPriceForRow(d)) || 0;
+                    if (std > 0) return ttApplyLmpCap(d, std, 0);
+                }
+            } catch (e) { /* rules not loaded yet */ }
+            return 0;
+        }
+        window.ttLiveRuleSprice = ttLiveRuleSprice;
+        /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
+        function ttDisplayedSprice(rowData) {
+            if (!rowData || ttIsParentRow(rowData)) return 0;
+            const live = ttLiveRuleSprice(rowData);
+            if (live > 0) return live;
+            return ttSavedSprice(rowData);
+        }
+        function ttShownSprice(d) { return ttDisplayedSprice(d); }
+        /** Ads% per SKU for the Sprc Dil price: the listing TACOS% (TikTok 2 = 0), same as the SNROI column and the server. */
+        window.ebayDilRowAdsPct = function(d) {
+            const a = ttDilAdsPct(d);
+            return (a > 0 && a < 100) ? a : 0;
+        };
+        /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+        function ttDiffCfgNow() {
+            const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+            return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+        }
+        /** Std Diff % = (Std Prc - Price) / Price x 100, same as /amazon-tabulator-view. null when either is missing. */
+        function ttStdPrcDiffPct(rowData) {
+            if (!rowData || ttIsParentRow(rowData)) return null;
+            const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+            const price = parseFloat(rowData['TT Price']) || 0;
+            if (!(std > 0) || !(price > 0)) return null;
+            return ((std - price) / price) * 100;
+        }
+        /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+        function ttRenderStdPrcDiff(el, rowData) {
+            const pct = ttStdPrcDiffPct(rowData);
+            let html = '';
+            let bg = '';
+            let color = '';
+            if (pct !== null) {
+                if (pct > ttDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+                else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+                else { bg = '#28a745'; color = '#fff'; }
+                html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+            }
+            if (el) {
+                el.style.backgroundColor = bg;
+                el.style.color = color;
+            }
+            return html;
+        }
+        // The Sprc Dil Diff rule reads Std Prc and the TikTok price from these two columns.
+        window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+        window.ebayDiffLivePrice = function(d) { return parseFloat(d && d['TT Price']) || 0; };
+        /** Repaint every S PRC dependent cell from the rule now ON (switch, or a rule edit). No row writes, no scroll jump. */
+        function ttRefreshSpriceCells() {
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+            try {
+                (table.getRows('visible') || []).forEach(function(row) {
+                    try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+                });
+            } catch (e) { /* ignore */ }
+            if (typeof window.ttRefreshBlueBadge === 'function') {
+                try { window.ttRefreshBlueBadge(); } catch (e3) { /* ignore */ }
+            }
+        }
+        window.ttRefreshSpriceCells = ttRefreshSpriceCells;
+        // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
+        window.spriceOnRuleSwitched = function() { ttRefreshSpriceCells(); };
+        // A Sprc Dil edit (slab, Diff, LMP cap, CVR overlay) was saved: the cells repaint from the new rule; the server saves it too.
+        window.ebayOnDilRulesSaved = function() { ttRefreshSpriceCells(); };
+        // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
+        $(document).on('chStd:settled', function() { ttRefreshSpriceCells(); });
         window.ttDisplayedSprice = ttDisplayedSprice;
         /**
          * Ads% used by the SNROI column. TikTok 2 has no Channel Ads%, so listing TACOS% is not subtracted
@@ -3731,10 +3874,23 @@
                         }
                     },
                     {
+                        title: "Std Diff",
+                        field: "std_prc_diff",
+                        hozAlign: "center",
+                        width: 62,
+                        headerTooltip: "Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target SNROI), red = below −5%, green = the rest.",
+                        sorter: tabSortBlankLast(function(d) { return ttStdPrcDiffPct(d); }),
+                        formatter: function(cell) {
+                            return ttRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                        }
+                    },
+                    {
                         title: "Price",
                         field: "TT Price",
                         hozAlign: "center",
                         sorter: "number",
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         formatter: function(cell) {
                             const raw = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -4064,8 +4220,10 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
-                        sorter: "number",
-                        headerTooltip: "S PRC = Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), capped at LMP when SGROI at LMP ≥ 20%, Std Prc is the maximum. Saved and pushed by the server (twice daily + every 10 min). Blue triangle = S PRC ≠ Price. Red = S PRC ≥ LMP.",
+                        cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                        cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
+                        sorter: tabSortBlankLast(function(d) { if (ttIsParentRow(d)) return null; const v = ttDisplayedSprice(d); return v > 0 ? v : null; }),
+                        headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with the CVR overlay and Diff, Ship and TACOS% in the price, LMP cap by Dil band, Std Prc as the maximum) or Std prc vs dil (Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap). Turning one ON turns the other OFF. The server saves it right after a switch or rule edit and pushes twice daily + every 10 min. Clearance SKUs show C. Blue triangle = S PRC ≠ Price. Red = capped at LMP, orange = LMP above Std Prc, brown = capped at Std Prc. Hover for every rule used.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (ttIsParentRow(rowData)) return '';
@@ -4076,7 +4234,16 @@
                             let value = parseFloat(cell.getValue() || 0);
                             if (!(value > 0)) value = ttDisplayedSprice(rowData);
                             if (!(value > 0)) return '';
-                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
+                            // Cap marks (same rules as /amazon-tabulator-view), Sprc Dil only: red = LMP, orange = LMP above Std Prc, brown = Std Prc max.
+                            let flags = null;
+                            if (ttSpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function') {
+                                const rawDil = ttDilRawSprice(rowData);
+                                if (rawDil > 0) {
+                                    const lmpNow = ttRowLmp(rowData);
+                                    flags = chClr.capFlags({ raw: rawDil, shown: value, lmp: lmpNow, std: parseFloat(rowData.STANDARD_PRICE) || 0, sgroiAtLmp: ttSgroiAtPrice(rowData, lmpNow) });
+                                }
+                            }
+                            const cap = (!flags && window.SpriceLmpCap) ? SpriceLmpCap.apply(rowData, value) : null;
                             const hasCustom = rowData.has_custom_sprice;
                             const status = rowData.SPRICE_STATUS;
                             const live = ttLivePrice(rowData);
@@ -4089,9 +4256,11 @@
                             else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
                             const formatted = '$' + value.toFixed(2);
-                            const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                            const priceHtml = overLmp
-                                ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
+                            const overLmp = flags ? false : (cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp));
+                            const capTris = flags ? (flags.redTri + flags.reviewTri + flags.stdTri) : '';
+                            const capColor = flags && flags.color ? flags.color : '';
+                            const priceHtml = (overLmp || capColor)
+                                ? `<span style="color:${capColor || '#dc3545'};font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
                                 : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                             const redTri = overLmp
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Saved S PRC ≥ LMP $'
@@ -4101,7 +4270,7 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}${capTris}</span>`;
                         },
                         width: 92
                     },
@@ -5885,6 +6054,16 @@
             }
 
             // Wait for table to be built
+            // Std Diff follows the row when Std Prc or the Price changes.
+            table.on('rowUpdated', function(row) {
+                try {
+                    const c = row.getCell('std_prc_diff');
+                    if (!c) return;
+                    const el = c.getElement();
+                    el.innerHTML = ttRenderStdPrcDiff(el, row.getData());
+                } catch (e) { /* ignore */ }
+            });
+
             table.on('tableBuilt', function() {
                 buildColumnDropdown();
                 applyColumnVisibilityFromServer();

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\TiktokSprcDilAutoPushService;
+use App\Support\AmazonDilGroiRule;
 use App\Support\StdPrcVsDilPricer;
 use PHPUnit\Framework\TestCase;
 
@@ -172,5 +173,114 @@ class TiktokSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertSame(80.0, $out['sprice']);
         $this->assertTrue($out['lmp_capped']);
+    }
+
+    /** @return array<string, mixed> */
+    private function dilCtx(): array
+    {
+        return [
+            'rules' => [
+                ['key' => '0-0', 'label' => '0%', 'min' => 0.0, 'max' => 0.0, 'groi' => 40.0],
+                ['key' => '0.1-50', 'label' => '0.1–50%', 'min' => 0.1, 'max' => 50.0, 'groi' => 60.0],
+            ],
+            'cvr_adj' => ['down_lt' => 7, 'down_adj' => -5, 'up_gt' => 10, 'up_adj' => 5],
+            'diff_adj' => ['gt_pct' => 20, 'points' => 10],
+            'lmp_cap' => null,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function dilRow(array $over = []): array
+    {
+        return $this->row(array_merge(['price' => 100, 'cvr' => 8, 'tacos' => 0.0], $over));
+    }
+
+    private function dilTarget(array $row, string $channel = 'tiktok'): ?array
+    {
+        return (new TiktokSprcDilAutoPushService($channel))->computeTarget($row, null, 0.0, $this->dilCtx());
+    }
+
+    public function test_sprc_dil_price_is_the_slab_target_with_ship(): void
+    {
+        $out = $this->dilTarget($this->dilRow());
+
+        $this->assertNotNull($out);
+        // Target 60%: (20 x 1.6 + 5) / 0.80 = 46.25. Std 100 is far above, no LMP.
+        $this->assertEqualsWithDelta(46.25, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
+    }
+
+    public function test_sprc_dil_uses_the_listing_tacos_on_tiktok_but_not_on_tiktok_2(): void
+    {
+        // TACOS 5%: (20 x 1.6 + 5) / (0.80 - 0.05) = 49.33.
+        $one = $this->dilTarget($this->dilRow(['tacos' => 5.0]));
+        $this->assertNotNull($one);
+        $this->assertEqualsWithDelta(49.33, $one['sprice'], 0.001);
+
+        $two = $this->dilTarget($this->dilRow(['tacos' => 5.0]), 'tiktok2');
+        $this->assertNotNull($two);
+        $this->assertEqualsWithDelta(46.25, $two['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
+    {
+        // Std 100 vs TT Price 70 -> Diff 42.9% (> 20): Target 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
+        $out = $this->dilTarget($this->dilRow(['price' => 70]));
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(48.75, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_cvr_overlay_lowers_the_target_when_cvr_is_zero(): void
+    {
+        // CVR 0 (down) and below 7%: Adj -5 -> Target 55%. (20 x 1.55 + 5) / 0.80 = 45.00.
+        $out = $this->dilTarget($this->dilRow(['cvr' => 0]));
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(45.0, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_lmp_cap_lands_on_lmp_minus_the_dil_band_pct(): void
+    {
+        // SGROI at LMP 40 = (40 x 0.80 - 5 - 20) / 20 = 35% >= 20, and 46.25 is above 40.
+        $out = $this->dilTarget($this->dilRow(['lmp' => 40]));
+
+        $this->assertNotNull($out);
+        $pct = AmazonDilGroiRule::lmpCapReducePct(20.0, null);
+        $this->assertEqualsWithDelta(round(40 * (1 - $pct / 100), 2), $out['sprice'], 0.001);
+        $this->assertTrue($out['lmp_capped']);
+    }
+
+    public function test_sprc_dil_lmp_below_the_sgroi_floor_does_not_cap(): void
+    {
+        // SGROI at LMP 30 = (30 x 0.80 - 5 - 20) / 20 = -5% < 20: keep the Dil price.
+        $out = $this->dilTarget($this->dilRow(['lmp' => 30]));
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(46.25, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
+    }
+
+    public function test_sprc_dil_std_price_is_the_maximum(): void
+    {
+        $out = $this->dilTarget($this->dilRow(['standard_price' => 30]));
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(30.0, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_has_no_price_above_every_slab_for_clearance_or_without_inventory(): void
+    {
+        $this->assertNull($this->dilTarget($this->dilRow(['dil' => 60])));
+        $this->assertNull($this->dilTarget($this->dilRow(['clearance' => true])));
+        $this->assertNull($this->dilTarget($this->dilRow(['inv' => 0])));
+    }
+
+    public function test_without_a_dil_context_the_std_rule_still_prices(): void
+    {
+        $out = $this->target($this->row());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
     }
 }

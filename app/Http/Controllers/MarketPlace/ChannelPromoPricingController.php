@@ -296,6 +296,16 @@ class ChannelPromoPricingController extends Controller
         \App\Support\DobaRuleSpriceApply::dispatch($channel);
         // AliExpress: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
         \App\Support\AliexpressRuleSpriceApply::dispatch($channel);
+        // Faire: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
+        \App\Support\FaireRuleSpriceApply::dispatch($channel);
+        // PLS: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
+        \App\Support\PlsRuleSpriceApply::dispatch($channel);
+        // Shein: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
+        \App\Support\SheinRuleSpriceApply::dispatch($channel);
+        // Best Buy: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
+        \App\Support\BestBuyRuleSpriceApply::dispatch($channel);
+        // TikTok / TikTok 2: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
+        \App\Support\TiktokRuleSpriceApply::dispatch($channel);
 
         return response()->json([
             'success' => true,
@@ -2014,6 +2024,31 @@ class ChannelPromoPricingController extends Controller
         if (\App\Support\AliexpressRuleSpriceApply::handles($channel)
             && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
             \App\Support\AliexpressRuleSpriceApply::dispatch($channel);
+        }
+        // Faire: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
+        if (\App\Support\FaireRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\FaireRuleSpriceApply::dispatch($channel);
+        }
+        // PLS: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
+        if (\App\Support\PlsRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\PlsRuleSpriceApply::dispatch($channel);
+        }
+        // Shein: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
+        if (\App\Support\SheinRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\SheinRuleSpriceApply::dispatch($channel);
+        }
+        // Best Buy: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
+        if (\App\Support\BestBuyRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\BestBuyRuleSpriceApply::dispatch($channel);
+        }
+        // TikTok / TikTok 2: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
+        if (\App\Support\TiktokRuleSpriceApply::handles($channel)
+            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+            \App\Support\TiktokRuleSpriceApply::dispatch($channel);
         }
 
         // eBay 1/2/3: re-save S PRC from the new Dil rules right after this response (no push, no waiting).

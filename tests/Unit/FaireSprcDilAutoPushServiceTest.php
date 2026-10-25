@@ -153,4 +153,84 @@ class FaireSprcDilAutoPushServiceTest extends TestCase
         $this->assertLessThanOrEqual(100.0, $snroi);
         $this->assertGreaterThan(99.9, $snroi);
     }
+
+    /** @return array<string, mixed> */
+    private function dilCtx(): array
+    {
+        return [
+            'rules' => [
+                ['key' => '0-0', 'label' => '0%', 'min' => 0.0, 'max' => 0.0, 'groi' => 40.0],
+                ['key' => '0.1-50', 'label' => '0.1–50%', 'min' => 0.1, 'max' => 50.0, 'groi' => 60.0],
+            ],
+            'cvr_adj' => ['down_lt' => 7, 'down_adj' => -5, 'up_gt' => 10, 'up_adj' => 5],
+            'diff_adj' => ['gt_pct' => 20, 'points' => 10],
+            'lmp_cap' => null,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function dilRow(array $over = []): array
+    {
+        return $this->row(array_merge(['price' => 100, 'views' => 0, 'cvr' => 8, 'ship' => 4], $over));
+    }
+
+    public function test_sprc_dil_price_is_the_slab_target_with_no_ship(): void
+    {
+        $out = (new FaireSprcDilAutoPushService)->computeTarget($this->dilRow(), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        // Target 60%: 20 x 1.6 / 0.75 = 42.67. The Ship column (4) is not used in Sprc Dil. Std 100 is far above.
+        $this->assertEqualsWithDelta(42.67, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
+    {
+        // Std 100 vs Price 70 -> Diff 42.9% (> 20): Target 70%. 20 x 1.7 / 0.75 = 45.33.
+        $out = (new FaireSprcDilAutoPushService)->computeTarget($this->dilRow(['price' => 70]), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(45.33, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_cvr_overlay_only_applies_with_views(): void
+    {
+        $svc = new FaireSprcDilAutoPushService;
+
+        // CVR 5% < 7% (down): Adj -5 -> Target 55%. 20 x 1.55 / 0.75 = 41.33.
+        $withViews = $svc->computeTarget($this->dilRow(['views' => 200, 'cvr' => 5]), null, $this->dilCtx());
+        $this->assertNotNull($withViews);
+        $this->assertEqualsWithDelta(41.33, $withViews['sprice'], 0.001);
+
+        $noViews = $svc->computeTarget($this->dilRow(['views' => 0, 'cvr' => 5]), null, $this->dilCtx());
+        $this->assertNotNull($noViews);
+        $this->assertEqualsWithDelta(42.67, $noViews['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_std_price_is_the_maximum(): void
+    {
+        $out = (new FaireSprcDilAutoPushService)->computeTarget($this->dilRow(['standard_price' => 30]), null, $this->dilCtx());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(30.0, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_above_every_slab_clearance_and_no_inventory(): void
+    {
+        $svc = new FaireSprcDilAutoPushService;
+
+        $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 60]), null, $this->dilCtx()));
+        $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
+
+        $clearance = $svc->computeTarget($this->dilRow(['clearance' => true]), null, $this->dilCtx());
+        $this->assertNotNull($clearance);
+        $this->assertEqualsWithDelta(42.67, $clearance['sprice'], 0.001);
+    }
+
+    public function test_without_a_dil_context_the_std_rule_still_prices(): void
+    {
+        $out = (new FaireSprcDilAutoPushService)->computeTarget($this->row(), $this->pricer(), null);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+    }
 }

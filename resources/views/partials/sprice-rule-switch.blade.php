@@ -72,6 +72,21 @@
                 if (typeof window.wfRefreshSpriceCells === 'function') {
                     try { window.wfRefreshSpriceCells(); } catch (e8) { /* ignore */ }
                 }
+                if (typeof window.ttRefreshSpriceCells === 'function') {
+                    try { window.ttRefreshSpriceCells(); } catch (e14) { /* ignore */ }
+                }
+                if (typeof window.mercWsRefreshSpriceCells === 'function') {
+                    try { window.mercWsRefreshSpriceCells(); } catch (e15) { /* ignore */ }
+                }
+                if (typeof window.plsRefreshSpriceCells === 'function') {
+                    try { window.plsRefreshSpriceCells(); } catch (e16) { /* ignore */ }
+                }
+                if (typeof window.sheinRefreshSpriceCells === 'function') {
+                    try { window.sheinRefreshSpriceCells(); } catch (e17) { /* ignore */ }
+                }
+                if (typeof window.bestbuyRefreshSpriceCells === 'function') {
+                    try { window.bestbuyRefreshSpriceCells(); } catch (e18) { /* ignore */ }
+                }
                 if (typeof window.aeRefreshSpriceCells === 'function') {
                     try { window.aeRefreshSpriceCells(); } catch (e12) { /* ignore */ }
                 }

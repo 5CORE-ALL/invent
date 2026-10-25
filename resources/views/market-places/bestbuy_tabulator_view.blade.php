@@ -72,6 +72,7 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'bestbuy'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'bestbuy'])
         .sprice-lmp-alert {
             color: #dc3545;
             font-size: 11px;
@@ -240,6 +241,7 @@
                         <i class="fas fa-file-excel"></i>
                     </button>
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'bestbuy'])
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'bestbuy'])
 
                     <button id="mode-toggle-btn" class="btn btn-sm btn-secondary"
                         title="Click to cycle: Prc Mode → Decrease → Increase">
@@ -406,6 +408,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'bestbuy'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'bestbuy'])
 @endsection
 
 @section('script-bottom')
@@ -416,6 +419,9 @@
     window.CH_PROMO_ADS_FN = function() { return 0; };
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'bestbuy'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'bestbuy'])
+    @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
+    @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'bestbuy', 'temuRuleLiveLabel' => 'Price'])
     let table = null;
     let allTableData = [];
     const COLUMN_VIS_KEY = "bestbuy_tabulator_column_visibility";
@@ -541,9 +547,144 @@
         if (v > 0 && amz > 0 && v + 0.0001 < amz) return amz;
         return v;
     }
+    function bestbuySpriceRule() {
+        return (typeof window.spriceActiveRule === 'function') ? window.spriceActiveRule() : 'std';
+    }
+    /** Amz rule: S PRC is never below A Price (it wins over the LMP cap and the Std max). */
+    function bestbuyAmzFloor(data, price) {
+        const p = Math.round((parseFloat(price) || 0) * 100) / 100;
+        const amz = bestbuyAmazonPrice(data);
+        return (p > 0 && amz > 0 && p + 0.0001 < amz) ? amz : p;
+    }
+    /** SGROI at a price: ((price x take-home - Ship BB - LP) / LP) x 100. null without LP or price. */
+    function bestbuySgroiAtPrice(data, price) {
+        const p = parseFloat(price);
+        const lp = (typeof ebayDgLp === 'function') ? ebayDgLp(data) : (parseFloat(data && data.LP_productmaster) || 0);
+        if (!(p > 0) || !(lp > 0)) return null;
+        const ship = (typeof ebayDgShip === 'function') ? ebayDgShip(data) : (parseFloat(data && data.Ship_productmaster) || 0);
+        const margin = (typeof ebayDilTakehomeMargin === 'function') ? ebayDilTakehomeMargin(data) : 0.80;
+        return (((p * margin) - ship - lp) / lp) * 100;
+    }
+    /** Sprc Dil price before the LMP cap, the Std max and the Amz floor: Dil slab + Diff points, with Ship BB (no Ads, no CVR overlay). 0 when the rule gives none. */
+    function bestbuyDilRawSprice(data) {
+        if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
+        const meta = ebayDilGroiMetaForRow(data);
+        const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
+        return n > 0 ? Math.round(n * 100) / 100 : 0;
+    }
+    /**
+     * LMP cap, same as /amazon-tabulator-view: price at/above LMP and SGROI at LMP >= 20% -> S PRC = LMP x (1 - x%).
+     * x = the SKU's Dil band (Sprc Dil modal, LMP cap table) for Sprc Dil; 0 for Std prc vs dil (S PRC = LMP).
+     */
+    function bestbuyApplyLmpCap(data, price, reducePct) {
+        let out = Math.round((parseFloat(price) || 0) * 100) / 100;
+        if (!(out > 0)) return 0;
+        const lmp = bestbuyRowLmp(data);
+        if (lmp > 0 && out + 0.0001 >= lmp) {
+            const sg = bestbuySgroiAtPrice(data, lmp);
+            if (sg === null || sg >= 20) {
+                const pct = isFinite(Number(reducePct)) ? Number(reducePct) : 0;
+                out = Math.round(lmp * (1 - pct / 100) * 100) / 100;
+            }
+        }
+        return out;
+    }
+    /** Sprc Dil switch ON: the Dil price, the LMP cap by Dil band, then Std Prc as the maximum. (The Amz floor runs after.) */
+    function bestbuyCapDilSprice(data, raw) {
+        const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 2;
+        let out = bestbuyApplyLmpCap(data, raw, isFinite(pct) ? pct : 2);
+        const std = parseFloat(data && data.STANDARD_PRICE) || 0;
+        if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
+        return out;
+    }
+    /**
+     * The rule price of the ON switch worked out live: { pre, final }. pre = after the LMP cap and the Std max,
+     * final = after the Amz floor. null while the rules load, for a clearance SKU, or when the row has none.
+     */
+    function bestbuyLiveRuleParts(data) {
+        if (!data || isBestbuyParentRow(data)) return null;
+        try {
+            // Clearance SKUs show "C": no S PRC is saved or pushed for them.
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) return null;
+            let pre = 0;
+            if (bestbuySpriceRule() === 'dil') {
+                if (window._ebayDilRulesLoaded !== true) return null;
+                const raw = bestbuyDilRawSprice(data);
+                pre = raw > 0 ? bestbuyCapDilSprice(data, raw) : 0;
+            } else {
+                if (window.__chStdSettled !== true) return null;
+                const std = (typeof window.chStdPriceForRow === 'function') ? (Number(window.chStdPriceForRow(data)) || 0) : 0;
+                pre = std > 0 ? bestbuyApplyLmpCap(data, std, 0) : 0;
+            }
+            if (!(pre > 0)) return null;
+            return { pre: pre, final: bestbuyAmzFloor(data, pre) };
+        } catch (e) { /* rules not loaded yet */ }
+        return null;
+    }
+    function bestbuyLiveRuleSprice(data) {
+        const parts = bestbuyLiveRuleParts(data);
+        return parts ? parts.final : 0;
+    }
+    window.bestbuyLiveRuleSprice = bestbuyLiveRuleSprice;
+    /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
     function bestbuyDisplayedSprice(data) {
+        const live = bestbuyLiveRuleSprice(data);
+        if (live > 0) return live;
         return bestbuySavedSprice(data);
     }
+    function bestbuyShownSprice(data) { return bestbuyDisplayedSprice(data); }
+    function bestbuyAmzPrice(data) { return bestbuyAmazonPrice(data); }
+    /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
+    function bestbuyDiffCfgNow() {
+        const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
+        return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
+    }
+    /** Std Diff % = (Std Prc - Price) / Price x 100, same as /amazon-tabulator-view. null when either is missing. */
+    function bestbuyStdPrcDiffPct(rowData) {
+        if (!rowData || isBestbuyParentRow(rowData)) return null;
+        const std = parseFloat(rowData.STANDARD_PRICE) || 0;
+        const price = parseFloat(rowData['BB Price']) || 0;
+        if (!(std > 0) || !(price > 0)) return null;
+        return ((std - price) / price) * 100;
+    }
+    /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+    function bestbuyRenderStdPrcDiff(el, rowData) {
+        const pct = bestbuyStdPrcDiffPct(rowData);
+        let html = '';
+        let bg = '';
+        let color = '';
+        if (pct !== null) {
+            if (pct > bestbuyDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+            else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
+            else { bg = '#28a745'; color = '#fff'; }
+            html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
+        }
+        if (el) {
+            el.style.backgroundColor = bg;
+            el.style.color = color;
+        }
+        return html;
+    }
+    // The Sprc Dil Diff rule reads Std Prc and the Best Buy price from these two columns.
+    window.ebayDiffStdPrice = function(d) { return parseFloat(d && d.STANDARD_PRICE) || 0; };
+    window.ebayDiffLivePrice = function(d) { return parseFloat(d && d['BB Price']) || 0; };
+    /** Repaint every S PRC dependent cell from the rule now ON (switch, or a rule edit). No row writes, no scroll jump. */
+    function bestbuyRefreshSpriceCells() {
+        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+        try {
+            (table.getRows('visible') || []).forEach(function(row) {
+                try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+            });
+        } catch (e) { /* ignore */ }
+        try { if (typeof updateSummary === 'function') updateSummary(); } catch (e2) { /* ignore */ }
+    }
+    window.bestbuyRefreshSpriceCells = bestbuyRefreshSpriceCells;
+    // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
+    window.spriceOnRuleSwitched = function() { bestbuyRefreshSpriceCells(); };
+    // A Sprc Dil edit (slab, Diff, LMP cap) was saved: the cells repaint from the new rule; the server saves it too.
+    window.ebayOnDilRulesSaved = function() { bestbuyRefreshSpriceCells(); };
+    // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
+    $(document).on('chStd:settled', function() { bestbuyRefreshSpriceCells(); });
     function bestbuyRowSpriceForAlert(data) {
         return bestbuyDisplayedSprice(data);
     }
@@ -555,6 +696,8 @@
         const amz = bestbuyAmazonPrice(data);
         const shown = bestbuyDisplayedSprice(data);
         if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) > 0.015) return false;
+        const liveParts = bestbuyLiveRuleParts(data);
+        if (liveParts) return liveParts.pre + 0.0001 < amz;
         const flag = data && (data.AMZ_CAPPED === true || data.AMZ_CAPPED === 1 || data.AMZ_CAPPED === '1');
         if (bestbuyRawSavedSprice(data) + 0.0001 < amz) return true;
         if (!flag) return false;
@@ -1844,10 +1987,23 @@
                     }
                 },
                 {
+                    title: "Std Diff",
+                    field: "std_prc_diff",
+                    hozAlign: "center",
+                    width: 62,
+                    headerTooltip: "Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target SNROI), red = below −5%, green = the rest.",
+                    sorter: tabSortBlankLast(function(d) { return bestbuyStdPrcDiffPct(d); }),
+                    formatter: function(cell) {
+                        return bestbuyRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
+                    }
+                },
+                {
                     title: "Price",
                     field: "BB Price",
                     hozAlign: "center",
                     sorter: "number",
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('price', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                     headerTooltip: "Best Buy listed price from MCM OF21 (bestbuy_usa_products). Leftover Connect/sheet prices show 0.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -2176,9 +2332,11 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold (BB L30 = 0). CVR Disc is off (Best Buy has no session CVR). Std Prc is the maximum, capped at LMP, never below A Price (Amz). A Dil slab with a Target SNROI % prices S PRC from that SNROI. Clearance SKUs show C and are not priced. Saved and pushed by the server twice a day (4:40 AM / 8:40 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ BB Price. Red text = S PRC at or above LMP.",
+                    headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with Diff, Ship BB in the price, LMP cap by Dil band, Std Prc as the maximum) or Std prc vs dil. Both end with the Amz rule: never below A Price. Hover for every rule used. Std prc vs dil: Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold (BB L30 = 0). CVR Disc is off (Best Buy has no session CVR). Std Prc is the maximum, capped at LMP, never below A Price (Amz). A Dil slab with a Target SNROI % prices S PRC from that SNROI. Clearance SKUs show C and are not priced. Saved and pushed by the server twice a day (4:40 AM / 8:40 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ BB Price. Red text = S PRC at or above LMP.",
                     editable: false,
-                    sorter: "number",
+                    sorter: tabSortBlankLast(function(d) { if (isBestbuyParentRow(d)) return null; const v = bestbuyDisplayedSprice(d); return v > 0 ? v : null; }),
+                    cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
+                    cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isBestbuyParentRow(rowData)) return '';
@@ -2201,13 +2359,24 @@
                         if (!(value > 0)) return '';
                         const amzNow = bestbuyAmazonPrice(rowData);
                         const lmpBelowAmz = amzNow > 0 && lmp > 0 && lmp + 0.0001 < amzNow;
-                        const overLmp = !lmpBelowAmz && lmp > 0 && value + 0.0001 >= lmp;
+                        // Cap marks (same rules as /amazon-tabulator-view), Sprc Dil only: red = LMP, orange = LMP above Std Prc, brown = Std Prc max.
+                        // Skipped when the Amz floor set the price (A Price wins).
+                        let flags = null;
+                        if (bestbuySpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function' && !bestbuyHasAmzCap(rowData)) {
+                            const rawDil = bestbuyDilRawSprice(rowData);
+                            if (rawDil > 0) {
+                                flags = chClr.capFlags({ raw: rawDil, shown: value, lmp: lmp, std: parseFloat(rowData.STANDARD_PRICE) || 0, sgroiAtLmp: bestbuySgroiAtPrice(rowData, lmp) });
+                            }
+                        }
+                        const overLmp = flags ? false : (!lmpBelowAmz && lmp > 0 && value + 0.0001 >= lmp);
+                        const capTris = flags ? (flags.redTri + flags.reviewTri + flags.stdTri) : '';
+                        const capColor = flags && flags.color ? flags.color : '';
                         const redTri = overLmp
                             ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC at LMP $' + lmp.toFixed(2) + '"></i>'
                             : '';
                         const formatted = '$' + value.toFixed(2);
-                        const priceHtml = overLmp
-                            ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
+                        const priceHtml = (overLmp || capColor)
+                            ? `<span style="color:${capColor || '#dc3545'};font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
                             : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
@@ -2218,7 +2387,7 @@
                         const clearanceMark = isClearance
                             ? '<span class="bestbuy-sprice-clearance" title="Clearance" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${redTri}${blueTri}${capTris}</span>`;
                     },
                     width: 120
                 },
@@ -2865,6 +3034,16 @@
             });
             ParentExpand.bind();
         }
+
+        // Std Diff follows the row when Std Prc or the Price changes.
+        table.on('rowUpdated', function(row) {
+            try {
+                const c = row.getCell('std_prc_diff');
+                if (!c) return;
+                const el = c.getElement();
+                el.innerHTML = bestbuyRenderStdPrcDiff(el, row.getData());
+            } catch (e) { /* ignore */ }
+        });
 
         // Wait for table to be built
         table.on('tableBuilt', function() {
