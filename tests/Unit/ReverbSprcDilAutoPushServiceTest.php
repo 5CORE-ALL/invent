@@ -71,11 +71,19 @@ class ReverbSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->row(['standard_price' => 0]), $this->pricer()));
     }
 
-    public function test_clearance_sku_has_no_target_like_amazon(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
-        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
+        // LP 20, Ship 3, take-home 0.85, Ads 0, Clearance NROI 10%: (20 × 1.10 + 3) ÷ 0.85 = 29.41.
+        // No Std max (std 25), LMP cap (lmp 20) or discount applies.
+        $out = (new ReverbSprcDilAutoPushService)->computeTarget(
+            $this->row(['clearance' => true, 'clearance_nroi' => 10, 'standard_price' => 25, 'lmp' => 20]),
+            $this->pricer()
+        );
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(29.41, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
         $this->assertNull((new ReverbSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 70, 'ship' => 8, 'clearance' => true]),
+            $this->row(['clearance' => true, 'clearance_nroi' => 10, 'lp' => 0]),
             $this->pricer()
         ));
     }
@@ -221,14 +229,18 @@ class ReverbSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(40.00, $out['sprice'], 0.001);
     }
 
-    public function test_sprc_dil_works_without_a_std_price_and_skips_clearance_and_out_of_slab_skus(): void
+    public function test_sprc_dil_works_without_a_std_price_and_prices_clearance_and_skips_out_of_slab_skus(): void
     {
         $svc = new ReverbSprcDilAutoPushService;
         $noStd = $svc->computeTarget($this->dilRow(['standard_price' => 0]), null, $this->dilCtx());
         $this->assertNotNull($noStd);
         $this->assertEqualsWithDelta(43.75, $noStd['sprice'], 0.001);
 
-        $this->assertNull($svc->computeTarget($this->dilRow(['clearance' => true]), null, $this->dilCtx()));
+        // Clearance ignores the slab and Std max: the Clearance NROI% prices it in Sprc Dil mode too, with Ads 5%.
+        // (20 × 1.10 + 3) ÷ (0.85 − 0.05) = 31.25.
+        $clr = $svc->computeTarget($this->dilRow(['clearance' => true, 'clearance_nroi' => 10]), null, $this->dilCtx());
+        $this->assertNotNull($clr);
+        $this->assertEqualsWithDelta(31.25, $clr['sprice'], 0.001);
         $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
         $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 80]), null, $this->dilCtx()));
     }

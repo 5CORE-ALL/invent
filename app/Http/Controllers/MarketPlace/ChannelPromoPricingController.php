@@ -2000,19 +2000,19 @@ class ChannelPromoPricingController extends Controller
             && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
             \App\Support\PurchasingPowerRuleSpriceApply::dispatch($channel);
         }
-        // Wayfair: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no upload, no waiting).
-        if (\App\Support\WayfairRuleSpriceApply::handles($channel)
-            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+        // Wayfair: re-save S PRC from the new rules right after this response (no push, no waiting). Whichever rule is ON, because the
+        // Clearance Target NROI% in this modal prices clearance SKUs in both Std prc vs dil and Sprc Dil.
+        if (\App\Support\WayfairRuleSpriceApply::handles($channel)) {
             \App\Support\WayfairRuleSpriceApply::dispatch($channel);
         }
-        // Reverb: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
-        if (\App\Support\ReverbRuleSpriceApply::handles($channel)
-            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+        // Reverb: re-save S PRC from the new rules right after this response (no push, no waiting). Whichever rule is ON, because the
+        // Clearance Target NROI% in this modal prices clearance SKUs in both Std prc vs dil and Sprc Dil.
+        if (\App\Support\ReverbRuleSpriceApply::handles($channel)) {
             \App\Support\ReverbRuleSpriceApply::dispatch($channel);
         }
-        // TopDawg: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
-        if (\App\Support\TopDawgRuleSpriceApply::handles($channel)
-            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+        // TopDawg: re-save S PRC from the new rules right after this response (no push, no waiting). Whichever rule is ON, because the
+        // Clearance Target NROI% in this modal prices clearance SKUs in both Std prc vs dil and Sprc Dil.
+        if (\App\Support\TopDawgRuleSpriceApply::handles($channel)) {
             \App\Support\TopDawgRuleSpriceApply::dispatch($channel);
         }
         // Doba: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (save only, no waiting).

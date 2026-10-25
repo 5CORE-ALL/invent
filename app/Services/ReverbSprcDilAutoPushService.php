@@ -178,7 +178,7 @@ class ReverbSprcDilAutoPushService
 
     /**
      * Page S PRC formula (INV > 0 child SKUs): Std rule (or the SNROI Cap price), then LMP cap, Std is the maximum.
-     * Clearance SKUs have no target.
+     * Clearance SKUs are priced only from the Clearance Target NROI%.
      *
      * @param  array<string, mixed>  $row
      * With a $dilContext (the Sprc Dil switch is ON) the Sprc Dil modal rules price it instead.
@@ -192,9 +192,10 @@ class ReverbSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
-        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
+        // Clearance SKUs: only the Clearance Target NROI% (last row of the Sprc Dil modal) prices them, in Std prc vs dil and Sprc Dil
+        // alike: (LP × (1 + NROI%) + Ship) ÷ (take-home − Ads%). No slab, Diff, LMP or Std rule applies.
         if ((new StdPrcVsDilPricer([], 'reverb'))->isClearanceRow($row)) {
-            return null;
+            return $this->computeClearanceTarget($row);
         }
         if ($dilContext !== null) {
             return $this->computeDilTarget($row, $dilContext);
@@ -259,6 +260,60 @@ class ReverbSprcDilAutoPushService
             'ship' => $ship,
             'ads' => $adsPct,
         ];
+    }
+
+    /**
+     * Clearance price, no cap of any kind.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{sprice:float,lmp_capped:bool,uncapped:float,base:float,margin:float,lp:float,ship:float,ads:float}|null
+     */
+    protected function computeClearanceTarget(array $row): ?array
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.85;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        $ship = (float) ($row['ship'] ?? 0);
+        $adsPct = (float) ($row['ads_pct'] ?? 0);
+        // A row may carry its own clearance_nroi (tests); otherwise the saved Sprc Dil modal value.
+        $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi']) ? (float) $row['clearance_nroi'] : $this->clearanceNroi();
+        $denom = $margin - ($adsPct / 100);
+        if (! ($denom > 0)) {
+            return null;
+        }
+        $price = round(($lp * (1 + max(0.0, $nroi) / 100) + $ship) / $denom, 2);
+        if (! is_finite($price) || $price < 0.01) {
+            return null;
+        }
+
+        return [
+            'sprice' => $price,
+            'lmp_capped' => false,
+            'uncapped' => $price,
+            'base' => round((float) ($row['standard_price'] ?? 0), 2),
+            'margin' => $margin,
+            'lp' => $lp,
+            'ship' => $ship,
+            'ads' => $adsPct,
+        ];
+    }
+
+    /** Clearance Target NROI% saved with the Reverb Sprc Dil rules (last row of the modal). Default 0. */
+    protected function clearanceNroi(): float
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'reverb_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $n = $unpacked['clearance_nroi'] ?? null;
+
+        return (is_numeric($n) && (float) $n >= 0) ? (float) $n : 0.0;
     }
 
     /**

@@ -310,6 +310,20 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertNull($this->compute('wayfair', ['inv' => 10, 'lp' => 0, 'clearance' => true, 'clearance_nroi' => 10]));
     }
 
+    public function test_temu3_clearance_is_priced_only_from_the_clearance_nroi(): void
+    {
+        // Same Temu price formula as the Sprc Dil column: the S PRC that lands SGROI on the 10% clearance target. No slab or LMP cap.
+        $out = $this->compute('temu3', [
+            'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'lp' => 20, 'ship' => 3, 'lmp' => 25, 'live' => 40,
+            'clearance' => true, 'clearance_nroi' => 10,
+        ]);
+
+        $this->assertNotNull($out);
+        $expected = round(\App\Services\TemuShopifySalesService::spriceFromTargetSgroi(20.0, 3.0, 10.0, 0.0), 2);
+        $this->assertEqualsWithDelta($expected, $out['sprice'], 0.001);
+        $this->assertGreaterThan(25.0, $out['sprice']);
+    }
+
     public function test_other_channels_still_give_clearance_no_price(): void
     {
         $this->assertNull($this->compute('newegg', [

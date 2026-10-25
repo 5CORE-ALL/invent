@@ -1975,6 +1975,8 @@
         const sku = String(data.sku || data['(Child) sku'] || '').trim().toUpperCase();
         return sku.indexOf('PARENT ') === 0 || sku === 'PARENT' || sku.includes('PARENT');
     }
+    // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes; the cell shows the price and a red C.
+    window.CH_CLEARANCE_KEEPS_RULES = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'temu3'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'temu3'])
     @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'temu3'])
@@ -2126,6 +2128,12 @@
      */
     function temuSpriceCapResult(row, rawSprice, extra) {
         extra = extra || {};
+        // Clearance (Inv days clearance = YES): only the Clearance Target NROI% (last row of the Sprc Dil modal) prices it, in either
+        // mode, the same Temu price formula the Sprc Dil column uses. No discount, Diff, Std or LMP rule applies.
+        if (row && !isTemu3ParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) {
+            const cp = typeof window.ebayClearancePriceForRow === 'function' ? Number(window.ebayClearancePriceForRow(row)) || 0 : 0;
+            return { sprice: cp > 0 ? +cp.toFixed(2) : 0, labels: [], lmpAlert: false, lmp: 0 };
+        }
         const liveDiscounted = temuDiscountedPrice(row);
         const passed = parseFloat(rawSprice);
         let discounted = 0;

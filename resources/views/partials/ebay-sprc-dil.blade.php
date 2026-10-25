@@ -2166,6 +2166,10 @@
             return p > 0 ? p : 0;
         }
         window.ebayClearancePriceForRow = ebayClearancePriceForRow;
+        /** Clearance Target NROI% saved in this page's Sprc Dil modal. Null until the saved rules have loaded. */
+        window.ebayClearanceNroiValue = function() {
+            return window._ebayDilRulesLoaded === true ? ebayClearanceNroiNow() : null;
+        };
         function ebayPaintClearanceNroiText() {
             ebayClearanceNroi = ebayClearanceNroiNow();
             const el = document.querySelector('#ebay-dil-groi-tbody .ebay-dg-clearance-nroi');
@@ -3099,6 +3103,11 @@
                 window._ebayDilRulesLoaded = true;
                 // Clearance prices need the saved Clearance NROI%: repaint the visible rows once it is loaded (no push is queued).
                 if (EBAY_DIL_GROI_CHANNEL === 'newegg' || window.CH_CLEARANCE_KEEPS_RULES === true) ebayDgRefreshVisibleRows();
+                // New Temu One keeps per-row memos of its S Promo chain: drop them so clearance rows take the loaded NROI%.
+                if (window.NTO_CLEARANCE_NROI_PRICED === true && typeof window.temuClearCapMemo === 'function') {
+                    try { window.temuClearCapMemo(); } catch (e) { /* ignore */ }
+                    try { if (typeof table !== 'undefined' && table && typeof table.redraw === 'function') table.redraw(true); } catch (e) { /* ignore */ }
+                }
                 redrawEbaySprcDilColumn();
                 ebayScheduleSprcDilAutoApply({ persist: true, delay: 400 });
                 $('#ebay-dil-groi-status').text(
@@ -3269,6 +3278,9 @@
                 .on('input.ebayClearanceNroi change.ebayClearanceNroi', '#ebay-dil-groi-tbody .ebay-dg-clearance-groi', function() {
                     ebayPaintClearanceNroiText();
                     ebayClearanceNroi = ebayClearanceNroiNow();
+                    if (window.NTO_CLEARANCE_NROI_PRICED === true && typeof window.temuClearCapMemo === 'function') {
+                        try { window.temuClearCapMemo(); } catch (e) { /* ignore */ }
+                    }
                     ebayAfterDilGroiRulesChanged();
                     ebayScheduleDilGroiAutosave();
                 });

@@ -205,10 +205,7 @@ class NewTemutwoSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
-        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: the page shows C, nothing is saved or pushed.
-        if ((new StdPrcVsDilPricer([], 'newtemutwo'))->isClearanceRow($row)) {
-            return null;
-        }
+        $isClearance = (new StdPrcVsDilPricer([], 'newtemutwo'))->isClearanceRow($row);
         $std = (float) ($row['standard_price'] ?? 0);
         if (! ($std > 0)) {
             return null;
@@ -224,6 +221,12 @@ class NewTemutwoSprcDilAutoPushService
         }
         $lmp = (float) ($row['lmp'] ?? 0);
         $adsPct = (float) ($row['ads_percent'] ?? 0);
+
+        // Clearance SKUs (Inv days clearance = YES): only the Clearance Target NROI% (last row of the Sprc Dil modal) prices them,
+        // in Std prc vs dil and Sprc Dil alike. No slab, Diff, discount or LMP rule applies.
+        if ($isClearance) {
+            return $this->computeClearanceTarget($row, $std, $lp, $ship, $adsPct);
+        }
 
         // Sprc Dil switch ON (/new-temu2): price from the Target SNROI, the Std prc vs dil discounts are not used.
         $dilCtx = $this->dilContext();
@@ -310,6 +313,45 @@ class NewTemutwoSprcDilAutoPushService
     }
 
     /**
+     * Clearance: S Promo Prc = (LP × (1 + Clearance NROI%) + Ship + Std × Ads%) ÷ 0.95, nearest cent, at most Std − 12% $
+     * (the most any Temu 2 promo price can be). No LMP rule. Then Ship Disc and the pushed Promo Base Prc, like every other SKU.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{sprice:float,uncapped:float,lmp_capped:bool,snroi_capped:bool,labels:list<string>,base:float,promo_base:float,full:float}|null
+     */
+    protected function computeClearanceTarget(array $row, float $std, float $lp, float $ship, float $adsPct): ?array
+    {
+        if (! ($lp > 0) || ! ($std > 0)) {
+            return null;
+        }
+        // A row may carry its own clearance_nroi (tests); otherwise the saved Sprc Dil modal value.
+        $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi']) ? (float) $row['clearance_nroi'] : $this->clearanceNroi();
+        $liveBase = (float) ($row['live_base'] ?? 0);
+        $temuPrice = $liveBase > 0 ? TemuShopifySalesService::computeFullTemuPrice($liveBase) : 0.0;
+        $twelvePct = round($temuPrice * 0.12, 2);
+        $prc = round(((($lp * (1 + max(0.0, $nroi) / 100)) + $ship + ($std * $adsPct / 100)) / 0.95) * 100 - 0.00001) / 100;
+        $maxPromo = round($std - $twelvePct, 2);
+        if ($maxPromo > 0 && $prc > $maxPromo) {
+            $prc = $maxPromo;
+        }
+        if (! is_finite($prc) || $prc <= 0) {
+            return null;
+        }
+
+        return $this->finishTarget(round($prc, 2), round($prc, 2), false, false);
+    }
+
+    /** Clearance Target NROI% saved with the New Temu 2 Sprc Dil rules (last row of the modal). Default 0. */
+    protected function clearanceNroi(): float
+    {
+        $this->lmpCapConfig();
+
+        return $this->clearanceNroiCfg ?? 0.0;
+    }
+
+    private ?float $clearanceNroiCfg = null;
+
+    /**
      * Ship Disc ($2.99 when S Promo Prc ≤ $30), then the pushed Promo Base Prc. S PRC is already the Temu base
      * (Promo Base Prc), so it is pushed as-is — no further 0.88 / −$2.99 step.
      *
@@ -388,6 +430,8 @@ class NewTemutwoSprcDilAutoPushService
             $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
             $this->lmpCapCfg = $unpacked['lmp_cap'] ?? null;
             $this->diffAdjCfg = $unpacked['diff_adj'] ?? null;
+            $cn = $unpacked['clearance_nroi'] ?? null;
+            $this->clearanceNroiCfg = (is_numeric($cn) && (float) $cn >= 0) ? (float) $cn : 0.0;
         } catch (Throwable $e) {
             try {
                 Log::warning('[NewTemutwoSprcDilAutoPush] LMP cap / Diff rule load failed', ['error' => $e->getMessage()]);

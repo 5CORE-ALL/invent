@@ -77,11 +77,17 @@ class TopDawgSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->row(['standard_price' => 0]), $this->pricer()));
     }
 
-    public function test_clearance_sku_has_no_target_like_amazon(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
-        // Clearance SKUs show "C" in S PRC. No rule prices them and nothing is saved or pushed.
+        // LP 70, take-home 0.95, Clearance NROI 10%: 70 × 1.10 ÷ 0.95 = 81.05. No Ship, discount or Std max (std 50) applies.
+        $out = (new TopDawgSprcDilAutoPushService)->computeTarget(
+            $this->row(['lp' => 70, 'ship' => 8, 'standard_price' => 50, 'clearance' => true, 'clearance_nroi' => 10]),
+            $this->pricer()
+        );
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(81.05, $out['sprice'], 0.001);
         $this->assertNull((new TopDawgSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 70, 'ship' => 8, 'clearance' => true]),
+            $this->row(['lp' => 0, 'clearance' => true, 'clearance_nroi' => 10]),
             $this->pricer()
         ));
     }
@@ -174,10 +180,13 @@ class TopDawgSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(30.00, $capped['sprice'], 0.001);
     }
 
-    public function test_sprc_dil_skips_clearance_skus_no_inv_and_out_of_slab(): void
+    public function test_sprc_dil_prices_clearance_and_skips_no_inv_and_out_of_slab(): void
     {
         $svc = new TopDawgSprcDilAutoPushService;
-        $this->assertNull($svc->computeTarget($this->dilRow(['clearance' => true]), null, $this->dilCtx()));
+        // Clearance ignores the slab and Std max: the Clearance NROI% prices it in Sprc Dil mode too (20 × 1.10 ÷ 0.95 = 23.16).
+        $clr = $svc->computeTarget($this->dilRow(['clearance' => true, 'clearance_nroi' => 10, 'standard_price' => 20]), null, $this->dilCtx());
+        $this->assertNotNull($clr);
+        $this->assertEqualsWithDelta(23.16, $clr['sprice'], 0.001);
 
         $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
         $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 80]), null, $this->dilCtx()));

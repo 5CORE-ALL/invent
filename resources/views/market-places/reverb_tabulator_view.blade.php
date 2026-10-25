@@ -990,6 +990,8 @@
     let selectedSkus = new Set();
     // S PRC is saved + pushed by the server (reverb:sprc-dil-auto-push). The page only shows it.
     window.CH_STD_SERVER_OWNED = true;
+    // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes; the cell shows the price and a red C.
+    window.CH_CLEARANCE_KEEPS_RULES = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'reverb'])
@@ -1186,6 +1188,10 @@
     function reverbLiveRuleSprice(data) {
         if (!data || isReverbParentRow(data)) return 0;
         try {
+            // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No Diff, LMP or Std rule.
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
+                return typeof window.ebayClearancePriceForRow === 'function' ? window.ebayClearancePriceForRow(data) : 0;
+            }
             if (reverbSpriceRule() === 'dil') {
                 if (window._ebayDilRulesLoaded !== true) return 0;
                 const raw = reverbDilRawSprice(data);
@@ -3361,10 +3367,6 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isReverbParentRow(rowData)) return '';
-                        // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
-                        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
-                            return window.chClr ? chClr.markHtml(rowData) : '<span title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
-                        }
                         const value = reverbRowSpriceForAlert(rowData);
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
@@ -3376,7 +3378,16 @@
                         else if (status === 'error') bgColor = 'background-color: #f8d7da;';
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
-                        if (!(value > 0)) return '';
+                        const clrMark = window.chClr ? chClr.markHtml(rowData) : '';
+                        if (!(value > 0)) return clrMark;
+                        // Clearance: the Clearance Target NROI% price, no cap triangles. The red C follows the price.
+                        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
+                            const cBlue = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">$${value.toFixed(2)}</span>${clrMark}${cBlue}</span>`;
+                        }
 
                         // Cap marks (same rules as /amazon-tabulator-view), Sprc Dil only: red = LMP, orange = LMP above Std Prc, brown = Std Prc max.
                         let flags = null;

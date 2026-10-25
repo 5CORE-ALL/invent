@@ -57,6 +57,19 @@ class NewTemutwoSprcDilAutoPushServiceTest extends TestCase
         $this->assertSame(90.0, $out['base']);
     }
 
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
+    {
+        $svc = new NewTemutwoSprcDilAutoPushService();
+        // (20 × 1.10 + 3 + 100 × 2.2%) ÷ 0.95 = 28.63 (no live base, so 12% is $0). Ship Disc $2.99 as it is $30 or less → 25.64.
+        // No discount, Std max or LMP rule (lmp 20) applies.
+        $out = $svc->computeTarget($this->row(['clearance' => 'YES', 'clearance_nroi' => 10, 'lmp' => 20]), $this->pricer());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(25.64, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
+        $this->assertNull($svc->computeTarget($this->row(['clearance' => 'YES', 'clearance_nroi' => 10, 'lp' => 0]), $this->pricer()));
+    }
+
     public function test_lmp_cap_applies_when_sgroi_at_lmp_is_at_least_20(): void
     {
         $svc = new NewTemutwoSprcDilAutoPushService();

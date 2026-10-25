@@ -90,7 +90,7 @@ class DilRuleSpriceApplyService
      * Channels whose clearance SKUs (Inv days clearance = YES) are priced only from the Clearance Target NROI%, in Std prc vs dil and
      * Sprc Dil alike. Every other channel here still gives clearance SKUs no S PRC until its page is moved over.
      */
-    public const CLEARANCE_NROI_CHANNELS = ['wayfair'];
+    public const CLEARANCE_NROI_CHANNELS = ['wayfair', 'temu3'];
 
     private bool $applyStdPrcVsDil = false;
 

@@ -255,6 +255,8 @@
 <script>
     // S PRC is saved + pushed by the server (topdawg:sprc-dil-auto-push). The page only shows it.
     window.CH_STD_SERVER_OWNED = true;
+    // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes; the cell shows the price and a red C.
+    window.CH_CLEARANCE_KEEPS_RULES = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'topdawg'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'topdawg'])
     @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
@@ -315,6 +317,10 @@
     function tdLiveRuleSprice(data) {
         if (!data || tdIsParentRow(data)) return 0;
         try {
+            // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No Diff or Std rule.
+            if (window.chStdIsClearance && window.chStdIsClearance(data)) {
+                return typeof window.ebayClearancePriceForRow === 'function' ? window.ebayClearancePriceForRow(data) : 0;
+            }
             if (tdSpriceRule() === 'dil') {
                 if (window._ebayDilRulesLoaded !== true) return 0;
                 const raw = tdDilRawSprice(data);
@@ -337,8 +343,6 @@
         return tdSavedSprice(data);
     }
     function tdDisplayedSprice(data) {
-        // A SKU under clearance gets no S PRC from any rule (the cell shows C).
-        if (window.chStdIsClearance && window.chStdIsClearance(data)) return 0;
         return tdRawSprice(data);
     }
     function tdRowSpriceForAlert(data) {
@@ -1188,7 +1192,7 @@
                     formatter: c => {
                         const rowData = c.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
-                        if (window.chClr && chClr.isClearance(rowData)) return chClr.markHtml(rowData);
+                        const clrMark = window.chClr ? chClr.markHtml(rowData) : '';
                         let value = tdDisplayedSprice(rowData);
                         if (!(value > 0)) value = parseFloat(c.getValue() || 0);
                         const status = rowData.SPRICE_STATUS || '';
@@ -1201,7 +1205,15 @@
                         else if (status === 'pushed') { bg = 'background-color:#fff3cd;'; tip = ' title="Pushed — queued in TopDawg review"'; }
                         else if (status === 'failed') { bg = 'background-color:#f8d7da;'; tip = ' title="Push failed — see console / Laravel log"'; }
                         else if (status === 'applied' || value > 0) { bg = 'background-color:#d4edda;'; }
-                        if (!(value > 0)) return '';
+                        if (!(value > 0)) return clrMark;
+                        // Clearance: the Clearance Target NROI% price, no cap marks. The red C follows the price.
+                        if (window.chClr && chClr.isClearance(rowData)) {
+                            const cBlue = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><strong${tip} style="${bg}padding:2px 6px;border-radius:3px;">$${value.toFixed(2)}</strong>${clrMark}${cBlue}</span>`;
+                        }
                         const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                         const formatted = '$' + value.toFixed(2);
                         const priceHtml = overLmp
@@ -1224,7 +1236,7 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}${capTris}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clrMark}${redTri}${blueTri}${capTris}</span>`;
                     }
                 },
                 {

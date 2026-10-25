@@ -155,8 +155,15 @@
 @if($temuRuleHoverKind === 'nto')
         /** S Promo Prc on New Temu One / Two: every rule and exception behind the number. */
         function temuRuleExplainSprice(d) {
-            // A SKU under clearance (Inv days clearance = YES) gets no S PRC from any rule: no Dil, Std, Diff, LMP or Amz rule applies.
+            // A SKU under clearance (Inv days clearance = YES). New Temu One prices it from the Clearance Target NROI% only;
+            // a page that does not set NTO_CLEARANCE_NROI_PRICED still gives it no S PRC.
             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+                if (window.NTO_CLEARANCE_NROI_PRICED === true && typeof ntoRowSPriceAfterDisc === 'function') {
+                    const cp = Number(ntoRowSPriceAfterDisc(d)) || 0;
+                    return { title: 'S PRC — Clearance', sub: (d['(Child) sku'] || d.sku || ''), steps: [temuRuleStep('info', 'Clearance',
+                        'This SKU is on the Inv days clearance list (YES). Only the Clearance Target NROI% (last row of the Sprc Dil modal) applies: S Promo Prc = (LP x (1 + NROI%) + Temu Ship + Std x Ads%) / 0.95'
+                        + (cp > 0 ? ' = <b>$' + cp.toFixed(2) + '</b>' : '') + ', capped at Std Prc less S 12% $. No slab, Diff, discount or LMP rule is applied.')], notes: [], finalNote: '' };
+                }
                 return { title: 'S PRC — (Clearance)', sub: (d['(Child) sku'] || d.sku || ''), steps: [temuRuleStep('skip', 'Clearance',
                     'This SKU is on the Inv days clearance list (YES), so S PRC shows <b>C</b>. No rule applies and no S PRC is saved or pushed for it.')], notes: [], finalNote: '' };
             }
@@ -868,10 +875,12 @@
 @elseif($temuRuleHoverKind === 'temu3')
         /** S PRC on Temu 3: every rule and exception behind the number. */
         function temuRuleExplainSprice(d) {
-            // A SKU under clearance (Inv days clearance = YES) gets no S PRC from any rule: no Dil, Std, Diff, LMP or Amz rule applies.
+            // A SKU under clearance (Inv days clearance = YES): only the Clearance Target NROI% applies, no Dil, Std, Diff or LMP rule.
             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
-                return { title: 'S PRC — (Clearance)', sub: (d['(Child) sku'] || d.sku || ''), steps: [temuRuleStep('skip', 'Clearance',
-                    'This SKU is on the Inv days clearance list (YES), so S PRC shows <b>C</b>. No rule applies and no S PRC is saved or pushed for it.')], notes: [], finalNote: '' };
+                const cp = (typeof window.ebayClearancePriceForRow === 'function') ? (Number(window.ebayClearancePriceForRow(d)) || 0) : 0;
+                return { title: 'S PRC — Clearance', sub: (d['(Child) sku'] || d.sku || ''), steps: [temuRuleStep('info', 'Clearance',
+                    'This SKU is on the Inv days clearance list (YES). Only the Clearance Target NROI% (last row of the Sprc Dil modal) applies: the S PRC that lands SGROI on that target'
+                    + (cp > 0 ? ' = <b>$' + cp.toFixed(2) + '</b>' : '') + '. No discount, Diff, Std or LMP rule is applied.')], notes: [], finalNote: '' };
             }
             const steps = [];
             const notes = [];

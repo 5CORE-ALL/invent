@@ -1010,7 +1010,8 @@
      */
     function temuDiscountedPrice(row) {
         if (!row) return 0;
-        if (ntoDilRuleOn()) {
+        // Clearance SKUs follow the Target SNROI path in either mode, with the Clearance Target NROI% as the target.
+        if (ntoDilRuleOn() || ntoIsClearance(row)) {
             const dilPrc = ntoRowDilTargetPrc(row);
             const std = ntoRowSpriceStart(row);
             if (dilPrc == null || !(std > 0)) return 0;
@@ -1069,7 +1070,7 @@
         } else if (liveDiscounted > 0) {
             discounted = +liveDiscounted.toFixed(2);
         }
-        const lmp = extra.skip_lmp_cap ? 0 : +temuLmpRefPrice(row).toFixed(2);
+        const lmp = (extra.skip_lmp_cap || ntoIsClearance(row)) ? 0 : +temuLmpRefPrice(row).toFixed(2);
         if (!(discounted > 0) && chPromoInv(row) > 0 && lmp > 0) {
             discounted = lmp;
         }
@@ -2289,14 +2290,27 @@
      * that needs more than that holds there with no discount.
      */
     function ntoRowSDiscAmt(d) {
-        return ntoMemo(d, 'sDisc', function() { return ntoRowSDiscAmtCompute(d); });
+        return ntoMemo(d, ntoIsClearance(d) ? 'sDiscClr' : 'sDisc', function() { return ntoRowSDiscAmtCompute(d); });
     }
     /** The Sprc Dil switch is ON: S PRC comes from the Sprc Dil Target SNROI, not from Std prc vs dil. */
     function ntoDilRuleOn() {
         return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
     }
+    /**
+     * A SKU under clearance (Inv days clearance = YES): only the Clearance Target NROI% (last row of the Sprc Dil modal) prices it,
+     * in Std prc vs dil and Sprc Dil alike. No slab, CVR, Diff, discount or LMP rule applies. The shared hover reads this flag.
+     */
+    window.NTO_CLEARANCE_NROI_PRICED = true;
+    function ntoIsClearance(d) {
+        return !!d && !d.is_parent_summary && typeof window.chStdIsClearance === 'function' && !!window.chStdIsClearance(d);
+    }
     /** Target SNROI% for the row: its Dil slab (INV > 0 child SKUs) plus the CVR up / down overlay. Null when none. */
     function ntoRowSprcDilTarget(d) {
+        if (ntoIsClearance(d)) {
+            if (typeof ebayDgIsChild !== 'function' || !ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return null;
+            const c = typeof window.ebayClearanceNroiValue === 'function' ? window.ebayClearanceNroiValue() : null;
+            return (c != null && isFinite(Number(c))) ? Number(c) : null;
+        }
         if (typeof ebayDilGroiResolve !== 'function' || typeof ebayDilGroiApplyCvrAdj !== 'function'
             || typeof ebayDgIsChild !== 'function' || typeof ebayDgInv !== 'function') return null;
         return ntoMemo(d, 'dilTarget', function() {
@@ -2314,7 +2328,7 @@
      *   S Promo Prc = (LP × (1 + target/100) + Ship + Std × Ads%) / 0.95, rounded to the nearest cent.
      */
     function ntoRowDilTargetPrc(d) {
-        return ntoMemo(d, 'dilPrc', function() {
+        return ntoMemo(d, ntoIsClearance(d) ? 'dilPrcClr' : 'dilPrc', function() {
             const target = ntoRowSprcDilTarget(d);
             if (target == null) return null;
             const std = ntoRowSpriceStart(d);
@@ -2331,7 +2345,7 @@
     function ntoRowSDiscAmtCompute(d) {
         const s = ntoRowSpriceStart(d);
         if (!(s > 0)) return 0;
-        if (ntoDilRuleOn()) {
+        if (ntoDilRuleOn() || ntoIsClearance(d)) {
             // Same as Amazon: with Sprc Dil ON the Std prc vs dil discounts are not used. The target price replaces them.
             // Std Prc less S 12% $ is the most it can be, so a target that needs more holds there with no discount.
             const dilPrc = ntoRowDilTargetPrc(d);
@@ -2402,6 +2416,7 @@
      * (Temu take-home 0.95: (LMP × 0.95 − Temu Ship − LP) / LP). Otherwise blank, S Promo Prc stays as calculated.
      */
     function ntoRowLmpAlertPrc(d) {
+        if (ntoIsClearance(d)) return null;
         return ntoMemo(d, 'lmpAlert', function() {
             const promo = ntoRowSPromoPrcBase(d);
             const lmp = typeof temuLmpRefPrice === 'function' ? temuLmpRefPrice(d) : 0;
@@ -2417,7 +2432,7 @@
     }
     /** Shown S Promo Prc. When the LMP rule applies it is LMP × 0.98 (the LMP Alert Prc), as on Amazon. */
     function ntoRowSPriceAfterDisc(d) {
-        return ntoMemo(d, 'sPromo', function() {
+        return ntoMemo(d, ntoIsClearance(d) ? 'sPromoClr' : 'sPromo', function() {
             const base = ntoRowSPromoPrcBase(d);
             if (base == null) return null;
             const alert = ntoRowLmpAlertPrc(d);
@@ -2433,7 +2448,7 @@
     }
     /** S Promo Base Prc = S Promo Prc − S Ship Disc. */
     function ntoRowSPromoBasePrc(d) {
-        return ntoMemo(d, 'sPromoBase', function() {
+        return ntoMemo(d, ntoIsClearance(d) ? 'sPromoBaseClr' : 'sPromoBase', function() {
             const p = ntoRowSPriceAfterDisc(d);
             if (p == null) return null;
             return +(p - (ntoRowSShipDisc(d) || 0)).toFixed(2);
@@ -3063,6 +3078,7 @@
     }
     window.ntoRefreshLmpAlertBadge = ntoRefreshLmpAlertBadge;
     $(document).off('chStd:settled.ntoLmpAlert').on('chStd:settled.ntoLmpAlert', function() {
+        try { temuClearCapMemo(); } catch (e) { /* ignore */ }
         // The grid is redrawn right after this event, so count again once it has settled.
         // updateSummary() recounts every badge, the LMP alert one included, and is coalesced.
         updateSummary();
@@ -4192,7 +4208,9 @@
                         if (p == null) return '<span style="color: #6c757d;">—</span>';
                         const alert = ntoRowLmpAlertPrc(row);
                         let tip;
-                        if (alert != null) {
+                        if (ntoIsClearance(row)) {
+                            tip = 'Clearance: only the Clearance Target NROI% applies. S Promo Prc = $' + p.toFixed(2);
+                        } else if (alert != null) {
                             tip = 'LMP $' + (temuLmpRefPrice(row) || 0).toFixed(2) + ' × ' + (1 - ntoLmpReducePct(row) / 100).toFixed(3).replace(/0+$/, '') + ' = $' + p.toFixed(2);
                         } else {
                             const s = ntoRowSpriceStart(row) || 0;
