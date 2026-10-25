@@ -2149,6 +2149,17 @@
             if (isFinite(raw) && raw >= 0) return ebayDgRound2(raw);
             return isFinite(ebayClearanceNroi) ? ebayClearanceNroi : 0;
         }
+        /**
+         * Clearance rule: a SKU under clearance (Inv days clearance = YES) is priced only from this page's Clearance Target
+         * NROI% (the last row of the Sprc Dil modal): (LP x (1 + NROI/100) + Ship) / (take-home - Ads%). No slab, Diff, CVR,
+         * LMP, Std or A Price rule applies. 0 until the saved rules load, so a half-loaded page never prices at the default.
+         */
+        function ebayClearancePriceForRow(d) {
+            if (window._ebayDilRulesLoaded !== true) return 0;
+            const p = Number(ebaySpriceFromGroi(d, ebayClearanceNroiNow())) || 0;
+            return p > 0 ? p : 0;
+        }
+        window.ebayClearancePriceForRow = ebayClearancePriceForRow;
         function ebayPaintClearanceNroiText() {
             ebayClearanceNroi = ebayClearanceNroiNow();
             const el = document.querySelector('#ebay-dil-groi-tbody .ebay-dg-clearance-nroi');
@@ -3080,6 +3091,7 @@
                 }
                 renderEbayDilGroiModalTable();
                 window._ebayDilRulesLoaded = true;
+                if (EBAY_DIL_GROI_CHANNEL === 'newegg') ebayAfterDilGroiRulesChanged();
                 redrawEbaySprcDilColumn();
                 ebayScheduleSprcDilAutoApply({ persist: true, delay: 400 });
                 $('#ebay-dil-groi-status').text(
@@ -3249,6 +3261,8 @@
             $(document).off('input.ebayClearanceNroi change.ebayClearanceNroi', '#ebay-dil-groi-tbody .ebay-dg-clearance-groi')
                 .on('input.ebayClearanceNroi change.ebayClearanceNroi', '#ebay-dil-groi-tbody .ebay-dg-clearance-groi', function() {
                     ebayPaintClearanceNroiText();
+                    ebayClearanceNroi = ebayClearanceNroiNow();
+                    ebayAfterDilGroiRulesChanged();
                     ebayScheduleDilGroiAutosave();
                 });
             $(document).off('input.ebayDilGroi change.ebayDilGroi', '#ebay-dil-groi-tbody .ebay-dil-groi-input')

@@ -717,6 +717,8 @@
             return sheinSavedSprice(data);
         }
         function sheinShownSprice(data) { return sheinRuleSpriceRaw(data); }
+        /** Name used across the page and by the shared partials. */
+        function sheinVisibleSprice(data) { return sheinShownSprice(data); }
         /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
         function sheinDiffCfgNow() {
             const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;

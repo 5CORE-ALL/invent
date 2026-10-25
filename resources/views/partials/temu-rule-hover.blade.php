@@ -714,6 +714,14 @@
             const rowTitle = 'S PRC ' + temuRuleMoney(final);
             const rowSub = sku + ' · ' + (dilOn ? 'Sprc Dil rule' : 'Std prc vs dil rule');
 
+            if (SB_IS_NE && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)
+                && typeof window.ebayClearancePriceForRow === 'function') {
+                const cp = Number(window.ebayClearancePriceForRow(d)) || 0;
+                steps.push(temuRuleStep('info', 'Clearance',
+                    'This SKU is on the Inv days clearance list (YES). Only the Clearance Target NROI% (last row of the Sprc Dil modal) applies: (LP x (1 + NROI%) + Ship) / take-home'
+                    + (cp > 0 ? ' = <b>$' + cp.toFixed(2) + '</b>' : '') + '. No slab, Diff, LMP, Std or A Price rule is applied.'));
+                return { title: 'S PRC — Clearance', sub: rowSub, steps: steps, notes: notes, finalNote: '' };
+            }
             if (window.CH_CLEARANCE_KEEPS_RULES !== true && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
                 steps.push(temuRuleStep('skip', 'Clearance',
                     'This SKU is on the Inv days clearance list (YES), so S PRC shows <b>C</b>. No S PRC is saved or pushed for it.'));

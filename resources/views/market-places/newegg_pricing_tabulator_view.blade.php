@@ -514,8 +514,9 @@
     <script>
         // The SGROI/SNROI column here is (S PRC x take-home - Ship - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
         window.CH_PROMO_ADS_FN = function() { return 0; };
-        // A SKU under clearance (Inv days clearance = YES) gets no S PRC from any rule: no Std prc vs dil price, no Sprc Dil price,
-        // nothing saved or pushed. The S PRC cell shows C. Read by channel-std-prc-vs-dil and ebay-sprc-dil.
+        // A SKU under clearance (Inv days clearance = YES) is priced only from the Clearance Target NROI% (Sprc Dil modal, last row),
+        // in Std and Dil mode alike. No other rule applies. The S PRC cell shows the price with a red C.
+        // channel-std-prc-vs-dil and ebay-sprc-dil read CH_CLEARANCE_NO_RULES to skip their own rules for these rows.
         window.CH_CLEARANCE_NO_RULES = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'newegg'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
@@ -834,8 +835,11 @@
             return typeof window.chStdIsClearance === 'function' && !!window.chStdIsClearance(data);
         }
         function neShownSprice(data) {
-            // Clearance SKUs: no rule applies, so no S PRC (the cell shows C, nothing is saved or pushed).
-            if (neIsClearance(data)) return 0;
+            // Clearance SKUs: only the Clearance Target NROI% applies (last row of the Sprc Dil modal), in either rule mode.
+            // No slab, Diff, LMP, Std or A Price rule touches it. The cell shows the price with the red C.
+            if (neIsClearance(data)) {
+                return typeof window.ebayClearancePriceForRow === 'function' ? window.ebayClearancePriceForRow(data) : 0;
+            }
             return neApplyAmzFloor(data, neDisplayedSpriceRaw(data));
         }
         window.neShownSprice = neShownSprice;
@@ -881,6 +885,7 @@
 
         function neHasAmzFloor(data) {
             if (!data || !data.sku) return false;
+            if (neIsClearance(data)) return false;
             let discounted = 0;
             if (typeof ebayDilGroiMetaForRow === 'function') {
                 const meta = ebayDilGroiMetaForRow(data);
@@ -1832,7 +1837,16 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (!neIsParentRow(d) && neIsClearance(d)) {
-                                return '<span class="newegg-sprice-clearance" title="Clearance (Inv days clearance = YES): no rule applies, no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                                const cMark = '<span class="newegg-sprice-clearance" title="Clearance (Inv days clearance = YES): only the Clearance Target NROI% applies" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                                const cPrice = neShownSprice(d);
+                                if (!(cPrice > 0)) return cMark;
+                                const cLive = parseFloat(d.price) || 0;
+                                const cBlue = (cLive > 0 && Math.round(cPrice * 100) !== Math.round(cLive * 100))
+                                    ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $' + cPrice.toFixed(2) + ' ≠ Price $' + cLive.toFixed(2) + '"></i>'
+                                    : '';
+                                return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:3px;">'
+                                    + '<span style="font-weight:600;padding:2px 6px;border-radius:3px;">$' + cPrice.toFixed(2) + '</span>'
+                                    + cMark + cBlue + '</span>';
                             }
                             let value = neShownSprice(d);
                             if (!isFinite(value) || !(value > 0)) return '<span style="color:#bbb;">—</span>';
