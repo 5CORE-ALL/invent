@@ -478,10 +478,20 @@ class AlibabaApiService extends AliExpressApiService
                         'inventory_list' => $built['list'],
                     ]);
                     $failure = $this->icbuInventoryWriteError($raw);
+                    if ($failure !== null) {
+                        \Illuminate\Support\Facades\Log::warning('Alibaba inventory update rejected', [
+                            'product_id' => (string) $productId,
+                            'inventory_list' => $built['list'],
+                            'message' => $failure,
+                        ]);
+                    }
                 }
                 if ($failure === null) {
                     $updated += count($built['list']);
                 } else {
+                    if (($resolved['product_found'] ?? true) === false && stripos($failure, 'does not exist') !== false) {
+                        $failure .= ' Alibaba has no product '.$productId.' (deleted or the id changed) - re-sync the Alibaba link map.';
+                    }
                     foreach ($resolved['items'] as $item) {
                         $skuCode = (string) ($item['sku_code'] ?? '');
                         if (isset($built['failed'][$skuCode]) || ! in_array($skuCode, $built['sent'], true)) {
@@ -603,6 +613,8 @@ class AlibabaApiService extends AliExpressApiService
             'auth' => false,
             'nodes' => $nodes,
             'lookup' => $lookup,
+            // Alibaba answers an unknown/deleted product with only code + request ids.
+            'product_found' => array_diff(array_keys($product), ['code', 'request_id', '_trace_id_']) !== [],
         ];
     }
 
