@@ -978,6 +978,8 @@ return [
         'timeout' => (int) env('ALIBABA_TIMEOUT', 60),
         'resolve_ipv4' => filter_var(env('ALIBABA_RESOLVE_IPV4', true), FILTER_VALIDATE_BOOL),
         'http_proxy' => env('ALIBABA_HTTP_PROXY'),
+        // Warehouse code used when a listing has no stock rows yet (learned from other listings when possible).
+        'inventory_code' => env('ALIBABA_INVENTORY_CODE', 'US_LOCAL_01'),
         'shopify_source_name' => env('ALIBABA_SHOPIFY_SOURCE_NAME', 'alibaba'),
         'shopify_source_display_name' => env('ALIBABA_SHOPIFY_SOURCE_DISPLAY_NAME', 'Alibaba'),
         'shopify_source_url_template' => env(

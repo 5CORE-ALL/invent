@@ -145,7 +145,8 @@ class AlibabaInventoryUpdateTest extends TestCase
         $this->assertTrue($result['success'], $result['message'] ?? '');
         Http::assertSent(function ($request) {
             if (($request['method'] ?? '') === '/icbu/product/inventory/get') {
-                return ($request['product_id'] ?? '') === '160000043250883';
+                return ($request['product_id'] ?? '') === '160000043250883'
+                    && ($request['language'] ?? '') === 'ENGLISH';
             }
             if (($request['method'] ?? '') !== '/icbu/product/inventory/update') {
                 return false;
@@ -155,6 +156,45 @@ class AlibabaInventoryUpdateTest extends TestCase
             return ($list[0]['sku_id'] ?? null) === 58224724203874
                 && ($list[0]['inventory'] ?? null) === 2
                 && ($list[0]['operate'] ?? '') === 'sub';
+        });
+    }
+
+    public function test_inventory_push_starts_stock_on_a_listing_with_no_stock_rows(): void
+    {
+        Http::fake(function ($request) {
+            $method = (string) ($request['method'] ?? '');
+            if ($method === '/icbu/product/get') {
+                return Http::response(['product' => ['subject' => 'Camera Screw']]);
+            }
+            if ($method === '/icbu/product/inventory/get') {
+                return Http::response(['result' => ['data_list' => [], 'success' => true], 'code' => '0']);
+            }
+            if ($method === '/icbu/product/inventory/update') {
+                return Http::response(['result' => ['data' => true, 'success' => true], 'code' => '0']);
+            }
+
+            return Http::response(['message' => 'unexpected '.$method], 400);
+        });
+
+        $result = app(AlibabaApiService::class)->batchUpdateInventory([[
+            'product_id' => '10000043407354',
+            'sku_code' => '1/4" 3/8" Camera Screw 5Pcs',
+            'inventory' => 145,
+            'shopify_qty' => 145,
+        ]]);
+
+        $this->assertTrue($result['success'], $result['message'] ?? '');
+        $this->assertSame(1, $result['updated']);
+        Http::assertSent(function ($request) {
+            if (($request['method'] ?? '') !== '/icbu/product/inventory/update') {
+                return false;
+            }
+            $list = json_decode((string) $request['inventory_list'], true);
+
+            return ($list[0]['sku_id'] ?? null) === -1
+                && ($list[0]['inventory'] ?? null) === 145
+                && ($list[0]['operate'] ?? '') === 'plus'
+                && ($list[0]['inventory_code'] ?? '') === 'US_LOCAL_01';
         });
     }
 
