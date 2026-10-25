@@ -145,7 +145,8 @@ class AlibabaInventoryUpdateTest extends TestCase
         $this->assertTrue($result['success'], $result['message'] ?? '');
         Http::assertSent(function ($request) {
             if (($request['method'] ?? '') === '/icbu/product/inventory/get') {
-                return ($request['product_id'] ?? '') === '160000043250883';
+                return ($request['product_id'] ?? '') === '160000043250883'
+                    && ($request['language'] ?? '') === 'ENGLISH';
             }
             if (($request['method'] ?? '') !== '/icbu/product/inventory/update') {
                 return false;

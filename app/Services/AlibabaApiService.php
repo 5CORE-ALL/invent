@@ -643,7 +643,10 @@ class AlibabaApiService extends AliExpressApiService
             }
 
             if ($slots === []) {
-                $failed[$skuCode] = 'Alibaba warehouse code was not found, so inventory was not pushed.';
+                $seen = is_array($lookup['raw'] ?? null) && $lookup['raw'] !== []
+                    ? ' Alibaba inventory lookup returned: '.mb_substr((string) json_encode($lookup['raw'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0, 300)
+                    : '';
+                $failed[$skuCode] = 'Alibaba warehouse code was not found, so inventory was not pushed.'.$seen;
                 continue;
             }
 
@@ -905,6 +908,7 @@ class AlibabaApiService extends AliExpressApiService
     {
         $raw = $this->callRestGateway('/icbu/product/inventory/get', [
             'product_id' => $productId,
+            'language' => 'ENGLISH',
         ]);
         if ($this->isAuthError($raw)) {
             return ['items' => [], 'error' => (string) ($raw['message'] ?? 'Alibaba auth failed.'), 'auth' => true];
