@@ -330,6 +330,8 @@
 <script>
     // The SNROI% column here is (S PRC x take-home - Ship - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
     window.CH_PROMO_ADS_FN = function() { return 0; };
+    // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes; the cell shows the price and a red C.
+    window.CH_CLEARANCE_KEEPS_RULES = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'macys'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
@@ -406,6 +408,10 @@
     function macysLiveRuleSprice(data) {
         if (!data || isMacysParentRow(data)) return 0;
         try {
+            // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No Diff, LMP, Std or Amz rule.
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
+                return typeof window.ebayClearancePriceForRow === 'function' ? window.ebayClearancePriceForRow(data) : 0;
+            }
             if (macysDilOn()) {
                 if (window._ebayDilRulesLoaded !== true) return 0;
                 const raw = macysUncappedDil(data);
@@ -463,6 +469,7 @@
     /** Dil / rule S PRC is below A Price and the shown S PRC was raised to Amazon. */
     function macysHasAmzCap(data) {
         if (isMacysParentRow(data)) return false;
+        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) return false;
         let discounted = macysUncappedDil(data);
         if (discounted > 0 && macysDilOn()) discounted = macysCapDilSprice(data, discounted);
         const amz = macysAmazonPriceForRow(data);

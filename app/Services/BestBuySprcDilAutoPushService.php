@@ -26,7 +26,7 @@ use Throwable;
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI instead of the discounts.
  *  Clearance SKUs show "C" in S PRC: nothing is saved or pushed (same as Amazon).
- *  Std Prc is the maximum, then the LMP cap (SGROI at LMP ≥ 20%).
+ *  No Std Prc maximum. The LMP cap (SGROI at LMP ≥ 20%) applies.
  *  Last, the Amz rule: S PRC never sits below the Amazon price (A Price). That floor wins over the LMP cap.
  *  Ship BB is part of profit (same as the page). Best Buy has no ads, so none is used.
  *  Never pushes a price whose SNROI is below 0 (NegativeSnroiPushGuard). The S PRC is still saved.
@@ -70,11 +70,11 @@ class BestBuySprcDilAutoPushService
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('bestbuy');
 
-        // The page switch decides the S PRC rule: Std prc vs dil, or the Sprc Dil modal (slab + Diff + LMP cap by Dil band + Std max).
+        // The page switch decides the S PRC rule: Std prc vs dil, or the Sprc Dil modal (slab + Diff + LMP cap by Dil band, no Std max).
         $dilContext = SpriceActiveRule::usesStdPrc(self::CHANNEL) ? null : $this->loadDilContext();
 
         $this->log($logger, $dilContext !== null
-            ? 'Best Buy S PRC rule = Sprc Dil (Dil slab Target SNROI + Diff, Ship BB in the price, LMP cap by Dil band, Std max, Amz rule last)'
+            ? 'Best Buy S PRC rule = Sprc Dil (Dil slab Target SNROI + Diff, Ship BB in the price, LMP cap by Dil band, no Std max, Amz rule last)'
             : 'Loaded Best Buy Std prc vs dil (bestbuy_std_prc_vs_dil) → Age/Dil/B/0 Sold/Rev Disc + LMP cap + Amz rule (CVR off)');
 
         $stats = [
@@ -290,11 +290,11 @@ class BestBuySprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule, Std is the maximum, LMP cap,
+     * Page S PRC formula (INV > 0 child SKUs): Std rule (no Std maximum), LMP cap,
      * then the Amz rule (never below A Price). Ship BB included, no ads.
      *
      * With a $dilContext (the Sprc Dil switch is ON) the Sprc Dil modal rules price it instead: Dil slab Target SNROI
-     * + Diff points, LMP cap = LMP x (1 - x%) by Dil band, Std Prc as the maximum, and the Amz rule last.
+     * + Diff points, LMP cap = LMP x (1 - x%) by Dil band, no Std Prc maximum, and the Amz rule last.
      *
      * @param  array<string, mixed>  $row
      * @param  array{rules:list<array<string,mixed>>,diff_adj:?array,lmp_cap:?array}|null  $dilContext
@@ -356,12 +356,12 @@ class BestBuySprcDilAutoPushService
             return null;
         }
 
-        // LMP cap (SGROI at LMP ≥ 20%), Std Prc is the maximum.
-        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, max($std, $effective));
+        // LMP cap (SGROI at LMP ≥ 20%). No Std Prc maximum on Best Buy: only the Amz floor below limits the price.
+        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, 0.0);
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;
-        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp(round($effective, 2), 0.0, max($std, $effective));
+        $uncapped = round($effective, 2);
 
         // Amz rule: S PRC is never below the Amazon price (A Price). It wins over the LMP cap.
         $amz = round((float) ($row['amz'] ?? 0), 2);
@@ -392,7 +392,7 @@ class BestBuySprcDilAutoPushService
      *  1. Dil slab Target SNROI (no slab for the Dil % = no price). No CVR overlay: Best Buy has no session CVR.
      *  2. + Diff points: (Std Prc - Price) / Price above the Diff threshold.
      *  3. price = (LP x (1 + target%) + Ship BB) / take-home, no Ads.
-     *  4. LMP cap (SGROI at LMP >= 20%): LMP x (1 - x%) by the SKU's Dil band, then Std Prc as the maximum.
+     *  4. LMP cap (SGROI at LMP >= 20%): LMP x (1 - x%) by the SKU's Dil band. No Std Prc maximum.
      *  5. Amz rule last: never below A Price (wins over the LMP cap).
      *
      * @param  array<string, mixed>  $row
@@ -430,7 +430,7 @@ class BestBuySprcDilAutoPushService
             return null;
         }
         $reducePct = AmazonDilGroiRule::lmpCapReducePct($dil, $ctx['lmp_cap'] ?? null);
-        $capped = round(AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, $std, $reducePct), 2);
+        $capped = round(AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, 0.0, $reducePct), 2);
         $lmpCapped = $lmp > 0 && ($raw - $capped) > 0.009 && abs($capped - round($lmp * (1 - $reducePct / 100), 2)) <= 0.02;
 
         $amz = round((float) ($row['amz'] ?? 0), 2);
@@ -445,7 +445,7 @@ class BestBuySprcDilAutoPushService
 
         return [
             'sprice' => round($final, 2),
-            'uncapped' => $std > 0 ? round(min($raw, $std), 2) : $raw,
+            'uncapped' => $raw,
             'amz_capped' => $amzCapped,
             'lmp_capped' => $lmpCapped,
             'base' => $std,

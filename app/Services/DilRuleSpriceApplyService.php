@@ -83,6 +83,15 @@ class DilRuleSpriceApplyService
     /** Diff rule (gt_pct / points) saved in the Sprc Dil modal; null = default 20% / +10. */
     private ?array $diffAdj = null;
 
+    /** Clearance Target NROI% saved in this channel's Sprc Dil modal (last row). Null until the store is loaded. */
+    private ?float $clearanceNroi = null;
+
+    /**
+     * Channels whose clearance SKUs (Inv days clearance = YES) are priced only from the Clearance Target NROI%, in Std prc vs dil and
+     * Sprc Dil alike. Every other channel here still gives clearance SKUs no S PRC until its page is moved over.
+     */
+    public const CLEARANCE_NROI_CHANNELS = ['wayfair'];
+
     private bool $applyStdPrcVsDil = false;
 
     public function __construct(string $channel = 'newegg')
@@ -264,9 +273,26 @@ class DilRuleSpriceApplyService
      */
     public function computeTarget(array $row, array $dilRules, ?array $cvrAdj, float $margin): ?array
     {
-        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: nothing is saved or pushed.
         if ((new \App\Support\StdPrcVsDilPricer([], $this->channel))->isClearanceRow($row)) {
-            return null;
+            // Channels not moved over yet: no S PRC from any rule, nothing is saved or pushed.
+            if (! in_array($this->channel, self::CLEARANCE_NROI_CHANNELS, true)) {
+                return null;
+            }
+            // Only the Clearance Target NROI% prices it: (LP × (1 + NROI%) + Ship) ÷ take-home. No slab, Diff, LMP, Std or Amz rule.
+            $lp = (float) ($row['lp'] ?? 0);
+            if (! ($lp > 0) || ! ($margin > 0)) {
+                return null;
+            }
+            $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi'])
+                ? (float) $row['clearance_nroi']
+                : (float) ($this->clearanceNroi ?? 0.0);
+            $ship = ! empty($this->channelConfig()['exclude_ship']) ? 0.0 : (float) ($row['ship'] ?? 0);
+            $price = $this->spriceFromGroi($lp, $ship, max(0.0, $nroi), $margin);
+            if (! is_finite($price) || $price < 0.01) {
+                return null;
+            }
+
+            return ['sprice' => round($price, 2), 'groi' => max(0.0, $nroi)];
         }
         if ($this->applyStdPrcVsDil) {
             if ($margin > 0 && ! is_numeric($row['margin'] ?? null)) {
@@ -901,6 +927,8 @@ class DilRuleSpriceApplyService
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
         $this->lmpCap = $unpacked['lmp_cap'] ?? null;
         $this->diffAdj = $unpacked['diff_adj'] ?? null;
+        $cn = $unpacked['clearance_nroi'] ?? null;
+        $this->clearanceNroi = (is_numeric($cn) && (float) $cn >= 0) ? (float) $cn : 0.0;
         if ($unpacked['rules'] === []) {
             $unpacked['rules'] = AmazonDilGroiRule::defaultsForChannel($this->channel);
         } elseif (AmazonDilGroiRule::usesZeroToZero($this->channel)) {

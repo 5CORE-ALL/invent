@@ -159,9 +159,18 @@ class MacysRuleSpriceApplyService
      */
     public function computeTarget(array $row, array $dilRules, float $margin, ?array $dilContext = null): ?array
     {
-        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: nothing is saved or pushed.
+        // Clearance SKUs (Inv days clearance = YES): only the Clearance Target NROI% (last row of the Sprc Dil modal) prices them,
+        // in Std prc vs dil and Sprc Dil alike: (LP × (1 + NROI%) + Ship) ÷ take-home. No slab, Diff, LMP, Std or A Price rule applies.
         if ((new \App\Support\StdPrcVsDilPricer([], 'macys'))->isClearanceRow($row)) {
-            return null;
+            $lp = (float) ($row['lp'] ?? 0);
+            if (! ($lp > 0) || ! ($margin > 0)) {
+                return null;
+            }
+            // A row may carry its own clearance_nroi (tests); otherwise the saved Sprc Dil modal value.
+            $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi']) ? (float) $row['clearance_nroi'] : $this->clearanceNroi();
+            $price = AmazonDilGroiRule::suggestedPrice($lp, (float) ($row['ship'] ?? 0), $nroi, 0.0, $margin);
+
+            return ($price !== null && $price >= 0.01) ? ['sprice' => round($price, 2)] : null;
         }
         if ($this->applyStdPrcVsDil) {
             // SNROI Cap: judge the same number as the page's SNROI% column, (S PRC × take-home − Ship − LP) ÷ LP.
@@ -377,6 +386,16 @@ class MacysRuleSpriceApplyService
         }
 
         return AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+    }
+
+    /** Clearance Target NROI% saved with the Macys Sprc Dil rules (last row of the modal). Default 0. */
+    protected function clearanceNroi(): float
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'macys_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $n = $unpacked['clearance_nroi'] ?? null;
+
+        return (is_numeric($n) && (float) $n >= 0) ? (float) $n : 0.0;
     }
 
     /**

@@ -382,10 +382,12 @@
 @elseif($temuRuleHoverKind === 'macys')
         /** S PRC on Macys: every rule and exception behind the number. */
         function temuRuleExplainSprice(d) {
-            // A SKU under clearance (Inv days clearance = YES) gets no S PRC from any rule: no Dil, Std, Diff, LMP or Amz rule applies.
+            // A SKU under clearance (Inv days clearance = YES): only the Clearance Target NROI% applies, no Dil, Std, Diff, LMP or Amz rule.
             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
-                return { title: 'S PRC — (Clearance)', sub: (d['(Child) sku'] || d.sku || ''), steps: [temuRuleStep('skip', 'Clearance',
-                    'This SKU is on the Inv days clearance list (YES), so S PRC shows <b>C</b>. No rule applies and no S PRC is saved or pushed for it.')], notes: [], finalNote: '' };
+                const cp = (typeof window.ebayClearancePriceForRow === 'function') ? (Number(window.ebayClearancePriceForRow(d)) || 0) : 0;
+                return { title: 'S PRC — Clearance', sub: (d['(Child) sku'] || d.sku || ''), steps: [temuRuleStep('info', 'Clearance',
+                    'This SKU is on the Inv days clearance list (YES). Only the Clearance Target NROI% (last row of the Sprc Dil modal) applies: (LP x (1 + NROI%) + Ship) / take-home'
+                    + (cp > 0 ? ' = <b>$' + cp.toFixed(2) + '</b>' : '') + '. No slab, Diff, LMP, Std or A Price rule is applied.')], notes: [], finalNote: '' };
             }
             const steps = [];
             const notes = [];
@@ -569,14 +571,7 @@
                 }
                 steps.push(temuRuleStep('skip', n + ' · LMP', 'Purchasing Power has no LMP, so no LMP cap applies.'));
                 n++;
-                if (!(std > 0)) {
-                    steps.push(temuRuleStep('skip', n + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
-                } else if (price > std + 0.0001) {
-                    steps.push(temuRuleStep('ok', n + ' · Std Prc maximum', 'Price ' + temuRuleMoney(price) + ' is above Std Prc ' + temuRuleMoney(std) + ' → held at <b>' + temuRuleMoney(std) + '</b>.'));
-                    price = std;
-                } else {
-                    steps.push(temuRuleStep('skip', n + ' · Std Prc maximum', 'Price is within Std Prc ' + temuRuleMoney(std) + '. Not capped.'));
-                }
+                steps.push(temuRuleStep('skip', n + ' · Std Prc maximum', 'Purchasing Power has no Std Prc maximum. Only the A Price floor applies.'));
                 n++;
             } else {
                 const base = (typeof window.chStdPriceForRow === 'function') ? (Number(window.chStdPriceForRow(d)) || 0) : 0;
@@ -776,7 +771,10 @@
             let price = ((SB_IS_B2B || SB_IS_MERC) && !dilOn) ? base : (afterLmpOnly != null ? afterLmpOnly : base);
 
             // Std Prc maximum: Sprc Dil prices from a Target SNROI, so Std Prc caps it. Std prc vs dil may price above Std on purpose.
-            if (!(std > 0)) {
+            if (SB_IS_BB) {
+                // Best Buy has no Std Prc maximum: only the Amz rule (never below A Price) limits the price.
+                steps.push(temuRuleStep('skip', (nS + 1) + ' · Std Prc maximum', 'Best Buy has no Std Prc maximum. Only the A Price (Amz) floor applies.'));
+            } else if (!(std > 0)) {
                 steps.push(temuRuleStep('skip', (nS + 1) + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
             } else if (dilOn && price > std + 0.0001) {
                 steps.push(temuRuleStep('ok', (nS + 1) + ' · Std Prc maximum', 'Price ' + temuRuleMoney(price) + ' is above Std Prc ' + temuRuleMoney(std) + ' → held at <b>' + temuRuleMoney(std) + '</b>.'));

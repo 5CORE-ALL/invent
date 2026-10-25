@@ -296,6 +296,27 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         }
     }
 
+    public function test_wayfair_clearance_is_priced_only_from_the_clearance_nroi(): void
+    {
+        // LP 20, Ship excluded on Wayfair, take-home 0.80, Clearance NROI 10%: (20 × 1.10) ÷ 0.80 = 27.50.
+        // The slab, Diff rule and Std max (std 25) do not touch it.
+        $out = $this->compute('wayfair', [
+            'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'lp' => 20, 'ship' => 6, 'live' => 40, 'std_price' => 25,
+            'clearance' => true, 'clearance_nroi' => 10,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(27.50, $out['sprice'], 0.001);
+        $this->assertNull($this->compute('wayfair', ['inv' => 10, 'lp' => 0, 'clearance' => true, 'clearance_nroi' => 10]));
+    }
+
+    public function test_other_channels_still_give_clearance_no_price(): void
+    {
+        $this->assertNull($this->compute('newegg', [
+            'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'lp' => 20, 'ship' => 0, 'clearance' => true, 'clearance_nroi' => 10,
+        ]));
+    }
+
     /**
      * @param  array<string, mixed>  $row
      * @return array{sprice: float, groi: float}|null

@@ -3097,7 +3097,8 @@
                 }
                 renderEbayDilGroiModalTable();
                 window._ebayDilRulesLoaded = true;
-                if (EBAY_DIL_GROI_CHANNEL === 'newegg') ebayAfterDilGroiRulesChanged();
+                // Clearance prices need the saved Clearance NROI%: repaint the visible rows once it is loaded (no push is queued).
+                if (EBAY_DIL_GROI_CHANNEL === 'newegg' || window.CH_CLEARANCE_KEEPS_RULES === true) ebayDgRefreshVisibleRows();
                 redrawEbaySprcDilColumn();
                 ebayScheduleSprcDilAutoApply({ persist: true, delay: 400 });
                 $('#ebay-dil-groi-status').text(

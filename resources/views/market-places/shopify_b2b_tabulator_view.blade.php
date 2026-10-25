@@ -691,6 +691,9 @@
         const sku = String(row['(Child) sku'] || '').toUpperCase();
         return sku.includes('PARENT');
     }
+    // A clearance SKU (Inv days clearance = YES) is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in Std prc vs dil
+    // and Sprc Dil alike: (LP x (1 + NROI%)) / 0.95 (no Ship, no Ads). No slab, Diff, LMP or Std rule applies. The cell shows the price and a red C.
+    window.CH_CLEARANCE_KEEPS_RULES = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2b', 'channelPromoTakehome' => 0.95])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shopify_b2b'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
@@ -761,6 +764,9 @@
     }
     function shopifyB2bDisplayedSprice(data) {
         if (!data || isShopifyB2bParentRow(data)) return 0;
+        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
+            return typeof window.ebayClearancePriceForRow === 'function' ? window.ebayClearancePriceForRow(data) : 0;
+        }
         if (shopifyB2bSpriceRule() === 'dil') {
             // Sprc Dil: the rule price (Dil slab + CVR + Diff), then the LMP cap by Dil band, then Std Prc as the maximum.
             const raw = shopifyB2bDilRawSprice(data);

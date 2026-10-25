@@ -341,22 +341,19 @@
         }
         /** Take-home % for the Dil price: the page's Purchasing Power margin. */
         function ppMarginOf() { return PP_MARGIN > 0 ? PP_MARGIN : 0.65; }
-        /** Sprc Dil price before the Std Prc maximum and the A Price floor: Dil slab + Diff points. 0 when the rule gives none. */
+        /** Sprc Dil price before the A Price floor (no Std Prc maximum): Dil slab + Diff points. 0 when the rule gives none. */
         function ppDilRawSprice(data) {
             if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
             const meta = ebayDilGroiMetaForRow(data);
             const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
             return n > 0 ? Math.round(n * 100) / 100 : 0;
         }
-        /** Sprc Dil, no LMP (Purchasing Power has no LMP data): Std Prc is the maximum. */
+        /** Sprc Dil, no LMP (Purchasing Power has no LMP data) and no Std Prc maximum: the Dil price as is (the A Price floor runs after). */
         function ppCapDilSprice(data, raw) {
-            let out = Math.round((parseFloat(raw) || 0) * 100) / 100;
-            if (!(out > 0)) return 0;
-            const std = parseFloat(data && data.STANDARD_PRICE) || 0;
-            if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
-            return out;
+            const out = Math.round((parseFloat(raw) || 0) * 100) / 100;
+            return out > 0 ? out : 0;
         }
-        /** The rule price of the ON switch with its caps (Std max for Sprc Dil, then the A Price floor), live. 0 while rules load. */
+        /** The rule price of the ON switch with the A Price floor (no Std max), live. 0 while rules load. */
         function ppLiveRuleSprice(data) {
             if (!data || ppIsParentRow(data)) return 0;
             try {
@@ -769,7 +766,7 @@
                     cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
                     cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                     sorter: tabSortBlankLast(function(d) { if (ppIsParentRow(d)) return null; const v = ppDisplayedSprice(d); return v > 0 ? v : null; }),
-                    headerTooltip: 'The ON switch fills this column. Sprc Dil: Dil slab Target SNROI (+ Diff points when Std Diff is above the threshold), Std Prc as the maximum. Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews (or the SNROI Cap price). Either way never below A Price (Amz). No LMP rule: Purchasing Power has no LMP. Clearance SKUs show C and are not priced. Repaints at once on a switch or rule edit; the server saves it right after, and saves and pushes twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price. Brown = capped at Std Prc. Hover for every rule used.',
+                    headerTooltip: 'The ON switch fills this column. Sprc Dil: Dil slab Target SNROI (+ Diff points when Std Diff is above the threshold), no Std Prc maximum. Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews (or the SNROI Cap price). Either way never below A Price (Amz). No LMP rule: Purchasing Power has no LMP. Clearance SKUs show C and are not priced. Repaints at once on a switch or rule edit; the server saves it right after, and saves and pushes twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price. Hover for every rule used.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';
@@ -807,15 +804,8 @@
                         const clearanceMark = isClearance
                             ? '<span class="pp-sprice-clearance" title="Clearance" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'
                             : '';
-                        // Std Prc cap mark (same rules as /amazon-tabulator-view), Sprc Dil only. No LMP triangles: Purchasing Power has no LMP.
-                        let stdTri = '';
-                        if (ppDilOn() && window.chClr && typeof chClr.capFlags === 'function') {
-                            const rawDil = ppDilRawSprice(d);
-                            if (rawDil > 0) {
-                                const f = chClr.capFlags({ raw: rawDil, shown: value, lmp: 0, std: parseFloat(d.STANDARD_PRICE) || 0, sgroiAtLmp: null });
-                                stdTri = f.stdTri || '';
-                            }
-                        }
+                        // No Std Prc cap mark: Purchasing Power has no Std Prc maximum, and no LMP triangles (no LMP data).
+                        const stdTri = '';
                         return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${amzLbl}${redTri}${blueTri}${stdTri}</span>`;
                     }
                 },

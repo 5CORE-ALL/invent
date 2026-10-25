@@ -397,6 +397,8 @@
             const sku = String(row.sku || row['(Child) sku'] || row.SKU || '').toUpperCase();
             return sku.includes('PARENT');
         }
+        // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes; the cell shows the price and a red C.
+        window.CH_CLEARANCE_KEEPS_RULES = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'wayfair'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'wayfair'])
         @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
@@ -436,6 +438,10 @@
         function wfLiveRuleSprice(data) {
             if (!data || isWayfairParentRow(data)) return 0;
             try {
+                // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No Diff or Std rule.
+                if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
+                    return typeof window.ebayClearancePriceForRow === 'function' ? window.ebayClearancePriceForRow(data) : 0;
+                }
                 if (wfSpriceRule() === 'dil') {
                     if (window._ebayDilRulesLoaded !== true) return 0;
                     const raw = wfDilRawSprice(data);

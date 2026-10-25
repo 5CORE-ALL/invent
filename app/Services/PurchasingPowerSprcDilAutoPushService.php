@@ -25,12 +25,12 @@ use Throwable;
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI instead of the discounts.
  *  Clearance SKUs show "C" in S PRC: nothing is saved or pushed (same as Amazon).
- *  Std Prc is the maximum, then the Amz rule: S PRC never sits below the Amazon price (A Price). Same rule
+ *  No Std Prc maximum. The Amz rule: S PRC never sits below the Amazon price (A Price). Same rule
  *  the page labels "Amz" and MacysAmazonPriceCap applies to the push.
  *  Ship BB is part of profit (same as the page). Purchasing Power has no ads and no LMP, so neither is used.
  *  Sprc Dil switch ON (same as /amazon-tabulator-view, without the LMP cap since this page has no LMP):
  *   Dil slab Target (PP L30 = 0 uses the minimum Target) + Diff points (Std Diff above the saved threshold) →
- *   (LP × (1 + Target%) + Ship BB) ÷ take-home, Std Prc as the maximum, then the A Price floor. No Std prc vs dil discounts.
+ *   (LP × (1 + Target%) + Ship BB) ÷ take-home, no Std Prc maximum, then the A Price floor. No Std prc vs dil discounts.
  *  Never pushes a price whose SNROI is below 0 (NegativeSnroiPushGuard). The S PRC is still saved.
  *
  * Flow, same as Amazon:
@@ -75,7 +75,7 @@ class PurchasingPowerSprcDilAutoPushService
         $dilContext = SpriceActiveRule::usesStdPrc('purchasing_power') ? null : $this->loadDilContext();
 
         $this->log($logger, $dilContext !== null
-            ? 'Sprc Dil is ON (purchasing_power_dil_vs_groi) → Dil slab Target + Diff, Std max, Amz rule'
+            ? 'Sprc Dil is ON (purchasing_power_dil_vs_groi) → Dil slab Target + Diff, no Std max, Amz rule'
             : 'Loaded Purchasing Power Std prc vs dil (purchasing_power_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Amz rule');
 
         $stats = [
@@ -286,7 +286,7 @@ class PurchasingPowerSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule, Std is the maximum, then the Amz rule
+     * Page S PRC formula (INV > 0 child SKUs): Std rule (no Std maximum), then the Amz rule
      * (never below A Price). No LMP cap and no ads on Purchasing Power.
      *
      * @param  array<string, mixed>  $row
@@ -347,8 +347,8 @@ class PurchasingPowerSprcDilAutoPushService
             return null;
         }
 
-        // Std Prc is the maximum.
-        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, max($std, $effective));
+        // No Std Prc maximum on Purchasing Power: only the Amz floor below limits the price.
+        $uncapped = round($effective, 2);
 
         // Amz rule: S PRC is never below the Amazon price (A Price).
         $amz = round((float) ($row['amz'] ?? 0), 2);
@@ -371,7 +371,7 @@ class PurchasingPowerSprcDilAutoPushService
     }
 
     /**
-     * Sprc Dil switch ON, same maths as the page (Dil slab Target + Diff, Std max, A Price floor). No LMP rule:
+     * Sprc Dil switch ON, same maths as the page (Dil slab Target + Diff, no Std max, A Price floor). No LMP rule:
      * Purchasing Power has no LMP data.
      *
      * @param  array<string, mixed>  $row
@@ -419,8 +419,8 @@ class PurchasingPowerSprcDilAutoPushService
             if (! is_finite($raw) || $raw < 0.01) {
                 return null;
             }
-            // No LMP: only Std Prc as the maximum.
-            $uncapped = round(AmazonDilGroiRule::capSpriceToLmp($raw, 0.0, $lp, $ship, $margin, $std, 0.0), 2);
+            // No LMP and no Std Prc maximum: only the Amz floor below limits the price.
+            $uncapped = $raw;
         }
 
         $amzCapped = $amz > 0 && $uncapped + 0.0001 < $amz;

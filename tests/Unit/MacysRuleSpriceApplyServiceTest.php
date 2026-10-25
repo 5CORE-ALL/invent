@@ -196,6 +196,20 @@ class MacysRuleSpriceApplyServiceTest extends TestCase
      * @param  array{lmp_cap:array,diff_adj:array}|null  $dilContext
      * @return array{sprice:float}|null
      */
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
+    {
+        // LP 10, Ship 2, take-home 0.80, Clearance NROI 10%: (10 × 1.10 + 2) ÷ 0.80 = 16.25.
+        // No slab, Std max, LMP cap or A Price floor (amz 40, lmp 12) touches it.
+        $out = $this->compute([
+            'inv' => 10, 'dil' => 3, 'mc_l30' => 2, 'lp' => 10, 'ship' => 2, 'amz' => 40, 'lmp' => 12, 'std' => 14,
+            'clearance' => true, 'clearance_nroi' => 10,
+        ], [AmazonDilGroiRule::make(0.1, 25, 50)], ['lmp_cap' => [], 'diff_adj' => []]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(16.25, $out['sprice'], 0.001);
+        $this->assertNull($this->compute(['inv' => 10, 'lp' => 0, 'clearance' => true, 'clearance_nroi' => 10], []));
+    }
+
     private function compute(array $row, array $dilRules, ?array $dilContext = null): ?array
     {
         return app(MacysRuleSpriceApplyService::class)->computeTarget($row, $dilRules, 0.80, $dilContext);

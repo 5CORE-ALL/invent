@@ -229,7 +229,7 @@ class BestBuySprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($this->dilTarget($this->dilRow(['dil' => 80])));
     }
 
-    public function test_sprc_dil_lmp_cap_uses_the_dil_band_and_std_is_the_maximum(): void
+    public function test_sprc_dil_lmp_cap_uses_the_dil_band_and_has_no_std_maximum(): void
     {
         // Price 46.25 is above LMP 40 and SGROI at LMP is 35% (>= 20): S PRC = LMP x (1 - 5%) = 38.00.
         $out = $this->dilTarget($this->dilRow(['lmp' => 40]));
@@ -237,9 +237,10 @@ class BestBuySprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(38.00, $out['sprice'], 0.001);
         $this->assertTrue($out['lmp_capped']);
 
+        // No Std Prc maximum on Best Buy: a low Std Prc does not cap the price.
         $std = $this->dilTarget($this->dilRow(['standard_price' => 30]));
         $this->assertNotNull($std);
-        $this->assertEqualsWithDelta(30.0, $std['sprice'], 0.001);
+        $this->assertEqualsWithDelta(46.25, $std['sprice'], 0.001);
     }
 
     public function test_sprc_dil_amz_rule_raises_to_a_price_and_wins_over_the_lmp_cap(): void

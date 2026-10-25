@@ -208,14 +208,16 @@ class PurchasingPowerSprcDilAutoPushServiceTest extends TestCase
         $this->assertSame(35.0, $out['sprice']);
     }
 
-    public function test_sprc_dil_std_is_the_maximum_then_amz_floor_last(): void
+    public function test_sprc_dil_has_no_std_maximum_only_the_amz_floor(): void
     {
-        // LP 80 -> (80 x 1.6) / 0.80 = 160 > Std 100 -> held at 100. A Price 120 is above it -> Amz floor 120.
-        $capped = $this->service()->computeTarget($this->row(['lp' => 80, 'margin' => 0.80, 'price' => 100]), null, $this->dilCtx());
-        $this->assertSame(100.0, $capped['sprice']);
+        // LP 80 -> (80 x 1.6) / 0.80 = 160 > Std 100 -> NOT held at Std: stays 160.
+        $uncapped = $this->service()->computeTarget($this->row(['lp' => 80, 'margin' => 0.80, 'price' => 100]), null, $this->dilCtx());
+        $this->assertSame(160.0, $uncapped['sprice']);
+        $this->assertFalse($uncapped['amz_capped']);
 
-        $floored = $this->service()->computeTarget($this->row(['lp' => 80, 'margin' => 0.80, 'price' => 100, 'amz' => 120]), null, $this->dilCtx());
-        $this->assertSame(120.0, $floored['sprice']);
+        // A Price 200 is above it -> Amz floor 200.
+        $floored = $this->service()->computeTarget($this->row(['lp' => 80, 'margin' => 0.80, 'price' => 100, 'amz' => 200]), null, $this->dilCtx());
+        $this->assertSame(200.0, $floored['sprice']);
         $this->assertTrue($floored['amz_capped']);
     }
 

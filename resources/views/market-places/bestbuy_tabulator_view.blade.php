@@ -550,7 +550,7 @@
     function bestbuySpriceRule() {
         return (typeof window.spriceActiveRule === 'function') ? window.spriceActiveRule() : 'std';
     }
-    /** Amz rule: S PRC is never below A Price (it wins over the LMP cap and the Std max). */
+    /** Amz rule: S PRC is never below A Price (it wins over the LMP cap; there is no Std max). */
     function bestbuyAmzFloor(data, price) {
         const p = Math.round((parseFloat(price) || 0) * 100) / 100;
         const amz = bestbuyAmazonPrice(data);
@@ -565,7 +565,7 @@
         const margin = (typeof ebayDilTakehomeMargin === 'function') ? ebayDilTakehomeMargin(data) : 0.80;
         return (((p * margin) - ship - lp) / lp) * 100;
     }
-    /** Sprc Dil price before the LMP cap, the Std max and the Amz floor: Dil slab + Diff points, with Ship BB (no Ads, no CVR overlay). 0 when the rule gives none. */
+    /** Sprc Dil price before the LMP cap and the Amz floor: Dil slab + Diff points, with Ship BB (no Ads, no CVR overlay). 0 when the rule gives none. */
     function bestbuyDilRawSprice(data) {
         if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
         const meta = ebayDilGroiMetaForRow(data);
@@ -589,16 +589,13 @@
         }
         return out;
     }
-    /** Sprc Dil switch ON: the Dil price, the LMP cap by Dil band, then Std Prc as the maximum. (The Amz floor runs after.) */
+    /** Sprc Dil switch ON: the Dil price, then the LMP cap by Dil band. No Std Prc maximum. (The Amz floor runs after.) */
     function bestbuyCapDilSprice(data, raw) {
         const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 2;
-        let out = bestbuyApplyLmpCap(data, raw, isFinite(pct) ? pct : 2);
-        const std = parseFloat(data && data.STANDARD_PRICE) || 0;
-        if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
-        return out;
+        return bestbuyApplyLmpCap(data, raw, isFinite(pct) ? pct : 2);
     }
     /**
-     * The rule price of the ON switch worked out live: { pre, final }. pre = after the LMP cap and the Std max,
+     * The rule price of the ON switch worked out live: { pre, final }. pre = after the LMP cap (no Std max),
      * final = after the Amz floor. null while the rules load, for a clearance SKU, or when the row has none.
      */
     function bestbuyLiveRuleParts(data) {
@@ -2332,7 +2329,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with Diff, Ship BB in the price, LMP cap by Dil band, Std Prc as the maximum) or Std prc vs dil. Both end with the Amz rule: never below A Price. Hover for every rule used. Std prc vs dil: Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold (BB L30 = 0). CVR Disc is off (Best Buy has no session CVR). Std Prc is the maximum, capped at LMP, never below A Price (Amz). A Dil slab with a Target SNROI % prices S PRC from that SNROI. Clearance SKUs show C and are not priced. Saved and pushed by the server twice a day (4:40 AM / 8:40 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ BB Price. Red text = S PRC at or above LMP.",
+                    headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with Diff, Ship BB in the price, LMP cap by Dil band, no Std Prc maximum) or Std prc vs dil. Both end with the Amz rule: never below A Price. Hover for every rule used. Std prc vs dil: Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold (BB L30 = 0). CVR Disc is off (Best Buy has no session CVR). No Std Prc maximum, capped at LMP, never below A Price (Amz). A Dil slab with a Target SNROI % prices S PRC from that SNROI. Clearance SKUs show C and are not priced. Saved and pushed by the server twice a day (4:40 AM / 8:40 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ BB Price. Red text = S PRC at or above LMP.",
                     editable: false,
                     sorter: tabSortBlankLast(function(d) { if (isBestbuyParentRow(d)) return null; const v = bestbuyDisplayedSprice(d); return v > 0 ? v : null; }),
                     cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
@@ -2359,13 +2356,13 @@
                         if (!(value > 0)) return '';
                         const amzNow = bestbuyAmazonPrice(rowData);
                         const lmpBelowAmz = amzNow > 0 && lmp > 0 && lmp + 0.0001 < amzNow;
-                        // Cap marks (same rules as /amazon-tabulator-view), Sprc Dil only: red = LMP, orange = LMP above Std Prc, brown = Std Prc max.
+                        // Cap marks (same rules as /amazon-tabulator-view), Sprc Dil only: red = LMP (no Std Prc marks: Best Buy has no Std max).
                         // Skipped when the Amz floor set the price (A Price wins).
                         let flags = null;
                         if (bestbuySpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function' && !bestbuyHasAmzCap(rowData)) {
                             const rawDil = bestbuyDilRawSprice(rowData);
                             if (rawDil > 0) {
-                                flags = chClr.capFlags({ raw: rawDil, shown: value, lmp: lmp, std: parseFloat(rowData.STANDARD_PRICE) || 0, sgroiAtLmp: bestbuySgroiAtPrice(rowData, lmp) });
+                                flags = chClr.capFlags({ raw: rawDil, shown: value, lmp: lmp, std: 0, sgroiAtLmp: bestbuySgroiAtPrice(rowData, lmp) });
                             }
                         }
                         const overLmp = flags ? false : (!lmpBelowAmz && lmp > 0 && value + 0.0001 >= lmp);
