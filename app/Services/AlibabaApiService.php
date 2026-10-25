@@ -578,6 +578,10 @@ class AlibabaApiService extends AliExpressApiService
             $stillMissing = [];
             foreach ($unresolved as $row) {
                 $skuId = $this->icbuSkuIdFromInventoryItems($lookup['items'], (string) $row['sku_code'], count($rows) === 1 && count($nodes) <= 1);
+                // No SKU variations anywhere (empty lookup, no SKU list): a single-item listing uses -1.
+                if ($skuId === null && count($rows) === 1 && $nodes === [] && $lookup['items'] === [] && $lookup['error'] === '') {
+                    $skuId = '-1';
+                }
                 if ($skuId === null) {
                     $stillMissing[] = (string) $row['sku_code'];
                     continue;
@@ -640,6 +644,12 @@ class AlibabaApiService extends AliExpressApiService
                     }
                 }
                 $slots = $this->icbuInventorySlotsFromLookup(is_array($lookup['raw'] ?? null) ? $lookup['raw'] : [], $skuId);
+            }
+
+            // Alibaba answered but the listing has no stock rows yet (it shows 0). Start the stock
+            // in the shop's warehouse: current is 0, so the change is the whole target.
+            if ($slots === [] && $lookup !== null && ($lookup['error'] ?? 'x') === '' && ($lookup['items'] ?? []) === []) {
+                $slots = [['code' => $this->icbuWarehouseCode(), 'qty' => 0]];
             }
 
             if ($slots === []) {
@@ -713,10 +723,39 @@ class AlibabaApiService extends AliExpressApiService
             if ($code === '') {
                 continue;
             }
+            $this->rememberWarehouseCode($code);
             $slots[] = ['code' => $code, 'qty' => $this->icbuSlotQty($row)];
         }
 
         return $slots;
+    }
+
+    /**
+     * The shop's warehouse code, learned from any listing that already has stock rows.
+     */
+    protected function rememberWarehouseCode(string $code): void
+    {
+        try {
+            \Illuminate\Support\Facades\Cache::put('alibaba_icbu_warehouse_code', $code, now()->addDays(30));
+        } catch (\Throwable) {
+            // Cache is optional.
+        }
+    }
+
+    protected function icbuWarehouseCode(): string
+    {
+        try {
+            $cached = \Illuminate\Support\Facades\Cache::get('alibaba_icbu_warehouse_code');
+        } catch (\Throwable) {
+            $cached = null;
+        }
+        if (is_string($cached) && trim($cached) !== '') {
+            return trim($cached);
+        }
+
+        $configured = trim((string) config('services.alibaba.inventory_code', ''));
+
+        return $configured !== '' ? $configured : 'US_LOCAL_01';
     }
 
     /**
@@ -919,7 +958,7 @@ class AlibabaApiService extends AliExpressApiService
 
         $data = is_array($raw['data'] ?? null) ? $raw['data'] : [];
         $result = is_array($data['result'] ?? null) ? $data['result'] : $data;
-        $list = $result['inventoryItems'] ?? $result['inventory_items'] ?? [];
+        $list = $result['inventoryItems'] ?? $result['inventory_items'] ?? $result['data_list'] ?? [];
         if (is_array($list) && $list !== [] && ! array_is_list($list)) {
             $list = [$list];
         }
