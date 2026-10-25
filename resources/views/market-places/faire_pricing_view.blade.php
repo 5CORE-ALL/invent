@@ -481,6 +481,8 @@
     <script>
         // S PRC is saved + pushed by the server (faire:sprc-dil-auto-push). The page only shows it.
         window.CH_STD_SERVER_OWNED = true;
+        // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes.
+        window.CH_CLEARANCE_KEEPS_RULES = true;
         // The SNROI% column here is SGROI on the S PRC (Ship already taken off, no Ads%), so the SNROI Cap judges the same number.
         window.CH_PROMO_ADS_FN = function() { return 0; };
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'faire'])
@@ -604,6 +606,10 @@
             data = frRowData(data);
             if (!data || frIsParentRow(data)) return 0;
             try {
+                // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff or Std rule.
+                if (frIsClearance(data)) {
+                    return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;
+                }
                 if (frSpriceRule() === 'dil') {
                     if (window._ebayDilRulesLoaded !== true) return 0;
                     const raw = frDilRawSprice(data);
@@ -2417,7 +2423,7 @@
                             // Brown triangle: Sprc Dil price capped at Std Prc (no LMP on Faire).
                             let capTris = '';
                             let capColor = '';
-                            if (frSpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function') {
+                            if (frSpriceRule() === 'dil' && !frIsClearance(d) && window.chClr && typeof chClr.capFlags === 'function') {
                                 const rawDil = frDilRawSprice(d);
                                 if (rawDil > 0) {
                                     const flags = chClr.capFlags({ raw: rawDil, shown: value, lmp: 0, std: frStdPrice(d), sgroiAtLmp: null });

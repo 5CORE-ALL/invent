@@ -174,10 +174,20 @@ class EbayRuleSpriceTest extends TestCase
         ]))['sprice']);
     }
 
-    public function test_clearance_sku_has_no_price_from_any_rule(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
         $pricer = $this->pricer(['buss' => [['min' => 0, 'max' => 9999, 'disc' => 50]]]);
-        $this->assertNull(EbayRuleSprice::price($pricer, $this->input(['lp' => 40, 'ship' => 5, 'clearance' => 'YES'])));
+        $row = ['lp' => 40, 'ship' => 5, 'clearance' => 'YES', 'percentage' => 0.8, 'ads' => 0.0, 'lmp' => 30];
+        // No Clearance NROI% known: nothing is priced.
+        $this->assertNull(EbayRuleSprice::price($pricer, $this->input($row)));
+        // (40 × 1.10 + 5) ÷ 0.80 = 61.25, in Std prc vs dil mode and in Sprc Dil mode. LMP 30 and Std do not cap it.
+        $std = EbayRuleSprice::price($pricer, $this->input($row), ['rule' => 'std', 'dil' => null, 'clearance_nroi' => 10.0]);
+        $this->assertSame(61.25, $std['sprice']);
+        $this->assertFalse($std['lmp_capped']);
+        $dil = ['rules' => [], 'cvr_adj' => [], 'lmp_cap' => null, 'diff_adj' => null];
+        $this->assertSame(61.25, EbayRuleSprice::price($pricer, $this->input($row), ['rule' => 'dil', 'dil' => $dil, 'clearance_nroi' => 10.0])['sprice']);
+        // Ads 5% comes off the take-home: (40 × 1.10 + 5) ÷ (0.80 − 0.05) = 65.33.
+        $this->assertSame(65.33, EbayRuleSprice::price($pricer, $this->input(['ads' => 0.05] + $row), ['rule' => 'std', 'dil' => null, 'clearance_nroi' => 10.0])['sprice']);
     }
 
     public function test_lmp_cap_applies_when_sgroi_at_lmp_is_20_or_more(): void

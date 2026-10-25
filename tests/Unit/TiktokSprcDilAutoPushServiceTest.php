@@ -67,10 +67,15 @@ class TiktokSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_sku_has_no_target_like_amazon(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
-        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
-        $this->assertNull($this->target($this->row(['lp' => 70, 'ship' => 8, 'clearance' => true])));
+        // (70 × 1.10 + 8) ÷ 0.80 = 106.25 even though Std Prc is 100 and LMP is 50. No discount, LMP or Std rule applies.
+        $row = $this->row(['lp' => 70, 'ship' => 8, 'clearance' => true, 'clearance_nroi' => 10, 'lmp' => 50]);
+        $this->assertEqualsWithDelta(106.25, $this->target($row)['sprice'], 0.001);
+        // Ads% (listing TACOS 5%) comes off the take-home on TikTok: 85 ÷ 0.75 = 113.33. TikTok 2 has no Ads%.
+        $this->assertEqualsWithDelta(113.33, $this->target($row + ['tacos' => 5])['sprice'], 0.001);
+        $this->assertEqualsWithDelta(106.25, $this->target($row + ['tacos' => 5], null, 0.0, 'tiktok2')['sprice'], 0.001);
+        $this->assertNull($this->target($this->row(['lp' => 0, 'clearance' => true, 'clearance_nroi' => 10])));
     }
 
     public function test_lmp_below_the_price_caps_to_lmp(): void
@@ -269,10 +274,9 @@ class TiktokSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(30.0, $out['sprice'], 0.001);
     }
 
-    public function test_sprc_dil_has_no_price_above_every_slab_for_clearance_or_without_inventory(): void
+    public function test_sprc_dil_has_no_price_above_every_slab_or_without_inventory(): void
     {
         $this->assertNull($this->dilTarget($this->dilRow(['dil' => 60])));
-        $this->assertNull($this->dilTarget($this->dilRow(['clearance' => true])));
         $this->assertNull($this->dilTarget($this->dilRow(['inv' => 0])));
     }
 

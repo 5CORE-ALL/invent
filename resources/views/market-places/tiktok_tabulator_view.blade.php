@@ -1054,6 +1054,8 @@
         const TTP_CFG = @json($ttpCfg);
         // S PRC is saved + pushed by the server (tiktok:sprc-dil-auto-push). The page only shows it.
         window.CH_STD_SERVER_OWNED = true;
+        // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes.
+        window.CH_CLEARANCE_KEEPS_RULES = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => $tiktokPromoChannel])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => $tiktokPromoChannel])
@@ -1438,12 +1440,14 @@
             if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
             return out;
         }
-        /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules are loading, for a clearance SKU, or when the row has none. */
+        /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules are loading or when the row has none. */
         function ttLiveRuleSprice(d) {
             if (!d || ttIsParentRow(d)) return 0;
             try {
-                // Clearance SKUs show "C": no S PRC is saved or pushed for them.
-                if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) return 0;
+                // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff, LMP or Std rule.
+                if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+                    return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(d)) || 0) : 0;
+                }
                 if (ttSpriceRule() === 'dil') {
                     if (window._ebayDilRulesLoaded !== true) return 0;
                     const raw = ttDilRawSprice(d);
@@ -4227,9 +4231,16 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (ttIsParentRow(rowData)) return '';
-                            // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
+                            // Clearance SKU: price from the Clearance Target NROI% followed by the red C (blue triangle when it differs from Price). No cap marks.
                             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
-                                return '<span class="tt-sprice-clearance" title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                                const cv = ttDisplayedSprice(rowData);
+                                const cMark = (window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '';
+                                if (!(cv > 0)) return cMark;
+                                const cLive = ttLivePrice(rowData);
+                                const cBlue = (cLive > 0 && Math.round(cv * 100) !== Math.round(cLive * 100))
+                                    ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $' + cv.toFixed(2) + ' ≠ Price $' + cLive.toFixed(2) + '"></i>'
+                                    : '';
+                                return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;padding:2px 6px;">$' + cv.toFixed(2) + '</span>' + cMark + cBlue + '</span>';
                             }
                             let value = parseFloat(cell.getValue() || 0);
                             if (!(value > 0)) value = ttDisplayedSprice(rowData);
@@ -4286,7 +4297,7 @@
                             if (isParent) return '<span style="color:#6c757d;">-</span>';
 
                             const sku = rowData['(Child) sku'];
-                            const sprice = window.SpriceLmpCap
+                            const sprice = (window.SpriceLmpCap && !(typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)))
                                 ? SpriceLmpCap.prepare(rowData, ttDisplayedSprice(rowData))
                                 : ttDisplayedSprice(rowData);
                             const status = rowData.SPRICE_STATUS || null;

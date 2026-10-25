@@ -847,6 +847,8 @@
     const EBAY3_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
     // S PRC is saved + pushed by the server (ebay:push-blue-prices every 10 min). The page only shows it.
     window.CH_STD_SERVER_OWNED = true;
+        // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes.
+        window.CH_CLEARANCE_KEEPS_RULES = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
     @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
     @include('campaign.partials.ebay-dil-sbid-rule', [
@@ -1039,6 +1041,10 @@
         function ebay3LiveRuleSprice(rowData) {
             if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return 0;
             try {
+                // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff, LMP or Std rule.
+                if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
+                    return (typeof window.ebayClearancePriceForRow === 'function') ? (Number(window.ebayClearancePriceForRow(rowData)) || 0) : 0;
+                }
                 if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                     // Rules not loaded yet: the defaults would flash a wrong price, so show the saved one.
                     if (window._ebayDilRulesLoaded !== true) return 0;
@@ -1064,7 +1070,8 @@
             try {
                 const raw = ebay3LiveRuleSprice(rowData);
                 if (raw > 0) {
-                    const capped = Number(ebay3CapSpriceToLmp(rowData, raw));
+                    const isClr = (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData));
+                    const capped = isClr ? raw : Number(ebay3CapSpriceToLmp(rowData, raw));
                     const live = (isFinite(capped) && capped > 0) ? capped : raw;
                     return Math.round(live * 100) / 100;
                 }
@@ -1094,6 +1101,24 @@
 
         /** Every rule / exception behind the S PRC shown in the grid. */
         function ebayExplainSprice(d) {
+            // Clearance (Inv days clearance = YES): only the Clearance Target NROI% applies. No slab, Diff, LMP or Std rule.
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+                const cp = (typeof window.ebayClearancePriceForRow === 'function') ? (Number(window.ebayClearancePriceForRow(d)) || 0) : 0;
+                const lp = (typeof ebayDgLp === 'function') ? ebayDgLp(d) : 0;
+                const ship = (typeof ebayDgShip === 'function') ? ebayDgShip(d) : 0;
+                const margin = (typeof ebayDilTakehomeMargin === 'function') ? ebayDilTakehomeMargin(d) : 0.8;
+                const ads = (typeof ebayDilAdsPct === 'function') ? Number(ebayDilAdsPct()) || 0 : 0;
+                const nroi = (typeof window.ebayClearanceNroiValue === 'function') ? window.ebayClearanceNroiValue() : null;
+                return {
+                    title: 'S PRC ' + ebayRuleMoney(cp) + ' (Clearance)',
+                    sub: (d['(Child) sku'] || '') + ' · Clearance Target NROI%',
+                    steps: [ebayRuleStep('info', 'Clearance',
+                        'This SKU is on the Inv days clearance list (YES). Only the Clearance Target NROI% (last row of the Sprc Dil modal) applies'
+                        + (nroi != null ? ' = <b>' + nroi + '%</b>' : '') + ': (LP ' + ebayRuleMoney(lp) + ' × (1 + NROI) + Ship ' + ebayRuleMoney(ship)
+                        + ') ÷ (take-home ' + (margin * 100).toFixed(0) + '% − Ads ' + ads.toFixed(1) + '%) = <b>' + ebayRuleMoney(cp) + '</b>. No slab, Diff, LMP or Std Prc rule is applied.')],
+                    notes: [], finalNote: ''
+                };
+            }
             const steps = [];
             const notes = [];
             const dilOn = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
@@ -3510,7 +3535,9 @@
                             const capped = Number(ebay3CapSpriceToLmp(rowData, raw));
                             const shown = capped > 0 ? capped : raw;
                             const sgroiAtLmp = (typeof ebay3SgroiAtPrice === 'function') ? ebay3SgroiAtPrice(rowData, lmpNow) : null;
-                            const cap = (window.chClr && typeof chClr.capFlags === 'function')
+                            const cap = (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData))
+                                ? { color: '', redTri: '', reviewTri: '', stdTri: '' }
+                                : (window.chClr && typeof chClr.capFlags === 'function')
                                 ? chClr.capFlags({ raw: raw, shown: shown, lmp: lmpNow, std: stdNow, sgroiAtLmp: sgroiAtLmp })
                                 : { color: '', redTri: '', reviewTri: '', stdTri: '' };
                             const sku = rowData['(Child) sku'] || '';

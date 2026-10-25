@@ -27,7 +27,7 @@ use Throwable;
  * share one page, so one service runs both channels):
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  Clearance SKUs show "C" in S PRC: nothing is saved or pushed for them (same as Amazon).
+ *  Clearance SKUs are priced only from the Clearance Target NROI% (Sprc Dil modal, last row), no cap.
  *  0 Sold = TT L30 (tiktok_orders), the page's sold qty.
  *  Caps, same order as Amazon:
  *   1. LMP cap: S PRC at or above LMP becomes LMP when SGROI at LMP is ≥ 20%.
@@ -276,9 +276,10 @@ class TiktokSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
-        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
+        // Clearance SKUs (Inv days clearance = YES) are priced ONLY from the Clearance Target NROI% (Sprc Dil modal, last row), in
+        // Std prc vs dil and Sprc Dil alike: (LP × (1 + NROI%) + Ship) ÷ (take-home − Ads%). No slab, Diff, LMP or Std rule.
         if ((new StdPrcVsDilPricer([], $this->channel))->isClearanceRow($row)) {
-            return null;
+            return $this->computeClearanceTarget($row, $adsFrac);
         }
         if ($dilContext !== null) {
             return $this->computeDilTarget($row, $dilContext, $adsFrac);
@@ -356,11 +357,73 @@ class TiktokSprcDilAutoPushService
     }
 
     /**
+     * Clearance SKU: (LP × (1 + Clearance NROI%) + Ship) ÷ (take-home − Ads%), Ads% = the listing TACOS% (TikTok 2 = 0).
+     * No LMP cap and no Std Prc maximum.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{sprice:float,uncapped:float,lmp_capped:bool,base:float,margin:float,lp:float,ship:float,lmp:float}|null
+     */
+    protected function computeClearanceTarget(array $row, ?float $adsFrac = null): ?array
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.80;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        $ship = (float) ($row['ship'] ?? 0);
+        if ($this->channel === 'tiktok2') {
+            $ads = 0.0;
+        } elseif (is_numeric($row['tacos'] ?? null)) {
+            $tacos = (float) $row['tacos'];
+            $ads = ($tacos > 0 && $tacos < 100) ? $tacos / 100 : 0.0;
+        } else {
+            $ads = $adsFrac ?? $this->channelAdsFrac();
+        }
+        $denom = $margin - $ads;
+        if (! ($denom > 0)) {
+            return null;
+        }
+        // A row may carry its own clearance_nroi (tests); otherwise the saved Sprc Dil modal value.
+        $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi']) ? (float) $row['clearance_nroi'] : $this->clearanceNroi();
+        $price = round(($lp * (1 + max(0.0, $nroi) / 100) + $ship) / $denom, 2);
+        if (! is_finite($price) || $price < 0.01) {
+            return null;
+        }
+
+        return [
+            'sprice' => $price,
+            'uncapped' => $price,
+            'lmp_capped' => false,
+            'base' => round((float) ($row['standard_price'] ?? 0), 2),
+            'margin' => $margin,
+            'lp' => $lp,
+            'ship' => $ship,
+            'lmp' => round((float) ($row['lmp'] ?? 0), 2),
+        ];
+    }
+
+    /** Clearance Target NROI% saved with this channel's Sprc Dil rules (last row of the modal). Default 0. */
+    protected function clearanceNroi(): float
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', $this->channel.'_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $n = $unpacked['clearance_nroi'] ?? null;
+
+        return (is_numeric($n) && (float) $n >= 0) ? (float) $n : 0.0;
+    }
+
+    /**
      * Sprc Dil switch ON, same as the page (ebay-sprc-dil + /amazon-tabulator-view order):
      * Dil slab Target SNROI, CVR overlay (no L60 CVR on the rows), Diff points, then
      * price = (LP x (1 + Target%) + Ship) / (take-home - Ads%), Ads% = the listing TACOS% (TikTok 2 = 0),
      * LMP cap (price at/above LMP and SGROI at LMP >= 20% -> LMP x (1 - x%), x by the SKU's Dil band), Std Prc as the maximum.
-     * A SKU whose Dil is outside every slab has no Sprc Dil price. Clearance SKUs never reach this (no S PRC).
+     * A SKU whose Dil is outside every slab has no Sprc Dil price. Clearance SKUs never reach this (computeClearanceTarget).
      *
      * @param  array<string, mixed>  $row
      * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}  $ctx

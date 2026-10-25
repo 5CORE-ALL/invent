@@ -76,13 +76,14 @@ class FaireSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_sku_has_no_target_like_amazon(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
-        // Clearance SKUs show "C" in S PRC. No rule prices them and nothing is saved or pushed.
-        $this->assertNull((new FaireSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 60, 'clearance' => true]),
-            $this->pricer()
-        ));
+        // LP 60 × (1 + 10%) ÷ 0.75 = 88.00 in Std prc vs dil and in Sprc Dil. No discount, Ship or Std Prc rule applies.
+        $svc = new FaireSprcDilAutoPushService;
+        $row = $this->row(['lp' => 60, 'clearance' => true, 'clearance_nroi' => 10, 'ship' => 8, 'standard_price' => 50]);
+        $this->assertEqualsWithDelta(88.00, $svc->computeTarget($row, $this->pricer())['sprice'], 0.001);
+        $this->assertEqualsWithDelta(88.00, $svc->computeTarget($row, $this->pricer(), $this->dilCtx())['sprice'], 0.001);
+        $this->assertNull($svc->computeTarget($this->row(['lp' => 0, 'clearance' => true, 'clearance_nroi' => 10]), $this->pricer()));
     }
 
     public function test_no_lmp_or_amz_rule(): void
@@ -219,7 +220,6 @@ class FaireSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 60]), null, $this->dilCtx()));
         $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
 
-        $this->assertNull($svc->computeTarget($this->dilRow(['clearance' => true]), null, $this->dilCtx()));
     }
 
     public function test_without_a_dil_context_the_std_rule_still_prices(): void

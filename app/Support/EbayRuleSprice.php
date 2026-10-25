@@ -5,7 +5,7 @@ namespace App\Support;
 /**
  * eBay 1 / 2 / 3 S PRC — the same rule chain as /amazon-tabulator-view with the Std prc vs dil rule ON:
  *   1. S PRC = Std Prc × (1 − (Age + Dil + B Disc + 0 Sold + CVR + Review) / 100), Std under $15 halves rule discs
- *   2. clearance SKUs stay on the discount price
+ *   2. clearance SKUs are priced only from the Clearance Target NROI% (Sprc Dil modal, last row), no cap
  *   3. LMP cap: S PRC ≥ LMP and SGROI at LMP ≥ 20% → S PRC = LMP (Std prc vs dil switch ON)
  *      or LMP × 0.98 (Sprc Dil switch ON, AmazonDilGroiRule::DIL_LMP_REDUCE_PCT)
  *   4. Std Prc is the maximum
@@ -152,16 +152,18 @@ class EbayRuleSprice
     public static function context(string $channel): array
     {
         $channel = strtolower(trim($channel));
-        if (SpriceActiveRule::forChannel($channel) !== 'dil') {
-            return ['rule' => 'std', 'dil' => null];
-        }
         $row = \App\Models\ChannelTabulatorColumnSetting::query()->where('channel_name', $channel.'_dil_vs_groi')->first();
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        // Clearance Target NROI% (last row of the Sprc Dil modal). It prices clearance SKUs in BOTH modes.
+        $clearanceNroi = is_numeric($unpacked['clearance_nroi'] ?? null) ? max(0.0, (float) $unpacked['clearance_nroi']) : 0.0;
+        if (SpriceActiveRule::forChannel($channel) !== 'dil') {
+            return ['rule' => 'std', 'dil' => null, 'clearance_nroi' => $clearanceNroi];
+        }
         $rules = $unpacked['rules'] === []
             ? AmazonDilGroiRule::defaultsForChannel($channel)
             : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
 
-        return ['rule' => 'dil', 'dil' => [
+        return ['rule' => 'dil', 'clearance_nroi' => $clearanceNroi, 'dil' => [
             'rules' => $rules,
             'cvr_adj' => $unpacked['cvr_adj'],
             'lmp_cap' => $unpacked['lmp_cap'],
@@ -239,9 +241,10 @@ class EbayRuleSprice
      */
     public static function price(StdPrcVsDilPricer $pricer, array $input, ?array $context = null): ?array
     {
-        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: nothing is saved or pushed.
+        // Clearance SKUs (Inv days clearance = YES) are priced ONLY from the Clearance Target NROI% (Sprc Dil modal, last row):
+        // (LP × (1 + NROI) + Ship) ÷ (take-home − Ads%), in either mode. No slab, Diff, CVR, LMP or Std Prc rule applies.
         if ($pricer->isClearanceRow($input)) {
-            return null;
+            return self::clearancePrice($input, $context);
         }
         $dilOn = is_array($context) && ($context['rule'] ?? 'std') === 'dil' && is_array($context['dil'] ?? null);
         $rulePrice = $dilOn ? self::dilPrice($input, $context['dil']) : $pricer->priceFromRow($input);
@@ -278,6 +281,38 @@ class EbayRuleSprice
             'lmp_capped' => abs($afterLmp - $rulePrice) > 0.009,
             'std_capped' => abs($final - $afterLmp) > 0.009,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @param  array<string, mixed>|null  $context
+     * @return array{sprice:float,rule_price:float,lmp_capped:bool,std_capped:bool}|null
+     */
+    private static function clearancePrice(array $input, ?array $context): ?array
+    {
+        $nroi = $context['clearance_nroi'] ?? ($input['clearance_nroi'] ?? null);
+        if (! is_numeric($nroi) || ! ((float) ($input['inv'] ?? 0) > 0) || ! ((float) ($input['lp'] ?? 0) > 0)) {
+            return null;
+        }
+        $margin = (float) ($input['percentage'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0)) {
+            $margin = AmazonDilGroiRule::TAKE_HOME;
+        }
+        $price = AmazonDilGroiRule::suggestedPrice(
+            (float) $input['lp'],
+            (float) ($input['ship'] ?? 0),
+            max(0.0, (float) $nroi),
+            max(0.0, (float) ($input['ads'] ?? 0)) * 100,
+            $margin
+        );
+        if ($price === null || ! ($price >= 0.01)) {
+            return null;
+        }
+
+        return ['sprice' => round($price, 2), 'rule_price' => round($price, 2), 'lmp_capped' => false, 'std_capped' => false];
     }
 
     private static function isIgnored(mixed $value): bool

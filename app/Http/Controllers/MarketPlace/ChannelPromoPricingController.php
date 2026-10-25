@@ -2025,9 +2025,9 @@ class ChannelPromoPricingController extends Controller
             && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
             \App\Support\AliexpressRuleSpriceApply::dispatch($channel);
         }
-        // Faire: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
-        if (\App\Support\FaireRuleSpriceApply::handles($channel)
-            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+        // Faire: re-save S PRC from the new rules right after this response (no push, no waiting). Whichever rule is ON,
+        // because the Clearance Target NROI% in this modal prices clearance SKUs in both Std prc vs dil and Sprc Dil.
+        if (\App\Support\FaireRuleSpriceApply::handles($channel)) {
             \App\Support\FaireRuleSpriceApply::dispatch($channel);
         }
         // PLS: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
@@ -2045,9 +2045,9 @@ class ChannelPromoPricingController extends Controller
             && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
             \App\Support\BestBuyRuleSpriceApply::dispatch($channel);
         }
-        // TikTok / TikTok 2: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (no push, no waiting).
-        if (\App\Support\TiktokRuleSpriceApply::handles($channel)
-            && \App\Support\SpriceActiveRule::forChannel($channel) === 'dil') {
+        // TikTok / TikTok 2: re-save S PRC from the new rules right after this response (no push, no waiting). Whichever rule is ON,
+        // because the Clearance Target NROI% in this modal prices clearance SKUs in both Std prc vs dil and Sprc Dil.
+        if (\App\Support\TiktokRuleSpriceApply::handles($channel)) {
             \App\Support\TiktokRuleSpriceApply::dispatch($channel);
         }
 

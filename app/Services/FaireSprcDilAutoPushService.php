@@ -268,9 +268,10 @@ class FaireSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
-        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: the page shows C, nothing is saved or pushed.
+        // Clearance SKUs (Inv days clearance = YES) are priced ONLY from the Clearance Target NROI% (Sprc Dil modal, last row),
+        // in Std prc vs dil and Sprc Dil alike: (LP × (1 + NROI%)) ÷ take-home. No Ship, no slab, Diff or Std rule.
         if ((new StdPrcVsDilPricer([], 'faire'))->isClearanceRow($row)) {
-            return null;
+            return $this->computeClearanceTarget($row);
         }
         if ($dilContext !== null) {
             return $this->computeDilTarget($row, $dilContext);
@@ -329,6 +330,50 @@ class FaireSprcDilAutoPushService
             'margin' => $margin,
             'lp' => $lp,
         ];
+    }
+
+    /**
+     * Clearance SKU: LP × (1 + Clearance NROI%) ÷ take-home. No Ship (Faire profit has none), no Ads, no LMP, no Std maximum.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{sprice:float,base:float,margin:float,lp:float}|null
+     */
+    protected function computeClearanceTarget(array $row): ?array
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.75;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        // A row may carry its own clearance_nroi (tests); otherwise the saved Sprc Dil modal value.
+        $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi']) ? (float) $row['clearance_nroi'] : $this->clearanceNroi();
+        $price = round(($lp * (1 + max(0.0, $nroi) / 100)) / $margin, 2);
+        if (! is_finite($price) || $price < 0.01) {
+            return null;
+        }
+
+        return [
+            'sprice' => $price,
+            'base' => round((float) ($row['standard_price'] ?? 0), 2),
+            'margin' => $margin,
+            'lp' => $lp,
+        ];
+    }
+
+    /** Clearance Target NROI% saved with the Faire Sprc Dil rules (last row of the modal). Default 0. */
+    protected function clearanceNroi(): float
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'faire_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $n = $unpacked['clearance_nroi'] ?? null;
+
+        return (is_numeric($n) && (float) $n >= 0) ? (float) $n : 0.0;
     }
 
     /**
