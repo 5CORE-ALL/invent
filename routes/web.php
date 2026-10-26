@@ -4916,6 +4916,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/technical-specifications/save', [TechnicalSpecificationsController::class, 'save'])->name('technical.specifications.save');
     Route::post('/technical-specifications/pull-ebay', [TechnicalSpecificationsController::class, 'pullEbay'])->name('technical.specifications.pull.ebay');
     Route::post('/technical-specifications/push-ebay', [TechnicalSpecificationsController::class, 'pushEbay'])->name('technical.specifications.push.ebay');
+    Route::post('/technical-specifications/hidden-fields', [TechnicalSpecificationsController::class, 'hideField'])->name('technical.specifications.hidden.fields');
+    Route::post('/technical-specifications/hidden-fields/restore', [TechnicalSpecificationsController::class, 'restoreHiddenFields'])->name('technical.specifications.hidden.fields.restore');
     Route::post('/technical-specifications/sync-ebay-categories', [TechnicalSpecificationsController::class, 'syncEbayCategories'])->name('technical.specifications.sync.ebay.categories');
     Route::get('/description-for-html', [DescriptionForHtmlController::class, 'index'])->name('description.for.html');
     Route::get('/description-for-html-data', [DescriptionForHtmlController::class, 'getData'])->name('description.for.html.data');
@@ -5823,6 +5825,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/to-order-analysis/import-supplier/sample', 'importSupplierSample')->name('to.order.analysis.import.supplier.sample');
         Route::get('/to-order-analysis/suppliers-by-category', 'suppliersByCategory')->name('to.order.analysis.suppliers.by.category');
         Route::get('/to-order-analysis/qc-issues', 'qcIssuesForSku')->name('to.order.analysis.qc.issues');
+        Route::get('/forecast-analysis/pkg-qc-data', 'forecastPkgQcData')->name('forecast.analysis.pkg.qc.data');
         Route::post('/to-order-analysis/bulk-update-exec', 'bulkUpdateExec')->name('to.order.analysis.bulk.exec');
         Route::get('/to-order-analysis/pre-order-checklist', 'getPreOrderChecklist')->name('to.order.analysis.pre.checklist.get');
         Route::post('/to-order-analysis/pre-order-checklist', 'savePreOrderChecklist')->name('to.order.analysis.pre.checklist.save');

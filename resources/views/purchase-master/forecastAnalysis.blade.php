@@ -901,6 +901,7 @@
                 min-width: 100px;
             }
         }
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#fcPqLmpModal'])
     </style>
 @endsection
 
@@ -1493,6 +1494,86 @@
         </div>
     </div>
 
+    <!-- PKG details modal (same as /to-order-analysis) -->
+    <div class="modal fade" id="fcPqPkgModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fas fa-box-open me-2"></i> Packaging Details <span id="fcPqPkgSku" class="ms-2 fw-normal"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="fcPqPkgBody" style="background-color:#fff;"></div>
+                <div class="modal-footer">
+                    <span id="fcPqPkgStatus" class="me-auto small text-muted"></span>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="fcPqPkgSaveBtn">
+                        <i class="fas fa-save me-1"></i> Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QC modal: Issues, IR, Amz., LMP & Review (same as /to-order-analysis) -->
+    <div class="modal fade" id="fcPqQcModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fas fa-wrench me-2"></i> Fix <span id="fcPqQcSku" class="ms-2 fw-normal"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="background-color:#fff;">
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">Issues</h6>
+                            <div id="fcPqQcIssues"></div>
+                        </div>
+                        <div class="col-lg-6">
+                            <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">IR</h6>
+                            <div id="fcPqQcIr"></div>
+                        </div>
+                        <div class="col-lg-6">
+                            <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">Amz.</h6>
+                            <div id="fcPqQcAmz"></div>
+                        </div>
+                        <div class="col-lg-6">
+                            <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">LMP</h6>
+                            <div id="fcPqQcLmp"></div>
+                        </div>
+                        <div class="col-12">
+                            <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">Review</h6>
+                            <div id="fcPqQcReview"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LMP competitors modal (same data source as /amazon-tabulator-view) -->
+    <div class="modal fade" id="fcPqLmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> LMP Competitors for SKU: <span id="fcPqLmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="fcPqLmpList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('script')
@@ -1501,6 +1582,461 @@
     <script src="{{ asset('js/exec-colors.js') }}"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <script>
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+    </script>
+    <script>
+        // PKG / QC icon columns (same behaviour as /to-order-analysis).
+        window.FcPq = (function () {
+            const FIELD_META = {
+                barcode: { title: 'Barcode', editable: true, multiline: false, maxLength: 255, productMaster: true },
+                instructions_item_pkg: { title: 'Item Pkg.', editable: true, multiline: true },
+                ctn_instructions: { title: 'Instr Carton', editable: true, multiline: false, maxLength: 100 },
+                packing_instructions: { title: 'Design Instr.', editable: false, multiline: true },
+                instructions_carton_design: { title: 'Design Instr Carton', editable: true, multiline: true, maxLength: 2000 },
+                packing_cdr_path: { title: 'CDR', editable: false, isFilePath: true },
+                issues: { title: 'Issues', editable: false, multiline: true },
+            };
+            const PKG_CHECK_FIELDS = ['barcode', 'instructions_item_pkg', 'ctn_instructions', 'packing_instructions', 'instructions_carton_design', 'packing_cdr_path'];
+
+            let map = null;           // SKU(upper) -> data, null until loaded
+            let tableRef = null;
+            let activePkgRow = null;
+            let currentLmp = { sku: '', competitors: [] };
+
+            function esc(s) {
+                return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+            function escAttr(s) {
+                return esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            }
+            function csrf() {
+                return document.querySelector('meta[name="csrf-token"]')?.content || '';
+            }
+            function isParentRow(d) { return !!(d && (d.is_parent || d.isParent)); }
+            function rowSku(d) { return String((d && (d.SKU || d.sku)) || '').trim(); }
+            function rowParent(d) { return String((d && (d.Parent || d.parent)) || '').trim(); }
+
+            function ctxFor(d) {
+                const sku = rowSku(d);
+                const e = (map && map[sku.toUpperCase()]) || {};
+                return Object.assign({}, e, {
+                    SKU: sku,
+                    Parent: rowParent(d),
+                    rating: e.qc_rating,
+                    reviews: e.qc_reviews,
+                });
+            }
+            function has(row, key) {
+                const v = row[key];
+                if (v === null || v === undefined) return false;
+                if (typeof v === 'number') return Number.isFinite(v) && v !== 0;
+                return String(v).trim() !== '';
+            }
+            function pkgMissing(row) {
+                return PKG_CHECK_FIELDS.some(function (f) { return !has(row, f); });
+            }
+            function qcMissing(row) {
+                const lmpMissing = !has(row, 'lmp_price') && !(parseInt(row.lmp_entries_total, 10) > 0);
+                const reviewMissing = !row.has_review && !has(row, 'Reviews') && !has(row, 'positive_review')
+                    && !has(row, 'negative_review') && !has(row, 'improvement');
+                return !has(row, 'issues') || !has(row, 'rating') || lmpMissing || reviewMissing;
+            }
+            function iconHtml(missing, title, btnClass) {
+                const color = missing ? '#dc3545' : '#2563eb';
+                const tip = missing ? (title + ' — data missing') : title;
+                return '<button type="button" class="btn btn-sm btn-link p-0 ' + btnClass + '" title="' + escAttr(tip) + '">'
+                    + '<i class="fas fa-search" style="font-size:16px;color:' + color + ';"></i></button>';
+            }
+            function pendingIcon(btnClass) {
+                return '<button type="button" class="btn btn-sm btn-link p-0 ' + btnClass + '" title="Loading…">'
+                    + '<i class="fas fa-search" style="font-size:16px;color:#9ca3af;"></i></button>';
+            }
+
+            function columns() {
+                const dash = '<span class="text-muted small">—</span>';
+                return [
+                    {
+                        title: 'PKG',
+                        field: 'pkg_view',
+                        hozAlign: 'center',
+                        vertAlign: 'middle',
+                        width: 52,
+                        minWidth: 46,
+                        headerSort: false,
+                        download: false,
+                        headerTooltip: 'View all packaging / design / CDR / issues details',
+                        formatter: function (cell) {
+                            const d = cell.getRow().getData() || {};
+                            if (isParentRow(d)) return dash;
+                            if (!map) return pendingIcon('fc-pq-pkg-btn');
+                            return iconHtml(pkgMissing(ctxFor(d)), 'View packaging details', 'fc-pq-pkg-btn');
+                        },
+                        cellClick: function (e, cell) {
+                            if (!e.target.closest('.fc-pq-pkg-btn')) return;
+                            e.stopPropagation();
+                            const tRow = cell.getRow();
+                            const d = tRow.getData() || {};
+                            if (isParentRow(d)) return;
+                            openPkgModal(d, tRow);
+                        },
+                    },
+                    {
+                        title: 'QC',
+                        field: 'fix_view',
+                        hozAlign: 'center',
+                        vertAlign: 'middle',
+                        width: 52,
+                        minWidth: 46,
+                        headerSort: false,
+                        download: false,
+                        headerTooltip: 'Issues, IR, Amz., LMP & Review',
+                        formatter: function (cell) {
+                            const d = cell.getRow().getData() || {};
+                            if (isParentRow(d)) return dash;
+                            if (!map) return pendingIcon('fc-pq-qc-btn');
+                            return iconHtml(qcMissing(ctxFor(d)), 'View Issues, IR, Amz, LMP & Review', 'fc-pq-qc-btn');
+                        },
+                        cellClick: function (e, cell) {
+                            if (!e.target.closest('.fc-pq-qc-btn')) return;
+                            e.stopPropagation();
+                            const d = cell.getRow().getData() || {};
+                            if (isParentRow(d)) return;
+                            openQcModal(ctxFor(d));
+                        },
+                    },
+                ];
+            }
+
+            function fileUrl(raw) {
+                const p = String(raw || '').trim();
+                if (!p) return '';
+                return /^https?:\/\//i.test(p) ? p : ('/' + p.replace(/^\//, ''));
+            }
+
+            function openPkgModal(rowData, tRow) {
+                const ctx = ctxFor(rowData);
+                const statusEl = document.getElementById('fcPqPkgStatus');
+                const saveBtn = document.getElementById('fcPqPkgSaveBtn');
+                document.getElementById('fcPqPkgSku').textContent = ctx.SKU ? '( ' + ctx.SKU + ' )' : '';
+                if (statusEl) statusEl.textContent = '';
+                if (saveBtn) saveBtn.disabled = false;
+                activePkgRow = tRow || null;
+
+                document.getElementById('fcPqPkgBody').innerHTML = Object.keys(FIELD_META).map(function (key) {
+                    const meta = FIELD_META[key];
+                    const raw = String(ctx[key] ?? '').trim();
+                    const title = escAttr(meta.title);
+                    let valueHtml;
+                    if (meta.editable) {
+                        valueHtml = meta.multiline
+                            ? '<textarea class="form-control fc-pq-input" data-field="' + key + '" rows="3" maxlength="' + (meta.maxLength || 2000) + '" placeholder="Enter ' + title + '…">' + esc(raw) + '</textarea>'
+                            : '<input type="text" class="form-control fc-pq-input" data-field="' + key + '" maxlength="' + (meta.maxLength || 255) + '" value="' + escAttr(raw) + '" placeholder="Enter ' + title + '…">';
+                    } else if (!raw) {
+                        valueHtml = '<div class="border rounded p-2 bg-light" style="font-size:13px;"><span class="text-danger fst-italic">No data</span></div>';
+                    } else if (meta.isFilePath) {
+                        const name = raw.split(/[/\\]/).pop() || raw;
+                        valueHtml = '<div class="border rounded p-2 bg-light" style="font-size:13px;"><a href="' + escAttr(fileUrl(raw)) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-file-arrow-down me-1"></i>' + escAttr(name) + '</a></div>';
+                    } else {
+                        valueHtml = '<div class="border rounded p-2 bg-light" style="font-size:13px;white-space:pre-wrap;">' + esc(raw) + '</div>';
+                    }
+                    return '<div class="mb-3"><label class="fw-bold text-primary mb-1 d-block">' + title + '</label>' + valueHtml + '</div>';
+                }).join('');
+
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('fcPqPkgModal')).show();
+            }
+
+            async function postJson(url, payload) {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf() },
+                    body: JSON.stringify(payload),
+                });
+                let data = {};
+                try { data = await res.json(); } catch (e) { /* non-json */ }
+                if (!res.ok || data.success === false) throw new Error(data.message || 'Save failed');
+                return data;
+            }
+
+            async function saveField(key, ctx, newText) {
+                const pid = parseInt(ctx.product_master_id, 10);
+                if (key === 'barcode') {
+                    const data = await postJson('/product_master/update-field', { sku: ctx.SKU, field: 'barcode', value: newText });
+                    return data.data && data.data.value != null ? String(data.data.value) : newText;
+                }
+                if (!pid) throw new Error('Product not found for this SKU');
+                if (key === 'instructions_item_pkg') {
+                    const data = await postJson('/instructions-item-pkg/update', { product_id: pid, sku: ctx.SKU, instructions: newText });
+                    return data.instructions != null ? String(data.instructions) : '';
+                }
+                if (key === 'instructions_carton_design') {
+                    const data = await postJson('/instructions-carton-design/update', { product_id: pid, sku: ctx.SKU, instructions: newText });
+                    return data.instructions != null ? String(data.instructions) : '';
+                }
+                if (key === 'ctn_instructions') {
+                    await postJson('/dim-wt-master/update', { product_id: pid, sku: ctx.SKU, parent: ctx.Parent, ctn_instructions: newText.length ? newText : null });
+                    return newText;
+                }
+                throw new Error('This field cannot be saved here.');
+            }
+
+            async function savePkgModal() {
+                const statusEl = document.getElementById('fcPqPkgStatus');
+                const saveBtn = document.getElementById('fcPqPkgSaveBtn');
+                if (!activePkgRow) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">No row selected.</span>';
+                    return;
+                }
+                const ctx = ctxFor(activePkgRow.getData() || {});
+                if (!ctx.SKU) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">Missing SKU.</span>';
+                    return;
+                }
+                const patch = {};
+                const failed = [];
+                if (saveBtn) saveBtn.disabled = true;
+                if (statusEl) statusEl.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> Saving…</span>';
+
+                const inputs = Array.from(document.querySelectorAll('#fcPqPkgBody .fc-pq-input'));
+                for (let i = 0; i < inputs.length; i++) {
+                    const key = inputs[i].getAttribute('data-field');
+                    const newVal = String(inputs[i].value || '').trim();
+                    if (newVal === String(ctx[key] ?? '').trim()) continue;
+                    try {
+                        patch[key] = await saveField(key, ctx, newVal);
+                    } catch (err) {
+                        failed.push((FIELD_META[key].title || key) + ': ' + (err.message || 'error'));
+                    }
+                }
+
+                if (Object.keys(patch).length) {
+                    const k = ctx.SKU.toUpperCase();
+                    map = map || {};
+                    map[k] = Object.assign({}, map[k] || {}, patch);
+                    if (typeof activePkgRow.reformat === 'function') activePkgRow.reformat();
+                }
+                if (saveBtn) saveBtn.disabled = false;
+                if (failed.length) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">' + esc(failed.join(' · ')) + '</span>';
+                    return;
+                }
+                if (!Object.keys(patch).length) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-muted">No changes to save.</span>';
+                    return;
+                }
+                if (statusEl) statusEl.innerHTML = '<span class="text-success">Saved.</span>';
+                setTimeout(function () {
+                    bootstrap.Modal.getInstance(document.getElementById('fcPqPkgModal'))?.hide();
+                }, 500);
+            }
+
+            function textBlock(label, value) {
+                const raw = String(value ?? '').trim();
+                const body = raw
+                    ? '<div class="border rounded p-2 bg-light" style="font-size:13px;white-space:pre-wrap;">' + esc(raw) + '</div>'
+                    : '<span class="text-muted">—</span>';
+                return '<div class="mb-3"><div class="fw-semibold small mb-1">' + esc(label) + '</div>' + body + '</div>';
+            }
+            function amzHtml(row) {
+                const rating = parseFloat(row.rating);
+                const reviews = parseInt(row.reviews, 10) || 0;
+                if (!rating) return '<span class="text-muted">No Amz rating data</span>';
+                let color;
+                if (rating < 3) color = '#a00211';
+                else if (rating <= 3.5) color = '#ffc107';
+                else if (rating <= 3.99) color = '#3591dc';
+                else if (rating <= 4.5) color = '#28a745';
+                else color = '#e83e8c';
+                const rc = reviews < 4 ? '#a00211' : '#6c757d';
+                return '<div class="d-flex flex-column align-items-start gap-1">'
+                    + '<span style="color:' + color + ';font-weight:600;font-size:15px;"><i class="fa fa-star"></i> ' + rating.toFixed(1) + '</span>'
+                    + '<span style="font-size:13px;color:' + rc + ';font-weight:600;">' + reviews.toLocaleString() + ' reviews</span></div>';
+            }
+            function lmpHtml(row) {
+                const price = row.lmp_price;
+                const total = parseInt(row.lmp_entries_total, 10) || 0;
+                const link = String(row.lmp_link || '').trim();
+                if (!price && total === 0) return '<span class="text-muted">N/A</span>';
+                let html = '<div class="d-flex flex-column gap-2">';
+                if (price) {
+                    const p = '$' + parseFloat(price).toFixed(2);
+                    html += link
+                        ? '<a href="' + escAttr(link) + '" target="_blank" rel="noopener" style="color:#28a745;font-weight:600;text-decoration:none;">' + p + '</a>'
+                        : '<span style="color:#28a745;font-weight:600;">' + p + '</span>';
+                }
+                if (total > 0) {
+                    html += '<button type="button" class="btn btn-sm btn-outline-primary fc-pq-lmp-btn" data-sku="' + escAttr(row.SKU || '') + '"><i class="fa fa-eye me-1"></i> View ' + total + ' competitor(s)</button>';
+                }
+                return html + '</div>';
+            }
+            function reviewHtml(row) {
+                if (!row.has_review) return '<span class="text-muted">No review recorded for this SKU.</span>';
+                return [
+                    textBlock('Positive Review', row.positive_review),
+                    textBlock('Negative Review', row.negative_review),
+                    textBlock('Improvement Required', row.improvement),
+                    textBlock('Date Updated', row.date_updated),
+                    textBlock('Reviews Note', row.Reviews),
+                ].join('');
+            }
+            function irTable(issues) {
+                const el = document.getElementById('fcPqQcIr');
+                if (!el) return;
+                const txt = function (v) { const s = esc(v); return s.trim() ? s : '<span class="text-muted">—</span>'; };
+                const dot = function (v) {
+                    return '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:' + (String(v ?? '').trim() ? '#198754' : '#dc3545') + ';"></span>';
+                };
+                if (!issues.length) {
+                    el.innerHTML = '<div class="text-muted fst-italic">No QC / packing issues recorded.</div>';
+                    return;
+                }
+                const rows = issues.map(function (it) {
+                    const found = [it.issue, it.issue_remark].filter(Boolean).join(': ');
+                    const fixed = [it.c_action_1, it.c_action_1_remark].filter(Boolean).join(': ');
+                    return '<tr><td>' + txt(it.what_happened) + '</td><td class="text-center">' + dot(it.issue) + '</td><td>' + txt(found)
+                        + '</td><td class="text-center">' + dot(it.c_action_1) + '</td><td>' + txt(fixed) + '</td></tr>';
+                }).join('');
+                el.innerHTML = '<div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0" style="font-size:13px;">'
+                    + '<thead class="table-light"><tr><th>Issue?</th><th class="text-center">RC Found</th><th>Root Cause Found</th><th class="text-center">RC Fixed</th><th>Root Cause Fixed</th></tr></thead>'
+                    + '<tbody>' + rows + '</tbody></table></div>';
+            }
+
+            function openQcModal(ctx) {
+                const sku = String(ctx.SKU || '').trim();
+                document.getElementById('fcPqQcSku').textContent = sku ? '( ' + sku + ' )' : '';
+                const issuesRaw = String(ctx.issues || '').trim();
+                document.getElementById('fcPqQcIssues').innerHTML = issuesRaw
+                    ? '<div class="border rounded p-2 bg-light" style="font-size:13px;white-space:pre-wrap;">' + esc(issuesRaw) + '</div>'
+                    : '<span class="text-muted">No issues text on this row.</span>';
+                document.getElementById('fcPqQcIr').innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin text-primary"></i></div>';
+                document.getElementById('fcPqQcAmz').innerHTML = amzHtml(ctx);
+                document.getElementById('fcPqQcLmp').innerHTML = lmpHtml(ctx);
+                document.getElementById('fcPqQcReview').innerHTML = reviewHtml(ctx);
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('fcPqQcModal')).show();
+                if (!sku) {
+                    document.getElementById('fcPqQcIr').innerHTML = '<span class="text-muted">—</span>';
+                    return;
+                }
+                fetch('{{ route('to.order.analysis.qc.issues') }}?sku=' + encodeURIComponent(sku), {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) { irTable((res && res.issues) || []); })
+                    .catch(function () {
+                        document.getElementById('fcPqQcIr').innerHTML = '<div class="text-danger">Failed to load IR / QC issues.</div>';
+                    });
+            }
+
+            function renderLmpList(competitors, lowestPrice) {
+                competitors = Array.isArray(competitors) ? competitors : [];
+                currentLmp.competitors = competitors;
+                const list = document.getElementById('fcPqLmpList');
+                if (!competitors.length) {
+                    list.innerHTML = '<div class="alert alert-info"><i class="fa fa-info-circle"></i> No competitors found for this SKU</div>';
+                    return;
+                }
+                const l1 = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(competitors, 'price') : parseFloat(lowestPrice);
+                let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm">'
+                    + '<thead class="table-light"><tr><th>#</th><th>Image</th><th>ASIN</th><th>Product Title</th><th>Seller</th>'
+                    + '<th>Price</th><th>Rating</th><th>Reviews</th><th>Link</th>' + LmpIgnore.header() + '</tr></thead><tbody>';
+                competitors.forEach(function (item, index) {
+                    const ignored = !!item.ignored;
+                    const isLowest = !ignored && l1 != null && Math.abs(parseFloat(item.price) - l1) < 0.01;
+                    const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
+                    const link = item.link || item.product_link || '#';
+                    const title = item.title || item.product_title || 'N/A';
+                    const img = item.image
+                        ? '<img src="' + escAttr(item.image) + '" style="width:50px;height:50px;object-fit:contain;" alt="">'
+                        : '<span style="color:#999;">—</span>';
+                    const rating = item.rating
+                        ? '<span style="color:#ffc107;">' + parseFloat(item.rating).toFixed(1) + ' <i class="fa fa-star"></i></span>'
+                        : '<span style="color:#999;">—</span>';
+                    const reviews = item.reviews
+                        ? '<span>' + parseInt(item.reviews, 10).toLocaleString() + '</span>'
+                        : '<span style="color:#999;">—</span>';
+                    html += '<tr class="' + rowClass + '">'
+                        + '<td class="text-center"><strong>' + (index + 1) + '</strong></td>'
+                        + '<td class="text-center">' + img + '</td>'
+                        + '<td><span class="text-primary fw-semibold" style="font-size:11px;">' + escAttr(item.asin || 'N/A') + '</span></td>'
+                        + '<td style="font-size:11px;" title="' + escAttr(title) + '">' + escAttr(title.length > 60 ? title.substring(0, 60) + '…' : title) + '</td>'
+                        + '<td style="font-size:11px;">' + escAttr(item.seller_name || '—') + '</td>'
+                        + '<td><strong>$' + parseFloat(item.price).toFixed(2) + (isLowest ? ' <i class="fa fa-trophy text-success"></i>' : '') + (ignored ? ' <span class="badge bg-secondary">Ignored</span>' : '') + '</strong></td>'
+                        + '<td class="text-center">' + rating + '</td>'
+                        + '<td class="text-center">' + reviews + '</td>'
+                        + '<td class="text-center"><a href="' + escAttr(link) + '" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="View product"><i class="fa fa-external-link"></i></a></td>'
+                        + '<td class="text-center align-middle">' + LmpIgnore.checkbox(item, 'amazon', currentLmp.sku || '') + '</td>'
+                        + '</tr>';
+                });
+                list.innerHTML = html + '</tbody></table></div>';
+            }
+
+            function loadLmpModal(sku) {
+                currentLmp.sku = sku || '';
+                document.getElementById('fcPqLmpSku').textContent = sku;
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('fcPqLmpModal')).show();
+                const list = document.getElementById('fcPqLmpList');
+                list.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading competitors...</p></div>';
+                $.ajax({
+                    url: '/amazon/competitors',
+                    method: 'GET',
+                    data: { sku: sku },
+                    success: function (response) {
+                        if (response.success) renderLmpList(response.competitors, response.lowest_price);
+                        else list.innerHTML = '<div class="alert alert-warning"><i class="fa fa-info-circle"></i> No competitors found for this SKU.</div>';
+                    },
+                    error: function () {
+                        list.innerHTML = '<div class="alert alert-warning"><i class="fa fa-info-circle"></i> Could not load competitor data.</div>';
+                    },
+                });
+            }
+
+            function load() {
+                fetch('{{ route('forecast.analysis.pkg.qc.data') }}', {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (!res || !res.success) throw new Error((res && res.message) || 'load failed');
+                        map = res.data || {};
+                        if (tableRef) tableRef.redraw(true);
+                    })
+                    .catch(function (err) {
+                        console.warn('PKG/QC data failed to load', err);
+                        map = {};
+                        if (tableRef) tableRef.redraw(true);
+                    });
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                document.getElementById('fcPqPkgSaveBtn')?.addEventListener('click', savePkgModal);
+                document.addEventListener('click', function (e) {
+                    const btn = e.target.closest('.fc-pq-lmp-btn');
+                    if (!btn) return;
+                    e.preventDefault();
+                    const sku = btn.getAttribute('data-sku');
+                    if (sku) loadLmpModal(sku);
+                });
+                if (window.LmpIgnore) {
+                    LmpIgnore.bind({
+                        modal: '#fcPqLmpModal',
+                        marketplace: 'amazon',
+                        sku: function () { return currentLmp.sku; },
+                        onToggled: function (id, ignored) {
+                            currentLmp.competitors.forEach(function (c) {
+                                if (String(c.id) === String(id)) c.ignored = ignored;
+                            });
+                            renderLmpList(currentLmp.competitors, LmpIgnore.l1(currentLmp.competitors, 'price'));
+                        },
+                    });
+                }
+            });
+
+            return {
+                columns: columns,
+                attach: function (t) { tableRef = t; load(); },
+            };
+        })();
+    </script>
     <script>
         document.body.style.zoom = "95%";
         
@@ -4272,6 +4808,7 @@
                         return `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
                     }
                 },
+                ...(window.FcPq ? window.FcPq.columns() : []),
                 {
                     title: "Edit",
                     field: "_edit_row",
@@ -4911,6 +5448,7 @@
             });
         });
         table.on("dataLoaded", function() { updateTopRowCounter(); });
+        if (window.FcPq) window.FcPq.attach(table);
         table.on("dataFiltered", function() {
             pruneForecastSelectionToActive();
             updateTopRowCounter();
