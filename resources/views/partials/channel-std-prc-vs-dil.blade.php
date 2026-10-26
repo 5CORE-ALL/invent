@@ -607,6 +607,7 @@
             const n = Number(raw);
             return isFinite(n) ? n : null;
         }
+        window.chStdAgeDays = chStdAgeDays;
         function chStdReviews(d) {
             return chStdNum(d, ['review_count', 'reviews', 'Reviews', 'rating_count', 'ratings']);
         }

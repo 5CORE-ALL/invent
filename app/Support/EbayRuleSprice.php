@@ -170,7 +170,50 @@ class EbayRuleSprice
             // eBay 1/2/3: Diff = (Std Prc − Price) / Price above diff_adj.gt_pct adds diff_adj.points to the Target NROI
             // (both saved in the Sprc Dil modal; default 20% and +10). Null = rule off for this channel.
             'diff_adj' => $unpacked['diff_adj'],
+            // Ageing Rule (eBay 1): the SKU's age band adds its points to the Target NROI, after the CVR overlay and
+            // before the Diff rule. Null / all-zero points = rule off.
+            'age_adj' => $channel === 'ebay1' ? ($unpacked['age_adj'] ?? null) : null,
         ]];
+    }
+
+    /** True when at least one saved age band has non-zero points (otherwise the age lookup is skipped). */
+    private static function ageAdjActive(?array $rules): bool
+    {
+        foreach ($rules ?? [] as $band) {
+            if (is_array($band) && is_numeric($band['points'] ?? null) && abs((float) $band['points']) > 0.00001) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * SKU age in days for the Ageing Rule: the row's age_days when it has one, else the Shopify push clock
+     * (same source as the Age Disc column / StdPrcVsDilPricer). Null when the SKU has no age.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    private static function ageDays(array $input): ?float
+    {
+        if (is_numeric($input['age_days'] ?? null)) {
+            return (float) $input['age_days'];
+        }
+        $sku = trim((string) ($input['sku'] ?? ''));
+        if ($sku === '' || ! function_exists('app')) {
+            return null;
+        }
+        try {
+            if (! app()->bound('db')) {
+                return null;
+            }
+            $days = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)
+                ->ageDaysFor($sku, (float) ($input['inv'] ?? 0));
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return is_int($days) ? (float) $days : null;
     }
 
     /** Diff% = (Std Prc − Price) / Price × 100; null when either is missing. */
@@ -209,6 +252,9 @@ class EbayRuleSprice
             (float) ($input['cvr_60'] ?? 0),
             $dil['cvr_adj']
         );
+        if (self::ageAdjActive($dil['age_adj'] ?? null)) {
+            $nroi = AmazonDilGroiRule::adjustGroiForAge($nroi, self::ageDays($input), $dil['age_adj']);
+        }
         if (! empty($dil['diff_adj'])) {
             // $diffRefPrice overrides the live price as the Diff reference (see price(): keeps a boosted SKU stable).
             $diffPct = self::stdPriceDiffPct((float) ($input['std'] ?? 0), $diffRefPrice ?? (float) ($input['price'] ?? 0));

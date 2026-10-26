@@ -44,6 +44,8 @@
     // Pages with no LMP data (Depop, Purchasing Power, Wayfair) get no LMP cap rule (TopDawg too). Reverb has LMP, so it gets the full LMP cap table.
     $ebaySprcDilLmpCapOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'reverb', 'aliexpress', 'tiktok', 'tiktok2', 'mercari_wship', 'shein', 'bestbuy'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
+    // Ageing Rule (same block as /amazon-tabulator-view): the SKU's age in days adds points to the Target NROI. eBay 1 only for now.
+    $ebaySprcDilAgeAdjOn = in_array($ebaySprcDilChannel, ['ebay1'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
@@ -167,6 +169,24 @@
         #ebay-cvr-groi-table .ebay-dg-count {
             font-weight: 700;
             text-align: center;
+        }
+        #ebay-age-adj-table .ebay-age-adj-input {
+            max-width: 72px;
+            display: inline-block;
+            text-align: right;
+            font-weight: 600;
+        }
+        #ebay-age-adj-table .ebay-dg-count {
+            font-weight: 700;
+            text-align: center;
+        }
+        #ebay-age-adj-table .ebay-age-adj-del {
+            border: 0;
+            background: transparent;
+            color: #dc3545;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
         }
         #ebay-dil-groi-table .ebay-dg-count {
             font-weight: 700;
@@ -436,6 +456,12 @@
                             : apply that Adj {{ $ebaySprcDilTargetLabel }} to the Target {{ $ebaySprcDilTargetLabel }} (Count updates as you edit).
                         </li>
                         @endif
+                        @if(!empty($ebaySprcDilAgeAdjOn))
+                        <li>
+                            <strong>When</strong> the SKU's <strong>age (days)</strong> is inside a band of the <strong>Ageing Rule</strong> table:
+                            add that band's points to the Target {{ $ebaySprcDilTargetLabel }} (after the CVR overlay, before the Diff rule; Count updates as you edit).
+                        </li>
+                        @endif
                         @if(!empty($ebaySprcDilDiffAdjOn))
                         <li>
                             <strong>When</strong> the <strong>Diff</strong> column
@@ -509,6 +535,12 @@
                             @endif
                             : apply that Adj {{ $ebaySprcDilTargetLabel }} to the Dil slab Target {{ $ebaySprcDilTargetLabel }}
                             (Count updates as you edit).
+                        </li>
+                        @endif
+                        @if(!empty($ebaySprcDilAgeAdjOn))
+                        <li>
+                            <strong>When</strong> the SKU's <strong>age (days)</strong> is inside a band of the <strong>Ageing Rule</strong> table:
+                            add that band's points to the Target {{ $ebaySprcDilTargetLabel }} (after the CVR overlay, before the Diff rule; Count updates as you edit).
                         </li>
                         @endif
                         @if(!empty($ebaySprcDilDiffAdjOn))
@@ -714,6 +746,34 @@
                             </tbody>
                         </table>
                     </div>
+                    @endif
+                    @if(!empty($ebaySprcDilAgeAdjOn))
+                    <div class="ebay-dg-rules-title mt-2"
+                        title="Each age band (days in stock) adds its points to the Dil slab Target NROI, after the CVR overlay and before the Diff rule. Count = SKUs (INV &gt; 0) whose age is in that band.">
+                        Ageing Rule
+                    </div>
+                    <div class="small text-muted mb-1">
+                        <strong>If</strong> the SKU's age (days) is inside an age band,
+                        <strong>add that band's points to the Target {{ $ebaySprcDilTargetLabel }}</strong> (use a negative number to lower it).
+                        Applies on Sprc Dil only. A SKU with no age, or in no band, is not changed.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="ebay-age-adj-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width:90px;">From (days)</th>
+                                    <th class="text-center" style="width:90px;">To (days)</th>
+                                    <th class="text-end" style="width:130px;">Adj {{ $ebaySprcDilTargetLabel }}</th>
+                                    <th class="text-center" style="width:80px;" title="SKUs (INV &gt; 0) whose age in days is in this band">Count</th>
+                                    <th style="width:36px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="ebay-age-adj-tbody"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 mt-1" id="ebay-age-adj-add-btn">
+                        <i class="fas fa-plus me-1"></i> Add age band
+                    </button>
                     @endif
                     @if(!empty($ebaySprcDilLmpCapOn))
                     <div class="ebay-dg-rules-title mt-2"
@@ -1356,6 +1416,126 @@
             $('.ebay-diff-adj-points').val(cfg.points);
         }
         window.ebayDiffAdjCfg = function() { return ebayDiffAdj; };
+        /**
+         * Ageing Rule (Sprc Dil), same as /amazon-tabulator-view: the SKU's age in days picks a band; the band's points are added to
+         * the Target NROI after the CVR overlay and before the Diff rule. Same as the server (AmazonDilGroiRule::adjustGroiForAge).
+         * Not saved yet = 4 bands at 0 points, so nothing changes until the points are edited.
+         */
+        const EBAY_AGE_ADJ_ON = @json(!empty($ebaySprcDilAgeAdjOn));
+        const EBAY_AGE_ADJ_DEFAULT = [
+            { min: 0, max: 90, points: 0 },
+            { min: 90, max: 180, points: 0 },
+            { min: 180, max: 365, points: 0 },
+            { min: 365, max: 9999, points: 0 },
+        ];
+        let ebayAgeAdj = EBAY_AGE_ADJ_DEFAULT.map(function(r) { return Object.assign({}, r); });
+        /** One band as the server stores it ({min,max,points}, min ≤ max, ≥ 0), or null when From / To is blank or not a number. */
+        function ebayAgeAdjBand(r) {
+            if (!r || r.min === '' || r.max === '' || r.min == null || r.max == null) return null;
+            let min = Number(r.min);
+            let max = Number(r.max);
+            if (!isFinite(min) || !isFinite(max)) return null;
+            min = Math.max(0, min);
+            max = Math.max(0, max);
+            if (max < min) { const t = min; min = max; max = t; }
+            const pts = Number(r.points);
+            return { min: ebayDgRound2(min), max: ebayDgRound2(max), points: (r.points !== '' && r.points !== null && isFinite(pts)) ? ebayDgRound2(pts) : 0 };
+        }
+        /** Saved bands → editable rows. Nothing saved (null) = defaults; a saved empty list = no bands. */
+        function ebayNormalizeAgeAdj(raw) {
+            if (raw === null || raw === undefined) return EBAY_AGE_ADJ_DEFAULT.map(function(r) { return Object.assign({}, r); });
+            if (!Array.isArray(raw)) return [];
+            return raw.map(ebayAgeAdjBand).filter(Boolean);
+        }
+        /** Bands to save: the editable rows that have a valid From and To. */
+        function ebayAgeAdjPayload() {
+            return ebayAgeAdj.map(ebayAgeAdjBand).filter(Boolean);
+        }
+        /** Index (in the editable rows) of the band an age (days) is in, or -1. min ≤ age < max; the last valid band also includes max. */
+        function ebayAgeAdjSlabIdx(days, rows) {
+            if (days === null || days === undefined || !isFinite(days)) return -1;
+            const list = rows || [];
+            let last = -1;
+            for (let i = 0; i < list.length; i++) { if (ebayAgeAdjBand(list[i])) last = i; }
+            for (let i = 0; i < list.length; i++) {
+                const b = ebayAgeAdjBand(list[i]);
+                if (!b) continue;
+                const hit = Math.abs(b.max - b.min) < 0.00001
+                    ? Math.abs(days - b.min) < 0.00001
+                    : (days >= b.min && (i === last ? days <= b.max : days < b.max));
+                if (hit) return i;
+            }
+            return -1;
+        }
+        /** Age in days for a grid row (Inv Days age, same clock as the Age Disc column), or null when it has none. */
+        function ebayRowAgeDays(d) {
+            if (!d) return null;
+            let raw = null;
+            if (typeof window.chStdAgeDays === 'function') raw = window.chStdAgeDays(d);
+            else raw = d.age_days;
+            if (raw === null || raw === undefined || raw === '') return null;
+            const n = Number(raw);
+            return isFinite(n) ? n : null;
+        }
+        /** Points the Ageing Rule adds to this row's Target NROI (0 when the rule is off, the age is unknown or in no band). */
+        function ebayDilGroiAgeAdj(d) {
+            if (!EBAY_AGE_ADJ_ON || !d) return 0;
+            const i = ebayAgeAdjSlabIdx(ebayRowAgeDays(d), ebayAgeAdj);
+            const band = i >= 0 ? ebayAgeAdjBand(ebayAgeAdj[i]) : null;
+            return band ? band.points : 0;
+        }
+        window.ebayDilGroiAgeAdj = ebayDilGroiAgeAdj;
+        function ebayRenderAgeAdjTable() {
+            const $tb = $('#ebay-age-adj-tbody');
+            if (!$tb.length) return;
+            $tb.empty();
+            ebayAgeAdj.forEach(function(r, idx) {
+                $tb.append(
+                    '<tr data-idx="' + idx + '">'
+                    + '<td><input type="number" min="0" step="1" class="form-control form-control-sm ebay-age-adj-input ebay-age-adj-min" value="' + r.min + '"></td>'
+                    + '<td><input type="number" min="0" step="1" class="form-control form-control-sm ebay-age-adj-input ebay-age-adj-max" value="' + r.max + '"></td>'
+                    + '<td class="text-end"><input type="number" step="1" class="form-control form-control-sm ebay-age-adj-input ebay-age-adj-points" value="' + r.points + '" title="Points added to the Target (negative lowers it)"></td>'
+                    + '<td class="ebay-dg-count"><span class="ebay-age-adj-count">0</span></td>'
+                    + '<td class="text-center"><button type="button" class="ebay-age-adj-del" data-idx="' + idx + '" title="Remove age band">&times;</button></td>'
+                    + '</tr>'
+                );
+            });
+            ebayPaintAgeAdjCounts();
+        }
+        function ebayPaintAgeAdjTable(raw) {
+            ebayAgeAdj = ebayNormalizeAgeAdj(raw);
+            ebayRenderAgeAdjTable();
+        }
+        /** Read the band inputs into ebayAgeAdj. Rows with a blank From / To are kept as typed (and ignored) until they are filled. */
+        function ebayReadAgeAdjFromTable() {
+            const rows = [];
+            $('#ebay-age-adj-tbody tr').each(function() {
+                const $r = $(this);
+                rows.push({
+                    min: $r.find('.ebay-age-adj-min').val(),
+                    max: $r.find('.ebay-age-adj-max').val(),
+                    points: $r.find('.ebay-age-adj-points').val(),
+                });
+            });
+            ebayAgeAdj = rows;
+        }
+        function ebayAgeAdjCollectCounts() {
+            const counts = ebayAgeAdj.map(function() { return 0; });
+            ebayDgEachInvChild(function(d) {
+                const i = ebayAgeAdjSlabIdx(ebayRowAgeDays(d), ebayAgeAdj);
+                if (i >= 0) counts[i]++;
+            });
+            return counts;
+        }
+        function ebayPaintAgeAdjCounts() {
+            if (!EBAY_AGE_ADJ_ON) return;
+            const $rows = $('#ebay-age-adj-tbody tr');
+            if (!$rows.length) return;
+            const counts = ebayAgeAdjCollectCounts();
+            $rows.each(function(i) {
+                $(this).find('.ebay-age-adj-count').text(counts[i] || 0);
+            });
+        }
         function ebayDilGroiDiffAdj(d) {
             if (!EBAY_DIFF_ADJ_ON || !d) return 0;
             // eBay reads STANDARD_PRICE and eBay Price. A page that prices another way (Temu) sets window.ebayDiffStdPrice(d) / ebayDiffLivePrice(d).
@@ -1382,7 +1562,9 @@
         function ebayDilGroiApplyCvrAdj(slabGroi, d) {
             // Same order as the server (EbayRuleSprice): floor the CVR-adjusted target at 0, then add the Diff points.
             const afterCvr = Math.max(0, ebayDgRound2((Number(slabGroi) || 0) + ebayDilGroiCvrAdj(d)));
-            const groi = ebayDgRound2(afterCvr + ebayDilGroiStableDiffAdj(afterCvr, d, ebayDilGroiDiffAdj(d)));
+            // Ageing Rule: the age band's points, then floor at 0 again, before the Diff rule.
+            const afterAge = Math.max(0, ebayDgRound2(afterCvr + ebayDilGroiAgeAdj(d)));
+            const groi = ebayDgRound2(afterAge + ebayDilGroiStableDiffAdj(afterAge, d, ebayDilGroiDiffAdj(d)));
             return groi < 0 ? 0 : groi;
         }
         /** Vinted / Instagram / Depop: channel L30 = 0 still uses the OV Dil % slab (OV L30 ÷ INV). */
@@ -1702,8 +1884,11 @@
             const slabGroi = groi;
             const cvrAdj = ebayDilGroiCvrAdj(d);
             groi = ebayDilGroiApplyCvrAdj(slabGroi, d);
-            // Diff points actually applied (stable rule), for the hover text.
-            const diffAdj = ebayDgRound2(groi - Math.max(0, ebayDgRound2((Number(slabGroi) || 0) + cvrAdj)));
+            // Age points and Diff points actually applied (after the floors), for the hover text.
+            const afterCvr = Math.max(0, ebayDgRound2((Number(slabGroi) || 0) + cvrAdj));
+            const afterAge = Math.max(0, ebayDgRound2(afterCvr + ebayDilGroiAgeAdj(d)));
+            const ageAdj = ebayDgRound2(afterAge - afterCvr);
+            const diffAdj = ebayDgRound2(groi - afterAge);
             const rawSprc = ebaySpriceFromGroi(d, groi);
             if (!(rawSprc > 0)) return null;
             let sprc = rawSprc;
@@ -1745,6 +1930,7 @@
                 slabGroi: slabGroi,
                 groi: groi,
                 cvrAdj: cvrAdj,
+                ageAdj: ageAdj,
                 diffAdj: diffAdj,
                 sprc: sprc,
                 rawSprc: rawSprc,
@@ -1774,10 +1960,13 @@
                     : ('CVR Down < ' + cfg.down_lt + '% and down arrow');
                 tip += ' ' + sign + meta.cvrAdj + ' (' + why + ')';
             }
+            if (meta.ageAdj) {
+                tip += ' ' + (meta.ageAdj > 0 ? '+' : '') + meta.ageAdj + ' (Age)';
+            }
             if (meta.diffAdj) {
                 tip += ' ' + (meta.diffAdj > 0 ? '+' : '') + meta.diffAdj + ' (Diff > ' + ebayDiffAdj.gt_pct + '%)';
             }
-            if (meta.cvrAdj || meta.diffAdj) {
+            if (meta.cvrAdj || meta.ageAdj || meta.diffAdj) {
                 tip += ' → ' + meta.groi + '%';
             }
             return tip + (meta.lmpCapped ? ' → LMP $' : ' → $') + Number(meta.sprc).toFixed(2);
@@ -2262,6 +2451,7 @@
                 if (cvrLegend) cvrLegend.innerHTML = ebayDgPieLegendHtml('CVR Up / Down · CVR%', cvrBands, cvrCounts, 'cvr');
                 ebayDgDrawPie('ebay-dg-cvr-pie', 'cvr', cvrBands, cvrCounts);
                 ebayPaintCvrGroiAdjCounts();
+                ebayPaintAgeAdjCounts();
 
                 $('#ebay-dil-groi-tbody tr:not([data-clearance])').each(function(i) {
                     const r = rules[i];
@@ -2296,6 +2486,7 @@
                 $(this).find('.ebay-dg-count-n').text(r ? (counts[r.key] || 0) : 0);
             });
             ebayPaintCvrGroiAdjCounts();
+            ebayPaintAgeAdjCounts();
             ebayPaintClearanceSlabCount();
         }
         function renderEbayDilGroiModalTable() {
@@ -3116,6 +3307,7 @@
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
                 if (res && res.lmp_cap) ebayPaintLmpCapTable(res.lmp_cap);
                 if (res && res.diff_adj) ebayPaintDiffAdj(res.diff_adj);
+                if (EBAY_AGE_ADJ_ON && res) ebayPaintAgeAdjTable(res.age_adj);
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     ebayClearanceNroi = ebayDgRound2(Number(res.clearance_nroi));
                 }
@@ -3191,7 +3383,10 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, clearance_nroi: ebayClearanceNroiNow(), _token: ebayDgCsrf() }),
+                data: JSON.stringify(Object.assign(
+                    { rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, clearance_nroi: ebayClearanceNroiNow(), _token: ebayDgCsrf() },
+                    EBAY_AGE_ADJ_ON ? { age_adj: ebayAgeAdjPayload() } : {}
+                )),
             });
             return ebayDgAutosaveXhr.then(function(res) {
                 ebayDgAutosaveXhr = null;
@@ -3323,6 +3518,31 @@
                 .on('input.ebayCvrGroi change.ebayCvrGroi', '#ebay-cvr-groi-table .ebay-cvr-groi-input', function() {
                     ebayCvrGroiAdj = ebayCvrGroiAdjNow();
                     renderEbayDilGroiCounts();
+                    ebayAfterDilGroiRulesChanged();
+                    ebayScheduleDilGroiAutosave();
+                });
+            $(document).off('input.ebayAgeAdj change.ebayAgeAdj', '#ebay-age-adj-table .ebay-age-adj-input')
+                .on('input.ebayAgeAdj change.ebayAgeAdj', '#ebay-age-adj-table .ebay-age-adj-input', function() {
+                    ebayReadAgeAdjFromTable();
+                    ebayPaintAgeAdjCounts();
+                    ebayAfterDilGroiRulesChanged();
+                    ebayScheduleDilGroiAutosave();
+                });
+            $(document).off('click.ebayAgeAdjAdd', '#ebay-age-adj-add-btn')
+                .on('click.ebayAgeAdjAdd', '#ebay-age-adj-add-btn', function() {
+                    ebayReadAgeAdjFromTable();
+                    const last = ebayAgeAdj.length ? ebayAgeAdjBand(ebayAgeAdj[ebayAgeAdj.length - 1]) : null;
+                    const from = last ? last.max : 0;
+                    ebayAgeAdj.push({ min: from, max: from + 90, points: 0 });
+                    ebayRenderAgeAdjTable();
+                    ebayAfterDilGroiRulesChanged();
+                    ebayScheduleDilGroiAutosave();
+                });
+            $(document).off('click.ebayAgeAdjDel', '#ebay-age-adj-table .ebay-age-adj-del')
+                .on('click.ebayAgeAdjDel', '#ebay-age-adj-table .ebay-age-adj-del', function() {
+                    ebayReadAgeAdjFromTable();
+                    ebayAgeAdj.splice(parseInt($(this).attr('data-idx'), 10), 1);
+                    ebayRenderAgeAdjTable();
                     ebayAfterDilGroiRulesChanged();
                     ebayScheduleDilGroiAutosave();
                 });
