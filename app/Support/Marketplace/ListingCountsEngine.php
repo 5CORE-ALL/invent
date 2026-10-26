@@ -803,8 +803,13 @@ class ListingCountsEngine
      * @param  list<string>  $skus
      * @return array<string, string>
      */
-    public static function listedIdsFromColumn(string $modelClass, array $skus, string $column, bool $rejectSkuAsId = false): array
+    public static function listedIdsFromColumn(string $modelClass, array $skus, string $column, bool $rejectSkuAsId = false, array $hideStatuses = []): array
     {
+        $hide = [];
+        foreach ($hideStatuses as $status) {
+            $hide[str_replace([' ', '-'], '_', strtolower(trim((string) $status)))] = true;
+        }
+
         if ($modelClass === '' || ! class_exists($modelClass) || $skus === []) {
             return [];
         }
@@ -828,7 +833,7 @@ class ListingCountsEngine
             ->whereNotNull($column)
             ->where($column, '!=', '')
             ->get($columns)
-            ->each(function ($row) use (&$byKey, $column, $rejectSkuAsId, $wanted, $hasStatus) {
+            ->each(function ($row) use (&$byKey, $column, $rejectSkuAsId, $wanted, $hasStatus, $hide) {
                 $sku = trim((string) $row->sku);
                 $id = trim((string) ($row->{$column} ?? ''));
                 if ($sku === '' || $id === '') {
@@ -836,6 +841,12 @@ class ListingCountsEngine
                 }
                 if ($hasStatus && self::listingStatusHidesId($row->listing_status ?? null, $id, $sku)) {
                     return;
+                }
+                if ($hasStatus && $hide !== []) {
+                    $status = str_replace([' ', '-'], '_', strtolower(trim((string) ($row->listing_status ?? ''))));
+                    if (isset($hide[$status])) {
+                        return;
+                    }
                 }
                 if ($rejectSkuAsId && strcasecmp($id, $sku) === 0) {
                     return;

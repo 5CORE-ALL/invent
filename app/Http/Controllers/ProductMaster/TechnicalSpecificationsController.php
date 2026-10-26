@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CategoryMaster;
 use App\Models\ChannelMaster;
 use App\Models\ProductMaster;
+use App\Services\CategoryMasters\CategoryChannelSyncService;
 use App\Services\ProductMaster\BackstageSpecificationStore;
 use App\Services\ProductMaster\EbayTechnicalSpecificationSync;
 use App\Support\Marketplace\EbayCategoryAspects;
@@ -450,10 +451,125 @@ class TechnicalSpecificationsController extends Controller
                 $product->description_v2_specifications = $pulled['specs'] === [] ? null : $pulled['specs'];
                 $product->save();
             }
-            $results[] = $this->syncResult($sku, $pulled['success'], $pulled['message'], $pulled['specs']);
+            // The live category comes with the listing, so Pull keeps it current too.
+            $category = $this->saveEbayCategory($product, (string) ($pulled['category_id'] ?? ''), (string) ($pulled['category_path'] ?? ''), $request->user()?->id);
+            $message = $pulled['message'];
+            if ($category['changed']) {
+                $message .= ' Category updated to '.$category['path'].'.';
+            }
+            $results[] = $this->syncResult($sku, $pulled['success'], $message, $pulled['specs']) + [
+                'category_changed' => $category['changed'],
+            ];
         }
 
         return response()->json(['success' => true, 'results' => $results]);
+    }
+
+    /**
+     * POST /technical-specifications/sync-ebay-categories
+     * Reads the live eBay 1 category of each SKU and saves it in Category Masters. eBay 2 and 3 are
+     * not called. Specifications are not touched. Parent rows and SKUs that are not listed on
+     * eBay 1 are skipped, not failed.
+     */
+    public function syncEbayCategories(Request $request, CategoryChannelSyncService $sync)
+    {
+        $skus = $this->selectedSkus($request);
+        @set_time_limit(300);
+
+        $results = [];
+        foreach ($skus as $sku) {
+            $product = ProductMaster::query()->where('sku', $sku)->first();
+            if (! $product) {
+                $results[] = $this->categoryResult($sku, 'failed', 'SKU not found.');
+
+                continue;
+            }
+            if ($this->isParentSku((string) $product->sku)) {
+                $results[] = $this->categoryResult($sku, 'skipped', 'Parent rows are not listed on eBay.');
+
+                continue;
+            }
+
+            try {
+                $pulled = $sync->pullEbayAccount((string) $product->sku, 'eBay 1');
+            } catch (\Throwable $e) {
+                Log::warning('Technical specifications category sync failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+                $results[] = $this->categoryResult($sku, 'failed', $e->getMessage());
+
+                continue;
+            }
+
+            if (! $pulled['success']) {
+                $accounts = $pulled['accounts'] ?? [];
+                $notListed = $accounts !== [] && count(array_filter(
+                    $accounts,
+                    static fn ($a) => ($a['status'] ?? '') === 'not_listed'
+                )) === count($accounts);
+                $results[] = $this->categoryResult($sku, $notListed ? 'skipped' : 'failed', $notListed ? 'Not listed on eBay 1.' : $pulled['message']);
+
+                continue;
+            }
+
+            $saved = $this->saveEbayCategory($product, (string) $pulled['id'], (string) $pulled['path'], $request->user()?->id);
+            $results[] = $this->categoryResult(
+                $sku,
+                $saved['changed'] ? 'changed' : 'unchanged',
+                $pulled['message'],
+                $saved['previous'],
+                (string) $pulled['path']
+            );
+        }
+
+        return response()->json(['success' => true, 'results' => $results]);
+    }
+
+    /**
+     * @return array{sku: string, status: string, success: bool, message: string, previous: string, category: string}
+     */
+    private function categoryResult(string $sku, string $status, string $message, string $previous = '', string $category = ''): array
+    {
+        return [
+            'sku' => $sku,
+            'status' => $status,
+            'success' => $status !== 'failed',
+            'message' => $message,
+            'previous' => $previous,
+            'category' => $category,
+        ];
+    }
+
+    /**
+     * Save a live eBay category for one SKU in Category Masters.
+     *
+     * @return array{changed: bool, previous: string, path: string}
+     */
+    private function saveEbayCategory(ProductMaster $product, string $id, string $path, ?int $userId): array
+    {
+        $id = trim($id);
+        $path = trim($path);
+        $none = ['changed' => false, 'previous' => '', 'path' => $path];
+        if (($id === '' && $path === '') || ! Schema::hasTable('category_masters')) {
+            return $none;
+        }
+
+        $hasIdColumn = Schema::hasColumn('category_masters', 'category_ebay_id');
+        $existing = CategoryMaster::query()->where('sku', (string) $product->sku)->first();
+        $previousId = $hasIdColumn ? trim((string) ($existing->category_ebay_id ?? '')) : '';
+        $previousPath = trim((string) ($existing->category_ebay ?? ''));
+        $changed = $existing === null
+            || ($id !== '' && $previousId !== '' ? $previousId !== $id : $previousPath !== $path);
+
+        $values = [
+            'parent' => trim((string) ($product->parent ?? '')) !== '' ? trim((string) $product->parent) : null,
+            'category_ebay' => $path !== '' ? $path : 'eBay category '.$id,
+            'updated_by' => $userId,
+        ];
+        if ($hasIdColumn) {
+            $values['category_ebay_id'] = $id !== '' ? $id : null;
+        }
+        CategoryMaster::query()->updateOrCreate(['sku' => (string) $product->sku], $values);
+
+        return ['changed' => $changed, 'previous' => $previousPath, 'path' => $values['category_ebay']];
     }
 
     /**

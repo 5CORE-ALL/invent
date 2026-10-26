@@ -53,7 +53,13 @@ class ChannelListingRegistry
             'ebay' => [
                 'dataView' => \App\Models\EbayDataView::class,
                 'status' => \App\Models\EbayListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => EbayMetric::class, 'column' => 'item_id'],
+                // An ended / unsold eBay listing is not live: its SKU is Missing L again.
+                'listed' => [
+                    'type' => 'column',
+                    'model' => EbayMetric::class,
+                    'column' => 'item_id',
+                    'hide_statuses' => ['inactive', 'ended', 'unsold', 'completed', 'sold'],
+                ],
                 'id_field' => 'eBay_item_id',
                 'buyer_tpl' => 'https://www.ebay.com/itm/{id}',
                 'seller_tpl' => 'https://www.ebay.com/sh/lst/active?keyword={id}&action=search',
@@ -519,7 +525,8 @@ class ChannelListingRegistry
                 (string) ($listed['model'] ?? ''),
                 $skus,
                 (string) ($listed['column'] ?? 'item_id'),
-                (bool) ($listed['reject_sku'] ?? false)
+                (bool) ($listed['reject_sku'] ?? false),
+                (array) ($listed['hide_statuses'] ?? [])
             ),
             'price' => ListingCountsEngine::listedIdsFromPrice(
                 (string) ($listed['model'] ?? ''),

@@ -30,6 +30,16 @@ class FetchEbayListingStatus extends Command
                 continue;
             }
             $this->info("ACTIVE: {$result['active']}  INACTIVE: {$result['inactive']}  MISSING: {$result['missing']}");
+
+            // Show the new statuses on /missing-listing right away.
+            try {
+                $slug = [1 => 'ebay', 2 => 'ebaytwo', 3 => 'ebaythree'][$store] ?? null;
+                if ($slug !== null) {
+                    \App\Support\Marketplace\ListingChannelCounts::refreshChannelOnMissingListingPage($slug);
+                }
+            } catch (\Throwable $e) {
+                $this->warn('Missing Listing refresh skipped: '.$e->getMessage());
+            }
         }
 
         return $failed ? 1 : 0;

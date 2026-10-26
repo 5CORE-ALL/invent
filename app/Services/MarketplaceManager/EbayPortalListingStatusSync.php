@@ -75,6 +75,15 @@ class EbayPortalListingStatusSync
                 ->where('sku', 'NOT LIKE', '%PARENT%')
                 ->pluck('sku')
                 ->unique();
+            // A short or failed Active pull must not flag the whole catalog MISSING.
+            if ($existing->count() > 0 && count($allListings) < (int) ceil($existing->count() * 0.5)) {
+                Log::warning('EbayPortalListingStatusSync: eBay returned too few listings, skipping MISSING marking', [
+                    'store' => $store,
+                    'portal_skus' => count($allListings),
+                    'local_skus' => $existing->count(),
+                ]);
+                $existing = collect();
+            }
             foreach ($existing as $sku) {
                 $sku = trim((string) $sku);
                 if ($sku === '' || $this->listingHasSku($allListings, $sku)) {
