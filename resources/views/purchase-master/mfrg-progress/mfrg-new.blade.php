@@ -592,6 +592,9 @@
     <script src="{{ asset('js/exec-typeahead.js') }}"></script>
     <script src="{{ asset('js/exec-colors.js') }}"></script>
     <script>
+        @include('partials.qc-issue-column')
+    </script>
+    <script>
         document.addEventListener("DOMContentLoaded", function () {
             document.body.style.zoom = "96%";
             document.documentElement.setAttribute("data-sidenav-size", "condensed");
@@ -1198,6 +1201,7 @@
                           return '<span class="mip-sku-text">' + esc(v) + '</span>' +
                               '<i class="far fa-copy mip-sku-copy" data-sku="' + esc(v) + '" title="Copy SKU"></i>';
                       } },
+                    window.QcIssueCol.column('sku'),
                     { title: "MOQ", field: "moq", width: 70, hozAlign: "center",
                       headerTooltip: "Minimum Order Quantity — same value as To Order Analysis & Forecast (read-only here)",
                       formatter: function (cell) {
@@ -1388,6 +1392,7 @@
                 }).catch(function () {});
             }
             table.on('tableBuilt', applyColumnVisibilityFromServer);
+            window.QcIssueCol.attach(table);
 
             const colBtn = document.getElementById('mip-columns-btn');
             const colMenu = document.getElementById('mip-columns-menu');

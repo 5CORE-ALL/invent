@@ -1586,6 +1586,9 @@
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     </script>
     <script>
+        @include('partials.qc-issue-column')
+    </script>
+    <script>
         // PKG / QC icon columns (same behaviour as /to-order-analysis).
         window.FcPq = (function () {
             const FIELD_META = {
@@ -3772,6 +3775,7 @@
                         </div>`;
                     }
                 },
+                window.QcIssueCol.column('SKU'),
                 {
                     title: "Alert",
                     field: "alert",
@@ -5449,6 +5453,7 @@
         });
         table.on("dataLoaded", function() { updateTopRowCounter(); });
         if (window.FcPq) window.FcPq.attach(table);
+        if (window.QcIssueCol) window.QcIssueCol.attach(table);
         table.on("dataFiltered", function() {
             pruneForecastSelectionToActive();
             updateTopRowCounter();

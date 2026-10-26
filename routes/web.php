@@ -2778,6 +2778,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['data' => $data]);
     })->name('customer.care.qc.and.packing.issues.index');
+    Route::get('/customer-care/qc-and-packing/what-happened-by-sku', [\App\Http\Controllers\CustomerCare\QcAndPackingController::class, 'whatHappenedBySku'])->name('customer.care.qc.and.packing.what.happened');
+    Route::get('/customer-care/qc-and-packing/sales-12m', [\App\Http\Controllers\CustomerCare\QcAndPackingController::class, 'sales12Months'])->name('customer.care.qc.and.packing.sales.12m');
     Route::get('/customer-care/qc-and-packing/history', function () {
         $rows = \Illuminate\Support\Facades\DB::table('qc_and_packing_issue_histories')
             ->orderByDesc('id')
