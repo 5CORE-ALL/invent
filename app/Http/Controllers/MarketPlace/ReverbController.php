@@ -1470,6 +1470,9 @@ class ReverbController extends Controller
             $processedData[] = $processedItem;
         }
 
+        // Age in days per SKU: the Ageing Rule (Sprc Dil modal) reads it for its bands and counts.
+        $processedData = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->attachAgeDays($processedData);
+
         return response()->json([
             "message" => "Data fetched successfully",
             "data" => $processedData,
