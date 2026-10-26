@@ -171,6 +171,17 @@
         .vam-count-badge--total  { background: #6b7280; }
         .vam-count-badge--links  { background: #0ea5e9; }
         .vam-count-badge--missing { background: #dc2626; }
+        .vam-count-badge--audience { background: #0d9488; }
+        .vam-count-badge--hook    { background: #9333ea; }
+        .vam-count-badge--creator { background: #db2777; }
+        .vam-count-badge--checked { background: #16a34a; }
+        .vam-count-badge--ad      { background: #2c6ed5; }
+        .vam-count-badge--redo    { background: #d97706; }
+        .vam-count-badge--redone  { background: #7c3aed; }
+        /* Clickable filter badges */
+        .vam-count-badge[data-filter], #vamClearFilters { cursor: pointer; user-select: none; transition: opacity .15s, box-shadow .15s; }
+        .vam-count-badge[data-filter]:hover, #vamClearFilters:hover { opacity: .85; }
+        .vam-count-badge.is-active { box-shadow: 0 0 0 3px rgba(17, 24, 39, .35); }
 
         /* Icon-only button — a fixed 32×32 square showing only the icon.
            Bootstrap's default padding is overridden so the button stays
@@ -520,9 +531,9 @@
                     <button type="button" class="btn btn-sm btn-success" id="vamImportBtn" title="Upload a CSV of video ads (same headers as the sample template)">
                         <i class="fa fa-upload"></i> Import CSV
                     </button>
-                    <a href="{{ route('video.ads.master.export') }}" class="btn btn-sm btn-info text-white" id="vamExportBtn" title="Download all rows as a CSV (same headers as Import)">
+                    <button type="button" class="btn btn-sm btn-info text-white" id="vamExportBtn" title="Download the rows currently shown as a CSV (includes who marked Check / AD / Redo / Redone)">
                         <i class="fa fa-file-export"></i> Export CSV
-                    </a>
+                    </button>
                     <a href="{{ route('video.ads.master.sample.csv') }}" class="btn btn-sm btn-outline-secondary vam-icon-btn" id="vamSampleBtn" title="Download a CSV template with 3 example rows">
                         <i class="fa fa-download"></i>
                     </a>
@@ -531,23 +542,48 @@
                     {{-- Count badges (SKU / Parent / Group / Total). They all
                          share .vam-count-badge so width and typography stay
                          identical; only the colour modifier differs. --}}
-                    <span class="vam-count-badge vam-count-badge--sku"    title="Rows targeting a SKU">
-                        SKU: <span id="vamSkuCount">0</span>
+                    {{-- Every badge except Required is also a filter: click to
+                         show only matching rows, click again to clear. Badges
+                         in different columns combine (AND); SKU / Parent /
+                         Group combine as OR. --}}
+                    <span class="vam-count-badge vam-count-badge--sku" data-filter="sku" title="Click to filter: rows targeting a SKU">
+                        SKU: <span data-count="sku">0</span>
                     </span>
-                    <span class="vam-count-badge vam-count-badge--parent" title="Rows targeting a Parent">
-                        Parent: <span id="vamParentCount">0</span>
+                    <span class="vam-count-badge vam-count-badge--parent" data-filter="parent" title="Click to filter: rows targeting a Parent">
+                        Parent: <span data-count="parent">0</span>
                     </span>
-                    <span class="vam-count-badge vam-count-badge--group"  title="Rows targeting a Group">
-                        Group: <span id="vamGroupCount">0</span>
+                    <span class="vam-count-badge vam-count-badge--group" data-filter="group" title="Click to filter: rows targeting a Group">
+                        Group: <span data-count="group">0</span>
                     </span>
-                    <span class="vam-count-badge vam-count-badge--total"  title="Total required rows">
+                    <span class="vam-count-badge vam-count-badge--total" id="vamClearFilters" title="Rows currently shown — click to clear all badge filters">
                         Required: <span id="vamRowCount">0</span>
                     </span>
-                    <span class="vam-count-badge vam-count-badge--links"  title="Rows that have a link available">
-                        Available: <span id="vamLinkCount">0</span>
+                    <span class="vam-count-badge vam-count-badge--links" data-filter="available" title="Click to filter: rows that have a link">
+                        Available: <span data-count="available">0</span>
                     </span>
-                    <span class="vam-count-badge vam-count-badge--missing" title="Rows still missing a link (Required − Available)">
-                        Missing: <span id="vamMissingCount">0</span>
+                    <span class="vam-count-badge vam-count-badge--missing" data-filter="missing" title="Click to filter: rows missing a link">
+                        Missing: <span data-count="missing">0</span>
+                    </span>
+                    <span class="vam-count-badge vam-count-badge--audience" data-filter="audience" title="Click to filter: rows with a Target Audience">
+                        Audience: <span data-count="audience">0</span>
+                    </span>
+                    <span class="vam-count-badge vam-count-badge--hook" data-filter="hook" title="Click to filter: rows with a Hook">
+                        Hook: <span data-count="hook">0</span>
+                    </span>
+                    <span class="vam-count-badge vam-count-badge--creator" data-filter="creator" title="Click to filter: rows with a Creator assigned">
+                        Creator: <span data-count="creator">0</span>
+                    </span>
+                    <span class="vam-count-badge vam-count-badge--checked" data-filter="checked" title="Click to filter: checked rows">
+                        Checked: <span data-count="checked">0</span>
+                    </span>
+                    <span class="vam-count-badge vam-count-badge--ad" data-filter="ad" title="Click to filter: rows marked AD">
+                        AD: <span data-count="ad">0</span>
+                    </span>
+                    <span class="vam-count-badge vam-count-badge--redo" data-filter="redo" title="Click to filter: rows marked REDO">
+                        Redo: <span data-count="redo">0</span>
+                    </span>
+                    <span class="vam-count-badge vam-count-badge--redone" data-filter="redone" title="Click to filter: rows marked REDONE">
+                        Redone: <span data-count="redone">0</span>
                     </span>
                 </div>
             </div>
@@ -2443,9 +2479,17 @@
                     });
 
                 document.getElementById('vamAddRowBtn').addEventListener('click', openAddForm);
+                document.getElementById('vamExportBtn').addEventListener('click', exportCsv);
                 document.getElementById('vamBulkDeleteBtn').addEventListener('click', deleteSelectedRows);
                 document.getElementById('vamRowSaveBtn').addEventListener('click', saveFormRow);
                 document.getElementById('vamSearch').addEventListener('input', applySearch);
+                document.querySelectorAll('[data-filter]').forEach(el => {
+                    el.addEventListener('click', () => toggleBadgeFilter(el.dataset.filter));
+                });
+                document.getElementById('vamClearFilters').addEventListener('click', () => {
+                    activeBadges.clear();
+                    applySearch();
+                });
 
                 document.getElementById('vamAudienceManageBtn').addEventListener('click', openAudienceManageModal);
                 document.getElementById('vamAudienceAddBtn').addEventListener('click', addAudienceFromManageModal);
@@ -2791,47 +2835,155 @@
 
             function updateCount() {
                 if (!table) return;
-                // Prefer "active" (post-filter) but fall back to the full set
-                // when the active view isn't ready yet — e.g. immediately
-                // after the table is first built.
-                let rows;
-                try { rows = table.getData('active'); } catch (e) { rows = null; }
-                if (!rows || rows.length === 0) {
-                    const all = table.getData();
-                    if (all && all.length) rows = all;
-                }
-                rows = rows || [];
+                const anyFilter = activeBadges.size > 0 || !!searchText();
 
-                let sku = 0, parent = 0, group = 0, links = 0;
-                rows.forEach(r => {
-                    const t = String(r.target_type || '').toLowerCase();
-                    if (t === 'sku')         sku++;
-                    else if (t === 'parent') parent++;
-                    else if (t === 'group')  group++;
-                    if (isLikelyUrl(normalizeUrl(r.link))) links++;
+                // "Required" = rows currently shown (search + every badge filter).
+                // Before the first filter pass has run, fall back to the full set.
+                let shown;
+                try { shown = table.getData('active'); } catch (e) { shown = null; }
+                if ((!shown || shown.length === 0) && !anyFilter) shown = table.getData();
+                document.getElementById('vamRowCount').textContent = (shown || []).length;
+
+                // Each badge counts the rows that match search + every *other*
+                // active badge group, so numbers stay meaningful while filtering
+                // (e.g. with REDO on, SKU shows how many redo rows are SKUs).
+                const all = table.getData() || [];
+                Object.keys(BADGE_FILTERS).forEach(key => {
+                    const group = BADGE_FILTERS[key].group;
+                    let n = 0;
+                    all.forEach(r => {
+                        if (rowPassesFilters(r, group) && BADGE_FILTERS[key].test(r)) n++;
+                    });
+                    const el = document.querySelector(`[data-count="${key}"]`);
+                    if (el) el.textContent = n;
                 });
-                document.getElementById('vamRowCount').textContent    = rows.length;
-                document.getElementById('vamSkuCount').textContent    = sku;
-                document.getElementById('vamParentCount').textContent = parent;
-                document.getElementById('vamGroupCount').textContent  = group;
-                document.getElementById('vamLinkCount').textContent   = links;
-                document.getElementById('vamMissingCount').textContent = rows.length - links;
+                document.querySelectorAll('[data-filter]').forEach(el => {
+                    el.classList.toggle('is-active', activeBadges.has(el.dataset.filter));
+                });
+            }
+
+            // ── Badge filters ──────────────────────────────────────────────────
+            // Badges sharing a `group` are OR-ed (SKU / Parent / Group, Available /
+            // Missing); different groups are AND-ed.
+            const hasLinkRow = (r) => isLikelyUrl(normalizeUrl(r.link));
+            const hasTags    = (v) => parseTags(v).length > 0;
+            const targetIs   = (t) => (r) => String(r.target_type || '').toLowerCase() === t;
+            const BADGE_FILTERS = {
+                sku:       { group: 'target',   test: targetIs('sku') },
+                parent:    { group: 'target',   test: targetIs('parent') },
+                group:     { group: 'target',   test: targetIs('group') },
+                available: { group: 'link',     test: (r) => hasLinkRow(r) },
+                missing:   { group: 'link',     test: (r) => !hasLinkRow(r) },
+                audience:  { group: 'audience', test: (r) => hasTags(r.audience) },
+                hook:      { group: 'hook',     test: (r) => hasTags(r.hook_name) },
+                creator:   { group: 'creator',  test: (r) => (r.creators || []).length > 0 },
+                checked:   { group: 'checked',  test: (r) => !!r.is_checked },
+                ad:        { group: 'ad',       test: (r) => !!r.ad_checked },
+                redo:      { group: 'redo',     test: (r) => !!r.redo_checked },
+                redone:    { group: 'redone',   test: (r) => !!r.redone_checked },
+            };
+            const activeBadges = new Set();
+
+            function searchText() {
+                const el = document.getElementById('vamSearch');
+                return el ? el.value.trim().toLowerCase() : '';
+            }
+
+            function rowMatchesSearch(data, q) {
+                if (!q) return true;
+                const haystack = [
+                    data._target, data.name, data.channel,
+                    formatTags(data.audience), formatTags(data.hook_name),
+                    data.hook, data.link,
+                    (data.creators || []).map(c => [c.name, c.created_at].filter(Boolean).join(' ')).join(' '),
+                ].map(v => (v || '').toString().toLowerCase()).join(' | ');
+                return haystack.includes(q);
+            }
+
+            // Search + active badge groups (optionally ignoring one group).
+            function rowPassesFilters(data, skipGroup) {
+                if (!rowMatchesSearch(data, searchText())) return false;
+                const byGroup = {};
+                activeBadges.forEach(key => {
+                    const f = BADGE_FILTERS[key];
+                    if (!f || f.group === skipGroup) return;
+                    (byGroup[f.group] = byGroup[f.group] || []).push(f.test);
+                });
+                return Object.keys(byGroup).every(g => byGroup[g].some(test => test(data)));
             }
 
             function applySearch() {
                 if (!table) return;
-                const q = document.getElementById('vamSearch').value.trim().toLowerCase();
-                if (!q) { table.clearFilter(); updateCount(); return; }
-                table.setFilter((data) => {
-                    const haystack = [
-                        data._target, data.name, data.channel,
-                        formatTags(data.audience), formatTags(data.hook_name),
-                        data.hook, data.link,
-                        (data.creators || []).map(c => [c.name, c.created_at].filter(Boolean).join(' ')).join(' '),
-                    ].map(v => (v || '').toString().toLowerCase()).join(' | ');
-                    return haystack.includes(q);
-                });
+                if (!searchText() && activeBadges.size === 0) {
+                    table.clearFilter();
+                } else {
+                    table.setFilter((data) => rowPassesFilters(data, null));
+                }
                 updateCount();
+            }
+
+            function toggleBadgeFilter(key) {
+                if (!BADGE_FILTERS[key]) return;
+                if (activeBadges.has(key)) activeBadges.delete(key); else activeBadges.add(key);
+                applySearch();
+            }
+
+            // Export the rows currently shown (search + badge filters applied) as a
+            // CSV built in the browser. The first 7 columns match the Import
+            // template, so the file can be re-imported; the extra columns (who
+            // marked Check / AD / Redo / Redone, and when) are ignored by Import.
+            function exportCsv() {
+                if (!table) { showToast('Table is not ready yet', 'warning'); return; }
+
+                let rows;
+                try { rows = table.getData('active'); } catch (e) { rows = null; }
+                if (!rows) rows = table.getData();
+                if (!rows.length) { showToast('No rows to export', 'warning'); return; }
+
+                const columns = [
+                    ['target_type',       r => r.target_type],
+                    ['name',              r => r.name],
+                    ['channel',           r => r.channel],
+                    ['audience',          r => formatTags(r.audience)],
+                    ['hook_name',         r => formatTags(r.hook_name)],
+                    ['hook',              r => r.hook],
+                    ['link',              r => r.link],
+                    ['creators',          r => (r.creators || []).map(c => c.name).filter(Boolean).join(' | ')],
+                    ['checked',           r => r.is_checked ? 'Yes' : 'No'],
+                    ['checked_by',        r => r.is_checked ? r.checked_by : ''],
+                    ['checked_at',        r => r.is_checked ? formatDateTime(r.checked_at) : ''],
+                    ['ad',                r => r.ad_checked ? 'Yes' : 'No'],
+                    ['ad_by',             r => r.ad_checked ? r.ad_checked_by : ''],
+                    ['ad_at',             r => r.ad_checked ? formatDateTime(r.ad_checked_at) : ''],
+                    ['redo',              r => r.redo_checked ? 'Yes' : 'No'],
+                    ['redo_by',           r => r.redo_checked ? r.redo_checked_by : ''],
+                    ['redo_at',           r => r.redo_checked ? formatDateTime(r.redo_checked_at) : ''],
+                    ['redo_note',         r => r.redo_checked ? r.redo_note : ''],
+                    ['redone',            r => r.redone_checked ? 'Yes' : 'No'],
+                    ['redone_by',         r => r.redone_checked ? r.redone_checked_by : ''],
+                    ['redone_at',         r => r.redone_checked ? formatDateTime(r.redone_checked_at) : ''],
+                ];
+
+                const esc = (v) => {
+                    const s = (v === null || v === undefined) ? '' : String(v);
+                    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+                };
+                const lines = [columns.map(c => c[0]).join(',')];
+                rows.forEach(r => lines.push(columns.map(c => esc(c[1](r))).join(',')));
+
+                // BOM so Excel opens the UTF-8 file correctly.
+                const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                const url  = URL.createObjectURL(blob);
+                const a    = document.createElement('a');
+                const d    = new Date();
+                const pad  = (n) => String(n).padStart(2, '0');
+                a.href     = url;
+                a.download = `video-ads-master-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                showToast(`Exported ${rows.length} row(s)`, 'success');
             }
 
             function deleteRow(row) {

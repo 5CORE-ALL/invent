@@ -1077,7 +1077,14 @@ class VideoAdsMasterController extends Controller
      */
     public function export()
     {
-        $headers = ['target_type', 'name', 'channel', 'audience', 'hook_name', 'hook', 'link'];
+        // First 7 columns match Import; the rest (who marked what, and when) are ignored by Import.
+        $headers = [
+            'target_type', 'name', 'channel', 'audience', 'hook_name', 'hook', 'link',
+            'checked', 'checked_by', 'checked_at',
+            'ad', 'ad_by', 'ad_at',
+            'redo', 'redo_by', 'redo_at', 'redo_note',
+            'redone', 'redone_by', 'redone_at',
+        ];
 
         $filename = 'video-ads-master-' . date('Ymd-His') . '.csv';
 
@@ -1098,6 +1105,19 @@ class VideoAdsMasterController extends Controller
                         $row->hook_name,
                         $row->hook,
                         $row->link,
+                        $row->is_checked ? 'Yes' : 'No',
+                        $row->is_checked ? $row->checked_by : '',
+                        $row->is_checked ? $row->checked_at : '',
+                        $row->ad_checked ? 'Yes' : 'No',
+                        $row->ad_checked ? $row->ad_checked_by : '',
+                        $row->ad_checked ? $row->ad_checked_at : '',
+                        $row->redo_checked ? 'Yes' : 'No',
+                        $row->redo_checked ? $row->redo_checked_by : '',
+                        $row->redo_checked ? $row->redo_checked_at : '',
+                        $row->redo_checked ? $row->redo_note : '',
+                        $row->redone_checked ? 'Yes' : 'No',
+                        $row->redone_checked ? $row->redone_checked_by : '',
+                        $row->redone_checked ? $row->redone_checked_at : '',
                     ]);
                 }
             });
