@@ -1686,7 +1686,6 @@
         const AMAZON_Y_SALES_PCT = {{ isset($amazonYSalesPercent) && $amazonYSalesPercent !== null ? (float) $amazonYSalesPercent : 'null' }};
         const AMAZON_Y_CVR_PCT = {{ isset($amazonYCvr['cvr']) && $amazonYCvr['cvr'] !== null ? (float) $amazonYCvr['cvr'] : 'null' }};
         const AMAZON_Y_CVR_AS_OF = {!! json_encode((! empty($amazonYCvr['date']) && empty($amazonYCvr['is_yesterday'])) ? \Carbon\Carbon::parse($amazonYCvr['date'])->format('M j') : '') !!};
-        const AMAZON_P_QTY = {{ (float) ($amazonProjected['p_qty'] ?? 0) }};
         const AMAZON_Y_BGT_PCT = {{ isset($amazonYBgtPercent) && $amazonYBgtPercent !== null ? (float) $amazonYBgtPercent : 'null' }};
         const AMAZON_Y_UTILIZED_PCT = {{ isset($amazonYUtilizedPercent) && $amazonYUtilizedPercent !== null ? (float) $amazonYUtilizedPercent : 'null' }};
         // GPFT / GROI / NROI / PFT$ / COGS from real L30 orders — same source as /amazon/daily-sales.
