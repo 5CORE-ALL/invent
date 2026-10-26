@@ -1157,9 +1157,9 @@ class ShopifyAdsMasterController extends Controller
             $daily = $this->googleScopeDaily($scope, $start, $end);
             $active = $this->googleActiveByDate($scope, $start, $end);
             $pageSold = $this->googlePageSoldByDate($scope, $labels[0], $end);
-            $tableSold = $channel === 'Google Shopping'
-                ? $this->shopifyB2cAdSoldByDate($labels[0], $end)
-                : [];
+            // Sold / sales come from Google (GA4) only, exactly like the
+            // /google/shopping/google-shopping page — no Shopify B2C override.
+            $tableSold = [];
             $this->writeRollingGoogleChannel($byChannel, $labels, $channel, $daily, $active, $pageSold, $tableSold, $refreshedSold);
         }
 
@@ -2021,37 +2021,12 @@ class ShopifyAdsMasterController extends Controller
 
             if ($row !== null) {
                 $row->active = $this->googleAdsActiveCount($scope, $bounds);
-                if ($scope === 'shopping') {
-                    $this->applyChannelTableSold($row);
-                }
             }
 
             return $this->metricRow($label, $row);
         } catch (\Throwable) {
             return $this->metricRow($label);
         }
-    }
-
-    /**
-     * Today's Google Shopping sold comes from channel_master_daily_data when
-     * google_ads_campaigns has not recorded today yet.
-     */
-    private function applyChannelTableSold(object $row): void
-    {
-        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
-        $maxDate = DB::table('google_ads_campaigns')->whereNotNull('date')->max('date');
-        $maxDay = $maxDate ? substr((string) $maxDate, 0, 10) : null;
-        if ($maxDay !== null && $maxDay >= $today) {
-            return;
-        }
-
-        $saved = $this->shopifyB2cAdSoldByDate($today, $today);
-        if (! isset($saved[$today])) {
-            return;
-        }
-
-        $row->sold = $saved[$today]['sold'];
-        $row->sales = $saved[$today]['sales'];
     }
 
     /**
@@ -2069,7 +2044,12 @@ class ShopifyAdsMasterController extends Controller
             ->groupBy('campaign_id');
 
         if ($bounds !== null) {
-            $latest->whereNotNull('date')->whereBetween('date', [$bounds['start'], $bounds['end']]);
+            // Same rows as the Google grid: the 30-day window, plus every
+            // PARENT campaign's latest row ever (the grid always lists them).
+            $latest->whereNotNull('date')->where(function ($q) use ($bounds) {
+                $q->whereBetween('date', [$bounds['start'], $bounds['end']])
+                    ->orWhereRaw('UPPER(campaign_name) LIKE ?', ['PARENT %']);
+            });
         }
         if ($scope === 'shopping') {
             $latest->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% SEARCH%'])

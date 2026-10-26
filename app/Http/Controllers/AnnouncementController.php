@@ -10,7 +10,6 @@ use App\Models\AnnouncementView;
 use App\Models\User;
 use Illuminate\Validation\Rule;
 use App\Support\OpenAiRequest;
-use App\Support\TeamManagementAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -1327,32 +1326,12 @@ class AnnouncementController extends Controller
         return $stored;
     }
 
-    /** Extra accounts that can add announcements besides directors. */
-    private const ANNOUNCEMENT_EDITOR_EMAILS = [
-        'software5@5core.com',
-        'tech-support@5core.com',
-    ];
-
+    /** Every logged-in user can add announcements. */
     private function canAnnounce(?User $user = null): bool
     {
         $user ??= Auth::user();
-        if (! $user) {
-            return false;
-        }
-        if ($user->isDirector()) {
-            return true;
-        }
 
-        // HR (designation = "HR") can add announcements too.
-        if (TeamManagementAccess::isHrDesignation($user)) {
-            return true;
-        }
-
-        return in_array(
-            strtolower(trim((string) $user->email)),
-            self::ANNOUNCEMENT_EDITOR_EMAILS,
-            true
-        );
+        return $user !== null;
     }
 
     private function authorizeDirector(): void
