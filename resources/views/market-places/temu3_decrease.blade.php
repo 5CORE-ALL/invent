@@ -2149,7 +2149,7 @@
         const zeroSoldOwns = typeof chPromoTemuZeroSoldOwnsSprice === 'function'
             && chPromoTemuZeroSoldOwnsSprice(row);
 
-        // Same LMP rule as Amazon: when the price reaches LMP (and SGROI at LMP is at least 20%) it lands on LMP × 0.98.
+        // Same LMP rule as Amazon: when the price reaches LMP (and SNROI at LMP is at least 20%) it lands on LMP × 0.98.
         let lmpAlert = false;
         if (!zeroSoldOwns && lmp > 0 && sprice + 0.0001 >= lmp) {
             const atLmp = (typeof temuSpriceCalcParts === 'function') ? temuSpriceCalcParts(row, lmp) : null;

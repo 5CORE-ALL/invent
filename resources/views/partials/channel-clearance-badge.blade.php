@@ -68,7 +68,7 @@
             /**
              * All S PRC capping icons, same rules as /amazon-tabulator-view (copied from its S PRC cell).
              * raw = the rule price before any cap, shown = that price after the LMP cap and the Std Prc maximum.
-             *   red triangle    : raw reached LMP (capped at LMP, or LMP not applied because SGROI at LMP < 20%)
+             *   red triangle    : raw reached LMP (capped at LMP, or LMP not applied because SNROI at LMP < 20%)
              *   orange triangle : LMP is above Std Prc and the price stopped at Std Prc (review the Std price)
              *   brown triangle  : the price was capped at Std Prc
              * An orange or brown cap replaces the red one. `color` is the value colour to use ('' = none).

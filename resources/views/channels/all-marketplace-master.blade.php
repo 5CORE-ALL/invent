@@ -1300,7 +1300,7 @@
                     </div>
                     <p class="small text-muted mb-0">
                         Active SKUs with INV ≥ 0.01. DIL = L30 ÷ INV × 100.
-                        <span style="color:#a00211;font-weight:700;">Red &lt;25%</span>,
+                        <span style="color:#a00211;font-weight:700;">Red 0.01–25%</span>,
                         <span style="color:#28a745;font-weight:700;">Green 25–50%</span>,
                         <span style="color:#e83e8c;font-weight:700;">Pink ≥50%</span>.
                         Count is SKUs. Pies are inventory $ at LP and SP.
@@ -8046,11 +8046,11 @@
                 'inv_at_lp': 'Inv@LP',
                 'inv_at_sp': 'Inv@SP',
                 'inv_sp_zero': 'Inv@SP 0 Sold',
-                'inv_sp_red': 'Inv@SP Red <25%',
+                'inv_sp_red': 'Inv@SP Red 0.01–25%',
                 'inv_sp_green': 'Inv@SP Green 25–50%',
                 'inv_sp_pink': 'Inv@SP Pink ≥50%',
                 'inv_lp_zero': 'Inv@LP 0 Sold',
-                'inv_lp_red': 'Inv@LP Red <25%',
+                'inv_lp_red': 'Inv@LP Red 0.01–25%',
                 'inv_lp_green': 'Inv@LP Green 25–50%',
                 'inv_lp_pink': 'Inv@LP Pink ≥50%',
                 'inventory': 'inv',
@@ -8155,7 +8155,7 @@
             function ammInvNormalizeSlices(raw) {
                 const defs = [
                     { key: 'zero', label: '0 Sold', color: '#6c757d' },
-                    { key: 'red', label: 'Red <25%', color: '#a00211' },
+                    { key: 'red', label: 'Red 0.01–25%', color: '#a00211' },
                     { key: 'green', label: 'Green 25–50%', color: '#28a745' },
                     { key: 'pink', label: 'Pink ≥50%', color: '#e83e8c' },
                 ];

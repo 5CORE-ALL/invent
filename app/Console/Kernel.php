@@ -1226,6 +1226,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Headless "Push on reload" for /shopify-b2b-pricing (same as shopify-b2c:push-blue-prices): prices every listed SKU with the
+        // page's Sprc Dil formula (clearance SKUs included), saves S PRC and pushes SKUs whose live Price differs, page closed.
+        // Every 10 min, 24/7 (no $ist()), starts at :08. --respect-switch: the page Push on reload switch decides.
+        $schedule->command('shopify-b2b:push-blue-prices --respect-switch')
+            ->cron('8-59/10 * * * *')
+            ->name('shopify-b2b-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Headless "Push on reload" for /ebay-tabulator-view, /ebay2-tabulator-view, /ebay3-tabulator-view (same as
         // amazon:push-blue-prices): re-prices every SKU, saves S PRC where it changed, pushes blue-triangle SKUs
         // (INV > 0, Price ≠ S PRC) to eBay, then pulls the live price back. Every 10 min, 24/7 (no $ist()), page closed.
@@ -1752,7 +1762,6 @@ class Kernel extends ConsoleKernel
         foreach ([
             ['dil', 5, 'dil'],
             ['shopify_b2c', 10, 'shopify-b2c'],
-            ['macys', 15, 'macys'],
             ['newtemuone', 20, 'newtemuone'],
         ] as [$blueArg, $blueOffset, $blueName]) {
             $schedule->command('channel:push-sprice-daily '.$blueArg)
@@ -1764,6 +1773,14 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
+        // Macys: every 10 minutes (a price saved by the hourly rule apply, or a failed push, goes live within 10 minutes).
+        // Inactive / unlisted offers are not queued, so the run only has real pushes to do.
+        $schedule->command('channel:push-sprice-daily macys')
+            ->cron('3-59/10 * * * *')
+            ->name('channel-push-sprice-blue-catchup-macys')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
     }
 
     /**

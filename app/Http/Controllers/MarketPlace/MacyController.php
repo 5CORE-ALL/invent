@@ -1449,7 +1449,7 @@ class MacyController extends Controller
                 'price' => $sprice,
             ];
         }
-        $applied = MacysAmazonPriceCap::applyForSku($sku, $sprice);
+        $applied = MacysAmazonPriceCap::applyForSku($sku, $sprice, true);
         $sprice = (float) $applied['price'];
         if ($sprice <= 0) {
             return [

@@ -27,7 +27,7 @@ use Throwable;
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  CVR Disc = CVR slab + CVR up/down promotional discount
- *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
+ *  Then LMP cap when LMP is lower (Std prc vs dil: and SNROI at LMP ≥ 20%; Sprc Dil: no 20% condition). Std Prc is the maximum.
  *  Skip when live Price already equals the target. Price column updates on each push.
  */
 class AmazonSprcDilAutoPushService
@@ -311,6 +311,13 @@ class AmazonSprcDilAutoPushService
                 AmazonDilGroiRule::cvrTrend($cvrL30, $cvrL45),
                 $cvrAdj
             );
+            // Ageing Rule (Sprc Dil modal block): the SKU's age in days picks a slab whose points are added to the Target NROI.
+            // After the CVR overlay and before the Diff rule, so the Diff is judged against the aged rule price. Age is stock
+            // age, not price, so this cannot flip after a push. Unknown age = no change.
+            if (isset($row['age_days']) && is_numeric($row['age_days'])
+                && \App\Support\SpriceActiveRule::forChannel('amazon') === 'dil') {
+                $nroi = AmazonDilGroiRule::adjustGroiForAge($nroi, (float) $row['age_days'], $this->ageAdjCfg);
+            }
             // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above the saved % adds the saved points to the Target NROI (default 20% / +10).
             // The Price is the rule price WITHOUT the Diff points, not the live Price. Read against the live Price the rule flips
             // after its own push (boosted price pushed -> Diff drops under the threshold -> boost removed -> lower price pushed ->
@@ -348,7 +355,9 @@ class AmazonSprcDilAutoPushService
                 AmazonDilGroiRule::TAKE_HOME,
                 $std,
                 // x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as the page.
-                AmazonDilGroiRule::lmpCapReducePct($dil, $this->lmpCapCfg)
+                AmazonDilGroiRule::lmpCapReducePct($dil, $this->lmpCapCfg),
+                // LMP rule: LMP available and the calculated S PRC ≥ LMP → LMP − x%. No "SNROI at LMP ≥ 20%" condition.
+                false
             );
             if (! is_finite($capped) || $capped < 0.01) {
                 return null;
@@ -1253,6 +1262,9 @@ class AmazonSprcDilAutoPushService
     /** Diff rule (gt_pct / points) saved in the Sprc Dil modal; null = default 20% / +10. */
     private ?array $diffAdjCfg = null;
 
+    /** Ageing Rule slabs (age days → NROI points) saved in the Sprc Dil modal; null = defaults (0 points = no change). */
+    private ?array $ageAdjCfg = null;
+
     /** Clearance Target NROI% (last "clearance" row of the Sprc Dil modal); null = not saved (treated as 0). */
     private ?float $clearanceNroiCfg = null;
 
@@ -1284,6 +1296,7 @@ class AmazonSprcDilAutoPushService
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
         $this->lmpCapCfg = $unpacked['lmp_cap'] ?? null;
         $this->diffAdjCfg = $unpacked['diff_adj'] ?? null;
+        $this->ageAdjCfg = $unpacked['age_adj'] ?? null;
         $cn = $unpacked['clearance_nroi'] ?? null;
         $this->clearanceNroiCfg = (is_numeric($cn) && (float) $cn >= 0) ? (float) $cn : null;
         if ($unpacked['rules'] === []) {

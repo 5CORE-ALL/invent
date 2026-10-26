@@ -367,6 +367,9 @@ class AmazonDilGroiRule
      *  Dil at/above LMP and SGROI at LMP < 20% → keep Dil (no LMP cap).
      *  Std Prc is always the maximum after that, including when the suggestion is above Std.
      * Never raises Dil up to LMP or Std Prc.
+     *
+     * $requireSnroiAtLmp = false (Amazon Sprc Dil): the 20% condition is dropped. When LMP is available and the
+     * calculated price is at or above LMP, the LMP rule always applies (S PRC = LMP − x% by Dil band).
      */
     public static function capSpriceToLmp(
         float $sprice,
@@ -375,14 +378,15 @@ class AmazonDilGroiRule
         float $ship = 0.0,
         float $margin = self::TAKE_HOME,
         float $std = 0.0,
-        float $lmpReducePct = 0.0
+        float $lmpReducePct = 0.0,
+        bool $requireSnroiAtLmp = true
     ): float {
         $s = round($sprice, 2);
         if (! ($s > 0)) {
             return $s;
         }
         if ($lmp > 0 && ($s + 0.0001) >= $lmp) {
-            $sgroiAtLmp = self::sgroiAtPrice($lmp, $lp, $ship, $margin);
+            $sgroiAtLmp = $requireSnroiAtLmp ? self::sgroiAtPrice($lmp, $lp, $ship, $margin) : null;
             if ($sgroiAtLmp === null || $sgroiAtLmp >= self::LMP_SGROI_MIN) {
                 $s = self::lmpTargetPrice($lmp, $lmpReducePct);
             }
@@ -396,6 +400,110 @@ class AmazonDilGroiRule
         ['min' => 0.0, 'max' => 25.0, 'pct' => 10.0],
         ['min' => 25.0, 'max' => 9999.0, 'pct' => 5.0],
     ];
+
+    /**
+     * Sprc Dil "Ageing Rule" slabs when nothing is saved: age bands (days in stock) with 0 points, so nothing changes until
+     * the points are edited in the modal. A saved empty list turns the block off.
+     */
+    public const AGE_ADJ_DEFAULTS = [
+        ['min' => 0.0, 'max' => 90.0, 'points' => 0.0],
+        ['min' => 90.0, 'max' => 180.0, 'points' => 0.0],
+        ['min' => 180.0, 'max' => 365.0, 'points' => 0.0],
+        ['min' => 365.0, 'max' => 9999.0, 'points' => 0.0],
+    ];
+
+    /**
+     * Ageing Rule slabs: one { min, max, points } per age band (days). `points` are added to the Target NROI (negative lowers it).
+     * Nothing saved (null) → AGE_ADJ_DEFAULTS. A saved empty list → the block is off.
+     *
+     * @param  mixed  $incoming
+     * @return list<array{min:float,max:float,points:float}>
+     */
+    public static function normalizeAgeAdj($incoming): array
+    {
+        if ($incoming === null) {
+            return self::AGE_ADJ_DEFAULTS;
+        }
+        if (! is_array($incoming)) {
+            return [];
+        }
+        $rules = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item) || ! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
+                continue;
+            }
+            $min = max(0.0, (float) $item['min']);
+            $max = max(0.0, (float) $item['max']);
+            if ($max < $min) {
+                [$min, $max] = [$max, $min];
+            }
+            $points = is_numeric($item['points'] ?? null) ? (float) $item['points'] : 0.0;
+            if (! is_finite($points)) {
+                $points = 0.0;
+            }
+            $rules[] = ['min' => round($min, 2), 'max' => round($max, 2), 'points' => round($points, 2)];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Index of the Ageing slab an age (days) falls in, or -1. A slab covers min ≤ age < max (the last one also max).
+     * Same slab test as the LMP Reduce block. An unknown age (null) is in no slab.
+     *
+     * @param  list<array{min:float,max:float,points:float}>|null  $rules
+     */
+    public static function ageAdjSlab(?float $ageDays, ?array $rules): int
+    {
+        if ($ageDays === null || ! is_finite($ageDays)) {
+            return -1;
+        }
+        $rules = array_values($rules ?? []);
+        $last = count($rules) - 1;
+        foreach ($rules as $i => $r) {
+            $min = (float) ($r['min'] ?? 0);
+            $max = (float) ($r['max'] ?? 0);
+            $hit = abs($max - $min) < 0.00001
+                ? abs($ageDays - $min) < 0.00001
+                : ($ageDays >= $min && ($i === $last ? $ageDays <= $max : $ageDays < $max));
+            if ($hit) {
+                return $i;
+            }
+        }
+
+        return -1;
+    }
+
+    /**
+     * Points the Ageing Rule adds to the Target NROI for a SKU's age in days (0 when the age is unknown or in no slab).
+     *
+     * @param  list<array{min:float,max:float,points:float}>|null  $rules
+     */
+    public static function ageAdjPoints(?float $ageDays, ?array $rules): float
+    {
+        $i = self::ageAdjSlab($ageDays, $rules);
+        if ($i < 0) {
+            return 0.0;
+        }
+        $p = array_values($rules ?? [])[$i]['points'] ?? 0;
+
+        return is_numeric($p) ? (float) $p : 0.0;
+    }
+
+    /**
+     * Target NROI after the Ageing Rule (floored at 0 like the CVR overlay).
+     *
+     * @param  list<array{min:float,max:float,points:float}>|null  $rules
+     */
+    public static function adjustGroiForAge(float $groi, ?float $ageDays, ?array $rules): float
+    {
+        $out = $groi + self::ageAdjPoints($ageDays, $rules);
+        if (! is_finite($out) || $out < 0) {
+            return 0.0;
+        }
+
+        return round($out, 2);
+    }
 
     /** Clearance SNROI slabs when nothing is saved: Dil up to 25 → 0%, over 25 up to 50 → 20%, over 50 → 30%. */
     public const CLEARANCE_SNROI_DEFAULTS = [
@@ -812,7 +920,7 @@ class AmazonDilGroiRule
 
     /**
      * @param  array<string, mixed>|null  $saved
-     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},diff_adj:array{gt_pct:float,points:float}}
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},diff_adj:array{gt_pct:float,points:float},age_adj:list<array{min:float,max:float,points:float}>}
      */
     public static function unpackStored(?array $saved): array
     {
@@ -820,12 +928,15 @@ class AmazonDilGroiRule
         $cvrRaw = null;
         $lmpCapRaw = null;
         $diffAdjRaw = null;
+        $ageAdjRaw = null;
         $clearanceNroi = null;
         if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
             $rulesRaw = $saved['rules'];
             $cvrRaw = is_array($saved['cvr_adj'] ?? null) ? $saved['cvr_adj'] : null;
             $lmpCapRaw = is_array($saved['lmp_cap'] ?? null) ? $saved['lmp_cap'] : null;
             $diffAdjRaw = is_array($saved['diff_adj'] ?? null) ? $saved['diff_adj'] : null;
+            // Not saved yet → null → defaults. A saved empty list stays empty (block off).
+            $ageAdjRaw = array_key_exists('age_adj', $saved) && is_array($saved['age_adj']) ? $saved['age_adj'] : null;
             if (isset($saved['clearance_nroi']) && is_numeric($saved['clearance_nroi'])) {
                 $clearanceNroi = round(max(0, (float) $saved['clearance_nroi']), 2);
             }
@@ -838,6 +949,7 @@ class AmazonDilGroiRule
             'clearance_nroi' => $clearanceNroi,
             'lmp_cap' => self::normalizeLmpCap($lmpCapRaw),
             'diff_adj' => self::normalizeDiffAdj($diffAdjRaw),
+            'age_adj' => self::normalizeAgeAdj($ageAdjRaw),
         ];
     }
 

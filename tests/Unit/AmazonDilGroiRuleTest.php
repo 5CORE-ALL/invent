@@ -451,6 +451,20 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertEqualsWithDelta(50.0, AmazonDilGroiRule::capSpriceToLmp(50, 12, 10, 0, 0.80, 0, 10.0), 0.001);
     }
 
+    public function test_amazon_sprc_dil_lmp_rule_has_no_snroi_condition(): void
+    {
+        // LMP 12, LP 10, take-home 0.80: SNROI at LMP is −4% (< 20). The default cap keeps the high price.
+        $this->assertEqualsWithDelta(50.0, AmazonDilGroiRule::capSpriceToLmp(50, 12, 10, 0, 0.80, 0, 2.0), 0.001);
+        // Sprc Dil: calculated S PRC ≥ LMP → LMP − x%, whatever the SNROI at LMP is.
+        $this->assertEqualsWithDelta(11.76, AmazonDilGroiRule::capSpriceToLmp(50, 12, 10, 0, 0.80, 0, 2.0, false), 0.001);
+        // Exactly at LMP counts as "at or above".
+        $this->assertEqualsWithDelta(11.76, AmazonDilGroiRule::capSpriceToLmp(12, 12, 10, 0, 0.80, 0, 2.0, false), 0.001);
+        // Below LMP: nothing changes.
+        $this->assertEqualsWithDelta(11.0, AmazonDilGroiRule::capSpriceToLmp(11, 12, 10, 0, 0.80, 0, 2.0, false), 0.001);
+        // No LMP: nothing changes.
+        $this->assertEqualsWithDelta(50.0, AmazonDilGroiRule::capSpriceToLmp(50, 0, 10, 0, 0.80, 0, 2.0, false), 0.001);
+    }
+
     public function test_lmp_reduce_blank_slab_pct_and_empty_list_turn_it_off(): void
     {
         $rules = AmazonDilGroiRule::normalizeLmpReduceRules([['min' => 0, 'max' => 25, 'pct' => '']]);
@@ -459,6 +473,58 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame([], AmazonDilGroiRule::normalizeLmpReduceRules([]));
         $this->assertSame(0.0, AmazonDilGroiRule::lmpReducePct(10, []));
     }
+    public function test_ageing_rule_adds_the_age_band_points_to_the_target_nroi(): void
+    {
+        $rules = AmazonDilGroiRule::normalizeAgeAdj([
+            ['min' => 0, 'max' => 90, 'points' => 0],
+            ['min' => 90, 'max' => 180, 'points' => -5],
+            ['min' => 180, 'max' => 9999, 'points' => -15],
+        ]);
+
+        $this->assertSame(0.0, AmazonDilGroiRule::ageAdjPoints(30, $rules));
+        // min ≤ age < max: 90 is in the second band, 180 in the third.
+        $this->assertSame(-5.0, AmazonDilGroiRule::ageAdjPoints(90, $rules));
+        $this->assertSame(-5.0, AmazonDilGroiRule::ageAdjPoints(179, $rules));
+        $this->assertSame(-15.0, AmazonDilGroiRule::ageAdjPoints(180, $rules));
+        // The last band also includes its To value; past it, no band.
+        $this->assertSame(-15.0, AmazonDilGroiRule::ageAdjPoints(9999, $rules));
+        $this->assertSame(0.0, AmazonDilGroiRule::ageAdjPoints(10000, $rules));
+        // Unknown age adds nothing.
+        $this->assertSame(0.0, AmazonDilGroiRule::ageAdjPoints(null, $rules));
+        $this->assertSame(-1, AmazonDilGroiRule::ageAdjSlab(null, $rules));
+
+        $this->assertEqualsWithDelta(45.0, AmazonDilGroiRule::adjustGroiForAge(50, 100, $rules), 0.001);
+        $this->assertEqualsWithDelta(50.0, AmazonDilGroiRule::adjustGroiForAge(50, 10, $rules), 0.001);
+        // Floored at 0 like the CVR overlay.
+        $this->assertSame(0.0, AmazonDilGroiRule::adjustGroiForAge(10, 400, $rules));
+        // Positive points raise the target.
+        $up = AmazonDilGroiRule::normalizeAgeAdj([['min' => 0, 'max' => 9999, 'points' => 7.5]]);
+        $this->assertEqualsWithDelta(57.5, AmazonDilGroiRule::adjustGroiForAge(50, 20, $up), 0.001);
+    }
+
+    public function test_ageing_rule_defaults_change_nothing_and_an_empty_list_is_off(): void
+    {
+        $defaults = AmazonDilGroiRule::normalizeAgeAdj(null);
+        $this->assertSame(AmazonDilGroiRule::AGE_ADJ_DEFAULTS, $defaults);
+        foreach ([0, 45, 90, 200, 365, 5000] as $age) {
+            $this->assertSame(0.0, AmazonDilGroiRule::ageAdjPoints($age, $defaults), 'age '.$age);
+        }
+        $this->assertSame([], AmazonDilGroiRule::normalizeAgeAdj([]));
+        $this->assertSame(0.0, AmazonDilGroiRule::ageAdjPoints(100, []));
+        // A swapped From / To is put right; a row without a number is dropped.
+        $rules = AmazonDilGroiRule::normalizeAgeAdj([['min' => 180, 'max' => 90, 'points' => 3], ['min' => '', 'max' => 10, 'points' => 1]]);
+        $this->assertSame([['min' => 90.0, 'max' => 180.0, 'points' => 3.0]], $rules);
+    }
+
+    public function test_ageing_rule_is_saved_with_the_sprc_dil_rules(): void
+    {
+        // Saved without it (older rows) → defaults. Saved empty list → stays off.
+        $this->assertSame(AmazonDilGroiRule::AGE_ADJ_DEFAULTS, AmazonDilGroiRule::unpackStored(['rules' => []])['age_adj']);
+        $this->assertSame([], AmazonDilGroiRule::unpackStored(['rules' => [], 'age_adj' => []])['age_adj']);
+        $saved = AmazonDilGroiRule::unpackStored(['rules' => [], 'age_adj' => [['min' => 0, 'max' => 100, 'points' => -4]]]);
+        $this->assertSame([['min' => 0.0, 'max' => 100.0, 'points' => -4.0]], $saved['age_adj']);
+    }
+
     public function test_clearance_snroi_slabs_are_up_to_25_then_up_to_50_then_above(): void
     {
         $rules = AmazonDilGroiRule::normalizeClearanceSnroiRules(null);

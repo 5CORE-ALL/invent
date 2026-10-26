@@ -667,7 +667,7 @@
             return n > 0 ? Math.round(n * 100) / 100 : 0;
         }
         /**
-         * LMP cap, same as /amazon-tabulator-view: price at/above LMP and SGROI at LMP >= 20% -> S PRC = LMP x (1 - x%).
+         * LMP cap, same as /amazon-tabulator-view: price at/above LMP and SNROI at LMP >= 20% -> S PRC = LMP x (1 - x%).
          * x = the SKU's Dil band (Sprc Dil modal, LMP cap table) for Sprc Dil; 0 for Std prc vs dil (S PRC = LMP).
          */
         function sheinApplyLmpCap(data, price, reducePct) {
@@ -2312,7 +2312,7 @@
                         editable: false,
                         cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
                         cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
-                        headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with the CVR overlay and Diff, Ship in the price, LMP cap by Dil band, Std Prc as the maximum) or Std prc vs dil (Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), capped to LMP when SGROI at LMP ≥ 20%). Turning one ON turns the other OFF. The server saves it right after a switch or rule edit and pushes twice daily (and every 10 min for blue triangles). Red / orange / brown triangle = capped at LMP / LMP above Std Prc / capped at Std Prc. Blue triangle = S PRC ≠ Sp. Price. Hover for every rule used.",
+                        headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with the CVR overlay and Diff, Ship in the price, LMP cap by Dil band, Std Prc as the maximum) or Std prc vs dil (Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), capped to LMP when SNROI at LMP ≥ 20%). Turning one ON turns the other OFF. The server saves it right after a switch or rule edit and pushes twice daily (and every 10 min for blue triangles). Red / orange / brown triangle = capped at LMP / LMP above Std Prc / capped at Std Prc. Blue triangle = S PRC ≠ Sp. Price. Hover for every rule used.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';

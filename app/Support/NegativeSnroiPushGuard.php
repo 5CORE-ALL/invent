@@ -47,12 +47,13 @@ class NegativeSnroiPushGuard
                 ->where('channel_name', $channel.'_ignore_neg_snroi')
                 ->first();
         } catch (\Throwable) {
-            return self::$enabled[$channel] = true;
+            return self::$enabled[$channel] = false;
         }
-        // No saved setting yet = ON (default). Only an explicit OFF disables the guard.
+        // No saved setting yet = OFF (default): every SKU is pushed, negative SNROI included.
+        // The guard only runs when someone switches "Skip negative SNROI" ON for the page (explicit enabled = true).
         $vis = is_array($row?->visibility) ? $row->visibility : null;
-        $on = ! is_array($vis) || ! array_key_exists('enabled', $vis)
-            || filter_var($vis['enabled'], FILTER_VALIDATE_BOOLEAN);
+        $on = is_array($vis) && array_key_exists('enabled', $vis)
+            && filter_var($vis['enabled'], FILTER_VALIDATE_BOOLEAN);
 
         return self::$enabled[$channel] = $on;
     }

@@ -3514,7 +3514,7 @@
         }
         window.chPromoSnroiPushBlocked = chPromoSnroiPushBlocked;
         /**
-         * Amazon LMP cap: LMP is lower than S PRC, and SGROI at that LMP is ≥ 20%.
+         * Amazon LMP cap: LMP is lower than S PRC, and SNROI at that LMP is ≥ 20%.
          * Used for eBay 1–3 so S PRC becomes LMP the same way as /amazon-tabulator-view.
          */
         function chPromoEbayShouldCapToLmp(d, sprice) {
@@ -3543,7 +3543,7 @@
                 return false;
             }
             if (!d) return true;
-            // eBay / Shein match Amazon: 0 Sold Dil prices still LMP-cap when SGROI at LMP ≥ 20%.
+            // eBay / Shein match Amazon: 0 Sold Dil prices still LMP-cap when SNROI at LMP ≥ 20%.
             if (chPromoIsEbayChannel()) return true;
             if (typeof chPromoIsSheinPromoChannel === 'function'
                 ? chPromoIsSheinPromoChannel()
@@ -9972,8 +9972,30 @@
             cvr: !!CHANNEL_PROMO_HIDE_CVR_CPN,
             zeroSold: !CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE,
         };
+        /**
+         * A page that prices clearance SKUs from the Clearance Target NROI% (CH_CLEARANCE_KEEPS_RULES) must not queue a push
+         * before the clearance list is loaded: until then every clearance SKU is priced by the normal rule, shows blue,
+         * is pushed at that price, and flips to the clearance price once the list arrives.
+         */
+        let chPromoClearanceWaitGaveUp = false;
+        function chPromoClearanceListReady() {
+            if (window.CH_CLEARANCE_KEEPS_RULES !== true || chPromoClearanceWaitGaveUp) return true;
+            if (typeof window.chStdClearanceReady !== 'function') return true;
+            return !!window.chStdClearanceReady();
+        }
+        setTimeout(function chPromoWaitForClearanceList(tries) {
+            if (window.CH_CLEARANCE_KEEPS_RULES !== true) return;
+            if (typeof window.chStdLoadClearance === 'function') {
+                window.chStdLoadClearance().always(function() {
+                    if (typeof chPromoTryQueueAfterSlabs === 'function') chPromoTryQueueAfterSlabs();
+                });
+                return;
+            }
+            if ((tries || 0) < 40) setTimeout(function() { chPromoWaitForClearanceList((tries || 0) + 1); }, 250);
+        }, 0);
         function chPromoEbaySpriceSlabsReady() {
-            return !!chPromoEbaySpriceRulesReady.dil
+            return chPromoClearanceListReady()
+                && !!chPromoEbaySpriceRulesReady.dil
                 && (!!CHANNEL_PROMO_HIDE_CVR_CPN || !!chPromoEbaySpriceRulesReady.cvr)
                 && (!CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE || !!chPromoEbaySpriceRulesReady.zeroSold);
         }
@@ -9986,6 +10008,8 @@
         }
         setTimeout(function() {
             if (chPromoEbaySpriceSlabsReady()) return;
+            // The clearance list is a single request: after 4 s stop waiting for it so a dead endpoint cannot block pushes forever.
+            chPromoClearanceWaitGaveUp = true;
             chPromoEbaySpriceRulesReady.dil = true;
             chPromoEbaySpriceRulesReady.cvr = true;
             chPromoEbaySpriceRulesReady.zeroSold = true;
@@ -10977,7 +11001,7 @@
                         icon = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
                         color = '#ffc107';
                         tip = 'Pushing S PRC…';
-                    } else if (status === 'error' && !((CHANNEL_PROMO_CHANNEL === 'alibaba' || CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay3') && alreadyLive)) {
+                    } else if (status === 'error' && !((CHANNEL_PROMO_CHANNEL === 'alibaba' || CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay3' || CHANNEL_PROMO_CHANNEL === 'shopify_b2b') && alreadyLive)) {
                         // eBay 2 / 3: a stale error from an old failed push must not show once the live Price already equals S PRC.
                         icon = '<i class="fa-solid fa-xmark"></i>';
                         color = '#dc3545';
@@ -10985,7 +11009,7 @@
                         tip = failWhy
                             ? ('Not pushed: ' + failWhy + (d.PUSH_PRC_ERROR_AT ? ' (' + d.PUSH_PRC_ERROR_AT + ')' : '') + ' — click to retry')
                             : 'Last S PRC push failed (reason not recorded) — click to retry';
-                    } else if (status === 'pushed' || ((CHANNEL_PROMO_CHANNEL === 'alibaba' || CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay3') && alreadyLive)) {
+                    } else if (status === 'pushed' || ((CHANNEL_PROMO_CHANNEL === 'alibaba' || CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay3' || CHANNEL_PROMO_CHANNEL === 'shopify_b2b') && alreadyLive)) {
                         icon = '<i class="fa-solid fa-check-double"></i>';
                         color = '#28a745';
                         const last = Number(d.PUSH_PRC_VALUE) || price;

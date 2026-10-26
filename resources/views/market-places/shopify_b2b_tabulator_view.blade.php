@@ -744,7 +744,7 @@
     }
     /**
      * Same as /amazon-tabulator-view, Sprc Dil switch ON:
-     *  - Dil price at/above LMP and SGROI at LMP >= 20%: S PRC = LMP x (1 - x%), x by the SKU's Dil band (Sprc Dil modal, LMP cap table).
+     *  - Dil price at/above LMP and SNROI at LMP >= 20%: S PRC = LMP x (1 - x%), x by the SKU's Dil band (Sprc Dil modal, LMP cap table).
      *  - Std Prc is the maximum when it is set.
      */
     function shopifyB2bCapDilSprice(data, raw) {
@@ -2173,7 +2173,7 @@
                     cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
                     cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                     sorter: tabSortBlankLast(function(d) { if (isShopifyB2bParentRow(d)) return null; const v = shopifyB2bDisplayedSprice(d); return v > 0 ? v : null; }),
-                    headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with CVR and Diff, then LMP × (1 − x%) by Dil band when it reaches LMP and SGROI at LMP ≥ 20%, Std Prc as the maximum), or Std prc vs dil (Ship subtracted). Turning one ON turns the other OFF. Clearance SKUs show C. Blue triangle = S PRC ≠ Price. Red = at/above LMP, orange = LMP above Std Prc, brown = capped at Std Prc. Hover for every rule used.",
+                    headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with CVR and Diff, then LMP × (1 − x%) by Dil band when it reaches LMP and SNROI at LMP ≥ 20%, Std Prc as the maximum), or Std prc vs dil (Ship subtracted). Turning one ON turns the other OFF. Clearance SKUs show C. Blue triangle = S PRC ≠ Price. Red = at/above LMP, orange = LMP above Std Prc, brown = capped at Std Prc. Hover for every rule used.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) {

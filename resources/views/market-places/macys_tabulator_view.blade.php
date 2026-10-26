@@ -385,7 +385,7 @@
     }
     /**
      * Sprc Dil switch ON, same as /amazon-tabulator-view:
-     *  - Dil price at/above LMP and SGROI at LMP >= 20%: S PRC = LMP x (1 - x%), x by the SKU's Dil band (Sprc Dil modal, LMP cap table).
+     *  - Dil price at/above LMP and SNROI at LMP >= 20%: S PRC = LMP x (1 - x%), x by the SKU's Dil band (Sprc Dil modal, LMP cap table).
      *  - Std Prc is the maximum when it is set.
      * The A Price floor (S PRC never below A Price) runs after this, as before.
      */
@@ -2215,7 +2215,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "The switch picks the rule and S PRC follows it at once. Sprc Dil: Dil slab Target GROI (OV L30 ÷ Shopify INV) when MC L30 > 0, or min GROI when MC L30 = 0, plus the Diff rule; at/above LMP (SGROI at LMP ≥ 20%) it becomes LMP × (1 − x%) by Dil band; Std Prc is the maximum. Std prc vs dil: Std Prc less its discounts. Out of box + sold uses Std Prc. If the price < A Price, S PRC = A Price. Clearance SKUs show C. Blue triangle = S PRC ≠ MC Price. Red = at/above LMP, orange = LMP above Std Prc, brown = capped at Std Prc. Hover for every rule used. Saved by the server right after a rule change.",
+                    headerTooltip: "The switch picks the rule and S PRC follows it at once. Sprc Dil: Dil slab Target GROI (OV L30 ÷ Shopify INV) when MC L30 > 0, or min GROI when MC L30 = 0, plus the Diff rule; at/above LMP (SNROI at LMP ≥ 20%) it becomes LMP × (1 − x%) by Dil band; Std Prc is the maximum. Std prc vs dil: Std Prc less its discounts. Out of box + sold uses Std Prc. If the price < A Price, S PRC = A Price. Clearance SKUs show C. Blue triangle = S PRC ≠ MC Price. Red = at/above LMP, orange = LMP above Std Prc, brown = capped at Std Prc. Hover for every rule used. Saved by the server right after a rule change.",
                     editable: false,
                     cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
                     cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },

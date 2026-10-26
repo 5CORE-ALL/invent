@@ -150,7 +150,12 @@ class ChannelPushSpriceDailyEnqueue
             return $this->collectSavedAgainstLive(Shopifyb2cDataView::class, ShopifySku::class, 'price', 'b2c_price');
         }
         if ($channel === 'macys') {
-            return $this->collectSavedAgainstLive(MacyDataView::class, MacysPriceData::class, 'price');
+            // Inactive / unlisted offers cannot take a price (the push refuses them). They carry a stale sheet price, so
+            // they looked "unsaved" every cycle and failed every 30 minutes; queue only SKUs that can really be pushed.
+            return array_values(array_filter(
+                $this->collectSavedAgainstLive(MacyDataView::class, MacysPriceData::class, 'price'),
+                static fn (array $task): bool => \App\Http\Controllers\MarketPlace\MacyController::pricePushBlockReason((string) $task['sku']) === null
+            ));
         }
         if ($channel === 'newtemuone') {
             return $this->collectNewTemuonePushTasks();

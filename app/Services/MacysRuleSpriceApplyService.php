@@ -216,8 +216,20 @@ class MacysRuleSpriceApplyService
         $ship = (float) ($row['ship'] ?? 0);
         // Sprc Dil modal rules (same as /amazon-tabulator-view): the Diff rule adds its points to the Target GROI.
         if ($dilContext !== null) {
-            $diffPct = EbayRuleSprice::stdPriceDiffPct((float) ($row['std'] ?? 0), (float) ($row['mc_price'] ?? 0));
-            $groi = max(0.0, round($groi, 2)) + AmazonDilGroiRule::diffAdjPoints($diffPct, $dilContext['diff_adj'] ?? null);
+            // Diff judged against the rule price WITHOUT the boost, not the live Price. Read against the live Price,
+            // pushing the boosted price lowers the Diff, the boost drops, the price falls, the Diff rises, and the
+            // saved S PRC flip-flops against the page. A listed SKU (live Price > 0) and a Std Prc are still required.
+            $groi = max(0.0, round($groi, 2));
+            $std = (float) ($row['std'] ?? 0);
+            if ($std > 0 && round((float) ($row['mc_price'] ?? 0), 2) > 0) {
+                $base = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi, 0.0, $margin);
+                if ($base !== null && $base > 0) {
+                    $groi += AmazonDilGroiRule::diffAdjPoints(
+                        EbayRuleSprice::stdPriceDiffPct($std, $base),
+                        $dilContext['diff_adj'] ?? null
+                    );
+                }
+            }
         }
 
         $raw = round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);

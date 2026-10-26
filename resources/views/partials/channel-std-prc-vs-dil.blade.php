@@ -660,6 +660,8 @@
         }
         window.chStdIsClearance = chStdIsClearance;
         window.chStdLoadClearance = chStdLoadClearance;
+        /** True once the clearance list has loaded (or failed). Before that chStdIsClearance() says "no" for every SKU. */
+        window.chStdClearanceReady = function() { return chStdClearanceSet !== null; };
         function chStdAdsFrac() {
             if (typeof chPromoAdsFrac !== 'function') return 0;
             const n = Number(chPromoAdsFrac());
@@ -1897,7 +1899,7 @@
                 : Math.round(raw * 100) / 100;
         }
         /**
-         * Amazon order: LMP cap (S PRC ≥ LMP and SGROI at LMP ≥ 20% → LMP, eBay take-home %),
+         * Amazon order: LMP cap (S PRC ≥ LMP and SNROI at LMP ≥ 20% → LMP, eBay take-home %),
          * then Std Prc is the maximum. Uses the page's own eBay LMP (L1 without ignored competitors).
          */
         function chStdEbayCap(d, price) {

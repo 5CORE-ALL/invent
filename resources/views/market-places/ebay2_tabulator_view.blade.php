@@ -1104,7 +1104,7 @@
             if (!(margin > 0)) return null;
             return ((sprice * margin - lp - ship) / lp) * 100;
         }
-        /** Same as Amazon: Dil below LMP stays Dil; cap only when Dil ≥ LMP and SGROI at LMP ≥ 20%; S PRC then = LMP (Std switch) or LMP × 0.98 (Sprc Dil switch). */
+        /** Same as Amazon: Dil below LMP stays Dil; cap only when Dil ≥ LMP and SNROI at LMP ≥ 20%; S PRC then = LMP (Std switch) or LMP × 0.98 (Sprc Dil switch). */
         function ebay2ShouldCapSpriceToLmp(rowData, sprice) {
             const lmp = ebayEffectiveLmp(rowData);
             const s = parseFloat(sprice);
@@ -1288,13 +1288,13 @@
                     const sg = (typeof ebay2SgroiAtPrice === 'function') ? ebay2SgroiAtPrice(d, lmp) : null;
                     if (sg != null && sg < 20) {
                         steps.push(ebayRuleStep('skip', n + ' · LMP cap',
-                            'Price is at or above LMP ' + ebayRuleMoney(lmp) + ', but SGROI at LMP is ' + sg.toFixed(1)
+                            'Price is at or above LMP ' + ebayRuleMoney(lmp) + ', but SNROI at LMP is ' + sg.toFixed(1)
                             + '% (below 20%). The cap is <b>not</b> applied.'));
                     } else {
                         const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? window.ebayLmpReducePctForRow(d) : 2;
                         afterLmp = +(dilOn ? lmp * (1 - pct / 100) : lmp).toFixed(2);
                         steps.push(ebayRuleStep('ok', n + ' · LMP cap',
-                            'Price is at or above LMP ' + ebayRuleMoney(lmp) + ' and SGROI at LMP is '
+                            'Price is at or above LMP ' + ebayRuleMoney(lmp) + ' and SNROI at LMP is '
                             + (sg != null ? sg.toFixed(1) + '%' : 'n/a') + ' (20% or more) → S PRC = '
                             + (dilOn ? 'LMP − ' + pct + '% (Dil band)' : 'LMP') + ' = <b>' + ebayRuleMoney(afterLmp) + '</b>'));
                     }
@@ -4194,7 +4194,7 @@
                         editable: false,
                         cellMouseEnter: function(e, cell) { ebayRuleTipShow('sprice', cell); },
                         cellMouseLeave: function() { ebayRuleTipScheduleHide(); },
-                        headerTooltip: "Read-only. Same as Amazon: Dil below LMP stays Dil. Dil at/above LMP becomes LMP only when SGROI at that LMP is ≥ 20%; if SGROI at LMP is < 20%, Dil is kept. Std Prc is always the maximum. Red triangle = S PRC reached LMP. Orange triangle = LMP is above Std Prc, S PRC capped at Std (review Std). Brown triangle = capped at Std Prc. Blue triangle = S PRC ≠ Price. Red C = clearance SKU.",
+                        headerTooltip: "Read-only. Same as Amazon: Dil below LMP stays Dil. Dil at/above LMP becomes LMP only when SNROI at that LMP is ≥ 20%; if SNROI at LMP is < 20%, Dil is kept. Std Prc is always the maximum. Red triangle = S PRC reached LMP. Orange triangle = LMP is above Std Prc, S PRC capped at Std (review Std). Brown triangle = capped at Std Prc. Blue triangle = S PRC ≠ Price. Red C = clearance SKU.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const parentHtml = ebay2ParentAvgHtml(rowData, function(d) {
@@ -4247,7 +4247,7 @@
                         field: "SGROI",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "SGROI from the visible S PRC. LMP cap (when SGROI at LMP ≥ 20%) can lower the shown %.",
+                        headerTooltip: "SGROI from the visible S PRC. LMP cap (when SNROI at LMP ≥ 20%) can lower the shown %.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const parentHtml = ebay2ParentAvgHtml(row, function(d) {

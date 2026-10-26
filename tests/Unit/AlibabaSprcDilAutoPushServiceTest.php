@@ -137,4 +137,80 @@ class AlibabaSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertSame(82.0, $out['sprice']);
     }
+
+    /** @return array{rules:list<array<string,mixed>>} */
+    private function dilContext(array $slabs = []): array
+    {
+        $slabs = $slabs ?: [[0, 0, 40], [0.1, 25, 60], [25, 100, 30]];
+
+        return ['rules' => array_map(
+            static fn (array $s): array => \App\Support\AmazonDilGroiRule::make((float) $s[0], (float) $s[1], (float) $s[2]),
+            $slabs
+        )];
+    }
+
+    private function dilTarget(array $row, ?array $ctx = null): ?array
+    {
+        return (new AlibabaSprcDilAutoPushService)->computeTarget($row, $this->pricer(), 0.0, $ctx ?? $this->dilContext());
+    }
+
+    public function test_sprc_dil_prices_the_dil_slab_target_snroi(): void
+    {
+        // Dil 20 → slab 0.1–25 → Target SNROI 60%. (LP 20 × 1.60) ÷ 0.80 = 40.00. Std 100 is far above.
+        $out = $this->dilTarget($this->row(['dil' => 20]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(40.0, $out['sprice']);
+        $this->assertEqualsWithDelta(60.0, (($out['sprice'] * 0.80) - 20) / 20 * 100, 0.01);
+    }
+
+    public function test_sprc_dil_uses_the_zero_to_zero_slab_when_dil_is_zero(): void
+    {
+        // Dil 0 → slab 0–0 → 40%. (20 × 1.40) ÷ 0.80 = 35.00, even when AB L30 is 0 (OV Dil decides, not 0 Sold).
+        $out = $this->dilTarget($this->row(['dil' => 0, 'al30' => 0]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(35.0, $out['sprice']);
+    }
+
+    public function test_sprc_dil_has_std_prc_as_the_maximum(): void
+    {
+        // Target 60% needs 40.00 but Std is 30.00, so S PRC holds at Std.
+        $out = $this->dilTarget($this->row(['dil' => 20, 'standard_price' => 30]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(30.0, $out['sprice']);
+    }
+
+    public function test_sprc_dil_does_not_take_ship_off_and_ignores_the_std_discounts(): void
+    {
+        $plain = $this->dilTarget($this->row(['dil' => 20, 'ship' => 0]));
+        $withShip = $this->dilTarget($this->row(['dil' => 20, 'ship' => 8]));
+
+        $this->assertNotNull($plain);
+        $this->assertNotNull($withShip);
+        $this->assertSame($plain['sprice'], $withShip['sprice']);
+    }
+
+    public function test_sprc_dil_has_no_price_outside_every_slab_or_without_lp(): void
+    {
+        $ctx = $this->dilContext([[0.1, 25, 60]]);
+
+        $this->assertNull($this->dilTarget($this->row(['dil' => 80]), $ctx));
+        $this->assertNull($this->dilTarget($this->row(['dil' => 20, 'lp' => 0])));
+    }
+
+    public function test_sprc_dil_clearance_sku_and_no_inventory_have_no_target(): void
+    {
+        $this->assertNull($this->dilTarget($this->row(['dil' => 20, 'clearance' => true])));
+        $this->assertNull($this->dilTarget($this->row(['dil' => 20, 'inv' => 0])));
+    }
+
+    public function test_std_rule_is_used_when_no_dil_context_is_given(): void
+    {
+        $out = (new AlibabaSprcDilAutoPushService)->computeTarget($this->row(['dil' => 20]), $this->pricer(), 0.0, null);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+    }
 }

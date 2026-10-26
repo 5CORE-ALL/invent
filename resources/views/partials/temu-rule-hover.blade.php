@@ -95,11 +95,11 @@
                 steps.push(temuRuleStep('skip', t, 'Price ' + temuRuleMoney(o.base) + ' is below LMP ' + temuRuleMoney(o.lmp) + '. The price is kept.'));
             } else if (o.after == null) {
                 steps.push(temuRuleStep('skip', t,
-                    'Price is at or above LMP ' + temuRuleMoney(o.lmp) + ', but SGROI at LMP is '
+                    'Price is at or above LMP ' + temuRuleMoney(o.lmp) + ', but SNROI at LMP is '
                     + (o.sgroiAtLmp != null ? o.sgroiAtLmp.toFixed(1) + '%' : 'n/a') + ' (below 20%). The rule is <b>not</b> applied.'));
             } else {
                 steps.push(temuRuleStep('ok', t,
-                    'Price is at or above LMP ' + temuRuleMoney(o.lmp) + ' and SGROI at LMP is '
+                    'Price is at or above LMP ' + temuRuleMoney(o.lmp) + ' and SNROI at LMP is '
                     + (o.sgroiAtLmp != null ? o.sgroiAtLmp.toFixed(1) + '%' : 'n/a') + ' (20% or more) → LMP − ' + o.pct
                     + '% (' + (o.src || 'Dil band') + ') = LMP × ' + temuRulePctText(o.pct) + ' = <b>' + temuRuleMoney(o.after) + '</b>'));
             }
@@ -268,16 +268,26 @@
                 steps.push(temuRuleStep('skip', '2 · CVR overlay',
                     'CVR ' + cvrTxt + (trend ? ' (' + trend + ' arrow)' : '') + ' is inside the thresholds, so no adjustment'));
             }
+            if (typeof amzDilGroiAgeInfo === 'function') {
+                const age = amzDilGroiAgeInfo(d);
+                if (age.points) {
+                    steps.push(temuRuleStep('ok', '3 · Ageing rule',
+                        'Age <b>' + age.days + '</b> days → slab ' + age.label + ' → <b>' + (age.points > 0 ? '+' : '') + age.points + '</b> to Target NROI'));
+                } else {
+                    steps.push(temuRuleStep('skip', '3 · Ageing rule',
+                        age.days === null ? 'No age for this SKU. Not applied.' : ('Age ' + age.days + ' days: ' + (age.label ? 'slab ' + age.label + ' adds 0.' : 'no Ageing slab matches.'))));
+                }
+            }
             const diffAdj = amzDilGroiDiffAdj(d);
             const diffPct = amzStdPrcDiffPct(d);
             if (diffAdj) {
-                steps.push(temuRuleStep('ok', '3 · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% is above ' + temuRuleDiffCfg().gt_pct + '% → <b>' + temuRuleDiffPts(diffAdj) + '</b> to Target NROI'));
+                steps.push(temuRuleStep('ok', '4 · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% is above ' + temuRuleDiffCfg().gt_pct + '% → <b>' + temuRuleDiffPts(diffAdj) + '</b> to Target NROI'));
             } else {
-                steps.push(temuRuleStep('skip', '3 · Diff rule',
+                steps.push(temuRuleStep('skip', '4 · Diff rule',
                     diffPct === null ? 'Needs both Std Prc and Price. Not applied.' : ('Diff ' + diffPct.toFixed(1) + '% is not above ' + temuRuleDiffCfg().gt_pct + '%. No ' + temuRuleDiffPts(temuRuleDiffCfg().points))));
             }
             const target = Number(amzDilGroiApplyCvrAdj(slabNroi, d));
-            steps.push(temuRuleStep('info', '4 · Target NROI', 'Final target <b>' + (isFinite(target) ? target : '—') + '%</b>'));
+            steps.push(temuRuleStep('info', '5 · Target NROI', 'Final target <b>' + (isFinite(target) ? target : '—') + '%</b>'));
             return isFinite(target) ? target : null;
         }
 
@@ -299,10 +309,10 @@
                     const lp = parseFloat(d.LP_productmaster) || 0;
                     const ship = parseFloat(d.Ship_productmaster) || 0;
                     const ads = (typeof amazonAdsPctAtPrice === 'function') ? Number(amazonAdsPctAtPrice(base)) || 0 : (Number(AMAZON_CHANNEL_ADS_PCT) || 0);
-                    steps.push(temuRuleStep('ok', '5 · Price from target',
+                    steps.push(temuRuleStep('ok', '6 · Price from target',
                         '(LP ' + temuRuleMoney(lp) + ' × (1 + ' + target + '%) + Ship ' + temuRuleMoney(ship) + ') ÷ (0.80 − Ads ' + ads.toFixed(1) + '%) = <b>' + temuRuleMoney(base) + '</b>'));
                 }
-                n = 6;
+                n = 7;
             } else {
                 base = Number(amzDisplayedSprice(d)) || 0;
                 const disc = (typeof computeAmzSumDiscountPct === 'function') ? Number(computeAmzSumDiscountPct(d)) : NaN;
@@ -439,7 +449,7 @@
                         '(LP ' + temuRuleMoney(lp) + ' × (1 + ' + meta.groi + '%) + Ship ' + temuRuleMoney(ship) + ') ÷ ' + margin.toFixed(2) + ' = <b>' + temuRuleMoney(price) + '</b>'));
                     n = 5;
                 }
-                // LMP cap: LMP × (1 − x%) by the SKU's Dil band, only when SGROI at LMP is 20% or more.
+                // LMP cap: LMP × (1 − x%) by the SKU's Dil band, only when SNROI at LMP is 20% or more.
                 const pct = temuRuleBandPct(d);
                 const sg = macysSgroiAtPrice(d, lmp);
                 const lmpHit = price > 0 && lmp > 0 && price + 0.0001 >= lmp && (sg === null || sg >= 20);
@@ -546,8 +556,11 @@
             let n = 1;
 
             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
-                steps.push(temuRuleStep('skip', 'Clearance', 'This SKU is on the Inv days clearance list (YES), so S PRC shows <b>C</b>. No S PRC is saved or pushed for it.'));
-                return { title: 'S PRC — (Clearance)', sub: rowSub, steps: steps, notes: notes, finalNote: '' };
+                const cp = (typeof window.ebayClearancePriceForRow === 'function') ? (Number(window.ebayClearancePriceForRow(d)) || 0) : 0;
+                steps.push(temuRuleStep('info', 'Clearance',
+                    'This SKU is on the Inv days clearance list (YES). Only the Clearance Target NROI% (last row of the Sprc Dil modal) applies: (LP x (1 + NROI%) + Ship BB) / take-home'
+                    + (cp > 0 ? ' = <b>$' + cp.toFixed(2) + '</b>' : '') + '. No slab, Diff, Std or A Price rule is applied. It is saved and pushed like any SKU.'));
+                return { title: 'S PRC — Clearance', sub: rowSub, steps: steps, notes: notes, finalNote: '' };
             }
 
             if (dilOn) {

@@ -180,6 +180,8 @@
     window.CH_STD_SERVER_OWNED = true;
     // The SNROI% column here is (S PRC x take-home - Ship BB - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
     window.CH_PROMO_ADS_FN = function() { return 0; };
+    // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes; the cell shows the price and a red C.
+    window.CH_CLEARANCE_KEEPS_RULES = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'purchasing_power'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'purchasing_power'])
     @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
@@ -327,6 +329,7 @@
         }
         function ppHasAmzCap(data) {
             if (ppIsParentRow(data)) return false;
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) return false;
             const amz = ppAmazonPrice(data);
             const saved = ppSavedSprice(data);
             if (!(amz > 0) || !(saved > 0)) return false;
@@ -357,6 +360,11 @@
         function ppLiveRuleSprice(data) {
             if (!data || ppIsParentRow(data)) return 0;
             try {
+                // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode.
+                // No slab, Diff, Std or A Price floor, same as the server.
+                if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
+                    return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;
+                }
                 let out = 0;
                 if (ppDilOn()) {
                     if (window._ebayDilRulesLoaded !== true) return 0;
@@ -383,6 +391,7 @@
             if (live > 0) return live;
             const saved = ppSavedSprice(data);
             if (!(saved > 0)) return 0;
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) return saved;
             const amz = ppAmazonPrice(data);
             return (amz > 0 && saved < amz - 0.015) ? amz : saved;
         }
@@ -766,14 +775,10 @@
                     cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
                     cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                     sorter: tabSortBlankLast(function(d) { if (ppIsParentRow(d)) return null; const v = ppDisplayedSprice(d); return v > 0 ? v : null; }),
-                    headerTooltip: 'The ON switch fills this column. Sprc Dil: Dil slab Target SNROI (+ Diff points when Std Diff is above the threshold), no Std Prc maximum. Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews (or the SNROI Cap price). Either way never below A Price (Amz). No LMP rule: Purchasing Power has no LMP. Clearance SKUs show C and are not priced. Repaints at once on a switch or rule edit; the server saves it right after, and saves and pushes twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price. Hover for every rule used.',
+                    headerTooltip: 'The ON switch fills this column. Sprc Dil: Dil slab Target SNROI (+ Diff points when Std Diff is above the threshold), no Std Prc maximum. Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews (or the SNROI Cap price). Either way never below A Price (Amz). No LMP rule: Purchasing Power has no LMP. Clearance SKUs (C) are priced only from the Clearance Target NROI% (Sprc Dil modal, last row), with no A Price floor, and pushed like any SKU. Repaints at once on a switch or rule edit; the server saves it right after, and saves and pushes twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price. Hover for every rule used.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';
-                        // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
-                        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
-                            return '<span class="pp-sprice-clearance" title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
-                        }
                         let value = ppDisplayedSprice(d);
                         let bg = '';
                         if (d.SPRICE_STATUS === 'pushed') bg = 'background-color:#fff3cd;';
@@ -799,7 +804,7 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        // Clearance SKUs keep the discount price. Red "C" after the value.
+                        // Clearance SKUs show the Clearance NROI price, saved and pushed like any SKU. Red "C" after the value.
                         const isClearance = typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d);
                         const clearanceMark = isClearance
                             ? '<span class="pp-sprice-clearance" title="Clearance" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'

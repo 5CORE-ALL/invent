@@ -178,12 +178,12 @@
             gap: 5px;
             cursor: pointer;
         }
-        #ebay-dil-groi-table tr[data-clearance] .ebay-dg-clearance-count,
-        #ebay-dil-groi-table tr[data-clearance] .ebay-dg-clearance-nroi {
+        #ebay-dg-clearance-block .ebay-dg-clearance-count,
+        #ebay-dg-clearance-block .ebay-dg-clearance-nroi {
             color: #dc3545;
             font-weight: 700;
         }
-        #ebay-dil-groi-table tr[data-clearance] .ebay-dg-clearance-nroi { margin-left: 0.35rem; }
+        #ebay-dg-clearance-block .ebay-dg-clearance-nroi { margin-left: 0.35rem; }
         #ebayDilGroiModal .ebay-dg-rules {
             margin: 0 0 10px;
             padding-left: 1.15rem;
@@ -581,7 +581,7 @@
                         @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true))
                         <li>
                             <strong>When</strong> LMP is available and the calculated price is at or above LMP
-                            (and SGROI at LMP is at least 20%):
+                            (and SNROI at LMP is at least 20%):
                             S PRC = <strong>LMP − x%</strong>, where x comes from the SKU’s Dil band in the
                             <strong>LMP cap</strong> table (below / between / above the two Dil limits, all editable).
                             Std Prc is still the maximum.
@@ -599,10 +599,6 @@
                         <li>
                             <strong>When</strong> you change a Dil / Target value (or add/delete a slab):
                             slabs <strong>autosave</strong>. S PRC is left as it is.
-                        </li>
-                        <li>
-                            <strong>Clearance</strong> count: INV &gt; 0 and Clearance is <strong>Yes</strong> on Inv Days.
-                            Target {{ $ebaySprcDilTargetLabel }}% is stored with this page’s Sprc Dil rules.
                         </li>
                         <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
@@ -654,6 +650,23 @@
                             <tbody id="ebay-dil-groi-tbody"></tbody>
                         </table>
                     </div>
+                    <div class="ebay-dg-clearance-wrap mt-3">
+                        <div class="ebay-dg-rules-title">Clearance</div>
+                        <div class="small text-muted mb-1">
+                            <strong>Clearance Rule:</strong> If Item is On Clearance Then Follow The Dynamic Target <strong>SNROI%</strong>.
+                            Stored with this page’s Sprc Dil rules.
+                        </div>
+                        <div id="ebay-dg-clearance-block" class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
+                            <span class="fw-semibold">Clearance</span>
+                            <span title="INV &gt; 0 and Clearance Yes on Inv Days. Count and Target {{ $ebaySprcDilTargetLabel }}% in red. Stored on this page only.">
+                                <span class="ebay-dg-clearance-count">0</span><span class="ebay-dg-clearance-nroi">0%</span>
+                            </span>
+                            <span class="d-flex align-items-center gap-2">
+                                <label class="small mb-0 text-muted">Target {{ $ebaySprcDilTargetLabel }}%</label>
+                                <input type="number" min="0" step="0.1" class="form-control form-control-sm ebay-dg-clearance-groi" style="width:110px;" value="0" title="Target {{ $ebaySprcDilTargetLabel }}% for clearance">
+                            </span>
+                        </div>
+                    </div>
                     <div class="ebay-dg-hist-wrap" id="ebay-dg-hist-wrap">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <span class="small fw-semibold" id="ebay-dg-hist-title">Slab history</span>
@@ -704,7 +717,7 @@
                     @endif
                     @if(!empty($ebaySprcDilLmpCapOn))
                     <div class="ebay-dg-rules-title mt-2"
-                        title="When the calculated price reaches LMP (and SGROI at LMP ≥ 20%): S PRC = LMP × (1 − x/100). x depends on the SKU's Dil.">
+                        title="When the calculated price reaches LMP (and SNROI at LMP ≥ 20%): S PRC = LMP × (1 − x/100). x depends on the SKU's Dil.">
                         LMP cap — S PRC = LMP − x% by Dil
                     </div>
                     <div class="table-responsive">
@@ -849,7 +862,8 @@
                 || EBAY_DIL_GROI_CHANNEL === 'pls'
                 || EBAY_DIL_GROI_CHANNEL === 'depop'
                 || EBAY_DIL_GROI_CHANNEL === 'vinted'
-                || EBAY_DIL_GROI_CHANNEL === 'instagram';
+                || EBAY_DIL_GROI_CHANNEL === 'instagram'
+                || EBAY_DIL_GROI_CHANNEL === 'alibaba';
         }
         function ebayDgIsMercari() {
             return EBAY_DIL_GROI_CHANNEL === 'mercari_wship'
@@ -2167,7 +2181,7 @@
             return n;
         }
         function ebayClearanceNroiNow() {
-            const raw = parseFloat($('#ebay-dil-groi-tbody .ebay-dg-clearance-groi').val());
+            const raw = parseFloat($('#ebay-dg-clearance-block .ebay-dg-clearance-groi').val());
             if (isFinite(raw) && raw >= 0) return ebayDgRound2(raw);
             return isFinite(ebayClearanceNroi) ? ebayClearanceNroi : 0;
         }
@@ -2188,11 +2202,11 @@
         };
         function ebayPaintClearanceNroiText() {
             ebayClearanceNroi = ebayClearanceNroiNow();
-            const el = document.querySelector('#ebay-dil-groi-tbody .ebay-dg-clearance-nroi');
+            const el = document.querySelector('#ebay-dg-clearance-block .ebay-dg-clearance-nroi');
             if (el) el.textContent = ebayDgFmtNum(ebayClearanceNroi) + '%';
         }
         function ebayPaintClearanceSlabCount() {
-            const el = document.querySelector('#ebay-dil-groi-tbody .ebay-dg-clearance-count');
+            const el = document.querySelector('#ebay-dg-clearance-block .ebay-dg-clearance-count');
             if (!el) return;
             ebayPaintClearanceNroiText();
             if (!ebayClearanceYesSet) {
@@ -2202,21 +2216,10 @@
             }
             el.textContent = String(ebayClearanceYesCount());
         }
-        function ebayAppendClearanceSlabRow($tb) {
+        /** The Clearance block sits outside the slab table (its own block, rule written above it): fill it from the saved NROI%. */
+        function ebayAppendClearanceSlabRow() {
             const nroi = isFinite(ebayClearanceNroi) ? ebayClearanceNroi : 0;
-            $tb.append(
-                '<tr data-clearance="1">'
-                + '<td class="text-center fw-semibold">clearance</td>'
-                + '<td class="text-center fw-semibold">clearance</td>'
-                + '<td class="ebay-dg-count" title="INV &gt; 0 and Clearance Yes on Inv Days. Count and Target ' + EBAY_DIL_TARGET_LABEL + '% in red. Stored on this page only.">'
-                + '<span class="ebay-dg-clearance-count">0</span>'
-                + '<span class="ebay-dg-clearance-nroi">0%</span>'
-                + '</td>'
-                + '<td class="text-end">'
-                + '<input type="number" min="0" step="0.1" class="form-control form-control-sm ebay-dg-clearance-groi" value="' + nroi + '" title="Target ' + EBAY_DIL_TARGET_LABEL + '% for clearance">'
-                + '</td><td></td>'
-                + '</tr>'
-            );
+            $('#ebay-dg-clearance-block .ebay-dg-clearance-groi').val(nroi);
             ebayPaintClearanceSlabCount();
         }
         function renderEbayDilGroiPies() {
@@ -2324,7 +2327,7 @@
                     + '</td></tr>'
                 );
             });
-            ebayAppendClearanceSlabRow($tb);
+            ebayAppendClearanceSlabRow();
             if ($('#ebayDilGroiModal').hasClass('show')) {
                 renderEbayDilGroiPies();
             } else {
@@ -2441,6 +2444,7 @@
                 || (typeof ebayDgIsShopifyB2b === 'function' && ebayDgIsShopifyB2b())
                 || (typeof ebayDgIsMacys === 'function' && ebayDgIsMacys())
                 || EBAY_DIL_GROI_CHANNEL === 'depop'
+                || EBAY_DIL_GROI_CHANNEL === 'alibaba'
                 || EBAY_DIL_GROI_CHANNEL === 'wayfair'
                 || EBAY_DIL_GROI_CHANNEL === 'reverb'
                 || EBAY_DIL_GROI_CHANNEL === 'topdawg'
@@ -3296,8 +3300,8 @@
                     $btn.prop('disabled', false).html(html);
                 }
             });
-            $(document).off('input.ebayClearanceNroi change.ebayClearanceNroi', '#ebay-dil-groi-tbody .ebay-dg-clearance-groi')
-                .on('input.ebayClearanceNroi change.ebayClearanceNroi', '#ebay-dil-groi-tbody .ebay-dg-clearance-groi', function() {
+            $(document).off('input.ebayClearanceNroi change.ebayClearanceNroi', '#ebay-dg-clearance-block .ebay-dg-clearance-groi')
+                .on('input.ebayClearanceNroi change.ebayClearanceNroi', '#ebay-dg-clearance-block .ebay-dg-clearance-groi', function() {
                     ebayPaintClearanceNroiText();
                     ebayClearanceNroi = ebayClearanceNroiNow();
                     if (window.NTO_CLEARANCE_NROI_PRICED === true && typeof window.temuClearCapMemo === 'function') {

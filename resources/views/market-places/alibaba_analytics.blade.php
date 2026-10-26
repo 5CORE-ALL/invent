@@ -160,6 +160,7 @@
             }
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'alibaba'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'alibaba'])
         .card-loader-overlay {
             position: absolute;
             inset: 0;
@@ -270,6 +271,7 @@
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end" id="ab-column-dropdown-menu"></ul>
                         </div>
+                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'alibaba'])
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'alibaba'])
                         <span class="badge bg-secondary" id="ab-selected-count" title="SKUs checked for bulk Push Prc">0 selected</span>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="ab-clear-selection-btn" style="display:none;">Clear</button>
@@ -303,6 +305,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'alibaba'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'alibaba'])
 @endsection
 
 @section('script')
@@ -314,6 +317,7 @@
         // The SNROI% column here is SGROI on the S PRC (Ship already taken off, no Ads%), so the SNROI Cap judges the same number.
         window.CH_PROMO_ADS_FN = function() { return 0; };
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'alibaba'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'alibaba'])
         document.body.style.zoom = "90%";
 
         const AB_MARGIN = {{ (float) ($marginPercent ?? 95) }} / 100;
@@ -331,15 +335,31 @@
          * The S PRC shown, same as /topdawg-pricing: the S PRC SAVED by the server job (Std rule − Ship, SNROI cap,
          * refreshed every 10 min and on Save Rule). The live rule price is only used for a SKU with nothing saved yet.
          */
+        /**
+         * The rule price of the ON switch (Sprc Dil or Std prc vs dil), worked out live. Sprc Dil is the Dil slab Target SNROI
+         * with Std Prc as the maximum (no Ship, no Ads, no LMP), same as the server. 0 while the rules load or when the row has none.
+         */
+        function abLiveRuleSprice(data) {
+            if (!data || isAbParentRow(data) || typeof chPromoRuleSpriceAmount !== 'function') return 0;
+            let live = Number(chPromoRuleSpriceAmount(data)) || 0;
+            if (live > 0 && typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                const std = parseFloat(data.STANDARD_PRICE != null ? data.STANDARD_PRICE : data.standard_price) || 0;
+                if (std > 0 && live > std) live = std;
+            }
+            return live > 0 ? Math.round(live * 100) / 100 : 0;
+        }
+        window.abLiveRuleSprice = abLiveRuleSprice;
+
         function abShownSprice(data) {
             if (!data || isAbParentRow(data)) return 0;
+            // Just after a switch / rule edit the server is still re-saving S PRC: show the live rule price until the rows are re-read.
+            if (window._abRulePending === true) {
+                const pending = abLiveRuleSprice(data);
+                if (pending > 0) return pending;
+            }
             const saved = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
             if (saved > 0) return Math.round(saved * 100) / 100;
-            if (typeof chPromoRuleSpriceAmount === 'function') {
-                const live = Number(chPromoRuleSpriceAmount(data)) || 0;
-                if (live > 0) return live;
-            }
-            return 0;
+            return abLiveRuleSprice(data);
         }
         window.abShownSprice = abShownSprice;
 
@@ -769,6 +789,72 @@
         // Save Rule on the Std prc vs dil modal: re-read the rows (S PRC saved by the server) without a page reload.
         window.chStdReloadRows = function () { loadTable(); };
 
+        /** Repaint every S PRC dependent cell and the counts from the rule now ON. No row writes. */
+        function abRefreshSpriceCells() {
+            if (!abTable || typeof abTable.getRows !== 'function') return;
+            try {
+                (abTable.getRows('visible') || []).forEach(function (row) {
+                    try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+                });
+            } catch (e) { /* ignore */ }
+            try { updateSummary(); } catch (e2) { /* ignore */ }
+        }
+        window.abRefreshSpriceCells = abRefreshSpriceCells;
+
+        /**
+         * The server re-saves S PRC from the rule that is ON right after a switch (Sprc Dil <-> Std prc vs dil) or a Sprc Dil edit
+         * (alibaba:sprc-dil-auto-push, nothing is pushed). Wait for that run, then re-read the rows so S PRC, SGROI, SNROI and the
+         * blue triangles show what was saved. Until then the cells show the live rule price.
+         */
+        let abRuleWaitTimer = null;
+        let abRuleWaitSeq = 0;
+        function abWaitForRuleSaveThenReload(firstDelay) {
+            const seq = ++abRuleWaitSeq;
+            window._abRulePending = true;
+            abRefreshSpriceCells();
+            if (abRuleWaitTimer) { clearTimeout(abRuleWaitTimer); abRuleWaitTimer = null; }
+            const startedAt = Date.now();
+            let seenRunning = false;
+            function finish() {
+                if (seq !== abRuleWaitSeq) return;
+                window._abRulePending = false;
+                loadTable();
+            }
+            function poll() {
+                if (seq !== abRuleWaitSeq) return;
+                $.ajax({
+                    url: '/channel-promo-pricing/alibaba/rule-apply-status',
+                    method: 'GET', dataType: 'json', headers: { 'Accept': 'application/json' }, timeout: 8000,
+                }).done(function (res) {
+                    if (seq !== abRuleWaitSeq) return;
+                    const running = !!(res && res.running);
+                    if (running) seenRunning = true;
+                    const waited = Date.now() - startedAt;
+                    if ((seenRunning && !running) || (!seenRunning && waited > 8000) || waited > 240000) {
+                        finish();
+                        return;
+                    }
+                    abRuleWaitTimer = setTimeout(poll, 1500);
+                }).fail(function () {
+                    if (seq !== abRuleWaitSeq) return;
+                    if (Date.now() - startedAt > 240000) { finish(); return; }
+                    abRuleWaitTimer = setTimeout(poll, 3000);
+                });
+            }
+            abRuleWaitTimer = setTimeout(poll, firstDelay != null ? firstDelay : 1200);
+        }
+        // Switch Sprc Dil <-> Std prc vs dil: the cells show the ON rule at once, the server saves the same S PRC right after.
+        window.spriceOnRuleSwitched = function () {
+            if (typeof chPromoToast === 'function') {
+                chPromoToast('info', 'S PRC now follows ' + ((typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') ? 'Sprc Dil' : 'Std prc vs dil') + '. Saving…');
+            }
+            abWaitForRuleSaveThenReload(1500);
+        };
+        // A Sprc Dil edit (slab) was saved: the server re-saves S PRC from it.
+        window.ebayOnDilRulesSaved = function () { abWaitForRuleSaveThenReload(400); };
+        // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
+        $(document).on('chStd:settled', function () { abRefreshSpriceCells(); });
+
         function applyFilters() {
             if (!abTable) return;
             const filtered = (abAllRows || []).filter(abRowMatches);
@@ -917,7 +1003,7 @@
                         },
                         {
                             title: 'S PRC', field: 'SPRICE', hozAlign: 'center', width: 78, sorter: abDisplayedSorter('SPRICE'),
-                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100). Then the Ship column is reduced from it (S PRC = calc − Ship) and the SNROI cap judges that price. Std Prc is the maximum, no LMP. Saved by the server job (every 10 min and on Save Rule), which is what is pushed to Alibaba. Blue triangle = S PRC ≠ the live Alibaba Price.',
+                            headerTooltip: 'Not editable. The ON switch fills this column. Sprc Dil: the Dil slab Target SNROI, Std Prc is the maximum, no Ship. Std prc vs dil: Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), then the Ship column is reduced from it (S PRC = calc − Ship) and the SNROI cap judges that price. Std Prc is the maximum, no LMP. Turning one ON turns the other OFF. Clearance SKUs get no S PRC. Saved by the server job (every 10 min, on Save Rule and right after a switch), which is what is pushed to Alibaba. Blue triangle = S PRC ≠ the live Alibaba Price.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
@@ -963,6 +1049,22 @@
                                 const lp = parseFloat(row.lp) || 0;
                                 const profit = (sprice * AB_MARGIN) - lp;
                                 return abPct((profit / sprice) * 100, 'gpft');
+                            }
+                        },
+                        {
+                            title: 'Sprc Dil', field: 'SPRC_DIL', hozAlign: 'center', width: 78, headerSort: false,
+                            headerTooltip: 'S PRC from the OV Dil % slab → Target SNROI (Sprc Dil modal). Dil = OV L30 ÷ INV, including when AB L30 = 0. Dil = 0 uses the 0–0 slab. Price = (LP × (1 + SNROI%/100)) ÷ margin, Std Prc is the maximum. Ship is not used. It fills S PRC while the Sprc Dil switch is ON.',
+                            formatter: function (cell) {
+                                const row = cell.getRow().getData();
+                                if (isAbParentRow(row) || typeof ebayDilGroiMetaForRow !== 'function') return '';
+                                const meta = ebayDilGroiMetaForRow(row);
+                                if (!meta || !(meta.sprc > 0)) return '<span style="color:#adb5bd;">–</span>';
+                                let value = Number(meta.sprc);
+                                const std = parseFloat(row.STANDARD_PRICE != null ? row.STANDARD_PRICE : row.standard_price) || 0;
+                                const capped = std > 0 && value > std + 0.0001;
+                                if (capped) value = std;
+                                const tip = (typeof ebayDilGroiTipText === 'function') ? ebayDilGroiTipText(meta) : '';
+                                return '<span style="font-weight:600;color:#6f42c1;" title="' + abEsc(tip + (capped ? ' → capped at Std Prc $' + std.toFixed(2) : '')) + '">$' + value.toFixed(2) + '</span>';
                             }
                         },
                         (function () {

@@ -5,9 +5,11 @@ namespace App\Services;
 use App\Http\Controllers\MarketPlace\AlibabaAnalyticsController;
 use App\Models\ChannelMasterCalculatedData;
 use App\Models\AlibabaPricingPrice;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Support\AmazonDilGroiRule;
 use App\Support\NegativeSnroiPushGuard;
 use App\Support\PushedListingPrice;
+use App\Support\SpriceActiveRule;
 use App\Support\StdPrcVsDilPricer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -73,8 +75,13 @@ class AlibabaSprcDilAutoPushService
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel(self::CHANNEL);
         $adsFrac = $this->channelAdsFrac();
+        // The page switch decides the S PRC rule, same as Amazon: Std prc vs dil, or the Sprc Dil modal (Dil slab Target SNROI,
+        // Std Prc as the maximum; Alibaba has no LMP). Cron, the page and Save Rule all read the same choice.
+        $dilContext = SpriceActiveRule::usesStdPrc(self::CHANNEL) ? null : $this->loadDilContext();
 
-        $this->log($logger, 'Loaded Alibaba Std prc vs dil (alibaba_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Std max (no LMP)');
+        $this->log($logger, $dilContext !== null
+            ? 'Alibaba S PRC rule = Sprc Dil (Dil slab Target SNROI, Std max, no Ship, no Ads, no LMP)'
+            : 'Loaded Alibaba Std prc vs dil (alibaba_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Std max (no LMP)');
 
         if ($blueCatchUp && ! $this->hasMetaColumns()) {
             // Without the push-meta columns a pushed SKU has no cooldown and would be pushed every 10 minutes.
@@ -125,7 +132,7 @@ class AlibabaSprcDilAutoPushService
         try {
             foreach ($rows as $i => $row) {
                 try {
-                    $computed = $this->computeTarget($row, $pricer, $adsFrac);
+                    $computed = $this->computeTarget($row, $pricer, $adsFrac, $dilContext);
                     if ($computed === null) {
                         $stats['skipped']++;
                         continue;
@@ -253,10 +260,13 @@ class AlibabaSprcDilAutoPushService
     /**
      * Page S PRC formula (INV > 0 child SKUs): Std rule, Std is the maximum (no LMP).
      *
+     * With a $dilContext (the Sprc Dil switch is ON) the Sprc Dil modal slabs price it instead.
+     *
      * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>}|null  $dilContext
      * @return array{sprice:float,uncapped:float,base:float,margin:float,lp:float}|null
      */
-    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, ?float $adsFrac = null): ?array
+    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, ?float $adsFrac = null, ?array $dilContext = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
@@ -265,6 +275,9 @@ class AlibabaSprcDilAutoPushService
         // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: the page shows C, nothing is saved or pushed.
         if ((new StdPrcVsDilPricer([], 'alibaba'))->isClearanceRow($row)) {
             return null;
+        }
+        if ($dilContext !== null) {
+            return $this->computeDilTarget($row, $dilContext);
         }
         $std = (float) ($row['standard_price'] ?? 0);
         if (! ($std > 0)) {
@@ -323,6 +336,72 @@ class AlibabaSprcDilAutoPushService
             'margin' => $margin,
             'lp' => $lp,
         ];
+    }
+
+    /**
+     * Sprc Dil switch ON, same as the page (ebay-sprc-dil): the Dil slab Target SNROI priced as (LP × (1 + target%)) ÷ take-home,
+     * then Std Prc as the maximum. Alibaba has no Ship in this price (the Std rule takes Ship off, this one never adds it),
+     * no Ads%, no CVR overlay and no LMP. A SKU whose Dil is outside every slab has no Sprc Dil price (S PRC left as is).
+     * Dil = OV L30 ÷ INV, including when AB L30 = 0. Dil = 0 uses the 0–0 slab.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{rules:list<array<string,mixed>>}  $ctx
+     * @return array{sprice:float,uncapped:float,base:float,margin:float,lp:float}|null
+     */
+    protected function computeDilTarget(array $row, array $ctx): ?array
+    {
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 1.0;
+        }
+        $std = round((float) ($row['standard_price'] ?? 0), 2);
+
+        $rule = AmazonDilGroiRule::match((float) ($row['dil'] ?? 0), $ctx['rules']);
+        if ($rule === null) {
+            return null;
+        }
+        $target = max(0.0, round((float) ($rule['nroi'] ?? $rule['groi']), 2));
+
+        $raw = round(($lp * (1 + $target / 100)) / $margin, 2);
+        if (! is_finite($raw) || $raw < 0.01) {
+            return null;
+        }
+        $capped = ($std > 0 && $raw > $std) ? $std : $raw;
+        if (! is_finite($capped) || $capped < 0.01) {
+            return null;
+        }
+
+        return [
+            'sprice' => round($capped, 2),
+            'uncapped' => $raw,
+            'base' => $std,
+            'margin' => $margin,
+            'lp' => $lp,
+        ];
+    }
+
+    /**
+     * The Sprc Dil modal settings saved for Alibaba (alibaba_dil_vs_groi): the Dil slabs.
+     *
+     * @return array{rules:list<array<string,mixed>>}
+     */
+    protected function loadDilContext(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', self::CHANNEL.'_dil_vs_groi')->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        $unpacked = AmazonDilGroiRule::unpackStored($saved);
+        $rules = $unpacked['rules'] === []
+            ? AmazonDilGroiRule::defaultsForChannel(self::CHANNEL)
+            : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+
+        return ['rules' => $rules];
     }
 
     /**

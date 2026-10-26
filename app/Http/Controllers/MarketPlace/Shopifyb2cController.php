@@ -1287,13 +1287,27 @@ class Shopifyb2cController extends Controller
     {
         $byNorm = [];
         ShopifySku::query()
-            ->select(['id', 'sku', 'inv', 'quantity', 'price', 'views', 'image_src'])
+            ->select(['id', 'sku', 'variant_id', 'inv', 'quantity', 'price', 'views', 'image_src'])
             ->orderBy('id')
             ->chunkById(2500, function ($rows) use (&$byNorm) {
+                // Same row the price push updates: a row with a variant id wins over a blank
+                // duplicate stub (otherwise the page keeps showing the pre-push price after refresh).
+                $index = static function (string $key, $row) use (&$byNorm): void {
+                    if ($key === '') {
+                        return;
+                    }
+                    $hasVariant = trim((string) ($row->variant_id ?? '')) !== '';
+                    if (! isset($byNorm[$key])) {
+                        $byNorm[$key] = $row;
+                    } elseif ($hasVariant && trim((string) ($byNorm[$key]->variant_id ?? '')) === '') {
+                        $byNorm[$key] = $row;
+                    }
+                };
                 foreach ($rows as $row) {
-                    $k = ShopifySku::normalizeSkuForShopifyLookup($row->sku);
-                    if ($k !== '' && ! isset($byNorm[$k])) {
-                        $byNorm[$k] = $row;
+                    $index(ShopifySku::normalizeSkuForShopifyLookup($row->sku), $row);
+                    $c = ShopifySku::compactSkuForLookup($row->sku);
+                    if ($c !== '') {
+                        $index('c:' . $c, $row);
                     }
                 }
             });
@@ -1303,6 +1317,11 @@ class Shopifyb2cController extends Controller
             $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
             if ($k !== '' && isset($byNorm[$k])) {
                 $out[(string) $pmSku] = $byNorm[$k];
+                continue;
+            }
+            $c = ShopifySku::compactSkuForLookup((string) $pmSku);
+            if ($c !== '' && isset($byNorm['c:' . $c])) {
+                $out[(string) $pmSku] = $byNorm['c:' . $c];
             }
         }
 

@@ -28,8 +28,9 @@
         #std-dil-groi-table .std-dg-min, #std-dil-groi-table .std-dg-max { margin-left: 0; }
         #std-dil-groi-table .std-dg-count { font-weight: 700; text-align: center; white-space: nowrap; }
         #std-dil-groi-table .std-dg-del { border: none; background: none; color: #dc3545; cursor: pointer; line-height: 1; }
-        #std-dil-groi-table tr[data-clearance] .std-dg-clearance-count,
-        #std-dil-groi-table tr[data-clearance] .std-dg-clearance-nroi { color: #dc3545; font-weight: 700; }
+        #std-dg-clearance-block .std-dg-clearance-count,
+        #std-dg-clearance-block .std-dg-clearance-nroi { color: #dc3545; font-weight: 700; }
+        #std-dg-clearance-block .std-dg-clearance-nroi { margin-left: 0.35rem; }
         #std-cvr-groi-table .std-cvr-input { max-width: 72px; display: inline-block; text-align: right; font-weight: 600; }
         #stdDilGroiModal .std-dg-rules { margin: 0 0 10px; padding-left: 1.15rem; }
         #stdDilGroiModal .std-dg-rules li { margin-bottom: 0.28rem; }
@@ -72,7 +73,6 @@
                         <li><strong>When</strong> you change the first Target NROI%: later rows fill as first +5, +10, …</li>
                         <li><strong>When</strong> you click <strong>Save and Apply</strong>: rules are stored in <strong>std_pricing_sprc_dil</strong> (not Amazon), then Sprc Dil is written on this table.</li>
                         <li><strong>When</strong> INV ≤ 0: count and pies skip that SKU.</li>
-                        <li><strong>Clearance</strong> count: INV &gt; 0 and Clearance is Yes on Inv Days.</li>
                     </ul>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="std-dil-groi-table">
@@ -91,6 +91,20 @@
                     <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="std-dil-groi-add-btn">
                         <i class="fas fa-plus me-1"></i> Add slab
                     </button>
+                    <div class="std-dg-rules-title mt-3">Clearance</div>
+                    <div class="small text-muted mb-1">
+                        <strong>Clearance Rule:</strong> If Item is On Clearance Then Follow The Dynamic Target <strong>SNROI%</strong>.
+                    </div>
+                    <div id="std-dg-clearance-block" class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
+                        <span class="fw-semibold">Clearance</span>
+                        <span title="INV &gt; 0 and Clearance Yes on Inv Days. Count and Target NROI% in red.">
+                            <span class="std-dg-clearance-count">0</span><span class="std-dg-clearance-nroi">0%</span>
+                        </span>
+                        <span class="d-flex align-items-center gap-2">
+                            <label class="small mb-0 text-muted" for="std-dg-clearance-input">Target NROI%</label>
+                            <input type="number" min="0" step="0.1" id="std-dg-clearance-input" class="form-control form-control-sm std-dg-input std-dg-clearance-groi" style="width:110px;max-width:110px;" value="0">
+                        </span>
+                    </div>
                     <div class="std-dg-rules-title mt-3">Formula</div>
                     <p class="small text-muted mb-2" id="std-formula-preview">
                         S P price = (LP × (1 + Target NROI% / 100) + Ship) / (margin − ads). Profit columns use the same margin and ads.
@@ -404,9 +418,9 @@
                     .catch(function () { clearanceSet = {}; return clearanceSet; });
             }
             function paintClearance() {
-                const el = document.querySelector('#std-dil-groi-tbody .std-dg-clearance-count');
-                const nroiEl = document.querySelector('#std-dil-groi-tbody .std-dg-clearance-nroi');
-                const raw = parseFloat(document.querySelector('#std-dil-groi-tbody .std-dg-clearance-groi')?.value);
+                const el = document.querySelector('#std-dg-clearance-block .std-dg-clearance-count');
+                const nroiEl = document.querySelector('#std-dg-clearance-block .std-dg-clearance-nroi');
+                const raw = parseFloat(document.querySelector('#std-dg-clearance-block .std-dg-clearance-groi')?.value);
                 if (isFinite(raw) && raw >= 0) clearanceNroi = round2(raw);
                 if (nroiEl) nroiEl.textContent = fmtNum(clearanceNroi) + '%';
                 if (!el) return;
@@ -433,10 +447,10 @@
                         + '<td class="text-end"><input type="number" step="0.1" class="form-control form-control-sm std-dg-input std-dg-groi" value="' + r.nroi + '"'
                         + (idx === 0 ? ' title="Changing this sets following slabs to +5 each"' : '') + '></td>'
                         + '<td class="text-center">' + (canDelete ? '<button type="button" class="std-dg-del" data-idx="' + idx + '">&times;</button>' : '') + '</td></tr>';
-                }).join('')
-                    + '<tr data-clearance="1"><td class="text-center fw-semibold">clearance</td><td class="text-center fw-semibold">clearance</td>'
-                    + '<td class="std-dg-count"><span class="std-dg-clearance-count">0</span> <span class="std-dg-clearance-nroi">0%</span></td>'
-                    + '<td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm std-dg-input std-dg-clearance-groi" value="' + clearanceNroi + '"></td><td></td></tr>';
+                }).join('');
+                // The Clearance block is its own block outside the slab table: fill it from the saved NROI%.
+                const clrInput = document.querySelector('#std-dg-clearance-block .std-dg-clearance-groi');
+                if (clrInput) clrInput.value = clearanceNroi;
                 renderPies();
             }
             function readRules() {
@@ -731,7 +745,14 @@
             });
             document.getElementById('std-dil-groi-tbody')?.addEventListener('input', function (e) {
                 if (e.target.classList.contains('std-dg-groi')) cascadeFromFirst(e.target);
-                else if (e.target.classList.contains('std-dg-min') || e.target.classList.contains('std-dg-max') || e.target.classList.contains('std-dg-clearance-groi')) {
+                else if (e.target.classList.contains('std-dg-min') || e.target.classList.contains('std-dg-max')) {
+                    readRules();
+                    renderPies();
+                    window.stdPricingStampSprcDil();
+                }
+            });
+            document.getElementById('std-dg-clearance-block')?.addEventListener('input', function (e) {
+                if (e.target.classList.contains('std-dg-clearance-groi')) {
                     readRules();
                     renderPies();
                     window.stdPricingStampSprcDil();

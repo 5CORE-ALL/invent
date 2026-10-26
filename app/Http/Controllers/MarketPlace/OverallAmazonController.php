@@ -3725,6 +3725,7 @@ class OverallAmazonController extends Controller
             $adsPct,
             $amazonAdBadges['l7_ad_sales']
         );
+        $amazonYCvr = $this->amazonTabulatorYesterdayCvr();
 
         return view("market-places.amazon_tabulator_view", [
             'amazonProjected'    => $amazonProjected,
@@ -3738,6 +3739,7 @@ class OverallAmazonController extends Controller
             'amazonYSalesPercent' => $amazonAdBadges['y_sales_pct'],
             'amazonYBgtPercent'  => $amazonAdBadges['y_bgt_pct'],
             'amazonYUtilizedPercent' => $amazonAdBadges['y_utilized_pct'],
+            'amazonYCvr'         => $amazonYCvr,
             'amazonUnitsSoldL30' => $amazonUnitsSoldL30,
             'amazonSalesL30'     => $amazonSalesL30,
             'ordersL30Gpft'      => $agg['gpft'],
@@ -3806,6 +3808,67 @@ class OverallAmazonController extends Controller
             ];
         } catch (\Throwable $e) {
             Log::error('amazonTabulatorProjected error: ' . $e->getMessage());
+
+            return $blank;
+        }
+    }
+
+    /**
+     * Y CVR% for /amazon-tabulator-view: units ordered ÷ sessions for one Pacific day × 100.
+     *
+     * Amazon traffic only settles about 3 days after a day ends, so yesterday's sessions are often not
+     * in channel_yesterday_views yet (amazon_datsheets.sessions_l1 is a rolling column, not a real day).
+     * Uses yesterday when its sessions are saved, otherwise the newest saved settled day within 10 days,
+     * and returns that day so the badge can say which day it is. Never divides one day's units by another day's sessions.
+     *
+     * @return array{cvr: float|null, qty: int, views: int|null, date: string|null, is_yesterday: bool}
+     */
+    private function amazonTabulatorYesterdayCvr(): array
+    {
+        $blank = ['cvr' => null, 'qty' => 0, 'views' => null, 'date' => null, 'is_yesterday' => false];
+
+        try {
+            if (! Schema::hasTable('channel_yesterday_views')) {
+                return $blank;
+            }
+            $tz = 'America/Los_Angeles';
+            $yesterday = Carbon::yesterday($tz);
+            $row = \App\Models\ChannelYesterdayView::query()
+                ->where('channel', 'amazon')
+                ->where('views', '>', 0)
+                ->whereDate('snapshot_date', '<=', $yesterday->toDateString())
+                ->whereDate('snapshot_date', '>=', $yesterday->copy()->subDays(10)->toDateString())
+                ->orderByDesc('snapshot_date')
+                ->first(['snapshot_date', 'views']);
+            if (! $row) {
+                return $blank;
+            }
+            $date = $row->snapshot_date instanceof \DateTimeInterface
+                ? $row->snapshot_date->format('Y-m-d')
+                : substr((string) $row->snapshot_date, 0, 10);
+            $day = Carbon::parse($date, $tz);
+            $views = (int) $row->views;
+
+            $qty = (int) (AmazonOrder::constrainOrderDate(
+                DB::table('amazon_orders as o')
+                    ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                    ->where(function ($q) {
+                        $q->whereNull('o.status')
+                            ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                    }),
+                $day->copy()->startOfDay(),
+                $day->copy()->endOfDay()
+            )->sum(DB::raw('COALESCE(i.quantity, 0)')));
+
+            return [
+                'cvr' => $views > 0 ? round(($qty / $views) * 100, 1) : null,
+                'qty' => $qty,
+                'views' => $views,
+                'date' => $date,
+                'is_yesterday' => $date === $yesterday->toDateString(),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Amazon tabulator Y CVR failed: '.$e->getMessage());
 
             return $blank;
         }

@@ -138,9 +138,39 @@ class MacysRuleSpriceApplyServiceTest extends TestCase
 
     public function test_sprc_dil_diff_rule_adds_points_to_target(): void
     {
-        $out = $this->compute($this->dilRow(['std' => 30, 'mc_price' => 20]), [AmazonDilGroiRule::make(0.1, 25, 100)], $this->dilCtx());
-        // Diff = 50% > 20 → target 110 → (10 × 2.1) ÷ 0.8
+        $out = $this->compute($this->dilRow(['std' => 40, 'mc_price' => 20]), [AmazonDilGroiRule::make(0.1, 25, 100)], $this->dilCtx());
+        // Rule price 25, Std 40 → Diff 60% > 20 → target 110 → (10 × 2.1) ÷ 0.8
         $this->assertEqualsWithDelta(26.25, $out['sprice'], 0.01);
+    }
+
+    public function test_diff_rule_gives_the_same_price_whatever_the_live_price_is(): void
+    {
+        $rules = [AmazonDilGroiRule::make(0.1, 25, 100)];
+        // Before the push the live price is low, after the push it is the boosted price: the saved S PRC must not move.
+        $before = $this->compute($this->dilRow(['std' => 40, 'mc_price' => 20]), $rules, $this->dilCtx());
+        $after = $this->compute($this->dilRow(['std' => 40, 'mc_price' => 26.25]), $rules, $this->dilCtx());
+        $high = $this->compute($this->dilRow(['std' => 40, 'mc_price' => 39]), $rules, $this->dilCtx());
+
+        $this->assertEqualsWithDelta(26.25, $before['sprice'], 0.001);
+        $this->assertEqualsWithDelta($before['sprice'], $after['sprice'], 0.001);
+        $this->assertEqualsWithDelta($before['sprice'], $high['sprice'], 0.001);
+    }
+
+    public function test_diff_rule_is_off_when_std_is_within_the_threshold_of_the_rule_price(): void
+    {
+        // Rule price 25, Std 29 → Diff 16% ≤ 20 → no boost.
+        $out = $this->compute($this->dilRow(['std' => 29, 'mc_price' => 10]), [AmazonDilGroiRule::make(0.1, 25, 100)], $this->dilCtx());
+        $this->assertEqualsWithDelta(25.0, $out['sprice'], 0.01);
+    }
+
+    public function test_diff_rule_needs_a_listed_sku_and_a_std_prc(): void
+    {
+        $rules = [AmazonDilGroiRule::make(0.1, 25, 100)];
+        $noLive = $this->compute($this->dilRow(['std' => 40, 'mc_price' => 0]), $rules, $this->dilCtx());
+        $noStd = $this->compute($this->dilRow(['std' => 0, 'mc_price' => 20]), $rules, $this->dilCtx());
+
+        $this->assertEqualsWithDelta(25.0, $noLive['sprice'], 0.01);
+        $this->assertEqualsWithDelta(25.0, $noStd['sprice'], 0.01);
     }
 
     public function test_sprc_dil_lmp_cap_uses_lmp_times_dil_band(): void

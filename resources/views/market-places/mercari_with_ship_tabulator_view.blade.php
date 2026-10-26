@@ -496,7 +496,7 @@
             return n > 0 ? Math.round(n * 100) / 100 : 0;
         }
         /**
-         * LMP cap, same as /amazon-tabulator-view: price at/above LMP and SGROI at LMP >= 20% -> S PRC = LMP x (1 - x%),
+         * LMP cap, same as /amazon-tabulator-view: price at/above LMP and SNROI at LMP >= 20% -> S PRC = LMP x (1 - x%),
          * x = the SKU's Dil band (Sprc Dil modal, LMP cap table).
          */
         function mercWsApplyLmpCap(d, price, reducePct) {

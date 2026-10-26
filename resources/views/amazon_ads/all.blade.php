@@ -1256,7 +1256,7 @@
                     @php
                         $amzKpiCards = [
                             ['tag' => 'Yesterday', 'title' => 'Yesterday', 'items' => [
-                                ['y_bgt', 'Y CURRENT BGT', 'CURRENT daily budget set on Amazon (campaignBudgetAmount, L1 row), summed over the campaigns shown. Not the suggested SBGT.', null],
+                                ['y_bgt', 'Y BGT', 'CURRENT daily budget set on Amazon (campaignBudgetAmount, L1 row), summed over the campaigns shown. Not the suggested SBGT.', null],
                                 ['y_util', 'Y UTIL', 'Yesterday utilization = yesterday spend ÷ daily budget.', null],
                                 ['y_bid', 'Y AVG BID', 'Yesterday avg bid = yesterday spend ÷ clicks (avg CPC).', null],
                                 ['y_cvr', 'Y CVR%', 'Yesterday CVR% = yesterday sold ÷ clicks.', null],
@@ -1267,7 +1267,7 @@
                                 ['y_spend', 'Y SPEND', 'Yesterday spend (Amazon L1).', ['amazonAdsYesterdaySpendBadgeDot', 'yspend', 'Spend']],
                             ]],
                             ['tag' => 'L30', 'title' => 'L30', 'items' => [
-                                ['l30_bgt', 'CURRENT BGT', 'CURRENT daily budget set on Amazon (campaignBudgetAmount, L30 row), summed over the campaigns shown. Not the suggested SBGT.', null],
+                                ['l30_bgt', 'BGT', 'CURRENT daily budget set on Amazon (campaignBudgetAmount, L30 row), summed over the campaigns shown. Not the suggested SBGT.', null],
                                 ['l30_util', 'UTIL', 'L30 utilization = 30-day spend ÷ (daily budget × 30).', null],
                                 ['l30_bid', 'AVG BID', 'L30 avg bid = 30-day spend ÷ clicks (avg CPC).', null],
                                 ['l30_cvr', 'CVR%', 'Ads CVR = ads sold ÷ ads clicks (L30).', null],
@@ -1276,10 +1276,10 @@
                                 ['l30_sold', 'SOLD', 'Sold (L30).', null],
                                 ['l30_sales', 'SALES', 'Ads sales (L30).', null],
                                 ['l30_spend', 'SPEND', 'Amazon L30 spend for the selected table (SP+SB on All).', null],
-                                ['l30_bgt_total', 'CURRENT BGT × 30', 'CURRENT daily budget (Amazon) × 30.', null],
+                                ['l30_bgt_total', 'BGT × 30', 'CURRENT daily budget (Amazon) × 30.', null],
                             ]],
                             ['tag' => 'Projected', 'title' => 'Projected · L7 ÷ 7 × 30', 'items' => [
-                                ['p_bgt', 'CURRENT BGT', 'CURRENT daily budget set on Amazon (campaignBudgetAmount, L7 row), summed over the campaigns shown. Not the suggested SBGT.', null],
+                                ['p_bgt', 'BGT', 'CURRENT daily budget set on Amazon (campaignBudgetAmount, L7 row), summed over the campaigns shown. Not the suggested SBGT.', null],
                                 ['p_util', 'UTIL', 'L7 utilization = 7-day spend ÷ (daily budget × 7).', null],
                                 ['p_bid', 'AVG BID', 'L7 avg bid = 7-day spend ÷ clicks (avg CPC).', null],
                                 ['p_cvr', 'CVR%', 'L7 CVR% = 7-day sold ÷ clicks.', null],
@@ -1288,7 +1288,7 @@
                                 ['p_sold', 'SOLD', 'Projected sold = L7 sold ÷ 7 × 30.', null],
                                 ['p_sales', 'SALES', 'Projected ads sales = L7 ads sales ÷ 7 × 30.', null],
                                 ['p_spend', 'SPEND', 'Projected spend = L7 spend ÷ 7 × 30.', null],
-                                ['p_bgt_total', 'CURRENT BGT × 30', 'CURRENT daily budget (Amazon, L7 row) × 30.', null],
+                                ['p_bgt_total', 'BGT × 30', 'CURRENT daily budget (Amazon, L7 row) × 30.', null],
                             ]],
                         ];
                         $amzUtilCards = [
@@ -4092,7 +4092,7 @@
                     });
                     amzSetText('amzUtil_' + id + '_total', total.toLocaleString('en-US'));
                     var avg = (u && amzNum(u.bd) > 0) ? (u.spend / u.bd * 100) : null;
-                    amzSetText('amzUtil_' + id + '_avg', 'avg ' + (avg === null ? '0' : avg.toFixed(1)) + '%');
+                    amzSetText('amzUtil_' + id + '_avg', 'avg ' + (avg === null ? '0' : Math.round(avg)) + '%');
                     var tile = document.getElementById('amzUtil_' + id + '_totalTile');
                     if (tile) {
                         var nNa = u ? (amzNum(u.na) || 0) : 0;

@@ -212,12 +212,12 @@
             font-weight: 700;
             text-align: center;
         }
-        #amz-dil-groi-table tr[data-clearance] .amz-dg-clearance-count,
-        #amz-dil-groi-table tr[data-clearance] .amz-dg-clearance-nroi {
+        #amz-dg-clearance-block .amz-dg-clearance-count,
+        #amz-dg-clearance-block .amz-dg-clearance-nroi {
             color: #dc3545;
             font-weight: 700;
         }
-        #amz-dil-groi-table tr[data-clearance] .amz-dg-clearance-nroi { margin-left: 0.35rem; }
+        #amz-dg-clearance-block .amz-dg-clearance-nroi { margin-left: 0.35rem; }
         #amz-dil-groi-table .amz-dg-count {
             font-weight: 700;
             text-align: center;
@@ -392,6 +392,20 @@
         }
         #amzDilGroiModal .table .form-control-sm { padding-top: 1px; padding-bottom: 1px; min-height: 24px; height: 26px; font-size: 12px; }
         #amzDilGroiModal .table-responsive { border-radius: 6px; }
+        #amz-age-adj-table .amz-age-adj-input {
+            max-width: 84px;
+            display: inline-block;
+            text-align: right;
+            font-weight: 600;
+        }
+        #amz-age-adj-table .amz-age-adj-del {
+            border: none;
+            background: none;
+            color: #dc3545;
+            padding: 0 4px;
+            line-height: 1;
+            cursor: pointer;
+        }
         #amz-lmp-cap-table .amz-lmp-cap-input {
             max-width: 72px;
             display: inline-block;
@@ -825,7 +839,7 @@
                     <div class="amz-dg-panel amz-dg-panel-rules">
                     <div class="amz-dg-panel-head"><i class="fas fa-list-ul me-1"></i> Rules — when each condition applies</div>
                     <ul class="small text-muted amz-dg-rules amz-dg-panel-body">
-                        <li>
+                        <li class="d-none">
                             <strong>When</strong> Dil = 0 (Shopify INV &gt; 0 and OV L30 = 0):
                             use the <strong>0–0</strong> slab’s Target NROI.
                             This is not Amazon 0 Sold. A L30 = 0 still uses the Dil from OV L30.
@@ -860,12 +874,6 @@
                             A blank Std Prc leaves the calculated price.
                         </li>
                         <li>
-                            <strong>When</strong> LMP is available and the calculated price is at or above LMP
-                            (and SGROI at LMP is at least 20%):
-                            S PRC = <strong>LMP − x%</strong>, where x follows the SKU's Dil band in the <strong>LMP cap</strong> table
-                            (default 2% = LMP × 0.98). Std Prc is still the maximum.
-                        </li>
-                        <li>
                             <strong>When</strong> LMP is above Std Prc:
                             every calculated price is capped at <strong>Std Prc</strong>.
                             An orange triangle on Std Prc means review that Std price.
@@ -875,14 +883,7 @@
                             later rows fill as first +5, +10, … (increasing down the table).
                         </li>
                         <li>
-                            <strong>When</strong> you click <strong>Save and Apply</strong>:
-                            Amazon’s table is stored via <strong>API only</strong>, then <strong>S PRC</strong> is written.
-                        </li>
-                        <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
-                        </li>
-                        <li>
-                            <strong>Clearance</strong> count: INV &gt; 0 and Clearance is <strong>Yes</strong> on Inv Days.
                         </li>
                     </ul>
                     </div>
@@ -907,6 +908,22 @@
                             </thead>
                             <tbody id="amz-dil-groi-tbody"></tbody>
                         </table>
+                    </div>
+                    <div class="amz-dg-clearance-wrap mt-3">
+                        <div class="amz-dg-rules-title">Clearance</div>
+                        <div class="small text-muted mb-1">
+                            <strong>Clearance Rule:</strong> If Item is On Clearance Then Follow The Dynamic Target <strong>SNROI%</strong>.
+                        </div>
+                        <div id="amz-dg-clearance-block" class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
+                            <span class="fw-semibold">Clearance</span>
+                            <span title="INV &gt; 0 and Clearance Yes on Inv Days. Count and Target NROI% in red.">
+                                <span class="amz-dg-clearance-count">0</span><span class="amz-dg-clearance-nroi">0%</span>
+                            </span>
+                            <span class="d-flex align-items-center gap-2">
+                                <label class="small mb-0 text-muted">Target NROI%</label>
+                                <input type="number" min="0" step="0.1" class="form-control form-control-sm amz-dg-clearance-groi" style="width:110px;" value="0" title="Target NROI% for clearance">
+                            </span>
+                        </div>
                     </div>
                     <div class="amz-dg-hist-wrap" id="amz-dg-hist-wrap">
                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -955,8 +972,38 @@
                         </table>
                     </div>
                     <div class="amz-dg-rules-title mt-2"
-                        title="When the calculated price reaches LMP (and SGROI at LMP is at least 20%): S PRC = LMP × (1 − x/100). x depends on the SKU's Dil.">
-                        LMP cap — S PRC = LMP − x% by Dil
+                        title="Each age band (days in stock) adds its points to the Dil slab Target NROI, after the CVR overlay and before the Diff rule. Count = SKUs (INV &gt; 0) whose age is in that band.">
+                        Ageing Rule
+                    </div>
+                    <div class="small text-muted mb-1">
+                        <strong>If</strong> the SKU's age (days) is inside an age band,
+                        <strong>add that band's points to the Target NROI</strong> (use a negative number to lower it).
+                        Applies on Sprc Dil only. A SKU with no age, or in no band, is not changed.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="amz-age-adj-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width:90px;">From (days)</th>
+                                    <th class="text-center" style="width:90px;">To (days)</th>
+                                    <th class="text-end" style="width:130px;">Adj NROI</th>
+                                    <th class="text-center" style="width:80px;" title="SKUs (INV &gt; 0) whose age in days is in this band">Count</th>
+                                    <th style="width:36px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="amz-age-adj-tbody"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 mt-1" id="amz-age-adj-add-btn">
+                        <i class="fas fa-plus me-1"></i> Add age band
+                    </button>
+                    <div class="amz-dg-rules-title mt-3"
+                        title="If LMP is available and the calculated S PRC is at or above LMP: S PRC = LMP × (1 − x/100). x depends on the SKU's Dil band. Count = SKUs (INV &gt; 0) in that band whose calculated S PRC is at or above LMP.">
+                        LMP Rule
+                    </div>
+                    <div class="small text-muted mb-1">
+                        <strong>If</strong> LMP is available and the calculated S PRC is at or above LMP,
+                        <strong>S PRC = LMP − x%</strong>, where x follows the SKU's Dil band. Std Prc is still the maximum.
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-lmp-cap-table">
@@ -966,6 +1013,7 @@
                                     <th class="text-center">Dil %</th>
                                     <th class="text-end">LMP reduce %</th>
                                     <th class="text-center" style="width:90px;" title="S PRC at the LMP cap, e.g. LMP $100 with 2% → $98.00">S PRC</th>
+                                    <th class="text-center" style="width:80px;" title="SKUs (INV &gt; 0) in this Dil band whose calculated S PRC is at or above LMP, so the LMP rule applies">Count</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -979,6 +1027,7 @@
                                         <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-low-pct" value="2">
                                     </td>
                                     <td class="text-center text-muted amz-lmp-cap-eg-low">LMP × 0.98</td>
+                                    <td class="amz-dg-count"><span class="amz-lmp-cap-low-count">0</span></td>
                                 </tr>
                                 <tr data-row="mid">
                                     <td>Between</td>
@@ -987,6 +1036,7 @@
                                         <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-mid-pct" value="2">
                                     </td>
                                     <td class="text-center text-muted amz-lmp-cap-eg-mid">LMP × 0.98</td>
+                                    <td class="amz-dg-count"><span class="amz-lmp-cap-mid-count">0</span></td>
                                 </tr>
                                 <tr data-row="high">
                                     <td>Above</td>
@@ -998,6 +1048,7 @@
                                         <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-high-pct" value="2">
                                     </td>
                                     <td class="text-center text-muted amz-lmp-cap-eg-high">LMP × 0.98</td>
+                                    <td class="amz-dg-count"><span class="amz-lmp-cap-high-count">0</span></td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1179,6 +1230,159 @@
             return cfg.mid_pct;
         }
         window.amzLmpReducePctForRow = amzLmpReducePctForRow;
+        /**
+         * LMP Rule counts per Dil band: SKUs (INV > 0, not clearance-priced) with an LMP whose calculated Sprc Dil price
+         * is at or above LMP, so S PRC = LMP − x%. Painted in the Count column of the LMP Rule block.
+         */
+        function amzLmpCapCollectCounts() {
+            const counts = { low: 0, mid: 0, high: 0 };
+            const cfg = amzNormalizeLmpCap(amzLmpCap);
+            amzDgEachInvChild(function(d) {
+                if (typeof amzClearanceDilActive === 'function' && amzClearanceDilActive(d)) return;
+                const lmp = amzPefLmp(d);
+                if (!(lmp > 0)) return;
+                const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
+                const calc = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
+                if (!(calc > 0) || calc + 0.0001 < lmp) return;
+                const dil = Number(amzPefDil(d)) || 0;
+                if (dil < cfg.low_lt) counts.low++;
+                else if (dil > cfg.high_gt) counts.high++;
+                else counts.mid++;
+            });
+            return counts;
+        }
+        function amzPaintLmpCapCounts() {
+            const $tbl = $('#amz-lmp-cap-table');
+            if (!$tbl.length) return;
+            const counts = amzLmpCapCollectCounts();
+            $tbl.find('.amz-lmp-cap-low-count').text(counts.low);
+            $tbl.find('.amz-lmp-cap-mid-count').text(counts.mid);
+            $tbl.find('.amz-lmp-cap-high-count').text(counts.high);
+        }
+        /**
+         * Ageing Rule (Sprc Dil): the SKU's age in days picks a band; the band's points are added to the Target NROI after the
+         * CVR overlay and before the Diff rule. Same as the server (AmazonDilGroiRule::ageAdjPoints / adjustGroiForAge).
+         * Not saved yet = 4 bands at 0 points, so nothing changes until the points are edited.
+         */
+        const AMZ_AGE_ADJ_DEFAULT = [
+            { min: 0, max: 90, points: 0 },
+            { min: 90, max: 180, points: 0 },
+            { min: 180, max: 365, points: 0 },
+            { min: 365, max: 9999, points: 0 },
+        ];
+        let amzAgeAdj = AMZ_AGE_ADJ_DEFAULT.map(function(r) { return Object.assign({}, r); });
+        /** One band as the server stores it ({min,max,points}, min ≤ max, ≥ 0), or null when From / To is blank or not a number. */
+        function amzAgeAdjBand(r) {
+            if (!r || r.min === '' || r.max === '' || r.min == null || r.max == null) return null;
+            let min = Number(r.min);
+            let max = Number(r.max);
+            if (!isFinite(min) || !isFinite(max)) return null;
+            min = Math.max(0, min);
+            max = Math.max(0, max);
+            if (max < min) { const t = min; min = max; max = t; }
+            const pts = Number(r.points);
+            return { min: amzPefRound2(min), max: amzPefRound2(max), points: (r.points !== '' && r.points !== null && isFinite(pts)) ? amzPefRound2(pts) : 0 };
+        }
+        /** Saved bands → editable rows. Nothing saved (null) = defaults; a saved empty list = no bands. */
+        function amzNormalizeAgeAdj(raw) {
+            if (raw === null || raw === undefined) return AMZ_AGE_ADJ_DEFAULT.map(function(r) { return Object.assign({}, r); });
+            if (!Array.isArray(raw)) return [];
+            return raw.map(amzAgeAdjBand).filter(Boolean);
+        }
+        /** Bands to save: the editable rows that have a valid From and To. */
+        function amzAgeAdjPayload() {
+            return amzAgeAdj.map(amzAgeAdjBand).filter(Boolean);
+        }
+        /** Index (in the editable rows) of the band an age (days) is in, or -1. min ≤ age < max; the last valid band also includes max. */
+        function amzAgeAdjSlabIdx(days, rows) {
+            if (days === null || !isFinite(days)) return -1;
+            const list = rows || [];
+            let last = -1;
+            for (let i = 0; i < list.length; i++) { if (amzAgeAdjBand(list[i])) last = i; }
+            for (let i = 0; i < list.length; i++) {
+                const b = amzAgeAdjBand(list[i]);
+                if (!b) continue;
+                const hit = Math.abs(b.max - b.min) < 0.00001
+                    ? Math.abs(days - b.min) < 0.00001
+                    : (days >= b.min && (i === last ? days <= b.max : days < b.max));
+                if (hit) return i;
+            }
+            return -1;
+        }
+        /** Age in days for a grid row (Inv Days age), or null when it has none. */
+        function amzRowAgeDays(d) {
+            const raw = d ? d.age_days : null;
+            if (raw === null || raw === undefined || raw === '') return null;
+            const n = Number(raw);
+            return isFinite(n) ? n : null;
+        }
+        /** Band, points and days for one row. Points are 0 unless Sprc Dil is the ON rule (the server only applies it there). */
+        function amzDilGroiAgeInfo(d) {
+            const days = amzRowAgeDays(d);
+            const i = amzAgeAdjSlabIdx(days, amzAgeAdj);
+            const band = i >= 0 ? amzAgeAdjBand(amzAgeAdj[i]) : null;
+            const on = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+            return {
+                days: days,
+                idx: i,
+                label: band ? (band.min + '–' + band.max) : '',
+                points: (on && band) ? band.points : 0,
+            };
+        }
+        function amzDilGroiAgeAdj(d) {
+            return amzDilGroiAgeInfo(d).points;
+        }
+        window.amzDilGroiAgeInfo = amzDilGroiAgeInfo;
+        function amzRenderAgeAdjTable() {
+            const $tb = $('#amz-age-adj-tbody');
+            if (!$tb.length) return;
+            $tb.empty();
+            amzAgeAdj.forEach(function(r, idx) {
+                $tb.append(
+                    '<tr data-idx="' + idx + '">'
+                    + '<td><input type="number" min="0" step="1" class="form-control form-control-sm amz-age-adj-input amz-age-adj-min" value="' + r.min + '"></td>'
+                    + '<td><input type="number" min="0" step="1" class="form-control form-control-sm amz-age-adj-input amz-age-adj-max" value="' + r.max + '"></td>'
+                    + '<td class="text-end"><input type="number" step="1" class="form-control form-control-sm amz-age-adj-input amz-age-adj-points" value="' + r.points + '" title="Points added to the Target NROI (negative lowers it)"></td>'
+                    + '<td class="amz-dg-count"><span class="amz-age-adj-count">0</span></td>'
+                    + '<td class="text-center"><button type="button" class="amz-age-adj-del" data-idx="' + idx + '" title="Remove age band">&times;</button></td>'
+                    + '</tr>'
+                );
+            });
+            amzPaintAgeAdjCounts();
+        }
+        function amzPaintAgeAdjTable(raw) {
+            amzAgeAdj = amzNormalizeAgeAdj(raw);
+            amzRenderAgeAdjTable();
+        }
+        /** Read the band inputs into amzAgeAdj. Rows with a blank From / To are kept as typed (and ignored) until they are filled. */
+        function amzReadAgeAdjFromTable() {
+            const rows = [];
+            $('#amz-age-adj-tbody tr').each(function() {
+                const $r = $(this);
+                rows.push({
+                    min: $r.find('.amz-age-adj-min').val(),
+                    max: $r.find('.amz-age-adj-max').val(),
+                    points: $r.find('.amz-age-adj-points').val(),
+                });
+            });
+            amzAgeAdj = rows;
+        }
+        function amzAgeAdjCollectCounts() {
+            const counts = amzAgeAdj.map(function() { return 0; });
+            amzDgEachInvChild(function(d) {
+                const i = amzAgeAdjSlabIdx(amzRowAgeDays(d), amzAgeAdj);
+                if (i >= 0) counts[i]++;
+            });
+            return counts;
+        }
+        function amzPaintAgeAdjCounts() {
+            const $rows = $('#amz-age-adj-tbody tr');
+            if (!$rows.length) return;
+            const counts = amzAgeAdjCollectCounts();
+            $rows.each(function(i) {
+                $(this).find('.amz-age-adj-count').text(counts[i] || 0);
+            });
+        }
         function amzDgCvrBands() {
             const cfg = amzCvrGroiAdjNow();
             const lo = cfg.down_lt;
@@ -1783,7 +1987,9 @@
             // Same order as the server (AmazonSprcDilAutoPushService): the CVR overlay is floored at 0 first, then the
             // Diff points are added. Summing all three before the floor let a CVR -10 eat the Diff +10 on low slabs.
             const afterCvr = Math.max(0, amzPefRound2((Number(slabGroi) || 0) + amzDilGroiCvrAdj(d)));
-            const groi = amzPefRound2(afterCvr + amzDilGroiStableDiffAdj(afterCvr, d));
+            // Ageing Rule: the age band's points, floored at 0 like the CVR step, before the Diff rule (same as the server).
+            const afterAge = Math.max(0, amzPefRound2(afterCvr + amzDilGroiAgeAdj(d)));
+            const groi = amzPefRound2(afterAge + amzDilGroiStableDiffAdj(afterAge, d));
             return groi < 0 ? 0 : groi;
         }
         /**
@@ -1834,6 +2040,8 @@
             const counts = amzDilGroiCollectCvrAdjCounts();
             $('#amz-cvr-groi-table .amz-cvr-groi-down-count').text(counts.down);
             $('#amz-cvr-groi-table .amz-cvr-groi-up-count').text(counts.up);
+            amzPaintLmpCapCounts();
+            amzPaintAgeAdjCounts();
         }
         function amzDgSlabColor(idx) {
             return AMZ_DG_SLAB_COLORS[idx % AMZ_DG_SLAB_COLORS.length];
@@ -2158,8 +2366,11 @@
             const slabNroi = (rule.nroi != null) ? rule.nroi : rule.groi;
             const cvrAdj = amzDilGroiCvrAdj(d);
             const nroi = amzDilGroiApplyCvrAdj(slabNroi, d);
-            // Diff points actually applied (stable rule), for the hover text.
-            const diffAdj = amzPefRound2(nroi - Math.max(0, amzPefRound2((Number(slabNroi) || 0) + cvrAdj)));
+            // Ageing points actually applied (after the CVR floor), then the Diff points (stable rule), for the hover text.
+            const afterCvr = Math.max(0, amzPefRound2((Number(slabNroi) || 0) + cvrAdj));
+            const afterAge = Math.max(0, amzPefRound2(afterCvr + amzDilGroiAgeAdj(d)));
+            const ageAdj = amzPefRound2(afterAge - afterCvr);
+            const diffAdj = amzPefRound2(nroi - afterAge);
             const sprc = amzSpriceFromTargetNroi(d, nroi);
             if (!(sprc > 0)) return null;
             return {
@@ -2171,6 +2382,7 @@
                 groi: nroi,
                 nroi: nroi,
                 cvrAdj: cvrAdj,
+                ageAdj: ageAdj,
                 diffAdj: diffAdj,
                 sprc: sprc,
                 zeroSoldMin: false,
@@ -2270,7 +2482,7 @@
             return n;
         }
         function amzPaintClearanceSlabCount() {
-            const el = document.querySelector('#amz-dil-groi-tbody .amz-dg-clearance-count');
+            const el = document.querySelector('#amz-dg-clearance-block .amz-dg-clearance-count');
             if (!el) return;
             if (!amzClearanceYesSet) {
                 el.textContent = '…';
@@ -2281,30 +2493,19 @@
             amzPaintClearanceNroiText();
         }
         function amzClearanceNroiNow() {
-            const raw = parseFloat($('#amz-dil-groi-tbody .amz-dg-clearance-groi').val());
+            const raw = parseFloat($('#amz-dg-clearance-block .amz-dg-clearance-groi').val());
             if (isFinite(raw) && raw >= 0) return amzPefRound2(raw);
             return isFinite(amzClearanceNroi) ? amzClearanceNroi : 0;
         }
         function amzPaintClearanceNroiText() {
             amzClearanceNroi = amzClearanceNroiNow();
-            const el = document.querySelector('#amz-dil-groi-tbody .amz-dg-clearance-nroi');
+            const el = document.querySelector('#amz-dg-clearance-block .amz-dg-clearance-nroi');
             if (el) el.textContent = amzDilGroiFmtNum(amzClearanceNroi) + '%';
         }
-        function amzAppendClearanceSlabRow($tb) {
+        /** The Clearance block sits outside the slab table (its own block, rule written above it): fill it from the saved NROI%. */
+        function amzAppendClearanceSlabRow() {
             const nroi = isFinite(amzClearanceNroi) ? amzClearanceNroi : 0;
-            $tb.append(
-                '<tr data-clearance="1">'
-                + '<td class="text-center fw-semibold">clearance</td>'
-                + '<td class="text-center fw-semibold">clearance</td>'
-                + '<td class="amz-dg-count" title="INV &gt; 0 and Clearance Yes on Inv Days. Count and Target NROI% in red.">'
-                + '<span class="amz-dg-clearance-count">0</span>'
-                + '<span class="amz-dg-clearance-nroi">0%</span>'
-                + '</td>'
-                + '<td class="text-end">'
-                + '<input type="number" min="0" step="0.1" class="form-control form-control-sm amz-dg-clearance-groi" value="' + nroi + '" title="Target NROI% for clearance">'
-                + '</td><td></td>'
-                + '</tr>'
-            );
+            $('#amz-dg-clearance-block .amz-dg-clearance-groi').val(nroi);
             amzPaintClearanceSlabCount();
         }
         function renderAmzDilGroiModalTable() {
@@ -2336,7 +2537,7 @@
                     + '</td></tr>'
                 );
             });
-            amzAppendClearanceSlabRow($tb);
+            amzAppendClearanceSlabRow();
             if ($('#amzDilGroiModal').hasClass('show')) {
                 renderAmzDilGroiPies();
             } else {
@@ -2435,6 +2636,8 @@
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
                 if (res && res.lmp_cap) amzPaintLmpCapTable(res.lmp_cap);
                 if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
+                if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
+                else amzRenderAgeAdjTable();
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
                 }
@@ -2461,6 +2664,7 @@
             amzLmpCap = lmpCap;
             const diffAdj = amzDiffAdjNow();
             amzDiffAdj = diffAdj;
+            const ageAdj = amzAgeAdjPayload();
             return $.ajax({
                 url: '/channel-promo-pricing/amazon/dil-groi',
                 method: 'POST',
@@ -2469,7 +2673,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, age_adj: ageAdj, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
             }).then(function(res) {
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
@@ -2484,6 +2688,7 @@
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
                 if (res && res.lmp_cap) amzPaintLmpCapTable(res.lmp_cap);
                 if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
+                if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
                 amzAfterDilGroiRulesChanged();
                 $('#amz-dil-groi-status').text('Saved via API and applied. S PRC written from Sprc Dil.');
                 return res;
@@ -2493,6 +2698,7 @@
             const modalEl = document.getElementById('amzDilGroiModal');
             if (!modalEl) return;
             renderAmzDilGroiModalTable();
+            amzRenderAgeAdjTable();
             loadAmzDilGroiRules();
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
         }
@@ -3592,7 +3798,7 @@
         }
         /**
          * Sale / Min / Biz / effective must match visible S PRC (LMP-capped
-         * when LMP is lower and SGROI at LMP is ≥ 20%). Tick used to compare
+         * when LMP is lower and SNROI at LMP is ≥ 20%). Tick used to compare
          * Price to the uncapped sale while S PRC showed LMP — click looked dead.
          */
         function amzLmpAlignPushPrcPlan(plan, d) {
@@ -5156,8 +5362,8 @@
                     $btn.prop('disabled', false).html(html);
                 }
             });
-            $(document).off('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dil-groi-tbody .amz-dg-clearance-groi')
-                .on('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dil-groi-tbody .amz-dg-clearance-groi', function() {
+            $(document).off('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi')
+                .on('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi', function() {
                     amzPaintClearanceNroiText();
                 });
             $(document).off('input.amzDilGroi change.amzDilGroi', '#amz-dil-groi-tbody .amz-dil-groi-input')
@@ -5175,6 +5381,29 @@
                 .on('input.amzLmpCap change.amzLmpCap', '#amz-lmp-cap-table .amz-lmp-cap-input', function() {
                     amzLmpCap = amzLmpCapNow();
                     amzPaintLmpCapExamples(amzLmpCap);
+                    amzPaintLmpCapCounts();
+                    amzAfterDilGroiRulesChanged();
+                });
+            $(document).off('input.amzAgeAdj change.amzAgeAdj', '#amz-age-adj-table .amz-age-adj-input')
+                .on('input.amzAgeAdj change.amzAgeAdj', '#amz-age-adj-table .amz-age-adj-input', function() {
+                    amzReadAgeAdjFromTable();
+                    amzPaintAgeAdjCounts();
+                    amzAfterDilGroiRulesChanged();
+                });
+            $(document).off('click.amzAgeAdjDel', '#amz-age-adj-table .amz-age-adj-del')
+                .on('click.amzAgeAdjDel', '#amz-age-adj-table .amz-age-adj-del', function() {
+                    amzReadAgeAdjFromTable();
+                    amzAgeAdj.splice(Number($(this).attr('data-idx')), 1);
+                    amzRenderAgeAdjTable();
+                    amzAfterDilGroiRulesChanged();
+                });
+            $(document).off('click.amzAgeAdjAdd', '#amz-age-adj-add-btn')
+                .on('click.amzAgeAdjAdd', '#amz-age-adj-add-btn', function() {
+                    amzReadAgeAdjFromTable();
+                    const last = amzAgeAdj.map(amzAgeAdjBand).filter(Boolean).pop();
+                    const from = last ? last.max : 0;
+                    amzAgeAdj.push({ min: from, max: from + 90, points: 0 });
+                    amzRenderAgeAdjTable();
                     amzAfterDilGroiRulesChanged();
                 });
             $(document).off('input.amzDiffAdj change.amzDiffAdj', '.amz-diff-adj-input')

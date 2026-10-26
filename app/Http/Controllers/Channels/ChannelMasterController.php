@@ -179,7 +179,7 @@ class ChannelMasterController extends Controller
     private ?array $closedDayOrderYSalesByKey = null;
 
     /** Bump when Inv / Inv@SP / Inv@LP / Dil% formulas change so stale cache is recomputed. */
-    private const INV_METRICS_VERSION = 4;
+    private const INV_METRICS_VERSION = 5;
 
     /** @var array<string, mixed>|null */
     private ?array $shopifyInvLpMetricsCache = null;
@@ -6361,7 +6361,7 @@ class ChannelMasterController extends Controller
     {
         return [
             'zero' => ['label' => '0 Sold', 'color' => '#6c757d'],
-            'red' => ['label' => 'Red <25%', 'color' => '#a00211'],
+            'red' => ['label' => 'Red 0.01–25%', 'color' => '#a00211'],
             'green' => ['label' => 'Green 25–50%', 'color' => '#28a745'],
             'pink' => ['label' => 'Pink ≥50%', 'color' => '#e83e8c'],
         ];
@@ -6370,12 +6370,13 @@ class ChannelMasterController extends Controller
     private function invDilBandKey(float $l30, float $inv): string
     {
         if ($inv < 0.01) {
-            return 'red';
-        }
-        if ($l30 < 0.01) {
             return 'zero';
         }
         $dil = ($l30 / $inv) * 100;
+        // Red = DIL 0.01% up to (not incl.) 25%. Below 0.01% counts as 0 Sold.
+        if ($l30 < 0.01 || $dil < 0.01) {
+            return 'zero';
+        }
         if ($dil < 25) {
             return 'red';
         }

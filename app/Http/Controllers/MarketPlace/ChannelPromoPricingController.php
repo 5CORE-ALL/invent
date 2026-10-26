@@ -292,6 +292,8 @@ class ChannelPromoPricingController extends Controller
         \App\Support\ReverbRuleSpriceApply::dispatch($channel);
         // TopDawg: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
         \App\Support\TopDawgRuleSpriceApply::dispatch($channel);
+        // Alibaba: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
+        \App\Support\AlibabaRuleSpriceApply::dispatch($channel);
         // Doba: same, S PRC is re-saved from the rule that is now ON right after this response (save only, Doba has no auto push).
         \App\Support\DobaRuleSpriceApply::dispatch($channel);
         // AliExpress: same, S PRC is re-saved from the rule that is now ON right after this response (not pushed).
@@ -318,6 +320,13 @@ class ChannelPromoPricingController extends Controller
     public function ruleApplyStatus(string $channel): JsonResponse
     {
         $channel = \App\Support\SpriceActiveRule::normalize($channel);
+        if (\App\Support\AlibabaRuleSpriceApply::handles($channel)) {
+            return response()->json([
+                'success' => true,
+                'channel' => $channel,
+                'running' => \App\Support\AlibabaRuleSpriceApply::running(),
+            ]);
+        }
         if (! \App\Support\ShopifyB2cRuleSpriceApply::handles($channel)) {
             return response()->json(['success' => true, 'channel' => $channel, 'running' => false]);
         }
@@ -1901,6 +1910,7 @@ class ChannelPromoPricingController extends Controller
                 'clearance_nroi' => $unpacked['clearance_nroi'],
                 'lmp_cap' => $unpacked['lmp_cap'],
                 'diff_adj' => $unpacked['diff_adj'],
+                'age_adj' => $unpacked['age_adj'],
             ]);
         }
 
@@ -1915,6 +1925,7 @@ class ChannelPromoPricingController extends Controller
             'clearance_nroi' => $unpacked['clearance_nroi'],
             'lmp_cap' => $unpacked['lmp_cap'],
             'diff_adj' => $unpacked['diff_adj'],
+            'age_adj' => $unpacked['age_adj'],
         ]);
     }
 
@@ -1974,7 +1985,18 @@ class ChannelPromoPricingController extends Controller
             ? AmazonDilGroiRule::normalizeDiffAdj($diffAdjIncoming)
             : $existing['diff_adj'];
 
-        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap, 'diff_adj' => $diffAdj];
+        // Ageing Rule slabs (age days → Target NROI points). An old page that does not send them keeps what is saved;
+        // a sent empty list turns the block off.
+        $ageAdjIncoming = $request->input('age_adj');
+        if (is_string($ageAdjIncoming)) {
+            $decodedAgeAdj = json_decode($ageAdjIncoming, true);
+            $ageAdjIncoming = is_array($decodedAgeAdj) ? $decodedAgeAdj : null;
+        }
+        $ageAdj = ($request->exists('age_adj') && is_array($ageAdjIncoming))
+            ? AmazonDilGroiRule::normalizeAgeAdj($ageAdjIncoming)
+            : $existing['age_adj'];
+
+        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap, 'diff_adj' => $diffAdj, 'age_adj' => $ageAdj];
         if ($request->exists('clearance_nroi')) {
             $rawNroi = $request->input('clearance_nroi');
             $visibility['clearance_nroi'] = is_numeric($rawNroi)
@@ -2014,6 +2036,11 @@ class ChannelPromoPricingController extends Controller
         // Clearance Target NROI% in this modal prices clearance SKUs in both Std prc vs dil and Sprc Dil.
         if (\App\Support\TopDawgRuleSpriceApply::handles($channel)) {
             \App\Support\TopDawgRuleSpriceApply::dispatch($channel);
+        }
+        // Alibaba: re-save S PRC from the new Sprc Dil rules right after this response (no push, no waiting). The re-save reads the
+        // ON rule (Sprc Dil or Std prc vs dil), so a slab edit while Std prc vs dil is ON just re-saves the same prices.
+        if (\App\Support\AlibabaRuleSpriceApply::handles($channel)) {
+            \App\Support\AlibabaRuleSpriceApply::dispatch($channel);
         }
         // Doba: re-save S PRC from the new Sprc Dil rules only when Sprc Dil is the ON rule (save only, no waiting).
         if (\App\Support\DobaRuleSpriceApply::handles($channel)
@@ -2067,6 +2094,7 @@ class ChannelPromoPricingController extends Controller
             'cvr_adj' => $cvrAdj,
             'lmp_cap' => $lmpCap,
             'diff_adj' => $diffAdj,
+            'age_adj' => $ageAdj,
             'clearance_nroi' => $visibility['clearance_nroi'] ?? null,
         ]);
     }
@@ -2145,7 +2173,7 @@ class ChannelPromoPricingController extends Controller
             'aliexpress' => $this->aliexpressHistorySkuSet(),
             'faire' => $this->faireHistorySkuSet(),
             'tiktok', 'tiktok2' => $this->tiktokHistorySkuSet($channel),
-            'mercari_wship', 'mercari_woship', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'vinted', 'instagram', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'temu3', 'doba' => $this->mercariWshipHistorySkuSet(),
+            'mercari_wship', 'mercari_woship', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'vinted', 'instagram', 'alibaba', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'temu3', 'doba' => $this->mercariWshipHistorySkuSet(),
             'pls' => $this->plsHistorySkuSet(),
             default => null,
         };

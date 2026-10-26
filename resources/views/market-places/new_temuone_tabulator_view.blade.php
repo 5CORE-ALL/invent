@@ -2412,7 +2412,7 @@
     }
     /**
      * LMP Alert Prc = LMP × (1 − x%), x from the Dil band (default 2% = LMP × 0.98). Same rule as Amazon (amazonShouldCapSpriceToLmp / amazonCapSpriceToLmp):
-     * it applies when the base S Promo Prc is at or above LMP, and SGROI at LMP is at least 20%
+     * it applies when the base S Promo Prc is at or above LMP, and SNROI at LMP is at least 20%
      * (Temu take-home 0.95: (LMP × 0.95 − Temu Ship − LP) / LP). Otherwise blank, S Promo Prc stays as calculated.
      */
     function ntoRowLmpAlertPrc(d) {
@@ -4232,7 +4232,7 @@
                         const y = ntoRowLmpAlertPrc(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'LMP Alert Prc = LMP − x% (x by Dil band in Sprc Dil, default 2% = LMP × 0.98) when S Promo Prc is at or above LMP and SGROI at LMP is at least 20%. A red triangle marks that alert.',
+                    headerTooltip: 'LMP Alert Prc = LMP − x% (x by Dil band in Sprc Dil, default 2% = LMP × 0.98) when S Promo Prc is at or above LMP and SNROI at LMP is at least 20%. A red triangle marks that alert.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const alert = ntoRowLmpAlertPrc(row);

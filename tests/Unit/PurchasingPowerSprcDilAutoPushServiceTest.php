@@ -69,10 +69,30 @@ class PurchasingPowerSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_sku_has_no_target_like_amazon(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
-        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
-        $this->assertNull($this->service()->computeTarget($this->row(['lp' => 80, 'ship' => 4, 'clearance' => true]), $this->pricer()));
+        // LP 20, Ship BB 4, take-home 0.80, Clearance NROI 10%: (20 x 1.10 + 4) / 0.80 = 32.50.
+        // Std rule (90), A Price floor (amz 60) and Std Prc do not touch it. It is saved and pushed like any SKU.
+        $out = $this->service()->computeTarget(
+            $this->row(['ship' => 4, 'margin' => 0.80, 'amz' => 60, 'clearance' => true, 'clearance_nroi' => 10]),
+            $this->pricer()
+        );
+
+        $this->assertNotNull($out);
+        $this->assertSame(32.5, $out['sprice']);
+        $this->assertFalse($out['amz_capped']);
+    }
+
+    public function test_clearance_price_is_the_same_in_both_modes_and_needs_lp_and_inventory(): void
+    {
+        $row = $this->row(['ship' => 4, 'margin' => 0.80, 'amz' => 60, 'clearance' => true, 'clearance_nroi' => 10]);
+        $std = $this->service()->computeTarget($row, $this->pricer());
+        $dil = $this->service()->computeTarget($row, null, $this->dilCtx());
+
+        $this->assertSame(32.5, $std['sprice']);
+        $this->assertSame($std['sprice'], $dil['sprice']);
+        $this->assertNull($this->service()->computeTarget(array_merge($row, ['lp' => 0]), $this->pricer()));
+        $this->assertNull($this->service()->computeTarget(array_merge($row, ['inv' => 0]), $this->pricer()));
     }
 
     public function test_amz_rule_raises_price_to_a_price(): void
@@ -170,9 +190,9 @@ class PurchasingPowerSprcDilAutoPushServiceTest extends TestCase
 
     public function test_sprc_dil_price_is_the_slab_target_with_ship_bb_and_no_discounts(): void
     {
-        // Dil 20% -> Target 60%. LP 20, Ship BB 5, take-home 0.80: (20 x 1.6 + 5) / 0.80 = 46.25. Std Prc 100 is not reached.
+        // Dil 20% -> Target 60%. LP 20, Ship BB 5, take-home 0.80: (20 x 1.6 + 5) / 0.80 = 46.25. Std Prc 50 is within the Diff threshold.
         $out = $this->service()->computeTarget(
-            $this->row(['ship' => 5, 'margin' => 0.80, 'price' => 100]),
+            $this->row(['ship' => 5, 'margin' => 0.80, 'price' => 100, 'standard_price' => 50]),
             null,
             $this->dilCtx()
         );
@@ -184,7 +204,7 @@ class PurchasingPowerSprcDilAutoPushServiceTest extends TestCase
 
     public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
     {
-        // Std 100 vs PP Price 70 -> Diff 42.9% (> 20): Target 60 + 10 = 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
+        // Rule price 46.25, Std 100 -> Diff 116% (> 20): Target 60 + 10 = 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
         $out = $this->service()->computeTarget(
             $this->row(['ship' => 5, 'margin' => 0.80, 'price' => 70]),
             null,
@@ -195,11 +215,32 @@ class PurchasingPowerSprcDilAutoPushServiceTest extends TestCase
         $this->assertSame(48.75, $out['sprice']);
     }
 
+    public function test_sprc_dil_diff_gives_the_same_price_whatever_the_live_price_is(): void
+    {
+        // The boosted price is pushed, so the live price becomes 48.75. The saved S PRC must not move (no flip-flop).
+        $prices = [];
+        foreach ([30, 46.25, 48.75, 90] as $live) {
+            $out = $this->service()->computeTarget($this->row(['ship' => 5, 'margin' => 0.80, 'price' => $live]), null, $this->dilCtx());
+            $prices[] = $out['sprice'];
+        }
+
+        $this->assertSame([48.75, 48.75, 48.75, 48.75], $prices);
+    }
+
+    public function test_sprc_dil_diff_is_off_when_std_is_within_the_threshold_of_the_rule_price(): void
+    {
+        // Rule price 46.25, Std 54 -> Diff 16.8% (<= 20): no boost, whatever the live price is.
+        foreach ([40, 100] as $live) {
+            $out = $this->service()->computeTarget($this->row(['ship' => 5, 'margin' => 0.80, 'price' => $live, 'standard_price' => 54]), null, $this->dilCtx());
+            $this->assertSame(46.25, $out['sprice']);
+        }
+    }
+
     public function test_sprc_dil_pp_l30_zero_uses_the_minimum_target(): void
     {
-        // PP L30 = 0 -> minimum Target 40%: (20 x 1.4 + 0) / 0.80 = 35.00 (Std 100 vs Price 100: no Diff).
+        // PP L30 = 0 -> minimum Target 40%: (20 x 1.4 + 0) / 0.80 = 35.00 (Std 40 is within the Diff threshold: no Diff).
         $out = $this->service()->computeTarget(
-            $this->row(['pp_l30' => 0, 'margin' => 0.80, 'price' => 100]),
+            $this->row(['pp_l30' => 0, 'margin' => 0.80, 'price' => 100, 'standard_price' => 40]),
             null,
             $this->dilCtx()
         );
@@ -230,11 +271,9 @@ class PurchasingPowerSprcDilAutoPushServiceTest extends TestCase
         $this->assertSame($without['sprice'], $with['sprice']);
     }
 
-    public function test_sprc_dil_clearance_and_no_inventory_have_no_target(): void
+    public function test_sprc_dil_no_inventory_has_no_target(): void
     {
-        $svc = $this->service();
-        $this->assertNull($svc->computeTarget($this->row(['clearance' => true]), null, $this->dilCtx()));
-        $this->assertNull($svc->computeTarget($this->row(['inv' => 0]), null, $this->dilCtx()));
+        $this->assertNull($this->service()->computeTarget($this->row(['inv' => 0]), null, $this->dilCtx()));
     }
 
     public function test_std_prc_vs_dil_is_unchanged_without_a_dil_context(): void

@@ -45,10 +45,20 @@ class MacysAmazonPriceCap
     /**
      * @return array{price: float, amazon_price: float, capped: bool, floored: bool}
      */
-    public static function applyForSku(string $sku, float $price): array
+    public static function applyForSku(string $sku, float $price, bool $clearanceExempt = false): array
     {
         $requested = round($price, 2);
         $amazon = self::amazonPriceForSku($sku);
+        if ($clearanceExempt && self::isClearanceSku($sku)) {
+            // Clearance is priced only by the Clearance Target NROI%. The page and the rule service
+            // never raise it to A Price, so the push must not either (else saved and live differ forever).
+            return [
+                'price' => $requested,
+                'amazon_price' => $amazon,
+                'capped' => false,
+                'floored' => false,
+            ];
+        }
         $applied = self::cap($requested, $amazon);
         $floored = $amazon > 0 && $requested > 0 && $applied > $requested + 0.0001;
 
@@ -60,8 +70,22 @@ class MacysAmazonPriceCap
         ];
     }
 
-    public static function capForSku(string $sku, float $price): float
+    public static function capForSku(string $sku, float $price, bool $clearanceExempt = false): float
     {
-        return self::applyForSku($sku, $price)['price'];
+        return self::applyForSku($sku, $price, $clearanceExempt)['price'];
+    }
+
+    public static function isClearanceSku(string $sku): bool
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return false;
+        }
+
+        try {
+            return (new StdPrcVsDilPricer([], 'macys'))->isClearanceRow(['sku' => $sku]);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

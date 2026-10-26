@@ -24,14 +24,15 @@ use Throwable;
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI instead of the discounts.
- *  Clearance SKUs show "C" in S PRC: nothing is saved or pushed (same as Amazon).
+ *  Clearance SKUs (Inv days clearance = YES) are priced only from the Clearance Target NROI% (Sprc Dil modal, last row):
+ *  (LP × (1 + NROI%) + Ship BB) ÷ take-home, saved and pushed like any SKU. No slab, Diff, Std or A Price rule applies.
  *  No Std Prc maximum. The Amz rule: S PRC never sits below the Amazon price (A Price). Same rule
  *  the page labels "Amz" and MacysAmazonPriceCap applies to the push.
  *  Ship BB is part of profit (same as the page). Purchasing Power has no ads and no LMP, so neither is used.
  *  Sprc Dil switch ON (same as /amazon-tabulator-view, without the LMP cap since this page has no LMP):
  *   Dil slab Target (PP L30 = 0 uses the minimum Target) + Diff points (Std Diff above the saved threshold) →
  *   (LP × (1 + Target%) + Ship BB) ÷ take-home, no Std Prc maximum, then the A Price floor. No Std prc vs dil discounts.
- *  Never pushes a price whose SNROI is below 0 (NegativeSnroiPushGuard). The S PRC is still saved.
+ *  A negative-SNROI price is pushed too, unless the page's "ignore negative SNROI" setting is switched ON (default OFF).
  *
  * Flow, same as Amazon:
  *  - Twice-daily run: skips a SKU whose last pushed price already equals the target.
@@ -298,9 +299,10 @@ class PurchasingPowerSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
-        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
+        // Clearance SKUs (Inv days clearance = YES): only the Clearance Target NROI% (last row of the Sprc Dil modal) prices
+        // them, in either mode: (LP × (1 + NROI%) + Ship BB) ÷ take-home. No slab, Diff, Std, CVR or A Price rule applies.
         if ((new StdPrcVsDilPricer([], 'purchasing_power'))->isClearanceRow($row)) {
-            return null;
+            return $this->computeClearanceTarget($row);
         }
         if ($dilContext !== null) {
             return $this->computeDilTarget($row, $dilContext);
@@ -371,6 +373,55 @@ class PurchasingPowerSprcDilAutoPushService
     }
 
     /**
+     * Clearance price: only the Clearance Target NROI%, no A Price floor (the page shows the same price).
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{sprice:float,uncapped:float,amz_capped:bool,base:float,margin:float,lp:float,ship:float}|null
+     */
+    public function computeClearanceTarget(array $row): ?array
+    {
+        $lp = (float) ($row['lp'] ?? 0);
+        $ship = (float) ($row['ship'] ?? 0);
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.65;
+        }
+        if (! ($lp > 0)) {
+            return null;
+        }
+        // A row may carry its own clearance_nroi (tests); otherwise the saved Sprc Dil modal value.
+        $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi']) ? (float) $row['clearance_nroi'] : $this->clearanceNroi();
+        $price = AmazonDilGroiRule::suggestedPrice($lp, $ship, max(0.0, $nroi), 0.0, $margin);
+        if ($price === null || ! is_finite($price) || $price < 0.01) {
+            return null;
+        }
+        $price = round($price, 2);
+
+        return [
+            'sprice' => $price,
+            'uncapped' => $price,
+            'amz_capped' => false,
+            'base' => round((float) ($row['standard_price'] ?? 0), 2),
+            'margin' => $margin,
+            'lp' => $lp,
+            'ship' => $ship,
+        ];
+    }
+
+    /** Clearance Target NROI% saved with the Purchasing Power Sprc Dil rules (last row of the modal). Default 0. */
+    protected function clearanceNroi(): float
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'purchasing_power_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $n = $unpacked['clearance_nroi'] ?? null;
+
+        return (is_numeric($n) && (float) $n >= 0) ? (float) $n : 0.0;
+    }
+
+    /**
      * Sprc Dil switch ON, same maths as the page (Dil slab Target + Diff, no Std max, A Price floor). No LMP rule:
      * Purchasing Power has no LMP data.
      *
@@ -413,8 +464,19 @@ class PurchasingPowerSprcDilAutoPushService
             if (! ($lp > 0)) {
                 return null;
             }
-            $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
-            $target = max(0.0, round($target, 2)) + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null);
+            // Diff judged against the rule price WITHOUT the boost, not the live PP Price. Read against the live Price,
+            // pushing the boosted price lowers the Diff, the boost drops, the price falls, the Diff rises again, and the
+            // saved S PRC flip-flops against the page. A listed SKU (live Price > 0) and a Std Prc are still required.
+            $target = max(0.0, round($target, 2));
+            if ($std > 0 && round((float) ($row['price'] ?? 0), 2) > 0) {
+                $base = AmazonDilGroiRule::suggestedPrice($lp, $ship, $target, 0.0, $margin);
+                if ($base !== null && $base > 0) {
+                    $target += AmazonDilGroiRule::diffAdjPoints(
+                        EbayRuleSprice::stdPriceDiffPct($std, $base),
+                        $ctx['diff_adj'] ?? null
+                    );
+                }
+            }
             $raw = round(($lp * (1 + $target / 100) + $ship) / $margin, 2);
             if (! is_finite($raw) || $raw < 0.01) {
                 return null;

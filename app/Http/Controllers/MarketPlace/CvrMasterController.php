@@ -9005,6 +9005,8 @@ class CvrMasterController extends Controller
                 }
                 $shopifyRecord->save();
                 $this->savePricePushStatus($sku, 'shopifyb2c', 'pushed', $verifiedPrice);
+                // /shopify-b2c-pricing serves a cached SKU list; drop it so a refresh shows the pushed Price.
+                \App\Http\Controllers\MarketPlace\Shopifyb2cController::forgetTabularDataCache();
                 
                 Log::info('CVR Master - Shopify B2C price push successful', [
                     'sku' => $sku,
@@ -9319,7 +9321,7 @@ class CvrMasterController extends Controller
      */
     private function pushToMacy($sku, $price)
     {
-        $applied = MacysAmazonPriceCap::applyForSku((string) $sku, (float) $price);
+        $applied = MacysAmazonPriceCap::applyForSku((string) $sku, (float) $price, true);
         $price = (float) $applied['price'];
         try {
             $result = app(MacysApiService::class)->updatePrice($sku, $price);
@@ -9374,7 +9376,7 @@ class CvrMasterController extends Controller
                 'price' => $price,
             ], 422);
         }
-        $applied = MacysAmazonPriceCap::applyForSku((string) $sku, (float) $price);
+        $applied = MacysAmazonPriceCap::applyForSku((string) $sku, (float) $price, true);
         $price = (float) $applied['price'];
         try {
             $result = app(PurchasingPowerApiService::class)->updatePrice($sku, $price);
