@@ -269,6 +269,23 @@ class VeeqoChargebackController extends Controller
         }
 
         $sold = $this->unitsSoldLast12Months();
+
+        // Parent roll-up: all chargebacks and all units sold across every SKU of the same parent.
+        $parentBySku = $this->parentBySku();
+        $parentTotal = [];
+        foreach ($bySku as $key => $s) {
+            $p = $parentBySku[$key] ?? null;
+            if ($p !== null) {
+                $parentTotal[$p] = ($parentTotal[$p] ?? 0.0) + $s['total'];
+            }
+        }
+        $parentSold = [];
+        foreach ($parentBySku as $key => $p) {
+            if (isset($sold[$key]) && ! str_starts_with($key, 'PARENT')) {
+                $parentSold[$p] = ($parentSold[$p] ?? 0) + $sold[$key];
+            }
+        }
+
         $rows = [];
         // Veeqo splits one chargeback into a line per reason, so "count" is orders charged back.
         foreach ($bySku as $key => $s) {
@@ -276,8 +293,15 @@ class VeeqoChargebackController extends Controller
             $count = max(1, count($s['orders']));
             $skuCarriers = array_map('count', $s['carriers']);
             arsort($skuCarriers);
+            $parent = $parentBySku[$key] ?? null;
+            $pUnits = $parent !== null ? ($parentSold[$parent] ?? 0) : 0;
+            $pTotal = $parent !== null ? ($parentTotal[$parent] ?? 0.0) : 0.0;
             $rows[] = [
                 'sku' => $s['sku'],
+                'parent' => $parent,
+                'parent_total' => $parent !== null ? round($pTotal, 2) : null,
+                'parent_sold' => $pUnits ?: null,
+                'parent_per_unit' => $pUnits ? round($pTotal / $pUnits, 2) : null,
                 'carriers' => $skuCarriers,
                 'carrier_text' => implode(', ', array_map(fn ($name, $n) => $name.' ('.$n.')', array_keys($skuCarriers), $skuCarriers)),
                 'count' => $count,
@@ -424,6 +448,29 @@ class VeeqoChargebackController extends Controller
             });
 
         return $sold;
+    }
+
+    /**
+     * @return array<string, string> normalized SKU => parent (uppercase), Product Master only
+     */
+    private function parentBySku(): array
+    {
+        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'parent')) {
+            return [];
+        }
+        $out = [];
+        DB::table('product_master')
+            ->whereNotNull('sku')->where('sku', '!=', '')
+            ->whereNotNull('parent')->where('parent', '!=', '')
+            ->get(['sku', 'parent'])
+            ->each(function ($r) use (&$out) {
+                $parent = strtoupper(trim((string) preg_replace('/\s+/', ' ', (string) $r->parent)));
+                if ($parent !== '') {
+                    $out[$this->skuKey((string) $r->sku)] = $parent;
+                }
+            });
+
+        return $out;
     }
 
     private function skuKey(string $sku): string
