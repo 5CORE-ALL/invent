@@ -53,12 +53,13 @@ class ChannelListingRegistry
             'ebay' => [
                 'dataView' => \App\Models\EbayDataView::class,
                 'status' => \App\Models\EbayListingStatus::class,
-                // An ended / unsold eBay listing is not live: its SKU is Missing L again.
+                // An ended / unsold / deleted eBay listing is not live: its SKU is Missing L again.
+                // MISSING = the seller portal Active and Unsold lists did not return the SKU.
                 'listed' => [
                     'type' => 'column',
                     'model' => EbayMetric::class,
                     'column' => 'item_id',
-                    'hide_statuses' => ['inactive', 'ended', 'unsold', 'completed', 'sold'],
+                    'hide_statuses' => ['inactive', 'ended', 'unsold', 'completed', 'sold', 'missing', 'not_listed'],
                 ],
                 'id_field' => 'eBay_item_id',
                 'buyer_tpl' => 'https://www.ebay.com/itm/{id}',

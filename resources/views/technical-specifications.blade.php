@@ -456,6 +456,24 @@
         #editSpecsModal .ts-chip-product { background: #ede9fe; color: #5b21b6; }
         #editSpecsModal .ts-chip-filled { background: #dcfce7; color: #166534; }
         #editSpecsModal .ts-chip-blank { background: #ffedd5; color: #c2410c; }
+        #editSpecsModal .ts-chip-hidden { background: #e2e8f0; color: #334155; border: 0; cursor: pointer; }
+        #editSpecsModal .ts-chip-hidden:hover { background: #cbd5e1; }
+        #editSpecsModal .ts-spec-card.is-crossed { opacity: .55; border-style: dashed; }
+        #editSpecsModal .ts-spec-card.is-crossed .ts-spec-cross { color: #16a34a; font-size: 1.1rem; }
+        #editSpecsModal .ts-spec-card { position: relative; }
+        #editSpecsModal .ts-spec-card .ts-spec-cross {
+            position: absolute;
+            top: 1px;
+            right: 4px;
+            border: 0;
+            background: transparent;
+            color: #94a3b8;
+            font-size: 1rem;
+            line-height: 1;
+            padding: 0 .2rem;
+            cursor: pointer;
+        }
+        #editSpecsModal .ts-spec-card .ts-spec-cross:hover { color: #dc2626; }
         #editSpecsModal #bulkEditBanner {
             border: 0;
             border-radius: 10px;
@@ -677,6 +695,9 @@
                         <span class="ts-chip ts-chip-product"><i class="fas fa-box"></i> <span id="modalProductLabel"></span></span>
                         <span class="ts-chip ts-chip-filled" id="specFilledChip">0 filled</span>
                         <span class="ts-chip ts-chip-blank" id="specBlankChip">0 blank</span>
+                        <button type="button" class="ts-chip ts-chip-hidden" id="specHiddenChip" style="display:none;" title="Show the fields crossed out for this category again">
+                            <i class="fas fa-eye"></i> <span id="specHiddenText">0 hidden · Show</span>
+                        </button>
                     </div>
                     <div id="bulkSkuListWrap" class="mb-2" style="display:none;">
                         <div class="small text-muted mb-1">Applying to SKUs:</div>
@@ -1268,6 +1289,7 @@
                 }
                 bulkEditSkus = resolveBulkEditSkus(rowData);
                 const isBulk = bulkEditSkus.length > 1;
+                specShowAll = false;
 
                 document.getElementById('modalSku').value = rowData.SKU || '';
                 document.getElementById('modalSkuLabel').textContent = isBulk
@@ -1311,10 +1333,28 @@
                 return [clicked].concat(rest);
             }
 
-            // "Max Power", "MAX POWER :" and "Max  Power" are the same specification.
+            // Different names for the same specification. Every name in a group is one field in the edit form.
+            const SPEC_SYNONYMS = {
+                maxpower: ['maxpower', 'pmpo', 'pmpopower', 'peakpower', 'powercapacity'],
+                rmspower: ['rmspower', 'rms'],
+            };
+            const SPEC_SYNONYM_CANON = {};
+            Object.keys(SPEC_SYNONYMS).forEach(function (canon) {
+                SPEC_SYNONYMS[canon].forEach(function (member) { SPEC_SYNONYM_CANON[member] = canon; });
+            });
+
+            // "Max Power", "MAX POWER :" and "Max  Power" are the same specification; so are the synonyms above.
             function specIdentity(name) {
                 const label = String(name || '').trim();
-                return specNameKey(label) || label.toLowerCase();
+                const key = specNameKey(label) || label.toLowerCase();
+                return SPEC_SYNONYM_CANON[key] || key;
+            }
+
+            // Fields crossed out of the edit form, remembered per eBay category: { scope: [identity, ...] }.
+            let hiddenSpecFields = {};
+
+            function hiddenSetFor(scope) {
+                return new Set((hiddenSpecFields[scope] || []).map(String));
             }
 
             function valueForSpec(row, name) {
@@ -1330,14 +1370,20 @@
                 return String(row[aspectKey(name)] || '');
             }
 
+            // Names for the edit form. Synonyms share one field, shown under the group's main name when it exists.
+            // Fields crossed out for this category are left out; `hiddenCount` says how many.
             function specFieldNames(rows) {
                 const names = [];
                 const seen = {};
                 function add(name) {
                     const label = String(name || '').trim();
                     const key = specIdentity(label);
-                    if (!label || seen[key]) return;
-                    seen[key] = true;
+                    if (!label) return;
+                    if (seen[key] !== undefined) {
+                        if (SPEC_SYNONYMS[key] && specNameKey(label) === key) names[seen[key]] = label;
+                        return;
+                    }
+                    seen[key] = names.length;
                     names.push(label);
                 }
                 ebayAspectNames.forEach(function (name) {
@@ -1346,15 +1392,70 @@
                 rows.forEach(function (row) {
                     (row.description_v2_specifications || []).forEach(function (spec) { add(spec.key); });
                 });
-                return names;
+                const scope = specHideScope(rows);
+                const hidden = hiddenSetFor(scope);
+                const crossed = new Set(names.filter(function (name) { return hidden.has(specIdentity(name)); }).map(specIdentity));
+                const open = names.filter(function (name) { return !crossed.has(specIdentity(name)); });
+                const top = topSpecNames(open, rows, scope);
+                const limited = open.filter(function (name) { return top.has(name); });
+                specFieldNames.crossed = crossed;
+                specFieldNames.hiddenCount = names.length - limited.length;
+                return specShowAll ? names : limited;
             }
 
-            function renderSpecFields(rows) {
+            function specHideScope(rows) {
+                return String((rows && rows[0] && rows[0].hide_scope) || '');
+            }
+
+            // At most this many specifications are shown per category; the rest are behind "hidden · Show".
+            const SPEC_LIMIT = 25;
+            let specShowAll = false;
+
+            // The names to keep when a category has more than SPEC_LIMIT: fields with a value on this SKU first,
+            // then fields most SKUs of the category have filled, then the category's eBay required fields.
+            function topSpecNames(names, rows, scope) {
+                if (names.length <= SPEC_LIMIT) return new Set(names);
+                const source = rows[0] || {};
+                const fill = {};
+                const required = new Set();
+                (table ? table.getData() : []).forEach(function (row) {
+                    if (String(row.hide_scope || '') !== scope) return;
+                    const counted = {};
+                    (row.ebay_required || []).forEach(function (name) {
+                        const id = specIdentity(name);
+                        if (!counted[id] && String(valueForSpec(row, name) || '').trim() !== '') {
+                            counted[id] = true;
+                            fill[id] = (fill[id] || 0) + 1;
+                        }
+                    });
+                    (row.ebay_required_only || []).forEach(function (name) { required.add(specIdentity(name)); });
+                });
+                const scored = names.map(function (name, index) {
+                    const id = specIdentity(name);
+                    return {
+                        name: name,
+                        index: index,
+                        here: String(valueForSpec(source, name) || '').trim() !== '' ? 1 : 0,
+                        fill: fill[id] || 0,
+                        required: required.has(id) ? 1 : 0,
+                    };
+                });
+                scored.sort(function (a, b) {
+                    return (b.here - a.here) || (b.fill - a.fill) || (b.required - a.required) || (a.index - b.index);
+                });
+                return new Set(scored.slice(0, SPEC_LIMIT).map(function (s) { return s.name; }));
+            }
+
+            // `preserved` keeps what was typed (and not yet saved) when the form is redrawn.
+            function renderSpecFields(rows, preserved) {
                 const wrap = document.getElementById('specFields');
                 const empty = document.getElementById('specFieldsEmpty');
                 wrap.innerHTML = '';
                 const names = specFieldNames(rows);
+                const crossed = specFieldNames.crossed || new Set();
                 const source = rows[0] || {};
+                const scope = specHideScope(rows);
+                updateHiddenChip(scope, specFieldNames.hiddenCount || 0);
                 if (!names.length) {
                     empty.classList.remove('d-none');
                     refreshSpecCounts();
@@ -1379,13 +1480,76 @@
                     input.dataset.name = name;
                     input.value = valueForSpec(source, name);
                     input.dataset.initial = input.value;
+                    if (preserved && Object.prototype.hasOwnProperty.call(preserved, name)) input.value = preserved[name];
                     input.addEventListener('input', function () { markBlankSpec(group, input); });
+                    const cross = document.createElement('button');
+                    cross.type = 'button';
+                    cross.className = 'ts-spec-cross';
+                    if (crossed.has(specIdentity(name))) {
+                        // Only listed while "Show" is on: a field crossed out earlier can be brought back for good.
+                        group.classList.add('is-crossed');
+                        cross.title = 'This field is hidden for this category. Click to show it again.';
+                        cross.innerHTML = '+';
+                        cross.addEventListener('click', function () { setSpecFieldHidden(scope, name, false); });
+                    } else {
+                        cross.title = 'Hide this field for this category. The saved value is not deleted.';
+                        cross.innerHTML = '&times;';
+                        cross.addEventListener('click', function () { setSpecFieldHidden(scope, name, true); });
+                    }
+                    group.appendChild(cross);
                     group.appendChild(label);
                     group.appendChild(input);
                     wrap.appendChild(group);
                     markBlankSpec(group, input);
                 });
                 refreshSpecCounts();
+            }
+
+            function updateHiddenChip(scope, count) {
+                const chip = document.getElementById('specHiddenChip');
+                if (!chip) return;
+                chip.dataset.scope = scope;
+                chip.style.display = count > 0 ? '' : 'none';
+                document.getElementById('specHiddenText').textContent = specShowAll
+                    ? 'Show only the top ' + SPEC_LIMIT
+                    : count + ' hidden · Show';
+            }
+
+            // Redraw the form for the open SKU(s), keeping what was typed.
+            function rerenderSpecFields() {
+                const typed = {};
+                document.querySelectorAll('#specFields .spec-field').forEach(function (input) {
+                    typed[input.dataset.name] = input.value;
+                });
+                renderSpecFields(rowsForEdit({ SKU: document.getElementById('modalSku').value }), typed);
+            }
+
+            // Cross a field out (hide = true) or bring it back (hide = false) for this category.
+            async function setSpecFieldHidden(scope, name, hide) {
+                const identity = specIdentity(name);
+                try {
+                    const res = await fetch(hide ? '/technical-specifications/hidden-fields' : '/technical-specifications/hidden-fields/restore', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                        body: JSON.stringify({ scope: scope, field_key: identity, label: name }),
+                    });
+                    const json = await res.json().catch(function () { return {}; });
+                    if (!res.ok || json.success === false) throw new Error(json.message || 'Could not change the field');
+                } catch (e) {
+                    toast(e.message || 'Could not change the field', 'error');
+                    return;
+                }
+                const list = hiddenSpecFields[scope] || (hiddenSpecFields[scope] = []);
+                const at = list.indexOf(identity);
+                if (hide && at === -1) list.push(identity);
+                if (!hide && at !== -1) list.splice(at, 1);
+                rerenderSpecFields();
+            }
+
+            // "N hidden · Show" lists every field of the category; click again to go back to the top 25.
+            function toggleShowAllSpecFields() {
+                specShowAll = !specShowAll;
+                rerenderSpecFields();
             }
 
             function refreshSpecCounts() {
@@ -1441,10 +1605,18 @@
                 return merged;
             }
 
-            function collectSpecFields() {
-                return Array.from(document.querySelectorAll('#specFields .spec-field')).map(function (input) {
+            // Fields in the form, plus saved specs the form does not show (crossed out ones) so saving never drops them.
+            function collectSpecFields(sku) {
+                const inputs = Array.from(document.querySelectorAll('#specFields .spec-field'));
+                const shown = new Set(inputs.map(function (input) { return specIdentity(input.dataset.name); }));
+                const row = table ? table.getData().find(function (r) { return String(r.SKU || '').trim() === String(sku || '').trim(); }) : null;
+                const kept = ((row && row.description_v2_specifications) || [])
+                    .filter(function (spec) { return !shown.has(specIdentity(spec.key)); })
+                    .map(function (spec) { return { key: spec.key, value: spec.value }; });
+                const fromForm = inputs.map(function (input) {
                     return { key: input.dataset.name, value: String(input.value || '').trim() };
                 }).filter(function (row) { return row.value !== ''; });
+                return kept.concat(fromForm);
             }
 
             function openView(rowData) {
@@ -1948,6 +2120,7 @@
                         throw new Error(json.message || 'Failed to load data');
                     }
                     fillChannelFilter(json.channels || []);
+                    hiddenSpecFields = json.hidden_fields || {};
                     initTable(json.data || [], json.ebay_aspects || []);
                     fillCategoryFilter();
                     applyStatusFilter();
@@ -1962,13 +2135,13 @@
                 if (!table) return;
                 const rows = table.getData('active').map(function (r) {
                     const row = {
-                        SKU: r.SKU || '',
+                    SKU: r.SKU || '',
                         'Category eBay': r.category_ebay || '',
                         'Category Amz': r.category_amz || '',
                         'Category Temu': r.category_temu || '',
-                        Parent: r.Parent || '',
-                        title150: r.title150 || '',
-                        technical_specifications: specsText(r),
+                    Parent: r.Parent || '',
+                    title150: r.title150 || '',
+                    technical_specifications: specsText(r),
                     };
                     ebayAspectNames.forEach(function (name) {
                         row[name] = rowRequiresAspect(r, name) ? (r[aspectKey(name)] || '') : '';
@@ -2466,6 +2639,7 @@
                 window.addEventListener('resize', placeTsColumnPanel);
                 document.getElementById('pushEbayBtn').addEventListener('click', function () { promptEbaySync('push'); });
                 document.getElementById('syncCategoriesBtn').addEventListener('click', promptCategorySync);
+                document.getElementById('specHiddenChip').addEventListener('click', toggleShowAllSpecFields);
                 document.getElementById('clearSpecsBtn').addEventListener('click', promptClearSpecs);
                 document.getElementById('ebaySyncConfirm').addEventListener('click', function () {
                     if (typeof ebaySyncAction === 'function') ebaySyncAction();
@@ -2518,7 +2692,7 @@
                         return;
                     }
                     const isBulkSave = skus.length > 1;
-                    const specs = isBulkSave ? null : collectSpecFields();
+                    const specs = isBulkSave ? null : collectSpecFields(skus[0]);
                     const edited = isBulkSave ? collectEditedSpecFields() : [];
                     if (isBulkSave && !edited.length) {
                         toast('Change at least one field to save it to the selected SKUs', 'error');
@@ -2545,8 +2719,8 @@
                             toast('Save failed', 'error');
                             return;
                         }
-                        applyStatusFilter();
-                        updateSelectedCount();
+                            applyStatusFilter();
+                            updateSelectedCount();
                         const editEl = document.getElementById('editSpecsModal');
                         const afterHide = function () {
                             editEl.removeEventListener('hidden.bs.modal', afterHide);

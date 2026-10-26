@@ -11,6 +11,7 @@ use App\Services\ProductMaster\BackstageSpecificationStore;
 use App\Services\ProductMaster\EbayTechnicalSpecificationSync;
 use App\Support\Marketplace\EbayCategoryAspects;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -114,6 +115,7 @@ class TechnicalSpecificationsController extends Controller
                 $row['ebay_required_only'] = $requiredOnly;
                 $row['ebay_required'] = $names;
                 $row['ebay_values'] = $values;
+                $row['hide_scope'] = $this->hideScope($categoryId, (string) ($row['category_ebay'] ?? ''), (string) ($row['SKU'] ?? ''));
                 unset($row['category_ebay_id']);
             }
             unset($row);
@@ -125,6 +127,7 @@ class TechnicalSpecificationsController extends Controller
                 'message' => 'Technical Specifications data loaded',
                 'data' => $result,
                 'ebay_aspects' => $ebayAspects,
+                'hidden_fields' => $this->hiddenFieldsByScope(),
                 'channels' => $this->channelNames(),
                 'status' => 200,
                 'meta' => [
@@ -209,6 +212,117 @@ class TechnicalSpecificationsController extends Controller
                 'message' => 'Failed to save Technical Specifications: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Fields crossed out in the edit form are remembered per eBay category.
+     */
+    private function hideScope(string $categoryId, string $categoryPath, string $sku): string
+    {
+        if (trim($categoryId) !== '') {
+            return 'ebay:'.trim($categoryId);
+        }
+        $path = strtolower(trim(preg_replace('/\s+/u', ' ', $categoryPath) ?? $categoryPath));
+        if ($path !== '') {
+            return 'path:'.$path;
+        }
+
+        return 'sku:'.$this->skuKey($sku);
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    private function hiddenFieldsByScope(): array
+    {
+        if (! Schema::hasTable('technical_spec_hidden_fields')) {
+            return [];
+        }
+        $map = [];
+        foreach (DB::table('technical_spec_hidden_fields')->get(['scope', 'field_key']) as $row) {
+            $map[(string) $row->scope][] = (string) $row->field_key;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Same table as the migration, created on first use so hiding a field works before migrations run.
+     */
+    private function ensureHiddenFieldsTable(): bool
+    {
+        try {
+            if (Schema::hasTable('technical_spec_hidden_fields')) {
+                return true;
+            }
+            Schema::create('technical_spec_hidden_fields', function (\Illuminate\Database\Schema\Blueprint $table) {
+                $table->id();
+                $table->string('scope', 191);
+                $table->string('field_key', 191);
+                $table->string('label', 255)->nullable();
+                $table->unsignedBigInteger('hidden_by')->nullable();
+                $table->timestamps();
+                $table->unique(['scope', 'field_key']);
+            });
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('TechnicalSpecifications: could not create technical_spec_hidden_fields', ['error' => $e->getMessage()]);
+
+            return Schema::hasTable('technical_spec_hidden_fields');
+        }
+    }
+
+    /**
+     * POST /technical-specifications/hidden-fields — cross a field out of the edit form for a category.
+     * Saved values are not touched.
+     */
+    public function hideField(Request $request)
+    {
+        $data = $request->validate([
+            'scope' => 'required|string|max:191',
+            'field_key' => 'required|string|max:191',
+            'label' => 'nullable|string|max:255',
+        ]);
+        if (! $this->ensureHiddenFieldsTable()) {
+            return response()->json(['success' => false, 'message' => 'Could not create the table that remembers hidden fields. Run php artisan migrate.'], 500);
+        }
+
+        $exists = DB::table('technical_spec_hidden_fields')
+            ->where('scope', $data['scope'])->where('field_key', $data['field_key'])->exists();
+        if (! $exists) {
+            DB::table('technical_spec_hidden_fields')->insert([
+                'scope' => $data['scope'],
+                'field_key' => $data['field_key'],
+                'label' => $data['label'] ?? null,
+                'hidden_by' => $request->user()?->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * POST /technical-specifications/hidden-fields/restore — show a crossed-out field of a category again
+     * (every crossed-out field of the category when no field_key is sent).
+     */
+    public function restoreHiddenFields(Request $request)
+    {
+        $data = $request->validate([
+            'scope' => 'required|string|max:191',
+            'field_key' => 'nullable|string|max:191',
+        ]);
+        if (Schema::hasTable('technical_spec_hidden_fields')) {
+            $query = DB::table('technical_spec_hidden_fields')->where('scope', $data['scope']);
+            if (($data['field_key'] ?? '') !== '') {
+                $query->where('field_key', $data['field_key']);
+            }
+            $query->delete();
+        }
+
+        return response()->json(['success' => true]);
     }
 
     private function skuKey(string $sku): string

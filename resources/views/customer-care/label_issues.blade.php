@@ -122,9 +122,6 @@
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="li-history">
                             <i class="bi bi-clock-history me-1"></i> History
                         </button>
-                        <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-sku"><i class="bi bi-bar-chart-line me-1"></i> Create SKU Report</button>
-                        <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-parent"><i class="bi bi-diagram-3 me-1"></i> Create Parent Report</button>
-                        <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-supplier"><i class="bi bi-truck me-1"></i> Create Supplier Report</button>
                         <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-month"><i class="bi bi-graph-up me-1"></i> Monthly Report &amp; Graph</button>
                         <button type="button" class="btn btn-success btn-sm" id="li-export">
                             <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
