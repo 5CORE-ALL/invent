@@ -2225,6 +2225,8 @@
         let amzClearanceYesSet = null;
         let amzClearanceYesLoading = null;
         let amzClearanceNroi = 0;
+        // True once the saved Sprc Dil modal (incl. the clearance Target NROI%) has been read from the server.
+        let amzClearanceNroiLoaded = false;
         function amzClearanceSkuKey(sku) {
             return String(sku || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
         }
@@ -2422,6 +2424,7 @@
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
                 }
+                amzClearanceNroiLoaded = !!res;
                 renderAmzDilGroiModalTable();
                 redrawAmzSprcDilColumn();
                 if (fromServer.length && !(res && res.is_default)) {
@@ -3674,9 +3677,29 @@
          * Clearance SKU that has a Clearance SNROI target (Std prc vs dil block) for its Dil slab: it gets a real S PRC,
          * saved and pushed like any other SKU. With no target it stays display-only ("C"). Dil GROI rule on = never priced.
          */
+        /**
+         * Sprc Dil (Dil GROI) rule on: a clearance SKU is priced from the clearance row of the Sprc Dil modal
+         * (Target NROI%). Same formula as the Dil slabs (dynamic Ads%). No Std / LMP cap, no negative-SNROI block.
+         * Returns 0 until the saved modal has loaded, so a not-yet-read 0% is never pushed.
+         */
+        function amzClearanceDilActive(d) {
+            return amzIsClearanceSku(d)
+                && typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+        }
+        function amzClearanceDilPrice(d) {
+            if (!amzClearanceDilActive(d)) return 0;
+            if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) return 0;
+            if (!amzClearanceNroiLoaded) return 0;
+            const p = amzSpriceFromTargetNroi(d, amzClearanceNroiNow());
+            return p > 0 ? amzPefRound2(p) : 0;
+        }
+        window.amzClearanceDilActive = amzClearanceDilActive;
+        window.amzClearanceDilPrice = amzClearanceDilPrice;
         function amzClearanceHasPrice(d) {
             if (!amzIsClearanceSku(d)) return false;
-            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') return false;
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                return amzClearanceDilPrice(d) > 0;
+            }
             return typeof amzStdClearanceTarget === 'function' && amzStdClearanceTarget(d) != null;
         }
         window.amzClearanceHasPrice = amzClearanceHasPrice;
@@ -3695,6 +3718,7 @@
             if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
             // Clearance SKUs have no S PRC unless the Clearance SNROI block has a target for their Dil. The column shows "C".
             if (amzIsClearanceSku(d) && !amzClearanceHasPrice(d)) return 0;
+            if (amzClearanceDilActive(d)) return amzClearanceDilPrice(d);
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                 const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
                 const raw = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
@@ -4227,6 +4251,7 @@
                 cvr_disc: plan.cvrDisc,
                 cvr_up_dn: plan.cvrUpDn,
                 zero_sold: !!plan.zeroSold,
+                clearance: (typeof amzClearanceDilActive === 'function') ? !!amzClearanceDilActive(d) : false,
             };
         }
 
@@ -4535,6 +4560,17 @@
         function amzPushBlockedByNegSnroi(item) {
             if (!amzIgnoreNegSnroi) return false;
             if (!item || typeof amazonComputeNroiAtSp !== 'function') return false;
+            // Clearance SKUs (Sprc Dil rule) are pushed even when SNROI is negative.
+            if (typeof window.amzClearanceDilActive === 'function' && typeof table !== 'undefined' && table
+                && typeof table.getRows === 'function') {
+                const skuKey = String(item.sku || '').trim().toUpperCase();
+                const isClr = table.getRows().some(function(r) {
+                    const rd = r.getData() || {};
+                    return String(amzPefSku(rd) || '').trim().toUpperCase() === skuKey
+                        && window.amzClearanceDilActive(rd);
+                });
+                if (isClr) return false;
+            }
             if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return false;
             const sku = String(item.sku || '').trim().toUpperCase();
             let d = null;

@@ -1976,6 +1976,7 @@ class OverallAmazonController extends Controller
                 'prmt' => $item['prmt'] ?? $item['prmt_pct'] ?? 0,
                 'cpn' => $item['cpn'] ?? $item['cpn_pct'] ?? 0,
                 'cvr_disc' => $item['cvr_disc'] ?? $item['cvrDisc'] ?? 0,
+                'clearance' => ! empty($item['clearance']),
             ];
         }
 

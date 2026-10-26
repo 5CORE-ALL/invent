@@ -523,6 +523,7 @@ class AmazonPushPrcJobStore
                 'cvr_disc' => isset($task['cvr_disc']) ? max(0, round((float) $task['cvr_disc'], 2)) : 0,
                 'cvr_up_dn' => isset($task['cvr_up_dn']) ? round((float) $task['cvr_up_dn'], 2) : 0,
                 'zero_sold' => $zeroSold,
+                'clearance' => ! empty($task['clearance']),
                 'status' => 'pending',
                 'attempts' => 0,
                 'error' => null,

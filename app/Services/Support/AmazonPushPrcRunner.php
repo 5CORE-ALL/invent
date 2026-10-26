@@ -129,7 +129,8 @@ class AmazonPushPrcRunner
             try {
                 $skuKey = strtoupper(trim($sku));
                 $livePrice = (float) ($this->store->listingPricesForSkus([$skuKey])[$skuKey] ?? 0);
-                if (NegativeSnroiPushGuard::shouldSkip('amazon', $sku, (float) $target)) {
+                // Clearance SKUs (Sprc Dil rule, Target NROI%) are pushed even when SNROI is negative.
+                if (empty($task['clearance']) && NegativeSnroiPushGuard::shouldSkip('amazon', $sku, (float) $target)) {
                     $ok = true;
                     $skipMsg = 'skipped — negative SNROI';
                     $logger->info('Amazon Push Prc: skipped — negative SNROI', [

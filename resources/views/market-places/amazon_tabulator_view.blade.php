@@ -1609,6 +1609,8 @@
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
             let out = +Number(s).toFixed(2);
+            // Clearance SKU on the Sprc Dil rule: priced from the clearance Target NROI%, no LMP / Std cap.
+            if (typeof window.amzClearanceDilActive === 'function' && window.amzClearanceDilActive(rowData)) return out;
             if (amazonShouldCapSpriceToLmp(rowData, s)) {
                 const lmp = lmpWithShipping(rowData);
                 if (lmp > 0) {
