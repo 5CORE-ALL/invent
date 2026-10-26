@@ -59,7 +59,11 @@ class AutomatedListingPage
         $listedMap = ChannelListingRegistry::loadListedIds($cfg, $skus);
         $idField = (string) ($cfg['id_field'] ?? 'listing_id');
 
-        $rows = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $listedMap, $idField) {
+        // eBay 1: the seller-portal sync decides what is live (same as the Missing L total).
+        // A saved buyer / seller link must not turn an ended, deleted or missing listing back to Listed.
+        $trustLinks = empty(((array) ($cfg['listed'] ?? []))['hide_statuses']);
+
+        $rows = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $listedMap, $idField, $trustLinks) {
             $childSku = (string) $item->sku;
             $skuLower = strtolower(trim($childSku));
 
@@ -113,7 +117,7 @@ class AutomatedListingPage
             if ($item->page_created) {
                 $listingId = '';
             }
-            if ($listingId === '' && ! $item->page_created) {
+            if ($listingId === '' && ! $item->page_created && $trustLinks) {
                 $listingId = ListingCountsEngine::listingIdFromLinks(
                     $item->buyer_link,
                     $item->seller_link,
