@@ -433,7 +433,7 @@ class VeeqoChargebackController extends Controller
 
     public function fillOsize(ChargebackOsizeSync $sync)
     {
-        $lock = Cache::lock('veeqo_chargeback_osize', 600);
+        $lock = Cache::lock(ChargebackOsizeSync::LOCK, 600);
         if (! $lock->get()) {
             return response()->json(['success' => false, 'message' => 'An O-Size fill is already running. Try again in a minute.'], 409);
         }
@@ -474,6 +474,9 @@ class VeeqoChargebackController extends Controller
             if ($result['error']) {
                 $message .= ' Last error: '.$result['error'];
             }
+            if ($result['found'] > 0 && $this->runInBackground('veeqo:chargeback-osize', 'veeqo-chargeback-osize.log')) {
+                $message .= ' Shipping Master O-Size Charge is updating in the background.';
+            }
 
             return response()->json(['success' => true, 'message' => $message] + $result);
         } finally {
@@ -493,6 +496,10 @@ class VeeqoChargebackController extends Controller
         $result = $platform === 'veeqo'
             ? $import->import($file->getRealPath(), $file->getClientOriginalName())
             : $platformImport->import($platform, $file->getRealPath());
+
+        if ($result['ok'] && $this->runInBackground('veeqo:chargeback-osize', 'veeqo-chargeback-osize.log')) {
+            $result['message'] = trim(($result['message'] ?? '').' Shipping Master O-Size Charge is updating in the background.');
+        }
 
         return response()->json(['success' => $result['ok']] + $result, $result['ok'] ? 200 : 422);
     }

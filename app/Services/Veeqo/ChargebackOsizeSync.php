@@ -6,6 +6,7 @@ use App\Http\Controllers\Channels\VeeqoChargebackController;
 use App\Http\Controllers\PurchaseMaster\CategoryController;
 use App\Models\ProductMaster;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -16,6 +17,48 @@ use Illuminate\Support\Facades\Log;
  */
 class ChargebackOsizeSync
 {
+    public const LOCK = 'veeqo_chargeback_osize';
+
+    /**
+     * Run right after new chargeback data arrives (Amazon / TikTok sync, CSV import, SKU lookup), so
+     * Shipping Master follows the report without anyone pressing the button. Skips when another fill is
+     * already running and never throws, so it cannot fail the job that called it.
+     *
+     * @return array{rows:int, updated:int, unchanged:int, missing:int, failed:int, updated_skus:array<int,string>}|null
+     */
+    public function runAfterNewData(?callable $log = null): ?array
+    {
+        $lock = Cache::lock(self::LOCK, 600);
+        if (! $lock->get()) {
+            return null;
+        }
+        try {
+            @set_time_limit(600);
+
+            return $this->run($log);
+        } catch (\Throwable $e) {
+            Log::warning('Chargeback O-Size auto sync failed: '.$e->getMessage());
+
+            return null;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * @param  array{rows:int, updated:int, unchanged:int, missing:int, failed:int, updated_skus:array<int,string>}|null  $r
+     */
+    public static function summary(?array $r): string
+    {
+        if ($r === null) {
+            return 'Shipping Master O-Size Charge: skipped (already running or failed, see log).';
+        }
+
+        return "Shipping Master O-Size Charge: updated {$r['updated']} SKUs, {$r['unchanged']} already up to date"
+            .($r['missing'] ? ", {$r['missing']} not found in Shipping Master" : '')
+            .($r['failed'] ? ", {$r['failed']} failed (see log)" : '').'.';
+    }
+
     /**
      * @return array{rows:int, updated:int, unchanged:int, missing:int, failed:int, updated_skus:array<int,string>}
      */

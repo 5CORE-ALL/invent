@@ -13,7 +13,12 @@ class SyncChargebackOsizeCommand extends Command
 
     public function handle(ChargebackOsizeSync $sync): int
     {
-        $r = $sync->run(fn (string $l) => $this->line($l));
+        $r = $sync->runAfterNewData(fn (string $l) => $this->line($l));
+        if ($r === null) {
+            $this->warn('Skipped: another O-Size fill is already running, or it failed (see log).');
+
+            return self::SUCCESS;
+        }
         $this->info("SKUs with a figure: {$r['rows']}, updated {$r['updated']}, unchanged {$r['unchanged']}, not in Shipping Master {$r['missing']}, failed {$r['failed']}.");
 
         return $r['failed'] ? self::FAILURE : self::SUCCESS;

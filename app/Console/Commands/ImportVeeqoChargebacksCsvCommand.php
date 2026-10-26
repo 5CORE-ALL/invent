@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Veeqo\ChargebackOsizeSync;
 use App\Services\Veeqo\VeeqoChargebackCsvImport;
 use Illuminate\Console\Command;
 
@@ -15,6 +16,9 @@ class ImportVeeqoChargebacksCsvCommand extends Command
     {
         $result = $import->import((string) $this->argument('file'));
         $this->{$result['ok'] ? 'info' : 'error'}($result['message']);
+        if ($result['ok']) {
+            $this->line(ChargebackOsizeSync::summary(app(ChargebackOsizeSync::class)->runAfterNewData()));
+        }
 
         return $result['ok'] ? self::SUCCESS : self::FAILURE;
     }
