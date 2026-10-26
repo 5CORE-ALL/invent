@@ -2948,7 +2948,11 @@
                     ['hook_name',         r => formatTags(r.hook_name)],
                     ['hook',              r => r.hook],
                     ['link',              r => r.link],
-                    ['creators',          r => (r.creators || []).map(c => c.name).filter(Boolean).join(' | ')],
+                    // Same layout as the grid: creator name with its date on the line below.
+                    ['creators',          r => (r.creators || [])
+                        .filter(c => c && c.name)
+                        .map(c => c.created_at ? `${c.name}\n${c.created_at}` : c.name)
+                        .join('\n')],
                     ['checked',           r => r.is_checked ? 'Yes' : 'No'],
                     ['checked_by',        r => r.is_checked ? r.checked_by : ''],
                     ['checked_at',        r => r.is_checked ? formatDateTime(r.checked_at) : ''],
