@@ -172,7 +172,7 @@ class EbayRuleSprice
             'diff_adj' => $unpacked['diff_adj'],
             // Ageing Rule (eBay 1): the SKU's age band adds its points to the Target NROI, after the CVR overlay and
             // before the Diff rule. Null / all-zero points = rule off.
-            'age_adj' => $channel === 'ebay1' ? ($unpacked['age_adj'] ?? null) : null,
+            'age_adj' => in_array($channel, self::CHANNELS, true) ? ($unpacked['age_adj'] ?? null) : null,
         ]];
     }
 

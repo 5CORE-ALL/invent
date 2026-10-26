@@ -1249,6 +1249,11 @@
                         steps.push(ebayRuleStep('skip', '2 · CVR overlay',
                             'CVR ' + cvrTxt + (trend ? ' (' + trend + ' arrow)' : '') + ' is inside the thresholds, so no adjustment'));
                     }
+                    if (meta.ageAdj) {
+                        const ageDays = (typeof ebayRowAgeDays === 'function') ? ebayRowAgeDays(d) : null;
+                        steps.push(ebayRuleStep('ok', '2b · Ageing rule',
+                            'Age ' + (ageDays === null ? '?' : Math.round(ageDays)) + ' days is in an age band → <b>' + (meta.ageAdj > 0 ? '+' : '') + meta.ageAdj + '</b> to Target SNROI'));
+                    }
                     const diffPct = (typeof ebayStdPrcDiffPct === 'function') ? ebayStdPrcDiffPct(d) : null;
                     if (meta.diffAdj) {
                         steps.push(ebayRuleStep('ok', '3 · Diff rule',
