@@ -962,6 +962,14 @@
                                 data-metric="y_sales_percent" data-live-value="{{ number_format((float) ($ySalesPercent ?? 0), 1, '.', '') }}" data-format="pct"
                                 style="background-color:#17a2b8;color:#fff;font-weight:bold;cursor:pointer;"
                                 title="Y Sales vs the L30 daily average: ((L30 Sales / 30) − Y Sales) / (L30 Sales / 30) × 100. Positive means yesterday is below a typical day. Click badge or dot for rolling history.">{!! $ebTrendDot('y_sales_percent') !!}Y Sales%: {{ number_format((float) ($ySalesPercent ?? 0), 1) }}%</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-y-views-badge"
+                                data-metric="y_views" data-live-value="" data-format="int"
+                                style="background-color:#0dcaf0;color:#111;font-weight:bold;cursor:pointer;"
+                                title="Y Views = yesterday listing views for eBay (1-day Pacific, not L30). Same value as Y Views on the Active Channel page. Click badge or dot for rolling history.">{!! $ebTrendDot('y_views') !!}Y Views: …</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-y-cvr-badge"
+                                data-metric="y_cvr_percent" data-live-value="" data-format="pct"
+                                style="background-color:#059669;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="Y CVR% = yesterday units ÷ yesterday views × 100. Same value as Y CVR on the Active Channel page. Click badge or dot for rolling history.">{!! $ebTrendDot('y_cvr_percent') !!}Y CVR%: …</span>
                         </div>
                     </div>
                     <div class="amz-sum-block amz-sum-block--l30">
@@ -1078,7 +1086,7 @@
                                 data-filter-badge="1" data-metric="blue_triangle_count" data-invert="1" data-live-value="0" data-format="number"
                                 style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                                 title="Blue alert: INV > 0 and Price ≠ S PRC. Click badge to show only those SKUs. Click dot for rolling history.">{!! $ebTrendDot('blue_triangle_count') !!}<i class="fas fa-exclamation-triangle"></i> 0</span>
-                            @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'ebay1-clearance-badge'])
+                            @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'ebay1-clearance-badge', 'chClrMetric' => 'clearance_count'])
                             <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-red-triangle-badge"
                                 data-filter-badge="1" data-metric="red_triangle_count" data-invert="1" data-live-value="0" data-format="number"
                                 style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
@@ -1488,6 +1496,31 @@
         const EBAY_P_SALES = {{ (float) (($ebayProjected['p_sales'] ?? 0)) }};
         /** Projected 30-day units (L7 pace). P CVR = P Qty ÷ P Views × 100. */
         const EBAY_P_QTY = {{ (float) (($ebayProjected['p_qty'] ?? 0)) }};
+        /** Y Views / Y CVR for the eBay row of /yesterday-marketplace-metrics (the same feed the Active Channel page uses). null = not loaded or no value. */
+        let EBAY_Y_VIEWS = null;
+        let EBAY_Y_CVR = null;
+        let EBAY_Y_LOADED = false;
+        $(function() {
+            $.get('/yesterday-marketplace-metrics').done(function(res) {
+                const rows = (res && res.data && res.data.rows) ? res.data.rows : [];
+                const row = rows.filter(function(r) {
+                    return String((r && r.channel) || '').toLowerCase().replace(/[^a-z0-9]/g, '') === 'ebay';
+                })[0];
+                EBAY_Y_LOADED = true;
+                if (!row) {
+                    try { if (typeof window.updateSummary === 'function') window.updateSummary(); } catch (e) { /* ignore */ }
+                    return;
+                }
+                const v = (row.views == null || row.views === '') ? NaN : Number(row.views);
+                const c = (row.cvr == null || row.cvr === '') ? NaN : Number(row.cvr);
+                EBAY_Y_VIEWS = isFinite(v) ? Math.round(v) : null;
+                EBAY_Y_CVR = isFinite(c) ? Math.round(c * 10) / 10 : null;
+                const day = (res.data && res.data.label) ? ' (' + res.data.label + ')' : '';
+                $('#ebay-y-views-badge').attr('title', 'Y Views = yesterday listing views for eBay' + day + '. Same value as Y Views on the Active Channel page. Click badge or dot for rolling history.');
+                $('#ebay-y-cvr-badge').attr('title', 'Y CVR% = ' + Number(row.qty || 0).toLocaleString() + ' units ÷ ' + (EBAY_Y_VIEWS != null ? EBAY_Y_VIEWS.toLocaleString() : '—') + ' views × 100' + day + '. Same value as Y CVR on the Active Channel page. Click badge or dot for rolling history.');
+                try { if (typeof window.updateSummary === 'function') window.updateSummary(); } catch (e) { /* ignore */ }
+            });
+        });
         /** Take-home from marketplace_percentages (Ebay). Used when a row has no percentage. */
         const EBAY_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
 
@@ -1788,6 +1821,9 @@
             p_ads_percent: 'P Ads%',
             p_views: 'P Views',
             p_cvr_percent: 'P CVR%',
+            y_views: 'Y Views',
+            y_cvr_percent: 'Y CVR%',
+            clearance_count: 'Clearance SKUs (C)',
             blue_triangle_count: 'Blue ▲ (Price ≠ S PRC)',
             red_triangle_count: 'Red ▲ (Price > LMP)',
             price_lt80_lmp_count: 'Purple ▲ (Price < 80% LMP)',
@@ -6329,7 +6365,23 @@
             }
 
             // Clearance "C" badge: count + click-to-filter (partials/channel-clearance-badge).
-            if (window.chClr) chClr.init({ badgeId: 'ebay1-clearance-badge', getTable: function() { return table; }, applyFilters: function() { applyFilters(); } });
+            if (window.chClr) chClr.init({
+                badgeId: 'ebay1-clearance-badge',
+                getTable: function() { return table; },
+                applyFilters: function() { applyFilters(); },
+                showInv: true,
+                // Clearance SKU count over all rows: drives the history dot and the daily snapshot.
+                onCount: function(n) {
+                    // The clearance list loads after the grid: a count before that is 0, not real.
+                    if (window.__chStdSettled !== true) return;
+                    const $b = $('#ebay1-clearance-badge');
+                    $b.attr('data-live-value', n);
+                    if (window.EBAY_CLEARANCE_COUNT !== n) {
+                        window.EBAY_CLEARANCE_COUNT = n;
+                        try { if (typeof window.updateSummary === 'function') window.updateSummary(); } catch (e) { /* ignore */ }
+                    }
+                }
+            });
             // Apply filters
             function applyFilters() {
                 if (window.ParentExpand && ParentExpand.isExpanded()) {
@@ -6911,7 +6963,18 @@
                 // Projected CVR = P Qty ÷ P Views × 100 (both on the L7 → 30-day pace).
                 const pCvr = pViews > 0 ? Math.round((EBAY_P_QTY / pViews) * 1000) / 10 : 0;
                 setSummaryBadge($('#ebay-p-cvr-badge'), 'CVR: ' + pCvr.toFixed(1) + '%', pCvr);
-                ebay1ReportClientBadges({
+                // Y Views / Y CVR% come from the Active Channel feed: "…" until it loads, "N/A" when it has no value.
+                if (EBAY_Y_LOADED) {
+                    setSummaryBadge($('#ebay-y-views-badge'),
+                        'Y Views: ' + (EBAY_Y_VIEWS !== null ? EBAY_Y_VIEWS.toLocaleString() : 'N/A'), EBAY_Y_VIEWS);
+                    setSummaryBadge($('#ebay-y-cvr-badge'),
+                        'Y CVR%: ' + (EBAY_Y_CVR !== null ? EBAY_Y_CVR.toFixed(1) + '%' : 'N/A'), EBAY_Y_CVR);
+                }
+                const yReport = {};
+                if (EBAY_Y_VIEWS !== null) yReport.y_views = EBAY_Y_VIEWS;
+                if (EBAY_Y_CVR !== null) yReport.y_cvr_percent = EBAY_Y_CVR;
+                if (typeof window.EBAY_CLEARANCE_COUNT === 'number') yReport.clearance_count = window.EBAY_CLEARANCE_COUNT;
+                ebay1ReportClientBadges(Object.assign({
                     p_views: pViews,
                     p_cvr_percent: pCvr,
                     blue_triangle_count: blueTriangleCount,
@@ -6920,7 +6983,7 @@
                     price_eq_lmp_count: priceEqCount,
                     sprice_eq_lmp_count: spriceEqCount,
                     ended_listing_count: endedListingCount
-                });
+                }, yReport));
                 syncEbay1TriangleBadgeState();
 
                 syncEbay1SummaryTrendDots();

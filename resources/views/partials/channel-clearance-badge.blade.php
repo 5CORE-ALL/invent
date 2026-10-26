@@ -12,10 +12,13 @@
 --}}
 @php $chClrPart = $chClrPart ?? 'script'; @endphp
 @if($chClrPart === 'badge')
-<span class="badge fs-6 p-2" id="{{ $chClrBadgeId }}"
+{{-- Optional 'chClrMetric' => 'clearance_count' adds a rolling-history dot (page must support ebay1-badge-chart, e.g. /ebay-tabulator-view). --}}
+@php $chClrMetric = $chClrMetric ?? null; @endphp
+<span class="badge fs-6 p-2{{ $chClrMetric ? ' ebay1-badge-chart' : '' }}" id="{{ $chClrBadgeId }}"
+    @if($chClrMetric) data-filter-badge="1" data-metric="{{ $chClrMetric }}" data-live-value="" data-format="number" @endif
     style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
     title="C = Clearance SKUs (Inv days clearance = YES). Click to show only those SKUs. Click again to clear."
-    aria-label="Clearance SKUs">C 0</span>
+    aria-label="Clearance SKUs">@if($chClrMetric)<span class="summary-trend-dot none" data-metric="{{ $chClrMetric }}" title="Rolling history"></span>@endif C 0</span>
 @else
         // ---- Clearance "C" + Std cap marks (partials/channel-clearance-badge) ----
         window.chClr = (function () {
@@ -111,6 +114,12 @@
                 };
             }
 
+            /** Stock units on a row (Shopify INV on every analytics page). */
+            function rowInv(d) {
+                var n = parseFloat(d && (d.INV != null ? d.INV : d.inv));
+                return isFinite(n) ? n : 0;
+            }
+
             function rows() {
                 var t = ctx && ctx.getTable ? ctx.getTable() : null;
                 if (!t || typeof t.getData !== 'function') return [];
@@ -121,12 +130,37 @@
             }
             function refresh() {
                 if (!ctx || !ctx.badgeId) return;
-                var n = 0;
+                var n = 0, inv = 0;
                 try {
-                    rows().forEach(function (d) { if (isClearance(d)) n++; });
+                    rows().forEach(function (d) {
+                        if (!isClearance(d)) return;
+                        n++;
+                        inv += rowInv(d);
+                    });
                 } catch (e) { /* ignore */ }
                 var $b = $('#' + ctx.badgeId);
-                $b.text('C ' + n.toLocaleString());
+                // Keep the history dot (it sits before the label) when the page gave the badge one.
+                var $dot = $b.find('.summary-trend-dot').detach();
+                $b.text('C ' + n.toLocaleString() + (ctx.showInv ? ' · INV ' + Math.round(inv).toLocaleString() : ''));
+                if ($dot.length) $b.prepend($dot);
+                if (ctx.showInv) {
+                    $b.attr('title', 'C = Clearance SKUs (Inv days clearance = YES): ' + n.toLocaleString() + ' SKUs holding '
+                        + Math.round(inv).toLocaleString() + ' units of INV. Click to show only those SKUs. Click again to clear. Click dot for rolling history.');
+                }
+                // Count / INV over every row (not only the filtered ones), for the page's history report.
+                if (typeof ctx.onCount === 'function') {
+                    var allN = 0, allInv = 0;
+                    try {
+                        var t = ctx.getTable ? ctx.getTable() : null;
+                        var all = t && typeof t.getData === 'function' ? t.getData() : [];
+                        (Array.isArray(all) ? all : []).forEach(function (d) {
+                            if (!isClearance(d)) return;
+                            allN++;
+                            allInv += rowInv(d);
+                        });
+                    } catch (e) { /* ignore */ }
+                    ctx.onCount(allN, Math.round(allInv));
+                }
                 $b.css({ outline: filterOn ? '3px solid #ffc107' : '', outlineOffset: filterOn ? '2px' : '' });
             }
             function repaint() {
@@ -138,7 +172,9 @@
             function init(opts) {
                 ctx = opts || {};
                 if (!ctx.badgeId) return;
-                $(document).off('click.chClr').on('click.chClr', '#' + ctx.badgeId, function () {
+                $(document).off('click.chClr').on('click.chClr', '#' + ctx.badgeId, function (e) {
+                    // A click on the history dot opens the chart, it does not filter.
+                    if (e && e.target && $(e.target).closest('.summary-trend-dot').length) return;
                     filterOn = !filterOn;
                     if (typeof ctx.applyFilters === 'function') ctx.applyFilters();
                     refresh();

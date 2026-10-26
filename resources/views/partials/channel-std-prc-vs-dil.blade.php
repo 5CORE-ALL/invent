@@ -2,6 +2,18 @@
 @php $channelStdPrcPart = $channelStdPrcPart ?? 'all'; @endphp
 
 @if($channelStdPrcPart === 'css' || $channelStdPrcPart === 'all')
+        /* Age Disc badge — same look as the Age Disc column on /amazon-tabulator-view (.amz-age-discount-badge). */
+        .ch-age-discount-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 12px;
+            line-height: 1.2;
+            color: #d97706;
+        }
+        .ch-age-discount-badge.is-zero { color: #adb5bd; font-weight: 600; }
+        .ch-age-discount-badge.is-neg { color: #dc3545; }
         #chStdPrcModal .modal-dialog {
             width: calc(100vw - 1.25rem);
             max-width: calc(100vw - 1.25rem);
@@ -1530,6 +1542,14 @@
             if (shown < 0) return '<span style="font-weight:700;color:#dc2626;">' + shown + '</span>';
             return '<span style="font-weight:700;color:#0f172a;">' + shown + '</span>';
         }
+        /** Age Disc cell: orange badge like Amazon on eBay 1; every other page keeps the plain number. */
+        function chStdAgeDiscBadge(pct) {
+            if (typeof CHANNEL_PROMO_CHANNEL !== 'string' || CHANNEL_PROMO_CHANNEL !== 'ebay1') return chStdDiscBadge(pct);
+            const n = Number(pct);
+            if (!isFinite(n) || n === 0) return '<span class="ch-age-discount-badge is-zero">—</span>';
+            const shown = Math.round(n * 10) / 10;
+            return '<span class="ch-age-discount-badge' + (shown < 0 ? ' is-neg' : '') + '">' + shown + '</span>';
+        }
         /** Dollar amount of the discount: Std Prc × Sum disc % ÷ 100 (negative when Sum disc is negative). */
         function chStdSumDiscAmt(d) {
             if (!d) return 0;
@@ -1610,11 +1630,11 @@
             });
             return n ? sum : null;
         }
-        function chStdParentDiscHtml(d, read) {
+        function chStdParentDiscHtml(d, read, badge) {
             const avg = chStdFamilyAvg(d, read);
             if (avg === null) return '';
             const n = chStdFamilyKids(d).length;
-            return '<span title="' + chStdEsc('Average of ' + n + ' SKUs') + '">' + chStdDiscBadge(avg) + '</span>';
+            return '<span title="' + chStdEsc('Average of ' + n + ' SKUs') + '">' + (badge || chStdDiscBadge)(avg) + '</span>';
         }
         function chStdAgeDisc(d, rules) {
             // Same as Amazon analytics: INV = 0 → 0%. Age days come from the Shopify push clock.
@@ -1767,12 +1787,12 @@
                 Object.assign(chStdDiscCol('Age Disc', 'age_discount', 'Age Disc — promotional % from Age Days slabs in Std prc vs dil. Same Shopify age clock as Amazon. INV = 0 → 0%. Read-only.', chStdAgeDisc), {
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
-                        if (chStdIsParentRow(d)) return chStdParentDiscHtml(d, chStdAgeDisc);
+                        if (chStdIsParentRow(d)) return chStdParentDiscHtml(d, chStdAgeDisc, chStdAgeDiscBadge);
                         const pct = chStdAgeDisc(d);
                         const days = chStdAgeDays(d);
                         const tip = (days == null ? 'No age' : (days + ' age days'))
                             + ' → discount ' + (pct || 0) + '%';
-                        return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
+                        return '<span title="' + chStdEsc(tip) + '">' + chStdAgeDiscBadge(pct) + '</span>';
                     },
                 }),
                 Object.assign(chStdDiscCol('Dil Disc', 'dil_discount', 'Dil Disc — same as Amazon: Shopify OV L30 ÷ Shopify INV. INV = 0 → 0%.', chStdDilDisc), {
