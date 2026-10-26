@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Veeqo\ChargebackOsizeSync;
 use App\Services\Veeqo\VeeqoChargebackSync;
 use Illuminate\Console\Command;
 
@@ -17,6 +18,10 @@ class SyncVeeqoChargebacksCommand extends Command
         @ini_set('memory_limit', '1024M');
 
         $result = $sync->sync(max(1, (int) $this->option('days')), fn (string $line) => $this->line($line));
+        // New chargebacks change the report's Avg Chargeback Total, so push it to Shipping Master O-Size now.
+        if ($result['done']) {
+            $this->line(ChargebackOsizeSync::summary(app(ChargebackOsizeSync::class)->runAfterNewData(fn (string $l) => $this->line($l))));
+        }
         $this->{$result['done'] ? 'info' : 'warn'}($result['message']);
 
         return $result['done'] ? self::SUCCESS : self::FAILURE;

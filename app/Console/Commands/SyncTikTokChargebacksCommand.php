@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Veeqo\ChargebackOsizeSync;
 use App\Services\Veeqo\TikTokChargebackSync;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -56,6 +57,11 @@ class SyncTikTokChargebacksCommand extends Command
             }
             $r['done'] ? $this->info($r['message']) : $this->error($r['message']);
             $failed = $failed || ! $r['done'];
+        }
+
+        // New chargebacks change the report's Avg Chargeback Total, so push it to Shipping Master O-Size now.
+        if (! $failed) {
+            $this->line(ChargebackOsizeSync::summary(app(ChargebackOsizeSync::class)->runAfterNewData()));
         }
 
         return $failed ? self::FAILURE : self::SUCCESS;

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Veeqo\ChargebackOsizeSync;
 use App\Services\Veeqo\VeeqoOrderSkuResolver;
 use Illuminate\Console\Command;
 
@@ -19,6 +20,10 @@ class FillVeeqoOrderSkusCommand extends Command
         $this->info('Checked '.$result['checked'].' in Veeqo, found SKUs for '.$result['found'].', skipped '.$result['skipped'].' already checked.');
         if ($result['error']) {
             $this->warn($result['error']);
+        }
+        // Newly found SKUs move chargebacks onto the right SKU, which changes the report's averages.
+        if ($result['found'] > 0) {
+            $this->line(ChargebackOsizeSync::summary(app(ChargebackOsizeSync::class)->runAfterNewData()));
         }
 
         return self::SUCCESS;
