@@ -683,7 +683,55 @@ class FacebookAllAdsSheetController extends Controller
 
         $unmatchedFromOtherSheets = 0; // diag: cids that exist in spend/sales but not in the base
         if ($baseType !== null) {
+            // Campaigns that have real sales but are missing from the Campaign
+            // list (e.g. paused / deleted since the export) would silently lose
+            // those sales. Keep them as extra rows, and fold in their Spend row
+            // (whose id Excel rounded to 1.2025496798117E+17) by id prefix.
+            $orphans = [];
+            if ($baseType === 'campaign') {
+                foreach ($merged as $cid => $row) {
+                    if (! empty($presence[$cid][$baseType])) continue;
+                    if (! ctype_digit((string) $cid) || strlen((string) $cid) < 16) continue;
+                    $sales  = $this->parseNumeric($row['Total sales (last non-direct click)'] ?? ($row['Sales'] ?? null)) ?? 0;
+                    $orders = $this->parseNumeric($row['Orders (last non-direct click)'] ?? ($row['Orders'] ?? null)) ?? 0;
+                    if ($sales > 0 || $orders > 0) {
+                        $orphans[(string) $cid] = true;
+                    }
+                }
+                if ($orphans) {
+                    foreach ($merged as $cid => $row) {
+                        if (isset($orphans[(string) $cid]) || ! empty($presence[$cid][$baseType])) continue;
+                        if (! preg_match('/^(\d+)(?:\.(\d+))?e\+?(\d+)$/i', trim((string) $cid), $m)) continue;
+                        $length = (int) $m[3] + strlen($m[1]);
+                        $prefix = rtrim($m[1] . ($m[2] ?? ''), '0');
+                        if ($prefix === '') continue;
+                        $hits = array_values(array_filter(
+                            array_keys($orphans),
+                            fn($o) => strlen($o) === $length && str_starts_with($o, $prefix)
+                        ));
+                        if (count($hits) !== 1) continue;
+                        $target = $hits[0];
+                        foreach ($row as $k => $v) {
+                            if (str_starts_with((string) $k, '_') || $k === 'ad_type' || $k === 'ch' || $k === 'b2b_b2c') continue;
+                            $existing = $merged[$target][$k] ?? null;
+                            if (($existing === null || $existing === '') && $v !== null && $v !== '') {
+                                $merged[$target][$k] = $v;
+                            }
+                        }
+                        if (empty($merged[$target]['b2b_b2c']) && ! empty($row['b2b_b2c'])) {
+                            $merged[$target]['b2b_b2c'] = $row['b2b_b2c'];
+                        }
+                        unset($merged[$cid]);
+                    }
+                    foreach (array_keys($orphans) as $o) {
+                        if (! isset($merged[$o]['Campaign name']) || trim((string) $merged[$o]['Campaign name']) === '') {
+                            $merged[$o]['Campaign name'] = 'Campaign ' . $o . ' (not in Campaign list)';
+                        }
+                    }
+                }
+            }
             foreach ($merged as $cid => $_) {
+                if (isset($orphans[(string) $cid])) continue;
                 if (empty($presence[$cid][$baseType])) {
                     unset($merged[$cid]);
                     $unmatchedFromOtherSheets++;
