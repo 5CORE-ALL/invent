@@ -307,7 +307,7 @@ class BestBuyPricingController extends Controller
                 $lp = floatval($pm->lp);
             }
 
-        // BestBuy uses Ship BB (slab + handling + o-size), matching Shipping Master.
+        // BestBuy uses Ship BB (slab + o-size), matching Shipping Master.
         $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $pm);
 
         // Price and units for calculations
@@ -336,7 +336,6 @@ class BestBuyPricingController extends Controller
             $row["percentage"] = $percentage;
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
-            $row["handling_charge"] = $values['handling_charge'] ?? null;
             $row["o_size_charge"] = $values['o_size_charge'] ?? null;
 
             // NR & SPRICE data from dataview

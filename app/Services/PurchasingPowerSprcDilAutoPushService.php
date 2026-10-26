@@ -113,7 +113,20 @@ class PurchasingPowerSprcDilAutoPushService
             }
         }
 
-        $lock = Cache::lock($skipPush && ! $dryRun ? self::LOCK_KEY.'-save-only' : self::LOCK_KEY, 10800);
+        // The 10-minute blue catch-up has its own short lock. It used to share the 3 h lock of the twice-daily full run, so
+        // a long full run (each push waits ~20–40 s for the MCM import), or a run killed without releasing the lock, made
+        // every blue run print "already running" and push nothing for hours. A killed blue run now frees itself in 30 min.
+        if ($skipPush && ! $dryRun) {
+            $lockKey = self::LOCK_KEY.'-save-only';
+            $lockSeconds = 10800;
+        } elseif ($blueCatchUp) {
+            $lockKey = self::LOCK_KEY.'-blue';
+            $lockSeconds = 1800;
+        } else {
+            $lockKey = self::LOCK_KEY;
+            $lockSeconds = 10800;
+        }
+        $lock = Cache::lock($lockKey, $lockSeconds);
         if (! $lock->get()) {
             $this->log($logger, 'Skipped: another Purchasing Power Sprc Dil push is already running');
             $stats['errors'][] = 'lock: already running';

@@ -2571,7 +2571,6 @@ class ComparisonController extends Controller
             }
 
             $out['temu_ship'] = ProductMasterTemuShip::forPricing($values, $pm);
-            $out['handling_charge'] = $values['handling_charge'] ?? null;
             $out['o_size_charge'] = $values['o_size_charge'] ?? null;
         }
 

@@ -18,8 +18,8 @@ class PurchasingPowerPushBluePricesCommand extends Command
 {
     protected $signature = 'purchasing-power:push-blue-prices
         {--dry-run : Compute only, do NOT push to Purchasing Power}
-        {--max-pushes=40 : Max Purchasing Power pushes per run (rest next run)}
-        {--cooldown=60 : Minutes the MCM import + next sync get before the same SKU is re-pushed}
+        {--max-pushes=60 : Max Purchasing Power pushes per run (rest next run)}
+        {--cooldown=20 : Minutes the MCM import + next sync (every 15 min) get before the same SKU is re-pushed}
         {--sleep-ms=300 : Delay between Purchasing Power pushes (ms)}
         {--respect-switch : Skip the run when the page Push on reload switch is off}';
 

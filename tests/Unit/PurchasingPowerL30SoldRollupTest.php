@@ -64,7 +64,6 @@ class PurchasingPowerL30SoldRollupTest extends TestCase
                 'lp' => 10,
                 'ship' => 6,
                 'ship_bb_base' => 8,
-                'handling_charge' => 1,
                 'o_size_charge' => 0.5,
             ],
         ];
@@ -72,6 +71,6 @@ class PurchasingPowerL30SoldRollupTest extends TestCase
         $cost = PurchasingPowerController::lpAndShipBb($pm);
 
         $this->assertEqualsWithDelta(10.0, $cost['lp'], 0.001);
-        $this->assertEqualsWithDelta(9.5, $cost['ship'], 0.001);
+        $this->assertEqualsWithDelta(8.5, $cost['ship'], 0.001);
     }
 }

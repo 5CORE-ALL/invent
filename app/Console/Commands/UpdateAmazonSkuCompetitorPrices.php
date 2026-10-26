@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonCompetitorAsin;
 use App\Services\AmazonLivePriceFetcher;
+use App\Support\Marketplace\LmpPullEligibility;
 use Illuminate\Support\Facades\Log;
 
 class UpdateAmazonSkuCompetitorPrices extends Command
@@ -13,7 +14,9 @@ class UpdateAmazonSkuCompetitorPrices extends Command
     protected $signature = 'amazon:update-sku-prices
                             {--sku= : Update specific SKU only}
                             {--dry-run : Run without updating database}
-                            {--skip-search-refresh : Skip SerpApi search refresh before syncing}
+                            {--skip-search-refresh : (default) Skip SerpApi search refresh before syncing}
+                            {--with-search-refresh : Also re-pull every price for every linked search query (expensive, ignores filters)}
+                            {--include-all : Do not skip ignored / Inv=0 / out-of-stock competitors}
                             {--skip-live-fetch : Skip direct live price fetch from each ASIN}';
 
     protected $description = 'Refresh Amazon LMP competitor prices and images into amazon_sku_competitors';
@@ -40,16 +43,26 @@ class UpdateAmazonSkuCompetitorPrices extends Command
 
         $skuCompetitors = $query->get();
 
+        if (!$this->option('include-all')) {
+            $total = $skuCompetitors->count();
+            $result = LmpPullEligibility::filter($skuCompetitors, LmpPullEligibility::CHANNEL_AMAZON);
+            $skuCompetitors = $result['rows'];
+            $this->info("Eligible for pull: {$skuCompetitors->count()} of {$total} "
+                . "(skipped ignored: {$result['skipped']['ignored']}, "
+                . "Inv=0: {$result['skipped']['no_inv']}, "
+                . "out of stock: {$result['skipped']['out_of_stock']})");
+        }
+
         if (!$this->option('skip-live-fetch')) {
             $this->refreshLiveAsinPrices($skuCompetitors, $isDryRun);
         } else {
             $this->warn('Skipping direct live ASIN fetch (--skip-live-fetch).');
         }
 
-        if (!$this->option('skip-search-refresh')) {
+        if ($this->option('with-search-refresh') && !$this->option('skip-search-refresh')) {
             $this->refreshLinkedSearchQueries($skuCompetitors, $isDryRun);
         } else {
-            $this->warn('Skipping SerpApi search refresh (--skip-search-refresh).');
+            $this->warn('Skipping SerpApi search refresh (use --with-search-refresh to enable).');
         }
 
         $this->info('Found ' . $skuCompetitors->count() . ' SKU competitor mappings to check');

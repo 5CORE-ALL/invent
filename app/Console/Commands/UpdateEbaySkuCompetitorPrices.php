@@ -7,6 +7,7 @@ use App\Models\EbaySkuCompetitor;
 use App\Models\EbayCompetitorItem;
 use App\Services\EbayLivePriceFetcher;
 use App\Services\EbayCompetitorVariationFamilySync;
+use App\Support\Marketplace\LmpPullEligibility;
 use Illuminate\Support\Facades\Log;
 
 class UpdateEbaySkuCompetitorPrices extends Command
@@ -19,7 +20,9 @@ class UpdateEbaySkuCompetitorPrices extends Command
     protected $signature = 'ebay:update-sku-prices
                             {--sku= : Update specific SKU only}
                             {--dry-run : Run without updating database}
-                            {--skip-search-refresh : Skip SerpApi search refresh before syncing}
+                            {--skip-search-refresh : (default) Skip SerpApi search refresh before syncing}
+                            {--with-search-refresh : Also re-pull every price for every linked search query (expensive, ignores filters)}
+                            {--include-all : Do not skip ignored / Inv=0 competitors}
                             {--skip-live-fetch : Skip direct live price fetch from each listing URL}';
 
     /**
@@ -54,16 +57,24 @@ class UpdateEbaySkuCompetitorPrices extends Command
 
         $skuCompetitors = $query->get();
 
+        if (!$this->option('include-all')) {
+            $total = $skuCompetitors->count();
+            $result = LmpPullEligibility::filter($skuCompetitors, LmpPullEligibility::CHANNEL_EBAY);
+            $skuCompetitors = $result['rows'];
+            $this->info("Eligible for pull: {$skuCompetitors->count()} of {$total} "
+                . "(skipped ignored: {$result['skipped']['ignored']}, Inv=0: {$result['skipped']['no_inv']})");
+        }
+
         if (!$this->option('skip-live-fetch')) {
             $this->refreshLiveListingPrices($skuCompetitors, $isDryRun);
         } else {
             $this->warn('Skipping direct live listing fetch (--skip-live-fetch).');
         }
 
-        if (!$this->option('skip-search-refresh')) {
+        if ($this->option('with-search-refresh') && !$this->option('skip-search-refresh')) {
             $this->refreshLinkedSearchQueries($skuCompetitors, $isDryRun);
         } else {
-            $this->warn('Skipping SerpApi search refresh (--skip-search-refresh).');
+            $this->warn('Skipping SerpApi search refresh (use --with-search-refresh to enable).');
         }
 
         $this->info('Found ' . $skuCompetitors->count() . ' SKU competitor mappings to check');

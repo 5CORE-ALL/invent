@@ -164,6 +164,22 @@ class Kernel extends ConsoleKernel
      * Do not wrap a job whose clock is outside this window (before 09:00 or
      * after 20:00 IST). The slot will never fire and cron-monitor will mark it missed.
      */
+    /**
+     * Run-day filter for "every N days" jobs (calendar days in IST since 2026-01-01).
+     * Unlike cron day-of-month step syntax, this stays evenly spaced across month ends.
+     */
+    protected function everyNthDay(int $n): \Closure
+    {
+        $tz = self::IST_TZ;
+
+        return function () use ($n, $tz): bool {
+            $anchor = \Illuminate\Support\Carbon::create(2026, 1, 1, 0, 0, 0, $tz);
+            $today = \Illuminate\Support\Carbon::now($tz)->startOfDay();
+
+            return ((int) $anchor->diffInDays($today)) % max(1, $n) === 0;
+        };
+    }
+
     protected function istBusinessWindow($event)
     {
         $tz = self::IST_TZ;
@@ -1170,8 +1186,9 @@ class Kernel extends ConsoleKernel
         // Headless "Push on reload" for /purchasing-power-pricing (same as amazon:push-blue-prices): blue-triangle
         // SKUs (INV > 0, PP Price ≠ S PRC) are checked every 10 min, 24/7 on purpose (no $ist()). Replaces the old
         // rule apply that ran after every MCM price sync.
+        // Starts at :04 so it does not load the tabulator rows together with the :00 jobs (Amazon, Faire, TopDawg, ...).
         $schedule->command('purchasing-power:push-blue-prices')
-            ->everyTenMinutes()
+            ->cron('4-59/10 * * * *')
             ->name('purchasing-power-push-blue-prices')
             ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
             ->runInBackground()
@@ -1585,50 +1602,30 @@ class Kernel extends ConsoleKernel
 
         /*
         |--------------------------------------------------------------------------
-        | EBAY COMPETITOR PRICE UPDATES (Weekly)
+        | LMP COMPETITOR PRICE PULLS (SerpApi) — Amazon: every 2nd day, eBay: every 5th day,
+        | Google: weekly.
+        |
+        | Only LMP-linked competitor rows are pulled (not every search result), and rows are
+        | skipped when Ignored, when our SKU Inv = 0, or (Amazon) when the competitor is
+        | out of stock. See App\Support\Marketplace\LmpPullEligibility.
+        | The old search-wide `amazon:update-prices` / `ebay:update-prices` jobs re-pulled
+        | every price (incl. ignored / OOS), so they are no longer scheduled.
         |--------------------------------------------------------------------------
         */
-        $ist($schedule->command('ebay:update-prices')
-            ->weekly()
-            ->sundays()
-            ->at('14:00')
+        $ist($schedule->command('ebay:update-sku-prices --skip-search-refresh')
+            ->dailyAt('15:00')
             ->timezone('Asia/Kolkata')
-            ->name('ebay-competitor-prices-weekly')
+            ->when($this->everyNthDay(5))
+            ->name('ebay-sku-competitor-prices-every-5-days')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('ebay:update-sku-prices')
-            ->weekly()
-            ->sundays()
-            ->at('15:00')
+        $ist($schedule->command('amazon:update-sku-prices --skip-search-refresh')
+            ->dailyAt('15:00')
             ->timezone('Asia/Kolkata')
-            ->name('ebay-sku-competitor-prices-weekly')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        /*
-        |--------------------------------------------------------------------------
-        | AMAZON COMPETITOR PRICE UPDATES (Weekly)
-        |--------------------------------------------------------------------------
-        */
-        $ist($schedule->command('amazon:update-prices')
-            ->weekly()
-            ->mondays()
-            ->at('14:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-competitor-prices-weekly')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('amazon:update-sku-prices')
-            ->weekly()
-            ->mondays()
-            ->at('15:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-sku-competitor-prices-weekly')
+            ->when($this->everyNthDay(2))
+            ->name('amazon-sku-competitor-prices-every-2-days')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));

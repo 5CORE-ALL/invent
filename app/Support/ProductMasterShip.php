@@ -4,7 +4,7 @@ namespace App\Support;
 
 /**
  * Normal Ship for pricing pages (Shipping Master "Ship" column).
- * Prefers ship_base + handling + o-size + PR (what Shipping Master saves).
+ * Prefers ship_base + o-size + PR (what Shipping Master saves).
  * Falls back to stored Values['ship'] (never ship_bb / TT Ship). Never writes back.
  */
 class ProductMasterShip
@@ -34,13 +34,12 @@ class ProductMasterShip
     public static function forPricing(?array $values, $pm = null): float
     {
         $values = self::normalizeValues($values, $pm);
-        $handling = self::handlingCharge($values);
         $oSize = self::oSizeCharge($values);
         $pr = self::prCharge($values);
 
         $base = self::numericKey($values, 'ship_base');
         if ($base !== null) {
-            return round($base + $handling + $oSize + $pr, 2);
+            return round($base + $oSize + $pr, 2);
         }
 
         $stored = self::stored($values, $pm);
@@ -49,11 +48,6 @@ class ProductMasterShip
         }
 
         return 0.0;
-    }
-
-    public static function handlingCharge(?array $values, $pm = null): float
-    {
-        return self::chargeAmount(self::normalizeValues($values, $pm), ['handling_charge', 'Handling Charge', 'handling-charge']);
     }
 
     public static function oSizeCharge(?array $values, $pm = null): float

@@ -740,16 +740,6 @@
                     }
                 },
                 {
-                    title: "Hdl Charge",
-                    field: "handling_charge",
-                    sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
-                    headerTooltip: "Handling Charge saved on Shipping Master (included in Temu Ship)",
-                    hozAlign: "center",
-                    width: 50,
-                    minWidth: 44,
-                    visible: false
-                },
-                {
                     title: "O-Size Charge",
                     field: "o_size_charge",
                     sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
@@ -762,7 +752,7 @@
                 {
                     title: "Temu Ship",
                     field: "temu_ship",
-                    headerTooltip: "Saved Temu ship = slab + Handling Charge + O-Size Charge",
+                    headerTooltip: "Saved Temu ship = slab + O-Size Charge",
                     hozAlign: "center",
                     sorter: "number",
                     width: 62,
@@ -1066,7 +1056,7 @@
                         label.style.display = "block"; label.style.padding = "5px 10px"; label.style.cursor = "pointer";
                         const checkbox = document.createElement("input");
                         checkbox.type = "checkbox"; checkbox.value = def.field;
-                        const forceHide = def.field === 'handling_charge' || def.field === 'o_size_charge' || def.field === 'carrier';
+                        const forceHide = def.field === 'o_size_charge' || def.field === 'carrier';
                         checkbox.checked = forceHide ? false : savedVisibility[def.field] !== false;
                         checkbox.style.marginRight = "8px";
                         label.appendChild(checkbox);
@@ -1096,7 +1086,7 @@
                 .then(savedVisibility => {
                     table.getColumns().forEach(col => {
                         const def = col.getDefinition();
-                        if (def.field === 'handling_charge' || def.field === 'o_size_charge' || def.field === 'carrier') {
+                        if (def.field === 'o_size_charge' || def.field === 'carrier') {
                             col.hide();
                             return;
                         }

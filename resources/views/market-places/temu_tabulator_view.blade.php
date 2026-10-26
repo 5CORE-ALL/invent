@@ -759,14 +759,6 @@
                     }
                 },
                 {
-                    title: "Hdl Charge",
-                    field: "handling_charge",
-                    sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
-                    headerTooltip: "Handling Charge saved on Shipping Master (included in Temu Ship)",
-                    hozAlign: "center",
-                    visible: false
-                },
-                {
                     title: "O-Size Charge",
                     field: "o_size_charge",
                     sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
@@ -777,7 +769,7 @@
                 {
                     title: "Temu Ship",
                     field: "temu_ship",
-                    headerTooltip: "Saved Temu ship = slab + Handling Charge + O-Size Charge",
+                    headerTooltip: "Saved Temu ship = slab + O-Size Charge",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: "money",
@@ -1158,7 +1150,7 @@
                         const checkbox = document.createElement("input");
                         checkbox.type = "checkbox";
                         checkbox.value = def.field;
-                        checkbox.checked = (def.field === 'handling_charge' || def.field === 'o_size_charge' || def.field === 'carrier')
+                        checkbox.checked = (def.field === 'o_size_charge' || def.field === 'carrier')
                             ? false
                             : savedVisibility[def.field] !== false;
                         checkbox.style.marginRight = "8px";
@@ -1208,7 +1200,7 @@
                             col.show();
                             return;
                         }
-                        if (def.field === 'handling_charge' || def.field === 'o_size_charge' || def.field === 'carrier') {
+                        if (def.field === 'o_size_charge' || def.field === 'carrier') {
                             col.hide();
                             return;
                         }

@@ -685,8 +685,7 @@
             outline: none;
         }
 
-        .o-size-charge-input,
-        .handling-charge-input {
+        .o-size-charge-input {
             width: 58px;
             max-width: 70px;
             font-size: 11px;
@@ -697,12 +696,7 @@
             border-radius: 4px;
             background: #fff;
         }
-        .handling-charge-input {
-            width: 42px;
-            max-width: 50px;
-        }
-        .o-size-charge-input:focus,
-        .handling-charge-input:focus {
+        .o-size-charge-input:focus {
             outline: none;
             border-color: #86b7fe;
             box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.25);
@@ -1141,9 +1135,6 @@
                                             <option value="OV-Wt">OV-Wt</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="handling_charge" data-col-label="Handling Charge" class="shipping-rate-header" title="Handling Charge (up to 3 characters). Added to Ship and Temu ship when numeric.">
-                                        <span class="th-vertical-label">Handling<br>Charge</span>
-                                    </th>
                                     <th data-col-key="o_size_charge" data-col-label="O-Size Charge" class="shipping-rate-header" title="O-Size Charge. Added to Ship and Temu ship when numeric.">
                                         <span class="th-vertical-label">O-Size<br>Charge</span>
                                     </th>
@@ -1151,7 +1142,7 @@
                                         <span class="th-vertical-label">PR<br>Charge</span>
                                     </th>
                                     <th data-col-key="inv" data-col-label="INV" class="shipping-rate-header"><span class="th-vertical-label">INV</span></th>
-                                    <th data-col-key="ship" data-col-label="Ship" class="th-has-filter shipping-rate-header shipping-ship-col" data-pm-ship-col="ship" title="Total Ship = Ship + Handling Charge + O-Size Charge + PR Charge">
+                                    <th data-col-key="ship" data-col-label="Ship" class="th-has-filter shipping-rate-header shipping-ship-col" data-pm-ship-col="ship" title="Total Ship = Ship + O-Size Charge + PR Charge">
                                         <div class="th-vertical-label">Ship</div>
                                         <select id="filterShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Ship column">
                                             <option value="all">All</option>
@@ -1160,7 +1151,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="ship_bb" data-col-label="Ship BB" class="th-has-filter shipping-rate-header" data-pm-ship-col="ship_bb" title="Total Ship BB = Ship BB + Handling Charge + O-Size Charge">
+                                    <th data-col-key="ship_bb" data-col-label="Ship BB" class="th-has-filter shipping-rate-header" data-pm-ship-col="ship_bb" title="Total Ship BB = Ship BB + O-Size Charge">
                                         <div class="th-vertical-label">Ship<br>BB</div>
                                         <select id="filterShipBbCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Ship BB column">
                                             <option value="all">All</option>
@@ -1169,7 +1160,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="temu_ship" data-col-label="Temu ship" class="th-has-filter shipping-rate-header" data-pm-ship-col="temu" title="Total Temu ship = Temu ship + Handling Charge + O-Size Charge">
+                                    <th data-col-key="temu_ship" data-col-label="Temu ship" class="th-has-filter shipping-rate-header" data-pm-ship-col="temu" title="Total Temu ship = Temu ship + O-Size Charge">
                                         <div class="th-vertical-label">Temu<br>ship</div>
                                         <select id="filterTemuShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Temu ship">
                                             <option value="all">All</option>
@@ -1371,11 +1362,6 @@
                                     <option value="Pallet">Pallet</option>
                                     <option value="OV-Wt">OV-Wt</option>
                                 </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="editHandlingCharge" class="form-label fw-bold" title="Up to 3 characters">Handling Charge</label>
-                                <input type="text" class="form-control fw-bold" id="editHandlingCharge" name="handling_charge"
-                                    maxlength="3" placeholder="e.g. HC" title="Handling Charge (max 3 characters)" autocomplete="off">
                             </div>
                         </div>
                         <div class="row mb-3">
@@ -1820,8 +1806,8 @@
                         <div class="text-muted mt-1">
                             Slabs use <strong>Itm wt GW Decl</strong> (exact value; falls back to ACT when Decl is empty).
                             Carriers: Ship, Ship BB, Temu ship, Temu GOFO, GOFO, Fedex, UPS, USPS, UNI.
-                            For <strong>Ship</strong>, Apply writes the slab rate + <strong>Handling + O-Size + PR</strong> (same total as the Ship column).
-                            For <strong>Temu ship</strong> and <strong>Ship BB</strong>, Apply writes the slab rate + <strong>Handling + O-Size</strong> (same totals as those columns).
+                            For <strong>Ship</strong>, Apply writes the slab rate + <strong>O-Size + PR</strong> (same total as the Ship column).
+                            For <strong>Temu ship</strong> and <strong>Ship BB</strong>, Apply writes the slab rate + <strong>O-Size</strong> (same totals as those columns).
                         </div>
                     </div>
 
@@ -2047,13 +2033,6 @@
                 return compact === 'osize' || normalizeLabelType(raw) === 'O-Size';
             }
 
-            /** Handling Charge: optional free text, max 3 characters. */
-            function normalizeHandlingCharge(raw) {
-                const v = String(raw == null ? '' : raw).trim();
-                if (!v) return '';
-                return v.slice(0, 3);
-            }
-
             /** O-Size Charge: optional free text, max 20 characters. */
             function normalizeOSizeCharge(raw) {
                 const v = String(raw == null ? '' : raw).trim();
@@ -2077,65 +2056,57 @@
 
             /**
              * Total Ship shown in the Ship column:
-             * Ship + Handling Charge + O-Size Charge + PR Charge.
+             * Ship + O-Size Charge + PR Charge.
              */
             function calcTotalShip(item, isParentRow) {
                 if (!item) return null;
                 const ship = parseChargeAmount(getOuterCarrierDisplayRate(item, 'ship', !!isParentRow));
-                const handling = parseChargeAmount(
-                    item.handling_charge ?? (item.Values && item.Values.handling_charge)
-                );
                 const oSize = parseChargeAmount(
                     item.o_size_charge ?? (item.Values && item.Values.o_size_charge)
                 );
                 const pr = parseChargeAmount(
                     item.pr_charge ?? (item.Values && item.Values.pr_charge)
                 );
-                return ship + handling + oSize + pr;
+                return ship + oSize + pr;
             }
 
             function totalShipTooltip(item, isParentRow) {
                 const ship = parseChargeAmount(getOuterCarrierDisplayRate(item, 'ship', !!isParentRow));
-                const handling = parseChargeAmount(
-                    item.handling_charge ?? (item.Values && item.Values.handling_charge)
-                );
                 const oSize = parseChargeAmount(
                     item.o_size_charge ?? (item.Values && item.Values.o_size_charge)
                 );
                 const pr = parseChargeAmount(
                     item.pr_charge ?? (item.Values && item.Values.pr_charge)
                 );
-                const total = ship + handling + oSize + pr;
-                return `Total Ship ${formatNumber(total, 2)} = Ship ${formatNumber(ship, 2)} + Handling ${formatNumber(handling, 2)} + O-Size ${formatNumber(oSize, 2)} + PR ${formatNumber(pr, 2)}`;
+                const total = ship + oSize + pr;
+                return `Total Ship ${formatNumber(total, 2)} = Ship ${formatNumber(ship, 2)} + O-Size ${formatNumber(oSize, 2)} + PR ${formatNumber(pr, 2)}`;
             }
 
             /**
              * Ship BB shown in the Ship BB column:
-             * Ship BB + Handling Charge + O-Size Charge.
+             * Ship BB + O-Size Charge.
              */
             function calcShipBb(item, isParentRow) {
                 if (!item) return null;
                 const base = getOuterCarrierDisplayRate(item, 'ship_bb', !!isParentRow);
-                const handling = itemHandlingAmount(item);
                 const oSize = itemOSizeAmount(item);
                 const baseBlank = base === null || base === undefined || base === '';
-                if (baseBlank && handling === 0 && oSize === 0) return base;
-                return parseChargeAmount(base) + handling + oSize;
+                if (baseBlank && oSize === 0) return base;
+                return parseChargeAmount(base) + oSize;
             }
 
             function shipBbTooltip(item, isParentRow) {
                 const base = parseChargeAmount(getOuterCarrierDisplayRate(item, 'ship_bb', !!isParentRow));
-                const handling = itemHandlingAmount(item);
                 const oSize = itemOSizeAmount(item);
-                const total = base + handling + oSize;
-                return `Ship BB ${formatNumber(total, 2)} = Ship BB ${formatNumber(base, 2)} + Handling ${formatNumber(handling, 2)} + O-Size ${formatNumber(oSize, 2)}`;
+                const total = base + oSize;
+                return `Ship BB ${formatNumber(total, 2)} = Ship BB ${formatNumber(base, 2)} + O-Size ${formatNumber(oSize, 2)}`;
             }
 
-            /** Rate written to Product Master for Ship BB (slab + handling + o-size). */
+            /** Rate written to Product Master for Ship BB (slab + o-size). */
             function shipBbWriteRate(item, baseRate) {
                 const n = parseFloat(baseRate);
                 if (!Number.isFinite(n)) return null;
-                return Math.round((n + itemHandlingAmount(item) + itemOSizeAmount(item)) * 100) / 100;
+                return Math.round((n + itemOSizeAmount(item)) * 100) / 100;
             }
 
             /** Implied slab base from a stored Ship BB (ship_bb_base, else legacy O-Size strip). */
@@ -2159,10 +2130,6 @@
                 return parseChargeAmount(item?.o_size_charge ?? (item?.Values && item.Values.o_size_charge));
             }
 
-            function itemHandlingAmount(item) {
-                return parseChargeAmount(item?.handling_charge ?? (item?.Values && item.Values.handling_charge));
-            }
-
             /** 50% of O-Size Charge when Type is O-Size; otherwise 0.
              *  Used only to strip the legacy Temu add-on from older stored values. */
             function itemOSizeHalf(item) {
@@ -2173,31 +2140,29 @@
 
             /**
              * Temu ship shown in the Temu ship column:
-             * Temu ship + Handling Charge + O-Size Charge.
+             * Temu ship + O-Size Charge.
              */
             function calcTemuShip(item, isParentRow) {
                 if (!item) return null;
                 const base = getOuterCarrierDisplayRate(item, 'temu_ship', !!isParentRow);
-                const handling = itemHandlingAmount(item);
                 const oSize = itemOSizeAmount(item);
                 const baseBlank = base === null || base === undefined || base === '';
-                if (baseBlank && handling === 0 && oSize === 0) return base;
-                return parseChargeAmount(base) + handling + oSize;
+                if (baseBlank && oSize === 0) return base;
+                return parseChargeAmount(base) + oSize;
             }
 
             function temuShipTooltip(item, isParentRow) {
                 const base = parseChargeAmount(getOuterCarrierDisplayRate(item, 'temu_ship', !!isParentRow));
-                const handling = itemHandlingAmount(item);
                 const oSize = itemOSizeAmount(item);
-                const total = base + handling + oSize;
-                return `Temu ship ${formatNumber(total, 2)} = Temu ship ${formatNumber(base, 2)} + Handling ${formatNumber(handling, 2)} + O-Size ${formatNumber(oSize, 2)}`;
+                const total = base + oSize;
+                return `Temu ship ${formatNumber(total, 2)} = Temu ship ${formatNumber(base, 2)} + O-Size ${formatNumber(oSize, 2)}`;
             }
 
-            /** Rate written to Product Master for Temu ship (slab + handling + o-size). */
+            /** Rate written to Product Master for Temu ship (slab + o-size). */
             function temuShipWriteRate(item, baseRate) {
                 const n = parseFloat(baseRate);
                 if (!Number.isFinite(n)) return null;
-                return Math.round((n + itemHandlingAmount(item) + itemOSizeAmount(item)) * 100) / 100;
+                return Math.round((n + itemOSizeAmount(item)) * 100) / 100;
             }
 
             /** Implied slab base from a stored Temu ship (temu_ship_base, else legacy strip). */
@@ -2253,14 +2218,13 @@
                 }
             }
 
-            /** Rate written to Product Master Ship (slab + handling + o-size + PR). */
+            /** Rate written to Product Master Ship (slab + o-size + PR). */
             function shipWriteRate(item, baseRate) {
                 const n = parseFloat(baseRate);
                 if (!Number.isFinite(n)) return null;
-                const handling = parseChargeAmount(item && (item.handling_charge ?? (item.Values && item.Values.handling_charge)));
                 const oSize = parseChargeAmount(item && (item.o_size_charge ?? (item.Values && item.Values.o_size_charge)));
                 const pr = parseChargeAmount(item && (item.pr_charge ?? (item.Values && item.Values.pr_charge)));
-                const single = Math.round((n + handling + oSize + pr) * 100) / 100;
+                const single = Math.round((n + oSize + pr) * 100) / 100;
                 return applyComboLabelQtyShip(item, single);
             }
 
@@ -2308,7 +2272,7 @@
                 'ship', 'ship_bb', 'temu_ship', 'temu_gofo',
                 'gofo', 'fedex', 'ups', 'usps', 'uni',
                 'fba_ship', 'fba_manual_ship', 'fba_sku', 'label_type',
-                'handling_charge', 'o_size_charge',
+                'o_size_charge',
                 'image_path'
             ];
 
@@ -2591,7 +2555,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="43" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="42" class="text-center">No data found</td></tr>';
                     return;
                 }
 
@@ -2749,30 +2713,6 @@
                     }
                     row.appendChild(labelTypeCell);
 
-                    // Handling Charge — inline text input (saved to Values.handling_charge)
-                    const handlingChargeCell = document.createElement('td');
-                    handlingChargeCell.className = 'text-center shipping-rate-cell';
-                    if (isParentRow) {
-                        handlingChargeCell.textContent = '--';
-                    } else if (pkg.isExtraPackage) {
-                        const hcRead = normalizeHandlingCharge(item.handling_charge);
-                        handlingChargeCell.textContent = hcRead || '';
-                        if (hcRead) handlingChargeCell.title = hcRead;
-                    } else {
-                        const hcVal = normalizeHandlingCharge(sourceItem.handling_charge);
-                        handlingChargeCell.innerHTML = `
-                            <input type="text" class="handling-charge-input"
-                                maxlength="3"
-                                data-sku="${escapeHtml(sourceItem.SKU || '')}"
-                                data-id="${escapeHtml(String(sourceItem.id || ''))}"
-                                data-prev="${escapeHtml(hcVal)}"
-                                value="${escapeHtml(hcVal)}"
-                                title="Handling Charge (max 3 characters)"
-                                autocomplete="off">
-                        `;
-                    }
-                    row.appendChild(handlingChargeCell);
-
                     // O-Size Charge — inline text input (saved to Values.o_size_charge)
                     const oSizeChargeCell = document.createElement('td');
                     oSizeChargeCell.className = 'text-center shipping-rate-cell';
@@ -2862,7 +2802,7 @@
                         td.textContent = formatNumber(n, 2);
                     };
 
-                    // Ship column shows Total Ship (Ship + Handling + O-Size)
+                    // Ship column shows Total Ship (Ship + O-Size + PR)
                     // Combo + Label Qty 2+ on the primary row uses the saved multi-package Ship.
                     const shipSource = pkg.isExtraPackage ? item : sourceItem;
                     const shipPmCell = document.createElement('td');
@@ -3182,39 +3122,38 @@
             const SHIPPING_COLUMN_INDEX_TO_FIELD = {
                 5:  'label_qty',
                 6:  'label_type',
-                7:  'handling_charge',
-                8:  'o_size_charge',
-                9:  'pr_charge',
-                10: 'inv',
-                11: 'ship',
-                12: 'ship_bb',
-                13: 'temu_ship',
-                14: 'temu_gofo',
-                15: 'gofo',
-                16: 'fedex',
-                17: 'ups',
-                18: 'usps',
-                19: 'uni',
-                20: 'fba_sku',
-                21: 'fba_ship',
-                22: 'fba_manual_ship',
-                23: 'wt_act_kg',
-                24: 'wt_act',
-                // 25: wt_oz (computed; not editable)
-                26: 'l',
-                27: 'w',
-                28: 'h',
-                29: 'wt_decl',
-                30: 'l_decl',
-                31: 'w_decl',
-                32: 'h_decl',
-                33: 'l_cm',
-                34: 'w_cm',
-                35: 'h_cm',
-                36: 'ctn_l',
-                37: 'ctn_w',
-                38: 'ctn_h',
-                40: 'ctn_qty'
+                7:  'o_size_charge',
+                8:  'pr_charge',
+                9:  'inv',
+                10: 'ship',
+                11: 'ship_bb',
+                12: 'temu_ship',
+                13: 'temu_gofo',
+                14: 'gofo',
+                15: 'fedex',
+                16: 'ups',
+                17: 'usps',
+                18: 'uni',
+                19: 'fba_sku',
+                20: 'fba_ship',
+                21: 'fba_manual_ship',
+                22: 'wt_act_kg',
+                23: 'wt_act',
+                // 24: wt_oz (computed; not editable)
+                25: 'l',
+                26: 'w',
+                27: 'h',
+                28: 'wt_decl',
+                29: 'l_decl',
+                30: 'w_decl',
+                31: 'h_decl',
+                32: 'l_cm',
+                33: 'w_cm',
+                34: 'h_cm',
+                35: 'ctn_l',
+                36: 'ctn_w',
+                37: 'ctn_h',
+                39: 'ctn_qty'
             };
 
             /** Human-readable field labels used by the small "Enter Missing
@@ -3222,7 +3161,6 @@
             const SHIPPING_FIELD_LABELS = {
                 label_qty:       'Label Qty',
                 label_type:      'Label Type',
-                handling_charge: 'Handling Charge',
                 o_size_charge:   'O-Size Charge',
                 pr_charge:       'PR Charge',
                 wt_act_kg:       'Item Weight ACT (Kg)',
@@ -3572,7 +3510,7 @@
                 uni: false,
             };
             const SHIPPING_COL_CATEGORIES = {
-                basic: ['select', 'image', 'parent', 'sku', 'status', 'label_qty', 'label_type', 'handling_charge', 'o_size_charge', 'pr_charge', 'inv', 'verified', 'dim_wt_link', 'action'],
+                basic: ['select', 'image', 'parent', 'sku', 'status', 'label_qty', 'label_type', 'o_size_charge', 'pr_charge', 'inv', 'verified', 'dim_wt_link', 'action'],
                 ship_rates: ['ship', 'ship_bb', 'temu_ship', 'temu_gofo', 'gofo', 'fedex', 'ups', 'usps', 'uni', 'fba_sku', 'fba_ship', 'fba_manual_ship'],
                 wt: ['wt_act_kg', 'wt_act', 'wt_oz', 'wt_decl'],
                 dimensions: ['l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl', 'l_cm', 'w_cm', 'h_cm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each'],
@@ -4063,7 +4001,7 @@
             function matchesMarketplaceShipColFilter(item, fieldName, mode) {
                 if (!mode || mode === 'all') return true;
                 const isP = isParentSkuItem(item);
-                // Ship column shows Total Ship (ship + handling + o-size); filter that value.
+                // Ship column shows Total Ship (ship + o-size + pr); filter that value.
                 // Other carrier cols filter against the same slab/display rate as the cell.
                 let raw;
                 if (fieldName === 'ship' && typeof calcTotalShip === 'function') {
@@ -4614,9 +4552,6 @@
                 if (key === 'label_type') {
                     return normalizeLabelType(item.label_type);
                 }
-                if (key === 'handling_charge') {
-                    return normalizeHandlingCharge(item.handling_charge);
-                }
                 if (key === 'o_size_charge') {
                     return normalizeOSizeCharge(item.o_size_charge);
                 }
@@ -4728,7 +4663,6 @@
                     status: { key: 'status', type: 'text' },
                     label_qty: { key: 'label_qty', type: 'num' },
                     label_type: { key: 'label_type', type: 'text' },
-                    handling_charge: { key: 'handling_charge', type: 'text' },
                     o_size_charge: { key: 'o_size_charge', type: 'text' },
                     pr_charge: { key: 'pr_charge', type: 'text' },
                     inv: { key: 'shopify_inv', type: 'num' },
@@ -4856,7 +4790,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "Label Qty", "Type", "Handling Charge", "O-Size Charge", "PR Charge", "INV", "Ship", "Ship BB", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "OZ", "Length (inch)", "Width (inch)", "Height (Inch)", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "Label Qty", "Type", "O-Size Charge", "PR Charge", "INV", "Ship", "Ship BB", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "OZ", "Length (inch)", "Width (inch)", "Height (Inch)", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -4868,9 +4802,6 @@
                         },
                         "Type": {
                             key: "label_type"
-                        },
-                        "Handling Charge": {
-                            key: "handling_charge"
                         },
                         "O-Size Charge": {
                             key: "o_size_charge"
@@ -5044,9 +4975,6 @@
 
                                         if (key === 'label_type') {
                                             value = normalizeLabelType(value);
-                                        }
-                                        if (key === 'handling_charge') {
-                                            value = normalizeHandlingCharge(value);
                                         }
                                         if (key === 'o_size_charge') {
                                             value = normalizeOSizeCharge(value);
@@ -5624,7 +5552,6 @@
             const BULK_EDIT_TRACKED_FIELDS = [
                 { id: 'editLabelQty', key: 'label_qty', type: 'int' },
                 { id: 'editLabelType', key: 'label_type', type: 'label_type' },
-                { id: 'editHandlingCharge', key: 'handling_charge', type: 'handling_charge' },
                 { id: 'editOSizeCharge', key: 'o_size_charge', type: 'o_size_charge' },
                 { id: 'editPrCharge', key: 'pr_charge', type: 'pr_charge' },
                 { id: 'editWtActKg', key: 'wt_act_kg', type: 'num' },
@@ -5661,10 +5588,6 @@
                 const t = String(raw ?? '').trim();
                 if (field.type === 'label_type') {
                     return normalizeLabelType(t);
-                }
-                if (field.type === 'handling_charge') {
-                    const hc = normalizeHandlingCharge(t);
-                    return hc === '' ? null : hc;
                 }
                 if (field.type === 'o_size_charge') {
                     const osc = normalizeOSizeCharge(t);
@@ -5760,7 +5683,6 @@
                 document.getElementById('editLabelQty').value =
                     (labelQtyVal !== null && labelQtyVal !== undefined && labelQtyVal !== '') ? labelQtyVal : '';
                 document.getElementById('editLabelType').value = normalizeLabelType(product.label_type);
-                document.getElementById('editHandlingCharge').value = normalizeHandlingCharge(product.handling_charge);
                 const editOSizeEl = document.getElementById('editOSizeCharge');
                 if (editOSizeEl) editOSizeEl.value = normalizeOSizeCharge(product.o_size_charge);
                 const editPrEl = document.getElementById('editPrCharge');
@@ -5905,8 +5827,6 @@
                     };
                     addNumericIfPresent('editLabelQty', 'label_qty');
                     baseFormData.label_type = normalizeLabelType(document.getElementById('editLabelType').value);
-                    const handlingChargeVal = normalizeHandlingCharge(document.getElementById('editHandlingCharge').value);
-                    baseFormData.handling_charge = handlingChargeVal === '' ? null : handlingChargeVal;
                     const oSizeChargeVal = normalizeOSizeCharge(document.getElementById('editOSizeCharge')?.value);
                     baseFormData.o_size_charge = oSizeChargeVal === '' ? null : oSizeChargeVal;
                     const prChargeVal = normalizePrCharge(document.getElementById('editPrCharge')?.value);
@@ -5919,7 +5839,6 @@
                     );
                     if (editItemForShip) {
                         const draft = Object.assign({}, editItemForShip, {
-                            handling_charge: baseFormData.handling_charge,
                             o_size_charge: baseFormData.o_size_charge,
                             pr_charge: baseFormData.pr_charge,
                             label_type: baseFormData.label_type,
@@ -6079,7 +5998,6 @@
                             ctn_weight_kg: baseFormData.ctn_weight_kg,
                             ctn_weight_lb: baseFormData.ctn_weight_lb,
                             label_type: baseFormData.label_type,
-                            handling_charge: baseFormData.handling_charge,
                             o_size_charge: baseFormData.o_size_charge,
                             pr_charge: baseFormData.pr_charge
                         };
@@ -6162,9 +6080,6 @@
                             });
                             if (baseFormData.label_type) target.label_type = baseFormData.label_type;
                             if (baseFormData.label_qty !== undefined) target.label_qty = baseFormData.label_qty;
-                            if (baseFormData.handling_charge !== undefined) {
-                                target.handling_charge = baseFormData.handling_charge;
-                            }
                             if (baseFormData.o_size_charge !== undefined) {
                                 target.o_size_charge = baseFormData.o_size_charge;
                             }
@@ -6547,68 +6462,6 @@
             }
             setupOSizeChargeInputs();
 
-            async function saveHandlingChargeInput(input) {
-                if (!input || input.disabled) return;
-                const sku = input.getAttribute('data-sku');
-                const productId = input.getAttribute('data-id');
-                const prev = normalizeHandlingCharge(input.getAttribute('data-prev'));
-                const next = normalizeHandlingCharge(input.value);
-                input.value = next;
-                if (next === prev) return;
-                input.disabled = true;
-                try {
-                    const response = await fetch('/dim-wt-master/update', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken
-                        },
-                        body: JSON.stringify({
-                            product_id: productId ? Number(productId) : undefined,
-                            sku: sku,
-                            handling_charge: next === '' ? null : next
-                        })
-                    });
-                    const data = await response.json().catch(() => ({}));
-                    if (!response.ok || data.success === false) {
-                        throw new Error(data.message || 'Failed to update Handling Charge');
-                    }
-                    input.setAttribute('data-prev', next);
-                    const product = tableData.find(d =>
-                        (productId && String(d.id) === String(productId)) || d.SKU === sku
-                    );
-                    if (product) {
-                        product.handling_charge = next === '' ? null : next;
-                        if (product.Values && typeof product.Values === 'object') {
-                            product.Values.handling_charge = product.handling_charge;
-                        }
-                        applyLocalChargeTotals(product);
-                    }
-                    refreshShipTotalCellsForSku(sku);
-                    showToast('success', 'Handling Charge updated');
-                } catch (err) {
-                    input.value = prev;
-                    showToast('danger', err.message || 'Failed to update Handling Charge');
-                } finally {
-                    input.disabled = false;
-                }
-            }
-
-            function setupHandlingChargeInputs() {
-                document.addEventListener('change', function(e) {
-                    if (!e.target || !e.target.classList.contains('handling-charge-input')) return;
-                    saveHandlingChargeInput(e.target);
-                });
-                document.addEventListener('keydown', function(e) {
-                    if (!e.target || !e.target.classList.contains('handling-charge-input')) return;
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        e.target.blur();
-                    }
-                });
-            }
-            setupHandlingChargeInputs();
-
             populateWtActLbFilterOptions();
 
             // Initialize (search and playback listeners once to avoid duplicates on reload)
@@ -6943,9 +6796,9 @@
                     th.className = 'text-center slab-rates-carrier-col';
                     th.style.fontSize = '12px';
                     th.title = c.key === 'ship'
-                        ? `${c.label} rate ($) — Apply writes this rate + Handling + O-Size + PR`
+                        ? `${c.label} rate ($) — Apply writes this rate + O-Size + PR`
                         : (c.key === 'temu_ship' || c.key === 'ship_bb'
-                            ? `${c.label} rate ($) — Apply writes this rate + Handling + O-Size`
+                            ? `${c.label} rate ($) — Apply writes this rate + O-Size`
                             : `${c.label} rate ($)`);
                     th.textContent = c.label;
                     headRow.appendChild(th);

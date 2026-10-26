@@ -3174,7 +3174,6 @@ class TemuController extends Controller
                 // Get values from product master - check Values JSON first, then direct properties
                 $lp = 0;
                 $temuShip = 0;
-                $handlingCharge = null;
                 $oSizeCharge = null;
                 
                 if ($productMaster) {
@@ -3197,9 +3196,8 @@ class TemuController extends Controller
                         $lp = floatval($productMaster->LP);
                     }
                     
-                    // Temu ship: stored total (slab + handling + o-size) when Shipping Master has saved it.
+                    // Temu ship: stored total (slab + o-size) when Shipping Master has saved it.
                     $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $productMaster);
-                    $handlingCharge = $values['handling_charge'] ?? null;
                     $oSizeCharge = $values['o_size_charge'] ?? null;
                 }
                 
@@ -3566,7 +3564,6 @@ class TemuController extends Controller
                     'temu_l60' => $temuL60,
                     'dil_percent' => $dilPercent,
                     'temu_ship' => $temuShip,
-                    'handling_charge' => $handlingCharge,
                     'o_size_charge' => $oSizeCharge,
                     'temu_price' => round($temuPrice, 2),
                     // Temu 1 reference price (populated only on the Temu 2 endpoint).

@@ -2274,18 +2274,6 @@
                     width: 60
                 },
                 {
-                    title: "Hdl Charge",
-                    field: "handling_charge",
-                    sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
-                    headerTooltip: "Handling Charge saved on Shipping Master (included in Ship BB)",
-                    hozAlign: "center",
-                    width: 80,
-                    formatter: function(cell) {
-                        const v = cell.getValue();
-                        return (v === null || v === undefined || v === '') ? '' : v;
-                    }
-                },
-                {
                     title: "O-Size Charge",
                     field: "o_size_charge",
                     sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
@@ -2300,7 +2288,7 @@
                 {
                     title: "Ship BB",
                     field: "Ship_productmaster",
-                    headerTooltip: "Saved Ship BB = slab + Handling Charge + O-Size Charge",
+                    headerTooltip: "Saved Ship BB = slab + O-Size Charge",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -2310,9 +2298,8 @@
                     tooltip: function(e, cell) {
                         const d = cell.getRow().getData() || {};
                         const ship = parseFloat(d.Ship_productmaster) || 0;
-                        const hc = d.handling_charge ?? 0;
                         const osc = d.o_size_charge ?? 0;
-                        return `Ship BB $${ship.toFixed(2)} = slab + Handling ${hc || 0} + O-Size ${osc || 0}`;
+                        return `Ship BB $${ship.toFixed(2)} = slab + O-Size ${osc || 0}`;
                     },
                     width: 80
                 },

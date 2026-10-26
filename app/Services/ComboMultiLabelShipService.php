@@ -340,8 +340,7 @@ class ComboMultiLabelShipService
      */
     private function chargeTotal(array $values): float
     {
-        return $this->chargeAmount($values, 'handling_charge')
-            + $this->chargeAmount($values, 'o_size_charge')
+        return $this->chargeAmount($values, 'o_size_charge')
             + $this->chargeAmount($values, 'pr_charge');
     }
 

@@ -4,9 +4,9 @@ namespace App\Support;
 
 /**
  * Ship BB for BestBuy pricing and other ship_bb consumers.
- * Prefers ship_bb_base + handling + o-size (what Shipping Master saves).
+ * Prefers ship_bb_base + o-size (what Shipping Master saves).
  * If only a legacy stored ship_bb exists, strips the old full O-Size add-on
- * (when Type is O-Size) then adds handling + o-size. Never writes back.
+ * (when Type is O-Size) then adds o-size. Never writes back.
  */
 class ProductMasterShipBb
 {
@@ -35,25 +35,19 @@ class ProductMasterShipBb
     public static function forPricing(?array $values, $pm = null): float
     {
         $values = self::normalizeValues($values, $pm);
-        $handling = self::handlingCharge($values);
         $oSize = self::oSizeCharge($values);
 
         $base = self::numericKey($values, 'ship_bb_base');
         if ($base !== null) {
-            return round($base + $handling + $oSize, 2);
+            return round($base + $oSize, 2);
         }
 
         $stored = self::stored($values, $pm);
         if ($stored !== null) {
-            return round($stored - self::legacyOSizeAddon($values) + $handling + $oSize, 2);
+            return round($stored - self::legacyOSizeAddon($values) + $oSize, 2);
         }
 
         return 0.0;
-    }
-
-    public static function handlingCharge(?array $values, $pm = null): float
-    {
-        return self::chargeAmount(self::normalizeValues($values, $pm), ['handling_charge', 'Handling Charge', 'handling-charge']);
     }
 
     public static function oSizeCharge(?array $values, $pm = null): float

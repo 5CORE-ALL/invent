@@ -1064,7 +1064,6 @@ class CategoryController extends Controller
                 'uni' => 'nullable|numeric',
                 'label_qty' => 'nullable|integer',
                 'label_type' => 'nullable|string|in:ENV,STD,O-Size,Pallet,OV-Wt',
-                'handling_charge' => 'nullable|string|max:3',
                 'o_size_charge' => 'nullable|string|max:20',
                 'pr_charge' => 'nullable|string|max:20',
                 'fba_ship_calculation' => 'nullable|numeric',
@@ -1175,14 +1174,8 @@ class CategoryController extends Controller
                 $v = $validated['label_type'];
                 $values['label_type'] = ($v !== null && $v !== '') ? (string) $v : 'STD';
             }
-            if (array_key_exists('handling_charge', $validated)) {
-                $v = $validated['handling_charge'];
-                if ($v === null || $v === '') {
-                    $values['handling_charge'] = null;
-                } else {
-                    $values['handling_charge'] = mb_substr(trim((string) $v), 0, 3);
-                }
-            }
+            // Handling Charge is retired: never stored or added to Ship.
+            unset($values['handling_charge']);
             if (array_key_exists('o_size_charge', $validated)) {
                 $v = $validated['o_size_charge'];
                 if ($v === null || $v === '') {
@@ -1365,7 +1358,6 @@ class CategoryController extends Controller
             'ctn_gwt' => 'CTN GWT',
             'label_qty' => 'Label Qty',
             'label_type' => 'Label Type',
-            'handling_charge' => 'Handling Charge',
             'o_size_charge' => 'O-Size Charge',
             'pr_charge' => 'PR Charge',
             'ship_base' => 'Ship Base',
@@ -1397,7 +1389,6 @@ class CategoryController extends Controller
             'ctn_weight_kg', 'ctn_weight_lb', 'ctn_instructions',
             'label_qty',
             'label_type',
-            'handling_charge',
             'o_size_charge',
             'pr_charge',
             'ship', 'ship_base', 'ship_bb', 'ship_bb_base', 'tt_ship', 'temu_ship', 'temu_ship_base', 'ebay2_ship',
@@ -1664,7 +1655,7 @@ class CategoryController extends Controller
     }
 
     /**
-     * Persist Ship as slab + handling + o-size + PR (same total the Ship column shows).
+     * Persist Ship as slab + o-size + PR (same total the Ship column shows).
      * ship_base keeps the slab rate so later charge edits do not double-count.
      *
      * @param  array<string,mixed>  $values
@@ -1673,8 +1664,7 @@ class CategoryController extends Controller
      */
     private function syncShippingMasterShipTotal(array &$values, array &$validated, array $oldValues): void
     {
-        $chargesTouched = array_key_exists('handling_charge', $validated)
-            || array_key_exists('o_size_charge', $validated)
+        $chargesTouched = array_key_exists('o_size_charge', $validated)
             || array_key_exists('pr_charge', $validated)
             || array_key_exists('label_type', $validated);
 
@@ -1697,7 +1687,6 @@ class CategoryController extends Controller
                 $base = (float) $incoming;
                 $total = round(
                     $base
-                    + $chargeAmount($values, 'handling_charge')
                     + $chargeAmount($values, 'o_size_charge')
                     + $chargeAmount($values, 'pr_charge'),
                     2
@@ -1729,7 +1718,6 @@ class CategoryController extends Controller
 
         $total = round(
             $base
-            + $chargeAmount($values, 'handling_charge')
             + $chargeAmount($values, 'o_size_charge')
             + $chargeAmount($values, 'pr_charge'),
             2
@@ -1741,7 +1729,7 @@ class CategoryController extends Controller
     }
 
     /**
-     * Persist Temu ship as slab + handling + o-size (same total the Temu ship column shows).
+     * Persist Temu ship as slab + o-size (same total the Temu ship column shows).
      * temu_ship_base keeps the slab rate so later charge edits do not double-count.
      *
      * @param  array<string,mixed>  $values
@@ -1750,8 +1738,7 @@ class CategoryController extends Controller
      */
     private function syncShippingMasterTemuShipTotal(array &$values, array &$validated, array $oldValues): void
     {
-        $chargesTouched = array_key_exists('handling_charge', $validated)
-            || array_key_exists('o_size_charge', $validated)
+        $chargesTouched = array_key_exists('o_size_charge', $validated)
             || array_key_exists('label_type', $validated);
 
         if (array_key_exists('temu_ship', $validated) && array_key_exists('temu_ship_base', $validated)) {
@@ -1773,7 +1760,6 @@ class CategoryController extends Controller
                 $base = (float) $incoming;
                 $total = round(
                     $base
-                    + $chargeAmount($values, 'handling_charge')
                     + $chargeAmount($values, 'o_size_charge'),
                     2
                 );
@@ -1810,7 +1796,6 @@ class CategoryController extends Controller
 
         $total = round(
             $base
-            + $chargeAmount($values, 'handling_charge')
             + $chargeAmount($values, 'o_size_charge'),
             2
         );
@@ -1821,7 +1806,7 @@ class CategoryController extends Controller
     }
 
     /**
-     * Persist Ship BB as slab + handling + o-size (same total the Ship BB column shows).
+     * Persist Ship BB as slab + o-size (same total the Ship BB column shows).
      * ship_bb_base keeps the slab rate so later charge edits do not double-count.
      *
      * @param  array<string,mixed>  $values
@@ -1830,8 +1815,7 @@ class CategoryController extends Controller
      */
     private function syncShippingMasterShipBbTotal(array &$values, array &$validated, array $oldValues): void
     {
-        $chargesTouched = array_key_exists('handling_charge', $validated)
-            || array_key_exists('o_size_charge', $validated)
+        $chargesTouched = array_key_exists('o_size_charge', $validated)
             || array_key_exists('label_type', $validated);
 
         if (array_key_exists('ship_bb', $validated) && array_key_exists('ship_bb_base', $validated)) {
@@ -1853,7 +1837,6 @@ class CategoryController extends Controller
                 $base = (float) $incoming;
                 $total = round(
                     $base
-                    + $chargeAmount($values, 'handling_charge')
                     + $chargeAmount($values, 'o_size_charge'),
                     2
                 );
@@ -1890,7 +1873,6 @@ class CategoryController extends Controller
 
         $total = round(
             $base
-            + $chargeAmount($values, 'handling_charge')
             + $chargeAmount($values, 'o_size_charge'),
             2
         );
@@ -7768,8 +7750,6 @@ PROMPT;
                 'ups' => 'ups',
                 'usps' => 'usps',
                 'uni' => 'uni',
-                'handling_charge' => 'handling_charge',
-                'handling__charge' => 'handling_charge',
                 'o_size_charge' => 'o_size_charge',
                 'o_size__charge' => 'o_size_charge',
                 'osize_charge' => 'o_size_charge',
@@ -7846,8 +7826,6 @@ PROMPT;
                                 }
                             } elseif ($field === 'ctn_instructions') {
                                 $value = mb_substr($value, 0, 100);
-                            } elseif ($field === 'handling_charge') {
-                                $value = mb_substr($value, 0, 3);
                             } elseif ($field === 'o_size_charge') {
                                 $value = mb_substr($value, 0, 20);
                             } elseif ($field === 'pr_charge') {

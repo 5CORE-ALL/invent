@@ -711,13 +711,6 @@
                     }
                 },
                 {
-                    title: "Hdl Charge",
-                    field: "handling_charge",
-                    sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
-                    headerTooltip: "Handling Charge saved on Shipping Master (included in Temu Ship)",
-                    visible: false
-                },
-                {
                     title: "O-Size Charge",
                     field: "o_size_charge",
                     sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
@@ -727,7 +720,7 @@
                 {
                     title: "Temu Ship",
                     field: "temu_ship",
-                    headerTooltip: "Saved Temu ship = slab + Handling Charge + O-Size Charge",
+                    headerTooltip: "Saved Temu ship = slab + O-Size Charge",
                     hozAlign: "right",
                     sorter: "number",
                     width: 120,
@@ -1047,7 +1040,7 @@
                         label.style.display = "block"; label.style.padding = "5px 10px"; label.style.cursor = "pointer";
                         const checkbox = document.createElement("input");
                         checkbox.type = "checkbox"; checkbox.value = def.field;
-                        const forceHide = def.field === 'handling_charge' || def.field === 'o_size_charge' || def.field === 'carrier';
+                        const forceHide = def.field === 'o_size_charge' || def.field === 'carrier';
                         const startsHidden = forceHide || def.visible === false;
                         if (startsHidden) checkbox.checked = savedVisibility[def.field] === true && !forceHide;
                         else checkbox.checked = savedVisibility[def.field] !== false;
@@ -1083,7 +1076,7 @@
                             col.show();
                             return;
                         }
-                        if (def.field === 'handling_charge' || def.field === 'o_size_charge' || def.field === 'carrier') {
+                        if (def.field === 'o_size_charge' || def.field === 'carrier') {
                             col.hide();
                             return;
                         }

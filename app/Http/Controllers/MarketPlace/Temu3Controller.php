@@ -170,7 +170,6 @@ class Temu3Controller extends TemuController
                 $parent = $pm ? $pm->parent : '';
                 $lp = 0;
                 $temuShip = 0;
-                $handlingCharge = null;
                 $oSizeCharge = null;
                 if ($pm) {
                     $values = is_array($pm->Values)
@@ -186,7 +185,6 @@ class Temu3Controller extends TemuController
                         $lp = floatval($pm->lp);
                     }
                     $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $pm);
-                    $handlingCharge = $values['handling_charge'] ?? null;
                     $oSizeCharge = $values['o_size_charge'] ?? null;
                 }
                 $basePrice = $item->base_price_total !== null ? (float) $item->base_price_total : 0;
@@ -206,7 +204,6 @@ class Temu3Controller extends TemuController
                     'fb_price' => round($fbPrice, 2),
                     'lp' => $lp,
                     'temu_ship' => $temuShip,
-                    'handling_charge' => $handlingCharge ?? null,
                     'o_size_charge' => $oSizeCharge ?? null,
                     'pft' => round($pft, 2),
                     'order_status' => $item->order_status ?? '',

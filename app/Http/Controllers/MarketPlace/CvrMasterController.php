@@ -2998,7 +2998,6 @@ class CvrMasterController extends Controller
                     "temu_sku_id" => $temuSkuId,
                     "temu_ship" => $temuShip > 0 ? round($temuShip, 2) : 0,
                     "ship_bb" => $shipBb > 0 ? round($shipBb, 2) : 0,
-                    "handling_charge" => $values['handling_charge'] ?? null,
                     "o_size_charge" => $values['o_size_charge'] ?? null,
                     "temu_margin" => $temuPercentage,
                     "temu_push_status" => null,

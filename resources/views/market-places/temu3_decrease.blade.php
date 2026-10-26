@@ -5768,7 +5768,7 @@
             'cvr_45', 'profit', 'spft_percent',
             'missing', 'nr_req', 't_clicks', 't_clicks_growth',
             'lmp_delivery', 'lmp_diff_pct', 'spend',
-            'handling_charge', 'o_size_charge', 'temu_ship', 'goods_id',
+            'o_size_charge', 'temu_ship', 'goods_id',
             'links_column', '_push',
             'ads_percent', 'acos_ad', 'ad_clicks', 'impressions',
             'out_roas_l30', 'in_roas_l30', 'net_roas', 'target'

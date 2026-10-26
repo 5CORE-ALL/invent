@@ -190,7 +190,6 @@ class MovementPricingMaster extends Controller
                 'LP'      => $lp,
                 'SHIP'    => $ship,
                 'temu_ship' => $temuship,
-                'handling_charge' => $values['handling_charge'] ?? null,
                 'o_size_charge' => $values['o_size_charge'] ?? null,
                 'is_parent' => $isParent,
                 'inv' => $shopifyData->get($sku)?->inv ?? 0,

@@ -4,9 +4,9 @@ namespace App\Support;
 
 /**
  * Temu ship for /temu-decrease, /temu2-decrease, and other Temu pricing.
- * Prefers temu_ship_base + handling + o-size (what Shipping Master saves).
+ * Prefers temu_ship_base + o-size (what Shipping Master saves).
  * If only a legacy stored temu_ship exists, strips the old 50% O-Size add-on
- * then adds handling + o-size. Never writes back to Product Master.
+ * then adds o-size. Never writes back to Product Master.
  */
 class ProductMasterTemuShip
 {
@@ -40,39 +40,31 @@ class ProductMasterTemuShip
 
     /**
      * Rate used on Temu decrease pages and SPRICE / sales math.
-     * Always includes Handling Charge + O-Size Charge when a slab base is known.
+     * Always includes O-Size Charge when a slab base is known.
      */
     public static function forPricing(?array $values, $pm = null): float
     {
         $values = self::normalizeValues($values, $pm);
-        $handling = self::handlingCharge($values);
         $oSize = self::oSizeCharge($values);
 
         $temuBase = self::numericKey($values, 'temu_ship_base');
         if ($temuBase !== null) {
-            return round($temuBase + $handling + $oSize, 2);
+            return round($temuBase + $oSize, 2);
         }
 
         $stored = self::stored($values, $pm);
         if ($stored !== null) {
             $base = $stored - self::legacyOSizeHalf($values);
 
-            return round($base + $handling + $oSize, 2);
+            return round($base + $oSize, 2);
         }
 
         $shipBase = self::numericKey($values, 'ship_base');
         if ($shipBase !== null) {
-            return round($shipBase + $handling + $oSize, 2);
+            return round($shipBase + $oSize, 2);
         }
 
         return round(self::regularShip($values, $pm), 2);
-    }
-
-    public static function handlingCharge(?array $values, $pm = null): float
-    {
-        $values = self::normalizeValues($values, $pm);
-
-        return self::chargeAmount($values, ['handling_charge', 'Handling Charge', 'handling-charge']);
     }
 
     public static function oSizeCharge(?array $values, $pm = null): float

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\GoogleCompetitorItem;
 use App\Models\GoogleSkuCompetitor;
 use App\Services\GoogleLivePriceFetcher;
+use App\Support\Marketplace\LmpPullEligibility;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -13,7 +14,9 @@ class UpdateGoogleSkuCompetitorPrices extends Command
     protected $signature = 'google:update-sku-prices
                             {--sku= : Update specific SKU only}
                             {--dry-run : Run without updating database}
-                            {--skip-search-refresh : Skip SerpApi search refresh before syncing}
+                            {--skip-search-refresh : (default) Skip SerpApi search refresh before syncing}
+                            {--with-search-refresh : Also re-pull every price for every linked search query (expensive, ignores filters)}
+                            {--include-all : Do not skip ignored / Inv=0 competitors}
                             {--skip-live-fetch : Skip direct live price fetch from Google Shopping}';
 
     protected $description = 'Refresh Google LMP competitor prices and images into google_sku_competitors';
@@ -33,11 +36,19 @@ class UpdateGoogleSkuCompetitorPrices extends Command
 
         $skuCompetitors = $query->get();
 
+        if (!$this->option('include-all')) {
+            $total = $skuCompetitors->count();
+            $result = LmpPullEligibility::filter($skuCompetitors, LmpPullEligibility::CHANNEL_GOOGLE);
+            $skuCompetitors = $result['rows'];
+            $this->info("Eligible for pull: {$skuCompetitors->count()} of {$total} "
+                . "(skipped ignored: {$result['skipped']['ignored']}, Inv=0: {$result['skipped']['no_inv']})");
+        }
+
         if (!$this->option('skip-live-fetch')) {
             $this->refreshLiveProductPrices($skuCompetitors, $isDryRun);
         }
 
-        if (!$this->option('skip-search-refresh')) {
+        if ($this->option('with-search-refresh') && !$this->option('skip-search-refresh')) {
             $this->refreshLinkedSearchQueries($skuCompetitors, $isDryRun);
         }
 
