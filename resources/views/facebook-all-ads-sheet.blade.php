@@ -1893,10 +1893,10 @@
                         const safe = v.replace(/&/g, '&amp;')
                                       .replace(/</g, '&lt;')
                                       .replace(/"/g, '&quot;');
+                        // Show the full ID as text (selectable / searchable).
                         return `<span title="${safe}"`
-                             + ` style="cursor:help;color:#475569;font-size:14px;"`
-                             + ` aria-label="${safe}">`
-                             + `<i class="fas fa-search"></i>`
+                             + ` style="color:#475569;font-size:12px;font-family:ui-monospace,Menlo,monospace;user-select:all;">`
+                             + safe
                              + `</span>`;
                     }
                     // Distinct Status values present in this dataset →
@@ -1936,15 +1936,15 @@
                         }
                         if (c.field === 'CAMPAIGN ID') {
                             return {
-                                // Header is "CPG" — frontend rename only;
-                                // field stays "CAMPAIGN ID" so audit /
-                                // bulk / export lookups stay unchanged.
-                                title:          'CPG',
+                                // Full Campaign ID shown as text. Field stays
+                                // "CAMPAIGN ID" so audit / bulk / export
+                                // lookups stay unchanged.
+                                title:          'Campaign ID',
                                 field:          c.field,
                                 headerSort:     true,
                                 widthGrow:      0,
-                                width:          60,
-                                minWidth:       50,
+                                width:          170,
+                                minWidth:       150,
                                 hozAlign:       'center',
                                 headerHozAlign: 'center',
                                 headerFilter:   false,
@@ -2126,11 +2126,14 @@
                         formatter:    formatActionCell,
                     });
 
-                    // CAMPAIGN ID stays rightmost (after Action).
+                    // Campaign ID sits right after Campaign name so it is
+                    // visible without scrolling.
                     const cidIdx = cols.findIndex(c => c.field === 'CAMPAIGN ID');
                     if (cidIdx >= 0) {
                         const [cidCol] = cols.splice(cidIdx, 1);
-                        cols.push(cidCol);
+                        const nameIdx = cols.findIndex(c => c.field === 'Campaign name');
+                        if (nameIdx >= 0) cols.splice(nameIdx + 1, 0, cidCol);
+                        else cols.push(cidCol);
                     }
 
                     if (tabulator) {
