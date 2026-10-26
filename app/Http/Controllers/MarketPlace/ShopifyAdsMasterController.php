@@ -2023,7 +2023,20 @@ class ShopifyAdsMasterController extends Controller
                 $row->active = $this->googleAdsActiveCount($scope, $bounds);
             }
 
-            return $this->metricRow($label, $row);
+            $metrics = $this->metricRow($label, $row);
+
+            // Match the Google Shopping page: CLICKS / CVR% / ACOS% come from
+            // the Enabled campaigns, SPEND / SOLD / SALES from all of them.
+            if ($scope === 'shopping') {
+                $en = $this->googleAdsEnabledTotals($scope, $bounds);
+                $metrics['clicks'] = (int) round($en['clicks']);
+                $metrics['cvr'] = $en['clicks'] > 0 ? round(($en['sold'] / $en['clicks']) * 100, 1) : 0;
+                $metrics['acos'] = $en['sales'] > 0
+                    ? round(($en['spend'] / $en['sales']) * 100, 0)
+                    : ($en['spend'] > 0 ? 100 : 0);
+            }
+
+            return $metrics;
         } catch (\Throwable) {
             return $this->metricRow($label);
         }
@@ -2037,6 +2050,18 @@ class ShopifyAdsMasterController extends Controller
      * @param  array{start: string, end: string}|null  $bounds
      */
     private function googleAdsActiveCount(string $scope, ?array $bounds): int
+    {
+        return count($this->googleAdsEnabledCampaignIds($scope, $bounds));
+    }
+
+    /**
+     * Campaign ids whose latest row is ENABLED — the rows the Google grid shows
+     * with its default "Sts = Enabled" filter.
+     *
+     * @param  array{start: string, end: string}|null  $bounds
+     * @return list<string>
+     */
+    private function googleAdsEnabledCampaignIds(string $scope, ?array $bounds): array
     {
         $latest = DB::table('google_ads_campaigns')
             ->whereNotNull('campaign_id')
@@ -2060,14 +2085,52 @@ class ShopifyAdsMasterController extends Controller
             $latest->whereRaw('UPPER(campaign_name) LIKE ?', ['% YT']);
         }
 
-        return (int) DB::table('google_ads_campaigns as g')
+        return DB::table('google_ads_campaigns as g')
             ->joinSub($latest, 'l', function ($j) {
                 $j->on('g.campaign_id', '=', 'l.campaign_id')
                     ->on('g.date', '=', 'l.max_d');
             })
             ->whereRaw('UPPER(TRIM(COALESCE(g.campaign_status, ""))) = ?', ['ENABLED'])
             ->distinct()
-            ->count('g.campaign_id');
+            ->pluck('g.campaign_id')
+            ->map(fn ($id) => (string) $id)
+            ->all();
+    }
+
+    /**
+     * L30 totals of the ENABLED campaigns only. The Google Shopping page's CLICKS,
+     * CVR% and ACOS% tiles are computed from the rows its default Sts = Enabled
+     * filter shows, while its SPEND / SOLD / SALES tiles cover every campaign.
+     *
+     * @param  array{start: string, end: string}|null  $bounds
+     * @return array{spend: float, clicks: float, sold: float, sales: float}
+     */
+    private function googleAdsEnabledTotals(string $scope, ?array $bounds): array
+    {
+        $ids = $this->googleAdsEnabledCampaignIds($scope, $bounds);
+        $out = ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+        if ($ids === []) {
+            return $out;
+        }
+
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            $q = DB::table('google_ads_campaigns')
+                ->whereIn('campaign_id', $chunk)
+                ->selectRaw('COALESCE(SUM(metrics_cost_micros), 0) / 1000000 as spend')
+                ->selectRaw('COALESCE(SUM(metrics_clicks), 0) as clicks')
+                ->selectRaw('COALESCE(SUM(ga4_actual_sold_units), 0) as sold')
+                ->selectRaw('COALESCE(SUM(ga4_actual_revenue), 0) as sales');
+            if ($bounds !== null) {
+                $q->whereNotNull('date')->whereBetween('date', [$bounds['start'], $bounds['end']]);
+            }
+            $r = $q->first();
+            $out['spend'] += (float) ($r->spend ?? 0);
+            $out['clicks'] += (float) ($r->clicks ?? 0);
+            $out['sold'] += (float) ($r->sold ?? 0);
+            $out['sales'] += (float) ($r->sales ?? 0);
+        }
+
+        return $out;
     }
 
     /**
