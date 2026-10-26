@@ -1557,6 +1557,9 @@
         });
     </script>
     <script>
+        @include('partials.qc-issue-column')
+    </script>
+    <script>
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         document.addEventListener("DOMContentLoaded", function() {
             document.body.style.zoom = "80%";
@@ -2853,6 +2856,7 @@
                         width: 180,
                         headerTooltip: "Short name of product",
                     },
+                    window.QcIssueCol.column('SKU'),
                     {
                         title: "Specs",
                         field: "specs",
@@ -4182,6 +4186,8 @@
                     return { ok: skus.length, skipped: rows.length - skus.length, message: res.message };
                 });
             }
+
+            window.QcIssueCol.attach(table);
 
             table.on("rowSelectionChanged", function(data, rows) {
                 const modalEl = document.getElementById('toaActionModal');

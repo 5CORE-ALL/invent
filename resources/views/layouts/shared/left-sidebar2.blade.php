@@ -669,7 +669,7 @@
                             <a href="{{ route('customer.care.mapping.software') }}">Mapping / Software</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.qc.packing') }}">QC / Packaging</a>
+                            <a href="{{ route('customer.care.qc.packing') }}">Issues QC / Packaging</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.label.issues') }}">Label/ Shipping Issues</a>

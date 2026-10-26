@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\CustomerCare;
 
 use App\Http\Controllers\Controller;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -16,6 +18,170 @@ class QcAndPackingController extends Controller
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
+    /**
+     * "Issue?" values per SKU for the QC / Packaging board only.
+     *
+     * Same rows the /customer-care/qc-packing page shows: not archived and department
+     * includes QC or Packaging (other departments share the table but are not on that page).
+     * Returns { SKU_UPPER: [ { value, count } ... ] } newest value first.
+     */
+    public function whatHappenedBySku()
+    {
+        $boardDepartments = ['QC', 'Packaging'];
+
+        $rows = DB::table('qc_and_packing_issues')
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->whereNotNull('what_happened')
+            ->where('what_happened', '!=', '')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get(['sku', 'what_happened', 'department']);
+
+        $bySku = [];
+        foreach ($rows as $row) {
+            $sku = strtoupper(trim((string) ($row->sku ?? '')));
+            $value = trim((string) $row->what_happened);
+            if ($sku === '' || $value === '') {
+                continue;
+            }
+            if (array_intersect($this->departmentValues($row->department), $boardDepartments) === []) {
+                continue;
+            }
+            $key = mb_strtolower($value);
+            if (! isset($bySku[$sku][$key])) {
+                $bySku[$sku][$key] = ['value' => $value, 'count' => 0];
+            }
+            $bySku[$sku][$key]['count']++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => array_map(fn ($items) => array_values($items), $bySku),
+        ]);
+    }
+
+    /**
+     * OV (overall Shopify) units sold over the trailing 12 months, same source and month
+     * window as the Forecast Analysis page: shopify_raw_orders for months it still holds,
+     * sku_monthly_orders for older months.
+     *
+     * Returns { from, to, label, by_sku: {CANON_SKU: units}, by_parent: {PARENT_UPPER: units} }
+     * where CANON_SKU is the SKU upper-cased with every non A-Z0-9 character removed.
+     */
+    public function sales12Months()
+    {
+        $data = Cache::remember('qc_pkg_sales_12m_v1:'.now('America/Los_Angeles')->format('Y-m-d-H'), 1800, function () {
+            return $this->computeSales12Months();
+        });
+
+        return response()->json(array_merge(['success' => true], $data));
+    }
+
+    private function computeSales12Months(): array
+    {
+        $canon = fn ($sku) => preg_replace('/[^A-Z0-9]/', '', strtoupper((string) $sku)) ?? '';
+
+        $current = Carbon::now('America/Los_Angeles')->startOfMonth();
+        $slots = [];
+        for ($i = 11; $i >= 0; $i--) {
+            $d = $current->copy()->subMonths($i);
+            $slots[] = ['slot' => $d->year.'-'.$d->month, 'start' => $d->toDateString()];
+        }
+        $from = $slots[0]['start'];
+
+        $rawMin = null;
+        $raw = [];
+        if (Schema::hasTable('shopify_raw_orders')) {
+            $min = DB::table('shopify_raw_orders')->min('order_date');
+            $rawMin = $min ? Carbon::parse($min)->startOfMonth()->toDateString() : null;
+            $rows = DB::table('shopify_raw_orders')
+                ->selectRaw('sku, YEAR(order_date) as y, MONTH(order_date) as m, SUM(quantity) as qty')
+                ->where('order_date', '>=', $from)
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->groupByRaw('sku, YEAR(order_date), MONTH(order_date)')
+                ->get();
+            foreach ($rows as $r) {
+                $k = $canon($r->sku);
+                if ($k === '') {
+                    continue;
+                }
+                $slot = ((int) $r->y).'-'.((int) $r->m);
+                $raw[$k][$slot] = ($raw[$k][$slot] ?? 0) + (int) $r->qty;
+            }
+        }
+
+        $hist = [];
+        if (Schema::hasTable('sku_monthly_orders')) {
+            $rows = DB::table('sku_monthly_orders')
+                ->whereRaw("STR_TO_DATE(CONCAT(year,'-',month,'-01'), '%Y-%c-%d') >= ?", [$from])
+                ->get(['sku', 'year', 'month', 'order_count']);
+            foreach ($rows as $r) {
+                $k = $canon($r->sku);
+                if ($k === '') {
+                    continue;
+                }
+                $slot = ((int) $r->year).'-'.((int) $r->month);
+                $hist[$k][$slot] = ($hist[$k][$slot] ?? 0) + (int) $r->order_count;
+            }
+        }
+
+        $bySku = [];
+        foreach (array_unique(array_merge(array_keys($raw), array_keys($hist))) as $k) {
+            $total = 0;
+            foreach ($slots as $s) {
+                $coveredByRaw = $rawMin !== null && $s['start'] >= $rawMin;
+                $total += $coveredByRaw ? ($raw[$k][$s['slot']] ?? 0) : ($hist[$k][$s['slot']] ?? 0);
+            }
+            if ($total > 0) {
+                $bySku[$k] = $total;
+            }
+        }
+
+        $byParent = [];
+        $seen = [];
+        foreach (DB::table('product_master')->get(['sku', 'parent']) as $p) {
+            $sku = strtoupper(trim((string) ($p->sku ?? '')));
+            $parent = strtoupper(trim((string) ($p->parent ?? '')));
+            if ($sku === '' || $parent === '' || str_starts_with($sku, 'PARENT')) {
+                continue;
+            }
+            $k = $canon($sku);
+            if (isset($seen[$parent][$k])) {
+                continue;
+            }
+            $seen[$parent][$k] = true;
+            $byParent[$parent] = ($byParent[$parent] ?? 0) + ($bySku[$k] ?? 0);
+        }
+
+        $last = $current->copy();
+
+        return [
+            'from' => $from,
+            'to' => $last->copy()->endOfMonth()->toDateString(),
+            'label' => Carbon::parse($from)->format('M Y').' – '.$last->format('M Y'),
+            'by_sku' => (object) $bySku,
+            'by_parent' => (object) $byParent,
+        ];
+    }
+
+    /** Department column is a JSON array or a "|" / "," separated list. */
+    private function departmentValues(mixed $raw): array
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return [];
+        }
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            return array_values(array_filter(array_map(fn ($x) => trim((string) $x), $decoded)));
+        }
+
+        return array_values(array_filter(array_map('trim', preg_split('/[|,]/', $raw) ?: [])));
+    }
+
     public function attachImages(array $rows): array
     {
         if ($rows === []) {
