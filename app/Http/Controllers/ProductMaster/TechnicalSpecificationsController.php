@@ -247,6 +247,33 @@ class TechnicalSpecificationsController extends Controller
     }
 
     /**
+     * Same table as the migration, created on first use so hiding a field works before migrations run.
+     */
+    private function ensureHiddenFieldsTable(): bool
+    {
+        try {
+            if (Schema::hasTable('technical_spec_hidden_fields')) {
+                return true;
+            }
+            Schema::create('technical_spec_hidden_fields', function (\Illuminate\Database\Schema\Blueprint $table) {
+                $table->id();
+                $table->string('scope', 191);
+                $table->string('field_key', 191);
+                $table->string('label', 255)->nullable();
+                $table->unsignedBigInteger('hidden_by')->nullable();
+                $table->timestamps();
+                $table->unique(['scope', 'field_key']);
+            });
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('TechnicalSpecifications: could not create technical_spec_hidden_fields', ['error' => $e->getMessage()]);
+
+            return Schema::hasTable('technical_spec_hidden_fields');
+        }
+    }
+
+    /**
      * POST /technical-specifications/hidden-fields — cross a field out of the edit form for a category.
      * Saved values are not touched.
      */
@@ -257,8 +284,8 @@ class TechnicalSpecificationsController extends Controller
             'field_key' => 'required|string|max:191',
             'label' => 'nullable|string|max:255',
         ]);
-        if (! Schema::hasTable('technical_spec_hidden_fields')) {
-            return response()->json(['success' => false, 'message' => 'Run migrations to remember hidden fields.'], 500);
+        if (! $this->ensureHiddenFieldsTable()) {
+            return response()->json(['success' => false, 'message' => 'Could not create the table that remembers hidden fields. Run php artisan migrate.'], 500);
         }
 
         $exists = DB::table('technical_spec_hidden_fields')
@@ -278,13 +305,21 @@ class TechnicalSpecificationsController extends Controller
     }
 
     /**
-     * POST /technical-specifications/hidden-fields/restore — show every crossed-out field of a category again.
+     * POST /technical-specifications/hidden-fields/restore — show a crossed-out field of a category again
+     * (every crossed-out field of the category when no field_key is sent).
      */
     public function restoreHiddenFields(Request $request)
     {
-        $data = $request->validate(['scope' => 'required|string|max:191']);
+        $data = $request->validate([
+            'scope' => 'required|string|max:191',
+            'field_key' => 'nullable|string|max:191',
+        ]);
         if (Schema::hasTable('technical_spec_hidden_fields')) {
-            DB::table('technical_spec_hidden_fields')->where('scope', $data['scope'])->delete();
+            $query = DB::table('technical_spec_hidden_fields')->where('scope', $data['scope']);
+            if (($data['field_key'] ?? '') !== '') {
+                $query->where('field_key', $data['field_key']);
+            }
+            $query->delete();
         }
 
         return response()->json(['success' => true]);
