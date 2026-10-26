@@ -467,9 +467,9 @@ class TechnicalSpecificationsController extends Controller
 
     /**
      * POST /technical-specifications/sync-ebay-categories
-     * Reads the live eBay category of each SKU (every eBay account that lists it) and saves it in
-     * Category Masters. Specifications are not touched. Parent rows and SKUs that are not listed
-     * on eBay are skipped, not failed.
+     * Reads the live eBay 1 category of each SKU and saves it in Category Masters. eBay 2 and 3 are
+     * not called. Specifications are not touched. Parent rows and SKUs that are not listed on
+     * eBay 1 are skipped, not failed.
      */
     public function syncEbayCategories(Request $request, CategoryChannelSyncService $sync)
     {
@@ -491,7 +491,7 @@ class TechnicalSpecificationsController extends Controller
             }
 
             try {
-                $pulled = $sync->pull('ebay', (string) $product->sku);
+                $pulled = $sync->pullEbayAccount((string) $product->sku, 'eBay 1');
             } catch (\Throwable $e) {
                 Log::warning('Technical specifications category sync failed', ['sku' => $sku, 'error' => $e->getMessage()]);
                 $results[] = $this->categoryResult($sku, 'failed', $e->getMessage());
@@ -505,7 +505,7 @@ class TechnicalSpecificationsController extends Controller
                     $accounts,
                     static fn ($a) => ($a['status'] ?? '') === 'not_listed'
                 )) === count($accounts);
-                $results[] = $this->categoryResult($sku, $notListed ? 'skipped' : 'failed', $notListed ? 'Not listed on eBay.' : $pulled['message']);
+                $results[] = $this->categoryResult($sku, $notListed ? 'skipped' : 'failed', $notListed ? 'Not listed on eBay 1.' : $pulled['message']);
 
                 continue;
             }

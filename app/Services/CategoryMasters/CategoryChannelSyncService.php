@@ -58,6 +58,25 @@ class CategoryChannelSyncService
         };
     }
 
+    /**
+     * Read the live category from one eBay account only (default eBay 1). Other accounts are not called.
+     *
+     * @return array{success: bool, message: string, id: string, path: string, accounts: list<array<string, mixed>>}
+     */
+    public function pullEbayAccount(string $sku, string $account = 'eBay 1'): array
+    {
+        $cfg = self::EBAY_ACCOUNTS[$account] ?? null;
+        if ($cfg === null) {
+            return $this->failedPull('Unknown eBay account.');
+        }
+        $itemId = $this->listingId($cfg['table'], 'item_id', $sku);
+        if ($itemId === null) {
+            return $this->aggregatePull([['account' => $account, 'status' => 'not_listed', 'message' => 'Not listed']], $account);
+        }
+
+        return $this->aggregatePull([['account' => $account] + $this->readEbayCategory($cfg['service'], $itemId)], $account);
+    }
+
     protected function pullEbay(string $sku): array
     {
         $accounts = [];

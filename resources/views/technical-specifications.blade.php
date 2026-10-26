@@ -593,7 +593,7 @@
                         <button type="button" id="pullEbayBtn" class="btn btn-sm btn-outline-primary" title="Pull item specifics from eBay for the selected rows">
                             <i class="fas fa-cloud-download-alt"></i> Pull from eBay 1
                         </button>
-                        <button type="button" id="syncCategoriesBtn" class="btn btn-sm btn-outline-success" title="Fetch the live eBay category of the selected rows (or of every SKU when none are selected) and update it here">
+                        <button type="button" id="syncCategoriesBtn" class="btn btn-sm btn-outline-success" title="Fetch the live eBay 1 category of the selected rows (or of every SKU when none are selected) and update it here">
                             <i class="fas fa-sync-alt"></i> Sync categories
                         </button>
                         <button type="button" id="pushEbayBtn" class="btn btn-sm btn-outline-danger" title="Push technical specifications to eBay 1 for the selected rows">
@@ -2231,8 +2231,8 @@
                 }
                 const scope = picked.length ? 'the ' + skus.length + ' selected SKU' + (skus.length === 1 ? '' : 's') : 'all ' + skus.length + ' SKUs';
                 openEbayPrompt({
-                    title: 'Sync categories from eBay',
-                    body: 'Fetch the live eBay category of ' + scope + ' and update it here? Specifications are not changed.'
+                    title: 'Sync categories from eBay 1',
+                    body: 'Fetch the live eBay 1 category of ' + scope + ' and update it here? Specifications are not changed.'
                         + (picked.length ? '' : ' This can take a few minutes. Keep this window open.'),
                     rows: rowsBySku(skus),
                     confirmText: 'Sync categories',
@@ -2291,7 +2291,7 @@
                         await loadData();
                     }
                     const summary = counts.changed + ' changed, ' + counts.unchanged + ' already up to date'
-                        + (counts.skipped ? ', ' + counts.skipped + ' not listed on eBay' : '')
+                        + (counts.skipped ? ', ' + counts.skipped + ' not listed on eBay 1' : '')
                         + (counts.failed ? ', ' + counts.failed + ' failed' : '') + '.';
                     status.textContent = summary;
                     document.getElementById('ebaySyncBody').textContent = '';
