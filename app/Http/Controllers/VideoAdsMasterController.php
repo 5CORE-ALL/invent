@@ -659,9 +659,22 @@ class VideoAdsMasterController extends Controller
             ? $request->boolean('redo_checked')
             : ! $row->redo_checked;
 
+        $username = Auth::user()?->name ?? 'System';
+
+        // Once ticked, only the user who ticked REDO may edit its note or remove it.
+        if ($row->redo_checked && $row->redo_checked_by && $row->redo_checked_by !== $username) {
+            return response()->json([
+                'success' => false,
+                'message' => "Only {$row->redo_checked_by} can change this redo.",
+            ], 403);
+        }
+
+        // Editing the note of an existing tick keeps the original stamp (user + time).
+        $alreadyMine = $row->redo_checked && $newState;
+
         $row->redo_checked    = $newState;
-        $row->redo_checked_by = $newState ? (Auth::user()?->name ?? 'System') : null;
-        $row->redo_checked_at = $newState ? now() : null;
+        $row->redo_checked_by = $newState ? ($alreadyMine ? $row->redo_checked_by : $username) : null;
+        $row->redo_checked_at = $newState ? ($alreadyMine ? $row->redo_checked_at : now()) : null;
         // The note belongs to the redo mark: keep what was typed, clear it on uncheck.
         $note = trim((string) $request->input('redo_note', ''));
         $row->redo_note = $newState && $note !== '' ? $note : null;

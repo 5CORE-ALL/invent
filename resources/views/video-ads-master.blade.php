@@ -250,6 +250,24 @@
         .vam-check-meta .vam-redo-user { font-weight: 700; color: #d97706; }
         .vam-check-meta .vam-redone-user { font-weight: 700; color: #7c3aed; }
         .vam-redo-note-flag { text-align: center; color: #d97706; font-size: 11px; cursor: help; }
+        .vam-redo-hover { cursor: default; }
+        #vamRedoPop {
+            position: fixed;
+            display: none;
+            z-index: 11000;
+            width: 260px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+            padding: 10px 12px;
+            font-size: 13px;
+        }
+        #vamRedoPop .vam-pop-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        #vamRedoPop .vam-pop-title { font-weight: 700; color: #d97706; }
+        #vamRedoPop .vam-pop-meta { font-size: 11px; color: #6b7280; margin-bottom: 6px; }
+        #vamRedoPop .vam-pop-text { white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow-y: auto; color: #111827; }
+        #vamRedoPop .vam-pop-text.is-empty { color: #9ca3af; font-style: italic; }
         .vam-redo-box, .vam-redone-box {
             width: 18px;
             height: 18px;
@@ -767,7 +785,17 @@
         </div>
     </div>
 
-    {{-- Modal: note captured when a row is marked REDO. Shown on hover of the REDO cell. --}}
+    {{-- Hover popup: shows the REDO note. Only the user who ticked REDO sees the Edit button. --}}
+    <div id="vamRedoPop">
+        <div class="vam-pop-head">
+            <span class="vam-pop-title"><i class="fas fa-rotate-left me-1"></i>Redo note</span>
+            <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" id="vamRedoPopEdit" style="display:none;">Edit</button>
+        </div>
+        <div class="vam-pop-meta" id="vamRedoPopMeta"></div>
+        <div class="vam-pop-text" id="vamRedoPopText"></div>
+    </div>
+
+    {{-- Modal: note captured when a row is marked REDO. --}}
     <div class="modal fade" id="vamRedoNoteModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
         <div class="modal-dialog modal-dialog-centered modal-sm">
             <div class="modal-content">
@@ -816,6 +844,7 @@
     <script>
         (function () {
             const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            const currentUserName = @json(auth()->user()?->name ?? 'System');
 
             // ── State ──────────────────────────────────────────────────────────
             let table              = null;
@@ -1520,18 +1549,17 @@
                              + `</div>`;
                     }
 
-                    // REDO only: hovering the cell shows the note typed when it was ticked.
-                    const note    = (flag === 'redo_checked' && checked && row.redo_note) ? escapeHtml(row.redo_note) : '';
-                    const wrapTip = note ? ` title="${note}"` : '';
-                    const boxTip  = note || title;
+                    // REDO only: hovering a ticked cell opens the note popup (see redoHover below).
+                    const isRedo   = flag === 'redo_checked' && checked;
+                    const wrapAttr = isRedo ? ` class="vam-check-wrap vam-redo-hover" data-row-id="${row.id}"` : ' class="vam-check-wrap"';
 
                     return `
-                        <div class="vam-check-wrap"${wrapTip}>
+                        <div${wrapAttr}>
                             <div class="vam-check-top">
-                                <input type="checkbox" class="${boxClass} form-check-input" ${checked ? 'checked' : ''} title="${boxTip}">
+                                <input type="checkbox" class="${boxClass} form-check-input" ${checked ? 'checked' : ''} title="${title}">
                             </div>
                             ${meta}
-                            ${note ? '<div class="vam-redo-note-flag" title="' + note + '"><i class="fas fa-note-sticky"></i></div>' : ''}
+                            ${isRedo && row.redo_note ? '<div class="vam-redo-note-flag"><i class="fas fa-note-sticky"></i></div>' : ''}
                         </div>`;
                 };
             }
@@ -2334,6 +2362,56 @@
                     if (!redoNoteSaved && redoNoteRow) { redoNoteRow.reformat(); }
                     redoNoteRow = null;
                 });
+                // Hover popup for the REDO note (event delegation — Tabulator re-renders cells).
+                const pop = document.getElementById('vamRedoPop');
+                let popRow = null, popTimer = null;
+                const hidePop = () => { pop.style.display = 'none'; popRow = null; };
+                const hidePopSoon = () => { clearTimeout(popTimer); popTimer = setTimeout(hidePop, 200); };
+                const keepPop = () => clearTimeout(popTimer);
+
+                document.addEventListener('mouseover', (e) => {
+                    const wrap = e.target.closest && e.target.closest('.vam-redo-hover');
+                    if (!wrap) return;
+                    const row = table && table.getRow(Number(wrap.dataset.rowId));
+                    if (!row) return;
+                    keepPop();
+                    popRow = row;
+                    const d = row.getData();
+                    const mine = d.redo_checked_by === currentUserName;
+
+                    document.getElementById('vamRedoPopMeta').textContent =
+                        (d.redo_checked_by || '') + (d.redo_checked_at ? ' • ' + formatDateTime(d.redo_checked_at) : '');
+                    const textEl = document.getElementById('vamRedoPopText');
+                    textEl.textContent = d.redo_note || 'No note added.';
+                    textEl.classList.toggle('is-empty', !d.redo_note);
+                    document.getElementById('vamRedoPopEdit').style.display = mine ? '' : 'none';
+
+                    pop.style.display = 'block';
+                    const r = wrap.getBoundingClientRect();
+                    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+                    let left = Math.min(Math.max(8, r.left + r.width / 2 - pw / 2), window.innerWidth - pw - 8);
+                    let top  = r.bottom + 6;
+                    if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 6);
+                    pop.style.left = left + 'px';
+                    pop.style.top  = top + 'px';
+                });
+                document.addEventListener('mouseout', (e) => {
+                    if (e.target.closest && e.target.closest('.vam-redo-hover')) hidePopSoon();
+                });
+                pop.addEventListener('mouseenter', keepPop);
+                pop.addEventListener('mouseleave', hidePopSoon);
+
+                document.getElementById('vamRedoPopEdit').addEventListener('click', () => {
+                    if (!popRow) return;
+                    const d = popRow.getData();
+                    if (d.redo_checked_by !== currentUserName) return;
+                    redoNoteRow   = popRow;
+                    redoNoteSaved = false;
+                    document.getElementById('vamRedoNoteInput').value = d.redo_note || '';
+                    hidePop();
+                    redoNoteModal.show();
+                });
+
                 document.getElementById('vamRedoNoteSave').addEventListener('click', () => {
                     const note = document.getElementById('vamRedoNoteInput').value.trim();
                     const row  = redoNoteRow;
@@ -2623,6 +2701,12 @@
                                     document.getElementById('vamRedoNoteInput').value = redoNoteRow.getData().redo_note || '';
                                     redoNoteModal.show();
                                 } else {
+                                    const by = cell.getRow().getData().redo_checked_by;
+                                    if (by && by !== currentUserName) {
+                                        showToast(`Only ${by} can remove this redo`, 'error');
+                                        cell.getRow().reformat();
+                                        return;
+                                    }
                                     toggleStamp(cell.getRow(), 'redo_checked', 'redo-check', false, 'redo');
                                 }
                             },
