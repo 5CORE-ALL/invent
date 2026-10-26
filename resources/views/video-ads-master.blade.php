@@ -573,6 +573,9 @@
                     <span class="vam-count-badge vam-count-badge--creator" data-filter="creator" title="Click to filter: rows with a Creator assigned">
                         Creator: <span data-count="creator">0</span>
                     </span>
+                    <select id="vamUserFilter" class="form-select form-select-sm" style="width: auto; min-width: 190px;" title="Filter rows by assigned creator (user)">
+                        <option value="">All users</option>
+                    </select>
                     <span class="vam-count-badge vam-count-badge--checked" data-filter="checked" title="Click to filter: checked rows">
                         Checked: <span data-count="checked">0</span>
                     </span>
@@ -2486,8 +2489,13 @@
                 document.querySelectorAll('[data-filter]').forEach(el => {
                     el.addEventListener('click', () => toggleBadgeFilter(el.dataset.filter));
                 });
+                document.getElementById('vamUserFilter').addEventListener('change', (e) => {
+                    selectedUser = e.target.value;
+                    applySearch();
+                });
                 document.getElementById('vamClearFilters').addEventListener('click', () => {
                     activeBadges.clear();
+                    selectedUser = '';
                     applySearch();
                 });
 
@@ -2835,7 +2843,7 @@
 
             function updateCount() {
                 if (!table) return;
-                const anyFilter = activeBadges.size > 0 || !!searchText();
+                const anyFilter = activeBadges.size > 0 || !!searchText() || !!selectedUser;
 
                 // "Required" = rows currently shown (search + every badge filter).
                 // Before the first filter pass has run, fall back to the full set.
@@ -2860,6 +2868,7 @@
                 document.querySelectorAll('[data-filter]').forEach(el => {
                     el.classList.toggle('is-active', activeBadges.has(el.dataset.filter));
                 });
+                refreshUserFilter(all);
             }
 
             // ── Badge filters ──────────────────────────────────────────────────
@@ -2883,6 +2892,42 @@
                 redone:    { group: 'redone',   test: (r) => !!r.redone_checked },
             };
             const activeBadges = new Set();
+            let selectedUser = '';   // '' = all, '__none__' = no creator, else a creator user_id
+
+            // Rebuild the user dropdown (name + row count). Counts follow search
+            // and the badge filters, but ignore the dropdown itself.
+            function refreshUserFilter(allRows) {
+                const sel = document.getElementById('vamUserFilter');
+                if (!sel) return;
+                const users = new Map();   // user_id -> { name, n }
+                let none = 0;
+                allRows.forEach(r => {
+                    if (!rowPassesFilters(r, 'user')) return;
+                    const list = assignedCreators(r);
+                    if (!list.length) { none++; return; }
+                    const seen = new Set();
+                    list.forEach(c => {
+                        const id = String(c.user_id);
+                        if (seen.has(id)) return;
+                        seen.add(id);
+                        const u = users.get(id) || { name: c.name || ('User #' + id), n: 0 };
+                        u.n++;
+                        users.set(id, u);
+                    });
+                });
+                // Keep a selected user visible even if the current filters leave them 0 rows.
+                if (selectedUser && selectedUser !== '__none__' && !users.has(selectedUser)) {
+                    const known = creatorOptions.find(o => String(o.id) === selectedUser);
+                    users.set(selectedUser, { name: known ? known.name : ('User #' + selectedUser), n: 0 });
+                }
+                const items = [...users.entries()].sort((a, b) => String(a[1].name).localeCompare(String(b[1].name)));
+                const html = ['<option value="">All users</option>']
+                    .concat(items.map(([id, u]) => `<option value="${escapeHtml(id)}">${escapeHtml(u.name)} (${u.n})</option>`))
+                    .concat([`<option value="__none__">No creator (${none})</option>`])
+                    .join('');
+                if (sel.dataset.sig !== html) { sel.innerHTML = html; sel.dataset.sig = html; }
+                sel.value = selectedUser;
+            }
 
             function searchText() {
                 const el = document.getElementById('vamSearch');
@@ -2903,6 +2948,11 @@
             // Search + active badge groups (optionally ignoring one group).
             function rowPassesFilters(data, skipGroup) {
                 if (!rowMatchesSearch(data, searchText())) return false;
+                if (selectedUser && skipGroup !== 'user') {
+                    const list = assignedCreators(data);
+                    if (selectedUser === '__none__' ? list.length > 0
+                                                     : !list.some(c => String(c.user_id) === selectedUser)) return false;
+                }
                 const byGroup = {};
                 activeBadges.forEach(key => {
                     const f = BADGE_FILTERS[key];
@@ -2914,7 +2964,7 @@
 
             function applySearch() {
                 if (!table) return;
-                if (!searchText() && activeBadges.size === 0) {
+                if (!searchText() && activeBadges.size === 0 && !selectedUser) {
                     table.clearFilter();
                 } else {
                     table.setFilter((data) => rowPassesFilters(data, null));
