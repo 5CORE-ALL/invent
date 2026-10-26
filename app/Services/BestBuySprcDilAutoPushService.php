@@ -473,6 +473,14 @@ class BestBuySprcDilAutoPushService
             return null;
         }
         $target = max(0.0, round((float) $rule['groi'], 2));
+        // Ageing Rule: the SKU's age band adds its points to the Target NROI, before the Diff rule (floored at 0).
+        if (is_array($ctx['age_adj'] ?? null) && $ctx['age_adj'] !== []) {
+            $target = AmazonDilGroiRule::adjustGroiForAge(
+                $target,
+                is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
+                $ctx['age_adj']
+            );
+        }
         $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
         $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
 
@@ -523,6 +531,7 @@ class BestBuySprcDilAutoPushService
             'rules' => $rules,
             'diff_adj' => $unpacked['diff_adj'] ?? null,
             'lmp_cap' => $unpacked['lmp_cap'] ?? null,
+            'age_adj' => $unpacked['age_adj'] ?? null,
         ];
     }
 

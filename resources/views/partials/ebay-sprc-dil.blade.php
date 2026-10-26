@@ -44,8 +44,8 @@
     // Pages with no LMP data (Depop, Purchasing Power, Wayfair) get no LMP cap rule (TopDawg too). Reverb has LMP, so it gets the full LMP cap table.
     $ebaySprcDilLmpCapOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'reverb', 'aliexpress', 'tiktok', 'tiktok2', 'mercari_wship', 'shein', 'bestbuy'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
-    // Ageing Rule (same block as /amazon-tabulator-view): the SKU's age in days adds points to the Target NROI. eBay 1, 2, 3, AliExpress, Alibaba, Faire, TikTok 1 / 2, PLS and Shein.
-    $ebaySprcDilAgeAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'faire', 'tiktok', 'tiktok2', 'pls', 'shein'], true);
+    // Ageing Rule (same block as /amazon-tabulator-view): the SKU's age in days adds points to the Target NROI. eBay 1, 2, 3, AliExpress, Alibaba, Faire, TikTok 1 / 2, PLS, Shein, Best Buy, Newegg and Macys.
+    $ebaySprcDilAgeAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'faire', 'tiktok', 'tiktok2', 'pls', 'shein', 'bestbuy', 'newegg', 'macys'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);

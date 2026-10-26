@@ -468,6 +468,9 @@
         /* One row on wide screens: Yesterday 4 · L30 4 · Utilized Y 2 · Utilized L7 2 (of 12). Narrower screens wrap (media queries below). */
         .gac-card--yesterday, .gac-card--l30, .gac-card--projected { grid-column: span 4; }
         .gac-card--util { grid-column: span 2; }
+        /* Utilized Y card: default yellow; turns green when yesterday's utilisation is higher than L7's. */
+        .gac-card--util.gac-card--util-better { background: #bbf7d0; border-color: #22c55e; }
+        .gac-card--util.gac-card--util-better .gac-card-title { color: #166534; }
         .gac-card--util .gac-card-badges { grid-template-columns: minmax(0, 1fr); }
         .gac-card-title {
             font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
@@ -2615,6 +2618,8 @@
                     if (yellowUtilYEl) yellowUtilYEl.textContent = '0';
                     if (yellowUtilL7El) yellowUtilL7El.textContent = '0';
                     document.querySelectorAll('.gac-util-pct').forEach(function(el) { el.textContent = '0%'; });
+                    var gacUtilYCardReset = document.getElementById('gacUtilBlockY');
+                    if (gacUtilYCardReset) gacUtilYCardReset.classList.remove('gac-card--util-better');
                     if (totalUtilYEl) totalUtilYEl.textContent = '0';
                     if (totalUtilL7El) totalUtilL7El.textContent = '0';
                     ['faasAvgUtilYPct', 'faasAvgUtilL7Pct'].forEach(function(id) {
@@ -2724,6 +2729,14 @@
                     var v = Number(pair[1]);
                     if (el) el.textContent = 'avg ' + (Number.isFinite(v) ? v.toFixed(1) : '0') + '%';
                 });
+                // Utilized Y card: yellow by default, green when Y utilisation is higher than L7.
+                var gacUtilYCard = document.getElementById('gacUtilBlockY');
+                if (gacUtilYCard) {
+                    var gacAvgY = Number(s.avg_util_y_pct);
+                    var gacAvgL7 = Number(s.avg_util_l7_pct);
+                    gacUtilYCard.classList.toggle('gac-card--util-better',
+                        Number.isFinite(gacAvgY) && Number.isFinite(gacAvgL7) && gacAvgY > gacAvgL7);
+                }
                 gacSetUtil(greenUtilYEl, 'faasGreenUtilYPct', s.green_util_y_count);
                 gacSetUtil(redUtilYEl, 'faasRedUtilYPct', s.red_util_y_count);
                 gacSetUtil(pinkUtilYEl, 'faasPinkUtilYPct', s.pink_util_y_count);

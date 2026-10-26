@@ -83,6 +83,13 @@ class DilRuleSpriceApplyService
     /** Diff rule (gt_pct / points) saved in the Sprc Dil modal; null = default 20% / +10. */
     private ?array $diffAdj = null;
 
+    /**
+     * Ageing Rule bands saved in the Sprc Dil modal (age days → Target NROI points). Newegg only; null = off.
+     *
+     * @var list<array{min:float,max:float,points:float}>|null
+     */
+    private ?array $ageAdj = null;
+
     /** Clearance Target NROI% saved in this channel's Sprc Dil modal (last row). Null until the store is loaded. */
     private ?float $clearanceNroi = null;
 
@@ -352,6 +359,15 @@ class DilRuleSpriceApplyService
             }
         }
 
+        // Ageing Rule (Newegg): the SKU's age band adds its points to the Target NROI, after the CVR overlay (floored at 0).
+        if ($this->ageAdj !== null && $this->channel === 'newegg') {
+            $groi = AmazonDilGroiRule::adjustGroiForAge(
+                (float) $groi,
+                is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
+                $this->ageAdj
+            );
+        }
+
         // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above the saved % adds the saved points to the Target (default 20% / +10). Temu 3 Price = full Temu Price.
         if ($this->channel === 'temu3') {
             $diffPct = EbayRuleSprice::stdPriceDiffPct(
@@ -522,6 +538,23 @@ class DilRuleSpriceApplyService
             $l30Overlay = $this->temuOrdersL30BySku($skus, $this->channel === 'temu2');
         }
 
+        // Ageing Rule: the Shopify push clock, read once for the run. Only when a Newegg band has points.
+        $ageDaysBySku = [];
+        if ($this->ageAdj !== null && $this->channel === 'newegg' && collect($this->ageAdj)->contains(
+            static fn ($b) => is_array($b) && is_numeric($b['points'] ?? null) && abs((float) $b['points']) > 0.00001
+        )) {
+            try {
+                $ageCtl = app(\App\Http\Controllers\ProductMaster\InvDaysController::class);
+                $ageSources = $ageCtl->ageDaySources();
+                foreach ($skus as $ageSku) {
+                    $ageInv = (float) (($shopifyBySku[$ageSku]->inv ?? 0));
+                    $ageDaysBySku[$ageSku] = $ageCtl->ageDays($ageSku, $ageInv, $ageSources['push'] ?? [], $ageSources['last_sale'] ?? []);
+                }
+            } catch (Throwable $e) {
+                Log::warning('[DilRuleSpriceApply] age days lookup failed', ['channel' => $this->channel, 'error' => $e->getMessage()]);
+            }
+        }
+
         $draft = [];
         foreach ($skus as $sku) {
             $metric = $bySku[$sku];
@@ -584,6 +617,7 @@ class DilRuleSpriceApplyService
                 'amz_price' => (float) ($amzBySku[$sku]['price'] ?? 0),
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
                 'pushed_sprice' => $pushedBySku[$sku] ?? 0.0,
+                'age_days' => $ageDaysBySku[$sku] ?? null,
                 'dil' => $inv > 0 ? round((((float) ($shopify->quantity ?? 0)) / $inv) * 100, 2) : 0.0,
             ];
         }
@@ -927,6 +961,9 @@ class DilRuleSpriceApplyService
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
         $this->lmpCap = $unpacked['lmp_cap'] ?? null;
         $this->diffAdj = $unpacked['diff_adj'] ?? null;
+        $this->ageAdj = $this->channel === 'newegg' && is_array($unpacked['age_adj'] ?? null) && $unpacked['age_adj'] !== []
+            ? $unpacked['age_adj']
+            : null;
         $cn = $unpacked['clearance_nroi'] ?? null;
         $this->clearanceNroi = (is_numeric($cn) && (float) $cn >= 0) ? (float) $cn : 0.0;
         if ($unpacked['rules'] === []) {

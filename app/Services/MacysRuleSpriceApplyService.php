@@ -30,6 +30,11 @@ class MacysRuleSpriceApplyService
     /** Sprc Dil modal settings (Diff rule, LMP cap by Dil band). Null while Std prc vs dil is the ON rule. */
     private ?array $dilContext = null;
 
+    private ?\App\Http\Controllers\ProductMaster\InvDaysController $ageController = null;
+
+    /** @var array<string, mixed> */
+    private array $ageSources = [];
+
     /** @var array<string, float> Google LMP by SKU, same value the page shows (only loaded for Sprc Dil). */
     private array $lmpBySku = [];
 
@@ -220,6 +225,14 @@ class MacysRuleSpriceApplyService
             // pushing the boosted price lowers the Diff, the boost drops, the price falls, the Diff rises, and the
             // saved S PRC flip-flops against the page. A listed SKU (live Price > 0) and a Std Prc are still required.
             $groi = max(0.0, round($groi, 2));
+            // Ageing Rule: the SKU's age band adds its points to the Target NROI, before the Diff rule (floored at 0).
+            if (is_array($dilContext['age_adj'] ?? null)) {
+                $groi = AmazonDilGroiRule::adjustGroiForAge(
+                    $groi,
+                    is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
+                    $dilContext['age_adj']
+                );
+            }
             $std = (float) ($row['std'] ?? 0);
             if ($std > 0 && round((float) ($row['mc_price'] ?? 0), 2) > 0) {
                 $base = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi, 0.0, $margin);
@@ -320,6 +333,7 @@ class MacysRuleSpriceApplyService
                 : 0.0;
         }
 
+        $withAge = $this->ageAdjActive();
         $out = [];
         foreach ($skus as $sku) {
             $master = $masters[$sku] ?? null;
@@ -355,6 +369,7 @@ class MacysRuleSpriceApplyService
                 'amz' => isset($amzBySku[$sku]) ? (float) ($amzBySku[$sku]->price ?? 0) : 0.0,
                 'std' => $stdBySku[$sku] ?? 0.0,
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
+                'age_days' => $withAge ? $this->ageDaysFor($sku, $inv) : null,
             ];
         }
 
@@ -420,7 +435,41 @@ class MacysRuleSpriceApplyService
         $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'macys_dil_vs_groi')->first();
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
 
-        return ['lmp_cap' => $unpacked['lmp_cap'], 'diff_adj' => $unpacked['diff_adj']];
+        return [
+            'lmp_cap' => $unpacked['lmp_cap'],
+            'diff_adj' => $unpacked['diff_adj'],
+            // Ageing Rule bands (age days → Target NROI points). Null / empty = off.
+            'age_adj' => is_array($unpacked['age_adj'] ?? null) && $unpacked['age_adj'] !== [] ? $unpacked['age_adj'] : null,
+        ];
+    }
+
+    /** True when the saved Ageing Rule has at least one band with points (otherwise the age lookup is skipped). */
+    protected function ageAdjActive(): bool
+    {
+        foreach ((array) ($this->dilContext['age_adj'] ?? []) as $band) {
+            if (is_array($band) && is_numeric($band['points'] ?? null) && abs((float) $band['points']) > 0.00001) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * SKU age in days (Shopify push clock, same as the Age Disc column). Null when unknown.
+     */
+    protected function ageDaysFor(string $sku, float $inv): ?int
+    {
+        try {
+            if ($this->ageController === null) {
+                $this->ageController = app(\App\Http\Controllers\ProductMaster\InvDaysController::class);
+                $this->ageSources = $this->ageController->ageDaySources();
+            }
+
+            return $this->ageController->ageDays($sku, $inv, $this->ageSources['push'] ?? [], $this->ageSources['last_sale'] ?? []);
+        } catch (Throwable $e) {
+            return null;
+        }
     }
 
     /**
