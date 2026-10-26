@@ -1184,11 +1184,7 @@
                     hozAlign: "center",
                     visible: true,
                     headerTooltip: "Live from the S PRC cell: ((S PRC × PLS% − ship − LP) / LP) × 100.",
-                    sorter: function(a, b, aRow, bRow) {
-                        const av = plsSMetrics(aRow.getData()).sroi;
-                        const bv = plsSMetrics(bRow.getData()).sroi;
-                        return ((av == null || !isFinite(av)) ? 0 : av) - ((bv == null || !isFinite(bv)) ? 0 : bv);
-                    },
+                    sorter: tabSortBlankLast(function(d) { return plsIsParentRow(d) ? null : plsSMetrics(d).sroi; }),
                     formatter: function(cell) {
                         return plsMetricSpan('SGROI', plsSMetrics(cell.getRow().getData()).sroi);
                     },
@@ -1200,11 +1196,7 @@
                     hozAlign: "center",
                     visible: true,
                     headerTooltip: "Live from the S PRC cell: ((S PRC × PLS% − ship − LP) / S PRC) × 100.",
-                    sorter: function(a, b, aRow, bRow) {
-                        const av = plsSMetrics(aRow.getData()).sgpft;
-                        const bv = plsSMetrics(bRow.getData()).sgpft;
-                        return ((av == null || !isFinite(av)) ? 0 : av) - ((bv == null || !isFinite(bv)) ? 0 : bv);
-                    },
+                    sorter: tabSortBlankLast(function(d) { return plsIsParentRow(d) ? null : plsSMetrics(d).sgpft; }),
                     formatter: function(cell) {
                         return plsMetricSpan('SGPFT', plsSMetrics(cell.getRow().getData()).sgpft);
                     },

@@ -184,13 +184,35 @@
                     + Math.round(v) + '%</span>';
             };
         }
+        /**
+         * Sort by the value the cell paints. The row has no SNROI / SNPFT field (the formatter works it out from S PRC),
+         * so a plain number sorter saw every row as blank and never changed the order. Blank rows stay at the bottom.
+         */
+        function ebayDilNetColSorter(kind) {
+            const valueOf = function(d) {
+                if (!d || d.is_parent || d.is_parent_summary) return null;
+                if (!(ebayDilRowSprice(d) > 0)) return null;
+                const v = kind === 'snpft' ? ebayDilComputedSnpft(d) : ebayDilComputedSnroi(d);
+                return isFinite(v) ? v : null;
+            };
+            if (typeof window.tabSortBlankLast === 'function') return window.tabSortBlankLast(valueOf);
+            return function(a, b, aRow, bRow, column, dir) {
+                const av = valueOf(aRow.getData());
+                const bv = valueOf(bRow.getData());
+                if (av === null && bv === null) return 0;
+                const blankLast = dir === 'desc' ? -1 : 1;
+                if (av === null) return blankLast;
+                if (bv === null) return -blankLast;
+                return av - bv;
+            };
+        }
         function ebayDilNetColumnDef(title, field, kind) {
             const ads = (typeof ebayDilAdsPct === 'function') ? ebayDilAdsPct() : 0;
             return {
                 title: title,
                 field: field,
                 hozAlign: 'center',
-                sorter: 'number',
+                sorter: ebayDilNetColSorter(kind),
                 width: 58,
                 headerTooltip: kind === 'snpft'
                     ? (ads > 0 ? 'SNPFT = SGPFT − Ads%.' : 'SNPFT = SGPFT (this page has no Ads%).')
