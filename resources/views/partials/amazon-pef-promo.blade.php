@@ -4798,6 +4798,10 @@
             return Math.abs(Number(a) - Number(b)) < 0.005;
         }
         function collectAmzReloadPushItems() {
+            // Do not queue anything until the saved S PRC rule (Sprc Dil / Std prc vs dil) has been read from the
+            // server. Before that the page runs on localStorage / the "std" default, so it used to queue the Push Prc
+            // stack price (e.g. 19.59) and overwrite the Sprc Dil price (24.54) on every page load.
+            if (document.getElementById('sprice-rule-switch') && !window._spriceRuleFromServer) return [];
             const seen = {};
             const items = [];
             function consider(d) {

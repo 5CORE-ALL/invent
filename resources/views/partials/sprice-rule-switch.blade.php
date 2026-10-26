@@ -172,8 +172,11 @@
                     headers: { 'Accept': 'application/json' },
                     timeout: 8000,
                 }).done(function(res) {
+                    // The saved rule is now known (the first settle above only used localStorage / the default).
+                    window._spriceRuleFromServer = true;
                     spriceSettleRule(res && res.rule === 'dil' ? 'dil' : 'std');
                 }).fail(function() {
+                    window._spriceRuleFromServer = true;
                     spriceSettleRule(spriceActiveRule());
                 });
             }
