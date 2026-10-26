@@ -10977,15 +10977,15 @@
                         icon = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
                         color = '#ffc107';
                         tip = 'Pushing S PRC…';
-                    } else if (status === 'error' && !((CHANNEL_PROMO_CHANNEL === 'alibaba' || CHANNEL_PROMO_CHANNEL === 'ebay2') && alreadyLive)) {
-                        // eBay 2: a stale error from an old failed push must not show once the live Price already equals S PRC.
+                    } else if (status === 'error' && !((CHANNEL_PROMO_CHANNEL === 'alibaba' || CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay3') && alreadyLive)) {
+                        // eBay 2 / 3: a stale error from an old failed push must not show once the live Price already equals S PRC.
                         icon = '<i class="fa-solid fa-xmark"></i>';
                         color = '#dc3545';
                         const failWhy = String(d.PUSH_PRC_ERROR || '').trim();
                         tip = failWhy
                             ? ('Not pushed: ' + failWhy + (d.PUSH_PRC_ERROR_AT ? ' (' + d.PUSH_PRC_ERROR_AT + ')' : '') + ' — click to retry')
                             : 'Last S PRC push failed (reason not recorded) — click to retry';
-                    } else if (status === 'pushed' || ((CHANNEL_PROMO_CHANNEL === 'alibaba' || CHANNEL_PROMO_CHANNEL === 'ebay2') && alreadyLive)) {
+                    } else if (status === 'pushed' || ((CHANNEL_PROMO_CHANNEL === 'alibaba' || CHANNEL_PROMO_CHANNEL === 'ebay2' || CHANNEL_PROMO_CHANNEL === 'ebay3') && alreadyLive)) {
                         icon = '<i class="fa-solid fa-check-double"></i>';
                         color = '#28a745';
                         const last = Number(d.PUSH_PRC_VALUE) || price;

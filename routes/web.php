@@ -4812,6 +4812,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/facebook-all-ads-sheet/push-sbgt',       [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'pushSbgt'])->name('facebook.all.ads.sheet.push.sbgt');
     // Daily history series for the toolbar badges (impr/clk/spend/…).
     Route::get('/facebook-all-ads-sheet/badge-history',    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'badgeHistory'])->name('facebook.all.ads.sheet.badge.history');
+    // Yesterday / L7 totals for the Yesterday + Projected summary cards.
+    Route::post('/facebook-all-ads-sheet/period-stats',    [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'periodStats'])->name('facebook.all.ads.sheet.period.stats');
     // Campaign audit (checklist + history).
     Route::get('/facebook-all-ads-sheet/audit',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'getAudit'])->name('facebook.all.ads.sheet.audit.get');
     Route::post('/facebook-all-ads-sheet/audit',           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'saveAudit'])->name('facebook.all.ads.sheet.audit.save');

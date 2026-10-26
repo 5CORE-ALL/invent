@@ -123,6 +123,48 @@
         .faas-stat-badge--sold  { background: #8b5cf6; }   /* purple  */
         .faas-stat-badge--acos  { background: #ea580c; }   /* orange  */
         .faas-stat-badge--tcos  { background: #7c3aed; }   /* violet — matches /advertisement-master */
+
+        /* ── Summary cards: Yesterday / L30 / Projected (same look as the Amazon / Google Shopping ads pages) ── */
+        .faas-cards {
+            display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 0.5rem;
+            align-items: start; flex: 1 1 100% !important; width: 100%;
+        }
+        .faas-card {
+            min-width: 0; border-radius: 12px; padding: 0.55rem 0.6rem 0.65rem;
+            background: #fef9c3; border: 1px solid #facc15; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        }
+        .faas-card--yesterday, .faas-card--l30, .faas-card--projected { grid-column: span 4; }
+        .faas-card-title {
+            font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+            line-height: 1; margin: 0 0 0.35rem; color: #854d0e;
+        }
+        .faas-card-tiles { display: grid; gap: 0.4rem; align-items: stretch; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .faas-kpi-tile {
+            display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; text-align: center;
+            column-gap: 4px; row-gap: 0; width: 100%; min-width: 0; min-height: 36px; box-sizing: border-box;
+            white-space: normal; overflow-wrap: anywhere;
+            font-size: clamp(0.68rem, 0.62vw + 0.28rem, 0.78rem); font-weight: 700; line-height: 1.25;
+            padding: 0.3rem 0.4rem; border-radius: 0.375rem;
+            background: #fff; color: #111827; border: 1px solid #e5e7eb;
+            transition: transform 0.1s ease;
+        }
+        .faas-kpi-tile.badge-chart-link { cursor: pointer; }
+        .faas-kpi-tile.badge-chart-link:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15); }
+        .faas-kpi-tile > .faas-kpi-val { font-size: 1.08em; font-weight: 800; white-space: nowrap; }
+        .faas-kpi-tile--count  { background: #475569; color: #fff; border-color: #334155; }
+        .faas-kpi-tile--active { background: #16a34a; color: #fff; border-color: #15803d; }
+        .faas-kpi-tile--tcos   { background: #7c3aed; color: #fff; border-color: #6d28d9; }
+        .faas-kpi-tile.faas-cmp-better { background: #22c55e; color: #052e16; border-color: #16a34a; }
+        .faas-kpi-tile.faas-cmp-worse  { background: #ef4444; color: #fff; border-color: #dc2626; }
+        @media (max-width: 1399.98px) {
+            .faas-card--yesterday, .faas-card--l30, .faas-card--projected { grid-column: span 6; }
+        }
+        @media (max-width: 991.98px) {
+            .faas-card--yesterday, .faas-card--l30, .faas-card--projected { grid-column: span 12; }
+        }
+        @media (max-width: 575.98px) {
+            .faas-card-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
         @keyframes faas-audit-flash {
             0%, 100% { opacity: 1; }
             50%      { opacity: 0.2; }
@@ -341,47 +383,91 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 faas-badge-row">
-                    <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1 faas-badges">
-                        {{-- Live sums of the IMPR / CLK columns
-                             across whatever rows are currently visible
-                             (after search / header filters). Updated by
-                             updateMetricBadges() in the script below. --}}
-                        {{-- Count badge — number of rows currently
-                             visible (after search + Sbgt filter). Not
-                             a chart link; clicking does nothing. --}}
-                        <span id="faasCountBadge" class="faas-stat-badge faas-stat-badge--count"
-                              title="Visible row count">Count:<span id="faasCountValue">0</span></span>
-                        <span id="faasActiveBadge" class="faas-stat-badge faas-stat-badge--sales"
-                              title="Active campaigns among the visible rows">Active:<span id="faasActiveValue">0</span></span>
-                        <span id="faasImpressionsBadge" data-metric="impr" data-label="Impr"
-                              class="faas-stat-badge faas-stat-badge--impr badge-chart-link"
-                              title="Click for 32-day trend">Impr:<span id="faasImpressionsValue">0</span></span>
-                        <span id="faasClicksBadge" data-metric="clk" data-label="Clicks"
-                              class="faas-stat-badge faas-stat-badge--clk badge-chart-link"
-                              title="Click for 32-day trend">Clk:<span id="faasClicksValue">0</span></span>
-                        <span id="faasSpendBadge" data-metric="spend" data-label="Spend"
-                              class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
-                              title="Click for 32-day trend">Spend:<span id="faasSpendValue">$0</span></span>
-                        <span id="faasSalesBadge" data-metric="sales" data-label="Sales"
-                              class="faas-stat-badge faas-stat-badge--sales badge-chart-link"
-                              title="Click for 32-day trend">Sales:<span id="faasSalesValue">$0</span></span>
-                        <span id="faasSoldBadge" data-metric="sold" data-label="Sold"
-                              class="faas-stat-badge faas-stat-badge--sold badge-chart-link"
-                              title="Click for 32-day trend">Sold:<span id="faasSoldValue">0</span></span>
-                        <span id="faasAcosBadge" data-metric="acos" data-label="ACOS"
-                              class="faas-stat-badge faas-stat-badge--acos badge-chart-link"
-                              title="Click for 32-day trend">Acos:<span id="faasAcosValue">0%</span></span>
-                        {{-- TCOS = Facebook Ad Spend / FB Marketplace L30 sales × 100 --}}
-                        <span id="faasTcosBadge" class="faas-stat-badge faas-stat-badge--tcos"
-                              title="TCOS = Facebook Ad Spend / FB Marketplace L30 sales × 100">TCOS:<span id="faasTcosValue">0%</span></span>
-                        <span id="faasCtrBadge" data-metric="ctr" data-label="CTR"
-                              class="faas-stat-badge faas-stat-badge--ctr badge-chart-link"
-                              title="Click for 32-day trend">CTR:<span id="faasCtrValue">0%</span></span>
-                        <span id="faasCvrBadge" data-metric="cvr" data-label="CVR"
-                              class="faas-stat-badge faas-stat-badge--cvr badge-chart-link"
-                              title="Click for 32-day trend">CVR:<span id="faasCvrValue">0%</span></span>
-                        <span id="faasCpsBadge" class="faas-stat-badge faas-stat-badge--cps"
-                              title="CPS = Spend / Sold (visible rows)">CPS:<span id="faasCpsValue">$0</span></span>
+                    @php
+                        // Yesterday / Projected tiles. Values come from the daily
+                        // snapshot table (period-stats endpoint) for the visible
+                        // campaigns; the L30 card below is the live sheet totals.
+                        $faasPeriodCards = [
+                            'yesterday' => ['title' => 'Yesterday', 'p' => 'Y ', 'tip' => 'Yesterday (latest daily snapshot)'],
+                            'projected' => ['title' => 'Projected · L7 ÷ 7 × 30', 'p' => '', 'tip' => 'Projected = last 7 days of snapshots ÷ 7 × 30'],
+                        ];
+                        $faasPeriodItems = [
+                            ['bgt',   'BGT',      'Sum of Sbgt (suggested budget) snapshots'],
+                            ['bid',   'AVG BID',  'Avg bid = spend ÷ clicks (avg CPC)'],
+                            ['cvr',   'CVR%',     'CVR% = sold ÷ clicks'],
+                            ['acos',  'ACOS%',    'ACOS% = spend ÷ sales'],
+                            ['ctr',   'CTR%',     'CTR% = clicks ÷ impressions'],
+                            ['impr',  'IMPR',     'Impressions'],
+                            ['clicks','CLICKS',   'Clicks'],
+                            ['sold',  'SOLD',     'Units sold'],
+                            ['sales', 'SALES',    'Sales'],
+                            ['spend', 'SPEND',    'Spend'],
+                            ['cps',   'CPS',      'CPS = spend ÷ sold'],
+                        ];
+                    @endphp
+                    <div class="faas-cards faas-badges flex-grow-1" id="faasSummaryCards">
+                        <div class="faas-card faas-card--yesterday">
+                            <div class="faas-card-title">{{ $faasPeriodCards['yesterday']['title'] }}</div>
+                            <div class="faas-card-tiles">
+                                @foreach ($faasPeriodItems as [$k, $label, $tip])
+                                    <span class="faas-kpi-tile" id="faasKpi_yesterday_{{ $k }}" data-period="yesterday" data-kpi="{{ $k }}" title="{{ $faasPeriodCards['yesterday']['tip'] }} · {{ $tip }}">Y {{ $label }}:<span class="faas-kpi-val">—</span></span>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        {{-- L30 card: live sums of the visible rows (after search /
+                             header filters), updated by updateMetricBadges(). --}}
+                        <div class="faas-card faas-card--l30">
+                            <div class="faas-card-title">L30</div>
+                            <div class="faas-card-tiles">
+                                <span id="faasCountBadge" class="faas-kpi-tile faas-kpi-tile--count"
+                                      title="Visible row count">Count:<span class="faas-kpi-val" id="faasCountValue">0</span></span>
+                                <span id="faasActiveBadge" class="faas-kpi-tile faas-kpi-tile--active"
+                                      title="Active campaigns among the visible rows">Active:<span class="faas-kpi-val" id="faasActiveValue">0</span></span>
+                                <span id="faasAvgBidBadge" class="faas-kpi-tile"
+                                      title="Avg bid = Spend / Clicks (visible rows)">AVG BID:<span class="faas-kpi-val" id="faasAvgBidValue">$0</span></span>
+                                <span id="faasImpressionsBadge" data-metric="impr" data-label="Impr"
+                                      class="faas-kpi-tile badge-chart-link"
+                                      title="Click for 32-day trend">Impr:<span class="faas-kpi-val" id="faasImpressionsValue">0</span></span>
+                                <span id="faasClicksBadge" data-metric="clk" data-label="Clicks"
+                                      class="faas-kpi-tile badge-chart-link"
+                                      title="Click for 32-day trend">Clicks:<span class="faas-kpi-val" id="faasClicksValue">0</span></span>
+                                <span id="faasSpendBadge" data-metric="spend" data-label="Spend"
+                                      class="faas-kpi-tile badge-chart-link"
+                                      title="Click for 32-day trend">Spend:<span class="faas-kpi-val" id="faasSpendValue">$0</span></span>
+                                <span id="faasSalesBadge" data-metric="sales" data-label="Sales"
+                                      class="faas-kpi-tile badge-chart-link"
+                                      title="Click for 32-day trend">Sales:<span class="faas-kpi-val" id="faasSalesValue">$0</span></span>
+                                <span id="faasSoldBadge" data-metric="sold" data-label="Sold"
+                                      class="faas-kpi-tile badge-chart-link"
+                                      title="Click for 32-day trend">Sold:<span class="faas-kpi-val" id="faasSoldValue">0</span></span>
+                                <span id="faasAcosBadge" data-metric="acos" data-label="ACOS"
+                                      class="faas-kpi-tile badge-chart-link"
+                                      title="Click for 32-day trend">Acos%:<span class="faas-kpi-val" id="faasAcosValue">0%</span></span>
+                                {{-- TCOS = Facebook Ad Spend / FB Marketplace L30 sales × 100 --}}
+                                <span id="faasTcosBadge" class="faas-kpi-tile faas-kpi-tile--tcos"
+                                      title="TCOS = Facebook Ad Spend / FB Marketplace L30 sales × 100">TCOS:<span class="faas-kpi-val" id="faasTcosValue">0%</span></span>
+                                <span id="faasCtrBadge" data-metric="ctr" data-label="CTR"
+                                      class="faas-kpi-tile badge-chart-link"
+                                      title="Click for 32-day trend">CTR:<span class="faas-kpi-val" id="faasCtrValue">0%</span></span>
+                                <span id="faasCvrBadge" data-metric="cvr" data-label="CVR"
+                                      class="faas-kpi-tile badge-chart-link"
+                                      title="Click for 32-day trend">CVR%:<span class="faas-kpi-val" id="faasCvrValue">0%</span></span>
+                                <span id="faasCpsBadge" class="faas-kpi-tile"
+                                      title="CPS = Spend / Sold (visible rows)">CPS:<span class="faas-kpi-val" id="faasCpsValue">$0</span></span>
+                                <span id="faasBgtBadge" class="faas-kpi-tile"
+                                      title="Sum of Sbgt (suggested budget) across the visible rows">BGT:<span class="faas-kpi-val" id="faasBgtValue">$0</span></span>
+                            </div>
+                        </div>
+
+                        <div class="faas-card faas-card--projected">
+                            <div class="faas-card-title">{{ $faasPeriodCards['projected']['title'] }}</div>
+                            <div class="faas-card-tiles">
+                                @foreach ($faasPeriodItems as [$k, $label, $tip])
+                                    <span class="faas-kpi-tile" id="faasKpi_projected_{{ $k }}" data-period="projected" data-kpi="{{ $k }}" title="{{ $faasPeriodCards['projected']['tip'] }} · {{ $tip }}">{{ $label }}:<span class="faas-kpi-val">—</span></span>
+                                @endforeach
+                            </div>
+                        </div>
                     </div>
 
                     <div class="d-flex align-items-center flex-wrap gap-2 faas-actions">
@@ -2235,6 +2321,138 @@
             return ((num / den) * 100).toFixed(decimals) + '%';
         }
 
+        // ── Yesterday / Projected cards ───────────────────────────────
+        // Values come from the daily snapshot table for the currently
+        // visible campaigns. Yesterday = yesterday's snapshot; Projected =
+        // (last 7 days of snapshots ÷ days with data) × 30. Tiles turn
+        // green / red against the L30 card (daily pace for yesterday).
+        const PERIOD_STATS_URL = '/facebook-all-ads-sheet/period-stats';
+        let faasL30Totals = null;
+        let faasPeriodData = null;       // last response from period-stats
+        let faasCardTimer = null;
+        let faasCardReq = 0;
+        let faasCardKey = null;          // visible-cid signature of faasPeriodData
+
+        function faasVisibleCids() {
+            const cids = [];
+            if (tabulator) {
+                (tabulator.getData('active') || []).forEach(r => {
+                    const cid = (r['CAMPAIGN ID'] ?? '').toString().trim();
+                    if (cid && /^\d{6,}$/.test(cid)) cids.push(cid);
+                });
+            }
+            return cids;
+        }
+
+        function faasScheduleCardRefresh() {
+            // Always repaint from cached data right away (L30 totals may have
+            // changed), then refetch only when the visible campaign set changed.
+            faasPaintPeriodCards();
+            clearTimeout(faasCardTimer);
+            faasCardTimer = setTimeout(faasRefreshPeriodCards, 300);
+        }
+
+        function faasRefreshPeriodCards() {
+            const cids = faasVisibleCids();
+            const key = cids.join(',');
+            if (key === faasCardKey && faasPeriodData) return;
+            const req = ++faasCardReq;
+            fetch(PERIOD_STATS_URL, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ campaign_ids: cids }),
+            })
+                .then(r => r.json())
+                .then(resp => {
+                    if (req !== faasCardReq || !resp || !resp.success) return;
+                    faasPeriodData = resp;
+                    faasCardKey = key;
+                    faasPaintPeriodCards();
+                })
+                .catch(err => console.error('period-stats fetch failed:', err));
+        }
+
+        // Turn raw sums into the tile values. `days` scales additive sums
+        // (1 = as is). Returns null when there is no data for the period.
+        function faasPeriodMetrics(t) {
+            if (!t) return null;
+            const impr = t.impr, clicks = t.clk, spend = t.spend, sales = t.sales, sold = t.sold;
+            return {
+                impr, clicks, spend, sales, sold,
+                bgt:  t.sbgt,
+                bid:  clicks > 0 ? spend / clicks : 0,
+                cvr:  clicks > 0 ? (sold / clicks) * 100 : 0,
+                acos: spend <= 0 ? 0 : (sales > 0 ? (spend / sales) * 100 : 100),
+                ctr:  impr > 0 ? (clicks / impr) * 100 : 0,
+                cps:  sold > 0 ? spend / sold : null,
+            };
+        }
+
+        function faasFmtKpi(k, v) {
+            if (v === null || v === undefined || !isFinite(v)) return '—';
+            switch (k) {
+                case 'spend': case 'sales': case 'bgt': return '$' + Math.round(v).toLocaleString();
+                case 'bid':  return '$' + v.toFixed(2);
+                case 'cps':  return '$' + Math.round(v).toLocaleString();
+                case 'cvr': case 'ctr': case 'acos': return v.toFixed(1) + '%';
+                default: return Math.round(v).toLocaleString();
+            }
+        }
+
+        // true = higher is better, false = lower is better.
+        const FAAS_KPI_HIGHER_BETTER = {
+            bgt: true, bid: false, cvr: true, acos: false, ctr: true,
+            impr: true, clicks: true, sold: true, sales: true, spend: true, cps: false,
+        };
+
+        function faasPaintPeriodCards() {
+            const d = faasPeriodData;
+            const l30 = faasL30Totals ? faasPeriodMetrics({
+                impr: faasL30Totals.impr, clk: faasL30Totals.clicks, spend: faasL30Totals.spend,
+                sales: faasL30Totals.sales, sold: faasL30Totals.sold, sbgt: faasL30Totals.bgt,
+            }) : null;
+            // L30 sums → per-day pace for the additive tiles (BGT is already per day).
+            const l30Daily = l30 ? Object.assign({}, l30, {
+                impr: l30.impr / 30, clicks: l30.clicks / 30, spend: l30.spend / 30,
+                sales: l30.sales / 30, sold: l30.sold / 30,
+            }) : null;
+
+            const days = d && d.l7_days > 0 ? d.l7_days : 0;
+            const periods = {
+                yesterday: d && d.yesterday ? faasPeriodMetrics(d.yesterday) : null,
+                projected: d && d.l7 && days ? (function () {
+                    const per = faasPeriodMetrics(d.l7);
+                    // Additive sums: ÷ days with data × 30. BGT: average per day.
+                    ['impr', 'clicks', 'spend', 'sales', 'sold'].forEach(k => { per[k] = per[k] / days * 30; });
+                    per.bgt = per.bgt / days;
+                    per.cps = per.sold > 0 ? per.spend / per.sold : null;
+                    return per;
+                })() : null,
+            };
+            const ref = { yesterday: l30Daily, projected: l30 };
+
+            document.querySelectorAll('#faasSummaryCards .faas-kpi-tile[data-period]').forEach(el => {
+                const period = el.dataset.period, k = el.dataset.kpi;
+                const m = periods[period];
+                const valEl = el.querySelector('.faas-kpi-val');
+                el.classList.remove('faas-cmp-better', 'faas-cmp-worse');
+                if (!valEl) return;
+                if (!m) { valEl.textContent = '—'; return; }
+                valEl.textContent = faasFmtKpi(k, m[k]);
+                const base = ref[period] ? ref[period][k] : null;
+                const v = m[k];
+                if (base === null || base === undefined || v === null || v === undefined
+                    || !isFinite(base) || !isFinite(v) || Math.abs(v - base) < 1e-9) return;
+                const better = FAAS_KPI_HIGHER_BETTER[k] ? v > base : v < base;
+                el.classList.add(better ? 'faas-cmp-better' : 'faas-cmp-worse');
+            });
+        }
+
         function updateMetricBadges() {
             const countEl = document.getElementById('faasCountValue');
             const imprEl  = document.getElementById('faasImpressionsValue');
@@ -2248,7 +2466,7 @@
             if (!imprEl || !clkEl || !spendEl || !salesEl || !soldEl
                 || !acosEl || !ctrEl || !cvrEl) return;
 
-            let imprSum = 0, clkSum = 0, spendSum = 0, salesSum = 0, soldSum = 0;
+            let imprSum = 0, clkSum = 0, spendSum = 0, salesSum = 0, soldSum = 0, bgtSum = 0;
             let visibleCount = 0;
             let activeCount = 0;
             if (tabulator) {
@@ -2262,6 +2480,7 @@
                     spendSum += toNumber(r.SPEND);
                     salesSum += toNumber(r.SALES);
                     soldSum  += toNumber(r.SOLD);
+                    bgtSum   += toNumber(r.Sbgt);
                     if (statusKey(r.Status) === 'active') activeCount++;
                 });
             }
@@ -2289,6 +2508,19 @@
                 cpsEl.textContent = spendSum <= 0 ? '$0'
                     : (soldSum > 0 ? '$' + Math.round(spendSum / soldSum).toLocaleString() : '—');
             }
+
+            // AVG BID = Spend / Clicks (avg CPC); BGT = Σ Sbgt of the visible rows.
+            const avgBidEl = document.getElementById('faasAvgBidValue');
+            if (avgBidEl) {
+                avgBidEl.textContent = clkSum > 0 ? '$' + (spendSum / clkSum).toFixed(2) : '$0';
+            }
+            const bgtEl = document.getElementById('faasBgtValue');
+            if (bgtEl) bgtEl.textContent = '$' + Math.round(bgtSum).toLocaleString();
+
+            // Totals the Yesterday / Projected cards compare themselves against.
+            faasL30Totals = { impr: imprSum, clicks: clkSum, spend: spendSum, sales: salesSum,
+                              sold: soldSum, bgt: bgtSum };
+            faasScheduleCardRefresh();
 
             // TCOS = Active FB ad spend / FB Marketplace's own L30 sales.
             const tcosEl = document.getElementById('faasTcosValue');

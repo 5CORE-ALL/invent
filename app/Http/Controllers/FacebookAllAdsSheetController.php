@@ -1958,6 +1958,70 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
+     * Yesterday + last-7-days totals for the Yesterday / Projected summary
+     * cards. Built from the daily per-campaign snapshot table (same source
+     * as badgeHistory), limited to the campaigns currently visible.
+     *
+     * l7 is the sum of the 7 days ending yesterday; `l7_days` is how many of
+     * those days actually have a snapshot so the client can average correctly
+     * while history is still building up.
+     */
+    public function periodStats(Request $request)
+    {
+        $cids = $request->input('campaign_ids', []);
+        if (is_string($cids)) {
+            $cids = explode(',', $cids);
+        }
+        $cids = array_values(array_filter(array_map(
+            fn ($v) => trim((string) $v),
+            (array) $cids
+        ), fn ($v) => $v !== ''));
+
+        $yesterday = now()->subDay()->toDateString();
+        $from      = now()->subDays(7)->toDateString();
+
+        $q = DB::table('facebook_campaign_metric_snapshots')
+            ->whereBetween('snapshot_date', [$from, $yesterday]);
+        if (! empty($cids)) {
+            $q->whereIn('campaign_id', $cids);
+        }
+        $rows = $q->groupBy('snapshot_date')
+            ->orderBy('snapshot_date')
+            ->selectRaw('snapshot_date,
+                SUM(impr) AS impr, SUM(clk) AS clk, SUM(spend) AS spend,
+                SUM(sales) AS sales, SUM(sold) AS sold, SUM(sbgt) AS sbgt')
+            ->get();
+
+        $zero = ['impr' => 0.0, 'clk' => 0.0, 'spend' => 0.0, 'sales' => 0.0, 'sold' => 0.0, 'sbgt' => 0.0];
+        $y  = null;
+        $l7 = $zero;
+        foreach ($rows as $r) {
+            $vals = [
+                'impr'  => (float) $r->impr,
+                'clk'   => (float) $r->clk,
+                'spend' => (float) $r->spend,
+                'sales' => (float) $r->sales,
+                'sold'  => (float) $r->sold,
+                'sbgt'  => (float) $r->sbgt,
+            ];
+            foreach ($vals as $k => $v) {
+                $l7[$k] += $v;
+            }
+            if ($r->snapshot_date === $yesterday) {
+                $y = $vals;
+            }
+        }
+
+        return response()->json([
+            'success'        => true,
+            'yesterday_date' => $yesterday,
+            'yesterday'      => $y,          // null when no snapshot exists for yesterday
+            'l7'             => $rows->isEmpty() ? null : $l7,
+            'l7_days'        => $rows->count(),
+        ]);
+    }
+
+    /**
      * Render a resolved-source value using the column's formatter:
      *   • 'int' — round to integer, preserving "$" prefix and "%" suffix
      *             when the original value carried them. Non-numeric inputs
