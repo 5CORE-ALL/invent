@@ -94,6 +94,7 @@
         }
         .l30-badge { border-color: #e05252; color: #c0392b; }
         .l30-issues-badge { border-color: #4a9e6b; color: #27693e; }
+        @include('partials.issue-board-report', ['ibrPart' => 'css', 'ibrDepts' => [['key' => 'Label', 'label' => 'Label'], ['key' => 'Shipping', 'label' => 'Shipping']]])
     </style>
 @endsection
 
@@ -121,6 +122,10 @@
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="li-history">
                             <i class="bi bi-clock-history me-1"></i> History
                         </button>
+                        <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-sku"><i class="bi bi-bar-chart-line me-1"></i> Create SKU Report</button>
+                        <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-parent"><i class="bi bi-diagram-3 me-1"></i> Create Parent Report</button>
+                        <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-supplier"><i class="bi bi-truck me-1"></i> Create Supplier Report</button>
+                        <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-month"><i class="bi bi-graph-up me-1"></i> Monthly Report &amp; Graph</button>
                         <button type="button" class="btn btn-success btn-sm" id="li-export">
                             <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
                         </button>
@@ -338,10 +343,16 @@
             </div>
         </div>
     </div>
+
+    @include('partials.issue-board-report', ['ibrPart' => 'html', 'ibrDepts' => [['key' => 'Label', 'label' => 'Label'], ['key' => 'Shipping', 'label' => 'Shipping']]])
 @endsection
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <script>
+        @include('partials.issue-board-report', ['ibrPart' => 'js', 'ibrDepts' => [['key' => 'Label', 'label' => 'Label'], ['key' => 'Shipping', 'label' => 'Shipping']]])
+    </script>
     <script>
         (function () {
             'use strict';
@@ -873,6 +884,7 @@
 
             document.addEventListener('DOMContentLoaded', function () {
                 modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('li-issue-modal'));
+                window.IssueBoardReport.init({ getRows: function () { return table ? table.getData() : []; } });
                 table = new Tabulator('#label-tabulator', {
                     layout: 'fitDataStretch',
                     height: '100%',

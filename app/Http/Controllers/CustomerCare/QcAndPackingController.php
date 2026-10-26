@@ -182,6 +182,24 @@ class QcAndPackingController extends Controller
         return array_values(array_filter(array_map('trim', preg_split('/[|,]/', $raw) ?: [])));
     }
 
+    /** Adds the latest supplier per SKU as `supplier` (same lookup the QC board uses). */
+    public function attachSuppliers(array $rows): array
+    {
+        $skus = [];
+        foreach ($rows as $row) {
+            $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+            if ($sku !== '') {
+                $skus[$sku] = $sku;
+            }
+        }
+        $suppliers = $this->supplierBySku(array_values($skus));
+        foreach ($rows as $i => $row) {
+            $rows[$i]['supplier'] = $suppliers[strtoupper(trim((string) ($row['sku'] ?? '')))] ?? '';
+        }
+
+        return $rows;
+    }
+
     public function attachImages(array $rows): array
     {
         if ($rows === []) {
