@@ -169,7 +169,10 @@ class ShopifyAdsMasterController extends Controller
             );
         }
 
-        $facebookMetrics = $this->metaChannelMetrics('Facebook', 'FB');
+        // Facebook row = all Meta campaigns (FB + Instagram) to match the sheet;
+        // the Instagram row below is shown for reference only and is not added
+        // to the parent again.
+        $facebookMetrics = $this->metaAllChannelsMetrics('Facebook');
         $parentMetrics['spend'] += (float) ($facebookMetrics['spend'] ?? 0);
         $parentMetrics['clicks'] += (int) ($facebookMetrics['clicks'] ?? 0);
         $parentMetrics['sold'] += (int) ($facebookMetrics['sold'] ?? 0);
@@ -205,11 +208,6 @@ class ShopifyAdsMasterController extends Controller
         $children[] = $facebookRow;
 
         $instagramMetrics = $this->metaChannelMetrics('Instagram', 'Insta');
-        $parentMetrics['spend'] += (float) ($instagramMetrics['spend'] ?? 0);
-        $parentMetrics['clicks'] += (int) ($instagramMetrics['clicks'] ?? 0);
-        $parentMetrics['sold'] += (int) ($instagramMetrics['sold'] ?? 0);
-        $parentMetrics['sales'] += (float) ($instagramMetrics['sales'] ?? 0);
-        $parentMetrics['active'] += (int) ($instagramMetrics['active'] ?? 0);
 
         $instagramRow = self::advertisementMasterMetricRow(
             'Shopify'.$sep.'Instagram',
@@ -957,7 +955,7 @@ class ShopifyAdsMasterController extends Controller
     {
         $sep = self::SUBROW_SEPARATOR;
 
-        $facebook = $this->metaChannelMetrics('Facebook', 'FB');
+        $facebook = $this->metaAllChannelsMetrics('Facebook');
         $facebook['_children'] = [];
         foreach ($this->metaAdTypeLenses('shopify_facebook') as [$suffix, , $adTypes]) {
             $facebook['_children'][] = $this->metaChannelMetrics('Facebook'.$sep.$suffix, 'FB', $adTypes, true);
@@ -966,7 +964,9 @@ class ShopifyAdsMasterController extends Controller
             $facebook['_children'][] = $this->metaChannelMetrics('Facebook'.$sep.$tag, 'FB', null, true, false, $tag);
         }
 
-        $instagram = $this->metaChannelMetrics('Instagram', 'Insta');
+        // Reference row: already included in the Facebook (all Meta) row above,
+        // so it is flagged as a sub-row and skipped when totals are summed.
+        $instagram = $this->metaChannelMetrics('Instagram', 'Insta', null, true);
         $instagram['_children'] = [];
         foreach ($this->metaAdTypeLenses('shopify_instagram', false) as [$suffix, , $adTypes]) {
             $instagram['_children'][] = $this->metaChannelMetrics('Instagram'.$sep.$suffix, 'Insta', $adTypes, true);
@@ -2216,7 +2216,27 @@ class ShopifyAdsMasterController extends Controller
      *                            spend / clicks / sold / sales (matches /facebook-ads
      *                            default Status filter).
      */
-    private function metaChannelMetrics(string $label, string $chCode, ?array $adTypeList = null, bool $isSubRow = false, bool $activeOnly = false, ?string $b2b = null): array
+    /**
+     * "Facebook" row on the master = every campaign on /facebook-all-ads-sheet
+     * (Facebook + Instagram together), so its tiles match that page. Spend /
+     * sold / sales cover all campaigns; clicks, CVR and ACOS come from active
+     * campaigns only (the sheet's default Stat = active), same as Google Shopping.
+     */
+    private function metaAllChannelsMetrics(string $label): array
+    {
+        $all = $this->metaChannelMetrics($label, null);
+        $act = $this->metaChannelMetrics($label, null, null, false, true);
+
+        $all['clicks'] = $act['clicks'];
+        $all['cvr']    = $act['clicks'] > 0 ? round(($act['sold'] / $act['clicks']) * 100, 1) : 0;
+        $all['acos']   = $act['sales'] > 0
+            ? round(($act['spend'] / $act['sales']) * 100, 0)
+            : ($act['spend'] > 0 ? 100 : 0);
+
+        return $all;
+    }
+
+    private function metaChannelMetrics(string $label, ?string $chCode, ?array $adTypeList = null, bool $isSubRow = false, bool $activeOnly = false, ?string $b2b = null): array
     {
         try {
             $ctx = $this->loadFacebookContext();
@@ -2231,7 +2251,7 @@ class ShopifyAdsMasterController extends Controller
             $active = 0;
 
             foreach ($ctx['baseCids'] as $cid => $_) {
-                if (($ctx['chMap'][$cid] ?? null) !== $chCode) {
+                if ($chCode !== null && ($ctx['chMap'][$cid] ?? null) !== $chCode) {
                     continue;
                 }
                 if ($adTypeList !== null) {
