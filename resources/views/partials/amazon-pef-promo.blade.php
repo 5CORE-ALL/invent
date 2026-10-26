@@ -1783,8 +1783,21 @@
             // Same order as the server (AmazonSprcDilAutoPushService): the CVR overlay is floored at 0 first, then the
             // Diff points are added. Summing all three before the floor let a CVR -10 eat the Diff +10 on low slabs.
             const afterCvr = Math.max(0, amzPefRound2((Number(slabGroi) || 0) + amzDilGroiCvrAdj(d)));
-            const groi = amzPefRound2(afterCvr + amzDilGroiDiffAdj(d));
+            const groi = amzPefRound2(afterCvr + amzDilGroiStableDiffAdj(afterCvr, d));
             return groi < 0 ? 0 : groi;
+        }
+        /**
+         * Same as the server (AmazonSprcDilAutoPushService::computeTarget). The Diff is read against the rule price WITHOUT the
+         * Diff points, not the live Price. Against the live Price the rule flipped after its own push (boost pushed -> Diff
+         * under the threshold -> boost removed -> lower price pushed -> Diff over again), so the page and the server saw
+         * different S PRC values and Amazon alternated between two prices. A listed SKU (Price > 0) is still required.
+         */
+        function amzDilGroiStableDiffAdj(afterCvr, d) {
+            if (!d || !(parseFloat(d.price) > 0)) return 0;
+            const std = (typeof amazonStdPrice === 'function') ? amazonStdPrice(d) : (parseFloat(d.STANDARD_PRICE) || 0);
+            const base = amzSpriceFromTargetNroi(d, afterCvr);
+            if (!(std > 0) || !(base > 0)) return 0;
+            return ((((std - base) / base) * 100) > amzDiffAdj.gt_pct) ? amzDiffAdj.points : 0;
         }
         function amzDilGroiCollectCounts(list) {
             const rules = list || amzDilGroiDisplayRules();
@@ -2144,8 +2157,9 @@
             if (!rule) return null;
             const slabNroi = (rule.nroi != null) ? rule.nroi : rule.groi;
             const cvrAdj = amzDilGroiCvrAdj(d);
-            const diffAdj = amzDilGroiDiffAdj(d);
             const nroi = amzDilGroiApplyCvrAdj(slabNroi, d);
+            // Diff points actually applied (stable rule), for the hover text.
+            const diffAdj = amzPefRound2(nroi - Math.max(0, amzPefRound2((Number(slabNroi) || 0) + cvrAdj)));
             const sprc = amzSpriceFromTargetNroi(d, nroi);
             if (!(sprc > 0)) return null;
             return {
@@ -3362,11 +3376,20 @@
                             + ' · Max $' + plan.max.toFixed(2)
                             + ' · Min $' + plan.min.toFixed(2)
                             + ' · Biz $' + plan.business.toFixed(2);
-                        if (status === 'pushed' && (typeof amazonPushLooksSuccessful !== 'function' || amazonPushLooksSuccessful(d))) {
+                        // A stale 'error' from an old failed push must not show once the live Price already equals S PRC.
+                        const liveNow = parseFloat(d.price) || 0;
+                        const spriceNow = (typeof amazonVisibleSprice === 'function') ? (Number(amazonVisibleSprice(d)) || 0) : 0;
+                        const alreadyLive = liveNow > 0 && spriceNow > 0
+                            && Math.round(liveNow * 100) === Math.round(spriceNow * 100)
+                            && (typeof amzRuleSpriceSlabsReady === 'undefined' || !!amzRuleSpriceSlabsReady);
+                        if ((status === 'pushed' && (typeof amazonPushLooksSuccessful !== 'function' || amazonPushLooksSuccessful(d)))
+                            || (status === 'error' && alreadyLive)) {
                             icon = '<i class="fa-solid fa-check-double"></i>';
                             color = '#28a745';
-                            tip = 'Pushed — click to push again. Last effective $'
-                                + (Number(d.PUSH_PRC_VALUE) || plan.effective).toFixed(2);
+                            tip = (status === 'error')
+                                ? 'Listing price matches S PRC $' + spriceNow.toFixed(2) + ' — click to push again'
+                                : 'Pushed — click to push again. Last effective $'
+                                    + (Number(d.PUSH_PRC_VALUE) || plan.effective).toFixed(2);
                         } else if (status === 'error') {
                             icon = '<i class="fa-solid fa-xmark"></i>';
                             color = '#dc3545';

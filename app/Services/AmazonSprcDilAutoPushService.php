@@ -312,8 +312,18 @@ class AmazonSprcDilAutoPushService
                 $cvrAdj
             );
             // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above the saved % adds the saved points to the Target NROI (default 20% / +10).
-            $diffPct = \App\Support\EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
-            $nroi += AmazonDilGroiRule::diffAdjPoints($diffPct, $this->diffAdjCfg);
+            // The Price is the rule price WITHOUT the Diff points, not the live Price. Read against the live Price the rule flips
+            // after its own push (boosted price pushed -> Diff drops under the threshold -> boost removed -> lower price pushed ->
+            // Diff rises -> boost back), so Amazon alternated between two prices every run. A listed SKU is still required.
+            if ((float) ($row['price'] ?? 0) > 0) {
+                $basePrice = AmazonDilGroiRule::priceWithDynamicAds(
+                    fn (float $a): ?float => AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, $a),
+                    (float) $ads,
+                    $this->dynamicAdsRule()
+                );
+                $diffPct = \App\Support\EbayRuleSprice::stdPriceDiffPct($std, (float) ($basePrice ?? 0));
+                $nroi += AmazonDilGroiRule::diffAdjPoints($diffPct, $this->diffAdjCfg);
+            }
             // Dynamic Rule (Ads % by price slab): solve the price against the Ads % of the slab it lands in.
             $dilPrice = AmazonDilGroiRule::priceWithDynamicAds(
                 fn (float $a): ?float => AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, $a),

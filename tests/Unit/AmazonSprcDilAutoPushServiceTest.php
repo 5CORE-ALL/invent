@@ -366,6 +366,23 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
     }
 
+    public function test_diff_boost_does_not_depend_on_the_live_price_so_it_cannot_flip(): void
+    {
+        // The Diff rule used to read the live Price: pushing the boosted price dropped the boost, the next run pushed the
+        // lower price, which brought the boost back (DT AH BLK 86.21 <-> 91.92 on Amazon). The same S PRC must come out
+        // whatever the live Price is, for a Std near the threshold and for a Std far above it.
+        foreach ([100, 112, 140, 300] as $std) {
+            $row = ['inv' => 10, 'dil' => 2.5, 'lp' => 40, 'ship' => 8, 'standard_price' => $std, 'cvr' => 8, 'review_count' => 0, 'lmp' => 0];
+            $expected = $this->compute($row + ['price' => 90]);
+            $this->assertNotNull($expected);
+            foreach ([20, 50, 70, 85, 88.5, 90, 95, 99.99, 100, 120, 250] as $live) {
+                $out = $this->compute($row + ['price' => $live]);
+                $this->assertNotNull($out);
+                $this->assertSame($expected['sprice'], $out['sprice'], "std $std live $live");
+            }
+        }
+    }
+
     public function test_extra_cvr_slabs_use_the_tighter_band(): void
     {
         $service = new AmazonSprcDilAutoPushService;
