@@ -5,6 +5,7 @@ namespace App\Services\ProductMaster;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
+use App\Services\CategoryMasters\CategoryChannelSyncService;
 use App\Services\MarketplaceManager\EbayLiveListingMapper;
 use App\Services\Support\EbayTradingReviseItem;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,7 @@ class EbayTechnicalSpecificationSync
     ];
 
     /**
-     * @return array{success: bool, message: string, specs: list<array{key: string, value: string}>, account: string}
+     * @return array{success: bool, message: string, specs: list<array{key: string, value: string}>, account: string, category_id: string, category_path: string}
      */
     public function pull(string $sku): array
     {
@@ -53,9 +54,10 @@ class EbayTechnicalSpecificationSync
                 return $this->emptyResult(false, $label.': '.($why !== '' ? $why : 'eBay did not return the listing.'));
             }
 
+            $category = $this->categoryFromItem($item);
             $specs = $this->specsFromItem($item, $sku);
             if ($specs === []) {
-                return $this->emptyResult(false, $label.': the listing has no item specifics. Saved specifications were left unchanged.');
+                return $this->emptyResult(false, $label.': the listing has no item specifics. Saved specifications were left unchanged.', $category);
             }
             $count = count($specs);
 
@@ -64,10 +66,30 @@ class EbayTechnicalSpecificationSync
                 'message' => 'Pulled '.$count.' specification'.($count === 1 ? '' : 's').' from '.$label.'.',
                 'specs' => $specs,
                 'account' => $label,
+                'category_id' => $category['id'],
+                'category_path' => $category['path'],
             ];
         }
 
         return $this->emptyResult(false, 'This SKU is not listed on eBay 1.');
+    }
+
+    /**
+     * The live primary category of the listing. GetItem names it "Root:Sub:Leaf".
+     *
+     * @param  array<string, mixed>  $item
+     * @return array{id: string, path: string}
+     */
+    private function categoryFromItem(array $item): array
+    {
+        $node = $item['Item']['PrimaryCategory'] ?? $item['PrimaryCategory'] ?? [];
+        $id = is_array($node) ? trim((string) ($node['CategoryID'] ?? '')) : '';
+        if ($id === '') {
+            return ['id' => '', 'path' => ''];
+        }
+        $path = CategoryChannelSyncService::normalizePath((string) ($node['CategoryName'] ?? ''), ':');
+
+        return ['id' => $id, 'path' => $path !== '' ? $path : 'eBay category '.$id];
     }
 
     /**
@@ -296,10 +318,18 @@ class EbayTechnicalSpecificationSync
     }
 
     /**
-     * @return array{success: bool, message: string, specs: list<array{key: string, value: string}>, account: string}
+     * @param  array{id: string, path: string}|null  $category
+     * @return array{success: bool, message: string, specs: list<array{key: string, value: string}>, account: string, category_id: string, category_path: string}
      */
-    private function emptyResult(bool $success, string $message): array
+    private function emptyResult(bool $success, string $message, ?array $category = null): array
     {
-        return ['success' => $success, 'message' => $message, 'specs' => [], 'account' => ''];
+        return [
+            'success' => $success,
+            'message' => $message,
+            'specs' => [],
+            'account' => '',
+            'category_id' => (string) ($category['id'] ?? ''),
+            'category_path' => (string) ($category['path'] ?? ''),
+        ];
     }
 }

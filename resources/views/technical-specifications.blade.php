@@ -593,6 +593,9 @@
                         <button type="button" id="pullEbayBtn" class="btn btn-sm btn-outline-primary" title="Pull item specifics from eBay for the selected rows">
                             <i class="fas fa-cloud-download-alt"></i> Pull from eBay 1
                         </button>
+                        <button type="button" id="syncCategoriesBtn" class="btn btn-sm btn-outline-success" title="Fetch the live eBay category of the selected rows (or of every SKU when none are selected) and update it here">
+                            <i class="fas fa-sync-alt"></i> Sync categories
+                        </button>
                         <button type="button" id="pushEbayBtn" class="btn btn-sm btn-outline-danger" title="Push technical specifications to eBay 1 for the selected rows">
                             <i class="fas fa-cloud-upload-alt"></i> Push to eBay 1
                         </button>
@@ -2204,6 +2207,109 @@
                 });
             }
 
+            function isParentRow(row) {
+                return window.isPmParentRowData
+                    ? window.isPmParentRowData(row)
+                    : String(row.SKU || '').toUpperCase().includes('PARENT');
+            }
+
+            // Selected rows, or every SKU row when nothing is selected. Parent rows are never listed on eBay.
+            function promptCategorySync() {
+                const picked = selectedRows();
+                const source = picked.length ? picked : (table ? table.getData() : []);
+                const skus = [];
+                const seen = new Set();
+                source.forEach(function (row) {
+                    const sku = String(row.SKU || '').trim();
+                    if (!sku || seen.has(sku) || isParentRow(row)) return;
+                    seen.add(sku);
+                    skus.push(sku);
+                });
+                if (!skus.length) {
+                    openEbayPrompt({ title: 'Sync categories', body: 'There are no SKU rows to sync.', rows: [] });
+                    return;
+                }
+                const scope = picked.length ? 'the ' + skus.length + ' selected SKU' + (skus.length === 1 ? '' : 's') : 'all ' + skus.length + ' SKUs';
+                openEbayPrompt({
+                    title: 'Sync categories from eBay',
+                    body: 'Fetch the live eBay category of ' + scope + ' and update it here? Specifications are not changed.'
+                        + (picked.length ? '' : ' This can take a few minutes. Keep this window open.'),
+                    rows: rowsBySku(skus),
+                    confirmText: 'Sync categories',
+                    confirmClass: 'btn-success',
+                    onConfirm: function () { runCategorySync(skus); },
+                });
+            }
+
+            async function runCategorySync(skus) {
+                const confirmBtn = document.getElementById('ebaySyncConfirm');
+                const cancelBtn = document.getElementById('ebaySyncCancel');
+                const status = document.getElementById('ebaySyncStatus');
+                const list = document.getElementById('ebaySyncSkuList');
+                confirmBtn.disabled = true;
+                cancelBtn.disabled = true;
+                hideSyncOutcome();
+                list.innerHTML = '';
+                const counts = { changed: 0, unchanged: 0, skipped: 0, failed: 0 };
+                let processed = 0;
+                try {
+                    for (let i = 0; i < skus.length; i += 8) {
+                        const chunk = skus.slice(i, i + 8);
+                        status.textContent = 'Syncing ' + (processed + 1) + '–' + (processed + chunk.length) + ' of ' + skus.length
+                            + ' — ' + counts.changed + ' changed so far…';
+                        const res = await fetch('/technical-specifications/sync-ebay-categories', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                            },
+                            body: JSON.stringify({ skus: chunk }),
+                        });
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.message || 'eBay request failed');
+                        (json.results || []).forEach(function (result) {
+                            const kind = counts[result.status] === undefined ? 'failed' : result.status;
+                            counts[kind]++;
+                            if (kind !== 'changed' && kind !== 'failed') return;
+                            const li = document.createElement('li');
+                            li.className = 'ts-sync-row ' + (kind === 'changed' ? 'text-success' : 'text-danger');
+                            const icon = document.createElement('i');
+                            icon.className = kind === 'changed' ? 'fas fa-check' : 'fas fa-exclamation-triangle';
+                            const text = document.createElement('span');
+                            text.textContent = kind === 'changed'
+                                ? (result.sku || '') + ' — ' + (result.previous ? result.previous + ' → ' : 'New: ') + result.category
+                                : (result.sku || '') + ' — ' + (result.message || 'Failed');
+                            li.appendChild(icon);
+                            li.appendChild(text);
+                            list.appendChild(li);
+                        });
+                        processed += chunk.length;
+                    }
+                    if (counts.changed > 0) {
+                        status.textContent = 'Refreshing the table…';
+                        await loadData();
+                    }
+                    const summary = counts.changed + ' changed, ' + counts.unchanged + ' already up to date'
+                        + (counts.skipped ? ', ' + counts.skipped + ' not listed on eBay' : '')
+                        + (counts.failed ? ', ' + counts.failed + ' failed' : '') + '.';
+                    status.textContent = summary;
+                    document.getElementById('ebaySyncBody').textContent = '';
+                    showSyncOutcome(counts.failed === 0, counts.failed === 0 ? 'Categories synced' : 'Sync finished with errors', summary);
+                    applyStatusFilter();
+                } catch (e) {
+                    const message = e.message || 'eBay request failed';
+                    status.textContent = message;
+                    document.getElementById('ebaySyncBody').textContent = '';
+                    showSyncOutcome(false, 'Sync failed', message + (processed ? ' ' + processed + ' of ' + skus.length + ' SKUs were processed before it stopped.' : ''));
+                    if (counts.changed > 0) await loadData();
+                }
+                confirmBtn.classList.add('d-none');
+                cancelBtn.disabled = false;
+                cancelBtn.textContent = 'Close';
+                ebaySyncAction = null;
+            }
+
             // Save MPN = SKU for rows whose category uses MPN, so the push sends the right value.
             async function ensureAutofillSaved(skus) {
                 const wanted = new Set(skus);
@@ -2346,6 +2452,7 @@
                 if (colMenuParent) colMenuParent.addEventListener('shown.bs.dropdown', placeTsColumnPanel);
                 window.addEventListener('resize', placeTsColumnPanel);
                 document.getElementById('pushEbayBtn').addEventListener('click', function () { promptEbaySync('push'); });
+                document.getElementById('syncCategoriesBtn').addEventListener('click', promptCategorySync);
                 document.getElementById('clearSpecsBtn').addEventListener('click', promptClearSpecs);
                 document.getElementById('ebaySyncConfirm').addEventListener('click', function () {
                     if (typeof ebaySyncAction === 'function') ebaySyncAction();

@@ -4916,6 +4916,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/technical-specifications/save', [TechnicalSpecificationsController::class, 'save'])->name('technical.specifications.save');
     Route::post('/technical-specifications/pull-ebay', [TechnicalSpecificationsController::class, 'pullEbay'])->name('technical.specifications.pull.ebay');
     Route::post('/technical-specifications/push-ebay', [TechnicalSpecificationsController::class, 'pushEbay'])->name('technical.specifications.push.ebay');
+    Route::post('/technical-specifications/sync-ebay-categories', [TechnicalSpecificationsController::class, 'syncEbayCategories'])->name('technical.specifications.sync.ebay.categories');
     Route::get('/description-for-html', [DescriptionForHtmlController::class, 'index'])->name('description.for.html');
     Route::get('/description-for-html-data', [DescriptionForHtmlController::class, 'getData'])->name('description.for.html.data');
     Route::post('/description-for-html/save', [DescriptionForHtmlController::class, 'save'])->name('description.for.html.save');
