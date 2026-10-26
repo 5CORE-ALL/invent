@@ -674,8 +674,13 @@
         function normalizeListingRows(rows) {
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
-                const itemId = listingItemId(item);
-                // Automated: NRL from EbayTwoDataView; Listed from ebay_2_metrics.item_id
+                // The server decides Listed (eBay seller-portal sync, same as the Missing L total on
+                // /missing-listing). Re-reading saved buyer links here made ended listings Listed again.
+                const serverDecided = item.listed === 'Listed' || item.listed === 'Pending' || item.listed === 'Created';
+                const itemId = serverDecided
+                    ? (/^\d{6,}$/.test(String(item.eBay_item_id || '').trim()) ? String(item.eBay_item_id).trim() : '')
+                    : listingItemId(item);
+                // Automated: NRL from EbayTwoDataView; Listed from ebay_metrics.item_id
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
                 const listed = itemId ? 'Listed' : 'Pending';
                 return {
