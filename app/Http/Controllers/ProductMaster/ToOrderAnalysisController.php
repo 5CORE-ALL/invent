@@ -679,6 +679,91 @@ class ToOrderAnalysisController extends Controller
     }
 
     /**
+     * PKG + QC icon data (same fields as the To Order Analysis rows) for every SKU,
+     * keyed by upper-case SKU. Powers the PKG / QC columns on /forecast.analysis.
+     */
+    public function forecastPkgQcData(Request $request)
+    {
+        try {
+            $productData = DB::table('product_master')->get()
+                ->filter(fn ($p) => trim((string) ($p->sku ?? '')) !== '')
+                ->keyBy(fn ($p) => strtoupper(trim((string) $p->sku)));
+            $skus = $productData->keys()
+                ->filter(fn ($s) => stripos((string) $s, 'PARENT') === false)
+                ->values()
+                ->all();
+
+            $productIds = $productData->pluck('id')->filter()->unique()->values();
+            $pkgById = InstructionsItemPkg::query()->whereIn('product_master_id', $productIds)->get()->keyBy('product_master_id');
+            $designById = InstructionsCartonDesign::query()->whereIn('product_master_id', $productIds)->get()->keyBy('product_master_id');
+
+            $reviewsByKey = [];
+            $reviewsBySku = [];
+            foreach (ToOrderReview::all() as $r) {
+                $s = strtoupper(trim((string) $r->sku));
+                $reviewsByKey[$s.'|'.strtoupper(trim((string) $r->parent))] = $r;
+                $reviewsBySku[$s] = $reviewsBySku[$s] ?? $r;
+            }
+
+            $ratingMap = [];
+            foreach (array_chunk($skus, 800) as $chunk) {
+                $ratingMap += $this->getRatingReviewsBySku($chunk);
+            }
+
+            $lmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
+            $qcIssuesBySku = $this->buildQcPackingIssuesBySku($skus);
+
+            $out = [];
+            foreach ($skus as $sku) {
+                $product = $productData->get($sku);
+                $ctn = '';
+                $packing = '';
+                $cdr = '';
+                if (! empty($product->Values)) {
+                    $values = json_decode($product->Values, true);
+                    if (is_array($values)) {
+                        $ctn = isset($values['ctn_instructions']) ? (string) $values['ctn_instructions'] : '';
+                        $packing = isset($values['packing_instructions']) ? trim((string) $values['packing_instructions']) : '';
+                        $cdr = isset($values['packing_cdr_path']) ? trim((string) $values['packing_cdr_path']) : '';
+                    }
+                }
+                $specs = $this->productMasterSpecsAndBarcode($product);
+                $pkgRow = $pkgById->get($product->id);
+                $designRow = $designById->get($product->id);
+                $review = $reviewsByKey[$sku.'|'.strtoupper(trim((string) ($product->parent ?? '')))] ?? ($reviewsBySku[$sku] ?? null);
+                $rr = $ratingMap[$sku] ?? ['rating' => null, 'reviews' => null];
+
+                $out[$sku] = array_merge([
+                    'product_master_id' => $product->id ?? null,
+                    'barcode' => $specs['barcode'],
+                    'ctn_instructions' => mb_substr($ctn, 0, 100),
+                    'packing_instructions' => $packing,
+                    'packing_cdr_path' => $cdr,
+                    'instructions_item_pkg' => $pkgRow && $pkgRow->instructions !== null ? (string) $pkgRow->instructions : '',
+                    'instructions_carton_design' => $designRow && $designRow->instructions !== null ? (string) $designRow->instructions : '',
+                    'issues' => $qcIssuesBySku[$sku] ?? '',
+                    'qc_rating' => $rr['rating'],
+                    'qc_reviews' => $rr['reviews'],
+                    'Reviews' => $review ? (string) ($review->reviews_note ?? '') : '',
+                    'has_review' => (bool) ($review && (
+                        trim((string) ($review->positive_review ?? '')) !== ''
+                        || trim((string) ($review->negative_review ?? '')) !== ''
+                        || trim((string) ($review->improvement ?? '')) !== ''
+                    )),
+                    'positive_review' => $review->positive_review ?? null,
+                    'negative_review' => $review->negative_review ?? null,
+                    'improvement' => $review->improvement ?? null,
+                    'date_updated' => $review->date_updated ?? null,
+                ], $this->lmpFieldsForSku($sku, $lmpLookups['details'], $lmpLookups['lowest']));
+            }
+
+            return response()->json(['success' => true, 'data' => $out]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Get rating and reviews from Jungle Scout by SKU (same source as Amazon tabulator).
      *
      * @param array<int, string> $skus Uppercase SKUs
