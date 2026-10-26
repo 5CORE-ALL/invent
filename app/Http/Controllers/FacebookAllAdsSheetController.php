@@ -597,6 +597,11 @@ class FacebookAllAdsSheetController extends Controller
             if ($cid !== null && $cid !== '' && $cidsByLength) {
                 $nm  = $cleanedData['Campaign name'] ?? null;
                 $cid = $this->resolveRoundedCid($cid, $cidsByLength, $nameToCid, is_string($nm) ? $nm : null);
+                // Shopify's "Marketing campaign" is often the campaign NAME (the
+                // utm_campaign), not its id — join those on the Campaign list's name.
+                if (! ctype_digit($cid) && isset($nameToCid[mb_strtolower(trim($cid))])) {
+                    $cid = $nameToCid[mb_strtolower(trim($cid))];
+                }
             }
 
             // Fallback: if the row has no Campaign ID but does have a
@@ -2101,22 +2106,32 @@ class FacebookAllAdsSheetController extends Controller
 
     /**
      * Excel / CSV round-trips turn long Meta ids into scientific notation
-     * ("1.2025517862028E+17") and drop the trailing digits, so the Spend
-     * sheet's id no longer equals the Campaign list's id
-     * ("120255178620280496"). Map such a value back to the single Campaign
-     * id with the same length and leading digits. Returns the input
-     * unchanged when it isn't scientific notation or has no unique match.
+     * ("1.2025517862028E+17") or zero-padded numbers ("120255178620280000")
+     * and drop the trailing digits, so an id in one sheet no longer equals the
+     * same campaign's id in another ("120255178620280496"). Map such a value
+     * to the single Campaign id with the same length and leading digits.
+     * Returns the input unchanged when no unique match exists.
      *
      * @param array<int, array<int, string>> $idsByLength
      */
     private function resolveRoundedCid(string $cid, array $idsByLength, array $nameToCid = [], ?string $name = null): string
     {
-        if (! preg_match('/^(\d+)(?:\.(\d+))?e\+?(\d+)$/i', trim($cid), $m)) {
+        $cid = trim($cid);
+        if (preg_match('/^(\d+)(?:\.(\d+))?e\+?(\d+)$/i', $cid, $m)) {
+            // Scientific notation: keep the digits Excel kept.
+            $length = (int) $m[3] + strlen($m[1]);
+            $prefix = rtrim($m[1] . ($m[2] ?? ''), '0');
+        } elseif (ctype_digit($cid) && strlen($cid) >= 16) {
+            // Plain digits, but possibly one side was rounded by Excel (it keeps
+            // 15 significant digits: ...480496 became ...480000). Exact ids win.
+            if (isset($idsByLength[strlen($cid)]) && in_array($cid, $idsByLength[strlen($cid)], true)) {
+                return $cid;
+            }
+            $length = strlen($cid);
+            $prefix = substr($cid, 0, 15);
+        } else {
             return $cid;
         }
-        $digits = $m[1] . ($m[2] ?? '');
-        $length = (int) $m[3] + strlen($m[1]);
-        $prefix = rtrim($digits, '0');
         if ($prefix === '' || ! isset($idsByLength[$length])) {
             return $cid;
         }
@@ -2741,6 +2756,7 @@ class FacebookAllAdsSheetController extends Controller
         $userId   = auth()->id();
         $imported = 0;
         $replaced = 0;
+        $lossyIds = 0; // rows whose id Excel already rounded beyond repair
 
         // Build a Campaign ID → ad_type / ch carry-over map BEFORE inserting
         // (and before we drop the previous batch of this type) so tags the
@@ -2769,6 +2785,9 @@ class FacebookAllAdsSheetController extends Controller
                 // BEFORE we prepend the __upload_type meta key, so the column
                 // detection works the same as on previously-stored rows.)
                 $rowCid     = $this->findCampaignId($assoc);
+                if ($rowCid !== null && $this->isLossyCampaignId($rowCid)) {
+                    $lossyIds++;
+                }
                 $carriedAdType = $rowCid !== null ? ($prevAdTypeByCid[$rowCid] ?? null) : null;
                 $carriedCh     = $rowCid !== null ? ($prevChByCid[$rowCid] ?? null) : null;
                 $carriedB2b    = $rowCid !== null ? ($prevB2bByCid[$rowCid] ?? null) : null;
@@ -2811,6 +2830,12 @@ class FacebookAllAdsSheetController extends Controller
         if ($replaced > 0) {
             $message .= ', replaced the previous '.ucfirst($uploadType).' upload';
         }
+        if ($lossyIds > 0) {
+            $message .= ". WARNING: {$lossyIds} row(s) have campaign IDs that were rounded (e.g. 1.20255E+17), "
+                . 'so they cannot be matched to campaigns and will show $0. '
+                . 'Re-export the file and upload it without opening/saving it in Excel '
+                . '(or format the campaign column as Text first).';
+        }
 
         return response()->json([
             'success'     => true,
@@ -2822,6 +2847,21 @@ class FacebookAllAdsSheetController extends Controller
             'replaced'    => $replaced,
             'columns'     => array_values($headers),
         ]);
+    }
+
+    /**
+     * True for ids Excel rounded so hard they can't identify one campaign:
+     * scientific notation with fewer than 10 significant digits
+     * ("1.20255E+17"), or a long number ending in 5+ zeros ("6890960000000").
+     */
+    private function isLossyCampaignId(string $cid): bool
+    {
+        $cid = trim($cid);
+        if (preg_match('/^(\d+)(?:\.(\d+))?e\+?(\d+)$/i', $cid, $m)) {
+            return strlen(rtrim($m[1] . ($m[2] ?? ''), '0')) < 10 && (int) $m[3] >= 10;
+        }
+
+        return ctype_digit($cid) && strlen($cid) >= 12 && preg_match('/0{5,}$/', $cid) === 1;
     }
 
     /**

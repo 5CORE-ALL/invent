@@ -2323,6 +2323,16 @@ class ShopifyAdsMasterController extends Controller
 
         [$baseCids, $nameToCid] = $this->facebookBuildBaseCids($latestBatches[$baseType]);
 
+        // Digit-only campaign ids grouped by length, to repair ids that Excel
+        // rounded into scientific notation ("1.2025517862028E+17").
+        $cidsByLength = [];
+        foreach (array_keys($baseCids) as $baseCid) {
+            $baseCid = (string) $baseCid;
+            if (ctype_digit($baseCid)) {
+                $cidsByLength[strlen($baseCid)][] = $baseCid;
+            }
+        }
+
         $spendByCid = [];
         $activeCids = [];
         if (isset($latestBatches['spend'])) {
@@ -2333,6 +2343,9 @@ class ShopifyAdsMasterController extends Controller
             foreach ($rows as $row) {
                 $rd  = array_filter((array) ($row->row_data ?? []), fn ($_, $k) => ! str_starts_with($k, '__'), ARRAY_FILTER_USE_BOTH);
                 $cid = $this->facebookFindCampaignId($rd) ?? $this->facebookNameLookup($rd, $nameToCid);
+                if ($cid !== null && $cid !== '' && ! isset($baseCids[$cid])) {
+                    $cid = $this->facebookResolveRoundedCid($cid, $cidsByLength, $nameToCid, $rd['Campaign name'] ?? null);
+                }
                 if ($cid === null || $cid === '' || ! isset($baseCids[$cid])) {
                     continue;
                 }
@@ -2358,13 +2371,26 @@ class ShopifyAdsMasterController extends Controller
             foreach ($rows as $row) {
                 $rd  = array_filter((array) ($row->row_data ?? []), fn ($_, $k) => ! str_starts_with($k, '__'), ARRAY_FILTER_USE_BOTH);
                 $cid = $this->facebookFindCampaignId($rd) ?? $this->facebookNameLookup($rd, $nameToCid);
+                if ($cid !== null && $cid !== '' && ! isset($baseCids[$cid])) {
+                    $cid = $this->facebookResolveRoundedCid($cid, $cidsByLength, $nameToCid, $rd['Campaign name'] ?? null);
+                    // "Marketing campaign" is often the campaign name (utm_campaign), not its id.
+                    if (! ctype_digit($cid) && isset($nameToCid[mb_strtolower(trim($cid))])) {
+                        $cid = $nameToCid[mb_strtolower(trim($cid))];
+                    }
+                }
                 if ($cid === null || $cid === '' || ! isset($baseCids[$cid])) {
                     continue;
                 }
                 $salesByCid[$cid] ??= ['sold' => 0.0, 'sales' => 0.0];
-                $salesByCid[$cid]['sold']  += $this->parseMetricValue($rd['Orders'] ?? null);
+                // New Shopify export headers first, legacy ones as fallback
+                // (same order as MERGED_COLUMNS on the Facebook sheet).
+                $salesByCid[$cid]['sold']  += $this->parseMetricValue(
+                    $this->facebookFirstFilled($rd, ['Orders (last non-direct click)', 'Orders'])
+                );
                 // round() per-campaign mirrors applyFormatter('int') in getMergedView.
-                $salesByCid[$cid]['sales'] += round($this->parseMetricValue($rd['Sales'] ?? null));
+                $salesByCid[$cid]['sales'] += round($this->parseMetricValue(
+                    $this->facebookFirstFilled($rd, ['Total sales (last non-direct click)', 'Sales'])
+                ));
             }
         }
 
@@ -2569,7 +2595,8 @@ class ShopifyAdsMasterController extends Controller
         foreach ($rowData as $key => $value) {
             $k = trim((string) $key);
             if (preg_match('/^campaign[\s_]?id$/i', $k)
-                || preg_match('/^campaign\s+activities$/i', $k)) {
+                || preg_match('/^campaign\s+activities$/i', $k)
+                || preg_match('/^marketing\s+campaign$/i', $k)) {
                 $clean = trim((string) $value);
                 if ($clean === '') {
                     continue;
@@ -2584,6 +2611,65 @@ class ShopifyAdsMasterController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * First non-empty value among the given row keys.
+     *
+     * @param  array<string, mixed>  $rowData
+     * @param  list<string>          $keys
+     */
+    private function facebookFirstFilled(array $rowData, array $keys): mixed
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $rowData) && $rowData[$key] !== null && trim((string) $rowData[$key]) !== '') {
+                return $rowData[$key];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Map a scientific-notation id ("1.2025517862028E+17", what Excel makes of a
+     * long Meta id) back to the one Campaign-list id with the same length and
+     * leading digits. Returns the input unchanged when it can't be resolved.
+     *
+     * @param  array<int, list<string>>  $idsByLength
+     * @param  array<string, string>     $nameToCid
+     */
+    private function facebookResolveRoundedCid(string $cid, array $idsByLength, array $nameToCid = [], mixed $name = null): string
+    {
+        $cid = trim($cid);
+        if (preg_match('/^(\d+)(?:\.(\d+))?e\+?(\d+)$/i', $cid, $m)) {
+            $length = (int) $m[3] + strlen($m[1]);
+            $prefix = rtrim($m[1] . ($m[2] ?? ''), '0');
+        } elseif (ctype_digit($cid) && strlen($cid) >= 16) {
+            // Excel keeps 15 significant digits (...480496 became ...480000).
+            $length = strlen($cid);
+            $prefix = substr($cid, 0, 15);
+        } else {
+            return $cid;
+        }
+        if ($prefix === '' || ! isset($idsByLength[$length])) {
+            return $cid;
+        }
+
+        $matches = array_values(array_filter(
+            $idsByLength[$length],
+            fn ($id) => str_starts_with($id, $prefix)
+        ));
+        if (count($matches) === 1) {
+            return $matches[0];
+        }
+        if (count($matches) > 1 && is_string($name) && trim($name) !== '') {
+            $byName = $nameToCid[mb_strtolower(trim($name))] ?? null;
+            if ($byName !== null && in_array($byName, $matches, true)) {
+                return $byName;
+            }
+        }
+
+        return $cid;
     }
 
     /**

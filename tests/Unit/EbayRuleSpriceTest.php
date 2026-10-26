@@ -262,8 +262,12 @@ class EbayRuleSpriceTest extends TestCase
         // Diff = (500 − 100) / 100 = 400% > 20% → Target 50%: (50 × 1.5 + 5) ÷ 0.70 = 114.29
         $over = EbayRuleSprice::price($this->pricer(), $this->input($base + ['price' => 100]), $context);
         $this->assertSame(114.29, $over['rule_price']);
-        // Diff = 0% → stays on Target 40%: 107.14
-        $flat = EbayRuleSprice::price($this->pricer(), $this->input(['std' => 500, 'price' => 500] + $base), $context);
+        // The live price does not matter: the boost is judged against the unboosted rule price (107.14), so a live price
+        // equal to Std gives the same boosted price (no flip after its own push).
+        $same = EbayRuleSprice::price($this->pricer(), $this->input(['std' => 500, 'price' => 500] + $base), $context);
+        $this->assertSame(114.29, $same['rule_price']);
+        // Std within 20% of the unboosted price (120 vs 107.14 = 12%) → stays on Target 40%: 107.14
+        $flat = EbayRuleSprice::price($this->pricer(), $this->input(['std' => 120, 'price' => 120] + $base), $context);
         $this->assertSame(107.14, $flat['rule_price']);
         // Rule off (not eBay 1) → no boost
         $dil['diff_adj'] = false;
@@ -333,6 +337,25 @@ class EbayRuleSpriceTest extends TestCase
         // Std 120 is within 20% of the 106.73 base price, so a live price left at the old boosted 113.20 gets no boost.
         $out = EbayRuleSprice::price($this->pricer(), $this->input($base + ['std' => 120, 'price' => 113.20]), $context);
         $this->assertSame(106.73, $out['sprice']);
+    }
+
+    public function test_sprc_dil_price_does_not_depend_on_the_live_price_so_it_cannot_flip(): void
+    {
+        $dil = [
+            'rules' => [AmazonDilGroiRule::make(0, 0, 30), AmazonDilGroiRule::make(0.1, 100, 30)],
+            'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null),
+            'diff_adj' => AmazonDilGroiRule::defaultDiffAdj(),
+        ];
+        $context = ['rule' => 'dil', 'dil' => $dil];
+        $base = ['lp' => 45.93, 'ship' => 20.66, 'percentage' => 0.83, 'ads' => 0.12, 'lmp' => 246.84,
+            'inv' => 12, 'dil' => 8.3, 'cvr' => 0, 'cvr_60' => 0, 'std' => 130];
+
+        // Whatever the live price is (old, unboosted, boosted, far above), the same S PRC comes out.
+        $expected = EbayRuleSprice::price($this->pricer(), $this->input($base + ['price' => 100]), $context)['sprice'];
+        foreach ([50, 100, 106.73, 110, 113.20, 119.66, 125, 129.99, 130, 200] as $live) {
+            $out = EbayRuleSprice::price($this->pricer(), $this->input($base + ['price' => $live]), $context);
+            $this->assertSame($expected, $out['sprice'], 'live price '.$live);
+        }
     }
 
     public function test_sprc_dil_price_is_capped_at_std_prc_even_when_lmp_is_above_std(): void

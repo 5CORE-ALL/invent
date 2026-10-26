@@ -1350,10 +1350,25 @@
             if (!(std > 0) || !(price > 0)) return 0;
             return (((std - price) / price) * 100 > ebayDiffAdj.gt_pct) ? ebayDiffAdj.points : 0;
         }
+        /**
+         * Same as the server (EbayRuleSprice::stableDilPrice). Read against the LIVE Price, the Diff boost lowers the Diff
+         * once it is pushed, the boost drops, the price rises, and the page flip-flops against the saved S PRC. The boost is
+         * judged against the rule price WITHOUT the boost, which does not depend on the live Price, so the page and the
+         * server get the same price before and after a push. A listed SKU is still required (no live Price = no Diff).
+         */
+        function ebayDilGroiStableDiffAdj(afterCvr, d, plain) {
+            if (!EBAY_DIFF_ADJ_ON || !d) return plain;
+            const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : (parseFloat(d.STANDARD_PRICE) || 0);
+            const live = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : (parseFloat(d['eBay Price']) || 0);
+            if (!(std > 0) || !(ebayDgRound2(live) > 0)) return plain;
+            const base = ebaySpriceFromGroi(d, afterCvr);
+            if (!(base > 0)) return plain;
+            return (((std - base) / base) * 100 > ebayDiffAdj.gt_pct) ? ebayDiffAdj.points : 0;
+        }
         function ebayDilGroiApplyCvrAdj(slabGroi, d) {
             // Same order as the server (EbayRuleSprice): floor the CVR-adjusted target at 0, then add the Diff points.
             const afterCvr = Math.max(0, ebayDgRound2((Number(slabGroi) || 0) + ebayDilGroiCvrAdj(d)));
-            const groi = ebayDgRound2(afterCvr + ebayDilGroiDiffAdj(d));
+            const groi = ebayDgRound2(afterCvr + ebayDilGroiStableDiffAdj(afterCvr, d, ebayDilGroiDiffAdj(d)));
             return groi < 0 ? 0 : groi;
         }
         /** Vinted / Instagram / Depop: channel L30 = 0 still uses the OV Dil % slab (OV L30 ÷ INV). */
@@ -1672,8 +1687,9 @@
             }
             const slabGroi = groi;
             const cvrAdj = ebayDilGroiCvrAdj(d);
-            const diffAdj = ebayDilGroiDiffAdj(d);
             groi = ebayDilGroiApplyCvrAdj(slabGroi, d);
+            // Diff points actually applied (stable rule), for the hover text.
+            const diffAdj = ebayDgRound2(groi - Math.max(0, ebayDgRound2((Number(slabGroi) || 0) + cvrAdj)));
             const rawSprc = ebaySpriceFromGroi(d, groi);
             if (!(rawSprc > 0)) return null;
             let sprc = rawSprc;

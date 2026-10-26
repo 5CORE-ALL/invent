@@ -298,13 +298,14 @@ class EbayRuleSprice
     }
 
     /**
-     * Sprc Dil rule price that does not flip after its own push.
+     * Sprc Dil rule price that never flips, whatever the live Price is.
      *
-     * The Diff rule adds target points when (Std − live Price) / live Price is above the threshold. Pushing the boosted
-     * price moves the live Price up, the Diff drops under the threshold, the next run removes the boost and pushes the
-     * lower price, the Diff rises again, and so on every 10 minutes. When the live Price is already the boosted price
-     * (the rule price, or the S PRC after the LMP / Std caps), the boost is judged against the price without the boost,
-     * which is the same question the lower live price asked. Both states then give the boosted price.
+     * The Diff rule adds target points when (Std − Price) / Price is above the threshold. Read against the live Price,
+     * pushing the boosted price moves the live Price up, the Diff drops under the threshold, the next run removes the
+     * boost and pushes the lower price, the Diff rises again, and so on every 10 minutes (the page, which computes the
+     * same rule in JavaScript, saw the other price and its push was refused). So the boost is judged against the rule
+     * price WITHOUT the boost, which does not depend on the live Price: the answer is the same before and after a push,
+     * on the server and on the page. A listed SKU is still required (no live Price = no Diff, as before).
      *
      * @param  array<string, mixed>  $input
      * @param  array<string, mixed>  $context  rule = dil
@@ -321,16 +322,9 @@ class EbayRuleSprice
         if ($base === null) {
             return $rulePrice;
         }
-        $boosted = self::dilPrice($input, $dil, $base);
-        if ($boosted === null || $boosted <= $base + 0.004) {
-            return $rulePrice;
-        }
-        [, $boostedFinal] = self::capChain($boosted, $input, $context, true);
-        if (abs($live - round($boosted, 2)) < 0.015 || abs($live - round($boostedFinal, 2)) < 0.015) {
-            return $boosted;
-        }
 
-        return $rulePrice;
+        // Diff judged against the unboosted price: base when Std is within the threshold of it, boosted when above.
+        return self::dilPrice($input, $dil, $base) ?? $rulePrice;
     }
 
     /**
