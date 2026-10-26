@@ -408,6 +408,16 @@ class NewTemutwoSprcDilAutoPushService
     /** @var array|null Diff rule (gt_pct / points) saved in the Sprc Dil modal; null = default 20% / +10. */
     private ?array $diffAdjCfg = null;
 
+    /** @var array|null Ageing Rule bands (min / max / points) saved in the Sprc Dil modal; null = off. */
+    private ?array $ageAdjCfg = null;
+
+    protected function ageAdjConfig(): ?array
+    {
+        $this->lmpCapConfig();
+
+        return $this->ageAdjCfg;
+    }
+
     protected function diffAdjConfig(): ?array
     {
         $this->lmpCapConfig();
@@ -430,6 +440,7 @@ class NewTemutwoSprcDilAutoPushService
             $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
             $this->lmpCapCfg = $unpacked['lmp_cap'] ?? null;
             $this->diffAdjCfg = $unpacked['diff_adj'] ?? null;
+            $this->ageAdjCfg = is_array($unpacked['age_adj'] ?? null) ? $unpacked['age_adj'] : null;
             $cn = $unpacked['clearance_nroi'] ?? null;
             $this->clearanceNroiCfg = (is_numeric($cn) && (float) $cn >= 0) ? (float) $cn : 0.0;
         } catch (Throwable $e) {
@@ -506,6 +517,15 @@ class NewTemutwoSprcDilAutoPushService
             (float) ($row['cvr_60'] ?? 0),
             $dil['cvr_adj']
         );
+        // Ageing Rule (Sprc Dil modal): the SKU's age band adds its points to the Target, after the CVR overlay and before Diff.
+        $ageAdj = $this->ageAdjConfig();
+        if (is_array($ageAdj) && $ageAdj !== []) {
+            $target = AmazonDilGroiRule::adjustGroiForAge(
+                $target,
+                is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
+                $ageAdj
+            );
+        }
         // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above the saved % adds the saved points to the Target (default 20% / +10). Price = full Temu Price.
         $liveBase = (float) ($row['live_base'] ?? 0);
         $diffPct = \App\Support\EbayRuleSprice::stdPriceDiffPct(

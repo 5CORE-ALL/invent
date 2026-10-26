@@ -99,6 +99,9 @@ class DilRuleSpriceApplyService
      */
     public const CLEARANCE_NROI_CHANNELS = ['wayfair', 'temu3'];
 
+    /** Channels whose Sprc Dil modal has the Ageing Rule (age band points on the Target NROI). */
+    public const AGE_ADJ_CHANNELS = ['newegg', 'temu', 'temu3', 'doba'];
+
     private bool $applyStdPrcVsDil = false;
 
     public function __construct(string $channel = 'newegg')
@@ -360,7 +363,7 @@ class DilRuleSpriceApplyService
         }
 
         // Ageing Rule (Newegg): the SKU's age band adds its points to the Target NROI, after the CVR overlay (floored at 0).
-        if ($this->ageAdj !== null && $this->channel === 'newegg') {
+        if ($this->ageAdj !== null && in_array($this->channel, self::AGE_ADJ_CHANNELS, true)) {
             $groi = AmazonDilGroiRule::adjustGroiForAge(
                 (float) $groi,
                 is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
@@ -540,7 +543,7 @@ class DilRuleSpriceApplyService
 
         // Ageing Rule: the Shopify push clock, read once for the run. Only when a Newegg band has points.
         $ageDaysBySku = [];
-        if ($this->ageAdj !== null && $this->channel === 'newegg' && collect($this->ageAdj)->contains(
+        if ($this->ageAdj !== null && in_array($this->channel, self::AGE_ADJ_CHANNELS, true) && collect($this->ageAdj)->contains(
             static fn ($b) => is_array($b) && is_numeric($b['points'] ?? null) && abs((float) $b['points']) > 0.00001
         )) {
             try {
@@ -961,7 +964,7 @@ class DilRuleSpriceApplyService
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
         $this->lmpCap = $unpacked['lmp_cap'] ?? null;
         $this->diffAdj = $unpacked['diff_adj'] ?? null;
-        $this->ageAdj = $this->channel === 'newegg' && is_array($unpacked['age_adj'] ?? null) && $unpacked['age_adj'] !== []
+        $this->ageAdj = in_array($this->channel, self::AGE_ADJ_CHANNELS, true) && is_array($unpacked['age_adj'] ?? null) && $unpacked['age_adj'] !== []
             ? $unpacked['age_adj']
             : null;
         $cn = $unpacked['clearance_nroi'] ?? null;

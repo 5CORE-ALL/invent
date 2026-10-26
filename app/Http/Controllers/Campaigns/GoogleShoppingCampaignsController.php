@@ -1459,6 +1459,8 @@ class GoogleShoppingCampaignsController extends Controller
         $summary = array_merge($summary, $this->rawGridUtilizationAllCampaigns($request, $collection, $invFilter, $invResolver));
         // BGT "Sum" card: SBGT distribution over ALL campaigns (every status), independent of filters / page.
         $summary['sbgt_dist'] = $this->sbgtDistributionAllCampaigns($rawRule, $invResolver, $bgtResolver);
+        // Same campaigns bucketed by ACOS, so the Sum card can recompute live from the ACOS bands being edited.
+        $summary['sbgt_acos_dist'] = $this->sbgtAcosDistributionAllCampaigns($rawRule, $invResolver, $bgtResolver);
         // "Ads Needed": SKUs with inventory whose ad is not running (all enabled campaigns).
         $adsNeeded = $this->channelKey() === 'shopping'
             ? $this->adsNeededAllCampaigns($invResolver)
@@ -4242,7 +4244,26 @@ class GoogleShoppingCampaignsController extends Controller
      */
     private function sbgtDistributionAllCampaigns($rawRule, \Closure $invResolver, \Closure $bgtResolver): array
     {
-        $key = 'gads_sbgt_dist_v1:'.$this->channelKey().':'.$this->rawGridRowsCacheVersion().':'.sha1((string) json_encode($this->rawGridDateBoundaries()));
+        return $this->sbgtDistributionData($rawRule, $invResolver, $bgtResolver)['dist'];
+    }
+
+    /**
+     * Campaigns per ACOS value (all statuses, no filters). The BGT Rules "Sum" card re-buckets these with the
+     * ACOS bands being edited, so it updates live without a round trip.
+     *
+     * @return list<array{acos: float, count: int}>
+     */
+    private function sbgtAcosDistributionAllCampaigns($rawRule, \Closure $invResolver, \Closure $bgtResolver): array
+    {
+        return $this->sbgtDistributionData($rawRule, $invResolver, $bgtResolver)['acos'];
+    }
+
+    /**
+     * @return array{dist: list<array{value: float|int, count: int}>, acos: list<array{acos: float, count: int}>}
+     */
+    private function sbgtDistributionData($rawRule, \Closure $invResolver, \Closure $bgtResolver): array
+    {
+        $key = 'gads_sbgt_dist_v2:'.$this->channelKey().':'.$this->rawGridRowsCacheVersion().':'.sha1((string) json_encode($this->rawGridDateBoundaries()));
 
         return Cache::remember($key, now()->addSeconds(60), function () use ($rawRule, $invResolver, $bgtResolver) {
             $empty = Request::create('/', 'GET');
@@ -4250,8 +4271,14 @@ class GoogleShoppingCampaignsController extends Controller
             $this->applyRawGridDataFilters($query, $empty);
             $this->applyRawGridSort($query, $empty);
             $counts = [];
+            $acosCounts = [];
             foreach ($this->rememberRawGridRows($empty, $query) as $row) {
                 $arr = $this->hydrateRawGridRow($row, $rawRule, $invResolver, $bgtResolver);
+                $a = $arr['acos_l30'] ?? null;
+                if ($a !== null && is_numeric($a) && is_finite((float) $a)) {
+                    $ak = (string) round((float) $a, 6);
+                    $acosCounts[$ak] = ($acosCounts[$ak] ?? 0) + 1;
+                }
                 $v = $arr['sbgt'] ?? null;
                 if ($v === null || $v === '' || ! is_numeric($v)) {
                     continue;
@@ -4264,8 +4291,12 @@ class GoogleShoppingCampaignsController extends Controller
             foreach ($counts as $value => $count) {
                 $out[] = ['value' => 0 + $value, 'count' => $count];
             }
+            $acosOut = [];
+            foreach ($acosCounts as $acos => $count) {
+                $acosOut[] = ['acos' => (float) $acos, 'count' => $count];
+            }
 
-            return $out;
+            return ['dist' => $out, 'acos' => $acosOut];
         });
     }
 

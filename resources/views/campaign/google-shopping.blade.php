@@ -497,6 +497,17 @@
             .gac-card--util { grid-column: span 12; }
             .gac-card-badges, .gac-card--util .gac-card-badges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
+        /* Wide screens: all five cards (Yesterday · L30 · Projected · Utilized Y · Utilized L7) fit on ONE row, with slightly tighter tiles. */
+        @media (min-width: 1400px) {
+            .gac-cards { grid-template-columns: 3fr 3fr 3fr 2fr 2fr; gap: 0.4rem; }
+            .gac-card--yesterday, .gac-card--l30, .gac-card--projected, .gac-card--util { grid-column: auto; }
+            .gac-card { padding: 0.5rem 0.4rem 0.55rem; }
+            .gac-card .gac-card-badges { gap: 0.3rem; }
+            .gac-card .faas-stat-badge { font-size: 0.68rem; padding: 0.25rem 0.15rem; white-space: normal; }
+            .gac-card .faas-stat-badge > span { font-size: 0.74rem; }
+            .gac-card .faas-stat-badge > .gac-util-pct { font-size: 0.66rem; margin-left: 3px; }
+            .gac-cards .summary-trend-dot { margin-right: 4px; }
+        }
         /* KPI tiles take the dashboard trend colour (dot up = green, down = red, same = yellow, none = grey). */
         /* Tiles in the Yesterday / L30 / Projected cards are white. Yesterday and Projected turn green when better than the L30 average, red otherwise. */
         .gac-card--yesterday .faas-stat-badge, .gac-card--l30 .faas-stat-badge, .gac-card--projected .faas-stat-badge {
@@ -507,6 +518,11 @@
         .gac-card .faas-stat-badge.gac-ads-needed { background: #7c3aed; color: #fff; border-color: #6d28d9; }
         .gac-card .faas-stat-badge.gac-cmp-better { background: #22c55e; color: #052e16; border-color: #16a34a; }
         .gac-card .faas-stat-badge.gac-cmp-worse  { background: #ef4444; color: #fff; border-color: #dc2626; }
+        /* L30 tiles have no "vs L30" verdict, so fill them with the history-dot trend colour (up green / down red / same yellow / none grey). */
+        .gac-card--l30 .faas-stat-badge.gac-trend-up   { background: #22c55e; color: #052e16; border-color: #16a34a; }
+        .gac-card--l30 .faas-stat-badge.gac-trend-down { background: #ef4444; color: #fff; border-color: #dc2626; }
+        .gac-card--l30 .faas-stat-badge.gac-trend-flat { background: #facc15; color: #713f12; border-color: #eab308; }
+        .gac-card--l30 .faas-stat-badge.gac-trend-none { background: #e5e7eb; color: #374151; border-color: #d1d5db; }
         /* Dashboard-standard history dot: green = up, red = down, yellow = same, grey = no prior day. */
         .gac-cards .summary-trend-dot {
             display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; flex-shrink: 0;
@@ -2585,6 +2601,7 @@
                 // BGT Rules "Sum" card: server-side SBGT distribution over every campaign (not just this page).
                 if (response && response.summary && Array.isArray(response.summary.sbgt_dist)) {
                     window.gacRawSbgtDist = response.summary.sbgt_dist;
+                    window.gacRawSbgtAcosDist = Array.isArray(response.summary.sbgt_acos_dist) ? response.summary.sbgt_acos_dist : null;
                     if (typeof gacBgtPaintSum === 'function' && document.getElementById('gacRawBgtRulesModal')
                         && document.getElementById('gacRawBgtRulesModal').classList.contains('show')) {
                         gacBgtPaintSum();
@@ -5682,13 +5699,44 @@
             }
             function gacBgtPaintAcosCard() {
                 gacBgtPaintCard('acos', gacCurrentSbgtBands || [], 'acos_from', 'acos_to', gacBgtAcosValueOfRow);
+                // The Sum card depends on these bands (SBGT per campaign), so refresh it on every edit — live.
+                if (typeof gacBgtPaintSum === 'function') gacBgtPaintSum();
             }
 
             /** Summary: SBGT currently on the grid (saved rules) + what each part adds up to. */
             function gacBgtPaintSum() {
                 var byVal = {};
                 var total = 0;
-                if (Array.isArray(window.gacRawSbgtDist)) {
+                if (Array.isArray(window.gacRawSbgtAcosDist) && Array.isArray(gacCurrentSbgtBands) && gacCurrentSbgtBands.length) {
+                    // LIVE: re-bucket every campaign by the ACOS bands as currently typed (saved or not).
+                    // Same rule as the server: first band with From <= ACOS <= To wins, else the lowest-From band.
+                    var liveBands = gacCurrentSbgtBands.map(function(b) {
+                        return {
+                            from: (b.acos_from === '' || b.acos_from == null) ? NaN : Number(b.acos_from),
+                            to: (b.acos_to === '' || b.acos_to == null) ? NaN : Number(b.acos_to),
+                            sbgt: (b.sbgt === '' || b.sbgt == null) ? NaN : Number(b.sbgt)
+                        };
+                    }).filter(function(b) { return isFinite(b.from) && isFinite(b.to) && isFinite(b.sbgt); });
+                    var liveFallback = null;
+                    liveBands.forEach(function(b) {
+                        if (b.from === 0 && b.to === 0) return;
+                        if (liveFallback === null || b.from < liveFallback.from) liveFallback = b;
+                    });
+                    if (liveFallback === null && liveBands.length) liveFallback = liveBands[liveBands.length - 1];
+                    window.gacRawSbgtAcosDist.forEach(function(d) {
+                        var a = Number(d.acos);
+                        var c = Number(d.count) || 0;
+                        if (!isFinite(a) || c <= 0) return;
+                        var hit = null;
+                        for (var i = 0; i < liveBands.length; i++) {
+                            if (a >= liveBands[i].from && a <= liveBands[i].to) { hit = liveBands[i]; break; }
+                        }
+                        var n = hit ? hit.sbgt : (liveFallback ? liveFallback.sbgt : 1);
+                        var k = String(n);
+                        byVal[k] = (byVal[k] || 0) + c;
+                        total += c;
+                    });
+                } else if (Array.isArray(window.gacRawSbgtDist)) {
                     // Every campaign (all statuses), from the server.
                     window.gacRawSbgtDist.forEach(function(d) {
                         var n = Number(d.value);

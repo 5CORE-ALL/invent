@@ -387,7 +387,8 @@ class NewTemuoneSuggestedPriceStore
         float $cvrPrior,
         array $dilRules,
         ?array $cvrAdj,
-        bool $zeroSold = false
+        bool $zeroSold = false,
+        float $agePoints = 0.0
     ): ?float {
         if (! ($inv > 0)) {
             return null;
@@ -405,6 +406,10 @@ class NewTemuoneSuggestedPriceStore
             $slabGroi = (float) $rule['groi'];
         }
         $groi = AmazonDilGroiRule::adjustGroiForCvrArrow($slabGroi, $cvr, $cvrPrior, $cvrAdj);
+        // Ageing Rule: the SKU's age band points (resolved by the caller), added after the CVR overlay, floored at 0.
+        if ($agePoints != 0.0 && is_finite($groi)) {
+            $groi = max(0.0, round((float) $groi + $agePoints, 2));
+        }
 
         return is_finite($groi) ? (float) $groi : null;
     }
@@ -446,7 +451,7 @@ class NewTemuoneSuggestedPriceStore
         if (! ($inv > 0) || ! ($lp > 0)) {
             return $empty;
         }
-        $ruleSgroi = self::targetSgroi($inv, $dil, $cvr, $cvr60, $dilRules, $cvrAdj, $sold <= 0);
+        $ruleSgroi = self::targetSgroi($inv, $dil, $cvr, $cvr60, $dilRules, $cvrAdj, $sold <= 0, (float) ($inputs['age_points'] ?? 0));
         if ($ruleSgroi === null) {
             return $empty;
         }
@@ -656,6 +661,11 @@ class NewTemuoneSuggestedPriceStore
             'inv' => round((float) ($inputs['inv'] ?? 0), 2),
             'lmp' => (is_numeric($lmp) && (float) $lmp > 0) ? round((float) $lmp, 2) : 0.0,
         ];
+        // Only when the Ageing Rule adds points, so rows priced without it keep their saved fingerprint.
+        $agePoints = (float) ($inputs['age_points'] ?? 0);
+        if ($agePoints != 0.0) {
+            $payload['age_points'] = round($agePoints, 2);
+        }
 
         return hash('sha1', (string) json_encode($payload, JSON_PRESERVE_ZERO_FRACTION));
     }

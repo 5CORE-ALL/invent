@@ -283,6 +283,29 @@ class NewTemuoneController extends Controller
             $dilStore = DilRuleSpriceApplyService::for('temu')->loadDilGroiStore();
             $dilRules = $dilStore['rules'] ?? [];
             $cvrAdj = $dilStore['cvr_adj'] ?? null;
+            // Ageing Rule (Sprc Dil modal): the SKU's age band adds points to the Target NROI. Age lookups only when a band has points.
+            $ageAdj = is_array($dilStore['age_adj'] ?? null) ? $dilStore['age_adj'] : null;
+            $ageAdjActive = false;
+            foreach ((array) $ageAdj as $ageBand) {
+                if (is_array($ageBand) && is_numeric($ageBand['points'] ?? null) && abs((float) $ageBand['points']) > 0.00001) {
+                    $ageAdjActive = true;
+                    break;
+                }
+            }
+            $ageCtl = null;
+            $agePushBySku = [];
+            $ageLastSaleBySku = [];
+            if ($ageAdjActive) {
+                try {
+                    $ageCtl = app(\App\Http\Controllers\ProductMaster\InvDaysController::class);
+                    $ageSources = $ageCtl->ageDaySources();
+                    $agePushBySku = $ageSources['push'] ?? [];
+                    $ageLastSaleBySku = $ageSources['last_sale'] ?? [];
+                } catch (\Throwable $e) {
+                    Log::warning('New Temu One age days lookup failed: '.$e->getMessage());
+                    $ageCtl = null;
+                }
+            }
             $suggestedStore = new NewTemuoneSuggestedPriceStore();
             $suggestedStore->loadForSkus($skus);
             $percentage = TemuShopifySalesService::temuMarginDecimal();
@@ -370,9 +393,15 @@ class NewTemuoneController extends Controller
                 }
 
                 $lmpInfo = $this->resolveTemu2Lmp($sku, $temuLmpByNormalizedSku, $normalizeSku);
+                $agePoints = 0.0;
+                if ($ageCtl !== null && $inv > 0) {
+                    $ageDaysForSku = $ageCtl->ageDays($sku, $inv, $agePushBySku, $ageLastSaleBySku);
+                    $agePoints = \App\Support\AmazonDilGroiRule::ageAdjPoints($ageDaysForSku !== null ? (float) $ageDaysForSku : null, $ageAdj);
+                }
                 $suggested = $suggestedStore->resolve(
                     $sku,
                     [
+                        'age_points' => $agePoints,
                         'inv' => $inv,
                         'lp' => $lp,
                         'ship' => $temuShip,
