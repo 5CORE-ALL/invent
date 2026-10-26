@@ -29,6 +29,7 @@ class VideoAdsMaster extends Model
         'redo_checked',
         'redo_checked_by',
         'redo_checked_at',
+        'redo_note',
         'redone_checked',
         'redone_checked_by',
         'redone_checked_at',

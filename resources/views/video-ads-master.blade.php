@@ -249,6 +249,7 @@
         .vam-check-meta .vam-ad-user { font-weight: 700; color: #2c6ed5; }
         .vam-check-meta .vam-redo-user { font-weight: 700; color: #d97706; }
         .vam-check-meta .vam-redone-user { font-weight: 700; color: #7c3aed; }
+        .vam-redo-note-flag { text-align: center; color: #d97706; font-size: 11px; cursor: help; }
         .vam-redo-box, .vam-redone-box {
             width: 18px;
             height: 18px;
@@ -766,6 +767,26 @@
         </div>
     </div>
 
+    {{-- Modal: note captured when a row is marked REDO. Shown on hover of the REDO cell. --}}
+    <div class="modal fade" id="vamRedoNoteModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title"><i class="fas fa-rotate-left me-2"></i>Redo note</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="vamRedoNoteInput" class="form-control" rows="3" maxlength="2000"
+                              placeholder="What needs to be redone?"></textarea>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="vamRedoNoteSave">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Modal: check/uncheck audit trail for a single row. Populated on
          demand from GET /video-ads-master/{id}/check-history. --}}
     <div class="modal fade" id="vamCheckHistoryModal" tabindex="-1" aria-hidden="true">
@@ -809,6 +830,9 @@
             let audienceManageModal = null;  // bootstrap.Modal — manage audience tags
             let pickTagsModal      = null;   // bootstrap.Modal — pick tags for a row cell
             let checkHistoryModal  = null;   // bootstrap.Modal — per-row check audit trail
+            let redoNoteModal      = null;   // bootstrap.Modal — note when marking REDO
+            let redoNoteRow        = null;   // Tabulator row awaiting a redo note
+            let redoNoteSaved      = false;  // true once Save was clicked (so hide doesn't revert)
             let creatorMenuRow     = null;
             let editingId          = null;   // id of the row currently in the form (null = add mode)
             let editingHookId      = null;   // id of hook option being edited in Add Hook modal
@@ -1496,12 +1520,18 @@
                              + `</div>`;
                     }
 
+                    // REDO only: hovering the cell shows the note typed when it was ticked.
+                    const note    = (flag === 'redo_checked' && checked && row.redo_note) ? escapeHtml(row.redo_note) : '';
+                    const wrapTip = note ? ` title="${note}"` : '';
+                    const boxTip  = note || title;
+
                     return `
-                        <div class="vam-check-wrap">
+                        <div class="vam-check-wrap"${wrapTip}>
                             <div class="vam-check-top">
-                                <input type="checkbox" class="${boxClass} form-check-input" ${checked ? 'checked' : ''} title="${title}">
+                                <input type="checkbox" class="${boxClass} form-check-input" ${checked ? 'checked' : ''} title="${boxTip}">
                             </div>
                             ${meta}
+                            ${note ? '<div class="vam-redo-note-flag" title="' + note + '"><i class="fas fa-note-sticky"></i></div>' : ''}
                         </div>`;
                 };
             }
@@ -2296,6 +2326,22 @@
                 pickTagsModal       = new bootstrap.Modal(document.getElementById('vamPickTagsModal'));
                 checkHistoryModal   = new bootstrap.Modal(document.getElementById('vamCheckHistoryModal'));
 
+                // REDO note modal: Save persists the tick + note; any other close reverts the checkbox.
+                const redoNoteEl    = document.getElementById('vamRedoNoteModal');
+                redoNoteModal       = new bootstrap.Modal(redoNoteEl);
+                redoNoteEl.addEventListener('shown.bs.modal', () => document.getElementById('vamRedoNoteInput').focus());
+                redoNoteEl.addEventListener('hidden.bs.modal', () => {
+                    if (!redoNoteSaved && redoNoteRow) { redoNoteRow.reformat(); }
+                    redoNoteRow = null;
+                });
+                document.getElementById('vamRedoNoteSave').addEventListener('click', () => {
+                    const note = document.getElementById('vamRedoNoteInput').value.trim();
+                    const row  = redoNoteRow;
+                    redoNoteSaved = true;
+                    redoNoteModal.hide();
+                    if (row) { toggleStamp(row, 'redo_checked', 'redo-check', true, 'redo', { redo_note: note }); }
+                });
+
                 fetch('/video-ads-master/data', { headers: { 'Accept': 'application/json' } })
                     .then(r => r.json())
                     .then(payload => {
@@ -2569,7 +2615,16 @@
                             formatter: redoFormatter,
                             cellClick: (e, cell) => {
                                 const box = e.target.closest('.vam-redo-box');
-                                if (box) { toggleStamp(cell.getRow(), 'redo_checked', 'redo-check', box.checked, 'redo'); }
+                                if (!box) return;
+                                if (box.checked) {
+                                    // Ticking REDO asks for a note first; the tick is saved on Save.
+                                    redoNoteRow   = cell.getRow();
+                                    redoNoteSaved = false;
+                                    document.getElementById('vamRedoNoteInput').value = redoNoteRow.getData().redo_note || '';
+                                    redoNoteModal.show();
+                                } else {
+                                    toggleStamp(cell.getRow(), 'redo_checked', 'redo-check', false, 'redo');
+                                }
                             },
                         },
                         {
@@ -2891,7 +2946,7 @@
             }
 
             // Toggle a REDO / REDONE checkbox (same flow as AD): persist, then mirror the stamped values back onto the row.
-            function toggleStamp(row, flag, path, desired, label) {
+            function toggleStamp(row, flag, path, desired, label, extra) {
                 const data = row.getData();
                 if (!data.id) return;
 
@@ -2902,7 +2957,7 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': csrfToken,
                     },
-                    body: JSON.stringify({ [flag]: !!desired }),
+                    body: JSON.stringify(Object.assign({ [flag]: !!desired }, extra || {})),
                 })
                 .then(r => r.json().then(j => ({ ok: r.ok, j })))
                 .then(({ ok, j }) => {
@@ -2915,6 +2970,7 @@
                         [flag]: j.row[flag],
                         [flag + '_by']: j.row[flag + '_by'],
                         [flag + '_at']: j.row[flag + '_at'],
+                        ...(flag === 'redo_checked' ? { redo_note: j.row.redo_note } : {}),
                     });
                     row.reformat();
                     showToast(j.row[flag] ? `Marked as ${label}` : `Unmarked ${label}`, 'success');

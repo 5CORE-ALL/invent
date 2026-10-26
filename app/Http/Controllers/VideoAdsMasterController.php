@@ -581,6 +581,7 @@ class VideoAdsMasterController extends Controller
         $copy->redo_checked      = false;
         $copy->redo_checked_by   = null;
         $copy->redo_checked_at   = null;
+        $copy->redo_note         = null;
         $copy->redone_checked    = false;
         $copy->redone_checked_by = null;
         $copy->redone_checked_at = null;
@@ -650,7 +651,23 @@ class VideoAdsMasterController extends Controller
     /** REDO checkbox: same behaviour as AD (stamps the acting user + time). */
     public function toggleRedo(Request $request, $id)
     {
-        return $this->toggleStamped($request, $id, 'redo_checked');
+        $request->validate(['redo_note' => 'nullable|string|max:2000']);
+
+        $row = VideoAdsMaster::findOrFail($id);
+
+        $newState = $request->has('redo_checked')
+            ? $request->boolean('redo_checked')
+            : ! $row->redo_checked;
+
+        $row->redo_checked    = $newState;
+        $row->redo_checked_by = $newState ? (Auth::user()?->name ?? 'System') : null;
+        $row->redo_checked_at = $newState ? now() : null;
+        // The note belongs to the redo mark: keep what was typed, clear it on uncheck.
+        $note = trim((string) $request->input('redo_note', ''));
+        $row->redo_note = $newState && $note !== '' ? $note : null;
+        $row->save();
+
+        return response()->json(['success' => true, 'row' => $row]);
     }
 
     /** REDONE checkbox: same behaviour as AD (stamps the acting user + time). */
