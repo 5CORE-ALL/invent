@@ -3760,7 +3760,7 @@
                 }
                 e.stopPropagation();
                 const m = $(this).data('metric');
-                if (m) showEbay1MetricChart(m);
+                if (m) showEbay1MetricChart(m);   
             });
             $('#ebay1ChartRangeSelect').on('change', function() {
                 ebay1ChartDays = parseInt($(this).val(), 10) || 0;

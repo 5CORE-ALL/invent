@@ -3605,6 +3605,27 @@
             const plan = computeAmzPushPrcPlan(d);
             return amzLmpAlignPushPrcPlan(plan, d);
         }
+        /**
+         * Plan for the manual Push Prc click (single + bulk).
+         * When the active S PRC rule is "dil" the S PRC column shows the Dil GROI price, but the
+         * Push Prc stack (Std − CVR/Rev Disc) gives a different one. A manual push used the stack and
+         * wrote that to Amazon + SPRICE, so Price never matched the S PRC shown (blue triangle stayed).
+         * Push exactly what the S PRC column shows.
+         */
+        function amzManualPushPlanForRow(d) {
+            const dilActive = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+            if (!dilActive) return amzPushPrcPlanForQueue(d);
+            const live = amzLiveRuleSprice(d);
+            if (!(live > 0)) return null;
+            const base = computeAmzPushPrcPlan(d) || {};
+            const std = Number(d && d.STANDARD_PRICE) || 0;
+            const plan = Object.assign({}, base, {
+                std: std > 0 ? amzPefRound2(std) : live,
+                sale: live,
+                effective: live,
+            });
+            return amzLmpAlignPushPrcPlan(plan, d);
+        }
         function amzListingAlreadyAtPushTarget(d, plan) {
             const target = (plan && plan.effective > 0)
                 ? plan.effective
@@ -4606,7 +4627,7 @@
 
             const d = row.getData();
             const sku = amzPefSku(d);
-            const plan = amzPushPrcPlanForQueue(d);
+            const plan = amzManualPushPlanForRow(d);
             if (!sku || !plan || !(plan.std > 0)) {
                 amzPefToast('error', 'Set Std Prc first (optional CVR Discount for Sale)');
                 return;
@@ -4646,7 +4667,7 @@
             let alreadyEqual = 0;
             targets.forEach(function(t) {
                 const d = t.row.getData();
-                const plan = amzPushPrcPlanForQueue(d);
+                const plan = amzManualPushPlanForRow(d);
                 if (!plan || !(plan.std > 0)) return;
                 if (amzListingAlreadyAtPushTarget(d, plan)) {
                     alreadyEqual++;
