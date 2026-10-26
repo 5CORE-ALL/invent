@@ -89,9 +89,8 @@
         #summary-stats .amz-sum-block--yesterday { grid-column: 1 / 3; grid-row: 1; }
         #summary-stats .amz-sum-block--l30 { grid-column: 3 / 7; grid-row: 1; }
         #summary-stats .amz-sum-block--projected { grid-column: 7 / 11; grid-row: 1; }
-        #summary-stats .amz-sum-block--listing { grid-column: 1 / 3; grid-row: 2; }
-        #summary-stats .amz-sum-block--sold { grid-column: 3 / 5; grid-row: 2; }
-        #summary-stats .amz-sum-block--alerts { grid-column: 5 / 11; grid-row: 2; }
+        #summary-stats .amz-sum-block--sold { grid-column: 1 / 3; grid-row: 2; }
+        #summary-stats .amz-sum-block--alerts { grid-column: 3 / 11; grid-row: 2; }
         #summary-stats .amz-sum-row {
             display: grid;
             align-items: stretch;
@@ -101,7 +100,6 @@
             overflow: visible;
         }
         #summary-stats .amz-sum-row--yesterday,
-        #summary-stats .amz-sum-row--listing,
         #summary-stats .amz-sum-row--sold { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         #summary-stats .amz-sum-row--l30 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         #summary-stats .amz-sum-row--projected { grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); }
@@ -131,7 +129,6 @@
             #summary-stats .amz-sum-block--yesterday,
             #summary-stats .amz-sum-block--l30,
             #summary-stats .amz-sum-block--projected,
-            #summary-stats .amz-sum-block--listing,
             #summary-stats .amz-sum-block--sold,
             #summary-stats .amz-sum-block--alerts { grid-column: auto; grid-row: auto; }
             #summary-stats .amz-sum-block--l30,
@@ -1010,6 +1007,15 @@
                                 data-metric="l30_spend" data-live-value="{{ round((float) ($ebayAdSpend ?? 0), 2) }}" data-format="money"
                                 style="background-color:#6f42c1;color:#fff;font-weight:bold;cursor:pointer;"
                                 title="eBay L30 ad spend. Same Total Ad Spend as All Marketplace Master (the numerator of Ads%). Click badge or dot for rolling history.">{!! $ebTrendDot('l30_spend') !!}L30 spend: ${{ number_format((float) ($ebayAdSpend ?? 0)) }}</span>
+                            <span class="badge fs-6 p-2 bg-info ebay1-badge-chart" id="total-views-badge"
+                                data-metric="total_views" data-live-value="0"
+                                style="color: black; font-weight: bold; cursor: pointer;"
+                                title="Views. Click badge or dot for rolling history.">{!! $ebTrendDot('total_views') !!}Views: 0</span>
+                            <span class="badge fs-6 p-2 bg-danger ebay1-badge-chart" id="avg-cvr-badge"
+                                data-metric="cvr_percent" data-live-value="0" data-format="pct"
+                                style="color: white; font-weight: bold; cursor: pointer;"
+                                title="CVR% = L30 units ÷ Σ Views × 100. Click badge or dot for rolling history.">{!! $ebTrendDot('cvr_percent') !!}CVR: 0%</span>
+                            @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
                         </div>
                     </div>
                     <div class="amz-sum-block amz-sum-block--projected">
@@ -1043,20 +1049,10 @@
                                 data-metric="p_views" data-live-value="0" data-format="int"
                                 style="background-color:#0d6efd;color:#fff;font-weight:bold;cursor:pointer;"
                                 title="P Views = Σ Views × (P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. Click badge or dot for rolling history.">{!! $ebTrendDot('p_views') !!}Views: 0</span>
-                        </div>
-                    </div>
-                    <div class="amz-sum-block amz-sum-block--listing">
-                        <div class="amz-sum-block-title">Listing</div>
-                        <div class="amz-sum-row amz-sum-row--listing" role="group" aria-label="Listing metrics">
-                            <span class="badge fs-6 p-2 bg-info ebay1-badge-chart" id="total-views-badge"
-                                data-metric="total_views" data-live-value="0"
-                                style="color: black; font-weight: bold; cursor: pointer;"
-                                title="Views. Click badge or dot for rolling history.">{!! $ebTrendDot('total_views') !!}Views: 0</span>
-                            <span class="badge fs-6 p-2 bg-danger ebay1-badge-chart" id="avg-cvr-badge"
-                                data-metric="cvr_percent" data-live-value="0" data-format="pct"
-                                style="color: white; font-weight: bold; cursor: pointer;"
-                                title="CVR%. Click badge or dot for rolling history.">{!! $ebTrendDot('cvr_percent') !!}CVR: 0%</span>
-                            @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay-p-cvr-badge"
+                                data-metric="p_cvr_percent" data-live-value="0" data-format="pct"
+                                style="background-color:#0d6efd;color:#fff;font-weight:bold;cursor:pointer;"
+                                title="P CVR% = P Qty ÷ P Views × 100. Projected units and views are both on the same 30-day pace. Click badge or dot for rolling history.">{!! $ebTrendDot('p_cvr_percent') !!}CVR: 0%</span>
                         </div>
                     </div>
                     <div class="amz-sum-block amz-sum-block--sold">
@@ -1490,6 +1486,8 @@
         const Y_ADS_PERCENT = {{ (float) ($yAdsPercent ?? 0) }};
         /** Projected 30-day sales (L7 pace). P Views = Σ views × P-Sales ÷ L30 Sales. */
         const EBAY_P_SALES = {{ (float) (($ebayProjected['p_sales'] ?? 0)) }};
+        /** Projected 30-day units (L7 pace). P CVR = P Qty ÷ P Views × 100. */
+        const EBAY_P_QTY = {{ (float) (($ebayProjected['p_qty'] ?? 0)) }};
         /** Take-home from marketplace_percentages (Ebay). Used when a row has no percentage. */
         const EBAY_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
 
@@ -1789,6 +1787,7 @@
             p_nroi_percent: 'P NROI%',
             p_ads_percent: 'P Ads%',
             p_views: 'P Views',
+            p_cvr_percent: 'P CVR%',
             blue_triangle_count: 'Blue ▲ (Price ≠ S PRC)',
             red_triangle_count: 'Red ▲ (Price > LMP)',
             price_lt80_lmp_count: 'Purple ▲ (Price < 80% LMP)',
@@ -6909,8 +6908,12 @@
                 // Projected Views = Σ Views × (P-Sales ÷ L30 Sales) — same 30-day pace as P-Sales.
                 const pViews = ORDERS_L30_TOTAL_SALES > 0 ? Math.round(totalViews * (EBAY_P_SALES / ORDERS_L30_TOTAL_SALES)) : 0;
                 setSummaryBadge($('#ebay-p-views-badge'), 'Views: ' + pViews.toLocaleString(), pViews);
+                // Projected CVR = P Qty ÷ P Views × 100 (both on the L7 → 30-day pace).
+                const pCvr = pViews > 0 ? Math.round((EBAY_P_QTY / pViews) * 1000) / 10 : 0;
+                setSummaryBadge($('#ebay-p-cvr-badge'), 'CVR: ' + pCvr.toFixed(1) + '%', pCvr);
                 ebay1ReportClientBadges({
                     p_views: pViews,
+                    p_cvr_percent: pCvr,
                     blue_triangle_count: blueTriangleCount,
                     red_triangle_count: redTriangleCount,
                     price_lt80_lmp_count: purpleCount,

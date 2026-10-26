@@ -623,6 +623,168 @@ class PurchasingPowerApiService extends BestBuyApiService
     }
 
     /**
+     * Push many prices in ONE PRI01 import. A single push waits ~20–40 s for the import to finish, so 170 SKUs one by
+     * one took 1–2 hours; one import for up to a few dozen SKUs finishes in about the same time as one push.
+     *
+     * Every SKU still gets the same checks as updatePrice() (not listed / inactive / OF21 offer lookup). If the batch
+     * import is rejected, or any line errors, or it does not finish, the SKUs are pushed one by one with updatePrice(),
+     * so a batch problem never loses a push or hides which SKU failed.
+     *
+     * @param  list<array{sku: string, price: float}>  $items
+     * @return array<string, array{success: bool, message: string, status_code?: int|null, import_id?: string|null}> keyed by the SKU as given
+     */
+    public function updatePricesBatch(array $items): array
+    {
+        $results = [];
+        /** @var array<string, array{sku: string, price: float}> $ready offer SKU => item */
+        $ready = [];
+
+        $apiKey = (string) ($this->miraklMcmApiKey() ?? '');
+        $baseUrl = rtrim((string) config('services.purchasingpower.mcm_base_url', ''), '/');
+
+        foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            $price = round((float) ($item['price'] ?? 0), 2);
+            if ($sku === '' || $price <= 0) {
+                $results[$sku] = ['success' => false, 'message' => 'Valid SKU and price are required.', 'status_code' => 422];
+
+                continue;
+            }
+            if ($apiKey === '' || $baseUrl === '') {
+                $results[$sku] = [
+                    'success' => false,
+                    'message' => 'Purchasing Power MCM API key/base URL not configured (PURCHASING_POWER_MCM_API_KEY).',
+                    'status_code' => 401,
+                ];
+
+                continue;
+            }
+            [$offerSku, $fail] = $this->resolveBatchOfferSku($sku, $apiKey, $baseUrl);
+            if ($offerSku === null) {
+                $results[$sku] = $fail;
+
+                continue;
+            }
+            $ready[$offerSku] = ['sku' => $sku, 'price' => $price];
+        }
+
+        $single = function () use (&$results, &$ready): array {
+            foreach ($ready as $r) {
+                $results[$r['sku']] = $this->updatePrice($r['sku'], $r['price']);
+            }
+
+            return $results;
+        };
+
+        if (count($ready) < 2) {
+            return $single();
+        }
+
+        $csv = "offer-sku;price\n";
+        foreach ($ready as $offerSku => $r) {
+            $csv .= '"'.str_replace('"', '""', (string) $offerSku).'";'.number_format($r['price'], 2, '.', '')."\n";
+        }
+        $query = [];
+        $shopId = config('services.purchasingpower.shop_id');
+        if ($shopId !== null && $shopId !== '') {
+            $query['shop_id'] = (int) $shopId;
+        }
+
+        try {
+            $url = $baseUrl.'/api/offers/pricing/imports'.($query !== [] ? '?'.http_build_query($query) : '');
+            $filename = 'pp-price-batch-'.date('YmdHis').'.csv';
+            $response = $this->miraklMcmPostPricingImport($apiKey, $url, $csv, $filename);
+            if ($response !== null && $response->status() === 404 && $query !== []) {
+                $response = $this->miraklMcmPostPricingImport($apiKey, $baseUrl.'/api/offers/pricing/imports', $csv, $filename);
+            }
+            $importId = ($response !== null && $response->successful())
+                ? (string) ($response->json('import_id') ?? $response->json('importId') ?? '')
+                : '';
+            if ($importId === '') {
+                Log::warning('Purchasing Power batch PRI01 not accepted — pushing one by one', [
+                    'count' => count($ready),
+                    'status' => $response?->status(),
+                    'body' => $response ? substr($response->body(), 0, 300) : 'no response',
+                ]);
+
+                return $single();
+            }
+
+            $import = $this->waitForPricingImport($importId, $apiKey, $baseUrl, 150);
+            $status = strtoupper((string) ($import['status'] ?? ''));
+            $linesOk = (int) ($import['lines_in_success'] ?? 0);
+            $linesErr = (int) ($import['lines_in_error'] ?? 0);
+            if ($status !== 'COMPLETE' || $linesErr > 0 || $linesOk < count($ready)) {
+                Log::warning('Purchasing Power batch PRI01 not clean — pushing one by one', [
+                    'import_id' => $importId,
+                    'status' => $status,
+                    'lines_in_success' => $linesOk,
+                    'lines_in_error' => $linesErr,
+                    'count' => count($ready),
+                ]);
+
+                return $single();
+            }
+        } catch (\Throwable $e) {
+            Log::error('Purchasing Power batch PRI01 exception — pushing one by one', ['error' => $e->getMessage()]);
+
+            return $single();
+        }
+
+        foreach ($ready as $offerSku => $r) {
+            $this->syncLocalPriceAfterPush((string) $offerSku, $r['price']);
+            $results[$r['sku']] = [
+                'success' => true,
+                'message' => 'Price $'.number_format($r['price'], 2).' pushed to Purchasing Power for SKU: '.$offerSku
+                    .' (batch import '.$importId.')',
+                'status_code' => 200,
+                'import_id' => $importId,
+            ];
+        }
+        Log::info('Purchasing Power MCM PRI01 batch push complete', ['count' => count($ready), 'import_id' => $importId]);
+
+        return $results;
+    }
+
+    /**
+     * The same per-SKU checks updatePrice() runs before it pushes: inactive / not listed, then one exact OF21 lookup.
+     *
+     * @return array{0: ?string, 1: ?array} [offer SKU, null] or [null, failed result]
+     */
+    protected function resolveBatchOfferSku(string $sku, string $apiKey, string $baseUrl): array
+    {
+        $block = \App\Http\Controllers\MarketPlace\PurchasingPowerController::pricePushBlockReason($sku);
+        if ($block !== null) {
+            return [null, ['success' => false, 'message' => $block, 'status_code' => 422, 'skipped' => true]];
+        }
+        $listed = \App\Http\Controllers\MarketPlace\PurchasingPowerController::findProductBySku($sku);
+        $lookupSku = \App\Http\Controllers\MarketPlace\PurchasingPowerController::offerLookupSku($sku, $listed->sku ?? null);
+        $offerSku = $this->resolveLiveMcmOfferSkuExact($lookupSku, $apiKey, $baseUrl);
+        if ($offerSku === null) {
+            return [null, [
+                'success' => false,
+                'message' => "SKU is not listed on Purchasing Power MCM: {$lookupSku}",
+                'status_code' => 404,
+            ]];
+        }
+
+        return [$offerSku, null];
+    }
+
+    /** Keep the local listed price in step once MCM confirmed the import. */
+    protected function syncLocalPriceAfterPush(string $offerSku, float $price): void
+    {
+        try {
+            PurchasingPowerProduct::updateOrCreate(['sku' => $offerSku], ['price' => $price]);
+        } catch (\Throwable $e) {
+            Log::warning('Purchasing Power local price sync after batch PRI01 failed', [
+                'sku' => $offerSku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Single OF21 GET for this shop SKU. No candidate spray, no 429 15s backoff loop.
      */
     protected function resolveLiveMcmOfferSkuExact(string $sku, string $apiKey, string $baseUrl): ?string
@@ -678,9 +840,9 @@ class PurchasingPowerApiService extends BestBuyApiService
         return null;
     }
 
-    protected function waitForPricingImport(string $importId, string $apiKey, string $baseUrl): array
+    protected function waitForPricingImport(string $importId, string $apiKey, string $baseUrl, int $maxPolls = 10): array
     {
-        for ($i = 0; $i < 10; $i++) {
+        for ($i = 0; $i < $maxPolls; $i++) {
             if ($i > 0) {
                 usleep(400000);
             }

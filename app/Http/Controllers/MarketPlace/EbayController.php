@@ -57,13 +57,13 @@ class EbayController extends Controller
     private const EBAY_BLOCK_BADGE_METRICS = [
         'y_sales', 'y_sales_percent', 'ads_sales', 'acos_percent', 'l30_spend',
         'p_sales', 'p_qty', 'p_groi_percent', 'p_npft_percent', 'p_nroi_percent', 'p_ads_percent',
-        'p_views', 'blue_triangle_count', 'red_triangle_count', 'price_lt80_lmp_count', 'price_eq_lmp_count',
+        'p_views', 'p_cvr_percent', 'blue_triangle_count', 'red_triangle_count', 'price_lt80_lmp_count', 'price_eq_lmp_count',
         'sprice_eq_lmp_count', 'ended_listing_count',
     ];
 
     /** Counts only the browser can compute (they need live S PRC / LMP rules). Reported by the page, kept on re-snapshot. */
     private const EBAY_CLIENT_BADGE_METRICS = [
-        'p_views', 'blue_triangle_count', 'red_triangle_count', 'price_lt80_lmp_count', 'price_eq_lmp_count',
+        'p_views', 'p_cvr_percent', 'blue_triangle_count', 'red_triangle_count', 'price_lt80_lmp_count', 'price_eq_lmp_count',
         'sprice_eq_lmp_count', 'ended_listing_count',
     ];
 

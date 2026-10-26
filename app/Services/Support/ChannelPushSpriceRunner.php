@@ -183,6 +183,13 @@ class ChannelPushSpriceRunner
                 return 0;
             }
 
+            // Purchasing Power: a push waits ~20–40 s for the MCM import, so push the queue in batches (one import each).
+            if ($this->channel === 'purchasing_power' && $this->pushPurchasingPowerBatch($store, $logger)) {
+                usleep($this->pauseAfterPushMicros());
+
+                continue;
+            }
+
             $index = $this->findNextPendingIndex($state['tasks'] ?? []);
             if ($index === null) {
                 $store->update(function (array $state) {
@@ -447,6 +454,130 @@ class ChannelPushSpriceRunner
             }
             usleep($this->pauseAfterPushMicros());
         }
+    }
+
+    private const PP_BATCH_SIZE = 25;
+
+    /**
+     * Push up to PP_BATCH_SIZE pending Purchasing Power tasks in one MCM import. Returns true when it finished at least
+     * one task. Tasks it does not take (bad SKU/price, negative SNROI, fewer than 2 waiting) stay pending for the
+     * one-by-one path, which reports them.
+     */
+    private function pushPurchasingPowerBatch(ChannelPushSpriceJobStore $store, \Psr\Log\LoggerInterface $logger): bool
+    {
+        $state = $store->load();
+        $picked = [];
+        foreach ($state['tasks'] ?? [] as $i => $task) {
+            if (count($picked) >= self::PP_BATCH_SIZE) {
+                break;
+            }
+            if (! is_array($task) || ! in_array((string) ($task['status'] ?? 'pending'), ['pending', 'queued'], true)) {
+                continue;
+            }
+            $sku = trim((string) ($task['sku'] ?? ''));
+            $price = (float) ($task['price'] ?? 0);
+            if ($sku === '' || ! ($price > 0)) {
+                continue;
+            }
+            if (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
+                continue;
+            }
+            $floored = MacysAmazonPriceCap::capForSku($sku, $price, true);
+            if ($floored > 0 && abs($floored - $price) >= 0.005) {
+                $price = $floored;
+            }
+            $picked[(int) $i] = ['sku' => $sku, 'price' => $price];
+        }
+        if (count($picked) < 2) {
+            return false;
+        }
+
+        $store->update(function (array $state) use ($picked) {
+            foreach ($picked as $i => $_) {
+                if (isset($state['tasks'][$i]) && is_array($state['tasks'][$i])) {
+                    $state['tasks'][$i]['status'] = 'pushing';
+                    $state['tasks'][$i]['attempts'] = ((int) ($state['tasks'][$i]['attempts'] ?? 0)) + 1;
+                }
+            }
+            $state['current_sku'] = null;
+
+            return $state;
+        });
+        $logger->info('S PRC background batch push', ['channel' => $this->channel, 'count' => count($picked)]);
+
+        try {
+            $results = app(CvrMasterController::class)->pushPurchasingPowerBatch(array_values($picked));
+        } catch (\Throwable $e) {
+            // Put them back so the one-by-one path pushes them and reports each SKU.
+            $logger->error('S PRC background batch push failed', ['channel' => $this->channel, 'error' => $e->getMessage()]);
+            $store->update(function (array $state) use ($picked) {
+                foreach ($picked as $i => $_) {
+                    if (isset($state['tasks'][$i]) && is_array($state['tasks'][$i])
+                        && ($state['tasks'][$i]['status'] ?? '') === 'pushing') {
+                        $state['tasks'][$i]['status'] = 'pending';
+                    }
+                }
+
+                return $state;
+            });
+
+            return false;
+        }
+
+        $outcome = [];
+        foreach ($picked as $i => $p) {
+            $res = $results[$p['sku']] ?? ['success' => false, 'price' => $p['price'], 'message' => 'No result from batch push'];
+            $ok = ! empty($res['success']);
+            $error = $ok ? null : ((string) ($res['message'] ?? '') ?: 'Push failed');
+            $live = round((float) ($res['price'] ?? $p['price']), 2);
+            if ($ok) {
+                try {
+                    ChannelLivePriceSync::confirmAfterPush($this->channel, $p['sku'], $live);
+                } catch (\Throwable $e) {
+                    $logger->warning('S PRC batch confirmAfterPush failed', ['sku' => $p['sku'], 'error' => $e->getMessage()]);
+                }
+            } else {
+                $logger->error('S PRC background push failed', ['channel' => $this->channel, 'sku' => $p['sku'], 'error' => $error]);
+                $this->markListingEndedIfNeeded($p['sku'], $error);
+            }
+            $outcome[$i] = ['sku' => $p['sku'], 'ok' => $ok, 'error' => $error, 'live' => $live];
+        }
+
+        $store->update(function (array $state) use ($outcome) {
+            foreach ($outcome as $i => $o) {
+                if (! isset($state['tasks'][$i]) || ! is_array($state['tasks'][$i])) {
+                    continue;
+                }
+                if ($o['ok']) {
+                    $state['tasks'][$i]['status'] = 'ok';
+                    $state['tasks'][$i]['error'] = null;
+                    $state['tasks'][$i]['message'] = 'pushed';
+                    $state['tasks'][$i]['ebay_price'] = $o['live'];
+                    $state['ok_count'] = ((int) ($state['ok_count'] ?? 0)) + 1;
+                } else {
+                    $state['tasks'][$i]['status'] = 'failed';
+                    $state['tasks'][$i]['error'] = $o['error'];
+                    $state['tasks'][$i]['message'] = $o['error'];
+                    $state['fail_count'] = ((int) ($state['fail_count'] ?? 0)) + 1;
+                }
+                $state['results'][$o['sku']] = [
+                    'success' => $o['ok'],
+                    'sku' => $o['sku'],
+                    'error' => $o['ok'] ? null : $o['error'],
+                    'ebay_price' => $o['live'],
+                ];
+            }
+            $done = ((int) ($state['ok_count'] ?? 0)) + ((int) ($state['fail_count'] ?? 0));
+            $state['last_message'] = 'Batch of '.count($outcome)." — {$done}/".(int) ($state['total'] ?? 0);
+            $state['current_sku'] = null;
+
+            return $state;
+        });
+        foreach ($outcome as $o) {
+            $store->appendMessage(($o['ok'] ? 'OK ' : 'Fail ').$o['sku'].($o['error'] ? (': '.$o['error']) : ''), $o['ok']);
+        }
+
+        return true;
     }
 
     /**

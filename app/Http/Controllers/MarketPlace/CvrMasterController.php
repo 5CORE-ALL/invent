@@ -9363,6 +9363,43 @@ class CvrMasterController extends Controller
     /**
      * Push price to Purchasing Power via Mirakl MCM PRI01 (PURCHASING_POWER_MCM_API_KEY).
      */
+    /**
+     * Push many Purchasing Power prices in one MCM import (background S PRC runner). Same rules as pushToPurchasingPower:
+     * not-listed / inactive block, Amazon price floor, push status saved per SKU.
+     *
+     * @param  list<array{sku: string, price: float}>  $items
+     * @return array<string, array{success: bool, price: float, message: string}> keyed by SKU as given
+     */
+    public function pushPurchasingPowerBatch(array $items): array
+    {
+        $toPush = [];
+        foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            $price = round((float) ($item['price'] ?? 0), 2);
+            if ($sku === '' || $price <= 0) {
+                continue;
+            }
+            $applied = MacysAmazonPriceCap::applyForSku($sku, $price, true);
+            $toPush[] = ['sku' => $sku, 'price' => (float) $applied['price']];
+        }
+
+        $results = app(PurchasingPowerApiService::class)->updatePricesBatch($toPush);
+
+        $out = [];
+        foreach ($toPush as $item) {
+            $res = $results[$item['sku']] ?? ['success' => false, 'message' => 'No result from Purchasing Power batch push'];
+            $ok = ! empty($res['success']);
+            $this->savePricePushStatus($item['sku'], 'ppower', $ok ? 'pushed' : 'error', $item['price']);
+            $out[$item['sku']] = [
+                'success' => $ok,
+                'price' => $item['price'],
+                'message' => (string) ($res['message'] ?? ''),
+            ];
+        }
+
+        return $out;
+    }
+
     private function pushToPurchasingPower($sku, $price)
     {
         $block = PurchasingPowerController::pricePushBlockReason((string) $sku);
