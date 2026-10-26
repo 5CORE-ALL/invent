@@ -416,6 +416,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // eBay 1 Active / Unsold pull: keeps Missing L current when listings are ended or deleted
+        // on eBay (the daily inactive-listings sync alone left it up to a day behind).
+        $schedule->command('ebay:fetch-listing-status --store=1')
+            ->hourlyAt(40)
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-fetch-listing-status')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         
         $ist($schedule->command('app:fetch-ebay-table-data')
             ->dailyAt('19:25')

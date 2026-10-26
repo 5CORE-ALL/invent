@@ -43,6 +43,16 @@ class ListingCountsEngineNrReqTest extends TestCase
     }
 
     #[Test]
+    public function an_ended_or_unsold_ebay_one_listing_is_not_counted_as_listed(): void
+    {
+        $cfg = \App\Support\Marketplace\ChannelListingRegistry::get('ebay');
+
+        $this->assertContains('inactive', $cfg['listed']['hide_statuses']);
+        $this->assertContains('unsold', $cfg['listed']['hide_statuses']);
+        $this->assertContains('ended', $cfg['listed']['hide_statuses']);
+    }
+
+    #[Test]
     public function a_saved_ebay_link_is_the_listing_id(): void
     {
         $this->assertSame(
