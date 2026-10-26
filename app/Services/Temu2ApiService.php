@@ -1205,12 +1205,19 @@ class Temu2ApiService extends TemuApiService
             if (! is_array($items) || $items === []) {
                 break;
             }
+            $seenBefore = count($seen);
             foreach ($items as $item) {
                 if (! is_array($item)) {
                     continue;
                 }
                 $this->rememberTemu2PortalSku($seen, $item);
                 $updated += $this->persistTemu2SkuListingRow($item, $listingStatus) ? 1 : 0;
+            }
+            // Temu answers every page number with the same first page: the pull is not complete,
+            // so it must not be used to decide which listings are gone.
+            if ($pageNumber > 1 && count($seen) === $seenBefore) {
+                $complete = false;
+                break;
             }
             if ($totalPages === null) {
                 $total = (int) ($result['total'] ?? 0);
@@ -1257,6 +1264,8 @@ class Temu2ApiService extends TemuApiService
             }
             $items = $data['result']['skuList'] ?? [];
             if (! is_array($items) || $items === []) {
+                // An empty page ends the list; the previous page's token is not "more data".
+                $pageToken = null;
                 break;
             }
             foreach ($items as $item) {
@@ -1300,6 +1309,21 @@ class Temu2ApiService extends TemuApiService
     protected function markTemu2SkusMissingFromPortal(array $seen): int
     {
         if ($seen === []) {
+            return 0;
+        }
+
+        // A partial/empty Temu answer (for example the Active list coming back blank) must not
+        // flag the whole catalog deleted. Only reconcile when the pull covers most local rows.
+        $localWithGoods = Temu2Metric::query()
+            ->whereNotNull('goods_id')
+            ->where('goods_id', '!=', '')
+            ->count();
+        if ($localWithGoods > 0 && count($seen) < (int) ceil($localWithGoods * 0.5)) {
+            Log::warning('Temu2 portal reconcile skipped: Temu returned too few SKUs to mark listings deleted', [
+                'portal_skus' => count($seen),
+                'local_rows_with_goods_id' => $localWithGoods,
+            ]);
+
             return 0;
         }
 
