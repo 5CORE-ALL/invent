@@ -249,6 +249,12 @@ class Ebay2ApiService
     }
 
 
+    /** Text for SimpleXMLElement::addChild(): "&", "<" and ">" escaped so the value reaches eBay unchanged. */
+    public static function xmlText(mixed $value): string
+    {
+        return htmlspecialchars((string) $value, ENT_XML1 | ENT_NOQUOTES, 'UTF-8');
+    }
+
     public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null, bool $variationResolved = false)
     {
         // Multi-variation listings ignore item-level StartPrice (ErrorCode 21916618).
@@ -299,7 +305,9 @@ class Ebay2ApiService
         if ($isVariationListing) {
             $variations = $item->addChild('Variations');
             $variation = $variations->addChild('Variation');
-            $variation->addChild('SKU', $skuTrim);
+            // SimpleXML addChild() does not escape "&": "Chrome Black & Blue" was cut at the "&", eBay could not match
+            // the variation and ignored the price (21916618). Escape every text value taken from the listing.
+            $variation->addChild('SKU', self::xmlText($skuTrim));
             $variation->addChild('StartPrice', $price);
             if ($quantity !== null) {
                 $variation->addChild('Quantity', $quantity);
@@ -309,17 +317,17 @@ class Ebay2ApiService
                 $vs = $variation->addChild('VariationSpecifics');
                 foreach ($variationSpecifics as $name => $value) {
                     $nvl = $vs->addChild('NameValueList');
-                    $nvl->addChild('Name', $name);
-                    $nvl->addChild('Value', $value);
+                    $nvl->addChild('Name', self::xmlText($name));
+                    $nvl->addChild('Value', self::xmlText($value));
                 }
             }
             if ($variationSpecificsSet) {
                 $vss = $item->addChild('VariationSpecificsSet');
                 foreach ($variationSpecificsSet as $name => $values) {
                     $nvl = $vss->addChild('NameValueList');
-                    $nvl->addChild('Name', $name);
+                    $nvl->addChild('Name', self::xmlText($name));
                     foreach ($values as $val) {
-                        $nvl->addChild('Value', $val);
+                        $nvl->addChild('Value', self::xmlText($val));
                     }
                 }
             }
@@ -340,15 +348,15 @@ class Ebay2ApiService
                 $vs = $variation->addChild('VariationSpecifics');
                 foreach ($variationSpecifics as $name => $value) {
                     $nvl = $vs->addChild('NameValueList');
-                    $nvl->addChild('Name', $name);
-                    $nvl->addChild('Value', $value);
+                    $nvl->addChild('Name', self::xmlText($name));
+                    $nvl->addChild('Value', self::xmlText($value));
                 }
                 $vss = $item->addChild('VariationSpecificsSet');
                 foreach ($variationSpecificsSet as $name => $values) {
                     $nvl = $vss->addChild('NameValueList');
-                    $nvl->addChild('Name', $name);
+                    $nvl->addChild('Name', self::xmlText($name));
                     foreach ($values as $val) {
-                        $nvl->addChild('Value', $val);
+                        $nvl->addChild('Value', self::xmlText($val));
                     }
                 }
             }

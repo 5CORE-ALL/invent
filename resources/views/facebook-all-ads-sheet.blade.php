@@ -245,19 +245,30 @@
 
         /* Campaign name → green dot + hover popup */
         .faas-name-dot {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background: #16a34a;
-            box-shadow: 0 0 0 1px rgba(0,0,0,0.05);
+            display: block;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 12px;
+            font-weight: 600;
             cursor: pointer;
-            transition: transform 0.1s ease, background 0.1s ease;
+            color: #16a34a;
         }
-        .faas-name-dot.is-active   { background: #16a34a; }
-        .faas-name-dot.is-inactive { background: #dc2626; }
-        .faas-name-dot:hover { transform: scale(1.25); }
-        .faas-name-dot.copied { background: #0d6efd; }
+        .faas-name-dot::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+            background: currentColor;
+            vertical-align: middle;
+        }
+        .faas-name-dot.is-active   { color: #16a34a; }
+        .faas-name-dot.is-inactive { color: #dc2626; }
+        .faas-name-dot:hover { text-decoration: underline; }
+        .faas-name-dot.copied { color: #0d6efd; }
         #faasNamePopup.is-inactive { border-top-color: #dc2626; }
         #faasNamePopup {
             position: fixed;
@@ -1764,7 +1775,11 @@
                     // SPEND above $29 → red text so high-spend rows stand out.
                     function formatSpendCell(cell) {
                         const v = cell.getValue();
-                        if (v === null || v === undefined || String(v).trim() === '') return '';
+                        // No spend row for this campaign in the latest Meta
+                        // export → show $0 instead of a blank cell.
+                        if (v === null || v === undefined || String(v).trim() === '') {
+                            return '<span style="color:#6b7280;">$0</span>';
+                        }
                         const text = String(v);
                         if (toNumber(v) > 29) {
                             return `<span style="color:#dc2626;font-weight:700;">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</span>`;
@@ -1814,7 +1829,7 @@
                         const isActive = status === 'active';
                         return `<span class="faas-name-dot ${isActive ? 'is-active' : 'is-inactive'}"`
                              + ` role="button" tabindex="0"`
-                             + ` data-name="${attr}" data-active="${isActive ? 1 : 0}" aria-label="${attr}"></span>`;
+                             + ` data-name="${attr}" data-active="${isActive ? 1 : 0}" aria-label="${attr}">${attr}</span>`;
                     }
                     function formatAuditReqCell(cell) {
                         const row = cell.getRow().getData();
@@ -1940,6 +1955,13 @@
                         if (c.field === 'Acos')                formatter = formatAcosCell;
                         else if (COLOR_BY_BAND.has(c.field))   formatter = formatBandColoredCell;
                         else if (c.field === 'SPEND')        formatter = formatSpendCell;
+                        else if (c.field === 'IMPR' || c.field === 'CLK') {
+                            formatter = function (cell) {
+                                const v = cell.getValue();
+                                return (v === null || v === undefined || String(v).trim() === '')
+                                    ? '<span style="color:#6b7280;">0</span>' : String(v);
+                            };
+                        }
                         else if (c.field === 'SALES')        formatter = formatSalesCell;
                         else if (c.field === 'SOLD')         formatter = formatSoldCell;
                         else if (c.field === 'CTR')          formatter = formatCtrCell;
@@ -1980,14 +2002,14 @@
                             'Acos','Sbgt','IMPR','CLK','CTR','SPEND','SALES','SOLD','CVR','CPS',
                         ]);
                         const minWidth = NARROW.has(c.field) ? 48
-                                       : (c.field === 'Campaign name' ? 50
+                                       : (c.field === 'Campaign name' ? 220
                                        : (c.field === 'CAMPAIGN ID'  ? 50
                                        : (c.field === 'Link'         ? 40
                                        : (c.field === 'Audit Req'   ? 80
                                        : (c.field === 'History'      ? 90 : 60)))));
-                        const maxWidth = c.field === 'Campaign name' ? 60 : undefined;
+                        const maxWidth = undefined;
                         const widthGrow = NARROW.has(c.field) ? 1
-                                       : (c.field === 'Campaign name' ? 0
+                                       : (c.field === 'Campaign name' ? 4
                                        : (c.field === 'Link'         ? 0
                                        : (c.field === 'Audit Req'   ? 0
                                        : (c.field === 'History'      ? 1 : 1))));
@@ -3764,7 +3786,7 @@
                 el.id = 'faasNamePopup';
                 el.innerHTML = '<div class="faas-name-popup-title">Campaign name</div>'
                              + '<div class="faas-name-popup-text"></div>'
-                             + '<div class="faas-name-popup-hint">Click the dot to copy</div>';
+                             + '<div class="faas-name-popup-hint">Click the name to copy</div>';
                 document.body.appendChild(el);
             }
             return el;
