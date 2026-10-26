@@ -11,6 +11,7 @@ use App\Services\ProductMaster\BackstageSpecificationStore;
 use App\Services\ProductMaster\EbayTechnicalSpecificationSync;
 use App\Support\Marketplace\EbayCategoryAspects;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -114,6 +115,7 @@ class TechnicalSpecificationsController extends Controller
                 $row['ebay_required_only'] = $requiredOnly;
                 $row['ebay_required'] = $names;
                 $row['ebay_values'] = $values;
+                $row['hide_scope'] = $this->hideScope($categoryId, (string) ($row['category_ebay'] ?? ''), (string) ($row['SKU'] ?? ''));
                 unset($row['category_ebay_id']);
             }
             unset($row);
@@ -125,6 +127,7 @@ class TechnicalSpecificationsController extends Controller
                 'message' => 'Technical Specifications data loaded',
                 'data' => $result,
                 'ebay_aspects' => $ebayAspects,
+                'hidden_fields' => $this->hiddenFieldsByScope(),
                 'channels' => $this->channelNames(),
                 'status' => 200,
                 'meta' => [
@@ -209,6 +212,82 @@ class TechnicalSpecificationsController extends Controller
                 'message' => 'Failed to save Technical Specifications: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Fields crossed out in the edit form are remembered per eBay category.
+     */
+    private function hideScope(string $categoryId, string $categoryPath, string $sku): string
+    {
+        if (trim($categoryId) !== '') {
+            return 'ebay:'.trim($categoryId);
+        }
+        $path = strtolower(trim(preg_replace('/\s+/u', ' ', $categoryPath) ?? $categoryPath));
+        if ($path !== '') {
+            return 'path:'.$path;
+        }
+
+        return 'sku:'.$this->skuKey($sku);
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    private function hiddenFieldsByScope(): array
+    {
+        if (! Schema::hasTable('technical_spec_hidden_fields')) {
+            return [];
+        }
+        $map = [];
+        foreach (DB::table('technical_spec_hidden_fields')->get(['scope', 'field_key']) as $row) {
+            $map[(string) $row->scope][] = (string) $row->field_key;
+        }
+
+        return $map;
+    }
+
+    /**
+     * POST /technical-specifications/hidden-fields — cross a field out of the edit form for a category.
+     * Saved values are not touched.
+     */
+    public function hideField(Request $request)
+    {
+        $data = $request->validate([
+            'scope' => 'required|string|max:191',
+            'field_key' => 'required|string|max:191',
+            'label' => 'nullable|string|max:255',
+        ]);
+        if (! Schema::hasTable('technical_spec_hidden_fields')) {
+            return response()->json(['success' => false, 'message' => 'Run migrations to remember hidden fields.'], 500);
+        }
+
+        $exists = DB::table('technical_spec_hidden_fields')
+            ->where('scope', $data['scope'])->where('field_key', $data['field_key'])->exists();
+        if (! $exists) {
+            DB::table('technical_spec_hidden_fields')->insert([
+                'scope' => $data['scope'],
+                'field_key' => $data['field_key'],
+                'label' => $data['label'] ?? null,
+                'hidden_by' => $request->user()?->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * POST /technical-specifications/hidden-fields/restore — show every crossed-out field of a category again.
+     */
+    public function restoreHiddenFields(Request $request)
+    {
+        $data = $request->validate(['scope' => 'required|string|max:191']);
+        if (Schema::hasTable('technical_spec_hidden_fields')) {
+            DB::table('technical_spec_hidden_fields')->where('scope', $data['scope'])->delete();
+        }
+
+        return response()->json(['success' => true]);
     }
 
     private function skuKey(string $sku): string
