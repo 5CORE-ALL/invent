@@ -109,6 +109,8 @@ class PlsSprcDilAutoPushService
 
         $canPush = ! $dryRun && ! $skipPush;
         $total = count($rows);
+        // Live PLS API price checks made this run (blue catch-up). Capped so a run stays short.
+        $apiChecks = 0;
 
         try {
             foreach ($rows as $i => $row) {
@@ -148,24 +150,30 @@ class PlsSprcDilAutoPushService
                             $stats['skipped']++;
                             continue;
                         }
-                        if ($this->isUnchanged($row, $computed)) {
-                            if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
-                                $stats['skipped_unchanged']++;
-                                continue;
+                        if ($this->isUnchanged($row, $computed)
+                            && $this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
+                            $stats['skipped_unchanged']++;
+                            continue;
+                        }
+                        // Ask the ProLightSounds API for the live price first, for EVERY blue SKU (not only one pushed
+                        // before). The store may already be right and only the Price column stale; then no push is needed.
+                        // The pull also writes the real live price into the Price column, so the page shows what PLS has.
+                        if (! $dryRun && $canPush) {
+                            if ($maxPushes > 0 && $apiChecks >= $maxPushes * 2) {
+                                $this->log($logger, "Reached max live-price checks ({$apiChecks}) — rest next run");
+                                break;
                             }
-                            // Pull the live Price first. The store may already be right and only the Price column stale.
-                            if (! $dryRun && $canPush) {
-                                $pull = $this->pullLive((string) $row['sku'], $sprice);
-                                if ($sleepMs > 0) {
-                                    usleep($sleepMs * 1000);
-                                }
-                                if ($pull && ! empty($pull['success']) && PushedListingPrice::same($pull['price'] ?? 0, $sprice)) {
-                                    $stats['price_repaired']++;
-                                    $stats['skipped_unchanged']++;
-                                    $this->saveSprice($row, $computed, 'pushed');
-                                    $this->setPlsStatus((string) $row['sku'], 'pushed');
-                                    continue;
-                                }
+                            $apiChecks++;
+                            $pull = $this->pullLive((string) $row['sku'], $sprice);
+                            if ($sleepMs > 0) {
+                                usleep($sleepMs * 1000);
+                            }
+                            if ($pull && ! empty($pull['success']) && PushedListingPrice::same($pull['price'] ?? 0, $sprice)) {
+                                $stats['price_repaired']++;
+                                $stats['skipped_unchanged']++;
+                                $this->saveSprice($row, $computed, 'pushed');
+                                $this->setPlsStatus((string) $row['sku'], 'pushed');
+                                continue;
                             }
                         }
                     } elseif (! $pushAll && $this->isUnchanged($row, $computed)) {
@@ -426,6 +434,14 @@ class PlsSprcDilAutoPushService
             return null;
         }
         $target = max(0.0, round((float) $rule['groi'], 2));
+        // Ageing Rule: the SKU's age band adds its points to the Target NROI, before the Diff rule (floored at 0).
+        if (is_array($ctx['age_adj'] ?? null) && $ctx['age_adj'] !== []) {
+            $target = AmazonDilGroiRule::adjustGroiForAge(
+                $target,
+                is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
+                $ctx['age_adj']
+            );
+        }
         $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
         $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
 
@@ -467,6 +483,7 @@ class PlsSprcDilAutoPushService
             'cvr_adj' => $unpacked['cvr_adj'] ?? null,
             'diff_adj' => $unpacked['diff_adj'] ?? null,
             'lmp_cap' => $unpacked['lmp_cap'] ?? null,
+            'age_adj' => $unpacked['age_adj'] ?? null,
         ];
     }
 

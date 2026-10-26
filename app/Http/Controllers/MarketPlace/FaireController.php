@@ -1218,6 +1218,8 @@ class FaireController extends Controller
 
             $rows = $this->insertFaireParentRows($rows);
             $this->saveFairePricingSnapshot($rows);
+            // Ageing Rule (Sprc Dil modal): stamp each SKU's age_days, the same clock as /amazon-tabulator-view.
+            $rows = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->attachAgeDays($rows);
 
             return response()->json($rows);
         } catch (\Exception $e) {

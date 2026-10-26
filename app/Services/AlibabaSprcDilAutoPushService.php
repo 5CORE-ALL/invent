@@ -368,6 +368,14 @@ class AlibabaSprcDilAutoPushService
             return null;
         }
         $target = max(0.0, round((float) ($rule['nroi'] ?? $rule['groi']), 2));
+        // Ageing Rule: the SKU's age band adds its points to the Target NROI (floored at 0).
+        if (is_array($ctx['age_adj'] ?? null) && $ctx['age_adj'] !== []) {
+            $target = AmazonDilGroiRule::adjustGroiForAge(
+                $target,
+                is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
+                $ctx['age_adj']
+            );
+        }
 
         $raw = round(($lp * (1 + $target / 100)) / $margin, 2);
         if (! is_finite($raw) || $raw < 0.01) {
@@ -390,7 +398,7 @@ class AlibabaSprcDilAutoPushService
     /**
      * The Sprc Dil modal settings saved for Alibaba (alibaba_dil_vs_groi): the Dil slabs.
      *
-     * @return array{rules:list<array<string,mixed>>}
+     * @return array{rules:list<array<string,mixed>>,age_adj:?array}
      */
     protected function loadDilContext(): array
     {
@@ -401,7 +409,7 @@ class AlibabaSprcDilAutoPushService
             ? AmazonDilGroiRule::defaultsForChannel(self::CHANNEL)
             : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
 
-        return ['rules' => $rules];
+        return ['rules' => $rules, 'age_adj' => $unpacked['age_adj'] ?? null];
     }
 
     /**
