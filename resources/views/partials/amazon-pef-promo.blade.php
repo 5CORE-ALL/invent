@@ -406,6 +406,21 @@
             line-height: 1;
             cursor: pointer;
         }
+        #amz-cvr-groi-table .amz-dg-count,
+        #amz-lmp-cap-table .amz-dg-count,
+        #amz-age-adj-table .amz-dg-count {
+            font-weight: 700;
+            text-align: center;
+            white-space: nowrap;
+        }
+        #amz-cvr-groi-table .amz-dg-count .amz-dg-hist-dot,
+        #amz-lmp-cap-table .amz-dg-count .amz-dg-hist-dot,
+        #amz-age-adj-table .amz-dg-count .amz-dg-hist-dot,
+        #amz-dg-clearance-block .amz-dg-hist-dot {
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 6px;
+        }
         #amz-lmp-cap-table .amz-lmp-cap-input {
             max-width: 72px;
             display: inline-block;
@@ -1382,6 +1397,7 @@
             $rows.each(function(i) {
                 $(this).find('.amz-age-adj-count').text(counts[i] || 0);
             });
+            amzPaintRuleHistDots();
         }
         function amzDgCvrBands() {
             const cfg = amzCvrGroiAdjNow();
@@ -2042,6 +2058,7 @@
             $('#amz-cvr-groi-table .amz-cvr-groi-up-count').text(counts.up);
             amzPaintLmpCapCounts();
             amzPaintAgeAdjCounts();
+            amzPaintRuleHistDots();
         }
         function amzDgSlabColor(idx) {
             return AMZ_DG_SLAB_COLORS[idx % AMZ_DG_SLAB_COLORS.length];
@@ -2058,12 +2075,12 @@
                 return new Date().toISOString().slice(0, 10);
             }
         }
-        function amzDgSnapLocal(storeKey, counts) {
+        function amzDgSnapLocal(storeKey, counts, merge) {
             try {
                 const today = amzDgTodayKey();
                 let hist = {};
                 try { hist = JSON.parse(localStorage.getItem(storeKey) || '{}') || {}; } catch (e) { hist = {}; }
-                hist[today] = counts;
+                hist[today] = merge ? Object.assign({}, hist[today] || {}, counts) : counts;
                 const keys = Object.keys(hist).sort();
                 while (keys.length > 90) delete hist[keys.shift()];
                 localStorage.setItem(storeKey, JSON.stringify(hist));
@@ -2078,6 +2095,79 @@
             } catch (e) {
                 return [];
             }
+        }
+        /**
+         * History dots for the rule blocks (Clearance, CVR overlay, Ageing Rule, LMP Rule). Each count has a dot that opens a
+         * 30-day line of that count. Same as the CVR pie dots: the points are saved in this browser each time the modal is
+         * opened (and as the Clearance list loads), so the line fills in over the days it is used.
+         */
+        let amzDgRuleLiveCounts = {};
+        function amzDgAgeKey(band) { return 'age-' + band.min + '-' + band.max; }
+        function amzDgRuleSlices() {
+            const out = [
+                { key: 'clearance', label: 'Clearance', color: '#dc3545' },
+                { key: 'cvr-down', label: 'CVR overlay · Down', color: '#dc3545' },
+                { key: 'cvr-up', label: 'CVR overlay · Up', color: '#198754' },
+                { key: 'lmp-low', label: 'LMP Rule · Below', color: '#0d6efd' },
+                { key: 'lmp-mid', label: 'LMP Rule · Between', color: '#6f42c1' },
+                { key: 'lmp-high', label: 'LMP Rule · Above', color: '#fd7e14' },
+            ];
+            amzAgeAdj.map(amzAgeAdjBand).filter(Boolean).forEach(function(b, i) {
+                out.push({ key: amzDgAgeKey(b), label: 'Ageing Rule · ' + b.min + '–' + b.max + ' days', color: amzDgSlabColor(i) });
+            });
+            return out;
+        }
+        function amzDgCollectRuleCounts() {
+            const out = {};
+            if (amzClearanceYesSet) out.clearance = amzClearanceYesCount();
+            const cvr = amzDilGroiCollectCvrAdjCounts();
+            out['cvr-down'] = cvr.down;
+            out['cvr-up'] = cvr.up;
+            const lmp = amzLmpCapCollectCounts();
+            out['lmp-low'] = lmp.low;
+            out['lmp-mid'] = lmp.mid;
+            out['lmp-high'] = lmp.high;
+            const ageCounts = amzAgeAdjCollectCounts();
+            amzAgeAdj.forEach(function(row, i) {
+                const b = amzAgeAdjBand(row);
+                if (b) out[amzDgAgeKey(b)] = ageCounts[i] || 0;
+            });
+            return out;
+        }
+        /** Save today's rule counts for the history dots (merged into today's saved record). */
+        function amzDgSnapRuleCounts() {
+            try {
+                amzDgRuleLiveCounts = amzDgCollectRuleCounts();
+                amzDgSnapLocal('amz_dil_groi_rule_hist', amzDgRuleLiveCounts, true);
+            } catch (e) { /* ignore */ }
+        }
+        function amzDgPutRuleDot($host, $after, key, label, color) {
+            if (!$host.length || !$after.length) return;
+            const $old = $host.find('.amz-dg-hist-dot[data-chart="rule"]');
+            if ($old.length === 1 && $old.attr('data-band') === key) return;
+            $old.remove();
+            $after.after(amzDgHistDotHtml('rule', key, color, label));
+        }
+        function amzPaintRuleHistDots() {
+            const spec = {};
+            amzDgRuleSlices().forEach(function(sl) { spec[sl.key] = sl; });
+            const put = function(selHost, selAfter, key) {
+                const $host = $(selHost).first();
+                amzDgPutRuleDot($host, $host.find(selAfter).first(), key, spec[key].label, spec[key].color);
+            };
+            put('#amz-dg-clearance-block', '.amz-dg-clearance-count', 'clearance');
+            put('#amz-cvr-groi-table tr[data-row="down"] .amz-dg-count', '.amz-cvr-groi-down-count', 'cvr-down');
+            put('#amz-cvr-groi-table tr[data-row="up"] .amz-dg-count', '.amz-cvr-groi-up-count', 'cvr-up');
+            put('#amz-lmp-cap-table tr[data-row="low"] .amz-dg-count', '.amz-lmp-cap-low-count', 'lmp-low');
+            put('#amz-lmp-cap-table tr[data-row="mid"] .amz-dg-count', '.amz-lmp-cap-mid-count', 'lmp-mid');
+            put('#amz-lmp-cap-table tr[data-row="high"] .amz-dg-count', '.amz-lmp-cap-high-count', 'lmp-high');
+            $('#amz-age-adj-tbody tr').each(function(i) {
+                const b = amzAgeAdjBand(amzAgeAdj[i]);
+                const $host = $(this).find('.amz-dg-count').first();
+                if (!b) { $host.find('.amz-dg-hist-dot').remove(); return; }
+                const key = amzDgAgeKey(b);
+                if (spec[key]) amzDgPutRuleDot($host, $host.find('.amz-age-adj-count').first(), key, spec[key].label, spec[key].color);
+            });
         }
         function amzDgPieLegendHtml(title, slices, counts, chart) {
             const total = slices.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
@@ -2128,13 +2218,13 @@
             };
         }
         function amzDgDrawHist(chart, band, rows) {
-            const slices = chart === 'cvr' ? amzDgCvrBands() : amzDgDilSlices;
+            const slices = chart === 'rule' ? amzDgRuleSlices() : (chart === 'cvr' ? amzDgCvrBands() : amzDgDilSlices);
             const spec = slices.find(function(s) { return s.key === band; })
                 || { key: band, label: band, color: '#6f42c1' };
             const plot = amzDgPadHistoryDays(rows, 30);
             const labels = plot.map(function(r) { return r.label || r.date; });
             const values = plot.map(function(r) { return Number(r[band]) || 0; });
-            $('#amz-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : 'Dil ') + spec.label + ' count · last 30 days');
+            $('#amz-dg-hist-title').text((chart === 'rule' ? '' : (chart === 'cvr' ? 'CVR ' : 'Dil ')) + spec.label + ' count · last 30 days');
             $('#amz-dg-hist-wrap').addClass('is-open');
             const draw = function() {
                 const canvas = document.getElementById('amz-dg-hist');
@@ -2224,8 +2314,9 @@
             return out;
         }
         function amzDgOpenHist(chart, band) {
-            const storeKey = chart === 'cvr' ? 'amz_dil_groi_cvr_hist' : 'amz_dil_groi_dil_hist';
-            const live = chart === 'cvr' ? amzDgCvrLiveCounts : amzDgDilLiveCounts;
+            if (chart === 'rule') amzDgRuleLiveCounts = amzDgCollectRuleCounts();
+            const storeKey = chart === 'rule' ? 'amz_dil_groi_rule_hist' : (chart === 'cvr' ? 'amz_dil_groi_cvr_hist' : 'amz_dil_groi_dil_hist');
+            const live = chart === 'rule' ? amzDgRuleLiveCounts : (chart === 'cvr' ? amzDgCvrLiveCounts : amzDgDilLiveCounts);
             const applyToday = function(rows) {
                 const list = amzDgPadHistoryDays(rows, 30);
                 const today = amzDgTodayKey();
@@ -2348,6 +2439,8 @@
                     }
                 });
                 amzPaintClearanceSlabCount();
+                amzDgSnapRuleCounts();
+                amzPaintRuleHistDots();
             } catch (e) {
                 console.warn('Sprc Dil pies', e);
             }
@@ -2491,6 +2584,8 @@
             }
             el.textContent = String(amzClearanceYesCount());
             amzPaintClearanceNroiText();
+            if ($('#amzDilGroiModal').hasClass('show')) amzDgSnapRuleCounts();
+            amzPaintRuleHistDots();
         }
         function amzClearanceNroiNow() {
             const raw = parseFloat($('#amz-dg-clearance-block .amz-dg-clearance-groi').val());
