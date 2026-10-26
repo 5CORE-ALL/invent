@@ -2139,6 +2139,8 @@ class AliexpressController extends Controller
         try {
             $rows = $this->buildPricingRows($request->boolean('include_parents'));
             $this->saveDailySnapshot($rows);
+            // Ageing Rule (Sprc Dil modal): stamp each SKU's age_days, the same clock as /amazon-tabulator-view.
+            $rows = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->attachAgeDays($rows);
 
             return response()->json($rows, 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
         } catch (\Exception $e) {
