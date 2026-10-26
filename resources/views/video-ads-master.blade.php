@@ -173,7 +173,6 @@
         .vam-count-badge--missing { background: #dc2626; }
         .vam-count-badge--audience { background: #0d9488; }
         .vam-count-badge--hook    { background: #9333ea; }
-        .vam-count-badge--creator { background: #db2777; }
         .vam-count-badge--checked { background: #16a34a; }
         .vam-count-badge--ad      { background: #2c6ed5; }
         .vam-count-badge--redo    { background: #d97706; }
@@ -570,11 +569,8 @@
                     <span class="vam-count-badge vam-count-badge--hook" data-filter="hook" title="Click to filter: rows with a Hook">
                         Hook: <span data-count="hook">0</span>
                     </span>
-                    <span class="vam-count-badge vam-count-badge--creator" data-filter="creator" title="Click to filter: rows with a Creator assigned">
-                        Creator: <span data-count="creator">0</span>
-                    </span>
                     <select id="vamUserFilter" class="form-select form-select-sm" style="width: auto; min-width: 190px;" title="Filter rows by assigned creator (user)">
-                        <option value="">All users</option>
+                        <option value="">Creator</option>
                     </select>
                     <span class="vam-count-badge vam-count-badge--checked" data-filter="checked" title="Click to filter: checked rows">
                         Checked: <span data-count="checked">0</span>
@@ -2885,7 +2881,6 @@
                 missing:   { group: 'link',     test: (r) => !hasLinkRow(r) },
                 audience:  { group: 'audience', test: (r) => hasTags(r.audience) },
                 hook:      { group: 'hook',     test: (r) => hasTags(r.hook_name) },
-                creator:   { group: 'creator',  test: (r) => (r.creators || []).length > 0 },
                 checked:   { group: 'checked',  test: (r) => !!r.is_checked },
                 ad:        { group: 'ad',       test: (r) => !!r.ad_checked },
                 redo:      { group: 'redo',     test: (r) => !!r.redo_checked },
@@ -2921,7 +2916,7 @@
                     users.set(selectedUser, { name: known ? known.name : ('User #' + selectedUser), n: 0 });
                 }
                 const items = [...users.entries()].sort((a, b) => String(a[1].name).localeCompare(String(b[1].name)));
-                const html = ['<option value="">All users</option>']
+                const html = ['<option value="">Creator</option>']
                     .concat(items.map(([id, u]) => `<option value="${escapeHtml(id)}">${escapeHtml(u.name)} (${u.n})</option>`))
                     .concat([`<option value="__none__">No creator (${none})</option>`])
                     .join('');
