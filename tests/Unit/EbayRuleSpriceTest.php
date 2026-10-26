@@ -286,6 +286,55 @@ class EbayRuleSpriceTest extends TestCase
         $this->assertSame(121.43, $custom['rule_price']);
     }
 
+    public function test_sprc_dil_diff_boost_does_not_flip_after_its_own_push(): void
+    {
+        // Same shape as DS CH CHERRY-VEL REST LVR on eBay 2 (live flip 113.20 <-> 119.66): Diff is over 20% at the
+        // low price and under 20% at the boosted price. Here the base price is 106.73 and the boosted price 113.20.
+        $dil = [
+            'rules' => [AmazonDilGroiRule::make(0, 0, 30), AmazonDilGroiRule::make(0.1, 100, 30)],
+            'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null),
+            'diff_adj' => AmazonDilGroiRule::defaultDiffAdj(),
+        ];
+        $context = ['rule' => 'dil', 'dil' => $dil];
+        $base = ['lp' => 45.93, 'ship' => 20.66, 'percentage' => 0.83, 'ads' => 0.12, 'lmp' => 246.84,
+            'inv' => 12, 'dil' => 8.3, 'cvr' => 0, 'cvr_60' => 0, 'std' => 130];
+
+        $unboosted = EbayRuleSprice::price($this->pricer(), $this->input($base + ['price' => 100]), ['rule' => 'dil', 'dil' => ['diff_adj' => false] + $dil]);
+        $this->assertSame(106.73, $unboosted['sprice']);
+        $atLow = EbayRuleSprice::price($this->pricer(), $this->input($base + ['price' => $unboosted['sprice']]), $context);
+        $this->assertGreaterThan($unboosted['sprice'], $atLow['sprice']);
+        $boostedPrice = $atLow['sprice'];
+
+        // Live price is the boosted price: Diff vs live is now under 20%, but the answer must not drop back.
+        $atHigh = EbayRuleSprice::price($this->pricer(), $this->input($base + ['price' => $boostedPrice]), $context);
+        $this->assertSame($boostedPrice, $atHigh['sprice']);
+        $this->assertSame(113.2, $boostedPrice);
+        $this->assertLessThan(20.0, EbayRuleSprice::stdPriceDiffPct(130, $boostedPrice));
+
+        // Repeated runs stay put in both starting states.
+        $price = $unboosted['sprice'];
+        for ($i = 0; $i < 6; $i++) {
+            $price = EbayRuleSprice::price($this->pricer(), $this->input($base + ['price' => $price]), $context)['sprice'];
+            $this->assertSame($boostedPrice, $price);
+        }
+    }
+
+    public function test_sprc_dil_diff_boost_is_removed_when_the_unboosted_price_is_within_the_threshold(): void
+    {
+        $dil = [
+            'rules' => [AmazonDilGroiRule::make(0, 0, 30), AmazonDilGroiRule::make(0.1, 100, 30)],
+            'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null),
+            'diff_adj' => AmazonDilGroiRule::defaultDiffAdj(),
+        ];
+        $context = ['rule' => 'dil', 'dil' => $dil];
+        $base = ['lp' => 45.93, 'ship' => 20.66, 'percentage' => 0.83, 'ads' => 0.12, 'lmp' => 0,
+            'inv' => 12, 'dil' => 8.3, 'cvr' => 0, 'cvr_60' => 0];
+
+        // Std 120 is within 20% of the 106.73 base price, so a live price left at the old boosted 113.20 gets no boost.
+        $out = EbayRuleSprice::price($this->pricer(), $this->input($base + ['std' => 120, 'price' => 113.20]), $context);
+        $this->assertSame(106.73, $out['sprice']);
+    }
+
     public function test_sprc_dil_price_is_capped_at_std_prc_even_when_lmp_is_above_std(): void
     {
         $dil = ['rules' => [AmazonDilGroiRule::make(0, 0, 40), AmazonDilGroiRule::make(0.1, 100, 115)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null)];

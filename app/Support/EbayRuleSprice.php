@@ -194,7 +194,7 @@ class EbayRuleSprice
      * @param  array<string, mixed>  $input  from inputFromTabulatorRow()
      * @param  array{rules: array, cvr_adj: array}  $dil
      */
-    public static function dilPrice(array $input, array $dil): ?float
+    public static function dilPrice(array $input, array $dil, ?float $diffRefPrice = null): ?float
     {
         if (! ((float) ($input['inv'] ?? 0) > 0)) {
             return null;
@@ -210,7 +210,8 @@ class EbayRuleSprice
             $dil['cvr_adj']
         );
         if (! empty($dil['diff_adj'])) {
-            $diffPct = self::stdPriceDiffPct((float) ($input['std'] ?? 0), (float) ($input['price'] ?? 0));
+            // $diffRefPrice overrides the live price as the Diff reference (see price(): keeps a boosted SKU stable).
+            $diffPct = self::stdPriceDiffPct((float) ($input['std'] ?? 0), $diffRefPrice ?? (float) ($input['price'] ?? 0));
             // true = default 20% / +10; an array is the saved Sprc Dil setting.
             $nroi += AmazonDilGroiRule::diffAdjPoints($diffPct, is_array($dil['diff_adj']) ? $dil['diff_adj'] : null);
         }
@@ -247,10 +248,29 @@ class EbayRuleSprice
             return self::clearancePrice($input, $context);
         }
         $dilOn = is_array($context) && ($context['rule'] ?? 'std') === 'dil' && is_array($context['dil'] ?? null);
-        $rulePrice = $dilOn ? self::dilPrice($input, $context['dil']) : $pricer->priceFromRow($input);
+        $rulePrice = $dilOn ? self::stableDilPrice($input, $context) : $pricer->priceFromRow($input);
         if ($rulePrice === null || ! ($rulePrice > 0)) {
             return null;
         }
+        [$afterLmp, $final] = self::capChain($rulePrice, $input, $context, $dilOn);
+
+        return [
+            'sprice' => round($final, 2),
+            'rule_price' => round($rulePrice, 2),
+            'lmp_capped' => abs($afterLmp - $rulePrice) > 0.009,
+            'std_capped' => abs($final - $afterLmp) > 0.009,
+        ];
+    }
+
+    /**
+     * LMP cap, then the Std Prc maximum, for one rule price.
+     *
+     * @param  array<string, mixed>  $input
+     * @param  array<string, mixed>|null  $context
+     * @return array{0: float, 1: float}  [after LMP cap, final S PRC]
+     */
+    private static function capChain(float $rulePrice, array $input, ?array $context, bool $dilOn): array
+    {
         $lmp = (float) ($input['lmp'] ?? 0);
         $std = (float) ($input['std'] ?? 0);
         $margin = (float) ($input['percentage'] ?? 0);
@@ -273,14 +293,44 @@ class EbayRuleSprice
         // the larger of the two. Sprc Dil (switch ON) solves a price from a Target NROI that knows nothing about Std,
         // so Std Prc must cap it, the same as the page and Amazon do.
         $stdCeiling = $dilOn ? $std : max($std, $rulePrice);
-        $final = AmazonDilGroiRule::capToStdWhenNoLmp($afterLmp, $lmp, $stdCeiling);
 
-        return [
-            'sprice' => round($final, 2),
-            'rule_price' => round($rulePrice, 2),
-            'lmp_capped' => abs($afterLmp - $rulePrice) > 0.009,
-            'std_capped' => abs($final - $afterLmp) > 0.009,
-        ];
+        return [$afterLmp, AmazonDilGroiRule::capToStdWhenNoLmp($afterLmp, $lmp, $stdCeiling)];
+    }
+
+    /**
+     * Sprc Dil rule price that does not flip after its own push.
+     *
+     * The Diff rule adds target points when (Std − live Price) / live Price is above the threshold. Pushing the boosted
+     * price moves the live Price up, the Diff drops under the threshold, the next run removes the boost and pushes the
+     * lower price, the Diff rises again, and so on every 10 minutes. When the live Price is already the boosted price
+     * (the rule price, or the S PRC after the LMP / Std caps), the boost is judged against the price without the boost,
+     * which is the same question the lower live price asked. Both states then give the boosted price.
+     *
+     * @param  array<string, mixed>  $input
+     * @param  array<string, mixed>  $context  rule = dil
+     */
+    private static function stableDilPrice(array $input, array $context): ?float
+    {
+        $dil = $context['dil'];
+        $rulePrice = self::dilPrice($input, $dil);
+        $live = round((float) ($input['price'] ?? 0), 2);
+        if ($rulePrice === null || empty($dil['diff_adj']) || ! ($live > 0)) {
+            return $rulePrice;
+        }
+        $base = self::dilPrice($input, ['diff_adj' => false] + $dil);
+        if ($base === null) {
+            return $rulePrice;
+        }
+        $boosted = self::dilPrice($input, $dil, $base);
+        if ($boosted === null || $boosted <= $base + 0.004) {
+            return $rulePrice;
+        }
+        [, $boostedFinal] = self::capChain($boosted, $input, $context, true);
+        if (abs($live - round($boosted, 2)) < 0.015 || abs($live - round($boostedFinal, 2)) < 0.015) {
+            return $boosted;
+        }
+
+        return $rulePrice;
     }
 
     /**
