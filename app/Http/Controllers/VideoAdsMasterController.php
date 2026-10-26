@@ -1242,14 +1242,20 @@ class VideoAdsMasterController extends Controller
         foreach ($rows as $row) {
             foreach ($this->splitTagNames($row->hook_name ?? null) as $name) {
                 $clean = $this->stripHookSuffix($name);
-                if ($clean !== '') {
+                // Option names live in a varchar(255) column; a longer value
+                // (e.g. a pasted paragraph) would throw and break the page.
+                if ($clean !== '' && mb_strlen($clean) <= 255) {
                     $seen[$clean] = true;
                 }
             }
         }
 
         foreach (array_keys($seen) as $name) {
-            VideoAdsHookOption::firstOrCreate(['name' => $name]);
+            try {
+                VideoAdsHookOption::firstOrCreate(['name' => $name]);
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
     }
 
@@ -1262,15 +1268,24 @@ class VideoAdsMasterController extends Controller
         $seen = [];
         foreach ($rows as $row) {
             foreach ($this->splitTagNames($row->audience ?? null) as $name) {
-                $seen[$name] = true;
+                // Option names live in a varchar(255) column; a longer value
+                // (e.g. a copied audience description) would throw and
+                // break the whole page load.
+                if (mb_strlen($name) <= 255) {
+                    $seen[$name] = true;
+                }
             }
         }
 
         foreach (array_keys($seen) as $name) {
-            VideoAdAudienceOption::firstOrCreate(
-                ['name' => $name],
-                ['is_default' => false]
-            );
+            try {
+                VideoAdAudienceOption::firstOrCreate(
+                    ['name' => $name],
+                    ['is_default' => false]
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
     }
 
