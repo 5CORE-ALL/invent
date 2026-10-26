@@ -91,6 +91,8 @@ class LabelIssuesController extends IssueBoardControllerBase
     {
         $body = parent::issuesIndex()->getData(true);
         $body['data'] = $this->attachSkuQcFields($this->onlyBoardRows($body['data'] ?? []));
+        // Supplier per SKU, used by the Supplier report.
+        $body['data'] = app(QcAndPackingController::class)->attachSuppliers($body['data']);
 
         return response()->json($body);
     }
