@@ -89,8 +89,7 @@
         #summary-stats .amz-sum-block--yesterday { grid-column: 1 / 3; grid-row: 1; }
         #summary-stats .amz-sum-block--l30 { grid-column: 3 / 7; grid-row: 1; }
         #summary-stats .amz-sum-block--projected { grid-column: 7 / 11; grid-row: 1; }
-        #summary-stats .amz-sum-block--sold { grid-column: 1 / 3; grid-row: 2; }
-        #summary-stats .amz-sum-block--alerts { grid-column: 3 / 11; grid-row: 2; }
+        #summary-stats .amz-sum-block--alerts { grid-column: 1 / 11; grid-row: 2; }
         #summary-stats .amz-sum-row {
             display: grid;
             align-items: stretch;
@@ -1024,6 +1023,17 @@
                                 style="color: white; font-weight: bold; cursor: pointer;"
                                 title="CVR% = L30 units ÷ Σ Views × 100. Click badge or dot for rolling history.">{!! $ebTrendDot('cvr_percent') !!}CVR: 0%</span>
                             @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
+                            <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
+                                style="color: white; font-weight: bold;"
+                                title="Number of rows currently shown after filters">Rows: 0</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="more-sold-count-badge"
+                                data-metric="sold_count" data-live-value="0"
+                                style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
+                                title="Click badge to filter items with sales (INV>0). Click dot for rolling history.">{!! $ebTrendDot('sold_count') !!}> 0 Sold: 0</span>
+                            <span class="badge fs-6 p-2 bg-danger ebay1-badge-chart" id="zero-sold-count-badge"
+                                data-metric="zero_sold_count" data-live-value="0"
+                                style="color: white; font-weight: bold; cursor: pointer;"
+                                title="Click badge to filter 0 sold (INV>0). Click dot for rolling history.">{!! $ebTrendDot('zero_sold_count') !!}0 Sold: 0</span>
                         </div>
                     </div>
                     <div class="amz-sum-block amz-sum-block--projected">
@@ -1061,22 +1071,6 @@
                                 data-metric="p_cvr_percent" data-live-value="0" data-format="pct"
                                 style="background-color:#0d6efd;color:#fff;font-weight:bold;cursor:pointer;"
                                 title="P CVR% = P Qty ÷ P Views × 100. Projected units and views are both on the same 30-day pace. Click badge or dot for rolling history.">{!! $ebTrendDot('p_cvr_percent') !!}CVR: 0%</span>
-                        </div>
-                    </div>
-                    <div class="amz-sum-block amz-sum-block--sold">
-                        <div class="amz-sum-block-title">Rows &amp; Sold</div>
-                        <div class="amz-sum-row amz-sum-row--sold" role="group" aria-label="Rows and sold counts">
-                            <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
-                                style="color: white; font-weight: bold;"
-                                title="Number of rows currently shown after filters">Rows: 0</span>
-                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="more-sold-count-badge"
-                                data-metric="sold_count" data-live-value="0"
-                                style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
-                                title="Click badge to filter items with sales (INV>0). Click dot for rolling history.">{!! $ebTrendDot('sold_count') !!}> 0 Sold: 0</span>
-                            <span class="badge fs-6 p-2 bg-danger ebay1-badge-chart" id="zero-sold-count-badge"
-                                data-metric="zero_sold_count" data-live-value="0"
-                                style="color: white; font-weight: bold; cursor: pointer;"
-                                title="Click badge to filter 0 sold (INV>0). Click dot for rolling history.">{!! $ebTrendDot('zero_sold_count') !!}0 Sold: 0</span>
                         </div>
                     </div>
                     <div class="amz-sum-block amz-sum-block--alerts">
