@@ -572,6 +572,7 @@ class FacebookAllAdsSheetController extends Controller
         // sheets don't carry a Campaign ID column — they still join cleanly
         // as long as the Campaign name matches a known campaign.
         $nameToCid = $this->buildNameToCidLookup($latestByType['campaign'] ?? null);
+        $cidsByLength = $this->buildCampaignIdsByLength($latestByType['campaign'] ?? null);
 
         // We do an INNER JOIN: only show campaigns that appear in BOTH
         // the latest Campaign sheet AND the latest Spend sheet. Campaigns
@@ -590,6 +591,13 @@ class FacebookAllAdsSheetController extends Controller
                 ARRAY_FILTER_USE_BOTH
             );
             $cid = $this->findCampaignId($cleanedData);
+
+            // Spend / Sales exports opened in Excel often carry the id as
+            // "1.2025517862028E+17" — map it back to the real Campaign id.
+            if ($cid !== null && $cid !== '' && $cidsByLength) {
+                $nm  = $cleanedData['Campaign name'] ?? null;
+                $cid = $this->resolveRoundedCid($cid, $cidsByLength, $nameToCid, is_string($nm) ? $nm : null);
+            }
 
             // Fallback: if the row has no Campaign ID but does have a
             // Campaign name that matches a row in the Campaign batch, use
@@ -2060,6 +2068,74 @@ class FacebookAllAdsSheetController extends Controller
             }
         }
         return null;
+    }
+
+    /**
+     * All Campaign IDs in a batch, grouped by digit-length so a rounded
+     * ID (see resolveRoundedCid) can be matched back to the real one.
+     *
+     * @return array<int, array<int, string>>  length => [cid, ...]
+     */
+    private function buildCampaignIdsByLength(?string $batchId): array
+    {
+        if (! $batchId) return [];
+
+        $out = [];
+        $rows = FacebookAllAdsSheet::query()
+            ->where('import_batch_id', $batchId)
+            ->get(['row_data']);
+        foreach ($rows as $r) {
+            $rd = (array) ($r->row_data ?? []);
+            $cleaned = array_filter(
+                $rd,
+                fn($_, $k) => ! str_starts_with($k, '__'),
+                ARRAY_FILTER_USE_BOTH
+            );
+            $cid = $this->findCampaignId($cleaned);
+            if ($cid !== null && ctype_digit($cid)) {
+                $out[strlen($cid)][$cid] = $cid;
+            }
+        }
+        return array_map('array_values', $out);
+    }
+
+    /**
+     * Excel / CSV round-trips turn long Meta ids into scientific notation
+     * ("1.2025517862028E+17") and drop the trailing digits, so the Spend
+     * sheet's id no longer equals the Campaign list's id
+     * ("120255178620280496"). Map such a value back to the single Campaign
+     * id with the same length and leading digits. Returns the input
+     * unchanged when it isn't scientific notation or has no unique match.
+     *
+     * @param array<int, array<int, string>> $idsByLength
+     */
+    private function resolveRoundedCid(string $cid, array $idsByLength, array $nameToCid = [], ?string $name = null): string
+    {
+        if (! preg_match('/^(\d+)(?:\.(\d+))?e\+?(\d+)$/i', trim($cid), $m)) {
+            return $cid;
+        }
+        $digits = $m[1] . ($m[2] ?? '');
+        $length = (int) $m[3] + strlen($m[1]);
+        $prefix = rtrim($digits, '0');
+        if ($prefix === '' || ! isset($idsByLength[$length])) {
+            return $cid;
+        }
+
+        $matches = array_values(array_filter(
+            $idsByLength[$length],
+            fn($id) => str_starts_with($id, $prefix)
+        ));
+        if (count($matches) === 1) {
+            return $matches[0];
+        }
+        // Several candidates → let the campaign name break the tie.
+        if (count($matches) > 1 && $name !== null && trim($name) !== '') {
+            $byName = $nameToCid[mb_strtolower(trim($name))] ?? null;
+            if ($byName !== null && in_array($byName, $matches, true)) {
+                return $byName;
+            }
+        }
+        return $cid;
     }
 
     /**
