@@ -73,6 +73,18 @@ class PlsSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($this->target($this->row(['lp' => 0, 'clearance' => true, 'clearance_nroi' => 10])));
     }
 
+    public function test_blue_catch_up_falls_back_to_the_saved_s_prc_the_page_shows(): void
+    {
+        $svc = new PlsSprcDilAutoPushService;
+        $row = ['inv' => 5, 'sprice' => 41.5, 'margin' => 80, 'lp' => 10, 'ship' => 2, 'standard_price' => 60];
+        $t = $svc->savedSpriceTarget($row);
+        $this->assertSame(41.5, $t['sprice']);
+        $this->assertEqualsWithDelta(0.8, $t['margin'], 0.0001);
+
+        $this->assertNull($svc->savedSpriceTarget(['inv' => 0, 'sprice' => 41.5]));
+        $this->assertNull($svc->savedSpriceTarget(['inv' => 5, 'sprice' => 0]));
+    }
+
     public function test_lmp_has_no_effect_on_pls(): void
     {
         $out = $this->target($this->row(['lmp' => 50]));

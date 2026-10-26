@@ -114,6 +114,11 @@ class PlsSprcDilAutoPushService
             foreach ($rows as $i => $row) {
                 try {
                     $computed = $this->computeTarget($row, $pricer, $dilContext);
+                    if ($computed === null && $blueCatchUp) {
+                        // The page paints the saved S PRC when the rule gives no price (blue badge when it differs from
+                        // Price). Push that same S PRC so no blue badge is left behind, same as Amazon.
+                        $computed = $this->savedSpriceTarget($row);
+                    }
                     if ($computed === null) {
                         $stats['skipped']++;
                         continue;
@@ -307,6 +312,38 @@ class PlsSprcDilAutoPushService
             'margin' => $margin,
             'lp' => $lp,
             'ship' => $ship,
+        ];
+    }
+
+    /**
+     * Target from the S PRC already saved on the row. Used by the blue catch-up when no rule gives a price: the page
+     * shows that saved S PRC, and a blue badge when it differs from Price.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{sprice:float,uncapped:float,base:float,margin:float,lp:float,ship:float}|null
+     */
+    public function savedSpriceTarget(array $row): ?array
+    {
+        $inv = (float) ($row['inv'] ?? 0);
+        $saved = round((float) ($row['sprice'] ?? 0), 2);
+        if (! ($inv > 0) || ! ($saved >= 0.01) || ! is_finite($saved)) {
+            return null;
+        }
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 1.0;
+        }
+
+        return [
+            'sprice' => $saved,
+            'uncapped' => $saved,
+            'base' => round((float) ($row['standard_price'] ?? 0), 2),
+            'margin' => $margin,
+            'lp' => (float) ($row['lp'] ?? 0),
+            'ship' => (float) ($row['ship'] ?? 0),
         ];
     }
 
