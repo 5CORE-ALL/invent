@@ -1311,13 +1311,19 @@
                 return [clicked].concat(rest);
             }
 
+            // "Max Power", "MAX POWER :" and "Max  Power" are the same specification.
+            function specIdentity(name) {
+                const label = String(name || '').trim();
+                return specNameKey(label) || label.toLowerCase();
+            }
+
             function valueForSpec(row, name) {
                 const auto = autofillValue(row, name);
                 if (auto !== null) return auto;
-                const want = String(name || '').trim().toLowerCase();
+                const want = specIdentity(name);
                 const specs = row.description_v2_specifications || [];
                 for (let i = 0; i < specs.length; i++) {
-                    if (String(specs[i].key || '').trim().toLowerCase() === want) {
+                    if (specIdentity(specs[i].key) === want && String(specs[i].value || '').trim() !== '') {
                         return String(specs[i].value || '');
                     }
                 }
@@ -1329,7 +1335,7 @@
                 const seen = {};
                 function add(name) {
                     const label = String(name || '').trim();
-                    const key = label.toLowerCase();
+                    const key = specIdentity(label);
                     if (!label || seen[key]) return;
                     seen[key] = true;
                     names.push(label);
@@ -1418,12 +1424,19 @@
                     return { key: spec.key, value: spec.value };
                 });
                 edited.forEach(function (change) {
-                    const want = String(change.key || '').trim().toLowerCase();
+                    const want = specIdentity(change.key);
                     const idx = merged.findIndex(function (spec) {
-                        return String(spec.key || '').trim().toLowerCase() === want;
+                        return specIdentity(spec.key) === want;
                     });
-                    if (idx >= 0) merged[idx] = { key: merged[idx].key, value: change.value };
-                    else merged.push({ key: change.key, value: change.value });
+                    if (idx >= 0) {
+                        merged[idx] = { key: merged[idx].key, value: change.value };
+                        // Drop the other spellings of the same specification so none keep the old value.
+                        for (let i = merged.length - 1; i > idx; i--) {
+                            if (specIdentity(merged[i].key) === want) merged.splice(i, 1);
+                        }
+                    } else {
+                        merged.push({ key: change.key, value: change.value });
+                    }
                 });
                 return merged;
             }
