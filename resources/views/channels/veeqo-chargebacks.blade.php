@@ -739,6 +739,14 @@
                           formatter: c => c.getValue() === null ? '<span class="text-muted">—</span>' : '<span class="sr-sold">' + Number(c.getValue()).toLocaleString() + '</span>' },
                         { title: 'Avg Chargeback Total', field: 'per_unit', hozAlign: 'right', width: 150, sorter: (a, b) => Math.abs(a ?? 0) - Math.abs(b ?? 0),
                           formatter: c => c.getValue() === null ? '<span class="text-muted">—</span>' : money(c.getValue(), true) },
+                        { title: 'Avg Chargeback Total (Parent)', field: 'parent_per_unit', hozAlign: 'right', width: 170,
+                          sorter: (a, b) => Math.abs(a ?? 0) - Math.abs(b ?? 0),
+                          headerTooltip: 'Parent total chargeback ÷ parent units sold (12 months). Covers every SKU under the same parent, not only the ones charged back.',
+                          formatter: function (c) {
+                              const d = c.getRow().getData();
+                              if (c.getValue() === null || c.getValue() === undefined) return '<span class="text-muted">—</span>';
+                              return '<span title="' + esc(d.parent || '') + ': ' + money(d.parent_total, true) + ' over ' + Number(d.parent_sold || 0).toLocaleString() + ' units">' + money(c.getValue(), true) + '</span>';
+                          } },
                         { title: 'Chargeback %', field: 'pct', hozAlign: 'center', width: 130, sorter: (a, b) => (a ?? -1) - (b ?? -1), formatter: c => pctBadge(c.getValue()) },
                         { title: 'Chargeback%TC', field: 'pct_tc', hozAlign: 'center', width: 130,
                           headerTooltip: 'Chargeback percentage of total count: this SKU\'s chargeback count ÷ chargeback count of all SKUs',
