@@ -231,9 +231,12 @@ class TemuAdsController extends Controller
             Log::warning('TemuAdsController badge snapshot failed', ['error' => $e->getMessage()]);
         }
 
+        $lastFetched = $records->map(fn (TemuAdsApiReport $r) => $r->fetched_at)->filter()->max();
+
         return response()->json([
             'data' => $rows,
             'total' => $rows->count(),
+            'last_fetched_at' => $lastFetched ? $lastFetched->toIso8601String() : null,
             'spend_sum' => $spendSum,
             'impressions_sum' => $imprSum,
             'clicks_sum' => $clickSum,

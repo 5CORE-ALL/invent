@@ -444,6 +444,7 @@
                         </div>
                     </div>
 
+                    <div id="data-refresh-info" class="mb-2 small text-muted" title="Data comes from the Temu API; times shown in IST"></div>
                     <div id="fetch-status" class="mb-2" style="display:none;"></div>
 
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -1685,8 +1686,52 @@
                 return '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
             }
 
+            // Scheduled auto refresh of Ads data (app/Console/Kernel.php, IST): hourly 11:40–15:40, plus 22:30.
+            const AUTO_REFRESH_SLOTS_IST = ['11:40', '12:40', '13:40', '14:40', '15:40', '22:30'];
+
+            function istParts(date) {
+                const p = {};
+                new Intl.DateTimeFormat('en-GB', {
+                    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+                }).formatToParts(date).forEach(function (x) { p[x.type] = x.value; });
+                return p;
+            }
+
+            function paintDataRefreshInfo(response) {
+                const el = document.getElementById('data-refresh-info');
+                if (!el) return;
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const fmt = function (d) {
+                    const p = istParts(d);
+                    return Number(p.day) + ' ' + months[Number(p.month) - 1] + ' ' + p.hour + ':' + p.minute;
+                };
+                const parts = [];
+                const last = response && response.last_fetched_at ? new Date(response.last_fetched_at) : null;
+                if (last && !isNaN(last.getTime())) {
+                    const mins = Math.max(0, Math.round((Date.now() - last.getTime()) / 60000));
+                    const ago = mins < 60 ? mins + ' min ago' : (mins < 1440 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min ago' : Math.floor(mins / 1440) + ' d ago');
+                    parts.push('<b>Last refreshed:</b> ' + fmt(last) + ' IST (' + ago + ')');
+                } else {
+                    parts.push('<b>Last refreshed:</b> —');
+                }
+                // Next scheduled refresh (first slot after "now" in IST, today or tomorrow).
+                const now = istParts(new Date());
+                const nowMin = Number(now.hour) * 60 + Number(now.minute);
+                let nextSlot = null;
+                let nextDay = 'Today';
+                AUTO_REFRESH_SLOTS_IST.forEach(function (s) {
+                    const mm = Number(s.slice(0, 2)) * 60 + Number(s.slice(3));
+                    if (nextSlot === null && mm > nowMin) nextSlot = s;
+                });
+                if (nextSlot === null) { nextSlot = AUTO_REFRESH_SLOTS_IST[0]; nextDay = 'Tomorrow'; }
+                parts.push('<b>Next auto refresh:</b> ' + nextDay + ' ' + nextSlot + ' IST');
+                el.innerHTML = parts.join(' &nbsp;·&nbsp; ');
+            }
+
             function setBadges(rows, response) {
                 if (response) lastAdsDataResponse = response;
+                paintDataRefreshInfo(response || lastAdsDataResponse);
                 if (response && response.channel_sales != null) {
                     channelSales = parseFloat(response.channel_sales) || 0;
                 }
