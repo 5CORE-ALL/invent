@@ -1189,6 +1189,9 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_views" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P Views = Σ (Views × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. Click for daily history.">
                             <span class="summary-trend-dot none" data-metric="p_views" title="Rolling history"></span>Views: <span id="total-p-views">0</span>
                         </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_cvr" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="P CVR = Σ P Orders ÷ Σ P Views. Both use the same 30-day pace as P-Sales. Click for daily history.">
+                            <span class="summary-trend-dot none" data-metric="p_cvr" title="Rolling history"></span>CVR: <span id="avg-p-cvr">-</span>
+                        </span>
                         </div>
                     </div>
                     <div class="amm-badge-block amm-badge-block--forecast">
@@ -2085,6 +2088,27 @@
             if (l30 > 0 && pSales > 0) return views * (pSales / l30);
             return views;
         }
+        // P CVR parts: P Views and P units (orders) both paced by P-Sales ÷ L30 Sales.
+        function pCvrPartsFromRow(row) {
+            const l30 = parseNumber(row['L30 Sales'] || 0);
+            const pSalesRaw = row['P-Sales'];
+            const pSales = (pSalesRaw != null && pSalesRaw !== '') ? parseNumber(pSalesRaw) : pSalesFromRow(row);
+            const rawViews = parseNumber(row['Total Views'] || 0);
+            if (pSales <= 0 || l30 <= 0 || rawViews <= 0) return { views: 0, units: 0 };
+            const ratio = pSales / l30;
+            const views = rawViews * ratio;
+            const key = snapshotChannelKey(row['Channel '] || '');
+            const l30Orders = parseNumber(row['L30 Orders'] || 0);
+            let units;
+            if (l30Orders > 0) {
+                units = l30Orders * ratio;
+            } else {
+                const listing = listingCvrFromRow(row);
+                if (listing == null || !isFinite(listing)) return { views: 0, units: 0 };
+                units = views * listing / 100;
+            }
+            return { views: views, units: units };
+        }
         function pOrdersFromRow(row) {
             const orders = parseNumber(row['L30 Orders'] || 0);
             if (orders <= 0) return 0;
@@ -2840,7 +2864,7 @@
                 if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return DEFAULT_DOT_GRAY;
                 var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
                     || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'p_nroi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
-                    || metric === 'nroi' || metric === 'ads_pct' || metric === 'y_ads_pct' || metric === 't_ads_pct' || metric === 'acos' || metric === 't_cvr' || metric === 'y_cvr') ? 0.005 : 0.01;
+                    || metric === 'nroi' || metric === 'ads_pct' || metric === 'y_ads_pct' || metric === 't_ads_pct' || metric === 'acos' || metric === 't_cvr' || metric === 'y_cvr' || metric === 'p_cvr') ? 0.005 : 0.01;
                 if (Math.abs(v2 - v1) <= eps) return DEFAULT_DOT_GRAY;
                 var isInverted = invertedDotMetrics.indexOf(metric) >= 0;
                 return isInverted ? (v2 < v1 ? '#28a745' : '#dc3545') : (v2 > v1 ? '#28a745' : '#dc3545');
@@ -6315,7 +6339,7 @@
                     if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return 'none';
                     var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
                         || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'p_nroi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
-                        || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos' || metric === 't_cvr' || metric === 'y_cvr') ? 0.005 : 0.01;
+                        || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos' || metric === 't_cvr' || metric === 'y_cvr' || metric === 'p_cvr') ? 0.005 : 0.01;
                     if (Math.abs(v2 - v1) <= eps) return 'flat';
                     // TAT badge only: higher months of stock is worse (red up, green down).
                     var isInv = inverted.indexOf(metric) >= 0 || metric === 'tat';
@@ -6904,6 +6928,27 @@
                         'P Views = Σ (Views × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. ' + val.toLocaleString('en-US'));
                     setBadgeExact($el, val);
                     prefetchAllBadgeChartDot('p_views', val);
+                })();
+                (function() {
+                    let pcViews = 0, pcUnits = 0;
+                    data.forEach(function(row) {
+                        const parts = pCvrPartsFromRow(row);
+                        pcViews += parts.views;
+                        pcUnits += parts.units;
+                    });
+                    const $el = $('#avg-p-cvr');
+                    const baseTitle = 'P CVR = Σ P Orders ÷ Σ P Views. Both use the same 30-day pace as P-Sales. Click for daily history.';
+                    if (pcViews > 0) {
+                        const val = Math.round((pcUnits / pcViews) * 10000) / 100;
+                        $el.text(val.toFixed(2) + '%');
+                        $el.closest('.badge').attr('title', baseTitle + ' ' + val.toFixed(2) + '%');
+                        setBadgeExact($el, val);
+                        prefetchAllBadgeChartDot('p_cvr', val);
+                    } else {
+                        $el.text('-');
+                        $el.closest('.badge').attr('title', baseTitle);
+                        setBadgeExact($el, null);
+                    }
                 })();
                 (function() {
                     let totalPOrders = 0;
@@ -8045,6 +8090,7 @@
                 'p_orders': 'Projected Orders',
                 'p_ads_pct': 'Projected Ads%',
                 'p_views': 'Projected Views',
+                'p_cvr': 'Projected CVR',
                 'y_orders': 'Y Orders',
                 'y_views': 'Y Views',
                 'y_cvr': 'Y CVR',
@@ -8640,7 +8686,7 @@
                     }
                     // Listing CVR / Ads CVR shift slowly inside a rolling window — show 2 decimals
                     // so adjacent days don't display as the same number (avoids a flat trend).
-                    if (m === 'cvr' || m === 'ads_cvr' || m === 'y_cvr' || m === 't_cvr') {
+                    if (m === 'cvr' || m === 'ads_cvr' || m === 'y_cvr' || m === 't_cvr' || m === 'p_cvr') {
                         return v.toFixed(2) + '%';
                     }
                     if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'p_groi_pct' || m === 'p_nroi_pct' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'y_nroi_pct' || m === 'nroi'

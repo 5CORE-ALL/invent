@@ -25,7 +25,7 @@ class AmmColumnHistory
 
     /** Chart metric keys that read from this history. */
     public const FIELDS = [
-        'y_orders', 'y_views', 'y_cvr', 'y_ads_pct', 't_orders', 't_views', 't_cvr', 't_ads_pct',
+        'y_orders', 'y_views', 'y_cvr', 'y_ads_pct', 't_orders', 't_views', 't_cvr', 't_ads_pct', 'p_cvr',
         // INV block: Inv@SP / Inv@LP $ per DIL band (all channels), one point per day.
         'inv_sp_zero', 'inv_sp_red', 'inv_sp_red1', 'inv_sp_red2', 'inv_sp_green', 'inv_sp_pink',
         'inv_lp_zero', 'inv_lp_red', 'inv_lp_red1', 'inv_lp_red2', 'inv_lp_green', 'inv_lp_pink',
@@ -484,7 +484,60 @@ class AmmColumnHistory
             $written++;
         }
 
+        // Projected CVR badge (all channels).
+        $pCvr = self::projectedCvr($rows);
+        if ($pCvr !== null) {
+            BadgeDataHistory::recordPage(self::ALL_PAGE, ['p_cvr' => round($pCvr, 4)]);
+            $written++;
+        }
+
         return $written;
+    }
+
+    /**
+     * Projected CVR = Σ P Orders ÷ Σ P Views across channels. Mirrors pCvrPartsFromRow() in
+     * all-marketplace-master.blade.php: both are paced by P-Sales ÷ L30 Sales (P-Sales = L7 ÷ 7 × 30).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    public static function projectedCvr(array $rows): ?float
+    {
+        $totViews = 0.0;
+        $totUnits = 0.0;
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $key = AllMarketplaceMasterBadgeCalculator::snapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+            $pSales = (array_key_exists('P-Sales', $row) && $row['P-Sales'] !== null && $row['P-Sales'] !== '')
+                ? self::num($row['P-Sales'])
+                : (self::num($row['L7 Sales'] ?? 0) / 7) * 30;
+            $l30 = self::num($row['L30 Sales'] ?? 0);
+            $views = self::num($row['Total Views'] ?? 0);
+            if ($pSales <= 0 || $l30 <= 0 || $views <= 0) {
+                continue;
+            }
+            $ratio = $pSales / $l30;
+            $pViews = $views * $ratio;
+            $l30Orders = self::num($row['L30 Orders'] ?? 0);
+            if ($l30Orders > 0) {
+                $pUnits = $l30Orders * $ratio;
+            } else {
+                $cvr = self::listingCvr($key, $row, $views);
+                if ($cvr === null) {
+                    continue;
+                }
+                $pUnits = $pViews * $cvr / 100;
+            }
+            $totViews += $pViews;
+            $totUnits += $pUnits;
+        }
+
+        return $totViews > 0 ? ($totUnits / $totViews) * 100 : null;
     }
 
     /**
