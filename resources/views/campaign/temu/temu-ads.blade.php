@@ -79,7 +79,6 @@
             gap: 0.5rem;
             align-items: center;
         }
-        #alert-count,
         #single-alert-count {
             background-color: #dc2626 !important;
             color: #fff !important;
@@ -89,16 +88,12 @@
             align-items: center;
             gap: 6px;
         }
-        #alert-count .temu-ads-alert-tri,
-        #alert-count .temu-ads-alert-tri.is-danger,
-        #alert-count .temu-ads-badge-val,
         #single-alert-count .temu-ads-alert-tri,
         #single-alert-count .temu-ads-alert-tri.is-danger,
         #single-alert-count .temu-ads-badge-val {
             color: #fff !important;
             font-weight: 800;
         }
-        #alert-count.is-alert-filter-on,
         #single-alert-count.is-alert-filter-on {
             box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626;
         }
@@ -534,14 +529,6 @@
                             <span class="badge fs-6 p-2" id="create-count"
                                 style="background-color: #fd7e14; color: white; font-weight: bold; cursor: pointer;"
                                 title="Create ads for selected No ad rows (Inv > 0). Follows Parent/SKU/All, search, status, inv, dil, and clicks filters. If nothing is selected, uses visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
-                            <span class="badge fs-6 p-2" id="alert-count"
-                                style="background-color: #dc2626; color: white; font-weight: 800; cursor: pointer;"
-                                title="Click to show only rows with a create-ad issue. Click again to clear.">
-                                <span class="temu-ads-alert-tri is-danger" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-                                </span>
-                                <span class="temu-ads-badge-val">0</span>
-                            </span>
                             <span class="badge fs-6 p-2" id="single-alert-count"
                                 style="cursor: pointer;"
                                 title="Click to show only Single SKU listings (Ads Rules do not run on them). Click again to clear.">
@@ -1330,38 +1317,6 @@
                     : 'Create all ' + n + ' filtered No ad rows with Inv > 0.';
             }
 
-            function alertBadgeCount() {
-                const q = Object.assign({}, currentFilterQuery(), { alertOnly: false });
-                const seen = {};
-                let n = 0;
-                (allAdsRows || []).forEach(function (r) {
-                    if (!rowVisibleForView(r, q) || !rowCreateAlertText(r)) return;
-                    const gid = String((r && r.goods_id) || '') || ('sku:' + String((r && r.sku) || ''));
-                    if (seen[gid]) return;
-                    seen[gid] = true;
-                    n++;
-                });
-                return n;
-            }
-
-            function paintAlertBadge() {
-                const n = alertBadgeCount();
-                const el = document.getElementById('alert-count');
-                setBadgeVal('alert-count', Number(n).toLocaleString());
-                if (!el) return;
-                el.classList.toggle('is-alert-filter-on', !!alertFilterOn);
-                el.title = alertFilterOn
-                    ? 'Showing ' + n + ' create-ad alert row(s). Click to show all rows again.'
-                    : 'Click to show the ' + n + ' row(s) with a create-ad issue.';
-            }
-
-            function toggleAlertFilter() {
-                alertFilterOn = !alertFilterOn;
-                if (table && typeof table.setPage === 'function') table.setPage(1);
-                applySearchFilters();
-                paintAlertBadge();
-            }
-
             function csvCell(v) {
                 const s = String(v == null ? '' : v);
                 if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
@@ -1559,7 +1514,6 @@
                 setBadgeVal('ctr-avg', Number(m.ctr).toFixed(1) + '%');
                 setBadgeVal('cvr-avg', Number(m.cvr).toFixed(1) + '%');
                 paintCreateBadge();
-                paintAlertBadge();
                 applyCtrAvgColors();
                 return m;
             }
@@ -3220,9 +3174,6 @@
             document.getElementById('create-count').addEventListener('click', function (e) {
                 if (e.target.closest('.temu-ads-history-dot')) return;
                 runBulkCreateQueue();
-            });
-            document.getElementById('alert-count').addEventListener('click', function () {
-                toggleAlertFilter();
             });
             document.getElementById('single-alert-count').addEventListener('click', function () {
                 const sel = document.getElementById('sku-type-filter');
