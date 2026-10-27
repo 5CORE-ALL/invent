@@ -769,6 +769,8 @@
         (function () {
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
             let table = null;
+            // Tabulator's redraw and column calls only work once the table has finished building.
+            let tableReady = false;
             let allRows = [];
             let editModal = null;
             let viewModal = null;
@@ -1716,7 +1718,7 @@
             }
 
             function prepareColumnVisibility() {
-                if (!table) return;
+                if (!table || !tableReady) return;
                 const keep = focusedSpecFields();
                 const saved = keep ? null : loadTsColumnVisibility();
                 columnFocusActive = !!keep;
@@ -1864,7 +1866,7 @@
 
             function buildTsColumnPicker() {
                 const menu = document.getElementById('ts-column-dropdown');
-                if (!menu || !table) return;
+                if (!menu || !table || !tableReady) return; // the tableBuilt event calls this again
                 prepareColumnVisibility();
                 tsPickerDirty = true;
                 if (menu.classList.contains('show')) renderTsColumnPicker();
@@ -1999,6 +2001,7 @@
                 const nextNames = Array.isArray(aspectNames) ? aspectNames : ebayAspectNames;
                 if (table && nextNames.join('\n') !== ebayAspectNames.join('\n')) {
                     table.destroy();
+                    tableReady = false;
                     table = null;
                 }
                 ebayAspectNames = nextNames.filter(isRealAspect);
@@ -2137,6 +2140,7 @@
                 });
 
                 table.on('tableBuilt', function () {
+                    tableReady = true;
                     autofitColumns();
                     buildTsColumnPicker();
                     bindTopHScroll();
