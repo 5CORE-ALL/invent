@@ -5749,6 +5749,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/compliance-master-data-view', [CategoryController::class, 'getComplianceMasterData'])->name('compliance.master.data');
     Route::post('/compliance-master/store', [CategoryController::class, 'storeComplianceMaster'])->name('compliance.master.store');
     Route::post('/compliance-master/update', [CategoryController::class, 'updateComplianceMaster'])->name('compliance.master.update');
+    Route::post('/compliance-master/batch-update', [CategoryController::class, 'batchUpdateComplianceMaster'])->name('compliance.master.batch.update');
     Route::post('/compliance-master/field-image', [CategoryController::class, 'uploadComplianceFieldImage'])->name('compliance.master.field.image');
     Route::post('/compliance-master/field-pdf', [CategoryController::class, 'uploadComplianceFieldPdf'])->name('compliance.master.field.pdf');
     Route::post('/compliance-master/field-file/delete', [CategoryController::class, 'deleteComplianceFieldFile'])->name('compliance.master.field.file.delete');

@@ -254,6 +254,17 @@
             gap: 6px;
         }
 
+        #cmBatchModal .cm-batch-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 4px 0;
+            border-bottom: 1px solid #eef0f3;
+        }
+        #cmBatchModal .cm-batch-label { font-size: 13px; font-weight: 600; }
+        #compliance-tabulator .tabulator-cell.cm-select-col { padding-left: 0; padding-right: 0; }
+
         .cm-toolbar-actions .btn {
             display: inline-flex;
             align-items: center;
@@ -990,6 +1001,12 @@
                             <button type="button" class="btn btn-sm btn-success" id="downloadExcel" title="Download Excel" aria-label="Download Excel">
                                 <i class="bi bi-download"></i>
                         </button>
+                            <button type="button" class="btn btn-sm btn-warning" id="cmBatchEditBtn" disabled title="Tick rows with the checkboxes (shift-click selects a range), then batch edit them">
+                                <i class="bi bi-pencil-square me-1"></i><span id="cmBatchEditLabel">Batch edit</span>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="cmClearSelectionBtn" title="Clear the selection" aria-label="Clear the selection">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
                     </div>
                         <div id="cm-summary-stats">
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="any" data-kpi-key="badge:compliance-master|missing_any" data-kpi-label="Compliance-M" data-kpi-value="0" title="Show SKUs with any REQ compliance field"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Compliance-M <span id="cm-summary-any">(0)</span></button>
@@ -1115,6 +1132,49 @@
                             </button>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Batch edit: set the same N/A / REQ on every selected SKU -->
+    <div class="modal fade" id="cmBatchModal" tabindex="-1" aria-labelledby="cmBatchModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title mb-0" id="cmBatchModalLabel"><i class="bi bi-pencil-square me-2"></i>Batch edit compliance</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="small mb-2">
+                        Applying to <strong id="cmBatchCount">0</strong> SKU(s):
+                        <span id="cmBatchSkus" class="text-muted"></span>
+                    </div>
+                    <div class="small text-muted mb-2">
+                        Only the fields you change are saved. <strong>Keep</strong> leaves a field as it is on each SKU.
+                        <strong>N/A</strong> also removes that field's image and PDF. After <strong>REQ</strong>, attach the image and PDF on each SKU.
+                    </div>
+                    <div class="cm-batch-fields">
+                        @foreach ($__cmFields as $fkey => $flabel)
+                            <div class="cm-batch-row">
+                                <span class="cm-batch-label">{{ $flabel }}</span>
+                                <div class="btn-group btn-group-sm" role="group" aria-label="{{ $flabel }} batch mode">
+                                    <input type="radio" class="btn-check cm-batch-mode" name="batch_mode_{{ $fkey }}" id="batch_keep_{{ $fkey }}" value="keep" checked autocomplete="off">
+                                    <label class="btn btn-outline-secondary" for="batch_keep_{{ $fkey }}">Keep</label>
+                                    <input type="radio" class="btn-check cm-batch-mode" name="batch_mode_{{ $fkey }}" id="batch_na_{{ $fkey }}" value="na" autocomplete="off">
+                                    <label class="btn btn-outline-secondary" for="batch_na_{{ $fkey }}">N/A</label>
+                                    <input type="radio" class="btn-check cm-batch-mode" name="batch_mode_{{ $fkey }}" id="batch_req_{{ $fkey }}" value="req" autocomplete="off">
+                                    <label class="btn btn-outline-primary" for="batch_req_{{ $fkey }}">REQ</label>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-light border" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="cmBatchApplyBtn" disabled>
+                        <i class="bi bi-save me-1"></i><span id="cmBatchApplyLabel">Apply</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -2309,6 +2369,19 @@
             function getComplianceTabulatorColumnDefinitions() {
                 const cols = [
                     {
+                        // Tick rows for Batch edit. The header box selects every row currently shown (after filters).
+                        title: '',
+                        field: '_select',
+                        formatter: 'rowSelection',
+                        titleFormatter: 'rowSelection',
+                        titleFormatterParams: { rowRange: 'active' },
+                        hozAlign: 'center',
+                        headerSort: false,
+                        width: 34,
+                        widthShrink: 1,
+                        cssClass: 'cm-select-col'
+                    },
+                    {
                         title: 'Image',
                         field: 'image_path',
                         headerSort: false,
@@ -2471,6 +2544,14 @@
                             headerSort: false
                         },
                         columns: getComplianceTabulatorColumnDefinitions(),
+                        selectableRows: true,
+                        selectableRowsRangeMode: 'click',
+                        selectableRowsCheck: function(row) {
+                            return !complianceRowHasParentKeyword(row.getData());
+                        },
+                        rowSelectionChanged: function(data) {
+                            updateComplianceBatchToolbar(Array.isArray(data) ? data.length : 0);
+                        },
                         rowFormatter: function(row) {
                             const el = row.getElement();
                             if (complianceRowHasParentKeyword(row.getData())) {
@@ -3239,6 +3320,115 @@
                     }, 100);
             }
 
+            // ---- Batch edit -------------------------------------------------------------------------------
+            let cmBatchSkus = [];
+
+            function updateComplianceBatchToolbar(count) {
+                const btn = document.getElementById('cmBatchEditBtn');
+                const label = document.getElementById('cmBatchEditLabel');
+                const clear = document.getElementById('cmClearSelectionBtn');
+                if (!btn) return;
+                btn.disabled = count === 0;
+                label.textContent = count > 0 ? 'Batch edit (' + count + ')' : 'Batch edit';
+                if (clear) clear.classList.toggle('d-none', count === 0);
+            }
+
+            function cmBatchChosenFields() {
+                const fields = {};
+                COMPLIANCE_BULK_FIELD_KEYS.forEach(function(k) {
+                    const v = document.querySelector('#cmBatchModal input[name="batch_mode_' + k + '"]:checked')?.value;
+                    if (v === 'req') fields[k] = 'REQ';
+                    else if (v === 'na') fields[k] = 'N/A';
+                });
+                return fields;
+            }
+
+            function refreshComplianceBatchApply() {
+                const changed = Object.keys(cmBatchChosenFields()).length;
+                const btn = document.getElementById('cmBatchApplyBtn');
+                btn.disabled = changed === 0 || cmBatchSkus.length === 0;
+                document.getElementById('cmBatchApplyLabel').textContent = changed === 0
+                    ? 'Apply'
+                    : 'Apply ' + changed + ' change' + (changed === 1 ? '' : 's') + ' to ' + cmBatchSkus.length + ' SKU' + (cmBatchSkus.length === 1 ? '' : 's');
+            }
+
+            function openComplianceBatchModal() {
+                if (!complianceTable) return;
+                const seen = new Set();
+                cmBatchSkus = [];
+                complianceTable.getSelectedData().forEach(function(item) {
+                    const sku = String(item.SKU || '').trim();
+                    const key = sku.toUpperCase();
+                    if (!sku || seen.has(key) || complianceRowHasParentKeyword(item)) return;
+                    seen.add(key);
+                    cmBatchSkus.push(sku);
+                });
+                if (!cmBatchSkus.length) {
+                    showToast('warning', 'Select at least one SKU first.');
+                    return;
+                }
+                document.getElementById('cmBatchCount').textContent = String(cmBatchSkus.length);
+                const shown = cmBatchSkus.slice(0, 12).join(', ');
+                document.getElementById('cmBatchSkus').textContent = shown + (cmBatchSkus.length > 12 ? ' and ' + (cmBatchSkus.length - 12) + ' more' : '');
+                document.querySelectorAll('#cmBatchModal .cm-batch-mode[value="keep"]').forEach(function(r) { r.checked = true; });
+                refreshComplianceBatchApply();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('cmBatchModal')).show();
+            }
+
+            // Mirror a saved batch edit in the loaded rows, then redraw so counts and filters follow.
+            function patchLocalComplianceRowsFromBatch(skus, fields) {
+                const targets = new Set((skus || []).map(function(s) { return String(s || '').trim().toUpperCase(); }));
+                (Array.isArray(tableData) ? tableData : []).forEach(function(item) {
+                    if (!targets.has(String(item?.SKU || '').trim().toUpperCase())) return;
+                    Object.keys(fields).forEach(function(k) {
+                        item[k] = fields[k];
+                        if (fields[k] === 'N/A') {
+                            item[k + '_img'] = '';
+                            item[k + '_pdf'] = '';
+                        }
+                    });
+                });
+                if (complianceTable) complianceTable.deselectRow();
+                applyFilters();
+                updateComplianceBatchToolbar(0);
+            }
+
+            async function applyComplianceBatch() {
+                const fields = cmBatchChosenFields();
+                if (!Object.keys(fields).length || !cmBatchSkus.length) return;
+                const btn = document.getElementById('cmBatchApplyBtn');
+                const label = document.getElementById('cmBatchApplyLabel');
+                const previous = label.textContent;
+                btn.disabled = true;
+                label.textContent = 'Saving…';
+                try {
+                    const res = await makeRequest('/compliance-master/batch-update', 'POST', { skus: cmBatchSkus, fields: fields });
+                    const json = await res.json().catch(function() { return {}; });
+                    if (!res.ok || !json.success) throw new Error(json.message || 'Batch update failed');
+                    patchLocalComplianceRowsFromBatch(json.updated || cmBatchSkus, fields);
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('cmBatchModal')).hide();
+                    showToast(json.missing && json.missing.length ? 'warning' : 'success', json.message || 'Batch update saved.');
+                } catch (e) {
+                    showToast('danger', e.message || 'Batch update failed');
+                    label.textContent = previous;
+                    btn.disabled = false;
+                    return;
+                }
+                label.textContent = 'Apply';
+            }
+
+            function setupComplianceBatchEdit() {
+                document.getElementById('cmBatchEditBtn').addEventListener('click', openComplianceBatchModal);
+                document.getElementById('cmClearSelectionBtn').addEventListener('click', function() {
+                    if (complianceTable) complianceTable.deselectRow();
+                    updateComplianceBatchToolbar(0);
+                });
+                document.getElementById('cmBatchModal').addEventListener('change', function(e) {
+                    if (e.target && e.target.classList.contains('cm-batch-mode')) refreshComplianceBatchApply();
+                });
+                document.getElementById('cmBatchApplyBtn').addEventListener('click', applyComplianceBatch);
+            }
+
             function findComplianceRowBySku(sku) {
                 const s = String(sku || '');
                 let row = tableData.find(i => String(i.SKU) === s);
@@ -3661,6 +3851,7 @@
             setupComplianceKpiHistory();
             setupComplianceAddFormListeners();
             setupActionButtons();
+            setupComplianceBatchEdit();
             loadData();
             setupExcelExport();
             setupImport();
