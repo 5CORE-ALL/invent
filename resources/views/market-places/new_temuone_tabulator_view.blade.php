@@ -223,6 +223,14 @@
             height: 14px;
         }
         #column-dropdown-menu .col-vis-item > label:hover { background: #e9ecef; }
+        .nto-parent-row,
+        .nto-parent-row .tabulator-cell,
+        .nto-parent-row.tabulator-row-even,
+        .nto-parent-row.tabulator-row-odd,
+        .nto-parent-row.tabulator-selectable:hover,
+        .nto-parent-row.tabulator-selectable:hover .tabulator-cell {
+            background-color: #fffbe0 !important;
+        }
         @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'css', 'channelPromoChannel' => 'newtemuone'])
         @include('partials.ebay-sprc-dil', [
             'ebaySprcDilPart' => 'css',
@@ -3550,6 +3558,10 @@
                 const d = row.getData();
                 const sku = ntoRowSku(d);
                 return !!(sku && !d.is_parent_summary && sku.toUpperCase().indexOf('PARENT') !== 0);
+            },
+            rowFormatter: function(row) {
+                const d = row.getData() || {};
+                row.getElement().classList.toggle('nto-parent-row', !!d.is_parent_summary);
             },
             ajaxResponse: function(url, params, response) {
                 const rows = Array.isArray(response) ? response : [];
