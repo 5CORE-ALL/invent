@@ -300,6 +300,13 @@
             justify-content: flex-start !important;
             text-align: left !important;
         }
+        .temu-ads-var-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; }
+        .temu-ads-var-btn {
+            display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto;
+            padding: 1px 6px; border: 1px solid #93c5fd; border-radius: 10px;
+            background: #eff6ff; color: #1d4ed8; font-size: 11px; font-weight: 700; line-height: 1.4; cursor: pointer;
+        }
+        .temu-ads-var-btn:hover { background: #dbeafe; }
         .temu-ads-chart-badge { cursor: pointer; }
         .temu-ads-history-dot {
             display: inline-block;
@@ -652,6 +659,38 @@
         </div>
     </div>
 
+    {{-- Variations modal (PARENT row with several SKUs under the same goods_id) --}}
+    <div class="modal fade" id="temuAdsVariationsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title" id="temuAdsVariationsTitle">Variations</h5>
+                        <div class="small text-muted" id="temuAdsVariationsMeta"></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr class="text-center">
+                                <th style="width:60px;">Image</th>
+                                <th class="text-start">SKU</th>
+                                <th>SKU ID</th>
+                                <th>Parent</th>
+                                <th>Inv</th>
+                                <th>Ovl30</th>
+                                <th>Dil%</th>
+                                <th>Sold 7</th>
+                            </tr>
+                        </thead>
+                        <tbody id="temuAdsVariationsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Raw JSON modal --}}
     <div class="modal fade" id="rawJsonModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -914,8 +953,87 @@
                         ? ('p|' + String(r.goods_id || '') + '|' + String(r.period || ''))
                         : ('c|' + String(r.id || '') + '|' + String(r.sku_id || '') + '|' + String(r.period || ''));
                     if (r._children) delete r._children;
+                    r._collapsed_child = false;
+                    r._var_count = 0;
+                });
+
+                // One goods_id = one Temu listing. When a PARENT line and its variations share the goods_id
+                // but have different sku_ids, show just the PARENT row (arrow → modal with the variations).
+                // Everything else (single-SKU goods, goods without a parent line) stays as is.
+                variationsByGroup = {};
+                const parentByGroup = {};
+                (rows || []).forEach(function (r) {
+                    if (!r) return;
+                    const gk = adsGroupKey(r);
+                    if (r.is_parent) parentByGroup[gk] = r;
+                    else (variationsByGroup[gk] = variationsByGroup[gk] || []).push(r);
+                });
+                Object.keys(parentByGroup).forEach(function (gk) {
+                    const kids = variationsByGroup[gk] || [];
+                    const skuIds = {};
+                    kids.forEach(function (k) {
+                        const sid = String(k.sku_id || '').trim();
+                        if (sid) skuIds[sid] = true;
+                    });
+                    if (Object.keys(skuIds).length < 2) {
+                        delete variationsByGroup[gk]; // nothing to fold into a modal
+                        return;
+                    }
+                    parentByGroup[gk]._var_count = kids.length;
+                    kids.forEach(function (k) { k._collapsed_child = true; });
+                });
+                Object.keys(variationsByGroup).forEach(function (gk) {
+                    if (!parentByGroup[gk] || !parentByGroup[gk]._var_count) delete variationsByGroup[gk];
                 });
                 return rows || [];
+            }
+
+            let variationsByGroup = {};
+
+            function adsGroupKey(r) {
+                return String((r && r.goods_id) || '') + '|' + String((r && r.period) || '');
+            }
+
+            /** Rows the grid actually lists: folded variations are hidden; a folded PARENT matches if any variation does. */
+            function rowVisibleInGrid(data, q) {
+                if (data && data._collapsed_child) return false;
+                if (rowVisibleForView(data, q)) return true;
+                if (data && data.is_parent && data._var_count) {
+                    const kids = variationsByGroup[adsGroupKey(data)] || [];
+                    for (let i = 0; i < kids.length; i++) {
+                        if (rowVisibleForView(kids[i], q)) return true;
+                    }
+                }
+                return false;
+            }
+
+            function showVariationsModal(parentData) {
+                const kids = (variationsByGroup[adsGroupKey(parentData)] || []).slice().sort(function (a, b) {
+                    return String(a.sku || '').localeCompare(String(b.sku || ''), undefined, { sensitivity: 'base' });
+                });
+                const titleEl = document.getElementById('temuAdsVariationsTitle');
+                const metaEl = document.getElementById('temuAdsVariationsMeta');
+                const bodyEl = document.getElementById('temuAdsVariationsBody');
+                if (!titleEl || !bodyEl) return;
+                titleEl.textContent = String(parentData.sku || '') + ' — ' + kids.length + ' variations';
+                metaEl.textContent = 'Goods ID ' + String(parentData.goods_id || '') + ' · Ad metrics are shared by the whole goods (see the row in the grid).';
+                const n = function (v) { return Number(parseInt(v, 10) || 0).toLocaleString('en-US'); };
+                bodyEl.innerHTML = kids.map(function (k) {
+                    const img = String(k.image_path || '').trim();
+                    const detail = String(k.sku_detail || '').trim();
+                    return '<tr>'
+                        + '<td class="text-center">' + (img ? '<img class="temu-ads-thumb" src="' + escapeAttr(img) + '" alt="">' : '') + '</td>'
+                        + '<td class="text-start"><div class="fw-semibold">' + escapeAttr(k.sku) + '</div>'
+                        + (detail ? '<div class="text-muted" style="font-size:11px;">' + escapeAttr(detail) + '</div>' : '') + '</td>'
+                        + '<td class="text-center">' + escapeAttr(k.sku_id) + '</td>'
+                        + '<td class="text-center">' + escapeAttr(k.parent) + '</td>'
+                        + '<td class="text-center">' + n(k.inv) + '</td>'
+                        + '<td class="text-center">' + n(k.ovl30) + '</td>'
+                        + '<td class="text-center">' + (Number(k.dil_percent) || 0).toFixed(0) + '%</td>'
+                        + '<td class="text-center">' + n(k.sold_l7) + '</td>'
+                        + '</tr>';
+                }).join('');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('temuAdsVariationsModal')).show();
             }
 
             function rowVisibleForView(data, q) {
@@ -943,7 +1061,7 @@
                 if (!table) return;
                 const q = currentFilterQuery();
                 table.setFilter(function (data) {
-                    return rowVisibleForView(data, q);
+                    return rowVisibleInGrid(data, q);
                 });
                 if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
             }
@@ -1724,11 +1842,20 @@
                             const d = cell.getRow().getData() || {};
                             const sku = escapeAttr(String(cell.getValue() || ''));
                             const detail = String(d.sku_detail || '').trim();
-                            if (!detail) return sku;
+                            const folded = d.is_parent && d._var_count
+                                ? '<button type="button" class="temu-ads-var-btn" title="Show ' + d._var_count + ' variations">'
+                                    + '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M5.5 2.5 11 8l-5.5 5.5-1.4-1.4L8.2 8 4.1 3.9z"/></svg><span>' + d._var_count + '</span></button>'
+                                : '';
+                            if (!detail) return folded ? '<div class="temu-ads-var-wrap">' + folded + '<span>' + sku + '</span></div>' : sku;
                             // Temu layout: SKU on top, the variation label / product name beneath it.
-                            return '<div style="line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + sku
+                            return '<div class="temu-ads-var-wrap">' + folded + '<div style="min-width:0;flex:1;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + sku
                                 + '<div style="font-size:11px;font-weight:400;color:#6c757d;overflow:hidden;text-overflow:ellipsis;" title="' + escapeAttr(detail) + '">'
-                                + escapeAttr(detail) + '</div></div>';
+                                + escapeAttr(detail) + '</div></div></div>';
+                        },
+                        cellClick: function (e, cell) {
+                            if (!e.target.closest || !e.target.closest('.temu-ads-var-btn')) return;
+                            e.stopPropagation();
+                            showVariationsModal(cell.getRow().getData() || {});
                         },
                     },
                     { title: 'SKU ID', field: 'sku_id', width: 130, minWidth: 100, sorter: 'string',
