@@ -118,6 +118,7 @@ class TemuAdsController extends Controller
         $productMasterByNorm = $this->productMasterByNormalizedSku($skuLookup);
 
         $soldL7BySku = TemuSoldRoasRuleService::soldL7BySku();
+        $soldL30BySku = TemuSoldRoasRuleService::soldL30BySku();
 
         // Listing status per goods_id (temu.local.sku.list.retrieve → temu_metrics.listing_status).
         // A goods is "active" if any of its SKUs is active on Temu; otherwise "inactive".
@@ -137,7 +138,7 @@ class TemuAdsController extends Controller
                 });
         }
 
-        $rows = $records->map(function (TemuAdsApiReport $r) use ($listingByGoods, $soldL7BySku, $l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $inSpendWindow) {
+        $rows = $records->map(function (TemuAdsApiReport $r) use ($listingByGoods, $soldL7BySku, $soldL30BySku, $l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $inSpendWindow) {
             $clicks = (int) ($r->clicks ?? 0);
             $orders = (int) ($r->order_pay_cnt ?? 0);
             $gid = (string) $r->goods_id;
@@ -182,6 +183,7 @@ class TemuAdsController extends Controller
                 'clicks_l7' => $clicksL7,
                 'clicks_l30' => $clicksL30,
                 'sold_l7' => (int) ($soldL7BySku[$skuKey] ?? 0),
+                'sold_l30' => (int) ($soldL30BySku[$skuKey] ?? 0),
                 'ctr' => $r->ctr,
                 'ctr_l7' => $impressionsL7 > 0 ? round($clicksL7 / $impressionsL7 * 100, 4) : 0.0,
                 'cvr' => $clicks > 0 ? round($orders / $clicks * 100, 2) : 0,
@@ -1384,6 +1386,9 @@ class TemuAdsController extends Controller
                     'child_count' => $kids->count(),
                     'sold_l7' => $kids->contains(fn (array $k) => array_key_exists('sold_l7', $k))
                         ? (int) $kids->sum(fn (array $k) => (int) ($k['sold_l7'] ?? 0))
+                        : null,
+                    'sold_l30' => $kids->contains(fn (array $k) => array_key_exists('sold_l30', $k))
+                        ? (int) $kids->sum(fn (array $k) => (int) ($k['sold_l30'] ?? 0))
                         : null,
                     'inv' => $inv,
                     'ovl30' => $ovl30,

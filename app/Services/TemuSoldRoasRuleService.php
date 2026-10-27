@@ -176,11 +176,30 @@ class TemuSoldRoasRuleService
      */
     public static function soldL7BySku(): array
     {
+        return self::soldBySkuForWindow(TemuShopifySalesService::channelMasterL7Window());
+    }
+
+    /**
+     * Units sold per SKU in the Temu Channel Master L30 window (same source as {@see soldL7BySku()}).
+     *
+     * @return array<string, int>
+     */
+    public static function soldL30BySku(): array
+    {
+        return self::soldBySkuForWindow(TemuShopifySalesService::channelMasterL30Window());
+    }
+
+    /**
+     * @param  array{0: \Carbon\Carbon, 1: \Carbon\Carbon}  $window
+     * @return array<string, int>
+     */
+    private static function soldBySkuForWindow(array $window): array
+    {
         if (! Schema::hasTable('temu_orders')) {
             return [];
         }
 
-        [$start, $end] = TemuShopifySalesService::channelMasterL7Window();
+        [$start, $end] = $window;
         $appTz = config('app.timezone');
         $start = $start->copy()->setTimezone($appTz);
         $end = $end->copy()->setTimezone($appTz);

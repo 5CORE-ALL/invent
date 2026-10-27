@@ -2163,6 +2163,8 @@
                       headerTooltip: 'Last 30 days clicks (Overall). Red when below 300.' },
                     { title: 'Clicks 7', field: 'clicks_l7', width: 70, minWidth: 62, hozAlign: 'center', formatter: clicksFmt, sorter: 'number',
                       headerTooltip: 'Last 7 days clicks (Overall).' },
+                    { title: 'Sold 30', field: 'sold_l30', width: 70, minWidth: 62, hozAlign: 'center', formatter: numFmt, sorter: 'number',
+                      headerTooltip: 'Units sold in the Temu Channel Master L30 window from Temu 1 orders (temu_orders), per SKU.' },
                     { title: 'Sold 7', field: 'sold_l7', width: 66, minWidth: 58, hozAlign: 'center', formatter: numFmt, sorter: 'number',
                       headerTooltip: 'Units sold in the last 7 complete Pacific days from Temu 1 orders (temu_orders), per SKU.' },
                     { title: 'Impr', field: 'impressions', width: 70, minWidth: 62, hozAlign: 'center', formatter: numFmt, sorter: 'number',
@@ -2216,18 +2218,6 @@
                       headerTooltip: 'Actual ROAS.' },
                     { title: 'ACOS', field: 'acos', width: 58, minWidth: 52, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
                       headerTooltip: 'ACOS percent.' },
-                    {
-                        title: 'OK',
-                        field: 'success',
-                        width: 60,
-                        hozAlign: 'center',
-                        sorter: 'boolean',
-                        formatter: function (cell) {
-                            return cell.getValue()
-                                ? '<span class="text-success"><i class="fas fa-check"></i></span>'
-                                : '<span class="text-danger" title="' + (cell.getRow().getData().error_msg || '') + '"><i class="fas fa-x"></i></span>';
-                        }
-                    },
                     { title: 'Fetched', field: 'fetched_at', width: 110, minWidth: 96, formatter: fetchedFmt, sorter: 'string',
                       headerTooltip: 'Last upsert from Temu (US Pacific). Raw JSON is stored on the row.' },
                     {
@@ -2565,7 +2555,8 @@
                 others: 'Others',
             };
             const COL_VIS_CAT_STORAGE = 'temu_ads_col_vis_cats';
-            const LOCKED_HIDDEN_FIELDS = {};
+            // Hidden on purpose (columns still exist; remove a key here to bring it back).
+            const LOCKED_HIDDEN_FIELDS = { fetched_at: true, raw_response: true };
             const SKIP_COLUMN_BOX_FIELDS = { _select: true };
 
             function isLockedHiddenField(field) {
@@ -2585,7 +2576,7 @@
             function classifyTemuAdsColumn(field) {
                 const f = String(field || '');
                 if (/^(parent|sku|sku_id|inv|image_path|ad_status|create_ad|ad_create_reject|ovl30|dil_percent|goods_id|period)$/.test(f)) return 'basic';
-                if (/^(impressions|impressions_l7|clicks_l30|clicks_l7|sold_l7|ctr|ctr_l7|cvr|cart_cnt|order_pay_cnt|order_pay_amt|ad_spend|spend_l1|roas|acos)$/.test(f)) {
+                if (/^(impressions|impressions_l7|clicks_l30|clicks_l7|sold_l30|sold_l7|ctr|ctr_l7|cvr|cart_cnt|order_pay_cnt|order_pay_amt|ad_spend|spend_l1|roas|acos)$/.test(f)) {
                     return 'ads';
                 }
                 return 'others';
