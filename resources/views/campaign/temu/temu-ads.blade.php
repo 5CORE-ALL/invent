@@ -418,10 +418,10 @@
                                 <option value="pink" data-label="Dil% Pink">Dil% Pink</option>
                             </select>
                             <select id="sku-type-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
-                                    title="Single SKU = goods with one SKU; Multi SKU = goods with several SKU IDs (variations)">
-                                <option value="" data-label="All SKU types">All SKU types</option>
-                                <option value="single" data-label="Single SKU">Single SKU</option>
-                                <option value="multi" data-label="Multi SKU">Multi SKU</option>
+                                    title="Parent = goods with several SKU IDs (variations); SKU = goods with one SKU">
+                                <option value="" data-label="Parent &amp; SKU">Parent &amp; SKU</option>
+                                <option value="multi" data-label="Parent">Parent</option>
+                                <option value="single" data-label="SKU">SKU</option>
                             </select>
                             <select id="clicks-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
                                     title="Filter by Clicks 7">
@@ -2096,7 +2096,7 @@
                     { title: 'CVR', field: 'cvr', width: 56, minWidth: 50, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
                       headerTooltip: 'CVR (Overall) = Orders ÷ Clicks' },
                     { title: 'Cart', field: 'cart_cnt', width: 56, minWidth: 50, hozAlign: 'center', formatter: numFmt, sorter: 'number' },
-                    { title: 'Ord', field: 'order_pay_cnt', width: 56, minWidth: 50, hozAlign: 'center', formatter: numFmt, sorter: 'number' },
+                    { title: 'Ord L30', field: 'order_pay_cnt', width: 70, minWidth: 60, headerTooltip: 'Ad orders (order_pay_cnt) for the selected Period — L30 by default', hozAlign: 'center', formatter: numFmt, sorter: 'number' },
                     { title: 'Ord$', field: 'order_pay_amt', width: 70, minWidth: 62, hozAlign: 'center', formatter: moneyFmt, sorter: 'number' },
                     { title: 'Spend 30', field: 'ad_spend', width: 76, minWidth: 68, hozAlign: 'center', formatter: moneyFmt, sorter: 'number' },
                     { title: 'Y Spend', field: 'spend_l1', width: 70, minWidth: 62, hozAlign: 'center', formatter: moneyFmt, sorter: 'number',
@@ -2915,7 +2915,15 @@
                 });
             }
 
+            function paintOrdHeader() {
+                const per = document.getElementById('period-filter').value;
+                const col = table && table.getColumn('order_pay_cnt');
+                if (col && typeof col.updateDefinition === 'function') {
+                    col.updateDefinition({ title: per ? 'Ord ' + per : 'Ord' });
+                }
+            }
             document.getElementById('period-filter').addEventListener('change', function () {
+                paintOrdHeader();
                 paintPeriodRangeLabel();
                 table.setData(dataUrl());
             });
