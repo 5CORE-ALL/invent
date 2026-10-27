@@ -3024,8 +3024,13 @@
                             });
                             AnalyticsDilBadge.set(pct, ovL30, dilInv);
                         }
-                        if (response.inventory_pies && Array.isArray(response.inventory_pies.slices)) {
+                        // Saved pies from before Red was split (no red1 slice) are stale: use the live endpoint instead.
+                        const piesAreCurrent = response.inventory_pies && Array.isArray(response.inventory_pies.slices)
+                            && response.inventory_pies.slices.some(function(s) { return s && s.key === 'red1'; });
+                        if (piesAreCurrent) {
                             lastInventoryPies = response.inventory_pies;
+                        } else if (response.inventory_pies && Array.isArray(response.inventory_pies.slices)) {
+                            lastInventoryPies = null;
                         } else if (Array.isArray(response.inventory_by_color) && response.inventory_by_color.length) {
                             lastInventoryPies = { slices: response.inventory_by_color, history: [] };
                         }

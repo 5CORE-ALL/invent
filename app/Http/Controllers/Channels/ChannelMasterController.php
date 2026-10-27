@@ -179,7 +179,7 @@ class ChannelMasterController extends Controller
     private ?array $closedDayOrderYSalesByKey = null;
 
     /** Bump when Inv / Inv@SP / Inv@LP / Dil% formulas change so stale cache is recomputed. */
-    private const INV_METRICS_VERSION = 5;
+    private const INV_METRICS_VERSION = 6;
 
     /** @var array<string, mixed>|null */
     private ?array $shopifyInvLpMetricsCache = null;
@@ -6603,6 +6603,13 @@ class ChannelMasterController extends Controller
         $missingLp = ! array_key_exists('inv_at_lp', $payload) || $payload['inv_at_lp'] === null || $payload['inv_at_lp'] === ''
             || (float) $payload['inv_at_lp'] <= 0;
         $missingPies = empty($payload['inventory_pies']['slices']) && empty($payload['inventory_by_color']);
+        // Pies saved before Red was split into 0.01–10% / 10–25% have no red1 slice: rebuild them.
+        if (! $missingPies && ! empty($payload['inventory_pies']['slices'])) {
+            $sliceKeys = array_column((array) $payload['inventory_pies']['slices'], 'key');
+            if (! in_array('red1', $sliceKeys, true)) {
+                $missingPies = true;
+            }
+        }
 
         if ($staleFormula || $missingInv || $missingSp || $missingLp || $missingPies) {
             try {
