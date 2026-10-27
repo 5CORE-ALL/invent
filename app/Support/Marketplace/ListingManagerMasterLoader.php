@@ -154,17 +154,69 @@ class ListingManagerMasterLoader
     private static function textDescriptionFor(string $sku, array $pm): string
     {
         foreach (['description_1500', 'product_description', 'description_1000', 'description_800', 'description_600'] as $col) {
-            $v = trim((string) ($pm[$col] ?? ''));
+            $v = self::plainText((string) ($pm[$col] ?? ''));
             if ($v !== '') {
                 return $v;
             }
         }
-        $fromMetrics = ListingManagerAmazonHydrator::descriptionMaster($sku);
-        if ($fromMetrics !== '') {
-            return $fromMetrics;
+        // The fallbacks below are rich HTML (images, banners). This block is the Text description only.
+        $rawMetrics = ListingManagerAmazonHydrator::descriptionMaster($sku);
+        // Marketplace metrics tables can hold another colour's description under this SKU
+        // (e.g. GSH 2N1 GR carrying the BLU copy). Never show that as this SKU's text.
+        if (! self::mentionsOtherSku($rawMetrics, $sku)) {
+            $fromMetrics = self::plainText($rawMetrics);
+            if ($fromMetrics !== '') {
+                return $fromMetrics;
+            }
         }
 
-        return trim((string) ($pm['description_html'] ?? ''));
+        $fromHtml = (string) ($pm['description_html'] ?? '');
+
+        return self::mentionsOtherSku($fromHtml, $sku) ? '' : self::plainText($fromHtml);
+    }
+
+    /**
+     * True when the HTML points at A+ images named for a different SKU (A_<SKU>_<n>.jpg).
+     */
+    private static function mentionsOtherSku(string $html, string $sku): bool
+    {
+        if ($html === '' || ! preg_match_all('#/A_([A-Z0-9]+(?:_[A-Z0-9]+)*)_\d+\.(?:jpe?g|png|webp)#i', $html, $m)) {
+            return false;
+        }
+        $mine = strtoupper(trim((string) preg_replace('/[^A-Za-z0-9]+/', '_', $sku), '_'));
+        foreach ($m[1] as $token) {
+            if (strtoupper($token) !== $mine) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Text only: drops images, scripts and styles, keeps paragraph / line breaks.
+     */
+    public static function plainText(string $html): string
+    {
+        $html = trim($html);
+        if ($html === '') {
+            return '';
+        }
+        if (! preg_match('/<[a-z!\/][^>]*>/i', $html)) {
+            return html_entity_decode($html, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+
+        $html = preg_replace('#<(script|style|noscript|svg|picture|video|iframe)\b[^>]*>.*?</\1>#is', '', $html) ?? $html;
+        $html = preg_replace('#<br\s*/?>#i', "\n", $html) ?? $html;
+        $html = preg_replace('#</(p|div|li|ul|ol|h[1-6]|tr|table|section|article)>#i', "\n\n", $html) ?? $html;
+        $html = preg_replace('#<li\b[^>]*>#i', '- ', $html) ?? $html;
+        $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = str_replace("\xC2\xA0", ' ', $text);
+        $text = preg_replace("/[ \t]+/", ' ', $text) ?? $text;
+        $text = preg_replace("/ *\n */", "\n", $text) ?? $text;
+        $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+
+        return trim($text);
     }
 
     /**
