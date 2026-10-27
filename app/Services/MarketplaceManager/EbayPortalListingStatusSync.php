@@ -480,6 +480,122 @@ class EbayPortalListingStatusSync
     }
 
     /**
+     * Available qty of every Active listing/variation in one paged GetMyeBaySelling pull
+     * (200 items per call), so a whole-catalog quantity read-back costs a handful of calls
+     * instead of one GetItem per listing.
+     *
+     * @return list<array{sku: string, item_id: string, qty: int}>|null  null when the pull failed
+     */
+    public function fetchActiveQuantities(int $store = 1): ?array
+    {
+        $token = $this->accessToken($store);
+        if (! $token) {
+            return null;
+        }
+
+        $out = [];
+        $pageNumber = 1;
+        $totalPages = 1;
+        do {
+            try {
+                $prefix = 'ActiveList';
+                $xmlBody = '<?xml version="1.0" encoding="utf-8"?>'
+                    .'<GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+                    .'<ActiveList><Include>true</Include>'
+                    .'<Pagination><EntriesPerPage>200</EntriesPerPage><PageNumber>'.$pageNumber.'</PageNumber></Pagination>'
+                    .'</ActiveList>'
+                    .'<OutputSelector>'.$prefix.'.ItemArray.Item.ItemID</OutputSelector>'
+                    .'<OutputSelector>'.$prefix.'.ItemArray.Item.SKU</OutputSelector>'
+                    .'<OutputSelector>'.$prefix.'.ItemArray.Item.Quantity</OutputSelector>'
+                    .'<OutputSelector>'.$prefix.'.ItemArray.Item.QuantityAvailable</OutputSelector>'
+                    .'<OutputSelector>'.$prefix.'.ItemArray.Item.SellingStatus</OutputSelector>'
+                    .'<OutputSelector>'.$prefix.'.ItemArray.Item.Variations</OutputSelector>'
+                    .'<OutputSelector>'.$prefix.'.PaginationResult</OutputSelector>'
+                    .'</GetMyeBaySellingRequest>';
+
+                $response = Http::timeout(60)
+                    ->withHeaders([
+                        'X-EBAY-API-SITEID' => '0',
+                        'X-EBAY-API-COMPATIBILITY-LEVEL' => '967',
+                        'X-EBAY-API-CALL-NAME' => 'GetMyeBaySelling',
+                        'X-EBAY-API-IAF-TOKEN' => $token,
+                    ])
+                    ->withBody($xmlBody, 'text/xml')
+                    ->post('https://api.ebay.com/ws/api.dll');
+                if (! $response->successful()) {
+                    return null;
+                }
+                $xml = simplexml_load_string($response->body());
+                if ($xml === false || strtoupper(trim((string) ($xml->Ack ?? ''))) === 'FAILURE') {
+                    Log::warning('EbayPortalListingStatusSync: active qty pull failed', [
+                        'store' => $store,
+                        'message' => $xml !== false ? (string) ($xml->Errors->LongMessage ?? $xml->Errors->ShortMessage ?? '') : 'unreadable',
+                    ]);
+
+                    return null;
+                }
+
+                $listNode = $xml->ActiveList ?? null;
+                if ($pageNumber === 1 && $listNode && isset($listNode->PaginationResult->TotalNumberOfPages)) {
+                    $totalPages = max(1, (int) $listNode->PaginationResult->TotalNumberOfPages);
+                }
+                if ($listNode && isset($listNode->ItemArray->Item)) {
+                    foreach ($listNode->ItemArray->Item as $item) {
+                        $itemId = trim((string) ($item->ItemID ?? ''));
+                        if ($itemId === '') {
+                            continue;
+                        }
+                        if (isset($item->Variations->Variation)) {
+                            foreach ($item->Variations->Variation as $variation) {
+                                $sku = trim((string) ($variation->SKU ?? ''));
+                                $node = json_decode(json_encode($variation), true);
+                                $qty = is_array($node) ? $this->availableFromSellingNode($node) : null;
+                                if ($sku !== '' && $qty !== null) {
+                                    $out[] = ['sku' => $sku, 'item_id' => $itemId, 'qty' => $qty];
+                                }
+                            }
+
+                            continue;
+                        }
+                        $sku = trim((string) ($item->SKU ?? ''));
+                        $node = json_decode(json_encode($item), true);
+                        $qty = is_array($node) ? $this->availableFromSellingNode($node) : null;
+                        if ($sku !== '' && $qty !== null) {
+                            $out[] = ['sku' => $sku, 'item_id' => $itemId, 'qty' => $qty];
+                        }
+                    }
+                }
+                $pageNumber++;
+            } catch (\Throwable $e) {
+                Log::warning('EbayPortalListingStatusSync: active qty pull exception', ['error' => $e->getMessage()]);
+
+                return null;
+            }
+        } while ($pageNumber <= $totalPages);
+
+        return $out;
+    }
+
+    /**
+     * Seller Hub "Available quantity" from a GetMyeBaySelling Active node: QuantityAvailable
+     * when eBay sends it (0 means sold out), otherwise Quantity minus QuantitySold.
+     *
+     * @param  array<string, mixed>  $node
+     */
+    protected function availableFromSellingNode(array $node): ?int
+    {
+        if (isset($node['QuantityAvailable']) && is_numeric($node['QuantityAvailable'])) {
+            return max(0, (int) $node['QuantityAvailable']);
+        }
+        if (! isset($node['Quantity']) || ! is_numeric($node['Quantity'])) {
+            return null;
+        }
+        $sold = (int) ($node['SellingStatus']['QuantitySold'] ?? $node['QuantitySold'] ?? 0);
+
+        return max(0, (int) $node['Quantity'] - $sold);
+    }
+
+    /**
      * @return array{ok: bool, items: list<array{sku: string, title: ?string, item_id: ?string, ebay_link: ?string}>, total: int, sku_count: int}
      */
     protected function fetchListingsByStatus(string $accessToken, string $listType): array

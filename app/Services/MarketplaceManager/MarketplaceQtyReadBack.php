@@ -40,10 +40,10 @@ final class MarketplaceQtyReadBack
     public const PER_SKU_CAP = 80;
 
     /** Channels answered per SKU/listing; the rest take a batch (or whole-catalog) query. */
-    private const PER_SKU_CHANNELS = ['amazon', 'topdawg', 'ebay1', 'ebay2', 'aliexpress'];
+    private const PER_SKU_CHANNELS = ['amazon', 'topdawg', 'ebay2', 'aliexpress'];
 
     /** Whole-catalog reads: one paged pull answers every SKU, so slicing gains nothing. */
-    private const WHOLE_CATALOG_CHANNELS = ['temu3', 'b5cb2b', 'pls'];
+    private const WHOLE_CATALOG_CHANNELS = ['temu3', 'b5cb2b', 'pls', 'ebay1'];
 
     /** Batch channels take this many SKUs per sweep run (keeps Wayfair/Faire/Newegg calls bounded). */
     public const BATCH_CAP = 400;
@@ -392,6 +392,76 @@ final class MarketplaceQtyReadBack
         if (! $api->isConfigured() || ! Schema::hasTable('ebay_metrics') || Ebay1InventorySyncService::isTradingLimited()) {
             return [];
         }
+
+        // One paged GetMyeBaySelling pull answers every active SKU (a few calls), instead of
+        // one GetItem per listing that took hours to cycle the catalog and burned API quota.
+        $bulk = $this->ebay1ActiveQuantities($skus);
+        if ($bulk !== null) {
+            return $bulk;
+        }
+
+        return $this->ebay1PerItem($api, $skus);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, int>|null  null when the bulk pull failed (caller falls back to GetItem)
+     */
+    private function ebay1ActiveQuantities(array $skus): ?array
+    {
+        try {
+            $rows = app(EbayPortalListingStatusSync::class)->fetchActiveQuantities(1);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if ($rows === null || $rows === []) {
+            return null;
+        }
+
+        $requested = [];
+        foreach ($skus as $sku) {
+            $requested[strtoupper($sku)] = $sku;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $requested[strtoupper($norm)] = $sku;
+            }
+        }
+        $linked = EbayMetric::query()
+            ->whereNotNull('item_id')
+            ->where(function ($q) use ($skus) {
+                $q->whereIn('sku', $skus)->orWhereIn('sku', array_map('strtoupper', $skus));
+            })
+            ->get(['sku', 'item_id']);
+        // The item a SKU is linked to; a SKU also sitting on an old duplicate listing must not read that one.
+        $linkedItem = [];
+        foreach ($linked as $metric) {
+            $linkedItem[strtoupper(trim((string) $metric->sku))] = trim((string) $metric->item_id);
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            $upper = strtoupper($row['sku']);
+            $target = $requested[$upper] ?? $requested[strtoupper(ShopifySku::normalizeSkuForShopifyLookup($row['sku']))] ?? null;
+            if ($target === null) {
+                continue;
+            }
+            $linkedId = $linkedItem[strtoupper($target)] ?? '';
+            if ($linkedId !== '' && $linkedId !== $row['item_id']) {
+                continue;
+            }
+            $out[$target] = $row['qty'];
+            $this->meta[$target] = ['item_id' => $row['item_id'], 'status' => 'active'];
+        }
+
+        return $out === [] ? null : $out;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, int>
+     */
+    private function ebay1PerItem(EbayApiService $api, array $skus): array
+    {
         $hasStatus = Schema::hasColumn('ebay_metrics', 'listing_status');
 
         $upperToRequested = [];
