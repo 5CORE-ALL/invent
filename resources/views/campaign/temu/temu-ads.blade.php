@@ -223,15 +223,6 @@
             background: rgba(0, 0, 0, 0.04);
             border-radius: 3px;
         }
-        .temu-ad-dot {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #198754;
-            vertical-align: middle;
-        }
-        .temu-ad-dot.is-zero-inv { background: #ffc107; }
         .temu-ad-create-cell {
             display: inline-flex;
             align-items: center;
@@ -1880,7 +1871,7 @@
                             const status = String(data.ad_status || '');
                             const inv = parseInt(String(data.inv != null ? data.inv : 0).replace(/,/g, ''), 10) || 0;
                             if (inv <= 0) {
-                                return '<span class="temu-ad-dot is-zero-inv" title="0 inventory — Create hidden"></span>';
+                                return '';
                             }
                             if (status === 'No ad') {
                                 const selectedN = queueCreateGoodsIdsFromRows(selectedRowData()).length;
@@ -1891,7 +1882,8 @@
                                     : 'Create Temu ad';
                                 return '<span class="temu-ad-create-cell"><button type="button" class="btn btn-sm btn-outline-warning create-row-ad-btn" title="' + escapeAttr(btnTitle) + '">Create</button></span>';
                             }
-                            return '<span class="temu-ad-dot" title="Ad available"></span>';
+                            // No dot: the exact ad state is shown in the Status column.
+                            return '';
                         },
                         cellClick: function (e, cell) {
                             e.stopPropagation();
