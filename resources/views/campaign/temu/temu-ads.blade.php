@@ -73,6 +73,24 @@
             background: #f4f7fa;
             padding: 8px;
         }
+        .temu-ads-blocks { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+        .temu-ads-block {
+            background: #fffbe6;
+            border: 1.5px solid #e6d36f;
+            border-radius: 8px;
+            padding: 6px 8px 8px;
+        }
+        .temu-ads-block--filters { background: #f8f9fa; border-color: #ced4da; }
+        .temu-ads-block-title {
+            font-weight: 800;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: .03em;
+            margin-bottom: 4px;
+            color: #3b3200;
+        }
+        .temu-ads-block-sub { font-weight: 500; text-transform: none; letter-spacing: 0; color: #6b7280; }
+        .temu-ads-block .badge { font-size: .8rem !important; padding: .35rem .5rem !important; }
         #summary-stats .temu-ads-badge-row {
             display: flex;
             flex-wrap: wrap;
@@ -483,8 +501,41 @@
                     <div id="data-refresh-info" class="mb-2 small text-muted" title="Data comes from the Temu API; times shown in IST"></div>
                     <div id="fetch-status" class="mb-2" style="display:none;"></div>
 
-                    <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                        <div class="temu-ads-badge-row" role="group" aria-label="Summary metrics">
+                    <div id="summary-stats" class="mt-2 temu-ads-blocks">
+                        <div class="temu-ads-block temu-ads-block--today">
+                            <div class="temu-ads-block-title">Today <span class="temu-ads-block-sub">(store, PT)</span></div>
+                            <div class="temu-ads-badge-row" role="group">
+                            <span class="badge fs-6 p-2" id="t-spend" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Store-level (all ads on Temu Seller Center), America/Los_Angeles day. Today so far.">Spend: <span class="temu-ads-badge-val">$0</span></span>
+                            <span class="badge fs-6 p-2" id="t-impr" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Store-level (all ads on Temu Seller Center), America/Los_Angeles day.">Impr: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="t-clicks" style="background-color: #e83e8c; color: white; font-weight: bold;" title="Store-level (all ads on Temu Seller Center), America/Los_Angeles day.">Clicks: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="t-orders" style="background-color: #198754; color: white; font-weight: bold;" title="Store-level (all ads on Temu Seller Center), America/Los_Angeles day.">Orders: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="t-sales" style="background-color: #2563eb; color: white; font-weight: bold;" title="Store-level (all ads on Temu Seller Center), America/Los_Angeles day. Ad order amount.">Ord$: <span class="temu-ads-badge-val">$0</span></span>
+                            <span class="badge fs-6 p-2" id="t-roas" style="background-color: #7c3aed; color: white; font-weight: bold;" title="Ord$ ÷ Spend">ROAS: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="t-acos" style="background-color: #e11d48; color: white; font-weight: bold;" title="Spend ÷ Ord$">Acos%: <span class="temu-ads-badge-val">0%</span></span>
+                            <span class="badge fs-6 p-2" id="t-ctr" style="background-color: #0891b2; color: white; font-weight: bold;" title="Clicks ÷ Impr">CTR: <span class="temu-ads-badge-val">0.0%</span></span>
+                            <span class="badge fs-6 p-2" id="t-cvr" style="background-color: #20c997; color: white; font-weight: bold;" title="Orders ÷ Clicks">CVR: <span class="temu-ads-badge-val">0.0%</span></span>
+                            </div>
+                        </div>
+                        <div class="temu-ads-block temu-ads-block--yesterday">
+                            <div class="temu-ads-block-title">Yesterday <span class="temu-ads-block-sub">(store, PT)</span></div>
+                            <div class="temu-ads-badge-row" role="group">
+                            <span class="badge fs-6 p-2 temu-ads-chart-badge" id="y-spend-sum"
+                                data-metric="y_spend" data-label="Y spend"
+                                style="background-color: #4c1d95; color: white; font-weight: bold;"
+                                title="Y spend = total of the Y Spend column (last 1 day). Click for history">Y spend: <span class="temu-ads-badge-val">$0</span><span class="temu-ads-history-dot" title="History"></span></span>
+                            <span class="badge fs-6 p-2" id="y-impr" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Store-level (all ads on Temu Seller Center), America/Los_Angeles day.">Impr: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="y-clicks" style="background-color: #e83e8c; color: white; font-weight: bold;" title="Store-level (all ads on Temu Seller Center), America/Los_Angeles day.">Clicks: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="y-orders" style="background-color: #198754; color: white; font-weight: bold;" title="Store-level (all ads on Temu Seller Center), America/Los_Angeles day.">Orders: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="y-sales" style="background-color: #2563eb; color: white; font-weight: bold;" title="Store-level (all ads on Temu Seller Center), America/Los_Angeles day. Ad order amount.">Ord$: <span class="temu-ads-badge-val">$0</span></span>
+                            <span class="badge fs-6 p-2" id="y-roas" style="background-color: #7c3aed; color: white; font-weight: bold;" title="Ord$ ÷ Spend">ROAS: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="y-acos" style="background-color: #e11d48; color: white; font-weight: bold;" title="Spend ÷ Ord$">Acos%: <span class="temu-ads-badge-val">0%</span></span>
+                            <span class="badge fs-6 p-2" id="y-ctr" style="background-color: #0891b2; color: white; font-weight: bold;" title="Clicks ÷ Impr">CTR: <span class="temu-ads-badge-val">0.0%</span></span>
+                            <span class="badge fs-6 p-2" id="y-cvr" style="background-color: #20c997; color: white; font-weight: bold;" title="Orders ÷ Clicks">CVR: <span class="temu-ads-badge-val">0.0%</span></span>
+                            </div>
+                        </div>
+                        <div class="temu-ads-block temu-ads-block--l30">
+                            <div class="temu-ads-block-title"><span id="temu-ads-l30-title">L30</span> <span class="temu-ads-block-sub">(selected period)</span></div>
+                            <div class="temu-ads-badge-row" role="group">
                             <span class="badge bg-dark fs-6 p-2 temu-ads-chart-badge" id="row-count"
                                 data-metric="rows" data-label="Rows"
                                 style="color: white; font-weight: bold;"
@@ -501,10 +552,6 @@
                                 data-metric="spend" data-label="Spend"
                                 style="background-color: #6f42c1; color: white; font-weight: bold;"
                                 title="Temu Seller Center store spend for the selected period (Last 7 / 30 / prior 30, ending yesterday). Click for history">Spend: <span class="temu-ads-badge-val">$0</span><span class="temu-ads-history-dot" title="History"></span></span>
-                            <span class="badge fs-6 p-2 temu-ads-chart-badge" id="y-spend-sum"
-                                data-metric="y_spend" data-label="Y spend"
-                                style="background-color: #4c1d95; color: white; font-weight: bold;"
-                                title="Y spend = total of the Y Spend column (last 1 day). Click for history">Y spend: <span class="temu-ads-badge-val">$0</span><span class="temu-ads-history-dot" title="History"></span></span>
                             <span class="badge fs-6 p-2 temu-ads-chart-badge" id="ord-sum"
                                 data-metric="sales" data-label="Ord$"
                                 style="background-color: #2563eb; color: white; font-weight: bold;"
@@ -529,6 +576,23 @@
                                 data-metric="cvr" data-label="Avg CVR"
                                 style="background-color: #20c997; color: white; font-weight: bold;"
                                 title="Avg CVR = Sold / Clicks from badges. Click for history">Avg CVR: <span class="temu-ads-badge-val">0.0%</span><span class="temu-ads-history-dot" title="History"></span></span>
+                            </div>
+                        </div>
+                        <div class="temu-ads-block temu-ads-block--projected">
+                            <div class="temu-ads-block-title">Projected <span class="temu-ads-block-sub">(L7 pace × 30)</span></div>
+                            <div class="temu-ads-badge-row" role="group">
+                            <span class="badge fs-6 p-2" id="p-spend" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Projected = Last 7 days store total ÷ 7 × 30.">P-Spend: <span class="temu-ads-badge-val">$0</span></span>
+                            <span class="badge fs-6 p-2" id="p-impr" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Projected = Last 7 days store total ÷ 7 × 30.">P-Impr: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="p-clicks" style="background-color: #e83e8c; color: white; font-weight: bold;" title="Projected = Last 7 days store total ÷ 7 × 30.">P-Clicks: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="p-orders" style="background-color: #198754; color: white; font-weight: bold;" title="Projected = Last 7 days store total ÷ 7 × 30.">P-Orders: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="p-sales" style="background-color: #2563eb; color: white; font-weight: bold;" title="Projected = Last 7 days store total ÷ 7 × 30.">P-Ord$: <span class="temu-ads-badge-val">$0</span></span>
+                            <span class="badge fs-6 p-2" id="p-roas" style="background-color: #7c3aed; color: white; font-weight: bold;" title="Last 7 days Ord$ ÷ Spend">ROAS: <span class="temu-ads-badge-val">0</span></span>
+                            <span class="badge fs-6 p-2" id="p-acos" style="background-color: #e11d48; color: white; font-weight: bold;" title="Last 7 days Spend ÷ Ord$">Acos%: <span class="temu-ads-badge-val">0%</span></span>
+                            </div>
+                        </div>
+                        <div class="temu-ads-block temu-ads-block--filters">
+                            <div class="temu-ads-block-title">Quick filters</div>
+                            <div class="temu-ads-badge-row" role="group">
                             <span class="badge fs-6 p-2" id="create-count"
                                 style="background-color: #fd7e14; color: white; font-weight: bold; cursor: pointer;"
                                 title="Click to show only rows you can create an ad for (No ad, Inv > 0). Click again to clear.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
@@ -540,6 +604,7 @@
                                 </span>
                                 Single SKU: <span class="temu-ads-badge-val">0</span>
                             </span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1789,8 +1854,40 @@
                 el.innerHTML = parts.join(' &nbsp;·&nbsp; ');
             }
 
+            // Store-level Today / Yesterday / Projected boxes (temu.searchrec.ad.reports.mall.query, Pacific days).
+            function paintStoreWindows(response) {
+                const w = (response && response.store_windows) || {};
+                const money = function (n) { return '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }); };
+                const int = function (n) { return Math.round(Number(n || 0)).toLocaleString('en-US'); };
+                const put = function (prefix, m, k) {
+                    const ids = ['spend', 'impr', 'clicks', 'orders', 'sales', 'roas', 'acos', 'ctr', 'cvr'];
+                    if (!m) {
+                        ids.forEach(function (id) { setBadgeVal(prefix + '-' + id, '—'); });
+                        return;
+                    }
+                    const spend = (m.spend || 0) * k, impr = (m.impressions || 0) * k, clicks = (m.clicks || 0) * k;
+                    const orders = (m.sold || 0) * k, sales = (m.sales || 0) * k;
+                    setBadgeVal(prefix + '-spend', money(spend));
+                    setBadgeVal(prefix + '-impr', int(impr));
+                    setBadgeVal(prefix + '-clicks', int(clicks));
+                    setBadgeVal(prefix + '-orders', int(orders));
+                    setBadgeVal(prefix + '-sales', money(sales));
+                    setBadgeVal(prefix + '-roas', spend > 0 ? (sales / spend).toFixed(1) : '0');
+                    setBadgeVal(prefix + '-acos', sales > 0 ? (spend / sales * 100).toFixed(1) + '%' : '0%');
+                    setBadgeVal(prefix + '-ctr', impr > 0 ? (clicks / impr * 100).toFixed(1) + '%' : '0.0%');
+                    setBadgeVal(prefix + '-cvr', clicks > 0 ? (orders / clicks * 100).toFixed(1) + '%' : '0.0%');
+                };
+                put('t', w.today, 1);
+                put('y', w.yesterday, 1);
+                put('p', w.l7, 30 / 7);
+                const per = document.getElementById('period-filter');
+                const title = document.getElementById('temu-ads-l30-title');
+                if (title && per) title.textContent = per.value || 'All periods';
+            }
+
             function setBadges(rows, response) {
                 if (response) lastAdsDataResponse = response;
+                paintStoreWindows(response || lastAdsDataResponse);
                 paintDataRefreshInfo(response || lastAdsDataResponse);
                 if (response && response.channel_sales != null) {
                     channelSales = parseFloat(response.channel_sales) || 0;

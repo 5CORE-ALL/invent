@@ -521,6 +521,68 @@ class TemuAdsApiReportService
     }
 
     /**
+     * Store-level ads totals for a Pacific calendar window used by the /temu/ads top boxes.
+     * today = today so far, yesterday = the last complete day, l7 = Seller Center Last 7 (ends yesterday).
+     * Same API + cents handling as mallPeriodMetrics(); only the date range differs.
+     *
+     * @return array{spend: float, impressions: int, clicks: int, sold: int, sales: float}|null
+     */
+    public function mallWindowMetrics(string $window): ?array
+    {
+        if (! $this->temuApiService->isConfigured()) {
+            return null;
+        }
+
+        $now = Carbon::now('America/Los_Angeles');
+        $ttl = 600;
+        switch ($window) {
+            case 'today':
+                $range = [
+                    'startTs' => $now->copy()->startOfDay()->timestamp * 1000,
+                    'endTs' => $now->copy()->endOfDay()->timestamp * 1000,
+                ];
+                $ttl = 120;
+                break;
+            case 'yesterday':
+                $day = $now->copy()->subDay();
+                $range = [
+                    'startTs' => $day->copy()->startOfDay()->timestamp * 1000,
+                    'endTs' => $day->copy()->endOfDay()->timestamp * 1000,
+                ];
+                break;
+            case 'l7':
+                $range = $this->temuApiService->sellerCenterPeriodRange('L7');
+                break;
+            default:
+                return null;
+        }
+        if ($range === null) {
+            return null;
+        }
+
+        $cacheKey = 'temu_ads_mall_window_v1_'.$window.'_'.$range['startTs'].'_'.$range['endTs'];
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached) && isset($cached['spend'])) {
+            return $cached;
+        }
+
+        $resp = $this->temuApiService->fetchMallAdsReport($range['startTs'], $range['endTs']);
+        if (! ($resp['ok'] ?? false) || ! is_array($resp['result'] ?? null)) {
+            Log::warning('Temu mall ads window report failed', ['window' => $window, 'error' => $resp['error_msg'] ?? null]);
+
+            return null;
+        }
+        $metrics = $this->metricsFromMallResult($resp['result']);
+        if ($metrics === null) {
+            // A day with no ad activity has no summary row: that is zero, not an error.
+            $metrics = ['spend' => 0.0, 'impressions' => 0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0];
+        }
+        Cache::put($cacheKey, $metrics, $ttl);
+
+        return $metrics;
+    }
+
+    /**
      * @return array{spend: float, impressions: int, clicks: int, sold: int, sales: float}|null
      */
     public function metricsFromMallResult(array $result): ?array

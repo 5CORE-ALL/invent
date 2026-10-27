@@ -237,6 +237,7 @@ class TemuAdsController extends Controller
             'data' => $rows,
             'total' => $rows->count(),
             'last_fetched_at' => $lastFetched ? $lastFetched->toIso8601String() : null,
+            'store_windows' => $this->storeWindows($service),
             'spend_sum' => $spendSum,
             'impressions_sum' => $imprSum,
             'clicks_sum' => $clickSum,
@@ -244,6 +245,26 @@ class TemuAdsController extends Controller
             'tacos' => $tacos,
             'mall' => $mall,
         ]);
+    }
+
+    /**
+     * Store-level ad totals for the top boxes (Today / Yesterday / Projected from L7). Failures give null per window.
+     *
+     * @return array<string, array<string, mixed>|null>
+     */
+    private function storeWindows(TemuAdsApiReportService $service): array
+    {
+        $out = [];
+        foreach (['today', 'yesterday', 'l7'] as $window) {
+            try {
+                $out[$window] = $service->mallWindowMetrics($window);
+            } catch (\Throwable $e) {
+                Log::warning('Temu ads store window failed', ['window' => $window, 'error' => $e->getMessage()]);
+                $out[$window] = null;
+            }
+        }
+
+        return $out;
     }
 
     public function getRaw(int $id)
