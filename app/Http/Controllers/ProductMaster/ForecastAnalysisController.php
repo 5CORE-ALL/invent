@@ -841,6 +841,21 @@ class ForecastAnalysisController extends Controller
                 ?? null;
             $item->avg_npft_pct = is_array($cvrMetrics) ? ($cvrMetrics['npft'] ?? null) : null;
             $item->avg_nroi_pct = is_array($cvrMetrics) ? ($cvrMetrics['nroi'] ?? null) : null;
+
+            // STD PFT% / STD NROI%: margin at the Amazon Std Price (amazon_data_view.STANDARD_PRICE).
+            //   gross    = Std × 0.70 − Ship − LP − 10% promo (10% of Std)
+            //   STD PFT  = gross ÷ Std × 100
+            //   STD NROI = gross ÷ LP  × 100
+            $stdPrice = is_array($adv) && is_numeric($adv['STANDARD_PRICE'] ?? null) ? (float) $adv['STANDARD_PRICE'] : 0.0;
+            $shipCost = is_numeric($values['ship'] ?? null) ? (float) $values['ship'] : 0.0;
+            $item->std_price = $stdPrice > 0 ? round($stdPrice, 2) : null;
+            $item->std_pft_pct = null;
+            $item->std_nroi_pct = null;
+            if ($stdPrice > 0) {
+                $gross = ($stdPrice * 0.70) - $shipCost - $lp - ($stdPrice * 0.10);
+                $item->std_pft_pct = round(($gross / $stdPrice) * 100, 2);
+                $item->std_nroi_pct = $lp > 0 ? round(($gross / $lp) * 100, 2) : null;
+            }
             if (is_array($adv)) {
                 $gpft = (float) ($adv['GPFT'] ?? 0);
                 $roiPct = (float) ($adv['ROI'] ?? 0);

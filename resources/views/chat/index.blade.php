@@ -21,6 +21,36 @@
             display: flex;
             flex-direction: column;
         }
+        .slack-nav { position: relative; }
+        .slack-nav__ws { display: flex; align-items: center; gap: 10px; }
+        .slack-nav__ws-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .slack-iconbtn {
+            border: 0; background: transparent; color: inherit; width: 34px; height: 34px;
+            display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 6px; padding: 0; flex-shrink: 0; cursor: pointer;
+        }
+        .slack-iconbtn:hover { background: rgba(255,255,255,.14); }
+        .slack-menu-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.45); z-index: 40; }
+        .slack-menu {
+            position: absolute; top: 0; left: 0; bottom: 0; width: min(280px, 85%);
+            background: #2b0a2c; color: #e6dbe6; z-index: 41;
+            display: flex; flex-direction: column; box-shadow: 4px 0 18px rgba(0,0,0,.35);
+        }
+        .slack-menu[hidden], .slack-menu-backdrop[hidden] { display: none; }
+        .slack-menu__head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 16px 12px; font-weight: 800; font-size: 17px; color: #fff;
+            border-bottom: 1px solid rgba(255,255,255,.08);
+        }
+        .slack-menu__body { flex: 1; overflow: auto; padding: 8px 0 16px; }
+        .slack-menu__sec {
+            padding: 12px 16px 4px; font-size: 11px; font-weight: 800;
+            letter-spacing: .05em; text-transform: uppercase; color: #ab9bab;
+        }
+        .slack-menu__body a {
+            display: block; padding: 8px 16px; color: #e6dbe6; text-decoration: none; font-size: 14px;
+        }
+        .slack-menu__body a:hover { background: rgba(0,0,0,.25); color: #fff; }
         .slack-nav__ws {
             padding: 14px 16px 12px;
             border-bottom: 1px solid rgba(255,255,255,.08);
@@ -404,7 +434,44 @@
 @section('content')
     <div class="slack" id="slackApp">
         <aside class="slack-nav">
-            <div class="slack-nav__ws">5Core Chat</div>
+            <div class="slack-nav__ws">
+                <button type="button" class="slack-iconbtn" id="slackMenuBtn" aria-label="Open menu" aria-haspopup="true" aria-expanded="false" title="Menu">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <span class="slack-nav__ws-title">5Core Chat</span>
+                <button type="button" class="slack-iconbtn" id="slackCloseBtn" aria-label="Close chat" title="Close chat">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                </button>
+            </div>
+            <div class="slack-menu-backdrop" id="slackMenuBackdrop" hidden></div>
+            <nav class="slack-menu" id="slackMenu" aria-label="Other pages" hidden>
+                <div class="slack-menu__head">
+                    <span>Menu</span>
+                    <button type="button" class="slack-iconbtn" id="slackMenuClose" aria-label="Close menu">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                    </button>
+                </div>
+                <div class="slack-menu__body">
+                    <a href="{{ url('/') }}">Home</a>
+                    <div class="slack-menu__sec">Tasks</div>
+                    <a href="{{ url('tasks') }}">Tasks Manager</a>
+                    <a href="{{ route('tasks.automated') }}">Tasks Automated</a>
+                    <a href="{{ route('tasks.summary') }}">Tasks Summary</a>
+                    <a href="{{ route('dar.index') }}">Tasks DAR</a>
+                    <a href="{{ route('daily-closeout.index') }}">Daily Closeout</a>
+                    <a href="{{ route('incentives.index') }}">Incentives</a>
+                    <a href="{{ route('announcements.index') }}">Announcement</a>
+                    <a href="{{ route('feedback.index') }}">Feedback</a>
+                    <div class="slack-menu__sec">Workspace</div>
+                    <a href="{{ route('drive.index') }}">5Core Drive</a>
+                    @can('social_media.view')
+                        <a href="{{ route('social-media.dashboard') }}">Social Media</a>
+                    @endcan
+                    <a href="{{ route('all.marketplace.master') }}">Marketplace Dashboard</a>
+                    <a href="{{ route('order.fulfillment') }}">Order Fulfillment</a>
+                    <a href="{{ route('listing.manager') }}">Listing Manager</a>
+                </div>
+            </nav>
             <button type="button" class="slack-install" id="slackInstallBtn">Install 5Core Chat</button>
             <div class="slack-status" id="slackConn">Connected</div>
             <div class="slack-nav__search">
@@ -2250,6 +2317,33 @@
         activeId = 0;
         history.replaceState({ chat: 'inbox' }, '', '/chat');
     }
+    (function () {
+        const menu = document.getElementById('slackMenu');
+        const backdrop = document.getElementById('slackMenuBackdrop');
+        const menuBtn = document.getElementById('slackMenuBtn');
+        function setMenu(open) {
+            menu.hidden = !open;
+            backdrop.hidden = !open;
+            menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        menuBtn.addEventListener('click', function () { setMenu(menu.hidden); });
+        document.getElementById('slackMenuClose').addEventListener('click', function () { setMenu(false); });
+        backdrop.addEventListener('click', function () { setMenu(false); });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !menu.hidden) setMenu(false);
+        });
+        document.getElementById('slackCloseBtn').addEventListener('click', function () {
+            // Leave the chat: back to the page the user came from, otherwise Home.
+            try {
+                const ref = document.referrer ? new URL(document.referrer) : null;
+                if (ref && ref.origin === location.origin && ref.pathname.indexOf('/chat') !== 0) {
+                    location.href = ref.href;
+                    return;
+                }
+            } catch (e) {}
+            location.href = @json(url('/'));
+        });
+    })();
     document.getElementById('slackBackBtn').addEventListener('click', function () {
         if (document.getElementById('slackApp').classList.contains('is-thread')) {
             document.getElementById('slackThreadClose').click();

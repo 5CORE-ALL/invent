@@ -3665,7 +3665,8 @@
                         return `<img 
                         src="${url}" 
                         data-full="${url}" 
-                        class="hover-thumb" 
+                        class="hover-thumb no-img-hover" 
+                        data-no-img-hover="1"
                         onerror="this.onerror=null;this.dataset.full='';this.src='${fallbackSvg}';"
                         style="width:30px;height:30px;border-radius:6px;object-fit:contain;box-shadow:0 1px 4px #0001;cursor: pointer;"
                     >`;
@@ -3947,6 +3948,30 @@
                         const color = days < 120 ? '#b71c1c' : '#111827';
                         return '<span style="display:block;text-align:center;font-weight:700;color:' + color + ';" title="' +
                             String(tip).replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '">' + days + '</span>';
+                    }
+                },
+
+                {
+                    // Monthly Sale = units sold in the last 30 days (same source as the l30 column).
+                    title: "Monthly Sale",
+                    field: "monthly_sale",
+                    headerSort: true,
+                    hozAlign: "center",
+                    headerTooltip: "Monthly Sale = last 30 days sales (L30)",
+                    accessor: function(row) {
+                        const v = parseFloat(row ? row["L30"] : 0);
+                        return Number.isFinite(v) ? v : 0;
+                    },
+                    sorter: function(a, b, aRow, bRow) {
+                        const av = parseFloat((aRow.getData() || {}).L30) || 0;
+                        const bv = parseFloat((bRow.getData() || {}).L30) || 0;
+                        return av - bv;
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        const v = d.L30;
+                        const value = (v === null || v === undefined || v === '') ? 0 : v;
+                        return `<span style="display:block; text-align:center;">${value}</span>`;
                     }
                 },
 
@@ -4735,6 +4760,70 @@
                     }
                 },
                 {
+                    title: "STD PFT%",
+                    field: "std_pft_pct",
+                    minWidth: 68,
+                    width: 74,
+                    headerSort: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "STD PFT% = (Std Price × 0.70 − Ship − LP − 10% promo) ÷ Std Price. Parent row = avg of children.",
+                    accessor: function(row) {
+                        if (!row) return null;
+                        const v = parseFloat(row.std_pft_pct);
+                        return Number.isFinite(v) ? v : null;
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        const v = parseFloat(cell.getValue());
+                        if (!Number.isFinite(v)) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">—</span>';
+                        }
+                        const n = Math.round(v);
+                        // Margin slabs: <0 / <10 red, 10-20 amber, 20-30 green, >30 purple
+                        let col = '#4e0dab';
+                        if (n < 10) col = '#a00211';
+                        else if (n < 20) col = '#ff9c00';
+                        else if (n <= 30) col = '#28a745';
+                        const std = parseFloat(d.std_price);
+                        const tip = 'STD PFT% = (Std × 0.70 − Ship − LP − 10% promo) ÷ Std' +
+                            (Number.isFinite(std) ? ' | Std $' + std.toFixed(2) : '');
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="${tip}">${n}%</span>`;
+                    }
+                },
+                {
+                    title: "STD NROI%",
+                    field: "std_nroi_pct",
+                    minWidth: 68,
+                    width: 74,
+                    headerSort: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "STD NROI% = (Std Price × 0.70 − Ship − LP − 10% promo) ÷ LP. Parent row = avg of children.",
+                    accessor: function(row) {
+                        if (!row) return null;
+                        const v = parseFloat(row.std_nroi_pct);
+                        return Number.isFinite(v) ? v : null;
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        const v = parseFloat(cell.getValue());
+                        if (!Number.isFinite(v)) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">—</span>';
+                        }
+                        const n = Math.round(v);
+                        // Same slabs as Avg NROI: <50 red, 50-100 amber, 100-150 green, >150 pink
+                        let col = '#e83e8c';
+                        if (n < 50) col = '#a00211';
+                        else if (n < 100) col = '#B8860B';
+                        else if (n <= 150) col = '#28a745';
+                        const std = parseFloat(d.std_price);
+                        const tip = 'STD NROI% = (Std × 0.70 − Ship − LP − 10% promo) ÷ LP' +
+                            (Number.isFinite(std) ? ' | Std $' + std.toFixed(2) : '');
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="${tip}">${n}%</span>`;
+                    }
+                },
+                {
                     title: "Total CBM",
                     field: "total_cbm",
                     visible: false,
@@ -5176,6 +5265,8 @@
                     let adSum   = 0, adCnt   = 0;
                     let npftSum = 0, npftCnt = 0;
                     let nroiSum = 0, nroiCnt = 0;
+                    let stdPftSum = 0, stdPftCnt = 0;
+                    let stdNroiSum = 0, stdNroiCnt = 0;
                     let effRoiSum = 0, effRoiCnt = 0;
                     let revSum  = 0, revCnt  = 0;
                     let ratSum  = 0, ratCnt  = 0;
@@ -5212,6 +5303,17 @@
                             const v = parseFloat(np);
                             if (Number.isFinite(v)) { npftSum += v; npftCnt++; }
                         }
+                        const sp = c.std_pft_pct;
+                        if (sp != null && sp !== '') {
+                            const v = parseFloat(sp);
+                            if (Number.isFinite(v)) { stdPftSum += v; stdPftCnt++; }
+                        }
+                        const sn = c.std_nroi_pct;
+                        if (sn != null && sn !== '') {
+                            const v = parseFloat(sn);
+                            if (Number.isFinite(v)) { stdNroiSum += v; stdNroiCnt++; }
+                        }
+
                         let nroiF = NaN;
                         const ni = c.avg_nroi_pct;
                         if (ni != null && ni !== '') {
@@ -5245,6 +5347,8 @@
                     row.avg_ad_pct   = adCnt   ? Math.round(adSum   / adCnt   * 10) / 10 : null;
                     row.avg_npft_pct = npftCnt ? Math.round(npftSum / npftCnt) : null;
                     row.avg_nroi_pct = nroiCnt ? Math.round(nroiSum / nroiCnt) : null;
+                    row.std_pft_pct  = stdPftCnt  ? Math.round(stdPftSum  / stdPftCnt)  : null;
+                    row.std_nroi_pct = stdNroiCnt ? Math.round(stdNroiSum / stdNroiCnt) : null;
                     row.eff_roi_pct  = effRoiCnt ? Math.round(effRoiSum / effRoiCnt) : null;
                     row.reviews      = revCnt  ? Math.round(revSum  / revCnt) : null;
                     row.rating       = ratCnt  ? Math.round(ratSum  / ratCnt  * 10) / 10 : null;
@@ -6845,8 +6949,8 @@
             const FA_COL_GROUP_LABELS = { basic: 'basic', grp1: 'GRP1', grp2: 'GRP2', others: 'Others' };
             const FA_COL_GROUPS = {
                 basic: ['Image', 'Parent', 'SKU', 'alert', 'mfrg_supplier', 'Category', 'stage', 'exec'],
-                grp1: ['INV', 'L30', 'ov_dil', 'return_rate', 'days_cover', 'msl', 'to_order', 'two_order_qty', 'order_given', 'readyToShipQty', 'transit', 'MOQ', 'moq_days', 'nr', 'date_apprvl', 'TAT'],
-                grp2: ['CP', 'LP', 'cbm', 'total_cbm', 'avg_nroi_pct', 'avg_npft_pct', 'mfrg_order_date', 'r2s_amount', 'r2s_new_photo'],
+                grp1: ['INV', 'L30', 'ov_dil', 'return_rate', 'days_cover', 'monthly_sale', 'msl', 'to_order', 'two_order_qty', 'order_given', 'readyToShipQty', 'transit', 'MOQ', 'moq_days', 'nr', 'date_apprvl', 'TAT'],
+                grp2: ['CP', 'LP', 'cbm', 'total_cbm', 'avg_nroi_pct', 'avg_npft_pct', 'std_pft_pct', 'std_nroi_pct', 'mfrg_order_date', 'r2s_amount', 'r2s_new_photo'],
                 others: [],
             };
             function faClassifyColumn(field) {

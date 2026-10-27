@@ -194,6 +194,27 @@
             margin-bottom: 6px;
         }
 
+        /* Clickable column label = sort toggle */
+        .pm-sort-label {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .pm-sort-label .pm-sort-arrow {
+            font-size: 9px;
+            opacity: 0.55;
+        }
+        .pm-sort-label:hover .pm-sort-arrow,
+        .pm-sort-label.is-active .pm-sort-arrow {
+            opacity: 1;
+        }
+        .pm-sort-label.is-active {
+            text-decoration: underline;
+        }
+
         .pm-status-filter-wrap {
             position: relative;
             width: 100%;
@@ -1728,6 +1749,78 @@
             // Store current filter values globally to preserve them across data reloads
             let currentFilterValues = {};
 
+            // Header sort state: dir 1 = ascending, -1 = descending; col null = default order
+            let currentSort = { col: null, dir: 1 };
+
+            function pmRawFieldValue(item, field) {
+                if (item[field] !== undefined && item[field] !== null) return item[field];
+                let values = item.Values;
+                if (typeof values === 'string') {
+                    try { values = JSON.parse(values); } catch (e) { values = null; }
+                }
+                if (values && values[field] !== undefined && values[field] !== null) return values[field];
+                return null;
+            }
+
+            // Returns a number, a lowercase string, or null (missing -> always sorted last)
+            function pmSortValue(item, colName) {
+                const field = getFieldNameFromColumn(colName);
+                const numericCols = ['Inventory', 'OV L30', 'CP$', 'LP', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP',
+                    'Label QTY', 'WT ACT', 'WT DECL', 'Length', 'Width', 'Height', 'CBM', 'UPC'];
+
+                if (colName === 'DIL') {
+                    const inv = parseFloat(item.shopify_inv);
+                    const l30 = parseFloat(item.shopify_quantity);
+                    if (!Number.isFinite(inv) || inv === 0 || !Number.isFinite(l30)) return null;
+                    return (l30 / inv) * 100;
+                }
+                if (colName === 'Images' || colName === 'Image') {
+                    return pmRawFieldValue(item, 'image_path') ? 1 : 0;
+                }
+                if (colName === 'Verified') {
+                    const v = item.verified_data !== undefined ? item.verified_data : pmRawFieldValue(item, 'verified_data');
+                    return (v === 1 || v === true || v === '1') ? 1 : 0;
+                }
+
+                let value = pmRawFieldValue(item, field);
+                if (['frght', 'cbm'].includes(field)) {
+                    const resolved = resolveItemDimFreight(item);
+                    if (resolved) value = field === 'frght' ? resolved.frght : resolved.cbm;
+                }
+                if (value === null || value === undefined || String(value).trim() === '') return null;
+
+                if (numericCols.includes(colName)) {
+                    const n = parseFloat(String(value).replace(/,/g, ''));
+                    return Number.isFinite(n) ? n : null;
+                }
+                return normalizeForTextSearch(String(value)).toLowerCase();
+            }
+
+            function pmSortItems(items) {
+                if (!currentSort.col) return items;
+                const col = currentSort.col;
+                const dir = currentSort.dir;
+                const keyed = items.map((item, idx) => ({ item, idx, key: pmSortValue(item, col) }));
+                keyed.sort((a, b) => {
+                    const am = a.key === null, bm = b.key === null;
+                    if (am && bm) return a.idx - b.idx;
+                    if (am) return 1;   // missing values always last
+                    if (bm) return -1;
+                    let cmp;
+                    if (typeof a.key === 'number' && typeof b.key === 'number') cmp = a.key - b.key;
+                    else cmp = String(a.key).localeCompare(String(b.key), undefined, { numeric: true, sensitivity: 'base' });
+                    return cmp !== 0 ? cmp * dir : a.idx - b.idx;
+                });
+                return keyed.map(k => k.item);
+            }
+
+            function toggleHeaderSort(colName) {
+                if (currentSort.col !== colName) currentSort = { col: colName, dir: 1 };
+                else if (currentSort.dir === 1) currentSort = { col: colName, dir: -1 };
+                else currentSort = { col: null, dir: 1 };
+                applyFilters(); // re-filters and re-renders (renderTable applies the sort and rebuilds the header)
+            }
+
             /** NBSP + collapsed whitespace so SKU/parent search matches DB (e.g. Excel/import double spaces, \u00a0). */
             function normalizeForTextSearch(s) {
                 if (s == null || s === '') {
@@ -2036,6 +2129,9 @@
 
                     displayItems = combinedItems;
                 }
+
+                // Header sort (stable; selected rows below still float to the top)
+                displayItems = pmSortItems(displayItems);
 
                 // Sort selected items first
                 if (selectionMode) {
@@ -3269,10 +3365,59 @@
                     if (!hiddenColumns.includes(colName)) {
                         const th = document.createElement('th');
 
-                        // Plain label only (no header count badges, filters, or search)
+                        // Header = clickable sort label + (where supported) a filter control
                         const headerLabelMap = { 'Inventory': 'Inv', 'Verified': 'Ver', 'OV L30': 'L30', 'Images': 'Img', 'FRGHT': 'FRG' };
                         const headerTitleMap = { 'FRGHT': 'Freight' };
-                        th.textContent = headerLabelMap[colName] || colName;
+                        const labelText = headerLabelMap[colName] || colName;
+                        const sortable = !['Action', 'Url'].includes(colName);
+                        const sortActive = currentSort.col === colName;
+                        const sortArrow = sortActive ? (currentSort.dir === 1 ? '▲' : '▼') : '⇅';
+                        const labelHtml = sortable
+                            ? `<div class="pm-sort-label${sortActive ? ' is-active' : ''}" data-sort-col="${escapeHtml(colName)}" role="button" tabindex="0" title="Click to sort">
+                                    <span>${escapeHtml(labelText)}</span><span class="pm-sort-arrow" aria-hidden="true">${sortArrow}</span>
+                               </div>`
+                            : `<div>${escapeHtml(labelText)}</div>`;
+                        const filterId = `filter${colName.replace(/\s+/g, '').replace(/[()]/g, '')}`;
+                        const savedFilterValue = existingFilterValues && existingFilterValues[colName] ? existingFilterValues[colName] : 'all';
+
+                        if (colName === 'STATUS') {
+                            th.className = 'pm-status-col';
+                            th.innerHTML = `
+                                ${labelHtml}
+                                <div class="pm-status-filter-wrap">
+                                    <button type="button" class="pm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox">
+                                        <span class="pm-status-filter-trigger-label">${savedFilterValue === 'all' ? 'All' : (pmStatusFilterLabels()[savedFilterValue] || savedFilterValue)}</span>
+                                        <span class="pm-status-filter-caret" aria-hidden="true" style="font-size:9px;opacity:0.85;">▼</span>
+                                    </button>
+                                    <input type="hidden" id="${filterId}" class="missing-data-filter pm-status-filter-hidden" data-column="${colName}" value="${escapeHtml(savedFilterValue)}">
+                                    <div class="pm-status-filter-menu" role="listbox">
+                                        <button type="button" class="pm-status-filter-item" data-value="all" role="option"><span class="pm-status-filter-check" aria-hidden="true">✓</span><span>All</span></button>
+                                        <button type="button" class="pm-status-filter-item" data-value="missing" role="option"><span class="pm-status-filter-item-spacer"></span><span>Missing</span></button>
+                                        <button type="button" class="pm-status-filter-item" data-value="active" role="option"><span class="pm-status-marble pm-status-marble--active"></span><span>Active</span></button>
+                                        <button type="button" class="pm-status-filter-item" data-value="inactive" role="option"><span class="pm-status-marble pm-status-marble--inactive"></span><span>Inactive</span></button>
+                                        <button type="button" class="pm-status-filter-item" data-value="DC" role="option"><span class="pm-status-marble pm-status-marble--dc"></span><span>DC</span></button>
+                                        <button type="button" class="pm-status-filter-item" data-value="upcoming" role="option"><span class="pm-status-marble pm-status-marble--upcoming"></span><span>Coming</span></button>
+                                        <button type="button" class="pm-status-filter-item" data-value="2BDC" role="option"><span class="pm-status-marble pm-status-marble--2bdc"></span><span>2BDC</span></button>
+                                    </div>
+                                </div>`;
+                        } else if (colName === 'Inventory') {
+                            th.innerHTML = `
+                                ${labelHtml}
+                                <select id="${filterId}" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="${colName}">
+                                    <option value="all" ${savedFilterValue === 'all' ? 'selected' : ''}>All</option>
+                                    <option value="0" ${savedFilterValue === '0' ? 'selected' : ''}>0</option>
+                                </select>`;
+                        } else if (['Parent', 'SKU', 'DIL', 'Verified', 'Action', 'Url'].includes(colName)) {
+                            // Parent/SKU are searched from the toolbar; the rest have no "missing" filter.
+                            th.innerHTML = labelHtml;
+                        } else {
+                            th.innerHTML = `
+                                ${labelHtml}
+                                <select id="${filterId}" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="${colName}">
+                                    <option value="all" ${savedFilterValue === 'all' ? 'selected' : ''}>All</option>
+                                    <option value="missing" ${savedFilterValue === 'missing' ? 'selected' : ''}>Missing</option>
+                                </select>`;
+                        }
                         if (headerTitleMap[colName]) th.title = headerTitleMap[colName];
 
                         if (colName === "MOQ") {
@@ -4700,6 +4845,19 @@
                         updateFilterStyling(e.target);
                         applyFilters();
                     }
+                });
+
+                // Header sort: click (or Enter/Space) on a column label
+                document.addEventListener('click', function (e) {
+                    const sortEl = e.target.closest ? e.target.closest('.pm-sort-label') : null;
+                    if (sortEl) toggleHeaderSort(sortEl.getAttribute('data-sort-col'));
+                });
+                document.addEventListener('keydown', function (e) {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    const sortEl = e.target.closest ? e.target.closest('.pm-sort-label') : null;
+                    if (!sortEl) return;
+                    e.preventDefault();
+                    toggleHeaderSort(sortEl.getAttribute('data-sort-col'));
                 });
 
                 document.addEventListener('click', function (e) {
