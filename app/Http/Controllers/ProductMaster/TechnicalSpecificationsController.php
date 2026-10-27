@@ -469,9 +469,11 @@ class TechnicalSpecificationsController extends Controller
     private function specValue(array $specs, string $name): string
     {
         $want = $this->specKey($name);
+        // A SKU can hold the same specification twice ("Magnet Grade" blank from an eBay pull and
+        // "MAGNET GRADE" typed in); the one with a value wins, as in the edit form.
         foreach ($specs as $row) {
-            if ($this->specKey((string) ($row['key'] ?? '')) === $want) {
-                return (string) ($row['value'] ?? '');
+            if ($this->specKey((string) ($row['key'] ?? '')) === $want && trim((string) ($row['value'] ?? '')) !== '') {
+                return (string) $row['value'];
             }
         }
 

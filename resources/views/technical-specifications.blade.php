@@ -1182,6 +1182,17 @@
                 return null;
             }
 
+            // First non-blank saved specification whose name is the same as `name` (case, spaces, punctuation and synonyms ignored).
+            function savedSpecValue(row, name) {
+                const want = specIdentity(name);
+                const specs = row.description_v2_specifications || [];
+                for (let i = 0; i < specs.length; i++) {
+                    const v = String(specs[i].value || '').trim();
+                    if (v !== '' && specIdentity(specs[i].key) === want) return String(specs[i].value);
+                }
+                return '';
+            }
+
             function stampAspectFields(row) {
                 const values = row.ebay_values || {};
                 row.ebay_values = values;
@@ -1189,6 +1200,11 @@
                     const required = rowRequiresAspect(row, name);
                     const auto = required ? autofillValue(row, name) : null;
                     if (auto !== null) values[name] = auto;
+                    // Same lookup as the edit form: a value saved under another spelling of the name still counts.
+                    if (required && auto === null && !String(values[name] || '').trim()) {
+                        const found = savedSpecValue(row, name);
+                        if (found !== '') values[name] = found;
+                    }
                     row[aspectKey(name)] = required ? (values[name] || '') : '';
                 });
             }
@@ -1275,7 +1291,7 @@
                     const byKey = {};
                     specs.forEach(function (s) {
                         const k = String(s.key || '').trim().toLowerCase();
-                        if (k) byKey[k] = String(s.value || '');
+                        if (k && (byKey[k] === undefined || byKey[k] === '')) byKey[k] = String(s.value || '');
                     });
                     const patch = {
                         technical_specifications: text,
@@ -1286,7 +1302,7 @@
                     ebayAspectNames.forEach(function (name) {
                         const auto = autofillValue(data, name);
                         const value = rowRequiresAspect(data, name)
-                            ? (auto !== null ? auto : (byKey[String(name).toLowerCase()] || ''))
+                            ? (auto !== null ? auto : (byKey[String(name).toLowerCase()] || savedSpecValue({ description_v2_specifications: specs }, name)))
                             : '';
                         patch[aspectKey(name)] = value;
                         if (rowRequiresAspect(data, name)) patch.ebay_values[name] = value;
