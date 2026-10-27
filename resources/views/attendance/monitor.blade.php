@@ -164,12 +164,15 @@
                 @forelse($timeline['rows'] as $row)
                     <div class="tl-row {{ $row['is_live'] ? 'is-live' : '' }}" data-user-id="{{ $row['user_id'] }}" data-name="{{ strtolower($row['name'].' '.$row['email']) }}">
                         <div class="tl-row-head">
+                            <span class="d-inline-flex align-items-center" style="min-width:0;flex-shrink:0">
                             <a href="{{ $row['detail_url'] }}" class="tl-name" title="{{ $row['name'] }}">
                                 @if($row['is_live'])
                                     <span class="tl-live-dot {{ $row['live_state'] === 'idle' ? 'idle' : ($row['live_state'] === 'break' ? 'break' : '') }}"></span>
                                 @endif
                                 {{ $row['name'] }}
                             </a>
+                            @include('attendance.partials.fraud-alert', ['alert' => $row['fraud_alert'] ?? null, 'href' => $row['detail_url']])
+                            </span>
                             <div class="tl-summary">
                                 <span class="item worked"><strong>{{ $row['stats']['worked_label'] }}</strong> <span>Worked</span></span>
                                 <span class="item idle"><strong>{{ $row['stats']['idle_label'] }}</strong> <span>Idle</span></span>

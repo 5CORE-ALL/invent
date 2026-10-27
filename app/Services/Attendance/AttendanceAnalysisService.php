@@ -72,9 +72,7 @@ class AttendanceAnalysisService
         }
 
         if ($policy && $firstIn) {
-            $expected = Carbon::parse($firstIn->toDateString().' '.Carbon::parse($policy->expected_start)->format('H:i:s'))
-                ->addMinutes($policy->grace_minutes);
-            if (Carbon::parse($firstIn)->gt($expected)) {
+            if (Carbon::parse($firstIn)->gt($policy->lateAfter(Carbon::parse($firstIn)))) {
                 return 'late';
             }
         }

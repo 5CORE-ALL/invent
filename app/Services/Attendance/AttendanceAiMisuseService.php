@@ -5,12 +5,15 @@ namespace App\Services\Attendance;
 use App\Models\AttendanceAiFlag;
 use App\Models\AttendanceDailySummary;
 use App\Models\AttendancePolicy;
+use App\Models\AttendanceScreenshot;
 use App\Models\AttendanceSession;
 use App\Models\User;
 use App\Support\OpenAiRequest;
+use App\Support\ScreenshotHash;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class AttendanceAiMisuseService
 {
@@ -30,6 +33,8 @@ class AttendanceAiMisuseService
         $flags = array_merge($flags, $this->checkSessionPatterns($user, $date, $policy));
 
         $flags = array_merge($flags, $this->checkUnproductiveApps($user, $date));
+
+        $flags = array_merge($flags, $this->checkFraud($user, $date));
 
         if ($useAi && count($flags) > 0) {
             $aiFlag = $this->runAiAssessment($user, $date, $summary, $flags);
@@ -66,8 +71,9 @@ class AttendanceAiMisuseService
             return [];
         }
 
-        $expected = Carbon::parse($date.' '.Carbon::parse($policy->expected_start)->format('H:i:s'))
-            ->addMinutes($policy->grace_minutes);
+        // Compared in the policy's own timezone (see AttendancePolicy::lateAfter), not as a bare
+        // clock time against the server's Pacific time.
+        $expected = $policy->lateAfter($summary->first_clock_in);
 
         if ($summary->first_clock_in->lte($expected)) {
             return [];
@@ -82,8 +88,9 @@ class AttendanceAiMisuseService
             'title' => 'Late clock-in detected',
             'description' => "Employee clocked in {$lateMinutes} minutes after the allowed start time.",
             'evidence' => [
-                'expected_by' => $expected->toDateTimeString(),
-                'actual_clock_in' => $summary->first_clock_in->toDateTimeString(),
+                'policy_timezone' => $policy->policyTimezone(),
+                'expected_by' => $expected->toDateTimeString().' '.$policy->policyTimezone(),
+                'actual_clock_in' => $summary->first_clock_in->copy()->timezone($policy->policyTimezone())->toDateTimeString().' '.$policy->policyTimezone(),
                 'late_minutes' => $lateMinutes,
             ],
             'source' => 'rules',
@@ -271,6 +278,513 @@ class AttendanceAiMisuseService
     }
 
     /**
+     * Fraud checks only (no daily summary rebuild, no TeamLogger call, no AI), cheap enough for the
+     * hourly checkup. Returns the flags raised or refreshed for that day.
+     *
+     * @return AttendanceAiFlag[]
+     */
+    public function checkupUserDay(User $user, string $date): array
+    {
+        return $this->checkFraud($user, $date);
+    }
+
+    /**
+     * @return AttendanceAiFlag[]
+     */
+    private function checkFraud(User $user, string $date): array
+    {
+        return array_merge(
+            $this->checkFakedActivity($user, $date),
+            $this->checkCaptureAndSessionIntegrity($user, $date),
+        );
+    }
+
+    /**
+     * Other ways time can be inflated or monitoring dodged: a session that never ends, screen capture
+     * silently blocked while "working", or one account used from several machines.
+     *
+     * @return AttendanceAiFlag[]
+     */
+    private function checkCaptureAndSessionIntegrity(User $user, string $date): array
+    {
+        $cfg = (array) config('attendance.checkup', []);
+        $flags = [];
+
+        $sessions = AttendanceSession::query()
+            ->where('user_id', $user->id)
+            ->whereDate('started_at', $date)
+            ->get();
+
+        $marathonHours = (float) ($cfg['marathon_hours'] ?? 14);
+        $minRatio = (float) ($cfg['min_screenshot_ratio'] ?? 0.4);
+        $shotInterval = max(30, (int) config('attendance.screenshot_interval_seconds', 120));
+
+        foreach ($sessions as $session) {
+            $end = $session->ended_at ?? now();
+            $wallHours = max(0, $session->started_at->diffInSeconds($end)) / 3600;
+
+            if ($wallHours >= $marathonHours && (int) $session->total_break_seconds < 3600) {
+                $flags[] = $this->upsertFlag($user, [
+                    'attendance_session_id' => $session->id,
+                    'flag_date' => $date,
+                    'flag_type' => 'marathon_session',
+                    'severity' => $wallHours >= $marathonHours + 6 ? 'high' : 'medium',
+                    'title' => 'Session ran '.round($wallHours, 1).'h with almost no break',
+                    'description' => 'One unbroken session of '.round($wallHours, 1).'h. The machine may have been left running or the person never clocked out, which inflates hours.',
+                    'evidence' => [
+                        'session_id' => $session->id,
+                        'wall_hours' => round($wallHours, 2),
+                        'break_seconds' => (int) $session->total_break_seconds,
+                    ],
+                    'source' => 'rules',
+                ]);
+            }
+
+            if (config('attendance.screenshots_enabled', true)) {
+                $expected = intdiv((int) $session->total_active_seconds, $shotInterval);
+                if ($expected >= 20) {
+                    $actual = AttendanceScreenshot::query()->where('attendance_session_id', $session->id)->count();
+                    if ($actual < $expected * $minRatio) {
+                        $flags[] = $this->upsertFlag($user, [
+                            'attendance_session_id' => $session->id,
+                            'flag_date' => $date,
+                            'flag_type' => 'no_screenshots',
+                            'severity' => $actual < $expected * 0.1 ? 'high' : 'medium',
+                            'title' => 'Screen capture missing while counted active',
+                            'description' => "Only {$actual} screenshots for about {$expected} expected. Screen capture may be blocked, denied or tampered with.",
+                            'evidence' => [
+                                'session_id' => $session->id,
+                                'screenshots' => $actual,
+                                'expected' => $expected,
+                            ],
+                            'source' => 'rules',
+                        ]);
+                    }
+                }
+            }
+        }
+
+        $windowDays = max(1, (int) ($cfg['multi_device_days'] ?? 7));
+        $minDevices = max(2, (int) ($cfg['multi_device_min'] ?? 3));
+        $deviceCount = AttendanceSession::query()
+            ->where('user_id', $user->id)
+            ->whereNotNull('attendance_device_id')
+            ->whereDate('started_at', '<=', $date)
+            ->whereDate('started_at', '>', Carbon::parse($date)->subDays($windowDays)->toDateString())
+            ->distinct()
+            ->count('attendance_device_id');
+
+        // This signal spans several days, so a person's review of it covers the whole window
+        // instead of being re-raised under tomorrow's date.
+        $alreadyTriaged = AttendanceAiFlag::query()
+            ->where('user_id', $user->id)
+            ->where('flag_type', 'multi_device')
+            ->where('status', '!=', 'open')
+            ->whereDate('flag_date', '>', Carbon::parse($date)->subDays($windowDays)->toDateString())
+            ->exists();
+
+        if ($deviceCount >= $minDevices && $sessions->isNotEmpty() && ! $alreadyTriaged) {
+            $flags[] = $this->upsertFlag($user, [
+                'flag_date' => $date,
+                'flag_type' => 'multi_device',
+                'severity' => $deviceCount > $minDevices ? 'medium' : 'low',
+                'title' => "Account used from {$deviceCount} machines in {$windowDays} days",
+                'description' => "{$deviceCount} different computers clocked in on this account within {$windowDays} days — possible account sharing or someone else working under this login.",
+                'evidence' => ['distinct_devices' => $deviceCount, 'window_days' => $windowDays],
+                'source' => 'rules',
+            ]);
+        }
+
+        return $flags;
+    }
+
+    /**
+     * Detects "active" time that is probably produced by a mouse jiggler, auto-clicker, keep-awake
+     * tool or remote control rather than a person: the existing idle rules cannot see this because
+     * such a machine never goes idle.
+     *
+     * @return AttendanceAiFlag[]
+     */
+    private function checkFakedActivity(User $user, string $date): array
+    {
+        $sessions = AttendanceSession::query()
+            ->where('user_id', $user->id)
+            ->whereDate('started_at', $date)
+            ->with('activityLogs')
+            ->get();
+
+        $flags = [];
+        foreach ($sessions as $session) {
+            $flags = array_merge(
+                $flags,
+                $this->checkInputSimulation($user, $date, $session),
+                $this->checkStaticScreens($user, $date, $session),
+                $this->checkSuspiciousSoftware($user, $date, $session),
+                $this->checkReportedTotals($user, $date, $session),
+                $this->checkSecondScreenMedia($user, $date, $session),
+            );
+        }
+
+        return $flags;
+    }
+
+    /**
+     * Movies / social media / games running on a 2nd or 3rd monitor while the person moves the mouse
+     * and types on the monitor that looks busy. The agent reports, per heartbeat, how many displays
+     * there are and which entertainment windows are visible (on any screen); here the time those
+     * windows were present is measured against the time spent working on a multi-monitor setup.
+     *
+     * @return AttendanceAiFlag[]
+     */
+    private function checkSecondScreenMedia(User $user, string $date, AttendanceSession $session): array
+    {
+        if (! AttendanceService::secondScreenColumnsExist()) {
+            return [];
+        }
+
+        $cfg = (array) config('attendance.second_screen', []);
+        $interval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
+
+        // Only time counted as working, on machines that really had 2+ monitors.
+        $multi = $session->activityLogs
+            ->where('source', 'desktop')
+            ->where('activity_state', 'working')
+            ->filter(fn ($log) => (int) $log->display_count >= 2);
+
+        $multiMinutes = ($multi->count() * $interval) / 60;
+        if ($multiMinutes < (int) ($cfg['min_multi_screen_minutes'] ?? 20)) {
+            return [];
+        }
+
+        $hits = $multi->filter(fn ($log) => ! empty($log->background_media));
+        $hitMinutes = (int) round(($hits->count() * $interval) / 60);
+        $motionMinutes = (int) round(($hits->where('background_motion', true)->count() * $interval) / 60);
+        $share = round(100 * $hits->count() / $multi->count(), 1);
+
+        if ($hitMinutes < (int) ($cfg['min_minutes'] ?? 15) || $share < (float) ($cfg['min_share_percent'] ?? 15)) {
+            return [];
+        }
+
+        // Minutes per window title (titles are stored as a JSON list per heartbeat).
+        $byTitle = [];
+        foreach ($hits as $log) {
+            $titles = json_decode((string) $log->background_media, true);
+            foreach (is_array($titles) ? $titles : [] as $title) {
+                $title = trim((string) $title);
+                if ($title !== '') {
+                    $byTitle[$title] = ($byTitle[$title] ?? 0) + 1;
+                }
+            }
+        }
+        arsort($byTitle);
+        $topTitles = [];
+        foreach (array_slice($byTitle, 0, 5, true) as $title => $count) {
+            $topTitles[$title] = (int) round(($count * $interval) / 60);
+        }
+
+        $highMotion = (int) ($cfg['high_motion_minutes'] ?? 45);
+        $lowMotion = (int) ($cfg['low_motion_minutes'] ?? 5);
+        $severity = $motionMinutes >= $highMotion
+            ? 'high'
+            : ($motionMinutes < $lowMotion ? 'low' : 'medium');
+
+        $names = implode('; ', array_map(
+            fn ($title, $min) => "\"{$title}\" (~{$min} min)",
+            array_keys($topTitles),
+            $topTitles,
+        ));
+
+        return [$this->upsertFlag($user, [
+            'attendance_session_id' => $session->id,
+            'flag_date' => $date,
+            'flag_type' => 'second_screen_media',
+            'severity' => $severity,
+            'title' => 'Entertainment / social media on another screen while working',
+            'description' => "On a multi-monitor setup, entertainment or social windows were open for ~{$hitMinutes} min "
+                ."({$share}% of ".round($multiMinutes).' min working on 2+ screens)'
+                .($motionMinutes > 0 ? "; their content was visibly changing (video playing) for ~{$motionMinutes} min" : '; the content looked static')
+                .". Windows: {$names}. Screenshots show all screens side by side — review them to confirm.",
+            'evidence' => [
+                'session_id' => $session->id,
+                'multi_screen_minutes' => round($multiMinutes),
+                'entertainment_minutes' => $hitMinutes,
+                'share_percent' => $share,
+                'motion_minutes' => $motionMinutes,
+                'windows' => $topTitles,
+            ],
+            'source' => 'rules',
+        ])];
+    }
+
+    /**
+     * @return AttendanceAiFlag[]
+     */
+    private function checkInputSimulation(User $user, string $date, AttendanceSession $session): array
+    {
+        $cfg = (array) config('attendance.simulation', []);
+        $interval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
+
+        $logs = $session->activityLogs
+            ->where('source', 'desktop')
+            ->where('activity_state', '!=', 'break')
+            ->sortBy('recorded_at')
+            ->values();
+
+        $hours = ($logs->count() * $interval) / 3600;
+        if ($hours < (float) ($cfg['min_hours'] ?? 2)) {
+            return [];
+        }
+
+        $idleShare = round(100 * $logs->where('activity_state', 'idle')->count() / $logs->count(), 2);
+        $maxOsIdle = (int) $logs->max('idle_seconds');
+        $lowIdle = $idleShare < (float) ($cfg['min_idle_share_percent'] ?? 2);
+
+        // Longest unbroken stretch on the same app + window while counted as working.
+        $run = 0;
+        $longestRun = 0;
+        $runTitle = null;
+        $longestTitle = null;
+        foreach ($logs as $log) {
+            $key = strtolower(trim((string) ($log->app_name ?: $log->process_name).'|'.(string) $log->window_title));
+            if ($key !== '|' && $log->activity_state === 'working' && $key === $runTitle) {
+                $run++;
+            } else {
+                $run = ($key !== '|' && $log->activity_state === 'working') ? 1 : 0;
+                $runTitle = $run > 0 ? $key : null;
+            }
+            if ($run > $longestRun) {
+                $longestRun = $run;
+                $longestTitle = $runTitle;
+            }
+        }
+        $staticTitleMinutes = (int) round(($longestRun * $interval) / 60);
+        $staticTitle = $staticTitleMinutes >= (int) ($cfg['static_title_minutes'] ?? 90);
+
+        // Real keyboard / click counts. Only heartbeats where the agent's input hook was verified
+        // working are judged, so old agents, or a Mac without Accessibility permission, are never
+        // mistaken for "typed nothing".
+        $tracked = $logs->where('input_tracked', true)->where('activity_state', 'working');
+        $trackedHours = ($tracked->count() * $interval) / 3600;
+        $keystrokes = (int) $tracked->sum('keystroke_count');
+        $clicks = (int) $tracked->sum('mouse_click_count');
+        $inputsPerHour = $trackedHours > 0 ? round(($keystrokes + $clicks) / $trackedHours, 1) : null;
+        $noRealInput = $trackedHours >= (float) ($cfg['min_hours'] ?? 2)
+            && $inputsPerHour < (float) ($cfg['min_inputs_per_hour'] ?? 30);
+
+        if (! $lowIdle && ! $noRealInput) {
+            return [];
+        }
+
+        $signals = [];
+        if ($lowIdle) {
+            $signals[] = "only {$idleShare}% of ".round($hours, 1).'h of heartbeats were idle (OS idle never reached the idle threshold)';
+        }
+        if ($noRealInput) {
+            $signals[] = "{$keystrokes} keystrokes and {$clicks} clicks in ".round($trackedHours, 1)."h of 'working' time ({$inputsPerHour} inputs/hour)";
+        }
+        if ($staticTitle) {
+            $signals[] = "same window for {$staticTitleMinutes} min";
+        }
+
+        return [$this->upsertFlag($user, [
+            'attendance_session_id' => $session->id,
+            'flag_date' => $date,
+            'flag_type' => 'input_simulation',
+            'severity' => count($signals) >= 2 ? 'high' : 'medium',
+            'title' => 'Activity looks machine-generated',
+            'description' => 'Counted as active for '.round($hours, 1).'h but: '.implode('; ', $signals)
+                .'. A mouse jiggler, auto-clicker, keep-awake tool or remote control can cause this — review screenshots.',
+            'evidence' => [
+                'session_id' => $session->id,
+                'hours_sampled' => round($hours, 2),
+                'idle_share_percent' => $idleShare,
+                'max_os_idle_seconds' => $maxOsIdle,
+                'longest_same_window_minutes' => $staticTitleMinutes,
+                'longest_same_window' => $longestTitle,
+                'input_tracked_hours' => round($trackedHours, 2),
+                'keystrokes' => $keystrokes,
+                'mouse_clicks' => $clicks,
+                'inputs_per_hour' => $inputsPerHour,
+            ],
+            'source' => 'rules',
+        ])];
+    }
+
+    /**
+     * @return AttendanceAiFlag[]
+     */
+    private function checkStaticScreens(User $user, string $date, AttendanceSession $session): array
+    {
+        if (! ScreenshotHash::columnExists()) {
+            return [];
+        }
+
+        $cfg = (array) config('attendance.simulation', []);
+        $maxDistance = (int) ($cfg['static_hash_distance'] ?? 4);
+        $minMinutes = (int) ($cfg['static_screen_minutes'] ?? 30);
+        $idleThreshold = (int) config('attendance.idle_threshold_seconds', 120);
+
+        $shots = AttendanceScreenshot::query()
+            ->where('attendance_session_id', $session->id)
+            ->orderBy('captured_at')
+            ->limit(600)
+            ->get();
+
+        if ($shots->count() < 3) {
+            return [];
+        }
+
+        $disk = Storage::disk((string) config('attendance.screenshot_disk', 'attendance'));
+        foreach ($shots as $shot) {
+            if ($shot->phash || ! $shot->storage_path) {
+                continue;
+            }
+            try {
+                if ($disk->exists($shot->storage_path)) {
+                    $hash = ScreenshotHash::fromBinary((string) $disk->get($shot->storage_path));
+                    if ($hash) {
+                        $shot->update(['phash' => $hash]);
+                    }
+                }
+            } catch (\Throwable) {
+                // unreadable image: skip it
+            }
+        }
+
+        // Longest run of consecutive near-identical screenshots taken while the agent said "working".
+        $best = ['minutes' => 0, 'from' => null, 'to' => null, 'shots' => 0];
+        $start = null;
+        $prev = null;
+        $count = 0;
+        foreach ($shots as $shot) {
+            $counted = $shot->phash && (int) $shot->idle_seconds < $idleThreshold;
+            if ($counted && $prev && $prev->phash && ScreenshotHash::distance($prev->phash, $shot->phash) <= $maxDistance) {
+                $count++;
+            } else {
+                $start = $counted ? $shot : null;
+                $count = $counted ? 1 : 0;
+            }
+            $prev = $counted ? $shot : null;
+
+            if ($start && $count > 1) {
+                $minutes = (int) round($start->captured_at->diffInSeconds($shot->captured_at) / 60);
+                if ($minutes > $best['minutes']) {
+                    $best = ['minutes' => $minutes, 'from' => $start->captured_at, 'to' => $shot->captured_at, 'shots' => $count];
+                }
+            }
+        }
+
+        if ($best['minutes'] < $minMinutes) {
+            return [];
+        }
+
+        return [$this->upsertFlag($user, [
+            'attendance_session_id' => $session->id,
+            'flag_date' => $date,
+            'flag_type' => 'static_screen',
+            'severity' => $best['minutes'] >= $minMinutes * 3 ? 'high' : 'medium',
+            'title' => 'Screen did not change for '.$best['minutes'].' min while counted active',
+            'description' => "{$best['shots']} consecutive screenshots between ".$best['from']->format('H:i').' and '.$best['to']->format('H:i')
+                .' are visually identical although the agent reported activity.',
+            'evidence' => [
+                'session_id' => $session->id,
+                'unchanged_minutes' => $best['minutes'],
+                'screenshots' => $best['shots'],
+                'from' => $best['from']->toDateTimeString(),
+                'to' => $best['to']->toDateTimeString(),
+            ],
+            'source' => 'rules',
+        ])];
+    }
+
+    /**
+     * @return AttendanceAiFlag[]
+     */
+    private function checkSuspiciousSoftware(User $user, string $date, AttendanceSession $session): array
+    {
+        if (! AttendanceService::flaggedProcessesColumnExists()) {
+            return [];
+        }
+
+        $hits = [];
+        $samples = 0;
+        foreach ($session->activityLogs as $log) {
+            if (! $log->flagged_processes) {
+                continue;
+            }
+            $samples++;
+            foreach (explode(',', (string) $log->flagged_processes) as $name) {
+                $name = strtolower(trim($name));
+                if ($name !== '') {
+                    $hits[$name] = ($hits[$name] ?? 0) + 1;
+                }
+            }
+        }
+
+        if ($samples < 3) {
+            return [];
+        }
+
+        arsort($hits);
+        $interval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
+        $totalLogs = max(1, $session->activityLogs->count());
+        $share = round(100 * $samples / $totalLogs);
+
+        return [$this->upsertFlag($user, [
+            'attendance_session_id' => $session->id,
+            'flag_date' => $date,
+            'flag_type' => 'suspicious_software',
+            'severity' => $share >= 50 ? 'high' : 'medium',
+            'title' => 'Remote-control or auto-input software running',
+            'description' => 'Running during '.$share.'% of the session (~'.round(($samples * $interval) / 60).' min): '
+                .implode(', ', array_keys(array_slice($hits, 0, 5, true))).'. Confirm whether this was approved IT support.',
+            'evidence' => ['session_id' => $session->id, 'processes' => $hits, 'samples' => $samples],
+            'source' => 'rules',
+        ])];
+    }
+
+    /**
+     * Detection only (totals are not altered): the agent's own counter claims more active time
+     * than the server's heartbeats can account for.
+     *
+     * @return AttendanceAiFlag[]
+     */
+    private function checkReportedTotals(User $user, string $date, AttendanceSession $session): array
+    {
+        $tolerance = (float) config('attendance.simulation.totals_tolerance', 1.25);
+        $interval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
+        $active = (int) $session->total_active_seconds;
+        $covered = (int) $session->heartbeat_count * $interval;
+
+        if ($active < 3600 || $covered <= 0 || $active <= ($covered * $tolerance) + 300) {
+            return [];
+        }
+
+        $ratio = round($active / $covered, 2);
+
+        return [$this->upsertFlag($user, [
+            'attendance_session_id' => $session->id,
+            'flag_date' => $date,
+            'flag_type' => 'totals_mismatch',
+            'severity' => $ratio >= 1.6 ? 'medium' : 'low',
+            'title' => 'Reported active time exceeds heartbeat coverage',
+            'description' => sprintf(
+                'Agent counted %.1fh active but the server only received heartbeats covering %.1fh (x%s). Network drops or a modified agent can cause this.',
+                $active / 3600,
+                $covered / 3600,
+                $ratio
+            ),
+            'evidence' => [
+                'session_id' => $session->id,
+                'active_seconds' => $active,
+                'heartbeat_covered_seconds' => $covered,
+                'ratio' => $ratio,
+            ],
+            'source' => 'rules',
+        ])];
+    }
+
+    /**
      * @param  AttendanceAiFlag[]  $existingFlags
      */
     private function runAiAssessment(User $user, string $date, AttendanceDailySummary $summary, array $existingFlags): ?AttendanceAiFlag
@@ -378,15 +892,36 @@ class AttendanceAiMisuseService
      */
     private function upsertFlag(User $user, array $data): AttendanceAiFlag
     {
-        return AttendanceAiFlag::updateOrCreate(
-            [
-                'user_id' => $user->id,
-                'flag_date' => $data['flag_date'] ?? null,
-                'flag_type' => $data['flag_type'],
-                'attendance_session_id' => $data['attendance_session_id'] ?? null,
-            ],
-            array_merge($data, ['status' => 'open'])
-        );
+        $query = AttendanceAiFlag::query()
+            ->where('user_id', $user->id)
+            ->where('flag_type', $data['flag_type'])
+            ->where('attendance_session_id', $data['attendance_session_id'] ?? null);
+
+        // Compare by calendar date so the lookup is identical whatever the engine stores for the cast.
+        if (! empty($data['flag_date'])) {
+            $query->whereDate('flag_date', $data['flag_date']);
+        } else {
+            $query->whereNull('flag_date');
+        }
+
+        $flag = $query->orderBy('id')->first() ?? new AttendanceAiFlag([
+            'user_id' => $user->id,
+            'flag_date' => $data['flag_date'] ?? null,
+            'flag_type' => $data['flag_type'],
+            'attendance_session_id' => $data['attendance_session_id'] ?? null,
+        ]);
+
+        // A flag a person already reviewed or dismissed must stay closed when the analysis is
+        // re-run (the checkup runs hourly); only its evidence is refreshed.
+        if ($flag->exists && $flag->status !== 'open') {
+            $flag->fill(array_diff_key($data, ['status' => true]))->save();
+
+            return $flag;
+        }
+
+        $flag->fill(array_merge($data, ['status' => 'open']))->save();
+
+        return $flag;
     }
 
     public function analyzeAllForDate(string $date): int

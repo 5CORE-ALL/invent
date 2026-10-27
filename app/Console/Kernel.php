@@ -3779,6 +3779,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Fraud checkup: re-checks today + yesterday so the red triangle beside an executive's
+        // name appears within the hour (no AI / TeamLogger calls, so it is cheap).
+        $schedule->command('attendance:checkup')
+            ->hourlyAt(10)
+            ->name('attendance-fraud-checkup')
+            ->withoutOverlapping(50)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
       
         // Must run inline in schedule:run — runInBackground() would sit on the 1.3M+ default
         // queue and never start mm-* workers, so marketplace orders never reach Shopify.

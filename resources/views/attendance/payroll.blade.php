@@ -139,7 +139,7 @@
                     <tbody>
                         @forelse($rows as $row)
                         <tr data-user-id="{{ $row['user_id'] }}">
-                            <td class="name-col">{{ $row['name'] }}</td>
+                            <td class="name-col">{{ $row['name'] }}@include('attendance.partials.fraud-alert', ['alert' => $row['fraud_alert'] ?? null, 'href' => route('attendance.employee', $row['user_id'])])</td>
                             <td class="time-col worked-cell">{{ $row['worked_label'] }}</td>
                             <td class="input-col input-col-manual">
                                 <input type="text" class="form-control form-control-sm line-manual"

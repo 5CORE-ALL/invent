@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('agent', {
     onForcedSignOut: (cb) => {
         ipcRenderer.on('forced-sign-out', (_e, data) => cb(data));
     },
+    onAutoClockOut: (cb) => {
+        ipcRenderer.on('auto-clock-out', (_e, data) => cb(data));
+    },
     onLoginStatus: (cb) => {
         ipcRenderer.on('login-status', (_e, data) => cb(data));
     },

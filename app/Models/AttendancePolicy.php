@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,7 @@ class AttendancePolicy extends Model
 {
     protected $fillable = [
         'name',
+        'timezone',
         'designation_id',
         'expected_start',
         'expected_end',
@@ -34,6 +36,31 @@ class AttendancePolicy extends Model
     public function designation(): BelongsTo
     {
         return $this->belongsTo(Designation::class);
+    }
+
+    /**
+     * Timezone that `expected_start` is written in. Falls back to the company policy timezone
+     * (India by default) so a clock-in recorded in the server's Pacific time is never compared with
+     * a bare "09:30" as if it were Pacific time.
+     */
+    public function policyTimezone(): string
+    {
+        $tz = (string) ($this->timezone ?? '');
+
+        return $tz !== '' ? $tz : (string) config('attendance.policy_timezone', 'Asia/Kolkata');
+    }
+
+    /**
+     * Latest on-time clock-in (start time + grace) for the working day in which `$firstClockIn`
+     * falls, evaluated in the policy timezone.
+     */
+    public function lateAfter(Carbon $firstClockIn): Carbon
+    {
+        $tz = $this->policyTimezone();
+        $localDate = $firstClockIn->copy()->timezone($tz)->toDateString();
+
+        return Carbon::parse($localDate.' '.Carbon::parse($this->expected_start)->format('H:i:s'), $tz)
+            ->addMinutes((int) $this->grace_minutes);
     }
 
     public static function resolveForUser(User $user): ?self

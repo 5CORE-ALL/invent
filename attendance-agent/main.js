@@ -1,6 +1,6 @@
 const {
     app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor,
-    desktopCapturer, screen, ipcMain, shell,
+    desktopCapturer, screen, ipcMain, shell, systemPreferences, Notification,
 } = require('electron');
 const path = require('path');
 const os = require('os');
@@ -328,6 +328,263 @@ async function getActiveWindow() {
             return { title: lastKnownWindow.title || '', process: lastKnownWindow.process || '' };
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Keystroke / mouse-click counting.
+// Only COUNTS are kept: which key was pressed is never read, stored or sent. Counting runs only
+// while a session is active (clocked in and not on break), and the counters are reset after
+// every heartbeat. Lets the server tell real work (typing, clicking) from a mouse jiggler or other
+// input simulator that keeps the OS "not idle" without any real interaction.
+// ---------------------------------------------------------------------------------------------
+let uIOhook = null;
+let inputHookRunning = false;
+let inputHookAlive = false;           // set once ANY input event has been seen, proves the hook works
+let keystrokeCount = 0;
+let mouseClickCount = 0;
+const keysDown = new Set();
+
+function loadInputHook() {
+    if (uIOhook) return uIOhook;
+    try {
+        ({ uIOhook } = require('uiohook-napi'));
+    } catch (e) {
+        console.error('input hook unavailable', e.message);
+        uIOhook = null;
+    }
+    return uIOhook;
+}
+
+function sessionCountsInput() {
+    return !!lastSessionMeta && lastSessionMeta.status === 'active' && activityState !== 'break';
+}
+
+function startInputCounting() {
+    if (inputHookRunning) return;
+    const hook = loadInputHook();
+    if (!hook) return;
+
+    // macOS only delivers global input events to apps trusted for Accessibility. Ask once; if it
+    // is not granted the counts are simply not reported (input_tracked stays false).
+    if (process.platform === 'darwin') {
+        try {
+            const alreadyAsked = store.get('inputPermissionPrompted') === true;
+            const trusted = systemPreferences.isTrustedAccessibilityClient(!alreadyAsked);
+            store.set('inputPermissionPrompted', true);
+            if (!trusted) return;
+        } catch {
+            return;
+        }
+    }
+
+    try {
+        hook.removeAllListeners();
+        hook.on('keydown', (e) => {
+            inputHookAlive = true;
+            if (!sessionCountsInput()) return;
+            // A held key auto-repeats keydown; count each physical press once.
+            if (keysDown.has(e.keycode)) return;
+            if (keysDown.size > 30) keysDown.clear();
+            keysDown.add(e.keycode);
+            keystrokeCount += 1;
+        });
+        hook.on('keyup', (e) => { keysDown.delete(e.keycode); });
+        hook.on('mousedown', () => {
+            inputHookAlive = true;
+            if (sessionCountsInput()) mouseClickCount += 1;
+        });
+        hook.on('mousemove', () => { inputHookAlive = true; });
+        hook.on('wheel', () => { inputHookAlive = true; });
+        hook.start();
+        inputHookRunning = true;
+    } catch (e) {
+        console.error('input hook failed to start', e.message);
+        inputHookRunning = false;
+    }
+}
+
+function stopInputCounting() {
+    if (!uIOhook || !inputHookRunning) return;
+    try {
+        uIOhook.stop();
+    } catch (e) {
+        console.error('input hook failed to stop', e.message);
+    }
+    uIOhook.removeAllListeners();
+    inputHookRunning = false;
+    inputHookAlive = false;
+    keysDown.clear();
+    keystrokeCount = 0;
+    mouseClickCount = 0;
+}
+
+// Counts since the last heartbeat, or {} when counting is not available on this machine.
+function takeInputCounts() {
+    if (!inputHookRunning || !inputHookAlive) return {};
+    const counts = {
+        input_tracked: true,
+        keystroke_count: Math.min(9999, keystrokeCount),
+        mouse_click_count: Math.min(9999, mouseClickCount),
+    };
+    keystrokeCount = 0;
+    mouseClickCount = 0;
+    return counts;
+}
+
+// A heartbeat that did not reach the server must not lose its counts.
+function restoreInputCounts(counts) {
+    if (!counts || !counts.input_tracked) return;
+    keystrokeCount += counts.keystroke_count || 0;
+    mouseClickCount += counts.mouse_click_count || 0;
+}
+
+// Remote-control tools and mouse/keyboard simulators are matched by name fragment. The list comes
+// from the server (config.suspicious_process_patterns) so it can change without a new agent build.
+let flaggedProcesses = [];
+let lastProcessScanAt = 0;
+const PROCESS_SCAN_INTERVAL_MS = 60 * 1000;
+
+async function scanFlaggedProcesses() {
+    const patterns = (config.suspicious_process_patterns || [])
+        .map((p) => String(p).toLowerCase().trim())
+        .filter(Boolean);
+    if (!patterns.length) {
+        flaggedProcesses = [];
+        return;
+    }
+    if (Date.now() - lastProcessScanAt < PROCESS_SCAN_INTERVAL_MS) return;
+    lastProcessScanAt = Date.now();
+
+    try {
+        let names = [];
+        if (process.platform === 'win32') {
+            const { stdout } = await execFileAsync('tasklist', ['/FO', 'CSV', '/NH'], { timeout: 8000, windowsHide: true });
+            names = String(stdout || '').split(/\r?\n/)
+                .map((line) => (line.match(/^"([^"]+)"/) || [])[1])
+                .filter(Boolean);
+        } else if (process.platform === 'darwin') {
+            const { stdout } = await execFileAsync('ps', ['-axco', 'comm'], { timeout: 8000 });
+            names = String(stdout || '').split('\n').slice(1);
+        } else {
+            return;
+        }
+
+        const found = new Set();
+        for (const raw of names) {
+            const name = String(raw).trim().toLowerCase().replace(/\.exe$/, '');
+            if (name && patterns.some((p) => name.includes(p))) found.add(name);
+        }
+        flaggedProcesses = Array.from(found).slice(0, 10);
+    } catch (e) {
+        // Scanning is best effort and must never affect time tracking.
+        console.error('process scan failed', e.message);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Second-screen entertainment check.
+// The focused window only describes ONE monitor. Someone can keep a movie / social feed running
+// on a 2nd or 3rd screen while moving the mouse and switching windows on the main one, so the
+// work window looks busy. On machines with 2+ displays, the visible window TITLES across all
+// screens are matched against an entertainment list that comes from the server
+// (config.entertainment_window_patterns). Only titles that match are reported (never the
+// full window list), and a matched window's picture is compared between scans to tell video that
+// is actually playing from a page that is merely open.
+// ---------------------------------------------------------------------------------------------
+let secondScreen = { displayCount: 1, titles: [], motion: false };
+let lastSecondScreenScanAt = 0;
+const SECOND_SCREEN_SCAN_INTERVAL_MS = 30 * 1000;
+const windowSignatures = new Map();   // desktopCapturer window id -> coarse luminance grid
+
+function windowSignature(thumbnail) {
+    const { width, height } = thumbnail.getSize();
+    if (!width || !height) return null;
+    const bmp = thumbnail.toBitmap();
+    const cols = 16;
+    const rows = 9;
+    const sig = new Array(cols * rows);
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const x = Math.min(width - 1, Math.floor(((c + 0.5) * width) / cols));
+            const y = Math.min(height - 1, Math.floor(((r + 0.5) * height) / rows));
+            const i = (y * width + x) * 4;
+            sig[r * cols + c] = (bmp[i] + bmp[i + 1] + bmp[i + 2]) / 3;
+        }
+    }
+    return sig;
+}
+
+function signatureChanged(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i]);
+    return diff / a.length > 4;   // average brightness shift per sample (0-255)
+}
+
+async function scanSecondScreen() {
+    const displayCount = screen.getAllDisplays().length;
+    secondScreen.displayCount = displayCount;
+
+    const patterns = (config.entertainment_window_patterns || [])
+        .map((p) => String(p).toLowerCase().trim())
+        .filter(Boolean);
+    if (displayCount < 2 || !patterns.length) {
+        secondScreen.titles = [];
+        secondScreen.motion = false;
+        windowSignatures.clear();
+        return;
+    }
+    if (Date.now() - lastSecondScreenScanAt < SECOND_SCREEN_SCAN_INTERVAL_MS) return;
+    lastSecondScreenScanAt = Date.now();
+
+    try {
+        const sources = await desktopCapturer.getSources({
+            types: ['window'],
+            thumbnailSize: { width: 64, height: 36 },
+            fetchWindowIcons: false,
+        });
+
+        const focused = String(lastLive?.title || '').trim().toLowerCase();
+        const seen = new Set();
+        const titles = [];
+        let motion = false;
+
+        for (const source of sources) {
+            const title = String(source.name || '').trim();
+            const lower = title.toLowerCase();
+            if (!title || !patterns.some((p) => lower.includes(p))) continue;
+            // The focused window is already judged by the normal app/title analysis.
+            if (lower === focused) continue;
+
+            seen.add(source.id);
+            if (!titles.includes(title) && titles.length < 5) titles.push(title.slice(0, 80));
+
+            if (source.thumbnail && !source.thumbnail.isEmpty()) {
+                const sig = windowSignature(source.thumbnail);
+                if (signatureChanged(windowSignatures.get(source.id), sig)) motion = true;
+                if (sig) windowSignatures.set(source.id, sig);
+            }
+        }
+
+        for (const id of Array.from(windowSignatures.keys())) {
+            if (!seen.has(id)) windowSignatures.delete(id);
+        }
+
+        secondScreen.titles = titles;
+        secondScreen.motion = motion;
+    } catch (e) {
+        // Best effort: window listing can be refused (e.g. no Screen Recording permission).
+        console.error('second screen scan failed', e.message);
+    }
+}
+
+function secondScreenPayload() {
+    const payload = { display_count: Math.min(16, Math.max(1, secondScreen.displayCount || 1)) };
+    if (secondScreen.titles.length) {
+        payload.background_media = secondScreen.titles;
+        payload.background_motion = !!secondScreen.motion;
+    }
+    return payload;
 }
 
 async function pollActiveWindow() {
@@ -660,11 +917,87 @@ function setActivityState(next) {
  * Idle is shown in the main timer UI only — no separate popup window.
  * When system idle exceeds the threshold, mark idle; when activity returns, resume working.
  */
+// ---------------------------------------------------------------------------------------------
+// Auto clock-out after a long stretch without keyboard / mouse input.
+// The SERVER does the clock-out (on the heartbeat that reports the idle time, backdated to the last
+// activity) so it also works if this app misses it; the app warns first and then reflects it.
+// Limits come from the server (config.auto_logout_idle_seconds / auto_logout_warn_seconds).
+// ---------------------------------------------------------------------------------------------
+let autoLogoutWarned = false;
+let autoLogoutRequested = false;
+
+function notifyUser(title, body) {
+    try {
+        if (Notification.isSupported()) new Notification({ title, body }).show();
+    } catch (e) {
+        console.error('notification failed', e.message);
+    }
+}
+
+function watchAutoLogout(systemIdle) {
+    const limit = Number(config.auto_logout_idle_seconds) || 0;
+    if (limit <= 0) {
+        autoLogoutWarned = false;
+        autoLogoutRequested = false;
+        return;
+    }
+    const warnBefore = Math.max(0, Number(config.auto_logout_warn_seconds) || 0);
+
+    if (systemIdle < limit - warnBefore) {
+        autoLogoutWarned = false;
+    } else if (systemIdle < limit && !autoLogoutWarned) {
+        autoLogoutWarned = true;
+        const left = Math.max(1, Math.round(limit - systemIdle));
+        notifyUser(
+            'Still there?',
+            `No activity detected. You will be clocked out in about ${left} seconds. Move the mouse or press a key to stay clocked in.`,
+        );
+    }
+
+    if (systemIdle < limit) {
+        autoLogoutRequested = false;
+    } else if (!autoLogoutRequested) {
+        // Report right away rather than waiting for the next scheduled heartbeat.
+        autoLogoutRequested = true;
+        sendHeartbeat(true).catch(() => {});
+    }
+}
+
+/** The server clocked this user out for inactivity: stop tracking and tell them why. */
+function handleAutoClockOut(data) {
+    const message = data?.message || 'You were clocked out automatically after a period without activity.';
+    lastSessionMeta = null;
+    localStats = { active: 0, idle: 0, break: 0 };
+    store.delete(SAVED_TOTALS_KEY);
+    if (data?.today) {
+        dailyStats = {
+            active: data.today.active_seconds ?? 0,
+            idle: data.today.idle_seconds ?? 0,
+            break: data.today.break_seconds ?? 0,
+            date: data.today.date ?? '',
+            date_label: data.today.date_label ?? '',
+        };
+    }
+    autoLogoutWarned = false;
+    autoLogoutRequested = false;
+    stopTracking();
+    updateTray();
+    updateTrayTooltip('Clocked out (inactive)');
+    pushTodayToRenderer();
+    pushStatsToUi();
+    notifyUser('Clocked out', message);
+    if (win && !win.isDestroyed()) {
+        win.webContents.send('auto-clock-out', { message });
+        win.show();
+    }
+}
+
 function checkIdleState() {
     if (!lastSessionMeta || lastSessionMeta.status !== 'active') return;
     if (activityState === 'break') return;
 
     const systemIdle = powerMonitor.getSystemIdleTime();
+    watchAutoLogout(systemIdle);
     // v1.3+: use idle_threshold only. (idle_prompt_seconds is legacy for old installs.)
     const idleAt = config.idle_threshold_seconds || 30;
 
@@ -796,6 +1129,7 @@ function stopMonitoring() {
     if (screenshotTimer) { clearInterval(screenshotTimer); screenshotTimer = null; }
     if (windowPollTimer) { clearInterval(windowPollTimer); windowPollTimer = null; }
     if (idleCheckTimer) { clearInterval(idleCheckTimer); idleCheckTimer = null; }
+    stopInputCounting();
 }
 
 function stopTracking() {
@@ -819,13 +1153,20 @@ async function sendHeartbeat(force = false) {
     return enqueueApi(async () => {
         heartbeatQueued = false;
         if (!lastSessionMeta || lastSessionMeta.status !== 'active') return;
+        let inputCounts = {};
         try {
             await pollActiveWindow();
+            await scanFlaggedProcesses();
+            await scanSecondScreen();
             const systemIdle = powerMonitor.getSystemIdleTime();
             const idleAt = config.idle_threshold_seconds || 30;
             const isWorking = activityState === 'working' && systemIdle < idleAt;
+            inputCounts = takeInputCounts();
 
             const { data } = await jsonApi(20000).post('/heartbeat', {
+                ...inputCounts,
+                ...secondScreenPayload(),
+                ...(flaggedProcesses.length ? { flagged_processes: flaggedProcesses } : {}),
                 is_active: isWorking,
                 activity_state: activityState,
                 idle_seconds: systemIdle,
@@ -839,6 +1180,10 @@ async function sendHeartbeat(force = false) {
 
             if (data?.force_logout) {
                 forceRemoteSignOut(data.message);
+                return;
+            }
+            if (data?.auto_logout) {
+                handleAutoClockOut(data);
                 return;
             }
             // Clocked out / paused while this heartbeat was in flight.
@@ -861,6 +1206,7 @@ async function sendHeartbeat(force = false) {
             }
             pushStatsToUi();
         } catch (e) {
+            restoreInputCounts(inputCounts);
             if (isAuthFailure(e)) {
                 forceRemoteSignOut(e.response?.data?.message);
                 return;
@@ -976,6 +1322,7 @@ function startTracking() {
     restartScreenshotTimer(liveStreaming ? 1000 : undefined);
     idleCheckTimer = setInterval(checkIdleState, 2000);
     uiTickTimer = setInterval(tickLocalStats, 1000);
+    startInputCounting();
 
     setTimeout(() => { sendHeartbeat(true).catch(() => {}); }, 1500);
     setTimeout(() => { sendScreenshot().catch(() => {}); }, 800);

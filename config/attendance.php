@@ -52,6 +52,16 @@ return [
     'idle_threshold_seconds' => (int) env('ATTENDANCE_IDLE_THRESHOLD', 120),
 
     /*
+    | Auto clock-out for inactivity: when the machine has had no keyboard / mouse input for this many
+    | minutes while clocked in, the session is ended. The end time is backdated to the last real
+    | activity and the trailing idle stretch is not counted. 0 disables it.
+    | The desktop app warns `auto_logout_warn_seconds` before it happens.
+    | Note: a long meeting or video call with no input will also trigger it.
+    */
+    'auto_logout_idle_minutes' => (int) env('ATTENDANCE_AUTO_LOGOUT_IDLE_MINUTES', 10),
+    'auto_logout_warn_seconds' => (int) env('ATTENDANCE_AUTO_LOGOUT_WARN_SECONDS', 60),
+
+    /*
     | Auto-close sessions with no heartbeat for this many minutes.
     */
     'auto_close_minutes' => 30,
@@ -100,6 +110,34 @@ return [
     'live_recording_max_kb' => (int) env('ATTENDANCE_LIVE_RECORDING_MAX_KB', 204800),
 
     /*
+    | Fraud checkup: runs every fraud check on recent days and raises a red triangle beside the
+    | executive's name while there are open (not yet reviewed / dismissed) alerts.
+    */
+    'checkup' => [
+        // Open alerts from the last N days count towards the triangle.
+        'lookback_days' => (int) env('ATTENDANCE_CHECKUP_LOOKBACK_DAYS', 7),
+        // Lowest severity that shows the triangle: low | medium | high. Low alerts stay visible
+        // on the employee page only (e.g. a single network hiccup should not shame anyone).
+        'alert_min_severity' => env('ATTENDANCE_CHECKUP_MIN_SEVERITY', 'medium'),
+        // How many recent days the scheduled run re-checks (today counts as 1).
+        'run_days' => (int) env('ATTENDANCE_CHECKUP_RUN_DAYS', 2),
+        // A single session this long with (almost) no break: machine left running / never clocked out.
+        'marathon_hours' => (float) env('ATTENDANCE_CHECKUP_MARATHON_HOURS', 14),
+        // Fewer screenshots than this share of the expected count: screen capture blocked or disabled.
+        'min_screenshot_ratio' => (float) env('ATTENDANCE_CHECKUP_MIN_SCREENSHOT_RATIO', 0.4),
+        // This many distinct machines used within the window looks like account sharing.
+        'multi_device_days' => (int) env('ATTENDANCE_CHECKUP_MULTI_DEVICE_DAYS', 7),
+        'multi_device_min' => (int) env('ATTENDANCE_CHECKUP_MULTI_DEVICE_MIN', 3),
+    ],
+
+    /*
+    | Timezone that policy start times (e.g. 09:30) are written in. Clock-ins are stored in the
+    | server timezone (Pacific), so lateness is evaluated in this zone instead. A policy can override
+    | it with its own `timezone` column (e.g. Asia/Shanghai for a China team).
+    */
+    'policy_timezone' => env('ATTENDANCE_POLICY_TIMEZONE', 'Asia/Kolkata'),
+
+    /*
     | Team timeline (monitor) defaults.
     */
     'timeline_timezone' => env('ATTENDANCE_TIMELINE_TIMEZONE', 'America/Los_Angeles'),
@@ -111,5 +149,73 @@ return [
     */
     'productive_apps' => ['code', 'excel', 'winword', 'powerpnt', 'figma', 'slack', 'teams', 'chrome', 'msedge', 'firefox'],
     'unproductive_apps' => ['steam', 'spotify', 'netflix', 'discord', 'epicgameslauncher'],
+
+    /*
+    | Process-name fragments (lowercase) of remote-control tools and mouse/keyboard simulators.
+    | The desktop agent scans running processes for these and reports matches in its heartbeat,
+    | so this list can be changed on the server without shipping a new agent build.
+    | Note: IT support may legitimately use remote tools; matches raise a flag for review only.
+    */
+    'suspicious_process_patterns' => [
+        'todesk', 'sunloginclient', 'sunloginremote', 'anydesk', 'teamviewer', 'rustdesk', 'parsecd',
+        'mousejiggler', 'jiggler', 'movemouse', 'mousemover', 'caffeine', 'amphetamine', 'donotsleep',
+        'autohotkey', 'autoclicker', 'tinytask', 'ghostmouse', 'macrorecorder', 'mouseautomation',
+    ],
+
+    /*
+    | Second-screen entertainment detection. On machines with 2+ monitors the agent matches the
+    | visible window titles on ALL screens against `window_patterns` (lowercase fragments; the list
+    | is pushed to agents, so it can change without a new build) and reports only the matches.
+    | A flag is raised when such windows are open while the person is counted as working.
+    | Facebook / Meta are left out on purpose (the ads team uses Ads Manager). YouTube is included,
+    | so a legitimate research tab can be flagged: those alerts are for review and can be dismissed.
+    */
+    'second_screen' => [
+        'window_patterns' => [
+            // Video / streaming
+            'youtube', 'netflix', 'prime video', 'primevideo', 'hotstar', 'jiocinema', 'disney+', 'hulu',
+            'twitch', 'crunchyroll', 'vimeo', 'dailymotion', 'sony liv', 'sonyliv', 'zee5', 'mx player',
+            'bilibili', 'iqiyi', 'youku', 'tencent video', 'hbo max', 'peacock', 'movies & tv',
+            // Players and movie sites
+            'vlc media player', 'kmplayer', 'potplayer', 'mpv', 'full movie', 'watch online', 'moviebox',
+            // Social / short video
+            'instagram', 'tiktok', 'reddit', 'twitter', 'snapchat', 'pinterest',
+            // Games
+            'steam', 'epic games', 'league of legends', 'valorant',
+            // China team (Bilibili, iQIYI, Youku, Tencent Video, Douyin, Weibo, Xiaohongshu)
+            '哔哩哔哩', '爱奇艺', '优酷', '腾讯视频', '抖音', '微博', '小红书',
+        ],
+        // Time on a multi-monitor setup needed before the day can be judged at all.
+        'min_multi_screen_minutes' => (int) env('ATTENDANCE_SECOND_SCREEN_MIN_MULTI_MINUTES', 20),
+        // Flag when entertainment windows were present for at least this many minutes AND this share
+        // of the working time spent on a multi-monitor setup.
+        'min_minutes' => (int) env('ATTENDANCE_SECOND_SCREEN_MIN_MINUTES', 15),
+        'min_share_percent' => (float) env('ATTENDANCE_SECOND_SCREEN_MIN_SHARE', 15),
+        // Minutes of visibly changing content (video playing) that make it high severity.
+        'high_motion_minutes' => (int) env('ATTENDANCE_SECOND_SCREEN_HIGH_MOTION_MINUTES', 45),
+        // Below this many minutes of changing content the windows were probably just left open
+        // (low severity: shown on the employee page, no red triangle by default).
+        'low_motion_minutes' => (int) env('ATTENDANCE_SECOND_SCREEN_LOW_MOTION_MINUTES', 5),
+    ],
+
+    /*
+    | Heuristics used by the daily misuse analysis to detect faked activity.
+    | A session needs at least `min_hours` of heartbeats before it can be judged.
+    */
+    'simulation' => [
+        'min_hours' => (float) env('ATTENDANCE_SIM_MIN_HOURS', 2),
+        // Share of heartbeats that were idle below which a long session looks implausible for a human.
+        'min_idle_share_percent' => (float) env('ATTENDANCE_SIM_MIN_IDLE_PERCENT', 2),
+        // Keystrokes + clicks per "working" hour below which a long session looks like no real work
+        // (only judged where the agent's input hook was verified working).
+        'min_inputs_per_hour' => (float) env('ATTENDANCE_SIM_MIN_INPUTS_PER_HOUR', 30),
+        // Same app + window title for this long while counted as working.
+        'static_title_minutes' => (int) env('ATTENDANCE_SIM_STATIC_TITLE_MINUTES', 90),
+        // Screenshots that look identical (hash distance <= this many bits of 64) count as unchanged.
+        'static_hash_distance' => (int) env('ATTENDANCE_SIM_HASH_DISTANCE', 4),
+        'static_screen_minutes' => (int) env('ATTENDANCE_SIM_STATIC_SCREEN_MINUTES', 30),
+        // Agent-reported active time may exceed heartbeat-covered time by this factor before flagging.
+        'totals_tolerance' => (float) env('ATTENDANCE_SIM_TOTALS_TOLERANCE', 1.25),
+    ],
 
 ];

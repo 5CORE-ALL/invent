@@ -5,6 +5,7 @@ namespace App\Services\Attendance;
 use App\Models\AttendancePayrollPeriodLine;
 use App\Models\AttendancePayrollProfile;
 use App\Models\User;
+use App\Support\AttendanceFraudAlerts;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -40,6 +41,8 @@ class AttendancePayrollService
             ->keyBy('user_id');
 
         $rows = [];
+        // Pay is calculated from these hours, so flag anyone whose hours are under suspicion.
+        $fraudAlerts = AttendanceFraudAlerts::forUsers($userIds);
 
         foreach ($employees as $employee) {
             $stats = $this->timelineService->employeePeriodStats($employee, $from, $to, $timezone);
@@ -62,6 +65,7 @@ class AttendancePayrollService
                 'name' => $employee->name,
                 'email' => $employee->email,
                 'designation' => $employee->designation,
+                'fraud_alert' => $fraudAlerts[$employee->id] ?? null,
                 'worked_seconds' => $workedSeconds,
                 'worked_label' => $this->formatDuration($workedSeconds),
                 'manual_seconds' => $manualSeconds,

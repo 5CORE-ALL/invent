@@ -6,6 +6,7 @@ use App\Models\AttendanceDevice;
 use App\Models\AttendanceScreenshot;
 use App\Models\AttendanceSession;
 use App\Models\User;
+use App\Support\ScreenshotHash;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -26,7 +27,7 @@ class AttendanceScreenshotService
 
         $path = $file->storeAs($base, $name, $disk);
 
-        return AttendanceScreenshot::create([
+        $attributes = [
             'user_id' => $user->id,
             'attendance_session_id' => $session->id,
             'attendance_device_id' => $device?->id,
@@ -37,7 +38,18 @@ class AttendanceScreenshotService
             'app_name' => isset($meta['app_name']) ? mb_substr((string) $meta['app_name'], 0, 200) : null,
             'file_size' => $file->getSize() ?: 0,
             'idle_seconds' => max(0, (int) ($meta['idle_seconds'] ?? 0)),
-        ]);
+        ];
+
+        // Hashing is best effort: it must never make a screenshot upload fail.
+        if (ScreenshotHash::columnExists()) {
+            try {
+                $attributes['phash'] = ScreenshotHash::fromFile($file->getRealPath() ?: '');
+            } catch (\Throwable) {
+                $attributes['phash'] = null;
+            }
+        }
+
+        return AttendanceScreenshot::create($attributes);
     }
 
     public function stream(AttendanceScreenshot $screenshot, string $type = 'full')

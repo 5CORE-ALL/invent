@@ -6,13 +6,12 @@ use App\Models\AttendanceActivityLog;
 use App\Models\AttendanceDailySummary;
 use App\Models\AttendanceSession;
 use App\Models\User;
+use App\Support\AttendanceFraudAlerts;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 class AttendanceTimelineService
 {
-  private const WINDOW_SECONDS = 86400;
-
   public static function defaultTimezone(): string
   {
     return (string) config('attendance.timeline_timezone', 'America/Los_Angeles');
@@ -85,8 +84,10 @@ class AttendanceTimelineService
     $timezone = $timezone ?: self::defaultTimezone();
     $dayReset = $dayReset ?: self::defaultDayReset($timezone);
 
+    // The selected day (honouring "Day reset") is the one real window for sessions, heartbeats,
+    // bars and totals. Previously only the axis labels followed it.
     [$dayStart, $dayEnd] = $this->dayWindow($date, $timezone, $dayReset);
-    [$segStart, $segEnd] = $this->calendarWindow($date, $timezone);
+    [$segStart, $segEnd] = [$dayStart, $dayEnd];
     $userIds = $employees->pluck('id')->all();
 
     if ($userIds === []) {
@@ -98,22 +99,29 @@ class AttendanceTimelineService
 
     $logsByUser = collect();
     if ($sessionIds !== []) {
+      [$logFrom, $logTo] = $this->appTimezoneBounds($segStart, $segEnd);
       $logsByUser = AttendanceActivityLog::query()
         ->whereIn('attendance_session_id', $sessionIds)
-        ->whereBetween('recorded_at', [$segStart, $segEnd])
+        ->where('recorded_at', '>=', $logFrom)
+        ->where('recorded_at', '<', $logTo)
         ->orderBy('recorded_at')
         ->get()
         ->groupBy('user_id');
     }
 
-    $summaries = AttendanceDailySummary::query()
-      ->whereIn('user_id', $userIds)
-      ->whereDate('work_date', $date)
-      ->get()
-      ->keyBy('user_id');
+    // Daily summaries are keyed by the app-timezone calendar date of the session start, so they
+    // only line up with the window in that timezone with a midnight reset.
+    $summaries = $this->summariesUsable($timezone, $dayReset)
+      ? AttendanceDailySummary::query()
+        ->whereIn('user_id', $userIds)
+        ->whereDate('work_date', $date)
+        ->get()
+        ->keyBy('user_id')
+      : collect();
 
     $heartbeatInterval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
     $now = now()->timezone($timezone);
+    $fraudAlerts = AttendanceFraudAlerts::forUsers($userIds);
 
     $rows = [];
     foreach ($employees as $employee) {
@@ -122,7 +130,7 @@ class AttendanceTimelineService
       $activeSession = $userSessions->first(fn (AttendanceSession $s) => $s->isActive());
       $summary = $summaries->get($employee->id);
 
-      $stats = $this->rowStats($userSessions, $summary, $activeSession, $now);
+      $stats = $this->rowStats($userSessions, $summary, $activeSession, $now, $segStart, $segEnd);
 
       $segments = $this->buildDisplaySegments(
         $userSessions,
@@ -141,6 +149,7 @@ class AttendanceTimelineService
         'designation' => $employee->designation,
         'segments' => $segments,
         'stats' => $stats,
+        'fraud_alert' => $fraudAlerts[$employee->id] ?? null,
         'is_live' => (bool) $activeSession,
         'live_state' => $activeSession
           ? ($activeSession->last_activity_state ?? ($activeSession->status === 'paused' ? 'break' : 'working'))
@@ -195,12 +204,17 @@ class AttendanceTimelineService
    */
   private function sessionsInWindow(array $userIds, Carbon $dayStart, Carbon $dayEnd): Collection
   {
+    // Timestamps are stored as naive datetimes in the app timezone. A window expressed in the
+    // viewer's timezone (India, Ohio, China...) must be converted first, otherwise Laravel binds
+    // its wall-clock digits as if they were app-timezone and the wrong sessions are returned.
+    [$fromBound, $toBound] = $this->appTimezoneBounds($dayStart, $dayEnd);
+
     return AttendanceSession::query()
       ->whereIn('user_id', $userIds)
-      ->where('started_at', '<', $dayEnd)
-      ->where(function ($q) use ($dayStart) {
+      ->where('started_at', '<', $toBound)
+      ->where(function ($q) use ($fromBound) {
         $q->whereNull('ended_at')
-          ->orWhere('ended_at', '>', $dayStart);
+          ->orWhere('ended_at', '>', $fromBound);
       })
       ->orderBy('started_at')
       ->get();
@@ -359,12 +373,14 @@ class AttendanceTimelineService
 
     $offset = max(0, $start->getTimestamp() - $dayStart->getTimestamp());
     $duration = max(1, $end->getTimestamp() - $start->getTimestamp());
+    // A day is 23h or 25h across a daylight-saving change; scale to the real window length.
+    $window = max(1, $dayStart->copy()->addDay()->getTimestamp() - $dayStart->getTimestamp());
 
     return [
       'state' => $state,
       'color' => $this->stateColor($state),
-      'start_pct' => round(($offset / self::WINDOW_SECONDS) * 100, 3),
-      'width_pct' => round(($duration / self::WINDOW_SECONDS) * 100, 3),
+      'start_pct' => round(($offset / $window) * 100, 3),
+      'width_pct' => round(($duration / $window) * 100, 3),
       'start_label' => $start->format('h:i A'),
       'end_label' => $end->format('h:i A'),
     ];
@@ -419,16 +435,42 @@ class AttendanceTimelineService
     ?AttendanceDailySummary $summary,
     ?AttendanceSession $activeSession,
     Carbon $now,
+    ?Carbon $windowStart = null,
+    ?Carbon $windowEnd = null,
   ): array {
-    $active = (int) $sessions->sum('total_active_seconds');
-    $idle = (int) $sessions->sum('total_idle_seconds');
-    $break = (int) $sessions->sum(fn (AttendanceSession $s) => (int) ($s->total_break_seconds ?? 0));
+    // With a window (a calendar day on the timeline) only the slice of each session that falls
+    // inside it is counted. Overnight shifts therefore split across the two days instead of
+    // being added in full to both, which is what produced 17-20h "days".
+    $clipped = false;
+    $active = 0;
+    $idle = 0;
+    $break = 0;
 
-    if ($activeSession?->status === 'paused' && $activeSession->paused_at) {
-      $break += max(0, $activeSession->paused_at->diffInSeconds($now));
+    foreach ($sessions as $session) {
+      $share = $this->sessionShareInWindow($session, $windowStart, $windowEnd, $now);
+      if ($share < 1.0) {
+        $clipped = true;
+      }
+
+      $active += (int) round(((int) $session->total_active_seconds) * $share);
+      $idle += (int) round(((int) $session->total_idle_seconds) * $share);
+      $break += (int) round(((int) ($session->total_break_seconds ?? 0)) * $share);
     }
 
-    if ($summary) {
+    if ($activeSession?->status === 'paused' && $activeSession->paused_at) {
+      $pausedFrom = $activeSession->paused_at;
+      if ($windowStart && $windowEnd) {
+        $from = max($pausedFrom->getTimestamp(), $windowStart->getTimestamp());
+        $to = min($now->getTimestamp(), $windowEnd->getTimestamp());
+        $break += max(0, $to - $from);
+      } else {
+        $break += max(0, $pausedFrom->diffInSeconds($now));
+      }
+    }
+
+    // The daily summary holds whole-session totals keyed by start date, so it can only be used as a
+    // floor when nothing was clipped; otherwise it would put the overnight tail back in.
+    if ($summary && ! $clipped) {
       $active = max($active, (int) $summary->active_seconds);
       $idle = max($idle, (int) $summary->idle_seconds);
     }
@@ -450,6 +492,33 @@ class AttendanceTimelineService
       'productivity_score' => $summary?->productivity_score,
       'status' => $summary?->status,
     ];
+  }
+
+  /**
+   * Daily summaries are stored per app-timezone calendar date, so they can only be matched to a
+   * display day when the viewer uses the app timezone with a midnight reset.
+   */
+  private function summariesUsable(string $timezone, string $dayReset): bool
+  {
+    return $timezone === (string) config('app.timezone', 'UTC') && $dayReset === '00:00';
+  }
+
+  /**
+   * Fraction (0..1) of a session's wall-clock span that lies inside the window. 1.0 when no window.
+   */
+  private function sessionShareInWindow(AttendanceSession $session, ?Carbon $windowStart, ?Carbon $windowEnd, Carbon $now): float
+  {
+    if (! $windowStart || ! $windowEnd || ! $session->started_at) {
+      return 1.0;
+    }
+
+    $start = $session->started_at->getTimestamp();
+    $end = ($session->ended_at ?? $now)->getTimestamp();
+    $duration = max(1, $end - $start);
+
+    $overlap = min($end, $windowEnd->getTimestamp()) - max($start, $windowStart->getTimestamp());
+
+    return max(0.0, min(1.0, $overlap / $duration));
   }
 
   private function formatDuration(int $seconds): string
@@ -477,18 +546,27 @@ class AttendanceTimelineService
   /**
    * @return array<string, mixed>
    */
-  public function employeePeriodStats(User $employee, string $from, string $to, ?string $timezone = null): array
+  public function employeePeriodStats(User $employee, string $from, string $to, ?string $timezone = null, ?string $dayReset = null): array
   {
     $timezone = $timezone ?: self::defaultTimezone();
+    $dayReset = $dayReset ?: self::defaultDayReset($timezone);
     $fromDate = Carbon::parse($from, $timezone)->startOfDay();
     $toDate = Carbon::parse($to, $timezone)->startOfDay();
     $now = now()->timezone($timezone);
+
+    // Same model as the per-day rows: one query for the whole range (timezone-converted), then
+    // each day gets only the slice of each session that falls inside its window. The cards at the
+    // top therefore equal the sum of the days below, in any viewer timezone.
+    $rangeStart = $this->dayWindow($fromDate->toDateString(), $timezone, $dayReset)[0];
+    $rangeEnd = $this->dayWindow($toDate->toDateString(), $timezone, $dayReset)[1];
+    $allSessions = $this->sessionsInWindow([$employee->id], $rangeStart, $rangeEnd);
 
     $summaries = AttendanceDailySummary::query()
       ->where('user_id', $employee->id)
       ->whereBetween('work_date', [$fromDate->toDateString(), $toDate->toDateString()])
       ->get()
       ->keyBy(fn (AttendanceDailySummary $s) => $s->work_date->toDateString());
+    $useSummaries = $this->summariesUsable($timezone, $dayReset);
 
     $active = 0;
     $idle = 0;
@@ -500,14 +578,15 @@ class AttendanceTimelineService
     while ($cursor->lte($toDate)) {
       $dateStr = $cursor->toDateString();
       $summary = $summaries->get($dateStr);
+      [$winStart, $winEnd] = $this->dayWindow($dateStr, $timezone, $dayReset);
 
-      $sessions = AttendanceSession::query()
-        ->where('user_id', $employee->id)
-        ->whereDate('started_at', $dateStr)
-        ->get();
+      $sessions = $allSessions->filter(
+        fn (AttendanceSession $s) => $s->started_at->lt($winEnd)
+          && ($s->ended_at === null || $s->ended_at->gt($winStart))
+      )->values();
 
       $activeSession = $sessions->first(fn (AttendanceSession $s) => $s->isActive());
-      $stats = $this->rowStats($sessions, $summary, $activeSession, $now);
+      $stats = $this->rowStats($sessions, $useSummaries ? $summary : null, $activeSession, $now, $winStart, $winEnd);
 
       $active += (int) $stats['worked_seconds'];
       $idle += (int) $stats['idle_seconds'];
@@ -557,9 +636,7 @@ class AttendanceTimelineService
 
     [$dayStart, $dayEnd] = $this->dayWindow($date, $timezone, $dayReset);
 
-    [$segStart, $segEnd] = $this->calendarWindow($date, $timezone);
-
-    $appUsage = $this->aggregateDesktopApps($employee->id, $segStart, $segEnd, 10);
+    $appUsage = $this->aggregateDesktopApps($employee->id, $dayStart, $dayEnd, 10);
 
     return [
       'date' => $date,
@@ -606,18 +683,21 @@ class AttendanceTimelineService
       [$fromDate, $toDate] = [$toDate, $fromDate];
     }
 
-    $rangeStart = $fromDate->copy()->startOfDay();
-    $rangeEnd = $toDate->copy()->endOfDay();
+    $rangeStart = $this->dayWindow($fromDate->toDateString(), $timezone, $dayReset)[0];
+    $rangeEnd = $this->dayWindow($toDate->toDateString(), $timezone, $dayReset)[1];
     $now = now()->timezone($timezone);
     $heartbeatInterval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
+    $useSummaries = $this->summariesUsable($timezone, $dayReset);
 
     $sessions = $this->sessionsInWindow([$employee->id], $rangeStart, $rangeEnd);
     $sessionIds = $sessions->pluck('id')->all();
+    [$logFrom, $logTo] = $this->appTimezoneBounds($rangeStart, $rangeEnd);
     $logs = $sessionIds === []
       ? collect()
       : AttendanceActivityLog::query()
         ->whereIn('attendance_session_id', $sessionIds)
-        ->whereBetween('recorded_at', [$rangeStart, $rangeEnd])
+        ->where('recorded_at', '>=', $logFrom)
+        ->where('recorded_at', '<', $logTo)
         ->orderBy('recorded_at')
         ->get();
 
@@ -634,20 +714,20 @@ class AttendanceTimelineService
     while ($cursor->lte($toDate)) {
       $dateStr = $cursor->toDateString();
       [$dayStart, $dayEnd] = $this->dayWindow($dateStr, $timezone, $dayReset);
-      [$segStart, $segEnd] = $this->calendarWindow($dateStr, $timezone);
+      [$segStart, $segEnd] = [$dayStart, $dayEnd];
 
       $daySessions = $sessions->filter(
         fn (AttendanceSession $s) => $s->started_at->lt($segEnd)
           && ($s->ended_at === null || $s->ended_at->gt($segStart))
       )->values();
       $dayLogs = $logs->filter(
-        fn (AttendanceActivityLog $log) => $log->recorded_at->gte($segStart) && $log->recorded_at->lte($segEnd)
+        fn (AttendanceActivityLog $log) => $log->recorded_at->gte($segStart) && $log->recorded_at->lt($segEnd)
       )->values();
 
       $activeSession = $daySessions->first(fn (AttendanceSession $s) => $s->isActive());
-      $summary = $summaries->get($dateStr);
-      $stats = $this->rowStats($daySessions, $summary, $activeSession, $now);
-      $clock = $this->dayClockTimes($daySessions, $summary, (bool) $activeSession, $timezone);
+      $summary = $useSummaries ? $summaries->get($dateStr) : null;
+      $stats = $this->rowStats($daySessions, $summary, $activeSession, $now, $segStart, $segEnd);
+      $clock = $this->dayClockTimes($daySessions, (bool) $activeSession, $timezone, $segStart, $segEnd);
       $segments = $this->buildDisplaySegments(
         $daySessions,
         $dayLogs,
@@ -689,30 +769,45 @@ class AttendanceTimelineService
    */
   private function dayClockTimes(
     Collection $sessions,
-    ?AttendanceDailySummary $summary,
     bool $isLive,
     string $timezone,
+    Carbon $windowStart,
+    Carbon $windowEnd,
   ): array {
-    $loginAt = $summary?->first_clock_in;
-    $logoutAt = $summary?->last_clock_out;
+    // Derived from the sessions themselves (not the per-start-date daily summary) so the labels
+    // agree with the viewer's timezone and day window. A shift that began before this day (or ends
+    // after it) is marked so overnight workers are not shown a confusing bare "IN 17:49" twice.
+    $loginAt = $sessions->isNotEmpty()
+      ? $sessions->sortBy(fn (AttendanceSession $s) => $s->started_at?->timestamp ?? 0)->first()?->started_at
+      : null;
 
-    if (! $loginAt && $sessions->isNotEmpty()) {
-      $loginAt = $sessions->sortBy(fn (AttendanceSession $s) => $s->started_at?->timestamp ?? 0)->first()?->started_at;
-    }
-
-    if (! $isLive && ! $logoutAt && $sessions->isNotEmpty()) {
+    $logoutAt = null;
+    if (! $isLive && $sessions->isNotEmpty()) {
       $logoutAt = $sessions
         ->filter(fn (AttendanceSession $s) => $s->ended_at !== null)
         ->sortByDesc(fn (AttendanceSession $s) => $s->ended_at?->timestamp ?? 0)
         ->first()?->ended_at;
     }
 
-    return [
-      'login_label' => $loginAt ? $loginAt->timezone($timezone)->format('H:i') : '—',
-      'logout_label' => $isLive
-        ? 'Live'
-        : ($logoutAt ? $logoutAt->timezone($timezone)->format('H:i') : '—'),
-    ];
+    $loginLabel = '—';
+    if ($loginAt) {
+      $loginLabel = $loginAt->copy()->timezone($timezone)->format('H:i');
+      if ($loginAt->lt($windowStart)) {
+        $loginLabel .= ' (prev day)';
+      }
+    }
+
+    $logoutLabel = '—';
+    if ($isLive) {
+      $logoutLabel = 'Live';
+    } elseif ($logoutAt) {
+      $logoutLabel = $logoutAt->copy()->timezone($timezone)->format('H:i');
+      if ($logoutAt->gte($windowEnd)) {
+        $logoutLabel .= ' (next day)';
+      }
+    }
+
+    return ['login_label' => $loginLabel, 'logout_label' => $logoutLabel];
   }
 
   /**
@@ -753,10 +848,11 @@ class AttendanceTimelineService
       }
     }
 
+    [$titleFrom, $titleTo] = $this->appTimezoneBounds($fromAt, $toAt);
     $titleHits = AttendanceActivityLog::query()
       ->where('user_id', $employee->id)
       ->where('source', 'desktop')
-      ->whereBetween('recorded_at', [$fromAt, $toAt])
+      ->whereBetween('recorded_at', [$titleFrom, $titleTo])
       ->whereNotNull('window_title')
       ->where('window_title', '!=', '')
       ->pluck('window_title');
@@ -900,7 +996,7 @@ class AttendanceTimelineService
     $page = max(1, $page);
     $perPage = max(12, min(96, (int) config('attendance.screenshot_page_size', 48)));
 
-    $query = $this->screenshotDayQuery($employee->id, $date, $timezone);
+    $query = $this->screenshotDayQuery($employee->id, $date, $timezone, $dayReset ?: self::defaultDayReset($timezone));
     $total = (clone $query)->count();
 
     $screenshots = $query
@@ -939,9 +1035,10 @@ class AttendanceTimelineService
     ];
   }
 
-  private function screenshotDayQuery(int $userId, string $date, string $timezone)
+  private function screenshotDayQuery(int $userId, string $date, string $timezone, string $dayReset)
   {
-    [$segStart, $segEnd] = $this->calendarWindow($date, $timezone);
+    // Same window as the timeline for that day, so captures match the bars they sit under.
+    [$segStart, $segEnd] = $this->dayWindow($date, $timezone, $dayReset);
     $nowInTz = now()->timezone($timezone);
     $windowEnd = $nowInTz->lt($segEnd) ? $nowInTz : $segEnd;
     [$fromBound, $toBound] = $this->appTimezoneBounds($segStart, $windowEnd);

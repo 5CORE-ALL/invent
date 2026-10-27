@@ -99,6 +99,26 @@
         width: 10px; height: 10px; border-radius: 50%; background: #0d9488;
         box-shadow: 0 0 0 3px rgba(13,148,136,.2); display: inline-block;
     }
+    .fraud-panel.fp-high { border-color: #fca5a5; background: #fef2f2; }
+    .fraud-panel.fp-medium { border-color: #fdba74; background: #fff7ed; }
+    .fraud-panel.fp-low { border-color: #fde68a; background: #fffbeb; }
+    .fp-badge { font-size: .68rem; font-weight: 700; padding: .15rem .5rem; border-radius: 999px; letter-spacing: .02em; }
+    .fp-badge.high { background: #dc2626; color: #fff; }
+    .fp-badge.medium { background: #ea580c; color: #fff; }
+    .fp-badge.low { background: #ca8a04; color: #fff; }
+    .fp-badge.clear { background: #e2e8f0; color: #475569; }
+    .fp-list { display: flex; flex-direction: column; gap: .5rem; }
+    .fp-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; background: #fff; border: 1px solid #e2e8f0; border-left-width: 4px; border-radius: 8px; padding: .55rem .75rem; }
+    .fp-item.high { border-left-color: #dc2626; }
+    .fp-item.medium { border-left-color: #ea580c; }
+    .fp-item.low { border-left-color: #ca8a04; }
+    .fp-item-title { font-weight: 600; font-size: .88rem; color: #0f172a; }
+    .fp-item-detail { font-size: .8rem; color: #475569; margin-top: .15rem; }
+    .fp-item-actions { display: flex; gap: .35rem; flex-shrink: 0; }
+    .fp-sev { font-size: .62rem; font-weight: 700; padding: .1rem .4rem; border-radius: 4px; color: #fff; margin-right: .3rem; }
+    .fp-sev.high { background: #dc2626; }
+    .fp-sev.medium { background: #ea580c; }
+    .fp-sev.low { background: #ca8a04; }
 </style>
 @endsection
 
@@ -123,6 +143,7 @@
                                 <span class="act-live-dot"></span>
                             @endif
                             {{ $employee->name }}
+                            @include('attendance.partials.fraud-alert', ['alert' => $fraud_alert ?? null, 'href' => '#fraudPanel'])
                         </h4>
                         <div class="text-muted small">{{ $employee->email }} · {{ $employee->designation ?? '—' }}</div>
                     </div>
@@ -166,6 +187,58 @@
                         </button>
                     </form>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    @php
+        $fraudReasons = $fraud_detail['reasons'] ?? [];
+        $fraudLevel = $fraud_detail['level'] ?? null;
+    @endphp
+    <div class="row mb-3" id="fraudPanel">
+        <div class="col-12">
+            <div class="act-card p-3 fraud-panel {{ $fraudLevel ? 'fp-'.$fraudLevel : 'fp-clear' }}"
+                 data-checkup-url="{{ route('attendance.checkup', $employee) }}"
+                 data-review-base="{{ url('/attendance/flags') }}">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <h6 class="mb-0 d-flex align-items-center gap-2">
+                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.2 23.2 21.6H0.8z" fill="{{ $fraudLevel ? '#dc2626' : '#94a3b8' }}"/><rect x="11" y="8.6" width="2" height="6.4" rx="1" fill="#fff"/><circle cx="12" cy="17.9" r="1.2" fill="#fff"/></svg>
+                        Fraud checkup
+                        @if($fraudLevel)
+                            <span class="fp-badge {{ $fraudLevel }}">{{ strtoupper($fraudLevel) }} RISK · {{ $fraud_detail['count'] }} open</span>
+                        @else
+                            <span class="fp-badge clear">All clear</span>
+                        @endif
+                    </h6>
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="btnRunCheckup">
+                        <i class="ri-shield-check-line"></i> Run checkup now
+                    </button>
+                </div>
+                @if(empty($fraudReasons))
+                    <p class="text-muted small mb-0">No open fraud alerts in the last {{ $lookback_days }} days. The checkup re-runs every hour and looks for fake activity (mouse jigglers, auto-clickers, remote control), unchanged screens, missing screen captures, endless sessions and shared accounts.</p>
+                @else
+                    <div class="fp-list">
+                        @foreach($fraudReasons as $reason)
+                        <div class="fp-item {{ $reason['severity'] }}" data-flag-ids="{{ implode(',', $reason['flag_ids']) }}">
+                            <div class="fp-item-main">
+                                <div class="fp-item-title">
+                                    <span class="fp-sev {{ $reason['severity'] }}">{{ strtoupper($reason['severity']) }}</span>
+                                    {{ $reason['label'] }}
+                                    <span class="text-muted fw-normal small">· {{ implode(', ', $reason['dates']) }}</span>
+                                </div>
+                                <div class="fp-item-detail">{{ $reason['detail'] }}</div>
+                            </div>
+                            @if($can_review_flags)
+                            <div class="fp-item-actions">
+                                <button type="button" class="btn btn-sm btn-outline-secondary fp-review" data-status="reviewed" title="Looked into it: confirmed / handled">Reviewed</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary fp-review" data-status="dismissed" title="False alarm: hide this alert">Dismiss</button>
+                            </div>
+                            @endif
+                        </div>
+                        @endforeach
+                    </div>
+                    <p class="text-muted small mt-2 mb-0">Alerts from the last {{ $lookback_days }} days. Reviewed or dismissed alerts no longer show the red triangle.</p>
+                @endif
             </div>
         </div>
     </div>
@@ -302,6 +375,53 @@
 
     document.getElementById('btnRefresh')?.addEventListener('click', function() {
         location.reload();
+    });
+
+    // --- Fraud checkup panel -------------------------------------------------------------
+    const fraudPanel = document.querySelector('.fraud-panel');
+    const postJson = (url, body) => fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+        body: JSON.stringify(body || {}),
+    });
+
+    document.getElementById('btnRunCheckup')?.addEventListener('click', async function() {
+        const btn = this;
+        btn.disabled = true;
+        const original = btn.innerHTML;
+        btn.innerHTML = 'Checking…';
+        try {
+            const r = await postJson(fraudPanel.dataset.checkupUrl, {});
+            if (!r.ok) throw new Error('Checkup failed (' + r.status + ')');
+            location.reload();
+        } catch (e) {
+            btn.disabled = false;
+            btn.innerHTML = original;
+            alert(e.message || 'Checkup failed');
+        }
+    });
+
+    fraudPanel?.querySelectorAll('.fp-review').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const status = this.dataset.status;
+            const item = this.closest('.fp-item');
+            const note = window.prompt(status === 'dismissed'
+                ? 'Why is this a false alarm? (optional note)'
+                : 'What did you find / do? (optional note)', '');
+            if (note === null) return;
+            const ids = (item.dataset.flagIds || '').split(',').filter(Boolean);
+            item.querySelectorAll('button').forEach(b => b.disabled = true);
+            try {
+                for (const id of ids) {
+                    const r = await postJson(fraudPanel.dataset.reviewBase + '/' + id + '/review', { status, review_notes: note || null });
+                    if (!r.ok) throw new Error('Could not save review (' + r.status + ')');
+                }
+                location.reload();
+            } catch (e) {
+                item.querySelectorAll('button').forEach(b => b.disabled = false);
+                alert(e.message || 'Could not save review');
+            }
+        });
     });
 
     const periodSelect = document.getElementById('periodSelect');

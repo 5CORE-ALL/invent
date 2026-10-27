@@ -9,9 +9,11 @@ use App\Models\AttendancePolicy;
 use App\Models\User;
 use App\Services\Attendance\AttendanceAiMisuseService;
 use App\Services\Attendance\AttendanceAnalysisService;
+use App\Services\Attendance\AttendanceCheckupService;
 use App\Services\Attendance\AttendanceService;
 use App\Services\Attendance\AttendanceTimelineService;
 use App\Support\AttendanceAccess;
+use App\Support\AttendanceFraudAlerts;
 use App\Support\AttendanceMacBuilds;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -25,6 +27,7 @@ class AttendanceMonitorController extends Controller
         private readonly AttendanceAnalysisService $analysisService,
         private readonly AttendanceAiMisuseService $aiMisuseService,
         private readonly AttendanceTimelineService $timelineService,
+        private readonly AttendanceCheckupService $checkupService,
     ) {
         $this->middleware('auth');
     }
@@ -77,7 +80,7 @@ class AttendanceMonitorController extends Controller
 
         $date = $to;
 
-        $period = $this->timelineService->employeePeriodStats($user, $from, $to, $timezone);
+        $period = $this->timelineService->employeePeriodStats($user, $from, $to, $timezone, $dayReset);
         $day = $this->timelineService->employeeDayDetail($user, $date, $timezone, $dayReset);
         $activityDays = $this->timelineService->employeePeriodDayRows($user, $from, $to, $timezone, $dayReset);
         $desktopApps = $this->timelineService->employeePeriodDesktopApps($user, $from, $to, $timezone);
@@ -86,7 +89,14 @@ class AttendanceMonitorController extends Controller
 
         $periodOptions = $this->employeePeriodOptions($timezone);
 
+        // Fraud checkup: every open finding (even low severity, which does not raise the triangle).
+        $fraudDetail = AttendanceFraudAlerts::detailForUser((int) $user->id);
+
         return view('attendance.employee-detail', [
+            'fraud_alert' => AttendanceFraudAlerts::forUsers([(int) $user->id])[(int) $user->id] ?? null,
+            'fraud_detail' => $fraudDetail,
+            'lookback_days' => (int) config('attendance.checkup.lookback_days', 7),
+            'can_review_flags' => AttendanceAccess::canAdmin(),
             'title' => $user->name.' — Activity',
             'employee' => $user,
             'day' => $day,
@@ -415,6 +425,25 @@ class AttendanceMonitorController extends Controller
             'risk_score' => $result['risk_score'],
             'flags_count' => count($result['flags']),
             'summary' => $result['summary'],
+        ]);
+    }
+
+    /**
+     * Run the fraud checkup for one executive right now (instead of waiting for the hourly run).
+     */
+    public function checkupUser(Request $request, User $user): JsonResponse
+    {
+        abort_unless(AttendanceAccess::canAdmin() || AttendanceAccess::canViewUser($user->id), 403);
+
+        $days = max(1, min(14, (int) $request->input('days', config('attendance.checkup.lookback_days', 7))));
+        $failed = 0;
+        $raised = $this->checkupService->runForUser($user, $days, $failed);
+
+        return response()->json([
+            'ok' => $failed === 0,
+            'flags_raised' => $raised,
+            'failed' => $failed,
+            'alert' => $this->checkupService->alertFor($user),
         ]);
     }
 

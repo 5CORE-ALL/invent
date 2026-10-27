@@ -166,6 +166,68 @@ class AttendanceService
         return $closed;
     }
 
+    /** Seconds without input after which a clocked-in user is clocked out (0 = off). */
+    public static function autoLogoutIdleSeconds(): int
+    {
+        return max(0, (int) config('attendance.auto_logout_idle_minutes', 10)) * 60;
+    }
+
+    /**
+     * Clock the user out because the machine saw no keyboard / mouse input for too long.
+     *
+     * The session ends at the last real activity (now - idle time) rather than now, and the idle
+     * seconds that were counted after that point are removed, so the idle wait is neither shown as
+     * working time nor as session time.
+     *
+     * @param  array<string, mixed>  $reported  heartbeat payload (may carry the agent's own totals)
+     * @return array<string, mixed>
+     */
+    public function autoLogoutIdle(User $user, AttendanceSession $session, int $systemIdle, array $reported = []): array
+    {
+        $this->reconcileReportedTotals($session, $reported);
+        $session = $session->fresh() ?: $session;
+
+        $idleThreshold = max(1, (int) config('attendance.idle_threshold_seconds', 30));
+        $endedAt = now()->subSeconds($systemIdle);
+        if ($session->started_at && $endedAt->lt($session->started_at)) {
+            $endedAt = $session->started_at->copy();
+        }
+
+        // Idle is only counted once the OS idle time passes the threshold, so that is the part to remove.
+        $trim = min((int) $session->total_idle_seconds, max(0, $systemIdle - $idleThreshold));
+        $minutes = (int) round($systemIdle / 60);
+
+        $session->update([
+            'ended_at' => $endedAt,
+            'status' => 'completed',
+            'last_activity_state' => 'idle',
+            'total_idle_seconds' => (int) $session->total_idle_seconds - $trim,
+            'notes' => trim(((string) $session->notes !== '' ? $session->notes."\n" : '')
+                ."Auto clock-out: no keyboard/mouse activity for {$minutes} min (ended at last activity)."),
+        ]);
+
+        // Anything else still open for this person (another device) is closed too.
+        $this->clockOutAll($user);
+
+        if ($session->started_at) {
+            $this->analysisService->buildDailySummary($user, $session->started_at->toDateString());
+        }
+
+        return [
+            'ok' => true,
+            'auto_logout' => true,
+            'message' => "You were clocked out automatically after {$minutes} minutes without activity. Clock in again when you are back.",
+            'session_id' => $session->id,
+            'ended_at' => $endedAt->toIso8601String(),
+            'idle_minutes' => $minutes,
+            'active_seconds' => $session->total_active_seconds,
+            'idle_seconds' => (int) $session->total_idle_seconds,
+            'break_seconds' => $session->total_break_seconds,
+            'activity_state' => 'idle',
+            'today' => $this->todayStats($user),
+        ];
+    }
+
     /**
      * @param  array{active_total_seconds?: int|string|null, idle_total_seconds?: int|string|null}  $reported
      */
@@ -214,7 +276,7 @@ class AttendanceService
     }
 
     /**
-     * @param  array{is_active?: bool, idle_seconds?: int, elapsed_seconds?: int, activity_state?: string|null, window_title?: string|null, page_url?: string|null, source?: string, app_name?: string|null, process_name?: string|null, device_id?: int|null, keystroke_count?: int, mouse_click_count?: int}  $payload
+     * @param  array{is_active?: bool, idle_seconds?: int, elapsed_seconds?: int, activity_state?: string|null, window_title?: string|null, page_url?: string|null, source?: string, app_name?: string|null, process_name?: string|null, device_id?: int|null, keystroke_count?: int, mouse_click_count?: int, input_tracked?: bool, flagged_processes?: array<int, string>, display_count?: int, background_media?: array<int, string>, background_motion?: bool}  $payload
      */
     public function recordHeartbeat(User $user, array $payload): array
     {
@@ -247,6 +309,13 @@ class AttendanceService
         }
 
         $systemIdle = max(0, (int) ($payload['idle_seconds'] ?? 0));
+
+        // No keyboard / mouse input for too long: end the session instead of recording more idle.
+        $autoLogoutAfter = self::autoLogoutIdleSeconds();
+        if ($autoLogoutAfter > 0 && $systemIdle >= $autoLogoutAfter && ($payload['activity_state'] ?? 'working') !== 'break') {
+            return $this->autoLogoutIdle($user, $session, $systemIdle, $payload);
+        }
+
         $idleThreshold = max(1, (int) config('attendance.idle_threshold_seconds', 30));
         $requestedState = in_array($payload['activity_state'] ?? 'working', ['working', 'idle', 'break'], true)
             ? $payload['activity_state']
@@ -270,8 +339,34 @@ class AttendanceService
 
         $reportsTotals = array_key_exists('active_total_seconds', $payload) || array_key_exists('idle_total_seconds', $payload);
 
-        DB::transaction(function () use ($session, $user, $payload, $isActive, $interval, $source, $activityState, $systemIdle, $reportsTotals) {
-            AttendanceActivityLog::create([
+        $flaggedProcesses = collect((array) ($payload['flagged_processes'] ?? []))
+            ->map(fn ($p) => mb_substr(trim((string) $p), 0, 80))
+            ->filter()
+            ->unique()
+            ->take(10)
+            ->implode(',');
+
+        // Second-screen signals (see AttendanceAiMisuseService::checkSecondScreenMedia).
+        $secondScreen = [];
+        if (self::secondScreenColumnsExist()) {
+            if (isset($payload['display_count'])) {
+                $secondScreen['display_count'] = max(1, min(16, (int) $payload['display_count']));
+            }
+            $titles = collect((array) ($payload['background_media'] ?? []))
+                ->map(fn ($t) => mb_substr(trim((string) $t), 0, 80))
+                ->filter()
+                ->unique()
+                ->take(5)
+                ->values()
+                ->all();
+            if ($titles) {
+                $secondScreen['background_media'] = json_encode($titles, JSON_UNESCAPED_UNICODE);
+                $secondScreen['background_motion'] = (bool) ($payload['background_motion'] ?? false);
+            }
+        }
+
+        DB::transaction(function () use ($session, $user, $payload, $isActive, $interval, $source, $activityState, $systemIdle, $reportsTotals, $flaggedProcesses, $secondScreen) {
+            AttendanceActivityLog::create(array_merge([
                 'attendance_session_id' => $session->id,
                 'user_id' => $user->id,
                 'recorded_at' => now(),
@@ -286,7 +381,15 @@ class AttendanceService
                 'attendance_device_id' => $payload['device_id'] ?? null,
                 'keystroke_count' => max(0, (int) ($payload['keystroke_count'] ?? 0)),
                 'mouse_click_count' => max(0, (int) ($payload['mouse_click_count'] ?? 0)),
-            ]);
+            ],
+                ($flaggedProcesses !== '' && self::flaggedProcessesColumnExists())
+                    ? ['flagged_processes' => mb_substr($flaggedProcesses, 0, 500)]
+                    : [],
+                self::inputTrackedColumnExists()
+                    ? ['input_tracked' => (bool) ($payload['input_tracked'] ?? false)]
+                    : [],
+                $secondScreen,
+            ));
 
             $session->increment('heartbeat_count');
             if ($reportsTotals) {
@@ -313,6 +416,32 @@ class AttendanceService
             'today' => $this->todayStats($user),
             'agent_update' => $this->agentUpdatePayload($payload['agent_version'] ?? null),
         ];
+    }
+
+    /** @var array<string, bool> */
+    private static array $logColumns = [];
+
+    /** Lets the code ship before the migrations run without breaking heartbeats. */
+    private static function logColumnExists(string $column): bool
+    {
+        return self::$logColumns[$column] ??= \Illuminate\Support\Facades\Schema::hasColumn('attendance_activity_logs', $column);
+    }
+
+    public static function flaggedProcessesColumnExists(): bool
+    {
+        return self::logColumnExists('flagged_processes');
+    }
+
+    public static function inputTrackedColumnExists(): bool
+    {
+        return self::logColumnExists('input_tracked');
+    }
+
+    public static function secondScreenColumnsExist(): bool
+    {
+        return self::logColumnExists('display_count')
+            && self::logColumnExists('background_media')
+            && self::logColumnExists('background_motion');
     }
 
     /**

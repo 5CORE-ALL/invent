@@ -8032,6 +8032,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/employee/{user}/captures', [AttendanceMonitorController::class, 'employeeCaptures'])->name('employee.captures');
         Route::get('/employee/{user}', [AttendanceMonitorController::class, 'employeeDetail'])->name('employee');
         Route::post('/employee/{user}/analyze', [AttendanceMonitorController::class, 'analyzeDay'])->name('analyze');
+        Route::post('/employee/{user}/checkup', [AttendanceMonitorController::class, 'checkupUser'])->name('checkup');
         Route::post('/flags/{flag}/review', [AttendanceMonitorController::class, 'reviewFlag'])->name('flags.review');
         Route::get('/policies', [AttendanceMonitorController::class, 'policies'])->name('policies');
         Route::post('/policies', [AttendanceMonitorController::class, 'storePolicy'])->name('policies.store');

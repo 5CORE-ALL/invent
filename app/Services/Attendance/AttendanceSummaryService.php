@@ -7,6 +7,7 @@ use App\Models\AttendancePayrollPeriodLine;
 use App\Models\AttendanceScreenshot;
 use App\Models\AttendanceSession;
 use App\Models\User;
+use App\Support\AttendanceFraudAlerts;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -39,11 +40,16 @@ class AttendanceSummaryService
             ->get()
             ->keyBy('user_id');
 
+        // Stored timestamps are naive app-timezone datetimes; convert the viewer-timezone window first.
+        $appTz = (string) config('app.timezone', 'UTC');
+        $fromBound = $fromAt->copy()->timezone($appTz)->format('Y-m-d H:i:s');
+        $toBound = $toAt->copy()->timezone($appTz)->format('Y-m-d H:i:s');
+
         $sessionsByUser = AttendanceSession::query()
             ->whereIn('user_id', $userIds)
-            ->where('started_at', '<=', $toAt)
-            ->where(function ($q) use ($fromAt) {
-                $q->whereNull('ended_at')->orWhere('ended_at', '>=', $fromAt);
+            ->where('started_at', '<=', $toBound)
+            ->where(function ($q) use ($fromBound) {
+                $q->whereNull('ended_at')->orWhere('ended_at', '>=', $fromBound);
             })
             ->orderBy('started_at')
             ->get()
@@ -78,6 +84,8 @@ class AttendanceSummaryService
                     ->groupBy('user_id'))
                 ->get()
                 ->keyBy('user_id');
+
+        $fraudAlerts = AttendanceFraudAlerts::forUsers($userIds);
 
         $rows = [];
         $totals = [
@@ -137,6 +145,7 @@ class AttendanceSummaryService
                 'avatar_url' => ! empty($employee->avatar)
                     ? asset('storage/'.$employee->avatar)
                     : asset('images/users/avatar-2.jpg'),
+                'fraud_alert' => $fraudAlerts[$employee->id] ?? null,
                 'is_live' => $isLive,
                 'live_status' => $live['status'],
                 'live_label' => $live['label'],

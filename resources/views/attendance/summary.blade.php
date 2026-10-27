@@ -497,6 +497,7 @@
                     </a>
                 </div>
 
+                @include('attendance.partials.fraud-alert', ['alert' => null])
                 <div class="table-responsive">
                     <table class="table table-hover es-table" id="summaryTable">
                         <thead>
@@ -541,7 +542,7 @@
                                          onerror="this.onerror=null;this.src='{{ asset('images/users/avatar-2.jpg') }}';">
                                 </td>
                                 <td>
-                                    <div class="es-name">{{ $row['name'] }}</div>
+                                    <div class="es-name">{{ $row['name'] }}@include('attendance.partials.fraud-alert', ['alert' => $row['fraud_alert'] ?? null, 'href' => $row['detail_url'] ?? '#'])</div>
                                 </td>
                                 <td class="es-tm-col">
                                     @php
@@ -996,6 +997,18 @@
         }[ch]));
     }
 
+    // Red triangle beside the name when the fraud checkup has open alerts (same markup as the
+    // server-rendered partial attendance/partials/fraud-alert.blade.php).
+    function fraudTriangle(row) {
+        const a = row.fraud_alert;
+        if (!a) return '';
+        return '<a href="' + escapeAttr(row.detail_url || '#') + '" class="fraud-tri ' + escapeAttr(a.level) + '"'
+            + ' title="' + escapeAttr(a.tooltip) + '" aria-label="Fraud check: ' + escapeAttr(a.count) + ' open alert(s), ' + escapeAttr(a.level) + ' risk">'
+            + '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">'
+            + '<path d="M12 2.2 23.2 21.6H0.8z" fill="#dc2626" stroke="#991b1b" stroke-width="1.2" stroke-linejoin="round"/>'
+            + '<rect x="11" y="8.6" width="2" height="6.4" rx="1" fill="#fff"/><circle cx="12" cy="17.9" r="1.2" fill="#fff"/></svg></a>';
+    }
+
     function avatarCell(row) {
         const fallback = root?.dataset.avatarFallback || '';
         const src = row.avatar_url || fallback;
@@ -1062,7 +1075,7 @@
             <tr class="es-selectable${selectedId !== '0' && String(row.user_id) === selectedId ? ' es-selected' : ''}" data-user-id="${row.user_id || ''}" data-name="${(row.name || '').toLowerCase()}" data-display-name="${escapeAttr(row.name || '')}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}" data-span="${row.activity_start_minutes ?? -1}" data-worked="${row.worked_seconds || 0}" data-meeting="${row.meeting_seconds || 0}" data-manual="${row.manual_seconds || 0}" data-active-min="${row.active_min_pct || 0}" data-active-sec="${row.active_sec_pct || 0}" data-idle="${row.idle_seconds || 0}" data-including="${row.work_time_seconds ?? row.including_idle_seconds ?? 0}" data-live="${row.live_sort ?? 3}" data-live-status="${escapeAttr(row.live_status || 'absent')}" data-last-image="${row.last_image_sort || 0}">
                 <td class="es-avatar-col">${avatarCell(row)}</td>
                 <td>
-                    <div class="es-name">${row.name}</div>
+                    <div class="es-name">${row.name}${fraudTriangle(row)}</div>
                 </td>
                 <td class="es-tm-col">${tmCell(row)}</td>
                 <td class="es-ts-col">${tsCell(row)}</td>

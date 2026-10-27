@@ -220,6 +220,11 @@ function syncFromServer({ session, today, live }) {
         stopLocalTick();
     }
 
+    // The "clocked out for inactivity" notice goes away once the person is clocked in again.
+    if (session?.status === 'active' && $('idleNotice')) {
+        showError($('idleNotice'), '');
+    }
+
     if (today != null) {
         applyDailyFromToday(today);
     }
@@ -350,6 +355,13 @@ async function init() {
             syncFromServer({ session: null, today: null });
             showView('login');
             showError($('loginError'), payload?.message || 'You were signed out by an administrator.');
+        });
+    }
+
+    if (typeof window.agent.onAutoClockOut === 'function') {
+        window.agent.onAutoClockOut(async (payload) => {
+            await refresh().catch(() => {});
+            showError($('idleNotice'), payload?.message || 'You were clocked out automatically after a period without activity.');
         });
     }
 
