@@ -7953,8 +7953,17 @@
                     faMetricChartInstance.destroy();
                     faMetricChartInstance = null;
                 }
+                // The API returns one slot per calendar day (null where no snapshot exists).
+                // Trim the empty days before the first / after the last real reading so the
+                // plot uses the full width instead of showing months of blank axis.
+                const isNum = d => d && d.value !== null && d.value !== '' && Number.isFinite(Number(d.value));
+                const firstIdx = data.findIndex(isNum);
+                let lastIdx = -1;
+                for (let i = data.length - 1; i >= 0; i--) { if (isNum(data[i])) { lastIdx = i; break; } }
+                if (firstIdx !== -1) data = data.slice(firstIdx, lastIdx + 1);
+
                 const labels = data.map(d => d.date);
-                const values = data.map(d => (d.value === null || d.value === '' || !Number.isFinite(Number(d.value))) ? null : Number(d.value));
+                const values = data.map(d => isNum(d) ? Number(d.value) : null);
                 const numeric = values.filter(v => v !== null);
                 const dataMin = Math.min.apply(null, numeric);
                 const dataMax = Math.max.apply(null, numeric);
@@ -7969,11 +7978,14 @@
                 if (hi) hi.textContent = fmtVal(dataMax);
                 if (md) md.textContent = fmtVal(median);
                 if (lo) lo.textContent = fmtVal(dataMin);
-                const dotColors = values.map((v, i) => {
+                // Dot colour = change vs the previous *recorded* reading (skip empty days),
+                // green up / red down / grey unchanged or first point.
+                let prevVal = null;
+                const dotColors = values.map(v => {
                     if (v === null) return '#6c757d';
-                    const prev = i > 0 ? values[i - 1] : null;
-                    if (prev === null) return '#6c757d';
-                    return v > prev ? '#28a745' : v < prev ? '#dc3545' : '#6c757d';
+                    const c = prevVal === null ? '#6c757d' : (v > prevVal ? '#28a745' : v < prevVal ? '#dc3545' : '#6c757d');
+                    prevVal = v;
+                    return c;
                 });
                 faMetricChartInstance = new Chart(canvas, {
                     type: 'line',
@@ -7987,7 +7999,7 @@
                             borderWidth: 1.5,
                             fill: true,
                             tension: 0.3,
-                            spanGaps: false,
+                            spanGaps: true, // snapshots are sparse: connect across days without a reading
                             pointRadius: values.map(v => v === null ? 0 : 3),
                             pointHoverRadius: 5,
                             pointBackgroundColor: dotColors,
