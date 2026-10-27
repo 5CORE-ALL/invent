@@ -5479,7 +5479,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu2-column-visibility', [TemuController::class, 'saveTemu2ColumnVisibility']);
     Route::get('/temu2-column-visibility', [TemuController::class, 'getTemu2ColumnVisibility']);
 
-    // Temu 3 Sales Data — reads temu3_orders (same source as /temu3-decrease)
+    // Temu 3 Sales Data — reads temu3_api_orders (same source as /temu3-decrease)
     Route::get('/temu3-tabulator', [Temu3Controller::class, 'temu3TabulatorView'])->name('temu3.tabulator');
     Route::get('/temu3/daily-data', [Temu3Controller::class, 'getTemu3DailyData'])->name('temu3.daily.data');
     Route::get('/temu3/daily-data-l7', [Temu3Controller::class, 'getTemu3DailyDataL7'])->name('temu3.daily.data.l7');
@@ -5527,8 +5527,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu3-decrease/save-links', [Temu3Controller::class, 'saveTemu3DecreaseLinks'])->name('temu3.decrease.save.links');
     Route::post('/temu3-pricing/upload', [Temu3Controller::class, 'uploadTemu3Pricing'])->name('temu3.pricing.upload');
     Route::get('/temu3-pricing/sample', [Temu3Controller::class, 'downloadTemu3PricingSample'])->name('temu3.pricing.sample');
-    Route::post('/temu3-orders/upload', [Temu3Controller::class, 'uploadTemu3Orders'])->name('temu3.orders.upload');
-    Route::get('/temu3-orders/sample', [Temu3Controller::class, 'downloadTemu3OrdersSample'])->name('temu3.orders.sample');
     Route::post('/temu3-view-data/upload', [Temu3Controller::class, 'uploadTemu3ViewData'])->name('temu3.viewdata.upload');
     Route::get('/temu3-view-data/sample', [Temu3Controller::class, 'downloadTemu3ViewDataSample'])->name('temu3.viewdata.sample');
     Route::post('/temu3-pricing/update-price', [Temu3Controller::class, 'updateTemu3Price']);

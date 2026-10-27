@@ -251,7 +251,7 @@ class ChannelTodaySalesService
 
     private function temu3(Carbon $start, Carbon $end): ?float
     {
-        if (! Schema::hasTable('temu3_orders')) {
+        if (! TemuShopifySalesService::temu3OrdersSourceExists()) {
             return null;
         }
 

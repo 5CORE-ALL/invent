@@ -17,7 +17,7 @@ use App\Models\ShopifySku;
 use App\Models\Temu2DataView;
 use App\Models\Temu2Metric;
 use App\Models\Temu3DataView;
-use App\Models\Temu3Order;
+use App\Models\Temu3ApiOrder;
 use App\Models\Temu3Pricing;
 use App\Models\TemuDataView;
 use App\Models\TemuMetric;
@@ -763,19 +763,24 @@ class DilRuleSpriceApplyService
      */
     protected function temu3L30BySku(array $skus): array
     {
-        if ($skus === [] || ! Schema::hasTable('temu3_orders')) {
+        if ($skus === [] || ! Schema::hasTable('temu3_api_orders')) {
             return [];
         }
         try {
             [$start, $end] = TemuShopifySalesService::temu3SheetL30Window();
             $wanted = array_fill_keys($skus, true);
             $out = [];
+            // Temu 3 API orders (app:fetch-temu3-orders): listing SKU = display_sku, ext_code is the fallback.
+            $skuExpr = "COALESCE(NULLIF(display_sku, ''), NULLIF(ext_code, ''))";
             foreach (
-                Temu3Order::query()
-                    ->whereBetween('purchase_date', [$start, $end])
-                    ->whereNotNull('contribution_sku')
-                    ->where('contribution_sku', '!=', '')
-                    ->selectRaw('contribution_sku, SUM(quantity_purchased) as qty')
+                Temu3ApiOrder::query()
+                    ->whereBetween('parent_order_time', [$start, $end])
+                    ->where(function ($q) {
+                        $q->whereNull('order_status_text')
+                            ->orWhereRaw('UPPER(order_status_text) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
+                    })
+                    ->whereRaw("{$skuExpr} IS NOT NULL")
+                    ->selectRaw("{$skuExpr} as contribution_sku, SUM(quantity) as qty")
                     ->groupBy('contribution_sku')
                     ->get() as $row
             ) {

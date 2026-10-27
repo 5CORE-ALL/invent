@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\ChannelMasterSummary;
 use App\Models\Temu2Order;
-use App\Models\Temu3Order;
+use App\Models\Temu3ApiOrder;
 use App\Models\TemuOrder;
 use App\Services\Support\YesterdayMarketplaceMetricsService;
 use App\Services\TemuShopifySalesService;
@@ -200,7 +200,7 @@ class RebuildTemuChannelHistory extends Command
         try {
             $min = match ($key) {
                 'temu2' => Schema::hasTable('temu2_orders') ? Temu2Order::min('parent_order_time') : null,
-                'temu3' => Schema::hasTable('temu3_orders') ? Temu3Order::min('purchase_date') : null,
+                'temu3' => Schema::hasTable('temu3_api_orders') ? Temu3ApiOrder::min('parent_order_time') : null,
                 default => Schema::hasTable('temu_orders') ? TemuOrder::min('parent_order_time') : null,
             };
         } catch (\Throwable $e) {

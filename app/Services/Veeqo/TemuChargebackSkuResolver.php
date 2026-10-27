@@ -22,7 +22,7 @@ class TemuChargebackSkuResolver
         'temu2' => ['service' => Temu2ApiService::class, 'source' => 'temu2_csv', 'name' => 'Temu 2',
             'orders' => 'temu2_orders', 'parent' => 'parent_order_sn', 'sku' => 'ext_code', 'time' => 'order_shipping_time', 'before' => 2],
         'temu3' => ['service' => Temu3ApiService::class, 'source' => 'temu3_csv', 'name' => 'Temu 3',
-            'orders' => 'temu3_orders', 'parent' => 'order_id', 'sku' => 'contribution_sku', 'time' => 'purchase_date', 'before' => 6],
+            'orders' => 'temu3_api_orders', 'parent' => 'parent_order_sn', 'sku' => 'ext_code', 'time' => 'order_shipping_time', 'before' => 2],
     ];
 
     private const LABEL_ID = '/DO\d{20,}/';

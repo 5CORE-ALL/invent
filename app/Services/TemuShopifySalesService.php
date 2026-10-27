@@ -10,13 +10,11 @@ use App\Models\Temu2Pricing;
 use App\Models\Temu3ApiOrder;
 use App\Models\Temu3DailyData;
 use App\Models\Temu3DailyDataL60;
-use App\Models\Temu3Order;
 use App\Models\Temu3Pricing;
 use App\Models\Temu3ViewData;
 use App\Models\TemuMetric;
 use App\Models\TemuOrder;
 use App\Services\MarketplaceManager\TemuOrderAmountParser;
-use App\Support\Marketplace\Temu3OrderSheet;
 use App\Support\ProductMasterTemuShip;
 use App\Support\TemuGoodsIdHelper;
 use Carbon\Carbon;
@@ -26,7 +24,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Temu L30/L60/L7/Y sales from `temu_orders` (app:fetch-temu-orders).
  * Temu 2 L30/L60/L7/Y sales from `temu2_orders` (app:fetch-temu2-orders) — not sheet uploads, not Shopify.
- * Temu 3 L30/L60/L7 sales from uploaded Seller Center export (`temu3_orders.purchase_date`).
+ * Temu 3 L30/L60/L7 sales from the Temu 3 API orders (`temu3_api_orders.parent_order_time`).
  * Line price from temu_metrics / temu2_metrics / temu2_pricing / goods base price; LP / ship from product_master.
  */
 class TemuShopifySalesService
@@ -1185,7 +1183,7 @@ class TemuShopifySalesService
 
     /**
      * Temu 3 Sales Data page metrics from temu3_daily_data / temu3_daily_data_l60.
-     * Same Full Price / GPFT / GROI math as temu3_orders. No date filter = all uploaded rows
+     * Same Full Price / GPFT / GROI math as the Temu 3 API orders. No date filter = all rows
      * (matches /temu3-tabulator badges, same as Temu 2 tabulator → Active Channel).
      *
      * @return array{sales: float, base_sales: float, full_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
@@ -1271,7 +1269,7 @@ class TemuShopifySalesService
     }
 
     /**
-     * Same L30 window and API Line Sales as /temu3-tabulator (`temu3_orders`).
+     * Same L30 window and API Line Sales as /temu3-tabulator (`temu3_api_orders`).
      *
      * @return array{sales: float, base_sales: float, full_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
      */
@@ -1283,7 +1281,7 @@ class TemuShopifySalesService
     }
 
     /**
-     * Same L60 window and API Line Sales as /temu3-tabulator (`temu3_orders`).
+     * Same L60 window and API Line Sales as /temu3-tabulator (`temu3_api_orders`).
      *
      * @return array{sales: float, base_sales: float, full_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
      */
@@ -1355,7 +1353,7 @@ class TemuShopifySalesService
     }
 
     /**
-     * Per Pacific-day Full Temu Price sales from temu3_orders (same SKU filter as L30).
+     * Per Pacific-day Full Temu Price sales from temu3_api_orders (same SKU filter as L30).
      *
      * @return array<string, array{sales: float, base_sales: float, qty: int, orders: int}>
      */
@@ -1457,7 +1455,7 @@ class TemuShopifySalesService
     /**
      * temu3_view_data keyed by normalized Goods ID.
      * Merges scientific/punctuation variants so clicks are not dropped, and
-     * uses the same L30/L7 date window as temu3_orders when dated rows exist.
+     * uses the same L30/L7 date window as temu3_api_orders when dated rows exist.
      *
      * @return Collection<string, object>
      */
@@ -1613,163 +1611,18 @@ class TemuShopifySalesService
     }
 
     /**
-     * Same shape as getOrdersTableRows, from the Temu 3 Seller Center order sheet
-     * (`temu3_orders`). SKU = contribution sku, unit price = goods base price.
+     * Same shape as getOrdersTableRows, from the Temu 3 API orders (`temu3_api_orders`, filled by
+     * app:fetch-temu3-orders). Same pricing steps as Temu 1 / Temu 2.
      */
     public static function getTemu3OrdersTableRows(Carbon $startDate, Carbon $endDate): array
     {
-        // Orders come from the Temu 3 API (app:fetch-temu3-orders -> temu3_api_orders), same as Temu 1 / Temu 2.
-        // The uploaded Seller Center sheet is only used while the API table has never been filled.
-        if (self::temu3ApiOrdersAvailable()) {
-            return self::getChannelOrdersTableRows($startDate, $endDate, false, true);
-        }
-
-        return self::getTemu3SheetOrdersTableRows($startDate, $endDate);
+        return self::getChannelOrdersTableRows($startDate, $endDate, false, true);
     }
 
-    /** Either Temu 3 order source exists: the API table or the legacy uploaded sheet. */
+    /** Temu 3 orders table exists (API only; the uploaded sheet was removed). */
     public static function temu3OrdersSourceExists(): bool
     {
-        return Schema::hasTable('temu3_api_orders') || Schema::hasTable('temu3_orders');
-    }
-
-    /** True once app:fetch-temu3-orders has stored at least one order in temu3_api_orders. */
-    public static function temu3ApiOrdersAvailable(): bool
-    {
-        static $available = null;
-        if ($available !== null) {
-            return $available;
-        }
-        try {
-            return $available = Schema::hasTable('temu3_api_orders') && Temu3ApiOrder::query()->exists();
-        } catch (\Throwable $e) {
-            return $available = false;
-        }
-    }
-
-    /** Legacy source: the uploaded Seller Center order export (`temu3_orders`). */
-    public static function getTemu3SheetOrdersTableRows(Carbon $startDate, Carbon $endDate): array
-    {
-        if (! Schema::hasTable('temu3_orders')) {
-            return [];
-        }
-
-        $appTz = config('app.timezone');
-        $start = $startDate->copy()->setTimezone($appTz);
-        $end = $endDate->copy()->setTimezone($appTz);
-        // Compare as wall-clock strings so timestamp TZ conversion cannot drop today's sheet rows.
-        $startStr = $start->format('Y-m-d H:i:s');
-        $endStr = $end->format('Y-m-d H:i:s');
-
-        $orders = Temu3Order::whereBetween('purchase_date', [$startStr, $endStr])
-            ->where(function ($q) {
-                $q->whereNull('order_status')
-                    ->orWhereRaw('UPPER(order_status) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
-            })
-            ->where(function ($q) {
-                $q->whereNull('order_item_status')
-                    ->orWhereRaw('UPPER(order_item_status) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
-            })
-            ->orderBy('purchase_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->get();
-
-        if ($orders->isEmpty()) {
-            return [];
-        }
-
-        $margin = self::temu3MarginDecimal();
-        $skus = $orders->map(fn ($o) => trim((string) ($o->contribution_sku ?? '')));
-        $productMasters = self::productMastersForSkus($skus);
-
-        $skuList = $skus->filter()->unique()->values()->toArray();
-        $priceBySku = collect();
-        if (! empty($skuList) && Schema::hasTable('temu3_pricing')) {
-            $pricingBySku = Temu3Pricing::whereIn('sku', $skuList)->pluck('base_price', 'sku');
-            foreach ($pricingBySku as $skuKey => $unit) {
-                if ((float) $unit > 0) {
-                    $priceBySku[$skuKey] = $unit;
-                }
-            }
-        }
-
-        $slabService = null;
-        $shipSlabRates = [];
-        try {
-            $slabService = app(ShippingSlabRateService::class);
-            $shipSlabRates = $slabService->getAllSlabCarrierRates('ship');
-        } catch (\Throwable $e) {
-            \Log::warning('Temu 3 tabulator COGS ship slabs: '.$e->getMessage());
-        }
-
-        $result = [];
-
-        foreach ($orders as $o) {
-            $row = $o->toArray();
-            if (Temu3OrderSheet::shouldExcludeFromSales($row)) {
-                continue;
-            }
-
-            $sku = trim((string) ($o->contribution_sku ?? ''));
-            $pm = ($sku !== '' && isset($productMasters[$sku])) ? $productMasters[$sku] : null;
-            [$lp, $temuShip] = self::lpAndTemuShip($productMasters, $sku);
-            $parent = $pm ? ($pm->parent ?? '') : '';
-
-            $quantity = (int) ($o->quantity_purchased ?? 0);
-            $price = (float) ($o->base_price_total ?? 0);
-            if ($price <= 0) {
-                $price = (float) ($priceBySku[$sku] ?? 0);
-            }
-
-            $pmValues = [];
-            if ($pm) {
-                $pmValues = is_array($pm->Values)
-                    ? $pm->Values
-                    : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
-            }
-            $weight = self::dimWtActLb($pmValues);
-            $weightOrder = ($weight !== null && $quantity > 0) ? round($weight * $quantity, 2) : null;
-            $cogsShip = self::cogsShipForWeightOrder($slabService, $shipSlabRates, $weightOrder);
-            // Same line as Temu 1 and Temu 2: goods, +$2.99 when the unit is ≤ $26.99.
-            $lineSales = round(self::lineSales($price, $quantity), 2);
-
-            $fbPrice = self::computeFbPrice($price, $quantity);
-            $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
-            $pft = $pftDecimal * $fbPrice * $quantity;
-
-            $result[] = [
-                'Parent' => $parent,
-                'image_path' => self::cpMasterImageUrl($pm, $pmValues),
-                'contribution_sku' => $sku,
-                'order_id' => $o->order_id ?? '',
-                'product_name_by_customer_order' => $o->product_name_by_customer_order ?? ($o->product_name ?? ''),
-                'variation' => $o->variation ?? '',
-                'quantity_purchased' => $quantity,
-                'weight' => $weight,
-                'weight_order' => $weightOrder,
-                'cogs_ship' => $cogsShip,
-                'line_sales' => $lineSales,
-                'goods_base_price' => round($price > 0 ? $price : 0, 2),
-                'listing_base_price' => round((float) ($priceBySku[$sku] ?? 0), 2),
-                'o_size_charge' => $pmValues['o_size_charge'] ?? null,
-                'quantity_shipped' => (int) ($o->quantity_shipped ?? 0),
-                'quantity_to_ship' => (int) ($o->quantity_to_ship ?? 0),
-                'base_price_total' => round($price, 2),
-                'fb_price' => round($fbPrice, 2),
-                'lp' => $lp,
-                'temu_ship' => $temuShip,
-                'pft' => round($pft, 2),
-                'order_status' => $o->order_status ?? '',
-                'fulfillment_mode' => $o->fulfillment_mode ?? '',
-                'tracking_number' => $o->tracking_number ?? '',
-                'carrier' => $o->carrier ?? '',
-                'created_at' => $o->purchase_date
-                    ? $o->purchase_date->format('Y-m-d H:i:s')
-                    : null,
-            ];
-        }
-
-        return $result;
+        return Schema::hasTable('temu3_api_orders');
     }
 
     /**
