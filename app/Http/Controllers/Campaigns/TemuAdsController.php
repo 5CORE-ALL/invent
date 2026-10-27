@@ -1220,6 +1220,12 @@ class TemuAdsController extends Controller
                 } else {
                     return null; // Temu gives this goods no parent name and we have none: no summary line
                 }
+                // A single-SKU goods is named after its own SKU on Temu (outGoodsSn = the SKU): Temu shows just that SKU,
+                // so a parent line would repeat the same row.
+                $sameAsVariation = $kids->contains(fn (array $k) => strcasecmp(trim((string) ($k['sku'] ?? '')), $parentSku) === 0);
+                if ($sameAsVariation) {
+                    return null;
+                }
                 $parentName = trim((string) preg_replace('/^PARENT\s+/i', '', $parentSku));
 
                 $inv = (int) $kids->sum(fn (array $k) => (int) ($k['inv'] ?? 0));
