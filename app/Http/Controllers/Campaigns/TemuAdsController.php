@@ -60,7 +60,7 @@ class TemuAdsController extends Controller
         if ($hasCreateReject) {
             $listColumns[] = 'ad_create_reject';
         }
-        $records = $query->get($listColumns);
+        $records = $this->applyTemuSkuNames($query->get($listColumns));
         $windowPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
         $spendWindow = TemuAdsApiReport::latestWindow($windowPeriod);
         $inSpendWindow = function (TemuAdsApiReport $r) use ($period, $spendWindow): bool {
@@ -1048,6 +1048,44 @@ class TemuAdsController extends Controller
 
             return $row;
         })->values();
+    }
+
+    /**
+     * Show only what Temu itself holds for each goods_id (cache from temu:sync-goods-sku-names):
+     * - a variation whose skuId Temu no longer lists, or lists with an EMPTY seller SKU name, is dropped;
+     * - the SKU shown is Temu's exact outSkuSn.
+     * Goods Temu has not been synced for, or whose variations are all unnamed, are left untouched.
+     *
+     * @param  \Illuminate\Support\Collection<int, TemuAdsApiReport>  $records
+     */
+    private function applyTemuSkuNames($records)
+    {
+        $map = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::CACHE_KEY);
+        if (! is_array($map) || $map === []) {
+            return $records;
+        }
+
+        return $records
+            ->filter(function (TemuAdsApiReport $r) use ($map): bool {
+                $gid = (string) $r->goods_id;
+                $skuId = trim((string) ($r->sku_id ?? ''));
+                $temuSkus = $map[$gid]['skus'] ?? null;
+                if ($skuId === '' || ! is_array($temuSkus)) {
+                    return true; // not synced / no skuId to compare: leave as is
+                }
+                if (count(array_filter($temuSkus, fn ($n) => $n !== '')) === 0) {
+                    return true; // Temu names none of them: do not blank the goods
+                }
+
+                return ($temuSkus[$skuId] ?? '') !== '';
+            })
+            ->each(function (TemuAdsApiReport $r) use ($map): void {
+                $name = $map[(string) $r->goods_id]['skus'][trim((string) ($r->sku_id ?? ''))] ?? '';
+                if ($name !== '') {
+                    $r->sku = $name; // in-memory only, never saved
+                }
+            })
+            ->values();
     }
 
     /**

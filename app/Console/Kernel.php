@@ -3594,6 +3594,14 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
+        // Exact Temu SKU names per goods (cache used by /temu/ads to match Seller Center).
+        $schedule->command('temu:sync-goods-sku-names')
+            ->dailyAt('22:00')
+            ->timezone('Asia/Kolkata')
+            ->name('temu-sync-goods-sku-names')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
         $schedule->command('temu:refresh-ad-status')
             ->dailyAt('23:45')
             ->timezone('Asia/Kolkata')

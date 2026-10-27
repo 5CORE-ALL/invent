@@ -3794,6 +3794,38 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
+     * Exact SKU list Temu holds for a goods (goods.detail skuList), keyed by skuId.
+     * A SKU Temu has no seller SKU name for comes back as an empty string.
+     *
+     * @return array{out_goods_sn: string, skus: array<string, string>}|null  null = Temu call failed/empty
+     */
+    public function fetchGoodsSkuInfo(string $goodsId): ?array
+    {
+        $goodsId = trim($goodsId);
+        if ($goodsId === '' || ! $this->isConfigured()) {
+            return null;
+        }
+        $detail = $this->fetchTemuGoodsDetail($goodsId);
+        $list = $detail['skuList'] ?? null;
+        if (! is_array($detail) || $detail === [] || ! is_array($list)) {
+            return null;
+        }
+
+        $skus = [];
+        foreach ($list as $row) {
+            if (! is_array($row) || ! isset($row['skuId'])) {
+                continue;
+            }
+            $skus[(string) $row['skuId']] = trim((string) ($row['outSkuSn'] ?? ''));
+        }
+
+        return [
+            'out_goods_sn' => trim((string) ($detail['outGoodsSn'] ?? '')),
+            'skus' => $skus,
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function fetchTemuGoodsDetail(string $goodsId): array
