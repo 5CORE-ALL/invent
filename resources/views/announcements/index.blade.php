@@ -20,7 +20,15 @@
             padding: 10px 14px !important;
             white-space: normal !important;
         }
+        .ann-message a,
+        .ann-table-comment__text a {
+            color: #2563eb;
+            text-decoration: underline;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
         .ann-message {
+            overflow-wrap: anywhere;
             font-size: 13px;
             color: #0f172a;
             line-height: 1.45;
@@ -562,6 +570,30 @@
                 return d.innerHTML;
             }
 
+            // Escapes text and turns pasted URLs into clickable links.
+            function linkify(s) {
+                const text = s == null ? '' : String(s);
+                const re = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi;
+                let out = '';
+                let last = 0;
+                let m;
+                while ((m = re.exec(text)) !== null) {
+                    let url = m[0];
+                    let trail = '';
+                    const t = url.match(/[.,;:!?)\]}]+$/);
+                    if (t) {
+                        trail = t[0];
+                        url = url.slice(0, url.length - trail.length);
+                    }
+                    out += escapeHtml(text.slice(last, m.index));
+                    const href = /^www\./i.test(url) ? 'https://' + url : url;
+                    out += '<a href="' + escapeHtml(href).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer">'
+                        + escapeHtml(url) + '</a>' + escapeHtml(trail);
+                    last = m.index + m[0].length;
+                }
+                return out + escapeHtml(text.slice(last));
+            }
+
             const commentEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '✅', '🔥'];
 
             function renderTableReacts(comment) {
@@ -588,7 +620,7 @@
                     + (comment.edited ? '<span class="ann-table-comment__edited">(edited)</span>' : '')
                     + (mine ? '<button type="button" class="ann-table-comment__edit" title="Edit your comment">Edit</button>' : '')
                     + '</div>'
-                    + '<div class="ann-table-comment__text">' + escapeHtml(comment.comment || '') + '</div>'
+                    + '<div class="ann-table-comment__text">' + linkify(comment.comment || '') + '</div>'
                     + renderTableReacts(comment)
                     + '</div></div>';
             }
@@ -637,7 +669,7 @@
                     minWidth: 320,
                     formatter: function (cell) {
                         const row = cell.getRow().getData();
-                        const text = row.message ? '<div class="ann-message">' + escapeHtml(row.message) + '</div>' : '';
+                        const text = row.message ? '<div class="ann-message">' + linkify(row.message) + '</div>' : '';
                         const motive = row.motivation ? '<div class="ann-motive-line">' + escapeHtml(row.motivation) + '</div>' : '';
                         const gif = row.gif_url
                             ? '<div class="ann-thumbs"><a href="' + escapeHtml(row.gif_url) + '" target="_blank" rel="noopener" data-hover-zoom><img src="' + escapeHtml(row.gif_url) + '" alt="GIF"></a></div>'

@@ -149,7 +149,17 @@
             color: #7c3aed;
             margin-bottom: 2px;
         }
+        .ann-board-card__text a,
+        .ann-board-comment__text a {
+            color: #2563eb;
+            text-decoration: underline;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .ann-board-card__text a:hover,
+        .ann-board-comment__text a:hover { color: #1d4ed8; }
         .ann-board-card__text {
+            overflow-wrap: anywhere;
             white-space: pre-wrap;
             color: #1e293b;
             font-size: 0.96rem;
@@ -368,6 +378,30 @@
                 return d.innerHTML;
             }
 
+            // Escapes text and turns pasted URLs into clickable links.
+            function linkify(s) {
+                const text = s == null ? '' : String(s);
+                const re = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi;
+                let out = '';
+                let last = 0;
+                let m;
+                while ((m = re.exec(text)) !== null) {
+                    let url = m[0];
+                    let trail = '';
+                    const t = url.match(/[.,;:!?)\]}]+$/);
+                    if (t) {
+                        trail = t[0];
+                        url = url.slice(0, url.length - trail.length);
+                    }
+                    out += escapeHtml(text.slice(last, m.index));
+                    const href = /^www\./i.test(url) ? 'https://' + url : url;
+                    out += '<a href="' + escapeHtml(href).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer">'
+                        + escapeHtml(url) + '</a>' + escapeHtml(trail);
+                    last = m.index + m[0].length;
+                }
+                return out + escapeHtml(text.slice(last));
+            }
+
             function setTopbarCount(count) {
                 if (!openBtn) return;
                 const next = Math.max(0, parseInt(count, 10) || 0);
@@ -414,7 +448,7 @@
                     + (comment.edited ? '<span class="ann-board-comment__edited">(edited)</span>' : '')
                     + (mine ? '<button type="button" class="ann-board-comment__edit" title="Edit your comment">Edit</button>' : '')
                     + '</div>'
-                    + '<div class="ann-board-comment__text">' + escapeHtml(comment.comment || '') + '</div>'
+                    + '<div class="ann-board-comment__text">' + linkify(comment.comment || '') + '</div>'
                     + renderReacts(comment)
                     + '</div></div>';
             }
@@ -556,7 +590,7 @@
                 }
                 body.innerHTML = rows.map(function (row) {
                     const text = row.message
-                        ? '<div class="ann-board-card__text">' + escapeHtml(row.message) + '</div>'
+                        ? '<div class="ann-board-card__text">' + linkify(row.message) + '</div>'
                         : '';
                     const motive = row.motivation
                         ? '<blockquote class="ann-board-motive"><span class="ann-board-motive__label">Motivation</span>' + escapeHtml(row.motivation) + '</blockquote>'
