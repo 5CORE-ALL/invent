@@ -75,6 +75,26 @@ class ListingPublishCommonController extends Controller
             $overrides['follow_feed'] = true;
         }
 
+        // Variation listing: add to an existing parent listing, or force a brand-new parent.
+        $attach = strtolower(trim((string) $request->input('attach', '')));
+        if ($mode === 'variation' && in_array($attach, ['existing', 'new'], true)) {
+            if (! \App\Support\Marketplace\ListingExistingParents::supports($channel)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Adding to an existing parent listing is not supported on this marketplace yet.',
+                ], 422);
+            }
+            $existingId = trim((string) $request->input('existing_listing_id', ''));
+            if ($attach === 'existing' && ! preg_match('/^[A-Za-z0-9_\-]{3,64}$/', $existingId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Select the existing parent listing to add this variation to.',
+                ], 422);
+            }
+            $overrides['attach_mode'] = $attach;
+            $overrides['existing_listing_id'] = $attach === 'existing' ? $existingId : '';
+        }
+
         try {
             $result = $preview->publishSkus(
                 $skus,

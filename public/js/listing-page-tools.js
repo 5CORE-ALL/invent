@@ -1154,6 +1154,7 @@
                 (single
                     ? ' selected for single listing' + (selectedCount === 1 ? '' : 's')
                     : ' selected for this variation') + '</div>';
+            html += attachBlock(group, gi, single);
             html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th>';
             if (!single) html += '<th>Variation Type</th><th>Variation Name</th>';
             html += '<th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
@@ -1185,6 +1186,59 @@
         const progress = document.getElementById('listing-publish-progress');
         if (progress) progress.textContent = '';
         updateModalCopy();
+        refreshConfirmState();
+    }
+
+    // Variation mode: ask whether the selected SKUs join a parent listing that already exists
+    // on this marketplace or start a new parent. Only shown for marketplaces that can attach.
+    function attachBlock(group, gi, single) {
+        if (single || !group || !group.attach_supported) return '';
+        const parents = group.existing_parents || [];
+        const label = escapeHtml(channelLabel());
+        if (!parents.length) {
+            return '<div class="listing-publish-attach" data-attach-required="0">' +
+                '<div class="listing-publish-attach-note">No existing parent listing for this group was found on ' + label +
+                '. A new parent listing will be created.</div></div>';
+        }
+        let options = '<option value="">Select the parent listing…</option>';
+        parents.forEach(function (p) {
+            const title = String(p.title || '').trim();
+            const text = (title ? (title.length > 70 ? title.slice(0, 70) + '…' : title) : 'Listing') +
+                ' · ' + (p.sku_count || (p.skus || []).length) + ' variation(s) · ID ' + p.id;
+            options += '<option value="' + escapeHtml(String(p.id)) + '" title="' + escapeHtml((p.skus || []).join(', ')) + '">' +
+                escapeHtml(text) + '</option>';
+        });
+        const name = 'lp-attach-' + gi;
+        return '<div class="listing-publish-attach" data-attach-required="1">' +
+            '<div class="listing-publish-attach-title">This group already has a parent listing on ' + label + '. Where should the selected SKU(s) go?</div>' +
+            '<label class="listing-publish-attach-opt"><input type="radio" class="listing-publish-attach-radio" name="' + name + '" value="existing"> Add to an existing parent listing</label>' +
+            '<select class="form-select form-select-sm listing-publish-attach-select" disabled>' + options + '</select>' +
+            '<label class="listing-publish-attach-opt"><input type="radio" class="listing-publish-attach-radio" name="' + name + '" value="new"> Create a new parent listing</label>' +
+            '</div>';
+    }
+
+    // The Publish button stays off until every group that has existing parents has an answer.
+    function refreshConfirmState() {
+        const confirm = document.getElementById('listing-publish-confirm');
+        if (!confirm) return;
+        const anyChecked = $('#listing-publish-groups .listing-publish-sku-check:checked:not(:disabled)').length > 0;
+        let pending = false;
+        document.querySelectorAll('#listing-publish-groups .listing-publish-group').forEach(function (el) {
+            if (!el.querySelector('.listing-publish-sku-check:checked:not(:disabled)')) return;
+            const box = el.querySelector('.listing-publish-attach[data-attach-required="1"]');
+            if (!box) return;
+            const radio = box.querySelector('.listing-publish-attach-radio:checked');
+            if (!radio || (radio.value === 'existing' && !box.querySelector('.listing-publish-attach-select').value)) {
+                pending = true;
+            }
+        });
+        confirm.disabled = !anyChecked || pending;
+        const progress = document.getElementById('listing-publish-progress');
+        if (progress && !confirm.querySelector('.fa-spin')) {
+            progress.textContent = (anyChecked && pending)
+                ? 'Choose an existing parent listing or "Create a new parent listing" to continue.'
+                : '';
+        }
     }
 
     function selectedGroups() {
@@ -1196,7 +1250,18 @@
                 const sku = String(cb.getAttribute('data-sku') || '').trim();
                 if (sku) skus.push(sku);
             });
-            if (skus.length) groups.push({ parent: parent, skus: skus });
+            if (skus.length) {
+                const entry = { parent: parent, skus: skus, attach: '', existingId: '' };
+                const radio = el.querySelector('.listing-publish-attach-radio:checked');
+                if (radio) {
+                    entry.attach = radio.value;
+                    if (radio.value === 'existing') {
+                        const select = el.querySelector('.listing-publish-attach-select');
+                        entry.existingId = select ? String(select.value || '').trim() : '';
+                    }
+                }
+                groups.push(entry);
+            }
         });
         return groups;
     }
@@ -1474,8 +1539,17 @@
         }, 30000);
     }
 
-    function publishPayload(skus, parent) {
+    function publishPayload(skus, parent, group) {
         const c = cfg();
+        const payload = publishPayloadBase(skus, parent, c);
+        if (group && group.attach && selectedPublishMode() !== 'single') {
+            payload.attach = group.attach;
+            payload.existing_listing_id = group.attach === 'existing' ? (group.existingId || '') : '';
+        }
+        return payload;
+    }
+
+    function publishPayloadBase(skus, parent, c) {
         return {
                 skus: skus,
                 confirmed: 1,
@@ -1608,8 +1682,24 @@
                     parent + ' · ' + selectedCount +
                     (single ? ' selected for single listing' + (selectedCount === 1 ? '' : 's') : ' selected for this variation')
                 );
-                const anyChecked = $('#listing-publish-groups .listing-publish-sku-check:checked:not(:disabled)').length > 0;
-                $('#listing-publish-confirm').prop('disabled', !anyChecked);
+                refreshConfirmState();
+            });
+
+        $(document).off('change.listingPageTools', '.listing-publish-attach-radio')
+            .on('change.listingPageTools', '.listing-publish-attach-radio', function () {
+                const $box = $(this).closest('.listing-publish-attach');
+                const $select = $box.find('.listing-publish-attach-select');
+                const existing = this.value === 'existing' && this.checked;
+                $select.prop('disabled', !existing);
+                if (existing && !$select.val() && $select.find('option').length === 2) {
+                    $select.prop('selectedIndex', 1);
+                }
+                refreshConfirmState();
+            });
+
+        $(document).off('change.listingPageTools', '.listing-publish-attach-select')
+            .on('change.listingPageTools', '.listing-publish-attach-select', function () {
+                refreshConfirmState();
             });
 
         $('#listing-publish-confirm').off('click.listingPageTools').on('click.listingPageTools', function () {
@@ -1632,10 +1722,12 @@
                 if (catEl) catEl.focus();
                 return;
             }
-            if (isEbayChannel() && !$btn.data('specificsChecked')) {
+            // Adding to an existing eBay parent reuses that listing's category and item specifics.
+            const specificsGroups = groups.filter(function (g) { return g.attach !== 'existing'; });
+            if (isEbayChannel() && specificsGroups.length && !$btn.data('specificsChecked')) {
                 const checkHtml = $btn.html();
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Checking eBay fields');
-                checkEbaySpecifics(groups).then(function (missing) {
+                checkEbaySpecifics(specificsGroups).then(function (missing) {
                     $btn.prop('disabled', false).html(checkHtml);
                     if (missing.length) {
                         renderEbaySpecifics(missing);
@@ -1678,7 +1770,7 @@
                 const label = 'Publishing ' + group.parent + ' (' + index + '/' + groups.length + ')…';
                 if (progress) progress.textContent = label;
                 showPublishStatus('loading', label);
-                const payload = publishPayload(group.skus, group.parent);
+                const payload = publishPayload(group.skus, group.parent, group);
                 publishGroup(group.skus, group.parent, payload).done(function (response) {
                     const goodsId = String((response && response.goods_id) || '').trim();
                     const listedSkus = (response && response.skus) || group.skus;

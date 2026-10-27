@@ -7,7 +7,7 @@
     @if($listingPageToolsCss)
         <style>{!! $listingPageToolsCss !!}</style>
     @else
-        <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}?v=20261010-1">
+        <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}?v=20261028-attach">
     @endif
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -1140,7 +1140,7 @@
     @if($listingPageToolsJs)
         <script>{!! $listingPageToolsJs !!}</script>
     @else
-        <script src="{{ asset('js/listing-page-tools.js') }}?v=20261015-vm"></script>
+        <script src="{{ asset('js/listing-page-tools.js') }}?v=20261028-attach"></script>
     @endif
 @include('partials.listing-sku-search')
 @endsection

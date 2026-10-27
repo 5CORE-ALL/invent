@@ -671,6 +671,120 @@ class ListingManagerEbayTradingPublisher
     }
 
     /**
+     * Add new child variations to a live eBay variation listing (ReviseFixedPriceItem).
+     * Only the new Variation rows are sent; the listing's existing variations stay untouched.
+     * The variation-values set is rebuilt as existing values + new values, and the picture
+     * set (when the listing already uses variation pictures) is re-sent with the new values appended.
+     *
+     * @param  list<string>  $existingValues  values already in the listing's VariationSpecificsSet
+     * @param  list<array{sku: string, price: float, quantity: int, variation_label: string, images?: list<string>}>  $newVariations
+     * @param  list<array{value: string, urls: list<string>}>  $existingPictureSets
+     * @return array{success: bool, message: string}
+     */
+    public static function addVariationsToItem(
+        string $channelKey,
+        string $itemId,
+        string $aspect,
+        array $existingValues,
+        array $newVariations,
+        array $existingPictureSets = [],
+        string $pictureAspect = ''
+    ): array {
+        $itemId = trim($itemId);
+        if ($itemId === '' || $aspect === '' || $newVariations === []) {
+            return ['success' => false, 'message' => 'Missing eBay item, variation aspect or new variations.'];
+        }
+        $ctx = self::context(ListingChannelCounts::normalize($channelKey));
+        if (! ($ctx['configured'] ?? false)) {
+            return ['success' => false, 'message' => ($ctx['label'] ?? 'eBay').' API credentials are not configured.'];
+        }
+        $esc = static fn (string $v): string => htmlspecialchars($v, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+            $item = $xml->addChild('Item');
+            $item->addChild('ItemID', $itemId);
+            $block = $item->addChild('Variations');
+
+            $values = array_values($existingValues);
+            foreach ($newVariations as $row) {
+                $variation = $block->addChild('Variation');
+                $variation->addChild('SKU', $esc((string) $row['sku']));
+                $variation->addChild('StartPrice', number_format(max(0.01, (float) $row['price']), 2, '.', ''));
+                $variation->addChild('Quantity', (string) max(0, (int) $row['quantity']));
+                $nvl = $variation->addChild('VariationSpecifics')->addChild('NameValueList');
+                $nvl->addChild('Name', $esc($aspect));
+                $nvl->addChild('Value', $esc((string) $row['variation_label']));
+                $variation->addChild('VariationProductListingDetails')->addChild('UPC', self::NO_UPC);
+                $values[] = (string) $row['variation_label'];
+            }
+
+            $newSets = array_values(array_filter($newVariations, static fn ($row) => ! empty($row['images'])));
+            if ($existingPictureSets !== [] && $pictureAspect !== '') {
+                $pictures = $block->addChild('Pictures');
+                $pictures->addChild('VariationSpecificName', $esc($pictureAspect));
+                foreach ($existingPictureSets as $existing) {
+                    $set = $pictures->addChild('VariationSpecificPictureSet');
+                    $set->addChild('VariationSpecificValue', $esc((string) $existing['value']));
+                    foreach ($existing['urls'] as $url) {
+                        $set->addChild('PictureURL', $esc((string) $url));
+                    }
+                }
+                foreach ($newSets as $row) {
+                    $set = $pictures->addChild('VariationSpecificPictureSet');
+                    $set->addChild('VariationSpecificValue', $esc((string) $row['variation_label']));
+                    foreach (array_slice(array_values(array_unique($row['images'])), 0, 12) as $url) {
+                        $set->addChild('PictureURL', $esc((string) $url));
+                    }
+                }
+            }
+
+            $setList = $block->addChild('VariationSpecificsSet')->addChild('NameValueList');
+            $setList->addChild('Name', $esc($aspect));
+            foreach (array_values(array_unique($values)) as $value) {
+                $setList->addChild('Value', $esc($value));
+            }
+
+            $response = Http::timeout(90)
+                ->withHeaders(self::tradingHeaders($ctx, 'ReviseFixedPriceItem'))
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
+
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($response->body());
+            if ($xmlResp === false) {
+                return ['success' => false, 'message' => 'Invalid XML response from eBay.'];
+            }
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+            if ($ack === 'Success' || $ack === 'Warning') {
+                return ['success' => true, 'message' => 'Added '.count($newVariations).' variation(s) to eBay item '.$itemId.'.'];
+            }
+
+            $errors = $data['Errors'] ?? [];
+            $errors = isset($errors['LongMessage']) || isset($errors['ShortMessage']) ? [$errors] : $errors;
+            $messages = [];
+            foreach ((array) $errors as $error) {
+                if (! is_array($error) || (($error['SeverityCode'] ?? 'Error') !== 'Error')) {
+                    continue;
+                }
+                $messages[] = trim((string) ($error['LongMessage'] ?? $error['ShortMessage'] ?? ''));
+            }
+            $message = trim(implode(' ', array_filter($messages))) ?: 'eBay rejected ReviseFixedPriceItem.';
+            Log::warning(($ctx['label'] ?? 'eBay').' ReviseFixedPriceItem (add variations): '.$message, ['item_id' => $itemId]);
+
+            return ['success' => false, 'message' => $message];
+        } catch (\Throwable $e) {
+            Log::warning(($ctx['label'] ?? 'eBay').' ReviseFixedPriceItem (add variations) failed: '.$e->getMessage(), ['item_id' => $itemId]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * @return array{success: bool, message: string}
      */
     public static function endItem(string $channelKey, string $itemId, string $reason = 'NotAvailable'): array

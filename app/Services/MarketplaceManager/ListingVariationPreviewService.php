@@ -6,6 +6,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingCountsEngine;
+use App\Support\Marketplace\ListingExistingParents;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\VariationListingContent;
@@ -164,7 +165,11 @@ class ListingVariationPreviewService
                 $parentHint,
                 $categoryId,
                 $categoryName,
-                is_array($overrides['item_specifics'] ?? null) ? $overrides['item_specifics'] : []
+                is_array($overrides['item_specifics'] ?? null) ? $overrides['item_specifics'] : [],
+                [
+                    'attach_mode' => (string) ($overrides['attach_mode'] ?? ''),
+                    'existing_listing_id' => (string) ($overrides['existing_listing_id'] ?? ''),
+                ]
             );
         }
         if ($this->isTiktokChannel($channel)) {
@@ -331,11 +336,17 @@ class ListingVariationPreviewService
             }
         }
 
+        $attachSupported = ListingExistingParents::supports($channel);
+
         return [
             'parent' => $parent,
             'children' => $rows,
             'publish_skus' => $publishSkus,
             'publish_count' => count($publishSkus),
+            'attach_supported' => $attachSupported,
+            'existing_parents' => ($attachSupported && strtolower(trim($mode)) !== 'single')
+                ? ListingExistingParents::forGroup($channel, $skus, $listedMap)
+                : [],
         ];
     }
 
