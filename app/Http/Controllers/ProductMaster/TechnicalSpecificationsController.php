@@ -396,21 +396,38 @@ class TechnicalSpecificationsController extends Controller
     private function fillEbayCategoryFromParent(array &$rows): void
     {
         $byParent = [];
+        $byPath = [];
         foreach ($rows as $row) {
             $id = trim((string) ($row['category_ebay_id'] ?? ''));
-            $parent = $this->skuKey((string) ($row['Parent'] ?? ''));
-            if ($id === '' || $parent === '' || ! $this->isParentSku((string) ($row['SKU'] ?? ''))) {
+            if ($id === '') {
                 continue;
             }
-            $byParent[$parent] = $id;
+            $path = $this->skuKey((string) ($row['category_ebay'] ?? ''));
+            if ($path !== '') {
+                $byPath[$path][$id] = ($byPath[$path][$id] ?? 0) + 1;
+            }
+            $parent = $this->skuKey((string) ($row['Parent'] ?? ''));
+            if ($parent !== '' && $this->isParentSku((string) ($row['SKU'] ?? ''))) {
+                $byParent[$parent] = ['id' => $id, 'path' => $path];
+            }
         }
         foreach ($rows as &$row) {
             if (trim((string) ($row['category_ebay_id'] ?? '')) !== '' || $this->isParentSku((string) ($row['SKU'] ?? ''))) {
                 continue;
             }
+            $path = $this->skuKey((string) ($row['category_ebay'] ?? ''));
+            // A SKU that has a category name takes the ID other SKUs have for that same name.
+            if ($path !== '' && isset($byPath[$path])) {
+                $ids = $byPath[$path];
+                arsort($ids);
+                $row['category_ebay_id'] = (string) array_key_first($ids);
+
+                continue;
+            }
+            // The parent's ID is used only when the SKU has no name of its own or the same name as the parent.
             $parent = $this->skuKey((string) ($row['Parent'] ?? ''));
-            if ($parent !== '' && isset($byParent[$parent])) {
-                $row['category_ebay_id'] = $byParent[$parent];
+            if ($parent !== '' && isset($byParent[$parent]) && ($path === '' || $path === $byParent[$parent]['path'])) {
+                $row['category_ebay_id'] = $byParent[$parent]['id'];
             }
         }
         unset($row);

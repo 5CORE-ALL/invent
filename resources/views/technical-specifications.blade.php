@@ -1139,10 +1139,18 @@
                 return key;
             }
 
+            // Called for every aspect column of every row, so the lower-cased names of a row are kept in a Set.
+            const requiredSetCache = new WeakMap();
+
             function rowRequiresAspect(row, name) {
-                return (row.ebay_required || []).some(function (n) {
-                    return String(n).toLowerCase() === String(name).toLowerCase();
-                });
+                const list = row.ebay_required;
+                if (!Array.isArray(list) || !list.length) return false;
+                let set = requiredSetCache.get(list);
+                if (!set) {
+                    set = new Set(list.map(function (n) { return String(n).toLowerCase(); }));
+                    requiredSetCache.set(list, set);
+                }
+                return set.has(String(name).toLowerCase());
             }
 
             function missingSpecs(row) {
@@ -1973,12 +1981,15 @@
             }
 
             function autofitColumns() {
-                if (!table) return;
+                if (!table || !tableReady) return;
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 if (!ctx) return;
                 ctx.font = '600 13.2px Arial, sans-serif';
-                const data = table.getData();
+                // The first rows are enough to size a column (widths are capped anyway); every row x every column froze the page.
+                const data = table.getData().slice(0, 300);
+                table.blockRedraw();
+                try {
                 table.getColumns().forEach(function (col) {
                     const field = col.getField();
                     if (!field || field === '_action' || field === '_missing' || field === '_edit' || field.indexOf('category_') === 0) return;
@@ -1995,6 +2006,9 @@
                     if (field === 'Parent' || field === 'SKU') width = Math.max(58, Math.round(width * 0.8));
                     col.setWidth(width);
                 });
+                } finally {
+                    table.restoreRedraw();
+                }
             }
 
             function initTable(rows, aspectNames) {
@@ -2019,6 +2033,8 @@
                 table = new Tabulator('#technical-specs-table', {
                     data: rows,
                     layout: 'fitData',
+                    // With hundreds of aspect columns, draw only the columns that are on screen.
+                    renderHorizontal: 'virtual',
                     height: 'calc(100vh - 250px)',
                     pagination: true,
                     paginationSize: 50,
