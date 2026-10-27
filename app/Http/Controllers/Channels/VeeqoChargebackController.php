@@ -246,6 +246,8 @@ class VeeqoChargebackController extends Controller
         $carrierById = $this->resolveCarriers($chargebacks);
         $carriers = $this->carrierBreakdown($chargebacks, $carrierById);
 
+        $parentBySku = $this->parentBySku();
+        $byParent = [];
         $bySku = [];
         foreach ($chargebacks as $cb) {
             $skus = isset($skusByOrder[$cb->order_number]) ? array_map('trim', explode(',', $skusByOrder[$cb->order_number])) : [];
@@ -265,13 +267,21 @@ class VeeqoChargebackController extends Controller
                 if ($cb->order_number) {
                     $bySku[$key]['orders'][$cb->order_number] = true;
                 }
+
+                // Parent grouping: SKUs with no parent in Product Master stand alone.
+                $pKey = $parentBySku[$key] ?? $key;
+                $byParent[$pKey] ??= ['parent' => $pKey, 'lines' => 0, 'total' => 0.0, 'orders' => [], 'carriers' => [], 'skus' => []];
+                $byParent[$pKey]['lines']++;
+                $byParent[$pKey]['total'] += $share;
+                $byParent[$pKey]['skus'][$key] = true;
+                $byParent[$pKey]['carriers'][$carrier][$orderKey] = true;
+                $byParent[$pKey]['orders'][$orderKey] = true;
             }
         }
 
         $sold = $this->unitsSoldLast12Months();
 
         // Parent roll-up: all chargebacks and all units sold across every SKU of the same parent.
-        $parentBySku = $this->parentBySku();
         $parentTotal = [];
         foreach ($bySku as $key => $s) {
             $p = $parentBySku[$key] ?? null;
@@ -320,6 +330,37 @@ class VeeqoChargebackController extends Controller
         }
         unset($row);
 
+        // Parent-wise rows: units sold = every SKU of the parent (also those never charged back).
+        $parentRows = [];
+        foreach ($byParent as $pKey => $p) {
+            $units = $parentSold[$pKey] ?? ($sold[$pKey] ?? null);
+            $count = max(1, count($p['orders']));
+            $pCarriers = array_map('count', $p['carriers']);
+            arsort($pCarriers);
+            $parentRows[] = [
+                'parent' => $pKey,
+                'skus' => count($p['skus']),
+                'carriers' => $pCarriers,
+                'carrier_text' => implode(', ', array_map(fn ($name, $n) => $name.' ('.$n.')', array_keys($pCarriers), $pCarriers)),
+                'count' => $count,
+                'lines' => $p['lines'],
+                'total' => round($p['total'], 2),
+                'average' => round($p['total'] / $count, 2),
+                'sold' => $units ?: null,
+                'per_unit' => $units ? round($p['total'] / $units, 2) : null,
+                'pct' => $units ? round($count / $units * 100, 2) : null,
+            ];
+        }
+        usort($parentRows, fn ($a, $b) => abs($b['total']) <=> abs($a['total']));
+        $parentCountTotal = array_sum(array_column($parentRows, 'count'));
+        foreach ($parentRows as &$prow) {
+            $prow['pct_tc'] = $parentCountTotal ? round($prow['count'] / $parentCountTotal * 100, 4) : 0;
+        }
+        unset($prow);
+        $pWithSales = array_filter($parentRows, fn ($r) => $r['sold'] !== null);
+        $pSoldMatched = array_sum(array_column($pWithSales, 'sold'));
+        $pCountMatched = array_sum(array_column($pWithSales, 'count'));
+
         $withSales = array_filter($rows, fn ($r) => $r['sold'] !== null);
         $soldMatched = array_sum(array_column($withSales, 'sold'));
         $countMatched = array_sum(array_column($withSales, 'count'));
@@ -329,6 +370,12 @@ class VeeqoChargebackController extends Controller
             'from' => $from->toDateString(),
             'to' => now()->toDateString(),
             'rows' => $rows,
+            'parent_rows' => $parentRows,
+            'parent_totals' => [
+                'parents' => count($parentRows),
+                'sold' => $pSoldMatched,
+                'pct' => $pSoldMatched ? round($pCountMatched / $pSoldMatched * 100, 2) : null,
+            ],
             'carriers' => $carriers,
             'totals' => [
                 'skus' => count($rows),

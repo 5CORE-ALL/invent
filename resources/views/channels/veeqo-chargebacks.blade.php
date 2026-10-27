@@ -197,6 +197,7 @@
                             <div class="dropdown-menu" id="vc-col-dropdown"></div>
                         </div>
                         <button type="button" class="btn btn-sm btn-sku-report" id="vcSkuReport" title="Chargebacks per SKU for the last 12 months"><i class="fas fa-chart-bar"></i> Report SKU wise</button>
+                        <button type="button" class="btn btn-sm btn-sku-report" id="vcParentReport" title="Chargebacks per parent for the last 12 months"><i class="fas fa-layer-group"></i> Report Parent wise</button>
                         <button type="button" class="btn btn-sm btn-primary" id="vcExport"><i class="fas fa-download"></i> Export page</button>
                         <button type="button" class="btn btn-sm btn-success" id="vcSync" title="Pull the last 30 days from Amazon Finances"><i class="fas fa-sync"></i> Sync Amazon</button>
                         <button type="button" class="btn btn-sm btn-dark" id="vcSyncTikTok" title="Pull the last 30 days of TikTok 1 and TikTok 2 shipping charges from the TikTok Finance API (also runs daily)"><i class="fab fa-tiktok"></i> Sync TikTok</button>
@@ -215,7 +216,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <div>
-                        <h4 class="modal-title mb-0"><i class="fas fa-chart-bar me-2"></i>Chargebacks by SKU · last 12 months</h4>
+                        <h4 class="modal-title mb-0"><i class="fas fa-chart-bar me-2"></i><span id="vcSkuTitle">Chargebacks by SKU</span> · last 12 months</h4>
                         <div class="sr-sub" id="vcSkuSub">Loading…</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -242,6 +243,7 @@
                     <div id="vcSkuTable"></div>
                     <div class="small text-muted mt-2">
                         Uses the Source / Type / Debit-Credit filters from the page. Chargeback count = orders charged back (Veeqo splits one chargeback into a line per reason; those are the charge lines).
+                        Parent view: SKUs are grouped by their Product Master parent (a SKU with no parent stands alone); units sold cover every SKU of the parent, including SKUs with no chargebacks.
                         Orders with several SKUs count for each SKU and their amount is split evenly. Units sold = 12-month sales across all channels. Avg chargeback total = total chargeback ÷ units sold. Chargeback % = chargeback count ÷ units sold. Chargeback%TC = chargeback count ÷ total chargeback count of all SKUs.
                     </div>
                 </div>
@@ -685,6 +687,8 @@
             let skuModal = null;
             let skuTable = null;
             let skuMax = 1;
+            let reportMode = 'sku';
+            let tableMode = null;
 
             function carrierClass(name) {
                 const key = String(name || '').toLowerCase();
@@ -706,9 +710,12 @@
                 return '<div class="sr-kpi ' + cls + '"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div><i class="fas ' + icon + '"></i></div>';
             }
 
-            function buildSkuTable(rows) {
+            function buildSkuTable(rows, mode) {
+                const isParent = mode === 'parent';
                 skuMax = Math.max(1, ...rows.map(r => Math.abs(Number(r.total) || 0)));
-                if (skuTable) { skuTable.setData(rows); return; }
+                if (skuTable && tableMode === mode) { skuTable.clearFilter(); skuTable.setData(rows); return; }
+                if (skuTable) { skuTable.destroy(); skuTable = null; }
+                tableMode = mode;
                 skuTable = new Tabulator('#vcSkuTable', {
                     data: rows,
                     layout: 'fitColumns',
@@ -721,7 +728,12 @@
                     columns: [
                         { title: '#', field: '_rank', width: 56, hozAlign: 'center', headerSort: false,
                           formatter: c => { const p = c.getRow().getPosition(); return '<span class="sr-rank ' + (p <= 3 ? 'r' + p : '') + '">' + p + '</span>'; } },
-                        { title: 'SKU', field: 'sku', minWidth: 200, headerFilter: 'input', formatter: c => '<span class="sr-sku">' + esc(c.getValue()) + '</span>' },
+                        isParent
+                            ? { title: 'Parent', field: 'parent', minWidth: 220, headerFilter: 'input', formatter: c => '<span class="sr-sku">' + esc(c.getValue()) + '</span>' }
+                            : { title: 'SKU', field: 'sku', minWidth: 200, headerFilter: 'input', formatter: c => '<span class="sr-sku">' + esc(c.getValue()) + '</span>' },
+                        ...(isParent ? [{ title: 'SKUs', field: 'skus', hozAlign: 'center', width: 80,
+                            headerTooltip: 'SKUs of this parent that had a chargeback',
+                            formatter: c => '<span class="text-muted">' + c.getValue() + '</span>' }] : []),
                         { title: 'Carriers', field: 'carrier_text', minWidth: 170, headerFilter: 'input', headerSort: false,
                           headerTooltip: 'Carriers on this SKU\'s charged-back orders (orders per carrier)',
                           formatter: function (c) {
@@ -739,14 +751,6 @@
                           formatter: c => c.getValue() === null ? '<span class="text-muted">—</span>' : '<span class="sr-sold">' + Number(c.getValue()).toLocaleString() + '</span>' },
                         { title: 'Avg Chargeback Total', field: 'per_unit', hozAlign: 'right', width: 150, sorter: (a, b) => Math.abs(a ?? 0) - Math.abs(b ?? 0),
                           formatter: c => c.getValue() === null ? '<span class="text-muted">—</span>' : money(c.getValue(), true) },
-                        { title: 'Avg Chargeback Total (Parent)', field: 'parent_per_unit', hozAlign: 'right', width: 170,
-                          sorter: (a, b) => Math.abs(a ?? 0) - Math.abs(b ?? 0),
-                          headerTooltip: 'Parent total chargeback ÷ parent units sold (12 months). Covers every SKU under the same parent, not only the ones charged back.',
-                          formatter: function (c) {
-                              const d = c.getRow().getData();
-                              if (c.getValue() === null || c.getValue() === undefined) return '<span class="text-muted">—</span>';
-                              return '<span title="' + esc(d.parent || '') + ': ' + money(d.parent_total, true) + ' over ' + Number(d.parent_sold || 0).toLocaleString() + ' units">' + money(c.getValue(), true) + '</span>';
-                          } },
                         { title: 'Chargeback %', field: 'pct', hozAlign: 'center', width: 130, sorter: (a, b) => (a ?? -1) - (b ?? -1), formatter: c => pctBadge(c.getValue()) },
                         { title: 'Chargeback%TC', field: 'pct_tc', hozAlign: 'center', width: 130,
                           headerTooltip: 'Chargeback percentage of total count: this SKU\'s chargeback count ÷ chargeback count of all SKUs',
@@ -760,8 +764,15 @@
                 ['dataSorted', 'dataFiltered'].forEach(ev => skuTable.on(ev, () => setTimeout(() => skuTable.getRows('active').forEach(r => r.reformat()), 0)));
             }
 
-            async function openSkuReport() {
+            async function openSkuReport(mode) {
+                mode = mode === 'parent' ? 'parent' : (typeof mode === 'string' ? mode : reportMode);
+                reportMode = mode === 'parent' ? 'parent' : 'sku';
+                const isParent = reportMode === 'parent';
                 if (!skuModal) skuModal = new bootstrap.Modal(document.getElementById('vcSkuModal'));
+                document.getElementById('vcSkuTitle').textContent = isParent ? 'Chargebacks by Parent' : 'Chargebacks by SKU';
+                document.getElementById('vcSkuSearch').placeholder = isParent ? 'Search parent…' : 'Search SKU…';
+                document.getElementById('vcSkuSearch').value = '';
+                document.getElementById('vcFillOsize').style.display = isParent ? 'none' : '';
                 document.getElementById('vcSkuSub').textContent = 'Loading…';
                 document.getElementById('vcSkuKpis').innerHTML = '';
                 document.getElementById('vcSkuCarriers').innerHTML = '';
@@ -772,14 +783,15 @@
                     const res = await fetch('{{ route('veeqo.chargebacks.sku-report') }}?' + qs(p), { headers: { Accept: 'application/json' } });
                     const json = await res.json();
                     const t = json.totals || {};
-                    document.getElementById('vcSkuSub').textContent = json.from + ' → ' + json.to + ' · ' + Number(t.chargebacks || 0).toLocaleString() + ' orders charged back (' + Number(t.lines || 0).toLocaleString() + ' charge lines) across ' + Number(t.skus || 0).toLocaleString() + ' SKUs';
+                    document.getElementById('vcSkuSub').textContent = json.from + ' → ' + json.to + ' · ' + Number(t.chargebacks || 0).toLocaleString() + ' orders charged back (' + Number(t.lines || 0).toLocaleString() + ' charge lines) across ' + Number((isParent ? (json.parent_totals || {}).parents : t.skus) || 0).toLocaleString() + (isParent ? ' parents' : ' SKUs');
+                    const pt = json.parent_totals || {};
                     document.getElementById('vcSkuKpis').innerHTML =
-                        skuKpi('sr-k1', 'fa-barcode', 'SKUs hit', Number(t.skus || 0).toLocaleString()) +
+                        skuKpi('sr-k1', isParent ? 'fa-layer-group' : 'fa-barcode', isParent ? 'Parents hit' : 'SKUs hit', Number((isParent ? pt.parents : t.skus) || 0).toLocaleString()) +
                         skuKpi('sr-k2', 'fa-receipt', 'Orders charged back', Number(t.chargebacks || 0).toLocaleString()) +
                         skuKpi('sr-k3', 'fa-dollar-sign', 'Total chargeback', money(t.amount || 0)) +
                         skuKpi('sr-k4', 'fa-balance-scale', 'Avg per order', money(t.average || 0)) +
-                        skuKpi('sr-k5', 'fa-box-open', 'Units sold (those SKUs)', Number(t.sold || 0).toLocaleString()) +
-                        skuKpi('sr-k6', 'fa-percentage', 'Overall chargeback %', t.pct === null || t.pct === undefined ? '—' : fmtPct(t.pct));
+                        skuKpi('sr-k5', 'fa-box-open', isParent ? 'Units sold (those parents)' : 'Units sold (those SKUs)', Number((isParent ? pt.sold : t.sold) || 0).toLocaleString()) +
+                        skuKpi('sr-k6', 'fa-percentage', 'Overall chargeback %', (isParent ? pt.pct : t.pct) == null ? '—' : fmtPct(isParent ? pt.pct : t.pct));
                     document.getElementById('vcSkuCarriers').innerHTML = (json.carriers || []).map(function (c) {
                         return '<div class="sr-carrier sr-c-' + carrierClass(c.carrier) + '">' +
                             '<div class="cn"><span>' + esc(c.carrier) + '</span>' +
@@ -790,7 +802,7 @@
                             '<div class="ct ctv" title="Share of chargeback amount"><span style="width:' + Math.min(100, Math.max(0, Number(c.value_pct))) + '%"></span></div>' +
                             '</div>';
                     }).join('') || '<div class="text-muted small">No carrier data.</div>';
-                    buildSkuTable(json.rows || []);
+                    buildSkuTable((isParent ? json.parent_rows : json.rows) || [], reportMode);
                     document.querySelectorAll('#vcSkuModal .btn-sort').forEach(b => b.classList.toggle('active', b.dataset.dir === 'desc'));
                 } catch (e) {
                     document.getElementById('vcSkuSub').textContent = 'Could not load the SKU report: ' + e.message;
@@ -799,7 +811,7 @@
 
             function taskIssueText(r) {
                 const carriers = Object.keys(r.carriers || {}).map(n => n + ' ' + r.carriers[n]).join(', ');
-                let text = 'Chargebacks on ' + r.sku + ' (last 12 months): ' + r.count + ' orders charged back, total ' + money(r.total) + ', avg ' + money(r.average) + ' per order';
+                let text = 'Chargebacks on ' + (reportMode === 'parent' ? 'parent ' + r.parent : r.sku) + ' (last 12 months): ' + r.count + ' orders charged back, total ' + money(r.total) + ', avg ' + money(r.average) + ' per order';
                 if (r.sold) text += ', ' + fmtPct(r.pct) + ' of ' + Number(r.sold).toLocaleString() + ' units sold (' + money(r.per_unit) + ' per unit)';
                 if (carriers) text += '. Carriers: ' + carriers;
                 return text + '. Check listed weight/dimensions and packaging to stop carrier adjustments.';
@@ -816,7 +828,7 @@
                 const reopenReport = skuModal && document.getElementById('vcSkuModal').classList.contains('show');
                 const open = function () {
                     window.openQuickTaskForm({
-                        group: row.sku || '',
+                        group: (reportMode === 'parent' ? row.parent : row.sku) || '',
                         title: taskIssueText(row).slice(0, 1000),
                         assignorId: {{ (int) (Auth::id() ?? 0) }} || undefined,
                         referenceLink: window.location.origin + window.location.pathname,
@@ -905,7 +917,8 @@
                 document.getElementById('vcFrom').value = iso(yearAgo);
                 document.getElementById('vcTo').value = iso(today);
 
-                document.getElementById('vcSkuReport').addEventListener('click', openSkuReport);
+                document.getElementById('vcSkuReport').addEventListener('click', function () { openSkuReport('sku'); });
+                document.getElementById('vcParentReport').addEventListener('click', function () { openSkuReport('parent'); });
                 document.querySelectorAll('#vcSkuModal .btn-sort').forEach(function (btn) {
                     btn.addEventListener('click', function () {
                         document.querySelectorAll('#vcSkuModal .btn-sort').forEach(b => b.classList.toggle('active', b === btn));
@@ -915,7 +928,7 @@
                 document.getElementById('vcSkuSearch').addEventListener('input', function () {
                     if (!skuTable) return;
                     const q = this.value.trim().toLowerCase();
-                    if (q === '') skuTable.clearFilter(); else skuTable.setFilter(d => String(d.sku || '').toLowerCase().includes(q));
+                    if (q === '') skuTable.clearFilter(); else skuTable.setFilter(d => String((reportMode === 'parent' ? d.parent : d.sku) || '').toLowerCase().includes(q));
                 });
                 document.getElementById('vcFindSkus').addEventListener('click', async function () {
                     const btn = this;
@@ -953,7 +966,7 @@
                     }
                 });
                 document.getElementById('vcSkuExport').addEventListener('click', function () {
-                    if (skuTable) skuTable.download('csv', 'veeqo_chargebacks_by_sku.csv');
+                    if (skuTable) skuTable.download('csv', reportMode === 'parent' ? 'veeqo_chargebacks_by_parent.csv' : 'veeqo_chargebacks_by_sku.csv');
                 });
                 document.getElementById('vcImport').addEventListener('click', openImportModal);
                 document.querySelectorAll('input[name="vcImpPlatform"]').forEach(r => r.addEventListener('change', showImportHelp));
