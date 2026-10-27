@@ -2641,6 +2641,12 @@
                         sorter: dobaNumberSorter,
                         visible: true,
                         editable: false,
+                        // Export what the cell shows (live rule / clearance price), not the raw loaded field.
+                        accessorDownload: function(value, data) {
+                            if (!data) return '';
+                            const v = isDobaParentRow(data) ? (parseFloat(data.sprice) || 0) : (dobaDisplayedSprice(data) || parseFloat(value) || 0);
+                            return v > 0 ? v.toFixed(2) : '';
+                        },
                         cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
                         cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target NROI with Diff, Ship included, Std Prc as the maximum; no LMP rule, Doba has no LMP) or Std prc vs dil. Turning one ON turns the other OFF. The server saves it too. Blue triangle = S PRC ≠ Price. Brown = capped at Std Prc. Hover for every rule used.",
@@ -2697,6 +2703,17 @@
                         width: 90,
                         sorter: dobaNumberSorter,
                         visible: true,
+                        accessorDownload: function(value, data) {
+                            if (!data) return '';
+                            if (isDobaParentRow(data)) {
+                                const rolled = parseFloat(data.s_self_pick) || 0;
+                                return rolled > 0 ? rolled.toFixed(2) : '';
+                            }
+                            const sprice = dobaDisplayedSprice(data) || parseFloat(data.sprice) || 0;
+                            const ship = parseFloat(data.Ship_productmaster) || 0;
+                            const v = sprice > 0 ? Math.max(0, sprice - ship) : 0;
+                            return v > 0 ? v.toFixed(2) : '';
+                        },
                         formatter: function(cell, formatterParams) {
                             const rd = cell.getRow().getData();
                             if (isDobaParentRow(rd)) {
@@ -2742,6 +2759,10 @@
                                  - ((bv == null || !isFinite(bv)) ? 0 : bv);
                         },
                         visible: true,
+                        accessorDownload: function(value, data) {
+                            const v = dobaSgroiPercent(data);
+                            return (v == null || !isFinite(v) || v === 0) ? '' : Math.round(v);
+                        },
                         headerTooltip: "SGROI% = live (S PRC × 0.95 − Ship − LP) / LP. Dil + CVR set SNROI, not this column.",
                         formatter: function(cell) {
                             const value = dobaSgroiPercent(cell.getRow().getData());
@@ -2761,6 +2782,10 @@
                                  - ((bv == null || !isFinite(bv)) ? 0 : bv);
                         },
                         visible: true,
+                        accessorDownload: function(value, data) {
+                            const v = dobaSnroiPercent(data);
+                            return (v == null || !isFinite(v)) ? '' : Math.round(v);
+                        },
                         headerTooltip: "SNROI% = Dil + CVR Target NROI. S PRC is back-solved so this matches the slab (same as eBay / Amazon). Ads%=0 → same as SGROI. If S PRC was capped, live SNPFT ÷ LP.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
