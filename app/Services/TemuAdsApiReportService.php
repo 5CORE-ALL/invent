@@ -39,13 +39,22 @@ class TemuAdsApiReportService
             return [(string) $specificGoodsId];
         }
 
-        return TemuMetric::whereNotNull('goods_id')
+        $ids = TemuMetric::whereNotNull('goods_id')
             ->where('goods_id', '!=', '')
             ->pluck('goods_id')
             ->unique()
             ->map(fn ($id) => (string) $id)
             ->values()
             ->all();
+
+        // Skip goods Temu no longer lists in Seller Center (removed / ended): no ads data to fetch,
+        // and fetching would re-create rows that /temu/ads hides. Ignored if the live list is missing/partial.
+        $live = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::LIVE_GOODS_CACHE_KEY);
+        if (is_array($live) && count($live) >= 50) {
+            $ids = array_values(array_filter($ids, fn ($id) => array_key_exists($id, $live)));
+        }
+
+        return $ids;
     }
 
     /**
