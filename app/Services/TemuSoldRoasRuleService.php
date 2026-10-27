@@ -6,6 +6,7 @@ use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
 use App\Models\TemuOrder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -282,6 +283,34 @@ class TemuSoldRoasRuleService
                 $groups[$gid]['status'] = $status;
                 $groups[$gid]['status_rank'] = $rank;
             }
+        }
+
+        // Parent = what Temu Seller Center shows (all variations the goods lists), not only the SKUs that had ad traffic.
+        $temuMap = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::CACHE_KEY);
+        if (is_array($temuMap)) {
+            foreach ($groups as $gid => &$g) {
+                $temuSkus = $temuMap[$gid]['skus'] ?? null;
+                if (! is_array($temuSkus) || $g['sku_ids'] === []) {
+                    continue;
+                }
+                foreach ($temuSkus as $skuId => $name) {
+                    $name = trim((string) $name);
+                    if ($name === '') {
+                        continue;
+                    }
+                    $g['sku_ids'][(string) $skuId] = true;
+                    $key = ShopifySku::normalizeSkuForShopifyLookup($name);
+                    if ($key !== '') {
+                        $g['skus'][$key] = true;
+                        $rawSkus[$name] = true;
+                        $stripped = rtrim($name, '.');
+                        if ($stripped !== '') {
+                            $rawSkus[$stripped] = true;
+                        }
+                    }
+                }
+            }
+            unset($g);
         }
 
         // Inventory per SKU (Shopify inv) — same source as the Inv column on /temu/ads.

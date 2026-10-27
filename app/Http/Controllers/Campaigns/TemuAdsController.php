@@ -1219,6 +1219,11 @@ class TemuAdsController extends Controller
             return $records;
         }
 
+        // Same as Seller Center: a goods lists ALL its variations. The ads report only has a row for a SKU that had
+        // ad traffic, so add the missing variations (same goods-level ad numbers) — otherwise a 2-variation goods
+        // with one idle variation is wrongly treated as a single SKU.
+        $records = $records->concat($this->missingTemuVariationRecords($records, $map));
+
         return $records
             ->filter(function (TemuAdsApiReport $r) use ($map): bool {
                 $gid = (string) $r->goods_id;
@@ -1241,6 +1246,45 @@ class TemuAdsController extends Controller
                 }
             })
             ->values();
+    }
+
+    /**
+     * Variations Temu lists for a goods (named SKUs only) that have no ads-report row in that goods' period window.
+     * They are clones of the goods' first row (ad metrics are goods-level) carrying the variation's own SKU / SKU ID.
+     *
+     * @param  \Illuminate\Support\Collection<int, TemuAdsApiReport>  $records
+     * @param  array<string, array<string, mixed>>  $map
+     * @return list<TemuAdsApiReport>
+     */
+    private function missingTemuVariationRecords($records, array $map): array
+    {
+        $extra = [];
+        $records->groupBy(fn (TemuAdsApiReport $r) => ((string) $r->goods_id)."\n".((string) $r->period)."\n".((string) $r->start_ts))
+            ->each(function ($group) use ($map, &$extra): void {
+                /** @var TemuAdsApiReport $first */
+                $first = $group->first();
+                $gid = (string) $first->goods_id;
+                $temuSkus = $map[$gid]['skus'] ?? null;
+                if (! is_array($temuSkus) || $temuSkus === [] || trim((string) ($first->sku_id ?? '')) === '') {
+                    return;
+                }
+                $have = $group->map(fn (TemuAdsApiReport $r) => trim((string) ($r->sku_id ?? '')))->filter()->flip();
+                foreach ($temuSkus as $skuId => $name) {
+                    $skuId = (string) $skuId;
+                    $name = trim((string) $name);
+                    if ($name === '' || $have->has($skuId)) {
+                        continue;
+                    }
+                    $clone = $first->replicate();
+                    $clone->setAttribute('id', 'v-'.$skuId.'-'.$first->period);
+                    $clone->sku = $name;
+                    $clone->sku_id = $skuId;
+                    $clone->setAttribute('ad_create_reject', null);
+                    $extra[] = $clone;
+                }
+            });
+
+        return $extra;
     }
 
     /**
