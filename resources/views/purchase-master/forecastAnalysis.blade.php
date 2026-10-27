@@ -4760,6 +4760,29 @@
                     }
                 },
                 {
+                    title: "STD Price",
+                    field: "std_price",
+                    minWidth: 68,
+                    width: 74,
+                    headerSort: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Amazon Std Price (STANDARD_PRICE) used for STD PFT% / STD NROI%",
+                    accessor: function(row) {
+                        if (!row) return null;
+                        const v = parseFloat(row.std_price);
+                        return Number.isFinite(v) ? v : null;
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        const v = parseFloat(cell.getValue());
+                        if ((d.is_parent || d.isParent) || !Number.isFinite(v) || v <= 0) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">—</span>';
+                        }
+                        return `<span style="display:block;text-align:center;font-weight:700;">$${v.toFixed(2)}</span>`;
+                    }
+                },
+                {
                     title: "STD PFT%",
                     field: "std_pft_pct",
                     minWidth: 68,
@@ -6950,7 +6973,7 @@
             const FA_COL_GROUPS = {
                 basic: ['Image', 'Parent', 'SKU', 'alert', 'mfrg_supplier', 'Category', 'stage', 'exec'],
                 grp1: ['INV', 'L30', 'ov_dil', 'return_rate', 'days_cover', 'monthly_sale', 'msl', 'to_order', 'two_order_qty', 'order_given', 'readyToShipQty', 'transit', 'MOQ', 'moq_days', 'nr', 'date_apprvl', 'TAT'],
-                grp2: ['CP', 'LP', 'cbm', 'total_cbm', 'avg_nroi_pct', 'avg_npft_pct', 'std_pft_pct', 'std_nroi_pct', 'mfrg_order_date', 'r2s_amount', 'r2s_new_photo'],
+                grp2: ['CP', 'LP', 'cbm', 'total_cbm', 'avg_nroi_pct', 'avg_npft_pct', 'std_price', 'std_pft_pct', 'std_nroi_pct', 'mfrg_order_date', 'r2s_amount', 'r2s_new_photo'],
                 others: [],
             };
             function faClassifyColumn(field) {
