@@ -629,6 +629,8 @@
             line-height: 1.25;
         }
         #summary-stats .amm-inv-band--red { background: #fee2e2; color: #7f1d1d; }
+        #summary-stats .amm-inv-band--red1 { background: #fecaca; color: #7f1d1d; }
+        #summary-stats .amm-inv-band--red2 { background: #fee2e2; color: #991b1b; }
         #summary-stats .amm-inv-band--green { background: #dcfce7; color: #14532d; }
         #summary-stats .amm-inv-band--pink { background: #fce7f3; color: #9d174d; }
         #summary-stats .amm-inv-band-name { font-size: 11px; font-weight: 800; white-space: nowrap; }
@@ -1306,7 +1308,8 @@
                     </div>
                     <p class="small text-muted mb-0">
                         Active SKUs with INV ≥ 0.01. DIL = L30 ÷ INV × 100.
-                        <span style="color:#a00211;font-weight:700;">Red 0.01–25%</span>,
+                        <span style="color:#a00211;font-weight:700;">Red 0.01–10%</span>,
+                        <span style="color:#e5484d;font-weight:700;">Red 10–25%</span>,
                         <span style="color:#28a745;font-weight:700;">Green 25–50%</span>,
                         <span style="color:#e83e8c;font-weight:700;">Pink ≥50%</span>.
                         Count is SKUs. Pies are inventory $ at LP and SP.
@@ -8082,11 +8085,13 @@
                 'inv_at_lp': 'Inv@LP',
                 'inv_at_sp': 'Inv@SP',
                 'inv_sp_zero': 'Inv@SP 0 Sold',
-                'inv_sp_red': 'Inv@SP Red 0.01–25%',
+                'inv_sp_red1': 'Inv@SP Red 0.01–10%',
+                'inv_sp_red2': 'Inv@SP Red 10–25%',
                 'inv_sp_green': 'Inv@SP Green 25–50%',
                 'inv_sp_pink': 'Inv@SP Pink ≥50%',
                 'inv_lp_zero': 'Inv@LP 0 Sold',
-                'inv_lp_red': 'Inv@LP Red 0.01–25%',
+                'inv_lp_red1': 'Inv@LP Red 0.01–10%',
+                'inv_lp_red2': 'Inv@LP Red 10–25%',
                 'inv_lp_green': 'Inv@LP Green 25–50%',
                 'inv_lp_pink': 'Inv@LP Pink ≥50%',
                 'inventory': 'inv',
@@ -8191,7 +8196,8 @@
             function ammInvNormalizeSlices(raw) {
                 const defs = [
                     { key: 'zero', label: '0 Sold', color: '#6c757d' },
-                    { key: 'red', label: 'Red 0.01–25%', color: '#a00211' },
+                    { key: 'red1', label: 'Red 0.01–10%', color: '#a00211' },
+                    { key: 'red2', label: 'Red 10–25%', color: '#e5484d' },
                     { key: 'green', label: 'Green 25–50%', color: '#28a745' },
                     { key: 'pink', label: 'Pink ≥50%', color: '#e83e8c' },
                 ];
@@ -8249,7 +8255,7 @@
                 const prev = Number(rows[rows.length - 2][field]);
                 const cur = Number(rows[rows.length - 1][field]);
                 if (!isFinite(prev) || !isFinite(cur) || Math.abs(cur - prev) < 0.5) return '#6c757d';
-                const lowerIsBetter = band === 'zero' || band === 'red';
+                const lowerIsBetter = band === 'zero' || band === 'red1' || band === 'red2';
                 const good = lowerIsBetter ? cur < prev : cur > prev;
                 return good ? '#28a745' : '#dc3545';
             }
@@ -8257,7 +8263,8 @@
                 const total = slices.reduce(function(sum, s) { return sum + (Number(s[valueKey]) || 0); }, 0);
                 const tones = {
                     zero: 'background:#e5e7eb;color:#374151;',
-                    red: 'background:#fee2e2;color:#7f1d1d;',
+                    red1: 'background:#fecaca;color:#7f1d1d;',
+                    red2: 'background:#fee2e2;color:#991b1b;',
                     green: 'background:#dcfce7;color:#14532d;',
                     pink: 'background:#fce7f3;color:#9d174d;'
                 };
@@ -8265,7 +8272,7 @@
                 return '<div style="display:grid;grid-template-columns:repeat(' + Math.max(1, slices.length) + ',minmax(0,1fr));gap:6px;min-width:0;">' + slices.map(function(s) {
                     const n = Number(s[valueKey]) || 0;
                     const pct = total > 0 ? Math.round((n / total) * 100) : 0;
-                    const tone = tones[s.key] || tones.red;
+                    const tone = tones[s.key] || tones.red1;
                     const histField = s.key + (valueKey === 'inv_at_sp' ? '_sp' : '_lp');
                     const dotColor = ammInvBandDotColor(s.key, histField);
                     return '<div style="position:relative;min-width:0;border-radius:8px;padding:6px 8px;line-height:1.25;' + tone + '">'
@@ -8306,7 +8313,7 @@
                     ammInvBlockSpPieChart.destroy();
                     ammInvBlockSpPieChart = null;
                 }
-                const shortLabel = { zero: '0 Sold', red: 'Red', green: 'Green', pink: 'Pink' };
+                const shortLabel = { zero: '0 Sold', red1: 'Red <10', red2: 'Red 10-25', green: 'Green', pink: 'Pink' };
                 const canvasBox = canvas.parentElement;
                 if (canvasBox) {
                     canvasBox.style.width = '220px';
@@ -8647,7 +8654,7 @@
                 // --- Dot colors: green=UP red=DOWN. ACOS, TAcos %, and TAT invert (lower is better). ---
                 // 0 Sold / Red inventory growing is the bad direction, so those two invert too.
                 const invertedMetrics = ['acos', 'ads_pct', 't_ads_pct', 'y_ads_pct', 'p_ads_pct', 'tat',
-                    'inv_sp_zero', 'inv_sp_red', 'inv_lp_zero', 'inv_lp_red'];
+                    'inv_sp_zero', 'inv_sp_red1', 'inv_sp_red2', 'inv_lp_zero', 'inv_lp_red1', 'inv_lp_red2'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
                 const dotColors = metricChartDotColors(values, isInverted, currentChartMetric);
                 if (currentChartMode === 'metric' && currentChartChannel === 'all') {

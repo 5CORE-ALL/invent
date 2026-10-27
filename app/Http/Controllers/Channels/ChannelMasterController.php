@@ -6361,7 +6361,8 @@ class ChannelMasterController extends Controller
     {
         return [
             'zero' => ['label' => '0 Sold', 'color' => '#6c757d'],
-            'red' => ['label' => 'Red 0.01–25%', 'color' => '#a00211'],
+            'red1' => ['label' => 'Red 0.01–10%', 'color' => '#a00211'],
+            'red2' => ['label' => 'Red 10–25%', 'color' => '#e5484d'],
             'green' => ['label' => 'Green 25–50%', 'color' => '#28a745'],
             'pink' => ['label' => 'Pink ≥50%', 'color' => '#e83e8c'],
         ];
@@ -6377,8 +6378,11 @@ class ChannelMasterController extends Controller
         if ($l30 < 0.01 || $dil < 0.01) {
             return 'zero';
         }
+        if ($dil < 10) {
+            return 'red1';
+        }
         if ($dil < 25) {
-            return 'red';
+            return 'red2';
         }
         if ($dil < 50) {
             return 'green';
@@ -6492,7 +6496,7 @@ class ChannelMasterController extends Controller
         foreach ($slices as $s) {
             $total += (float) ($s['inv_at_lp'] ?? 0);
         }
-        $names = ['zero' => 'Zero', 'red' => 'Red', 'green' => 'Green', 'pink' => 'Pink'];
+        $names = ['zero' => 'Zero', 'red1' => 'Red', 'red2' => 'Red', 'green' => 'Green', 'pink' => 'Pink'];
         $out = [];
         foreach ($slices as $s) {
             $value = (float) ($s['inv_at_lp'] ?? 0);

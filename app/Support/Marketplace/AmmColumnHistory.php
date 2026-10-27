@@ -27,8 +27,8 @@ class AmmColumnHistory
     public const FIELDS = [
         'y_orders', 'y_views', 'y_cvr', 'y_ads_pct', 't_orders', 't_views', 't_cvr', 't_ads_pct',
         // INV block: Inv@SP / Inv@LP $ per DIL band (all channels), one point per day.
-        'inv_sp_zero', 'inv_sp_red', 'inv_sp_green', 'inv_sp_pink',
-        'inv_lp_zero', 'inv_lp_red', 'inv_lp_green', 'inv_lp_pink',
+        'inv_sp_zero', 'inv_sp_red', 'inv_sp_red1', 'inv_sp_red2', 'inv_sp_green', 'inv_sp_pink',
+        'inv_lp_zero', 'inv_lp_red', 'inv_lp_red1', 'inv_lp_red2', 'inv_lp_green', 'inv_lp_pink',
     ];
 
     /**
