@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\AliexpressMetric;
 use App\Models\Ebay2Metric;
+use App\Models\EbayMetric;
 use App\Models\ReverbMetric;
 use App\Models\SheinListingStatus;
 use App\Models\ShopifySku;
@@ -11,6 +12,7 @@ use App\Services\AliExpressApiService;
 use App\Services\AmazonSpApiService;
 use App\Services\Business5CoreB2bApiService;
 use App\Services\Ebay2ApiService;
+use App\Services\EbayApiService;
 use App\Services\FaireApiService;
 use App\Services\NeweggApiService;
 use App\Services\SheinApiService;
@@ -31,14 +33,14 @@ final class MarketplaceQtyReadBack
 {
     public const SUPPORTED = [
         'amazon', 'faire', 'topdawg', 'shein', 'newegg', 'reverb',
-        'wayfair', 'ebay2', 'temu3', 'aliexpress', 'pls', 'b5cb2b',
+        'wayfair', 'ebay1', 'ebay2', 'temu3', 'aliexpress', 'pls', 'b5cb2b',
     ];
 
     /** One API call per SKU (or per listing); a run reads at most this many. */
     public const PER_SKU_CAP = 80;
 
     /** Channels answered per SKU/listing; the rest take a batch (or whole-catalog) query. */
-    private const PER_SKU_CHANNELS = ['amazon', 'topdawg', 'ebay2', 'aliexpress'];
+    private const PER_SKU_CHANNELS = ['amazon', 'topdawg', 'ebay1', 'ebay2', 'aliexpress'];
 
     /** Whole-catalog reads: one paged pull answers every SKU, so slicing gains nothing. */
     private const WHOLE_CATALOG_CHANNELS = ['temu3', 'b5cb2b', 'pls'];
@@ -98,6 +100,7 @@ final class MarketplaceQtyReadBack
                 'newegg' => $this->newegg($skus),
                 'reverb' => $this->reverb($skus),
                 'wayfair' => $this->wayfair($skus),
+                'ebay1' => $this->ebay1($skus),
                 'ebay2' => $this->ebay2($skus),
                 'temu3' => $this->temu3($skus),
                 'aliexpress' => $this->aliexpress($skus),
@@ -140,6 +143,7 @@ final class MarketplaceQtyReadBack
                 'newegg' => app(NeweggInventorySyncService::class)->recordMarketplaceQty($read),
                 'reverb' => app(ReverbInventorySyncService::class)->recordMarketplaceQty($read),
                 'wayfair' => app(WayfairInventorySyncService::class)->recordMarketplaceQty($read),
+                'ebay1' => app(Ebay1InventorySyncService::class)->recordMarketplaceQty($read, $this->meta),
                 'ebay2' => app(Ebay2InventorySyncService::class)->recordMarketplaceQty($read, $this->meta),
                 'temu3' => app(Temu3InventorySyncService::class)->recordMarketplaceQty($read, $this->meta),
                 'aliexpress' => app(AliexpressInventorySyncService::class)->recordMarketplaceQty($read),
@@ -373,6 +377,100 @@ final class MarketplaceQtyReadBack
         }
 
         return $this->matchRequested($skus, $byUpper);
+    }
+
+    /**
+     * eBay 1 GetItem per listing (variations share one call). Ended listings read as 0 and
+     * their status is recorded so they leave the mismatch tab.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, int>
+     */
+    private function ebay1(array $skus): array
+    {
+        $api = app(EbayApiService::class);
+        if (! $api->isConfigured() || ! Schema::hasTable('ebay_metrics') || Ebay1InventorySyncService::isTradingLimited()) {
+            return [];
+        }
+        $hasStatus = Schema::hasColumn('ebay_metrics', 'listing_status');
+
+        $upperToRequested = [];
+        foreach ($skus as $sku) {
+            $upperToRequested[strtoupper($sku)] = $sku;
+        }
+        $skusByItem = [];
+        $endedOnly = [];
+        EbayMetric::query()
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->where(function ($q) use ($skus) {
+                $q->whereIn('sku', $skus)->orWhereIn('sku', array_map('strtoupper', $skus));
+            })
+            ->get($hasStatus ? ['sku', 'item_id', 'listing_status'] : ['sku', 'item_id'])
+            ->each(function ($metric) use (&$skusByItem, &$endedOnly, $upperToRequested, $hasStatus) {
+                $sku = trim((string) $metric->sku);
+                $itemId = trim((string) $metric->item_id);
+                if ($itemId === '' || ! MarketplaceLiveInventoryRules::isLinked($itemId, $sku)) {
+                    return;
+                }
+                $requested = $upperToRequested[strtoupper($sku)] ?? $sku;
+                $status = $hasStatus ? strtoupper(trim((string) $metric->listing_status)) : '';
+                if (in_array($status, ['ENDED', 'SOLD', 'UNSOLD', 'COMPLETED'], true)) {
+                    $endedOnly[$requested][] = $itemId;
+
+                    return;
+                }
+                $skusByItem[$itemId][$requested] = true;
+            });
+        // A SKU with only ended rows: still read one of them (it may have been relisted under that id).
+        foreach ($endedOnly as $requested => $itemIds) {
+            $alreadyLive = false;
+            foreach ($skusByItem as $members) {
+                if (isset($members[$requested])) {
+                    $alreadyLive = true;
+                    break;
+                }
+            }
+            if (! $alreadyLive) {
+                $skusByItem[(string) $itemIds[0]][$requested] = true;
+            }
+        }
+        if ($skusByItem === []) {
+            return [];
+        }
+
+        $out = [];
+        $calls = 0;
+        foreach ($skusByItem as $itemId => $members) {
+            if ($calls >= self::PER_SKU_CAP) {
+                break;
+            }
+            $calls++;
+            $raw = $api->getItem((string) $itemId);
+            if (! is_array($raw) || ! isset($raw['Item']) || ! is_array($raw['Item'])) {
+                if (Ebay1InventorySyncService::looksLikeTradingLimit($api->lastGetItemError)) {
+                    Ebay1InventorySyncService::markTradingLimited();
+                    break;
+                }
+
+                continue;
+            }
+            $item = $raw['Item'];
+            $status = strtolower(trim((string) ($item['SellingStatus']['ListingStatus'] ?? '')));
+            $ended = in_array($status, ['completed', 'ended'], true);
+            foreach (array_keys($members) as $sku) {
+                $sku = (string) $sku;
+                $qty = $ended ? 0 : EbayLiveListingMapper::quantityFromGetItem($item, $sku);
+                if ($qty === null) {
+                    continue;
+                }
+                $out[$sku] = max(0, (int) $qty);
+                $this->meta[$sku] = ['item_id' => (string) $itemId, 'status' => $status];
+            }
+            usleep(150000);
+        }
+
+        return $out;
     }
 
     /**

@@ -706,6 +706,66 @@ class Ebay1InventorySyncService
             && (str_contains($m, 'call') || str_contains($m, 'usage'));
     }
 
+    public static function isTradingLimited(): bool
+    {
+        try {
+            $until = Cache::get(self::TRADING_LIMIT_CACHE_KEY);
+        } catch (\Throwable $e) {
+            return false;
+        }
+
+        return is_numeric($until) && now()->timestamp < (int) $until;
+    }
+
+    /**
+     * Store what eBay (GetItem) really reports for each SKU (read-back), plus the
+     * listing status. ebay_metrics.ebay_stock otherwise only changes on the daily
+     * report or on our own pushes, so a listing eBay drained to 0 looked "matched".
+     *
+     * @param  array<string, int>  $qtyBySku
+     * @param  array<string, array<string, mixed>>  $metaBySku
+     */
+    public function recordMarketplaceQty(array $qtyBySku, array $metaBySku = []): void
+    {
+        $rows = [];
+        $hasStatus = Schema::hasTable('ebay_metrics') && Schema::hasColumn('ebay_metrics', 'listing_status');
+        foreach ($qtyBySku as $sku => $qty) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $meta = $metaBySku[$sku] ?? [];
+            $itemId = trim((string) ($meta['item_id'] ?? ''));
+            $rows[] = ['product_id' => $itemId, 'sku_code' => $sku, 'inventory' => max(0, (int) $qty)];
+
+            $status = strtolower(trim((string) ($meta['status'] ?? '')));
+            if (! $hasStatus || $itemId === '' || $status === '') {
+                continue;
+            }
+            $listingStatus = match ($status) {
+                'active' => 'ACTIVE',
+                'completed', 'ended' => 'ENDED',
+                default => null,
+            };
+            if ($listingStatus === null) {
+                continue;
+            }
+            $update = ['listing_status' => $listingStatus];
+            if (Schema::hasColumn('ebay_metrics', 'inactive_reason')) {
+                $update['inactive_reason'] = $listingStatus === 'ENDED' ? 'Unsold / ended' : null;
+            }
+            EbayMetric::query()
+                ->where('item_id', $itemId)
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->update($update);
+        }
+        if ($rows === []) {
+            return;
+        }
+        $this->updateLocalStock($rows);
+        $this->clearListingCaches();
+    }
+
     public static function tradingLimitMessage(): ?string
     {
         try {
