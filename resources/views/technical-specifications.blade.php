@@ -1746,6 +1746,7 @@
                 } finally {
                     table.restoreRedraw();
                 }
+                bindTopHScroll();
             }
 
             function saveTsColumnVisibility() {
@@ -1961,24 +1962,38 @@
                 const bar = document.getElementById('ts-hscroll');
                 const inner = document.getElementById('ts-hscroll-inner');
                 if (!holder || !bar || !inner) return;
-                const tableEl = holder.querySelector('.tabulator-table');
-                inner.style.width = ((tableEl ? tableEl.scrollWidth : holder.scrollWidth) || 0) + 'px';
-                if (bar.dataset.bound === '1') return;
-                bar.dataset.bound = '1';
-                let lock = false;
-                bar.addEventListener('scroll', function () {
-                    if (lock) return;
-                    lock = true;
-                    holder.scrollLeft = bar.scrollLeft;
-                    lock = false;
-                });
-                holder.addEventListener('scroll', function () {
-                    if (lock) return;
-                    lock = true;
-                    bar.scrollLeft = holder.scrollLeft;
-                    lock = false;
-                });
+                // Only the columns on screen are drawn, so the width comes from the visible columns, not from the drawn table.
+                let total = 0;
+                if (table && tableReady) {
+                    table.getColumns().forEach(function (col) {
+                        if (col.isVisible()) total += col.getWidth();
+                    });
+                }
+                inner.style.width = (Math.max(total, holder.scrollWidth || 0)) + 'px';
+                if (bar.dataset.bound !== '1') {
+                    bar.dataset.bound = '1';
+                    bar.addEventListener('scroll', function () {
+                        if (tsScrollLock) return;
+                        const current = document.querySelector('#technical-specs-table .tabulator-tableholder');
+                        if (!current) return;
+                        tsScrollLock = true;
+                        current.scrollLeft = bar.scrollLeft;
+                        tsScrollLock = false;
+                    });
+                }
+                // The holder is a new element when the table is rebuilt, so it is bound on its own.
+                if (holder.dataset.topBound !== '1') {
+                    holder.dataset.topBound = '1';
+                    holder.addEventListener('scroll', function () {
+                        if (tsScrollLock) return;
+                        tsScrollLock = true;
+                        bar.scrollLeft = holder.scrollLeft;
+                        tsScrollLock = false;
+                    });
+                }
             }
+
+            let tsScrollLock = false;
 
             function autofitColumns() {
                 if (!table || !tableReady) return;
@@ -2009,6 +2024,7 @@
                 } finally {
                     table.restoreRedraw();
                 }
+                bindTopHScroll();
             }
 
             function initTable(rows, aspectNames) {
