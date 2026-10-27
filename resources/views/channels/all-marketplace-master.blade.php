@@ -653,7 +653,7 @@
             flex-wrap: wrap;
             align-items: stretch;
             align-content: flex-start;
-            gap: 0.4rem;
+            gap: 0.3rem;
             width: 100%;
             max-width: 100%;
             overflow: visible;
@@ -662,11 +662,11 @@
             width: 100%;
             min-width: 0;
             max-width: none;
-            min-height: 41.6px;
+            min-height: 31.5px;
             height: 100%;
-            font-size: 0.891rem !important;
+            font-size: 0.675rem !important;
             line-height: 1.2;
-            padding: 0.396rem 0.495rem !important;
+            padding: 0.3rem 0.375rem !important;
             border-radius: 0.375rem;
             font-weight: bold;
             box-sizing: border-box;
@@ -679,10 +679,10 @@
         }
         #summary-stats .summary-trend-dot {
             display: inline-block;
-            width: 7.92px;
-            height: 7.92px;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
-            margin-right: 0.218rem;
+            margin-right: 0.165rem;
             margin-left: 0;
             flex-shrink: 0;
             cursor: pointer;
