@@ -593,7 +593,7 @@
                             <tbody id="ads-rules-slabs-tbody"></tbody>
                             <tfoot>
                                 <tr class="table-light fw-semibold">
-                                    <td colspan="3" class="text-end">Total of Parents</td>
+                                    <td colspan="3" class="text-end">Total of Parents <span class="fw-normal text-muted" style="font-size:12px;" title="Only Multi SKU parents (2+ SKU IDs) with total Inv above 0 are counted. Parents with Inv 0 are left out.">(Inv &gt; 0)</span></td>
                                     <td class="text-center"><span id="ads-rules-total">0</span><span class="temu-ads-history-dot ar-dot" id="ads-rules-total-dot" style="background:#0d6efd;" data-metric="total" data-label="Total Parents" title="History"></span></td>
                                     <td></td>
                                 </tr>
