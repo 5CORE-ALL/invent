@@ -167,7 +167,7 @@ class TemuAdsController extends Controller
                 'id' => $r->id,
                 'goods_id' => $r->goods_id,
                 'parent' => $this->productMasterParent($productMaster),
-                'sku' => $r->sku,
+                'sku' => $r->getAttribute('temu_sku_name') ?: $r->sku,
                 'sku_id' => $r->sku_id ?? '',
                 'image_path' => $this->productMasterImagePath($productMaster, $shopify),
                 'inv' => $inv,
@@ -1082,7 +1082,8 @@ class TemuAdsController extends Controller
             ->each(function (TemuAdsApiReport $r) use ($map): void {
                 $name = $map[(string) $r->goods_id]['skus'][trim((string) ($r->sku_id ?? ''))] ?? '';
                 if ($name !== '') {
-                    $r->sku = $name; // in-memory only, never saved
+                    // Display name only. Inv / Parent / Sold lookups keep using our own SKU.
+                    $r->setAttribute('temu_sku_name', $name);
                 }
             })
             ->values();
