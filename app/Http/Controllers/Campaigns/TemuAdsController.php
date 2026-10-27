@@ -1490,6 +1490,7 @@ class TemuAdsController extends Controller
                     'is_parent' => true,
                     'sku' => $parentSku,
                     'sku_id' => '',
+                    'child_count' => $kids->count(),
                     'image_path' => $image,
                     'inv' => $inv,
                     'ovl30' => $ovl30,

@@ -2165,6 +2165,24 @@
                     },
                     { title: 'SKU ID', field: 'sku_id', width: 130, minWidth: 100, sorter: 'string',
                       headerTooltip: 'Temu skuId for this variation' },
+                    {
+                        title: 'Count',
+                        field: 'child_count',
+                        width: 62,
+                        minWidth: 52,
+                        hozAlign: 'center',
+                        sorter: function (a, b, aRow, bRow) {
+                            const av = (aRow && aRow.getData().is_parent) ? (parseInt(a, 10) || 0) : -1;
+                            const bv = (bRow && bRow.getData().is_parent) ? (parseInt(b, 10) || 0) : -1;
+                            return av - bv;
+                        },
+                        headerTooltip: 'Number of child SKU ads under this parent (shown on PARENT rows).',
+                        formatter: function (cell) {
+                            const data = cell.getRow().getData() || {};
+                            if (!data.is_parent) return '';
+                            return String(parseInt(cell.getValue(), 10) || 0);
+                        },
+                    },
                     { title: 'Inv', field: 'inv', width: 52, minWidth: 48, hozAlign: 'center', formatter: numFmt, sorter: 'number',
                       headerTooltip: 'Inventory from shopify_skus.inv' },
                     {
