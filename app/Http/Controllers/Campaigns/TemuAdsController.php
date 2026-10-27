@@ -210,6 +210,7 @@ class TemuAdsController extends Controller
         })->values();
 
         $rows = $this->fillMissingParentsOnAdsRows($rows);
+        $rows = $this->unifyParentPerGoods($rows);
         $rows = $this->appendParentRows($rows);
 
         $tacosPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
@@ -1047,6 +1048,82 @@ class TemuAdsController extends Controller
 
             return $row;
         })->values();
+    }
+
+    /**
+     * One Temu goods_id is one listing (one set of ad metrics). When its SKUs map to different
+     * Product Master parents, the grid would show the same ad numbers under two PARENT rows.
+     * Collapse them to the parent Temu itself uses for that listing (goods.detail outGoodsSn).
+     */
+    private function unifyParentPerGoods($rows)
+    {
+        $rows = collect($rows);
+
+        $parentsByGoods = [];
+        foreach ($rows as $row) {
+            $gid = (string) ($row['goods_id'] ?? '');
+            $parent = trim((string) ($row['parent'] ?? ''));
+            if ($gid === '' || $parent === '') {
+                continue;
+            }
+            $parentsByGoods[$gid][mb_strtolower($parent)] = $parent;
+        }
+
+        $canonical = [];
+        foreach ($parentsByGoods as $gid => $parents) {
+            if (count($parents) < 2) {
+                continue;
+            }
+            $canonical[$gid] = $this->canonicalParentForGoods((string) $gid, array_values($parents));
+        }
+        if ($canonical === []) {
+            return $rows->values();
+        }
+
+        return $rows->map(function (array $row) use ($canonical): array {
+            $gid = (string) ($row['goods_id'] ?? '');
+            if ($gid !== '' && isset($canonical[$gid]) && trim((string) ($row['parent'] ?? '')) !== '') {
+                $row['parent'] = $canonical[$gid];
+            }
+
+            return $row;
+        })->values();
+    }
+
+    /**
+     * @param  list<string>  $parents  Distinct Product Master parents seen for this goods_id
+     */
+    private function canonicalParentForGoods(string $goodsId, array $parents): string
+    {
+        sort($parents, SORT_NATURAL | SORT_FLAG_CASE);
+        $fallback = $parents[0];
+
+        try {
+            $cacheKey = 'temu_ads_out_goods_sn_'.$goodsId;
+            $sn = (string) Cache::get($cacheKey, '');
+            if ($sn === '') {
+                $sn = (string) (app(TemuApiService::class)->fetchOutGoodsSn($goodsId) ?? '');
+                if ($sn !== '') {
+                    Cache::put($cacheKey, $sn, 86400); // only cache real answers
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Temu outGoodsSn lookup failed', ['goods_id' => $goodsId, 'error' => $e->getMessage()]);
+
+            return $fallback;
+        }
+
+        $sn = trim((string) preg_replace('/^PARENT\s+/i', '', trim((string) $sn)));
+        if ($sn === '') {
+            return $fallback;
+        }
+        foreach ($parents as $parent) {
+            if (strcasecmp(trim($parent), $sn) === 0) {
+                return $parent;
+            }
+        }
+
+        return $fallback;
     }
 
     /**

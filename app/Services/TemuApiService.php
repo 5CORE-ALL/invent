@@ -3778,6 +3778,22 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
+     * Temu's own parent code for a listing (goods.detail outGoodsSn), e.g. "PARENT 12 CW 2PCS".
+     * Used to pick one parent when several Product Master parents point at the same goods_id.
+     */
+    public function fetchOutGoodsSn(string $goodsId): ?string
+    {
+        $goodsId = trim($goodsId);
+        if ($goodsId === '' || ! $this->isConfigured()) {
+            return null;
+        }
+        $detail = $this->fetchTemuGoodsDetail($goodsId);
+        $sn = trim((string) ($detail['outGoodsSn'] ?? ($detail['goodsBasic']['outGoodsSn'] ?? '')));
+
+        return $sn !== '' ? $sn : null;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function fetchTemuGoodsDetail(string $goodsId): array
