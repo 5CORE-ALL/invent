@@ -79,7 +79,8 @@
             gap: 0.5rem;
             align-items: center;
         }
-        #alert-count {
+        #alert-count,
+        #single-alert-count {
             background-color: #dc2626 !important;
             color: #fff !important;
             font-weight: 800;
@@ -90,11 +91,15 @@
         }
         #alert-count .temu-ads-alert-tri,
         #alert-count .temu-ads-alert-tri.is-danger,
-        #alert-count .temu-ads-badge-val {
+        #alert-count .temu-ads-badge-val,
+        #single-alert-count .temu-ads-alert-tri,
+        #single-alert-count .temu-ads-alert-tri.is-danger,
+        #single-alert-count .temu-ads-badge-val {
             color: #fff !important;
             font-weight: 800;
         }
-        #alert-count.is-alert-filter-on {
+        #alert-count.is-alert-filter-on,
+        #single-alert-count.is-alert-filter-on {
             box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626;
         }
         .pricing-filter-item {
@@ -529,6 +534,14 @@
                                     <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
                                 </span>
                                 <span class="temu-ads-badge-val">0</span>
+                            </span>
+                            <span class="badge fs-6 p-2" id="single-alert-count"
+                                style="cursor: pointer;"
+                                title="Click to show only Single SKU listings (Ads Rules do not run on them). Click again to clear.">
+                                <span class="temu-ads-alert-tri is-danger" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+                                </span>
+                                Single SKU: <span class="temu-ads-badge-val">0</span>
                             </span>
                         </div>
                     </div>
@@ -1138,6 +1151,17 @@
                 });
             }
 
+            function paintSingleSkuAlertBadge(n) {
+                const el = document.getElementById('single-alert-count');
+                if (!el) return;
+                setBadgeVal('single-alert-count', Number(n).toLocaleString());
+                const on = (document.getElementById('sku-type-filter').value || '') === 'single';
+                el.classList.toggle('is-alert-filter-on', on);
+                el.title = on
+                    ? 'Showing ' + n + ' Single SKU listing(s). Click to show all rows again.'
+                    : 'Click to show the ' + n + ' Single SKU listing(s) (Ads Rules do not run on them).';
+            }
+
             function updateFilterCounts(rows) {
                 const all = Array.isArray(rows) ? flattenAdsRows(rows) : (allAdsRows.length ? allAdsRows : flattenAdsRows(table ? (table.getData() || []) : []));
                 const q = currentFilterQuery();
@@ -1194,6 +1218,7 @@
                 paintSelectOptionCounts('dil-filter', dilCounts, dilTotal);
                 paintSelectOptionCounts('clicks-filter', clicksCounts, clicksTotal);
                 paintSelectOptionCounts('sku-type-filter', typeCounts, typeTotal);
+                paintSingleSkuAlertBadge(typeCounts.single || 0);
                 paintSelectOptionCounts('period-filter', periodCounts, periodTotal);
             }
 
@@ -3175,6 +3200,12 @@
             });
             document.getElementById('alert-count').addEventListener('click', function () {
                 toggleAlertFilter();
+            });
+            document.getElementById('single-alert-count').addEventListener('click', function () {
+                const sel = document.getElementById('sku-type-filter');
+                sel.value = sel.value === 'single' ? '' : 'single';
+                if (table && typeof table.setPage === 'function') table.setPage(1);
+                applySearchFilters();
             });
 
             document.querySelectorAll('.temu-ads-chart-badge').forEach(function (el) {
