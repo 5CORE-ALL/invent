@@ -1203,9 +1203,11 @@
         let options = '<option value="">Select the parent listing…</option>';
         parents.forEach(function (p) {
             const title = String(p.title || '').trim();
-            const text = (title ? (title.length > 70 ? title.slice(0, 70) + '…' : title) : 'Listing') +
-                ' · ' + (p.sku_count || (p.skus || []).length) + ' variation(s) · ID ' + p.id;
-            options += '<option value="' + escapeHtml(String(p.id)) + '" title="' + escapeHtml((p.skus || []).join(', ')) + '">' +
+            const parentName = String(group.parent || '').trim();
+            const text = 'Parent ' + (parentName || '—') + ' · ID ' + p.id + ' · ' +
+                (p.sku_count || (p.skus || []).length) + ' variation(s)' + (title ? ' · ' + title : '');
+            options += '<option value="' + escapeHtml(String(p.id)) + '" title="' +
+                escapeHtml((title ? title + '\n' : '') + 'SKUs: ' + (p.skus || []).join(', ')) + '">' +
                 escapeHtml(text) + '</option>';
         });
         const name = 'lp-attach-' + gi;

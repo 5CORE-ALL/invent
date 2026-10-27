@@ -728,6 +728,19 @@ class EbayListingPublishService
             }
         }
 
+        // Are the live listing's pictures on eBay's own servers (EPS)? Then ours must be too.
+        $livePictureUrls = array_map('strval', $asList($item['PictureDetails']['PictureURL'] ?? null));
+        foreach ($pictureSets as $set) {
+            $livePictureUrls = array_merge($livePictureUrls, $set['urls']);
+        }
+        $epsHosted = false;
+        foreach ($livePictureUrls as $url) {
+            if (stripos($url, 'ebayimg.com') !== false || stripos($url, 'ebaystatic.com') !== false) {
+                $epsHosted = true;
+                break;
+            }
+        }
+
         Log::info('Ebay listing publish: add variations to existing listing', [
             'channel' => $channel,
             'item_id' => $itemId,
@@ -742,7 +755,8 @@ class EbayListingPublishService
             $existingValues,
             $rows,
             $pictureSets,
-            $pictureAspect
+            $pictureAspect,
+            $epsHosted
         );
         if (empty($result['success'])) {
             return ['success' => false, 'message' => $label.': '.($result['message'] ?? 'eBay rejected the new variations.')];

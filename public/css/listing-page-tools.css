@@ -219,7 +219,7 @@
 .listing-publish-attach-title { font-weight: 700; color: #92400e; margin-bottom: 6px; }
 .listing-publish-attach-note { color: #475569; }
 .listing-publish-attach-opt { display: flex; align-items: center; gap: 8px; margin: 4px 0; cursor: pointer; }
-.listing-publish-attach-select { margin: 2px 0 6px 24px; width: calc(100% - 24px); max-width: 640px; }
+.listing-publish-attach-select { margin: 2px 0 6px 24px; width: calc(100% - 24px); max-width: none; }
 .listing-publish-group table { width: 100%; margin: 0; font-size: 12px; }
 .listing-publish-group th,
 .listing-publish-group td { padding: 6px 10px; vertical-align: middle; }

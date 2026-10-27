@@ -688,7 +688,8 @@ class ListingManagerEbayTradingPublisher
         array $existingValues,
         array $newVariations,
         array $existingPictureSets = [],
-        string $pictureAspect = ''
+        string $pictureAspect = '',
+        bool $epsHosted = false
     ): array {
         $itemId = trim($itemId);
         if ($itemId === '' || $aspect === '' || $newVariations === []) {
@@ -699,6 +700,21 @@ class ListingManagerEbayTradingPublisher
             return ['success' => false, 'message' => ($ctx['label'] ?? 'eBay').' API credentials are not configured.'];
         }
         $esc = static fn (string $v): string => htmlspecialchars($v, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+
+        // eBay refuses a listing that mixes eBay-hosted (EPS) and self-hosted pictures. When the live
+        // listing uses EPS pictures, copy our new images onto eBay's servers first and use those URLs.
+        if ($epsHosted) {
+            foreach ($newVariations as $i => $row) {
+                $hosted = [];
+                foreach (array_slice(array_values(array_unique($row['images'] ?? [])), 0, 6) as $url) {
+                    $eps = self::uploadPictureToEps($ctx, (string) $url);
+                    if ($eps !== null) {
+                        $hosted[] = $eps;
+                    }
+                }
+                $newVariations[$i]['images'] = $hosted;
+            }
+        }
 
         try {
             $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
@@ -782,6 +798,47 @@ class ListingManagerEbayTradingPublisher
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Copy an image URL onto eBay Picture Services; returns the eBay-hosted URL or null.
+     *
+     * @param  array<string, mixed>  $ctx
+     */
+    private static function uploadPictureToEps(array $ctx, string $url): ?string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
+            $xml->addChild('ExternalPictureURL', htmlspecialchars($url, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            $xml->addChild('PictureSet', 'Supersize');
+
+            $response = Http::timeout(90)
+                ->withHeaders(self::tradingHeaders($ctx, 'UploadSiteHostedPictures'))
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
+
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($response->body());
+            $data = $xmlResp !== false ? (json_decode(json_encode($xmlResp), true) ?: []) : [];
+            $ack = $data['Ack'] ?? 'Failure';
+            $full = trim((string) ($data['SiteHostedPictureDetails']['FullURL'] ?? ''));
+            if (($ack === 'Success' || $ack === 'Warning') && $full !== '') {
+                return $full;
+            }
+            Log::warning(($ctx['label'] ?? 'eBay').' UploadSiteHostedPictures failed', [
+                'url' => $url,
+                'error' => $data['Errors']['LongMessage'] ?? ($data['Errors'][0]['LongMessage'] ?? ''),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning(($ctx['label'] ?? 'eBay').' UploadSiteHostedPictures error: '.$e->getMessage(), ['url' => $url]);
+        }
+
+        return null;
     }
 
     /**
