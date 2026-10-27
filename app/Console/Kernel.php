@@ -3567,7 +3567,17 @@ class Kernel extends ConsoleKernel
         // Status column only — not Pause/Run. Picks up ads created on Temu Seller Center.
         $retryFiveTimesUntil('temu:refresh-ad-status', 'temu-ads-refresh-status', '19:30');
         // Ads Rules Auto run (only acts when Auto run is ON in /temu/ads > Ads Rules): L7 sold per parent -> slab Target ROAS -> Temu API.
-        $retryFiveTimesUntil('temu:auto-run-ads', 'temu-ads-auto-run', '19:50');
+        // Nothing is scheduled to run (and nothing is pushed) until Auto run is turned ON on that page.
+        foreach ([15, 16, 17, 18, 19] as $autoRunHour) {
+            $schedule->command('temu:auto-run-ads')
+                ->dailyAt(sprintf('%02d:50', $autoRunHour))
+                ->timezone('Asia/Kolkata')
+                ->name('temu-ads-auto-run-'.$autoRunHour.'50')
+                ->when(fn () => app(\App\Services\TemuSoldRoasRuleService::class)->autoRunEnabled())
+                ->withoutOverlapping()
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
         // Morning IST slots finish ~3–6 AM PDT, so /temu/ads stays stale all US day.
         // Do not wrap in $ist() — 22:30–23:45 IST is after IST_WINDOW_END (20:00).
         $schedule->command('temu:fetch-ads-data --period=L30')
@@ -3595,6 +3605,7 @@ class Kernel extends ConsoleKernel
             ->dailyAt('23:55')
             ->timezone('Asia/Kolkata')
             ->name('temu-ads-auto-run-pdt-midday')
+            ->when(fn () => app(\App\Services\TemuSoldRoasRuleService::class)->autoRunEnabled())
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
