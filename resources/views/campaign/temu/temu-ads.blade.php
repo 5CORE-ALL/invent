@@ -281,64 +281,14 @@
             border-radius: 2px;
             vertical-align: middle;
         }
-        #temu-ads-table .tabulator-row.temu-ads-parent-row,
-        #temu-ads-table .tabulator-row.temu-ads-parent-row .tabulator-cell {
-            background-color: #fffef2 !important;
-            font-weight: 700 !important;
-            color: #0f172a;
-        }
-        #temu-ads-table .tabulator-row.temu-ads-parent-row:hover,
-        #temu-ads-table .tabulator-row.temu-ads-parent-row:hover .tabulator-cell {
-            background-color: #fefce8 !important;
-        }
         /* Frozen left block (checkbox / Image / Parent / SKU): divider on the last frozen column */
         #temu-ads-table .tabulator-cell.tabulator-frozen.tabulator-frozen-left,
         #temu-ads-table .tabulator-col.tabulator-frozen.tabulator-frozen-left {
             border-right: 2px solid #cbd5e1;
         }
-        #temu-ads-table .temu-ads-parent-sku {
-            font-weight: 700;
-            letter-spacing: 0.01em;
-        }
         #temu-ads-table .tabulator-cell[tabulator-field="sku"] {
             justify-content: flex-start !important;
             text-align: left !important;
-        }
-        #temu-ads-table .temu-ads-expand-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 16px;
-            height: 16px;
-            margin-right: 6px;
-            padding: 0;
-            border: 0;
-            background: transparent;
-            color: #fd7e14;
-            cursor: pointer;
-            vertical-align: middle;
-            flex-shrink: 0;
-        }
-        #temu-ads-table .temu-ads-expand-btn:hover { color: #e8590c; }
-        #temu-ads-table .temu-ads-chevron {
-            display: block;
-            width: 0;
-            height: 0;
-            border-top: 5px solid transparent;
-            border-bottom: 5px solid transparent;
-            border-left: 7px solid currentColor;
-        }
-        #temu-ads-table .temu-ads-expand-btn.is-open .temu-ads-chevron {
-            border-left: 5px solid transparent;
-            border-right: 5px solid transparent;
-            border-top: 7px solid currentColor;
-            border-bottom: 0;
-        }
-        #temu-ads-table .tabulator-row.temu-ads-child-row .tabulator-cell {
-            background-color: #f8fafc;
-        }
-        #temu-ads-table .tabulator-row.temu-ads-child-row:hover .tabulator-cell {
-            background-color: #f1f5f9;
         }
         .temu-ads-chart-badge { cursor: pointer; }
         .temu-ads-history-dot {
@@ -393,12 +343,6 @@
                                 <option value="L60" data-label="L60">L60</option>
                             </select>
                             <span id="period-range-label" class="small text-muted fw-semibold" title="Same calendar window as Temu Seller Center (US Pacific)"></span>
-                            <select id="row-type-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
-                                    title="Parent Ads = parent rows only. SKU Ads = variation SKUs only. All Ads = parents and children.">
-                                <option value="parent" data-label="Parent Ads" selected>Parent Ads</option>
-                                <option value="sku" data-label="SKU Ads">SKU Ads</option>
-                                <option value="all" data-label="All Ads">All Ads</option>
-                            </select>
                             <button type="button" id="export-alerts-btn" class="btn btn-sm btn-outline-warning pricing-filter-item"
                                     title="Export create-ad errors with Temu's exact reason">
                                 <i class="fa fa-download"></i> Export Alerts
@@ -890,27 +834,12 @@
                 return start + '-' + (start + 69);
             }
 
-            function currentRowType() {
-                const el = document.getElementById('row-type-filter');
-                const v = el ? String(el.value || '').trim() : 'parent';
-                return (v === 'sku' || v === 'all' || v === 'parent') ? v : 'parent';
-            }
-
-            function isParentAdsRow(row) {
-                return !!(row && row.is_parent);
-            }
-
-            function isSkuAdsRow(row) {
-                return !!(row && !row.is_parent);
-            }
-
             let alertFilterOn = false;
 
             function currentFilterQuery() {
                 return {
                     goodsQ: (document.getElementById('search-goods-id').value || '').trim().toLowerCase(),
                     skuQ: (document.getElementById('search-sku').value || '').trim().toLowerCase(),
-                    rowType: currentRowType(),
                     statusQ: (document.getElementById('status-filter').value || '').trim(),
                     invQ: (document.getElementById('inv-filter').value || '').trim(),
                     dilQ: (document.getElementById('dil-filter').value || '').trim(),
@@ -920,13 +849,6 @@
             }
 
             let allAdsRows = [];
-            const expandedAdsKeys = {};
-
-            function adsGroupKey(row) {
-                return String((row && row.parent) || '').trim()
-                    + '\n' + String((row && row.goods_id) || '')
-                    + '\n' + String((row && row.period) || '');
-            }
 
             const createAlertByGoods = {};
 
@@ -977,10 +899,8 @@
                     }
                     const gid = String(r.goods_id || '');
                     if (rejectByGoods[gid]) r.ad_create_reject = rejectByGoods[gid];
-                    r.is_parent = r.is_parent === true || r.is_parent === 1 || r.is_parent === '1';
-                    r._row_key = r.is_parent
-                        ? ('p|' + String(r.goods_id || '') + '|' + String(r.period || '') + '|' + String(r.parent || ''))
-                        : ('c|' + String(r.id || '') + '|' + String(r.sku_id || '') + '|' + String(r.period || ''));
+                    r.is_parent = false;
+                    r._row_key = 'c|' + String(r.id || '') + '|' + String(r.sku_id || '') + '|' + String(r.period || '');
                     if (r._children) delete r._children;
                 });
                 return rows || [];
@@ -988,13 +908,7 @@
 
             function rowVisibleForView(data, q) {
                 q = q || currentFilterQuery();
-                if (!rowMatchesQuery(data, q, '')) return false;
-                const type = q.rowType || currentRowType();
-                if (type === 'sku') return !data.is_parent;
-                if (type === 'all') return true;
-                if (data.is_parent) return true;
-                if (expandedAdsKeys[adsGroupKey(data)]) return true;
-                return !!(q.skuQ && rowMatchesQuery(data, q, ''));
+                return rowMatchesQuery(data, q, '');
             }
 
             function flattenAdsRows(rows) {
@@ -1011,11 +925,6 @@
             function walkAdsRows(fn) {
                 if (!table) return;
                 (table.getRows() || []).forEach(fn);
-            }
-
-            function applyRowTypeView() {
-                if (table && typeof table.setPage === 'function') table.setPage(1);
-                applySearchFilters();
             }
 
             function applySearchFilters() {
@@ -1071,13 +980,7 @@
                 let clicksTotal = 0;
                 let periodTotal = 0;
                 function rowInViewExcept(row, skip) {
-                    if (!rowMatchesQuery(row, q, skip)) return false;
-                    const type = q.rowType || currentRowType();
-                    if (type === 'sku') return !row.is_parent;
-                    if (type === 'all') return true;
-                    if (row.is_parent) return true;
-                    if (expandedAdsKeys[adsGroupKey(row)]) return true;
-                    return !!(q.skuQ && skip !== 'search');
+                    return rowMatchesQuery(row, q, skip);
                 }
                 all.forEach(function (row) {
                     if (rowInViewExcept(row, 'status')) {
@@ -1109,18 +1012,6 @@
                 paintSelectOptionCounts('dil-filter', dilCounts, dilTotal);
                 paintSelectOptionCounts('clicks-filter', clicksCounts, clicksTotal);
                 paintSelectOptionCounts('period-filter', periodCounts, periodTotal);
-                let rowTypeParent = 0;
-                let rowTypeSku = 0;
-                all.forEach(function (row) {
-                    if (!rowMatchesQuery(row, q, '')) return;
-                    if (isParentAdsRow(row)) rowTypeParent++;
-                    else rowTypeSku++;
-                });
-                paintSelectOptionCounts('row-type-filter', {
-                    parent: rowTypeParent,
-                    sku: rowTypeSku,
-                    all: rowTypeParent + rowTypeSku,
-                }, rowTypeParent + rowTypeSku);
             }
 
             function setBadgeVal(id, text) {
@@ -1256,7 +1147,7 @@
                     const gid = String(r.goods_id || '').trim();
                     if (!gid) return;
                     const prev = byGoods[gid];
-                    if (!prev || r.is_parent) {
+                    if (!prev) {
                         byGoods[gid] = {
                             goods_id: gid,
                             parent: String(r.parent || '').trim().replace(/^PARENT\s+/i, ''),
@@ -1419,7 +1310,7 @@
             function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
                 const q = currentFilterQuery();
-                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.alertOnly && q.rowType === 'all';
+                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.alertOnly;
                 const hasStoreSpend = response && response.mall && response.mall.spend != null && isFinite(parseFloat(response.mall.spend));
                 if (hasStoreSpend || (noLocalFilter && response)) {
                     applyStoreBadge(m, response);
@@ -1704,14 +1595,6 @@
                     minWidth: 48,
                     resizable: true,
                 },
-                rowFormatter: function (row) {
-                    const el = row.getElement();
-                    const data = row.getData() || {};
-                    if (data.is_parent) el.classList.add('temu-ads-parent-row');
-                    else el.classList.remove('temu-ads-parent-row');
-                    if (!data.is_parent && String(data.parent || '').trim()) el.classList.add('temu-ads-child-row');
-                    else el.classList.remove('temu-ads-child-row');
-                },
                 initialSort: [{ column: 'parent', dir: 'asc' }],
                 columns: [
                     { title: 'Period', field: 'period', width: 70, visible: false, sorter: 'string' },
@@ -1788,7 +1671,7 @@
                         frozen: true,
                         width: 120,
                         minWidth: 80,
-                        headerTooltip: 'Parent from Product Master. Shown on both Parent Ads and SKU Ads.',
+                        headerTooltip: 'Parent from Product Master.',
                         formatter: function (cell) {
                             const data = cell.getRow().getData() || {};
                             const p = String(data.parent || '').trim().replace(/^PARENT\s+/i, '');
@@ -1800,9 +1683,6 @@
                             const ap = String(ad.parent || '').toLowerCase();
                             const bp = String(bd.parent || '').toLowerCase();
                             if (ap !== bp) return ap < bp ? -1 : 1;
-                            const ai = ad.is_parent ? 0 : 1;
-                            const bi = bd.is_parent ? 0 : 1;
-                            if (ai !== bi) return ai - bi;
                             return String(ad.sku || '').localeCompare(String(bd.sku || ''), undefined, { sensitivity: 'base' });
                         },
                     },
@@ -1814,47 +1694,14 @@
                         minWidth: 160,
                         hozAlign: 'left',
                         headerHozAlign: 'center',
-                        headerTooltip: 'Click the arrow on a PARENT row to show its child ads.',
+                        headerTooltip: 'Exact SKU name as Temu holds it for this variation.',
                         sorter: 'string',
                         formatter: function (cell) {
-                            const sku = String(cell.getValue() || '');
-                            const data = cell.getRow().getData() || {};
-                            if (!data.is_parent) return escapeAttr(sku);
-                            const open = !!expandedAdsKeys[adsGroupKey(data)];
-                            return '<button type="button" class="temu-ads-expand-btn' + (open ? ' is-open' : '') + '" title="Show child ads"><span class="temu-ads-chevron"></span></button><span class="temu-ads-parent-sku">' + escapeAttr(sku) + '</span>';
-                        },
-                        cellClick: function (e, cell) {
-                            const btn = e.target.closest('.temu-ads-expand-btn');
-                            if (!btn) return;
-                            e.stopPropagation();
-                            const data = cell.getRow().getData() || {};
-                            if (!data.is_parent) return;
-                            const k = adsGroupKey(data);
-                            if (expandedAdsKeys[k]) delete expandedAdsKeys[k];
-                            else expandedAdsKeys[k] = true;
-                            applySearchFilters();
+                            return escapeAttr(String(cell.getValue() || ''));
                         },
                     },
                     { title: 'SKU ID', field: 'sku_id', width: 130, minWidth: 100, sorter: 'string',
                       headerTooltip: 'Temu skuId for this variation' },
-                    {
-                        title: 'Count',
-                        field: 'child_count',
-                        width: 62,
-                        minWidth: 52,
-                        hozAlign: 'center',
-                        sorter: function (a, b, aRow, bRow) {
-                            const av = (aRow && aRow.getData().is_parent) ? (parseInt(a, 10) || 0) : -1;
-                            const bv = (bRow && bRow.getData().is_parent) ? (parseInt(b, 10) || 0) : -1;
-                            return av - bv;
-                        },
-                        headerTooltip: 'Number of child SKU ads under this parent (shown on PARENT rows).',
-                        formatter: function (cell) {
-                            const data = cell.getRow().getData() || {};
-                            if (!data.is_parent) return '';
-                            return String(parseInt(cell.getValue(), 10) || 0);
-                        },
-                    },
                     { title: 'Inv', field: 'inv', width: 52, minWidth: 48, hozAlign: 'center', formatter: numFmt, sorter: 'number',
                       headerTooltip: 'Inventory from shopify_skus.inv' },
                     {
@@ -2820,7 +2667,6 @@
                 clearTimeout(searchFilterTimer);
                 searchFilterTimer = setTimeout(applySearchFilters, 220);
             }
-            document.getElementById('row-type-filter').addEventListener('change', applyRowTypeView);
             document.getElementById('search-goods-id').addEventListener('input', scheduleSearchFilters);
             document.getElementById('search-sku').addEventListener('input', scheduleSearchFilters);
             document.getElementById('status-filter').addEventListener('change', applySearchFilters);
