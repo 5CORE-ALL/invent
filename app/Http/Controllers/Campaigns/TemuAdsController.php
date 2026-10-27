@@ -211,7 +211,7 @@ class TemuAdsController extends Controller
 
         $rows = $this->fillMissingParentsOnAdsRows($rows);
         $rows = $this->unifyParentPerGoods($rows);
-        $rows = $this->sortAdsRows($rows);
+        $rows = $this->layoutAdsRowsLikeTemu($rows);
 
         $tacosPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
         $channelSales = $this->temuChannelSalesForPeriod($tacosPeriod);
@@ -1185,20 +1185,86 @@ class TemuAdsController extends Controller
     }
 
     /**
-     * Flat raw rows (no PARENT summary rows): grouped by Product Master parent, then Temu's exact SKU name.
+     * Same layout as Temu Seller Center, always expanded (no collapse): one parent line per goods_id + period
+     * named exactly as Temu names the goods (goods.detail outGoodsSn, e.g. "PARENT 10 FR"), then that goods'
+     * variation rows with Temu's exact SKU names. Ad metrics stay goods-level (copied from the first variation);
+     * Inv / Ovl30 / Dil% / Sales roll up from the variations.
      *
      * @param  iterable<int, array<string, mixed>>  $rows
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
      */
-    private function sortAdsRows($rows)
+    private function layoutAdsRowsLikeTemu($rows)
     {
-        return collect($rows)
-            ->map(function (array $row): array {
-                $row['is_parent'] = false;
+        $names = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::CACHE_KEY);
+        $names = is_array($names) ? $names : [];
 
-                return $row;
+        $children = collect($rows)->map(function (array $row): array {
+            $row['is_parent'] = false;
+
+            return $row;
+        });
+
+        $parentRows = $children
+            ->groupBy(fn (array $row) => (string) ($row['goods_id'] ?? '')."\n".(string) ($row['period'] ?? ''))
+            ->map(function ($kids) use ($names) {
+                $first = $kids->first();
+                $gid = (string) ($first['goods_id'] ?? '');
+                $period = (string) ($first['period'] ?? '');
+                $parent = trim((string) ($first['parent'] ?? ''));
+
+                $temuName = trim((string) ($names[$gid]['out_goods_sn'] ?? ''));
+                if ($temuName !== '') {
+                    $parentSku = $temuName;
+                } elseif ($parent !== '') {
+                    $parentSku = 'PARENT '.$parent;
+                } else {
+                    return null; // Temu gives this goods no parent name and we have none: no summary line
+                }
+                $parentName = trim((string) preg_replace('/^PARENT\s+/i', '', $parentSku));
+
+                $inv = (int) $kids->sum(fn (array $k) => (int) ($k['inv'] ?? 0));
+                $ovl30 = (int) $kids->sum(fn (array $k) => (int) ($k['ovl30'] ?? 0));
+
+                return array_merge($first, [
+                    'id' => 'p-'.$gid.'-'.$period,
+                    'raw_id' => $first['id'] ?? null,
+                    'is_parent' => true,
+                    'parent' => $parent !== '' ? $parent : $parentName,
+                    'sku' => $parentSku,
+                    'sku_id' => '',
+                    'child_count' => $kids->count(),
+                    'sold_l7' => $kids->contains(fn (array $k) => array_key_exists('sold_l7', $k))
+                        ? (int) $kids->sum(fn (array $k) => (int) ($k['sold_l7'] ?? 0))
+                        : null,
+                    'inv' => $inv,
+                    'ovl30' => $ovl30,
+                    'dil_percent' => $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0,
+                    'all_sale' => round((float) $kids->sum(fn (array $k) => (float) ($k['all_sale'] ?? 0)), 2),
+                    'has_raw' => true,
+                ]);
             })
-            ->sortBy(fn (array $row) => mb_strtolower((string) ($row['parent'] ?? ''))."\n".mb_strtolower((string) ($row['sku'] ?? '')))
+            ->filter()
+            ->values();
+
+        // A parent line takes the same Parent label as its variations so they sort together.
+        $parentByGoods = $parentRows->mapWithKeys(fn (array $p) => [((string) $p['goods_id'])."\n".((string) $p['period']) => $p['parent']]);
+        $children = $children->map(function (array $row) use ($parentByGoods): array {
+            if (trim((string) ($row['parent'] ?? '')) === '') {
+                $row['parent'] = $parentByGoods[((string) ($row['goods_id'] ?? ''))."\n".((string) ($row['period'] ?? ''))] ?? '';
+            }
+
+            return $row;
+        });
+
+        return $children
+            ->concat($parentRows)
+            ->sortBy(function (array $row) {
+                return mb_strtolower((string) ($row['parent'] ?? ''))
+                    ."\n".(string) ($row['goods_id'] ?? '')
+                    ."\n".(string) ($row['period'] ?? '')
+                    ."\n".(! empty($row['is_parent']) ? '0' : '1')
+                    ."\n".mb_strtolower((string) ($row['sku'] ?? ''));
+            })
             ->values();
     }
 

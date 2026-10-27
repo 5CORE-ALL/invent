@@ -281,6 +281,16 @@
             border-radius: 2px;
             vertical-align: middle;
         }
+        #temu-ads-table .tabulator-row.temu-ads-parent-row,
+        #temu-ads-table .tabulator-row.temu-ads-parent-row .tabulator-cell {
+            background-color: #fffef2 !important;
+            font-weight: 700 !important;
+            color: #0f172a;
+        }
+        #temu-ads-table .tabulator-row.temu-ads-parent-row:hover,
+        #temu-ads-table .tabulator-row.temu-ads-parent-row:hover .tabulator-cell {
+            background-color: #fefce8 !important;
+        }
         /* Frozen left block (checkbox / Image / Parent / SKU): divider on the last frozen column */
         #temu-ads-table .tabulator-cell.tabulator-frozen.tabulator-frozen-left,
         #temu-ads-table .tabulator-col.tabulator-frozen.tabulator-frozen-left {
@@ -899,8 +909,10 @@
                     }
                     const gid = String(r.goods_id || '');
                     if (rejectByGoods[gid]) r.ad_create_reject = rejectByGoods[gid];
-                    r.is_parent = false;
-                    r._row_key = 'c|' + String(r.id || '') + '|' + String(r.sku_id || '') + '|' + String(r.period || '');
+                    r.is_parent = r.is_parent === true || r.is_parent === 1 || r.is_parent === '1';
+                    r._row_key = r.is_parent
+                        ? ('p|' + String(r.goods_id || '') + '|' + String(r.period || ''))
+                        : ('c|' + String(r.id || '') + '|' + String(r.sku_id || '') + '|' + String(r.period || ''));
                     if (r._children) delete r._children;
                 });
                 return rows || [];
@@ -1147,7 +1159,7 @@
                     const gid = String(r.goods_id || '').trim();
                     if (!gid) return;
                     const prev = byGoods[gid];
-                    if (!prev) {
+                    if (!prev || r.is_parent) {
                         byGoods[gid] = {
                             goods_id: gid,
                             parent: String(r.parent || '').trim().replace(/^PARENT\s+/i, ''),
@@ -1595,6 +1607,12 @@
                     minWidth: 48,
                     resizable: true,
                 },
+                rowFormatter: function (row) {
+                    const el = row.getElement();
+                    const data = row.getData() || {};
+                    if (data.is_parent) el.classList.add('temu-ads-parent-row');
+                    else el.classList.remove('temu-ads-parent-row');
+                },
                 initialSort: [{ column: 'parent', dir: 'asc' }],
                 columns: [
                     { title: 'Period', field: 'period', width: 70, visible: false, sorter: 'string' },
@@ -1683,6 +1701,12 @@
                             const ap = String(ad.parent || '').toLowerCase();
                             const bp = String(bd.parent || '').toLowerCase();
                             if (ap !== bp) return ap < bp ? -1 : 1;
+                            const ag = String(ad.goods_id || '');
+                            const bg = String(bd.goods_id || '');
+                            if (ag !== bg) return ag < bg ? -1 : 1;
+                            const ai = ad.is_parent ? 0 : 1;
+                            const bi = bd.is_parent ? 0 : 1;
+                            if (ai !== bi) return ai - bi;
                             return String(ad.sku || '').localeCompare(String(bd.sku || ''), undefined, { sensitivity: 'base' });
                         },
                     },
@@ -1694,7 +1718,7 @@
                         minWidth: 160,
                         hozAlign: 'left',
                         headerHozAlign: 'center',
-                        headerTooltip: 'Exact SKU name as Temu holds it for this variation.',
+                        headerTooltip: 'Exact SKU names as Temu Seller Center shows them: the PARENT line for the goods, then its variations.',
                         sorter: 'string',
                         formatter: function (cell) {
                             return escapeAttr(String(cell.getValue() || ''));
