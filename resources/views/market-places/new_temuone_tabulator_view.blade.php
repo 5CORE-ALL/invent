@@ -1180,7 +1180,9 @@
         if (!table || typeof table.getRows !== 'function') return;
         temuClearCapMemo(); // callers write prices, so never read a memo from before the rules changed
         (table.getRows('all') || []).forEach(function(row) {
-            fn(row, row.getData() || {});
+            const d = row.getData() || {};
+            if (d.is_parent_summary) return; // parent summary rows are display-only
+            fn(row, d);
         });
     }
     const CH_PROMO_RULES_BASE = '/channel-promo-pricing/newtemuone';
@@ -2922,9 +2924,14 @@
     function ntoSummaryRows() {
         if (!table || typeof table.getData !== 'function') return [];
         const active = table.getData('active');
-        if (Array.isArray(active) && active.length) return active;
+        if (Array.isArray(active) && active.length) {
+            // Parent summary rows repeat their children's totals, so badges use the SKU rows
+            // (only the Parent view, which has no SKU rows, counts the parent rows themselves).
+            const kids = active.filter(function(r) { return !(r && r.is_parent_summary); });
+            return kids.length ? kids : active;
+        }
         const all = table.getData();
-        return Array.isArray(all) ? all : [];
+        return Array.isArray(all) ? all.filter(function(r) { return !(r && r.is_parent_summary); }) : [];
     }
 
     function ntoRowViews(row) {
@@ -3023,7 +3030,7 @@
         }
         ntoRefreshLmpAlertBadge(true);
         // Counted over the whole dataset, not the filtered view — same as /temu2-decrease.
-        const allRows = table.getData();
+        const allRows = (table.getData() || []).filter(function(r) { return !(r && r.is_parent_summary); });
         if (window.PriceLt80LmpBadge) {
             PriceLt80LmpBadge.update('#newtemuone-price-lt80-lmp-badge', allRows, '', 'temu_price');
         }
@@ -3043,7 +3050,7 @@
         if (window.AnalyticsDilBadge) {
             var __dilRows = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) ? allTableData
                 : (typeof summaryDataCache !== 'undefined' && Array.isArray(summaryDataCache) && summaryDataCache.length) ? summaryDataCache
-                : (typeof table !== 'undefined' && table && typeof table.getData === 'function') ? (function () { try { return table.getData() || []; } catch (e) { return []; } })()
+                : (typeof table !== 'undefined' && table && typeof table.getData === 'function') ? (function () { try { return (table.getData() || []).filter(function(r) { return !(r && r.is_parent_summary); }); } catch (e) { return []; } })()
                 : (typeof tableData !== 'undefined' && Array.isArray(tableData) ? tableData : []);
             AnalyticsDilBadge.paintFromRows(__dilRows);
         }
@@ -3075,7 +3082,7 @@
                 return;
             }
             let rows = [];
-            try { rows = table.getData('active') || []; } catch (e) { rows = []; }
+            try { rows = (table.getData('active') || []).filter(function(r) { return !(r && r.is_parent_summary); }); } catch (e) { rows = []; }
             let count = 0;
             rows.forEach(function(row) {
                 if (temuHasLmpAlert(row)) count++;
@@ -3512,6 +3519,8 @@
         const parentB = String((b && (b.Parent || b.parent)) || '').replace(/^PARENT\s+/i, '').trim();
         const parentCmp = temuSkuCollator.compare(parentA, parentB);
         if (parentCmp !== 0) return parentCmp;
+        const sumA = !!(a && a.is_parent_summary), sumB = !!(b && b.is_parent_summary);
+        if (sumA !== sumB) return sumA ? -1 : 1;
         const skuA = String((a && (a['(Child) sku'] || a.sku)) || '');
         const skuB = String((b && (b['(Child) sku'] || b.sku)) || '');
         return temuSkuCollator.compare(skuA, skuB);

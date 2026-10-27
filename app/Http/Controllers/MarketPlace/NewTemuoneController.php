@@ -137,12 +137,82 @@ class NewTemuoneController extends Controller
     public function dataJson()
     {
         try {
-            return response()->json($this->persistSuggestedCatalog()['rows']);
+            $rows = $this->persistSuggestedCatalog()['rows'];
+
+            return response()->json(array_merge($rows, $this->parentSummaryRows($rows)));
         } catch (\Exception $e) {
             Log::error('Error fetching New Temu One data: ' . $e->getMessage());
 
             return response()->json(['error' => 'Failed to fetch data'], 500);
         }
+    }
+
+    /**
+     * One summary row per Parent (INV / L30 / Temu L30..L60 / Views summed over its SKUs) for the
+     * View: All | Parent | SKU filter. Page-only: not part of persistSuggestedCatalog, so pushes never see them.
+     * Views are Goods ID level (variants share one listing), so each Goods ID counts once.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function parentSummaryRows(array $rows): array
+    {
+        $groups = [];
+        foreach ($rows as $r) {
+            $parent = trim((string) ($r['Parent'] ?? ''));
+            if ($parent === '') {
+                continue;
+            }
+            $groups[$parent][] = $r;
+        }
+
+        $out = [];
+        foreach ($groups as $parent => $kids) {
+            $inv = 0.0;
+            $l30 = 0.0;
+            $t30 = 0;
+            $t45 = 0;
+            $t60 = 0;
+            $viewsByGoods = [];
+            $viewsNoGoods = 0;
+            foreach ($kids as $k) {
+                $inv += (float) ($k['INV'] ?? 0);
+                $l30 += (float) ($k['L30'] ?? 0);
+                $t30 += (int) ($k['temu_l30'] ?? 0);
+                $t45 += (int) ($k['temu_l45'] ?? 0);
+                $t60 += (int) ($k['temu_l60'] ?? 0);
+                $v = (int) ($k['views'] ?? 0);
+                $gid = trim((string) ($k['temu_goods_id'] ?? ''));
+                if ($gid === '') {
+                    $viewsNoGoods += $v;
+                } elseif (! isset($viewsByGoods[$gid]) || $v > $viewsByGoods[$gid]) {
+                    $viewsByGoods[$gid] = $v;
+                }
+            }
+            $views = $viewsNoGoods + array_sum($viewsByGoods);
+            $label = 'PARENT '.$parent;
+            $out[] = [
+                'is_parent_summary' => true,
+                'Parent' => $parent,
+                'parent' => $parent,
+                'sku' => $label,
+                '(Child) sku' => $label,
+                'INV' => (int) round($inv),
+                'inventory' => (int) round($inv),
+                'L30' => (int) round($l30),
+                'temu_l30' => $t30,
+                'temu_l45' => $t45,
+                'temu_l60' => $t60,
+                'views' => $views,
+                'cvr_percent' => $views > 0 ? round(($t30 / $views) * 100, 2) : 0.0,
+                'cvr_30' => $views > 0 ? round(($t30 / $views) * 100, 2) : 0.0,
+                'cvr_45' => $views > 0 ? round(($t45 / $views) * 100, 2) : 0.0,
+                'cvr_60' => $views > 0 ? round(($t60 / $views) * 100, 2) : 0.0,
+                'Dil%' => $inv > 0 ? round(($l30 / $inv) * 100, 2) : 0.0,
+            ];
+        }
+
+        return $out;
     }
 
     /**
