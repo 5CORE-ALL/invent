@@ -662,11 +662,11 @@
             width: 100%;
             min-width: 0;
             max-width: none;
-            min-height: 42px;
+            min-height: 41.6px;
             height: 100%;
-            font-size: 0.9rem !important;
+            font-size: 0.891rem !important;
             line-height: 1.2;
-            padding: 0.4rem 0.5rem !important;
+            padding: 0.396rem 0.495rem !important;
             border-radius: 0.375rem;
             font-weight: bold;
             box-sizing: border-box;
@@ -679,10 +679,10 @@
         }
         #summary-stats .summary-trend-dot {
             display: inline-block;
-            width: 8px;
-            height: 8px;
+            width: 7.92px;
+            height: 7.92px;
             border-radius: 50%;
-            margin-right: 0.22rem;
+            margin-right: 0.218rem;
             margin-left: 0;
             flex-shrink: 0;
             cursor: pointer;
