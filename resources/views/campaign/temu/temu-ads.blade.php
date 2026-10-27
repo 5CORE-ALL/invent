@@ -1976,11 +1976,12 @@
                         minWidth: 70,
                         hozAlign: 'center',
                         sorter: 'string',
-                        headerTooltip: 'Listing status of this goods ID on Temu (temu.local.sku.list.retrieve): Active = on sale, Inactive = not on sale. Blank = Temu did not return it.',
+                        headerTooltip: 'Listing status of this goods ID on Temu (temu.local.sku.list.retrieve): Active = on sale, Inactive = not on sale, Removed = not in the Seller Center product list. Blank = Temu did not return it.',
                         formatter: function (cell) {
                             const v = String(cell.getValue() || '').toLowerCase();
                             if (v === 'active') return '<span class="badge bg-success">Active</span>';
                             if (v === 'inactive') return '<span class="badge bg-secondary">Inactive</span>';
+                            if (v === 'removed') return '<span class="badge bg-dark" title="Not in Temu Seller Center product list (removed / ended)">Removed</span>';
                             return '<span class="text-muted">—</span>';
                         }
                     },

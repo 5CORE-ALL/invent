@@ -137,6 +137,18 @@ class TemuAdsController extends Controller
                 });
         }
 
+        // Goods Temu still lists in Seller Center. Removed/ended goods can still answer sku.list as
+        // "active", so anything missing from this list is shown as "removed" instead.
+        $liveGoods = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::LIVE_GOODS_CACHE_KEY);
+        if (is_array($liveGoods) && $liveGoods !== []) {
+            foreach ($records as $rec) {
+                $g = (string) $rec->goods_id;
+                if ($g !== '' && ! array_key_exists($g, $liveGoods)) {
+                    $listingByGoods[$g] = 'removed';
+                }
+            }
+        }
+
         $rows = $records->map(function (TemuAdsApiReport $r) use ($listingByGoods, $soldL7BySku, $l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $inSpendWindow) {
             $clicks = (int) ($r->clicks ?? 0);
             $orders = (int) ($r->order_pay_cnt ?? 0);

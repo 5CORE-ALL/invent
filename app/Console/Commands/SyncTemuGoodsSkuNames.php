@@ -18,15 +18,29 @@ use Illuminate\Support\Facades\Storage;
 class SyncTemuGoodsSkuNames extends Command
 {
     public const CACHE_KEY = 'temu_goods_sku_names_v1';
+    public const LIVE_GOODS_CACHE_KEY = 'temu_live_goods_ids_v1';
 
     protected $signature = 'temu:sync-goods-sku-names
-                            {--goods-id= : Only this goods ID}';
+                            {--goods-id= : Only this goods ID}
+                            {--live-only : Only refresh the list of goods Temu still lists (fast)}';
 
     protected $description = 'Cache exact Temu SKU names per goods_id for /temu/ads and write an audit of mismatches';
 
     public function handle(TemuApiService $api): int
     {
         $only = $this->option('goods-id') ? trim((string) $this->option('goods-id')) : null;
+
+        // Goods Temu still lists in Seller Center. Anything else is removed/ended there.
+        $live = $api->fetchLiveGoodsIds();
+        if (is_array($live) && $live !== []) {
+            Cache::forever(self::LIVE_GOODS_CACHE_KEY, $live);
+            $this->info('Temu lists '.count($live).' goods in Seller Center.');
+        } else {
+            $this->warn('Could not read Temu goods list; keeping previous live-goods cache.');
+        }
+        if ($this->option('live-only')) {
+            return is_array($live) && $live !== [] ? 0 : 1;
+        }
 
         $goodsIds = $only
             ? [$only]

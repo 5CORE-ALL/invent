@@ -3794,6 +3794,55 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
+     * Goods Temu still lists in Seller Center "Manage products" (goods.list.retrieve, ALL).
+     * Removed / ended goods can still answer goods.detail and sku.list, but are not in this list.
+     *
+     * @return array<string, mixed>|null  goodsId => goodsStatus; null when the list could not be read completely
+     */
+    public function fetchLiveGoodsIds(): ?array
+    {
+        if (! $this->isConfigured()) {
+            return null;
+        }
+
+        $live = [];
+        $pageToken = null;
+        $pages = 0;
+        do {
+            $body = ['type' => 'temu.local.goods.list.retrieve', 'goodsSearchType' => 'ALL', 'pageSize' => 100];
+            if ($pageToken) {
+                $body['pageToken'] = $pageToken;
+            }
+            try {
+                $request = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(45);
+                if (config('filesystems.default') === 'local') {
+                    $request = $request->withoutVerifying();
+                }
+                $resp = $request->post($this->openApiRouterUrl(), $this->generateSignValue($body))->json();
+            } catch (\Throwable $e) {
+                Log::warning('Temu goods.list (live goods) failed', ['error' => $e->getMessage()]);
+
+                return null;
+            }
+            if (! is_array($resp) || ! ($resp['success'] ?? false)) {
+                Log::warning('Temu goods.list (live goods) not successful', ['error' => $resp['errorMsg'] ?? null]);
+
+                return null;
+            }
+            foreach (($resp['result']['goodsList'] ?? []) as $g) {
+                if (is_array($g) && isset($g['goodsId'])) {
+                    $live[(string) $g['goodsId']] = $g['goodsStatus'] ?? null;
+                }
+            }
+            $pageToken = $resp['result']['pagination']['nextToken'] ?? null;
+            $pages++;
+            usleep(150000);
+        } while ($pageToken && $pages < 200);
+
+        return $pageToken ? null : $live; // incomplete (page cap hit) = do not trust
+    }
+
+    /**
      * Exact SKU list Temu holds for a goods (goods.detail skuList), keyed by skuId.
      * A SKU Temu has no seller SKU name for comes back as an empty string.
      *
