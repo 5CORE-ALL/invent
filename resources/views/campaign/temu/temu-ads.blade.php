@@ -320,6 +320,7 @@
             text-align: left !important;
         }
         .temu-ads-var-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; }
+        .temu-ads-var-wrap .temu-ads-alert-tri { flex: 0 0 auto; }
         .temu-ads-var-btn {
             display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto;
             padding: 1px 6px; border: 1px solid #93c5fd; border-radius: 10px;
@@ -1156,6 +1157,8 @@
                     return rowMatchesQuery(row, q, skip);
                 }
                 all.forEach(function (row) {
+                    // Count only rows the grid really lists (variations folded into a PARENT row are not rows).
+                    if (row._collapsed_child) return;
                     if (rowInViewExcept(row, 'status')) {
                         statusTotal++;
                         const s = rowStatusValue(row);
@@ -1939,7 +1942,9 @@
                             const folded = d.is_parent && d._var_count
                                 ? '<button type="button" class="temu-ads-var-btn" title="Show ' + d._var_count + ' variations">'
                                     + '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M5.5 2.5 11 8l-5.5 5.5-1.4-1.4L8.2 8 4.1 3.9z"/></svg><span>' + d._var_count + '</span></button>'
-                                : '';
+                                : (!d.is_parent && d._sku_type === 'single'
+                                    ? adsAlertTriangleHtml('Single SKU listing — Ads Rules / Auto run do not run ads on single-SKU goods (only on Multi SKU parents).', 'is-danger')
+                                    : '');
                             if (!detail) return folded ? '<div class="temu-ads-var-wrap">' + folded + '<span>' + sku + '</span></div>' : sku;
                             // Temu layout: SKU on top, the variation label / product name beneath it.
                             return '<div class="temu-ads-var-wrap">' + folded + '<div style="min-width:0;flex:1;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + sku
