@@ -4624,6 +4624,29 @@
                     },
                 },
                 {
+                    title: "STD Price",
+                    field: "std_price",
+                    minWidth: 68,
+                    width: 74,
+                    headerSort: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Amazon Std Price (STANDARD_PRICE) used for STD PFT% / STD NROI%",
+                    accessor: function(row) {
+                        if (!row) return null;
+                        const v = parseFloat(row.std_price);
+                        return Number.isFinite(v) ? v : null;
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        const v = parseFloat(cell.getValue());
+                        if ((d.is_parent || d.isParent) || !Number.isFinite(v) || v <= 0) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">—</span>';
+                        }
+                        return `<span style="display:block;text-align:center;font-weight:700;">$${v.toFixed(2)}</span>`;
+                    }
+                },
+                {
                     title: "RFQ",
                     field: "rfq_form_link",
                     visible: false,
@@ -4757,29 +4780,6 @@
                             ? '<span style="color:#6c757d">—</span>'
                             : `<span style="font-weight:700;color:${col};" title="Avg NPFT% (pricing-master-cvr)">${n}%</span>`;
                         return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;width:100%;">${valueHtml}${faMetricChartDot('avg_npft', row, empty ? '' : n)}</span>`;
-                    }
-                },
-                {
-                    title: "STD Price",
-                    field: "std_price",
-                    minWidth: 68,
-                    width: 74,
-                    headerSort: true,
-                    hozAlign: "center",
-                    sorter: "number",
-                    headerTooltip: "Amazon Std Price (STANDARD_PRICE) used for STD PFT% / STD NROI%",
-                    accessor: function(row) {
-                        if (!row) return null;
-                        const v = parseFloat(row.std_price);
-                        return Number.isFinite(v) ? v : null;
-                    },
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        const v = parseFloat(cell.getValue());
-                        if ((d.is_parent || d.isParent) || !Number.isFinite(v) || v <= 0) {
-                            return '<span style="display:block;text-align:center;color:#6c757d;">—</span>';
-                        }
-                        return `<span style="display:block;text-align:center;font-weight:700;">$${v.toFixed(2)}</span>`;
                     }
                 },
                 {
