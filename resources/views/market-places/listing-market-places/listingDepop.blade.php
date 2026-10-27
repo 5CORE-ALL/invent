@@ -1,7 +1,7 @@
 @extends('layouts.vertical', ['title' => 'Listing Depop', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
-    <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}?v=3">
+    <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}?v=20261028-attach">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         #depop-listing-wrap .tabulator { border: 1px solid #dee2e6; border-radius: 8px; font-size: 13px; }
