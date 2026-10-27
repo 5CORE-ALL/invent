@@ -245,4 +245,5 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
+@include('partials.listing-sku-search')
 @endsection

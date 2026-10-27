@@ -1914,4 +1914,5 @@
         };
     </script>
     <script src="{{ asset('js/listing-page-tools.js') }}?v=20261017-vm"></script>
+@include('partials.listing-sku-search')
 @endsection

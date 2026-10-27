@@ -1341,4 +1341,5 @@
             });
         })();
     </script>
+@include('partials.listing-sku-search')
 @endsection

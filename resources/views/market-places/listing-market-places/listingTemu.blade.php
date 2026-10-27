@@ -1906,4 +1906,5 @@
         };
     </script>
     <script src="{{ asset('js/listing-page-tools.js') }}?v=20261015-vm"></script>
+@include('partials.listing-sku-search')
 @endsection
