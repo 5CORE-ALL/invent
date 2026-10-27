@@ -1104,6 +1104,9 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_views" style="background-color: #0dcaf0; color: #111; font-weight: bold; cursor:pointer;" title="Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30).">
                             <span class="summary-trend-dot none" data-metric="y_views" title="Vs L30 daily average"></span>Views: <span id="total-y-views">0</span>
                         </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_cvr" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="Y CVR = Σ yesterday qty ÷ Σ yesterday views across channels (same as the Y CVR column footer).">
+                            <span class="summary-trend-dot none" data-metric="y_cvr" title="Vs L30 CVR"></span>CVR: <span id="avg-y-cvr">-</span>
+                        </span>
                         </div>
                     </div>
                     <div class="amm-badge-block amm-badge-block--l30">
@@ -2711,7 +2714,7 @@
             var chartDotSynced = {};
             var yVsL30DotMetrics = { y_sales: 1, y_orders: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, y_ads_pct: 1, y_views: 1,
                 // Today badges: today's pace vs the L30 baseline (daily average for counts, L30 % for ratios).
-                t_orders: 1, t_npft: 1, t_groi: 1, t_nroi: 1, t_ads: 1, t_views: 1, t_cvr: 1 };
+                t_orders: 1, t_npft: 1, t_groi: 1, t_nroi: 1, t_ads: 1, t_views: 1, t_cvr: 1, y_cvr: 1 };
             var yOrdersExact = null;
             var yOrdersByChannel = null;
             var yCvrByChannel = null;
@@ -2723,6 +2726,8 @@
             var tViewsFooterBelowAvg = false;
             var tCvrFooterBelowAvg = false;
             var yViewsExact = null;
+            var yCvrExact = null;
+            var l30CvrPct = null;
             var l30DailyOrders = null;
             var l30DailyViews = null;
             var ySalesAllChartPrefetch = null;
@@ -2832,7 +2837,7 @@
                 if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return DEFAULT_DOT_GRAY;
                 var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
                     || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'p_nroi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
-                    || metric === 'nroi' || metric === 'ads_pct' || metric === 'y_ads_pct' || metric === 't_ads_pct' || metric === 'acos' || metric === 't_cvr') ? 0.005 : 0.01;
+                    || metric === 'nroi' || metric === 'ads_pct' || metric === 'y_ads_pct' || metric === 't_ads_pct' || metric === 'acos' || metric === 't_cvr' || metric === 'y_cvr') ? 0.005 : 0.01;
                 if (Math.abs(v2 - v1) <= eps) return DEFAULT_DOT_GRAY;
                 var isInverted = invertedDotMetrics.indexOf(metric) >= 0;
                 return isInverted ? (v2 < v1 ? '#28a745' : '#dc3545') : (v2 > v1 ? '#28a745' : '#dc3545');
@@ -6302,7 +6307,7 @@
                     if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return 'none';
                     var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
                         || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'p_nroi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
-                        || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos' || metric === 't_cvr') ? 0.005 : 0.01;
+                        || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos' || metric === 't_cvr' || metric === 'y_cvr') ? 0.005 : 0.01;
                     if (Math.abs(v2 - v1) <= eps) return 'flat';
                     // TAT badge only: higher months of stock is worse (red up, green down).
                     var isInv = inverted.indexOf(metric) >= 0 || metric === 'tat';
@@ -7050,6 +7055,11 @@
                     'Green when today views are above the L30 daily average (L30 Views ÷ 30).');
                 pinSummaryDot('t_cvr', cvrPct, todayDotVals.t_cvr,
                     'Green when today CVR is above the L30 listing CVR.');
+                l30CvrPct = cvrPct;
+                if (yCvrExact != null) {
+                    pinSummaryDot('y_cvr', l30CvrPct, yCvrExact,
+                        'Green when yesterday CVR is above the L30 listing CVR.');
+                }
                 if (typeof colorSummaryBadgeDots === 'function') {
                     colorSummaryBadgeDots(channelKeysFromTableData());
                 }
@@ -9392,6 +9402,38 @@
                 applyL30FallbackDots();
             }
 
+            // Y CVR badge = Σ yesterday qty ÷ Σ yesterday views, using the same settled channels
+            // as the Y CVR column footer (channels with estimated / as-of views are left out).
+            function applyYCvrBadge() {
+                const $el = $('#avg-y-cvr');
+                if (!$el.length || !yCvrByChannel) return;
+                let views = 0, qty = 0;
+                Object.keys(yCvrByChannel).forEach(function(key) {
+                    const rec = yCvrByChannel[key];
+                    if (rec && !rec.asOf && !rec.est && rec.views != null) {
+                        views += rec.views;
+                        qty += rec.qty;
+                    }
+                });
+                const badgeTitle = 'Y CVR = Σ yesterday qty ÷ Σ yesterday views across channels (same as the Y CVR column footer).';
+                if (views > 0) {
+                    const val = Math.round((qty / views) * 10000) / 100;
+                    yCvrExact = val;
+                    $el.text(val.toFixed(2) + '%');
+                    $el.closest('.badge').attr('data-exact-value', val).attr('title', badgeTitle + ' ' + val.toFixed(2) + '%');
+                    if (l30CvrPct != null) {
+                        pinSummaryDot('y_cvr', l30CvrPct, val,
+                            'Green when yesterday CVR is above the L30 listing CVR.');
+                    }
+                    prefetchAllBadgeChartDot('y_cvr', val);
+                    if (typeof colorSummaryBadgeDots === 'function') colorSummaryBadgeDots(channelKeysFromTableData());
+                } else {
+                    yCvrExact = null;
+                    $el.text('-');
+                    $el.closest('.badge').removeAttr('data-exact-value').attr('title', badgeTitle);
+                }
+            }
+
             function applyYOrdersBadge(rows) {
                 yOrdersByChannel = {};
                 yCvrByChannel = {};
@@ -9415,6 +9457,7 @@
                     sum += orders;
                 });
                 applyYOrdersToTable();
+                applyYCvrBadge();
                 const val = Math.round(sum);
                 const $el = $('#total-y-orders');
                 if (!$el.length) return;
