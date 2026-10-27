@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Temu 1 "Ads Rules": L7 Sold slabs (per PARENT / ad, not per SKU) with a Target ROAS per slab.
  *
- * A "parent" is one Temu ad (goods_id) — its L7 sold is the sum of every SKU under it.
+ * A "parent" is one Temu ad (goods_id) with 2+ different SKU IDs — its L7 sold is the sum of every SKU under it.
+ * Single-SKU goods are NOT parents: they are ignored by the counts and by Auto run.
  * Auto run (when ON) is executed daily by `temu:auto-run-ads`:
  *   - slab Target ROAS > 0  -> ad is run (resumed if paused) and its target ROAS is pushed
  *   - slab Target ROAS = 0  -> ad is paused
@@ -204,7 +205,7 @@ class TemuSoldRoasRuleService
     }
 
     /**
-     * One entry per parent (ad / goods_id) with Inv > 0: L7 sold and Inv are the sum over every SKU under that ad.
+     * One entry per PARENT (ad / goods_id with 2+ SKU IDs) with Inv > 0: L7 sold and Inv are the sum over every SKU under that ad.
      *
      * @return array<string, array{goods_id: string, parent: string, skus: int, sold_l7: int, inv: int, status: string}>
      */
@@ -213,13 +214,18 @@ class TemuSoldRoasRuleService
         $sold = self::soldL7BySku();
 
         // Same ad set as the /temu/ads table (default L30 window), so counts match the page.
+        $hasSkuId = Schema::hasColumn((new TemuAdsApiReport)->getTable(), 'sku_id');
+        $columns = ['id', 'goods_id', 'sku', 'ad_status', 'period', 'start_ts'];
+        if ($hasSkuId) {
+            $columns[] = 'sku_id';
+        }
         $rows = TemuAdsApiReport::query()
             ->inLatestWindow('L30')
             ->whereNotNull('goods_id')
             ->where('goods_id', '!=', '')
-            ->get(['id', 'goods_id', 'sku', 'ad_status', 'period', 'start_ts']);
+            ->get($columns);
 
-        /** @var array<string, array{goods_id: string, skus: array<string, true>, status: string, status_rank: int}> $groups */
+        /** @var array<string, array{goods_id: string, skus: array<string, true>, sku_ids: array<string, true>, status: string, status_rank: int}> $groups */
         $groups = [];
         $rawSkus = [];
         foreach ($rows as $r) {
@@ -228,7 +234,11 @@ class TemuSoldRoasRuleService
                 continue;
             }
             if (! isset($groups[$gid])) {
-                $groups[$gid] = ['goods_id' => $gid, 'skus' => [], 'status' => '', 'status_rank' => 0];
+                $groups[$gid] = ['goods_id' => $gid, 'skus' => [], 'sku_ids' => [], 'status' => '', 'status_rank' => 0];
+            }
+            $skuId = trim((string) ($r->sku_id ?? ''));
+            if ($skuId !== '') {
+                $groups[$gid]['sku_ids'][$skuId] = true;
             }
             $key = ShopifySku::normalizeSkuForShopifyLookup(trim((string) ($r->sku ?? '')));
             if ($key !== '') {
@@ -258,6 +268,11 @@ class TemuSoldRoasRuleService
 
         $out = [];
         foreach ($groups as $gid => $g) {
+            // Rules apply to PARENT goods only (one goods_id with 2+ different SKU IDs = the "Multi SKU" rows on
+            // /temu/ads). A goods with a single SKU is never touched by Ads Rules / Auto run.
+            if (count($g['sku_ids']) < 2) {
+                continue;
+            }
             $total = 0;
             $inv = 0;
             foreach (array_keys($g['skus']) as $k) {

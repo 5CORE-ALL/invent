@@ -267,11 +267,30 @@
             pointer-events: none;
             display: none;
         }
-        .create-row-ad-btn {
-            padding: 1px 6px;
-            font-size: 11px;
-            line-height: 1.2;
+        #temu-ads-table .create-row-ad-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            border: 1.5px solid #16a34a;
+            border-radius: 50%;
+            background: #f0fdf4;
+            color: #16a34a;
+            cursor: pointer;
+            transition: background-color .15s ease, color .15s ease, transform .15s ease, box-shadow .15s ease;
         }
+        #temu-ads-table .create-row-ad-btn:hover,
+        #temu-ads-table .create-row-ad-btn:focus-visible {
+            background: #16a34a;
+            color: #fff;
+            transform: scale(1.15);
+            box-shadow: 0 0 0 3px rgba(22, 163, 74, .25);
+            outline: none;
+        }
+        #temu-ads-table .create-row-ad-btn:active { transform: scale(.95); }
+        #temu-ads-table .create-row-ad-btn svg { pointer-events: none; }
         .temu-ads-thumb {
             width: auto;
             height: 22px;
@@ -389,6 +408,12 @@
                                 <option value="red" data-label="Dil% Red">Dil% Red</option>
                                 <option value="green" data-label="Dil% Green">Dil% Green</option>
                                 <option value="pink" data-label="Dil% Pink">Dil% Pink</option>
+                            </select>
+                            <select id="sku-type-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Single SKU = goods with one SKU; Multi SKU = goods with several SKU IDs (variations)">
+                                <option value="" data-label="All SKU types">All SKU types</option>
+                                <option value="single" data-label="Single SKU">Single SKU</option>
+                                <option value="multi" data-label="Multi SKU">Multi SKU</option>
                             </select>
                             <select id="clicks-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
                                     title="Filter by Clicks 7">
@@ -538,7 +563,7 @@
                         <span class="small text-muted" id="ads-rules-lastrun"></span>
                     </div>
                     <p class="small text-muted mb-2">
-                        Slabs by <strong>Sold 7</strong> (units sold in the last 7 days from Temu 1 orders), grouped per <strong>Parent</strong> (one ad = all its SKUs added together). Only parents with <strong>Inv &gt; 0</strong> are counted.
+                        Slabs by <strong>Sold 7</strong> (units sold in the last 7 days from Temu 1 orders), grouped per <strong>Parent</strong> (one ad = all its SKUs added together). Only <strong>Multi SKU parents</strong> (one goods with 2+ SKU IDs) with <strong>Inv &gt; 0</strong> are counted and run — <strong>single-SKU goods are never touched</strong>.
                         Enter the <strong>Target ROAS</strong> for each slab. First matching range wins.
                         Leave <strong>Sold to</strong> empty for that value and above.
                         <strong>Auto run</strong>: ROAS &gt; 0 = run the ad with that ROAS, ROAS 0 = pause the ad, blank = leave as is.
@@ -894,6 +919,7 @@
                     invQ: (document.getElementById('inv-filter').value || '').trim(),
                     dilQ: (document.getElementById('dil-filter').value || '').trim(),
                     clicksQ: (document.getElementById('clicks-filter').value || '').trim(),
+                    typeQ: (document.getElementById('sku-type-filter').value || '').trim(),
                     alertOnly: !!alertFilterOn,
                 };
             }
@@ -968,6 +994,19 @@
                     const gk = adsGroupKey(r);
                     if (r.is_parent) parentByGroup[gk] = r;
                     else (variationsByGroup[gk] = variationsByGroup[gk] || []).push(r);
+                });
+                // SKU type per goods (+period): Multi SKU = 2+ distinct SKU IDs, otherwise Single SKU.
+                const skuIdsByGroup = {};
+                Object.keys(variationsByGroup).forEach(function (gk) {
+                    const ids = {};
+                    variationsByGroup[gk].forEach(function (k) {
+                        const sid = String(k.sku_id || '').trim();
+                        if (sid) ids[sid] = true;
+                    });
+                    skuIdsByGroup[gk] = Object.keys(ids).length;
+                });
+                (rows || []).forEach(function (r) {
+                    if (r) r._sku_type = (skuIdsByGroup[adsGroupKey(r)] || 0) >= 2 ? 'multi' : 'single';
                 });
                 Object.keys(parentByGroup).forEach(function (gk) {
                     const kids = variationsByGroup[gk] || [];
@@ -1081,6 +1120,7 @@
                 if (skip !== 'inv' && q.invQ && rowInvBucket(data) !== q.invQ) return false;
                 if (skip !== 'dil' && q.dilQ && rowDilBand(data) !== q.dilQ) return false;
                 if (skip !== 'clicks' && q.clicksQ && rowClicksBucket(data) !== q.clicksQ) return false;
+                if (skip !== 'type' && q.typeQ && String(data._sku_type || 'single') !== q.typeQ) return false;
                 if (skip !== 'alert' && q.alertOnly && !rowCreateAlertText(data)) return false;
                 return true;
             }
@@ -1110,6 +1150,8 @@
                 let dilTotal = 0;
                 let clicksTotal = 0;
                 let periodTotal = 0;
+                const typeCounts = {};
+                let typeTotal = 0;
                 function rowInViewExcept(row, skip) {
                     return rowMatchesQuery(row, q, skip);
                 }
@@ -1134,6 +1176,12 @@
                         const c = rowClicksBucket(row);
                         clicksCounts[c] = (clicksCounts[c] || 0) + 1;
                     }
+                    // One count per goods: skip folded variations and a parent line that only repeats its single SKU.
+                    if (!row._collapsed_child && !(row.is_parent && row._sku_type !== 'multi') && rowInViewExcept(row, 'type')) {
+                        typeTotal++;
+                        const t = String(row._sku_type || 'single');
+                        typeCounts[t] = (typeCounts[t] || 0) + 1;
+                    }
                     periodTotal++;
                     const p = String((row && row.period) || '').toUpperCase();
                     if (p) periodCounts[p] = (periodCounts[p] || 0) + 1;
@@ -1142,6 +1190,7 @@
                 paintSelectOptionCounts('inv-filter', invCounts, invTotal);
                 paintSelectOptionCounts('dil-filter', dilCounts, dilTotal);
                 paintSelectOptionCounts('clicks-filter', clicksCounts, clicksTotal);
+                paintSelectOptionCounts('sku-type-filter', typeCounts, typeTotal);
                 paintSelectOptionCounts('period-filter', periodCounts, periodTotal);
             }
 
@@ -1441,7 +1490,7 @@
             function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
                 const q = currentFilterQuery();
-                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.alertOnly;
+                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.typeQ && !q.alertOnly;
                 const hasStoreSpend = response && response.mall && response.mall.spend != null && isFinite(parseFloat(response.mall.spend));
                 if (hasStoreSpend || (noLocalFilter && response)) {
                     applyStoreBadge(m, response);
@@ -1938,7 +1987,8 @@
                                 const btnTitle = multi
                                     ? 'Create Temu ads for the ' + selectedN + ' selected rows'
                                     : 'Create Temu ad';
-                                return '<span class="temu-ad-create-cell"><button type="button" class="btn btn-sm btn-outline-warning create-row-ad-btn" title="' + escapeAttr(btnTitle) + '">Create</button></span>';
+                                return '<span class="temu-ad-create-cell"><button type="button" class="create-row-ad-btn" aria-label="Create ad" title="' + escapeAttr(btnTitle) + '">'
+                                    + '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M7 2h2v5h5v2H9v5H7V9H2V7h5z"/></svg></button></span>';
                             }
                             // No dot: the exact ad state is shown in the Status column.
                             return '';
@@ -2876,6 +2926,7 @@
             document.getElementById('inv-filter').addEventListener('change', applySearchFilters);
             document.getElementById('dil-filter').addEventListener('change', applySearchFilters);
             document.getElementById('clicks-filter').addEventListener('change', applySearchFilters);
+            document.getElementById('sku-type-filter').addEventListener('change', applySearchFilters);
 
             document.getElementById('export-btn').addEventListener('click', function () {
                 table.download('csv', 'temu-ads-api-reports.csv', {}, {
