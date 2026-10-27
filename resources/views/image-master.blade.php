@@ -195,6 +195,9 @@
                     <div class="fw-semibold small mb-1 d-flex align-items-center justify-content-between gap-2 flex-wrap">
                         <span>Order (drag to reorder)</span>
                         <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="downloadAllImagesBtn" style="display:none;" title="Download all images of this SKU in the shown order as a ZIP file">
+                                <i class="fas fa-download me-1"></i>Download all (ZIP)
+                            </button>
                             <button type="button" class="btn btn-outline-danger btn-sm" id="removeAllImagesBtn" style="display:none;">
                                 <i class="fas fa-trash-alt me-1"></i>Remove all
                             </button>
@@ -888,6 +891,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const el = document.getElementById('imSlots');
         const removeAllBtn = document.getElementById('removeAllImagesBtn');
         if (removeAllBtn) removeAllBtn.style.display = modalUrls.length ? 'inline-flex' : 'none';
+        const downloadAllBtn = document.getElementById('downloadAllImagesBtn');
+        if (downloadAllBtn) downloadAllBtn.style.display = modalUrls.length ? 'inline-flex' : 'none';
         if (!modalUrls.length) {
             el.innerHTML = '<div class="text-muted small py-2">No images yet. Upload or fetch from a marketplace above.</div>';
             return;
@@ -916,6 +921,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <button type="button" class="im-up" data-i="${idx}" title="Move left">&#8592;</button>
                             <button type="button" class="im-set-main" data-i="${idx}" title="Set as main (#1) for all marketplaces">&#9733;</button>
                             <button type="button" class="im-down" data-i="${idx}" title="Move right">&#8594;</button>
+                            <button type="button" class="im-dl" data-i="${idx}" title="Download this image"><i class="fas fa-download"></i></button>
                         </div>
                     </div>
                 </div>`;
@@ -932,6 +938,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 const removed = modalUrls.splice(i, 1)[0];
                 storedImageMeta.delete(removed);
                 renderSlots();
+            });
+        });
+
+        // ── Download one image ─────────────────────────────────────
+        grid.querySelectorAll('.im-dl').forEach(b => {
+            b.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const i = +b.dataset.i;
+                const url = modalUrls[i];
+                if (!url) return;
+                b.disabled = true;
+                try {
+                    await downloadFromServer(
+                        '/image-master/download?url=' + encodeURIComponent(url)
+                            + '&sku=' + encodeURIComponent(document.getElementById('modalSku').value)
+                            + '&n=' + (i + 1),
+                        { headers: { 'Accept': 'application/json' } },
+                        'image_' + (i + 1) + '.jpg'
+                    );
+                } catch (err) {
+                    alert(err.message || 'Download failed.');
+                } finally {
+                    b.disabled = false;
+                }
             });
         });
 
@@ -995,6 +1025,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderMainByMpSelectors();
     }
+
+    // Fetch a file from the server and save it with the name the server gives it.
+    async function downloadFromServer(url, options, fallbackName) {
+        const res = await fetch(url, options);
+        if (!res.ok) {
+            const j = await res.json().catch(() => null);
+            throw new Error((j && j.message) || ('Download failed (' + res.status + ').'));
+        }
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+        const name = match ? decodeURIComponent(match[1]) : fallbackName;
+        const blob = await res.blob();
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    }
+
+    document.getElementById('downloadAllImagesBtn')?.addEventListener('click', async function () {
+        if (!modalUrls.length) return;
+        const btn = this;
+        const label = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Preparing ZIP...';
+        try {
+            await downloadFromServer('/image-master/download-zip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ sku: document.getElementById('modalSku').value, urls: modalUrls })
+            }, 'images.zip');
+        } catch (err) {
+            alert(err.message || 'Download failed.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = label;
+        }
+    });
 
     document.getElementById('resetMainAllBtn')?.addEventListener('click', () => {
         modalMainByMp = defaultMainByMarketplace();

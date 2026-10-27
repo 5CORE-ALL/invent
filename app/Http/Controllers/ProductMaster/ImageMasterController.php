@@ -742,6 +742,166 @@ class ImageMasterController extends Controller
     }
 
     /**
+     * GET /image-master/download?url=...&sku=...&n=3 — download one image of the Edit images window.
+     */
+    public function downloadImage(Request $request)
+    {
+        $data = $request->validate([
+            'url' => 'required|string|max:2000',
+            'sku' => 'nullable|string|max:255',
+            'n' => 'nullable|integer|min:1|max:99',
+        ]);
+
+        $image = $this->fetchImageForDownload($data['url']);
+        if (isset($image['error'])) {
+            return response()->json(['success' => false, 'message' => $image['error']], 422);
+        }
+
+        $name = $this->downloadBaseName((string) ($data['sku'] ?? ''), (int) ($data['n'] ?? 1)).'.'.$image['ext'];
+
+        return response($image['bytes'], 200, [
+            'Content-Type' => $image['mime'],
+            'Content-Disposition' => 'attachment; filename="'.$name.'"',
+            'Content-Length' => (string) strlen($image['bytes']),
+        ]);
+    }
+
+    /**
+     * POST /image-master/download-zip — every image of the Edit images window in one ZIP, in the shown order.
+     */
+    public function downloadImagesZip(Request $request)
+    {
+        $data = $request->validate([
+            'sku' => 'nullable|string|max:255',
+            'urls' => 'required|array|min:1|max:'.self::PM_MAX_IMAGES,
+            'urls.*' => 'required|string|max:2000',
+        ]);
+        if (! class_exists(\ZipArchive::class)) {
+            return response()->json(['success' => false, 'message' => 'The ZIP extension is not installed on the server.'], 500);
+        }
+
+        @set_time_limit(300);
+        $zipPath = tempnam(sys_get_temp_dir(), 'imgzip');
+        $zip = new \ZipArchive();
+        if ($zip->open($zipPath, \ZipArchive::OVERWRITE | \ZipArchive::CREATE) !== true) {
+            return response()->json(['success' => false, 'message' => 'Could not create the ZIP file.'], 500);
+        }
+
+        $added = 0;
+        $failed = [];
+        foreach (array_values($data['urls']) as $index => $url) {
+            $image = $this->fetchImageForDownload($url);
+            if (isset($image['error'])) {
+                $failed[] = 'Image '.($index + 1).': '.$image['error'];
+
+                continue;
+            }
+            $zip->addFromString($this->downloadBaseName((string) ($data['sku'] ?? ''), $index + 1).'.'.$image['ext'], $image['bytes']);
+            $added++;
+        }
+        if ($failed !== [] && $added > 0) {
+            $zip->addFromString('not_downloaded.txt', implode("\n", $failed));
+        }
+        $zip->close();
+
+        if ($added === 0) {
+            @unlink($zipPath);
+
+            return response()->json(['success' => false, 'message' => 'No image could be downloaded. '.implode(' ', array_slice($failed, 0, 3))], 422);
+        }
+
+        $name = trim(preg_replace('/[^A-Za-z0-9_\-]+/', '_', (string) ($data['sku'] ?? '')), '_') ?: 'images';
+
+        return response()->download($zipPath, $name.'_images.zip', ['Content-Type' => 'application/zip'])->deleteFileAfterSend(true);
+    }
+
+    private function downloadBaseName(string $sku, int $number): string
+    {
+        $safe = trim(preg_replace('/[^A-Za-z0-9_\-]+/', '_', $sku), '_');
+
+        return ($safe !== '' ? $safe : 'image').'_'.str_pad((string) max(1, $number), 2, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Bytes of an image link for download. Images stored on this server are read from the public disk; other links
+     * are fetched from the internet (never from the server's own network). The file must be a real image.
+     *
+     * @return array{bytes: string, mime: string, ext: string}|array{error: string}
+     */
+    private function fetchImageForDownload(string $url): array
+    {
+        $url = trim($url);
+        $parts = parse_url($url);
+        if ($parts === false || $url === '') {
+            return ['error' => 'Invalid image link.'];
+        }
+
+        $bytes = '';
+        $path = rawurldecode((string) ($parts['path'] ?? ''));
+        if (str_starts_with($path, '/storage/') && ! str_contains($path, '..') && (! isset($parts['host']) || $this->isOwnHost((string) $parts['host']))) {
+            $relative = substr($path, strlen('/storage/'));
+            $disk = Storage::disk('public');
+            if (! $disk->exists($relative)) {
+                return ['error' => 'The image file is missing on the server.'];
+            }
+            $bytes = (string) $disk->get($relative);
+        } else {
+            if (str_starts_with($url, '//')) {
+                $url = 'https:'.$url;
+                $parts = parse_url($url) ?: [];
+            }
+            $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+            $host = (string) ($parts['host'] ?? '');
+            if (! in_array($scheme, ['http', 'https'], true) || $host === '') {
+                return ['error' => 'Invalid image link.'];
+            }
+            $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
+            if ($ips === []) {
+                return ['error' => 'The image host could not be found.'];
+            }
+            foreach ($ips as $ip) {
+                if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                    return ['error' => 'This image link is not allowed.'];
+                }
+            }
+            try {
+                $response = Http::timeout(30)->connectTimeout(10)
+                    ->withOptions(['allow_redirects' => false])
+                    ->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; ImageMasterDownload/1.0)'])
+                    ->get($url);
+            } catch (\Throwable $e) {
+                return ['error' => 'The image could not be downloaded ('.$e->getMessage().').'];
+            }
+            if (! $response->successful()) {
+                return ['error' => 'The image host answered '.$response->status().'.'];
+            }
+            $bytes = (string) $response->body();
+        }
+
+        if ($bytes === '' || strlen($bytes) > 40 * 1024 * 1024) {
+            return ['error' => 'The image is empty or too large.'];
+        }
+        $info = @getimagesizefromstring($bytes);
+        if ($info === false) {
+            return ['error' => 'The link is not an image.'];
+        }
+        $mime = (string) ($info['mime'] ?? 'image/jpeg');
+        $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'][strtolower($mime)] ?? 'jpg';
+
+        return ['bytes' => $bytes, 'mime' => $mime, 'ext' => $ext];
+    }
+
+    private function isOwnHost(string $host): bool
+    {
+        $host = strtolower($host);
+        $own = strtolower((string) parse_url((string) config('app.url'), PHP_URL_HOST));
+
+        return in_array($host, ['localhost', '127.0.0.1', '::1'], true)
+            || ($own !== '' && $host === $own)
+            || $host === strtolower((string) request()->getHost());
+    }
+
+    /**
      * Return all locally stored images for a SKU (from product_images table).
      */
     public function getSkuImages(Request $request)

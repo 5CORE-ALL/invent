@@ -358,7 +358,181 @@
             setupSearchHandlers();
             setupButtonHandlers();
             setupEditButtons();
+            setupVideoUploads();
         });
+
+        // ---- Upload / download of video files -------------------------------------------------
+        const VIDEO_UPLOAD_FIELDS = {
+            video_product_overview: 'Product Overview',
+            video_unboxing: 'Shoppable Videos',
+            video_how_to: 'How To',
+            video_setup: 'Setup',
+            video_troubleshooting: 'Troubleshooting',
+            video_brand_story: 'Brand Story',
+            video_product_benefits: 'Product Benefits'
+        };
+        const VIDEO_EXTENSIONS = ['mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv', 'wmv', 'mpg', 'mpeg'];
+        let videoUploadRunning = false;
+
+        // True when the saved link is a video uploaded to this server (not a Dropbox / YouTube link).
+        function isUploadedVideo(url) {
+            const path = String(url || '').trim().replace(/^https?:\/\/[^/]+/i, '');
+            return /^\/?storage\/videos_master\//.test(path);
+        }
+
+        function videoDownloadUrl(sku, field) {
+            return '/videos-master/download?sku=' + encodeURIComponent(sku) + '&field=' + encodeURIComponent(field);
+        }
+
+        function modalVideoSku() {
+            const selectSku = document.getElementById('selectSku');
+            const editSku = document.getElementById('editSku');
+            return editSku.value || ($(selectSku).hasClass('select2-hidden-accessible') ? $(selectSku).val() : selectSku.value) || '';
+        }
+
+        function refreshVideoDownloadButtons() {
+            Object.keys(VIDEO_UPLOAD_FIELDS).forEach(function (field) {
+                const input = document.getElementById(field);
+                const btn = document.getElementById(field + '_downloadBtn');
+                if (!input || !btn) return;
+                btn.classList.toggle('d-none', !isUploadedVideo(input.value));
+            });
+        }
+
+        function setupVideoUploads() {
+            Object.keys(VIDEO_UPLOAD_FIELDS).forEach(function (field) {
+                const input = document.getElementById(field);
+                if (!input) return;
+                const box = document.createElement('div');
+                box.className = 'video-upload-box mt-1';
+                box.innerHTML =
+                    '<input type="file" class="d-none" accept="video/*" id="' + field + '_file">' +
+                    '<button type="button" class="btn btn-sm btn-outline-primary" id="' + field + '_uploadBtn"><i class="fas fa-upload"></i> Upload video</button> ' +
+                    '<button type="button" class="btn btn-sm btn-outline-success d-none" id="' + field + '_downloadBtn"><i class="fas fa-download"></i> Download</button>' +
+                    '<span class="small text-muted ms-2" id="' + field + '_uploadMsg"></span>' +
+                    '<div class="progress mt-1 d-none" style="height:6px"><div class="progress-bar" id="' + field + '_progress" style="width:0%"></div></div>';
+                input.insertAdjacentElement('afterend', box);
+
+                const fileInput = document.getElementById(field + '_file');
+                document.getElementById(field + '_uploadBtn').addEventListener('click', function () {
+                    if (videoUploadRunning) return;
+                    if (!modalVideoSku()) {
+                        alert('Select the SKU first.');
+                        return;
+                    }
+                    fileInput.click();
+                });
+                fileInput.addEventListener('change', function () {
+                    const file = fileInput.files && fileInput.files[0];
+                    fileInput.value = '';
+                    if (file) uploadVideoFile(field, file);
+                });
+                document.getElementById(field + '_downloadBtn').addEventListener('click', function () {
+                    const sku = modalVideoSku();
+                    if (!sku) return;
+                    window.location.href = videoDownloadUrl(sku, field);
+                });
+                input.addEventListener('input', refreshVideoDownloadButtons);
+            });
+        }
+
+        function setVideoUploadBusy(busy) {
+            videoUploadRunning = busy;
+            Object.keys(VIDEO_UPLOAD_FIELDS).forEach(function (field) {
+                const btn = document.getElementById(field + '_uploadBtn');
+                if (btn) btn.disabled = busy;
+            });
+            const saveBtn = document.getElementById('saveVideoBtn');
+            if (saveBtn) saveBtn.disabled = busy;
+        }
+
+        async function uploadVideoFile(field, file) {
+            const sku = modalVideoSku();
+            const msg = document.getElementById(field + '_uploadMsg');
+            const bar = document.getElementById(field + '_progress');
+            const barWrap = bar.parentElement;
+            const extension = (file.name.split('.').pop() || '').toLowerCase();
+            if (VIDEO_EXTENSIONS.indexOf(extension) === -1) {
+                alert('Only video files can be uploaded (' + VIDEO_EXTENSIONS.join(', ') + ').');
+                return;
+            }
+            setVideoUploadBusy(true);
+            barWrap.classList.remove('d-none');
+            bar.style.width = '0%';
+            msg.className = 'small text-muted ms-2';
+            msg.textContent = 'Starting...';
+            try {
+                const infoRes = await fetch('/videos-master/upload-info', { headers: { 'Accept': 'application/json' } });
+                const info = await infoRes.json();
+                if (!info.success) throw new Error('Could not start the upload.');
+                if (file.size > info.max_bytes) throw new Error('The video is bigger than ' + Math.round(info.max_bytes / 1048576) + ' MB.');
+                const chunkSize = info.chunk_size;
+                const total = Math.max(1, Math.ceil(file.size / chunkSize));
+                const uploadId = Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+                let last = null;
+                for (let index = 0; index < total; index++) {
+                    const form = new FormData();
+                    form.append('upload_id', uploadId);
+                    form.append('index', index);
+                    form.append('total', total);
+                    form.append('size', file.size);
+                    form.append('sku', sku);
+                    form.append('field', field);
+                    form.append('filename', file.name);
+                    form.append('chunk', file.slice(index * chunkSize, Math.min(file.size, (index + 1) * chunkSize)), 'chunk.part');
+                    let json = null;
+                    for (let attempt = 1; attempt <= 3; attempt++) {
+                        try {
+                            const res = await fetch('/videos-master/upload-chunk', {
+                                method: 'POST',
+                                headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                                body: form
+                            });
+                            json = await res.json().catch(function () { return null; });
+                            if (!json) {
+                                throw new Error(res.status === 413
+                                    ? 'The server refused the upload piece because it is too large (limit of the web server).'
+                                    : 'The server gave an unexpected answer (' + res.status + ').');
+                            }
+                            if (!json.success) {
+                                const fatal = new Error(json.message || 'Upload failed.');
+                                fatal.fatal = true;
+                                throw fatal;
+                            }
+                            break;
+                        } catch (err) {
+                            if (err.fatal || attempt === 3) throw err;
+                            await new Promise(function (resolve) { setTimeout(resolve, 1000 * attempt); });
+                        }
+                    }
+                    last = json;
+                    const percent = Math.round(((index + 1) / total) * 100);
+                    bar.style.width = percent + '%';
+                    msg.textContent = 'Uploading ' + percent + '%';
+                }
+                if (!last || !last.done) throw new Error('The upload did not finish. Please try again.');
+
+                document.getElementById(field).value = last.url;
+                const statusSelect = document.getElementById(field + '_status');
+                if (statusSelect) statusSelect.value = last.status || 'Done/Uploaded';
+                const item = tableData.find(function (d) { return d.SKU === sku; });
+                if (item) {
+                    item[field] = last.url;
+                    item[field + '_status'] = last.status || 'Done/Uploaded';
+                }
+                msg.className = 'small text-success ms-2';
+                msg.textContent = 'Uploaded and saved.';
+                refreshVideoDownloadButtons();
+                if (table) table.replaceData();
+            } catch (err) {
+                msg.className = 'small text-danger ms-2';
+                msg.textContent = err.message || 'Upload failed.';
+                bar.style.width = '0%';
+            } finally {
+                barWrap.classList.add('d-none');
+                setVideoUploadBusy(false);
+            }
+        }
 
         function setupButtonHandlers() {
             // Add Videos Button
@@ -445,9 +619,16 @@
                 const item = cell.getData();
                 
                 if (item[fieldName]) {
-                    return `<a href="${escapeHtml(item[fieldName])}" target="_blank" class="video-link-icon" title="Click to watch video">
+                    let html = `<a href="${escapeHtml(item[fieldName])}" target="_blank" class="video-link-icon" title="Click to watch video">
                         <i class="fas fa-play-circle"></i>
                     </a>`;
+                    // A video uploaded here can be downloaded; links to other sites cannot.
+                    if (isUploadedVideo(item[fieldName])) {
+                        html += ` <a href="${videoDownloadUrl(item.SKU, fieldName)}" class="video-link-icon" style="font-size:16px;" title="Download video">
+                            <i class="fas fa-download"></i>
+                        </a>`;
+                    }
+                    return html;
                 } else {
                     return '<span class="text-muted" style="font-size: 18px;">—</span>';
                 }
@@ -811,6 +992,11 @@
                 }
             }, { once: true });
 
+            Object.keys(VIDEO_UPLOAD_FIELDS).forEach(function (field) {
+                const msg = document.getElementById(field + '_uploadMsg');
+                if (msg) msg.textContent = '';
+            });
+            refreshVideoDownloadButtons();
             videoModal.show();
         }
 

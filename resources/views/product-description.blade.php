@@ -64,6 +64,12 @@
         #dmTableShell.is-loading .dm-table-wrap { opacity:.35; pointer-events:none; }
         .dm-modal-section { border:1px solid #e2e8f0; border-radius:10px; padding:.75rem; background:#f8fafc; margin-bottom:.75rem; }
         .dm-modal-section-title { font-size:12px; font-weight:700; color:#1e3a8a; margin-bottom:.5rem; }
+        .aplus-img-list { display:flex; flex-wrap:wrap; gap:8px; max-height:150px; overflow:auto; padding:2px; }
+        .aplus-img-item { position:relative; width:76px; height:76px; border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; background:#f8fafc; }
+        .aplus-img-item img { width:100%; height:100%; object-fit:contain; display:block; }
+        .aplus-img-dl { position:absolute; right:3px; bottom:3px; width:24px; height:24px; border:none; border-radius:50%; background:rgba(15,23,42,.85); color:#fff; font-size:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; }
+        .aplus-img-dl:hover { background:#2563eb; }
+        .aplus-img-num { position:absolute; left:3px; top:3px; background:rgba(15,23,42,.75); color:#fff; font-size:10px; border-radius:4px; padding:0 4px; }
         .dm-aplus-preview { border:1px dashed #cbd5e1; border-radius:8px; background:#fff; padding:.65rem; max-height:280px; overflow:auto; }
         .dm-aplus-preview img { max-width:100%; height:auto; border-radius:6px; margin-bottom:.5rem; }
         .dm-mp-group-title { font-size:11px; font-weight:600; color:#334155; }
@@ -262,6 +268,10 @@
                                 <div class="small text-muted" id="aplusEditorCount">0 chars</div>
                             </div>
                             <textarea id="aplusEditorHtml"></textarea>
+                            <div id="aplusImagesPanel" class="mt-2" style="display:none;">
+                                <div class="small fw-semibold mb-1"><i class="fas fa-images me-1"></i>Images in this A+ content (<span id="aplusImagesCount">0</span>) &mdash; click <i class="fas fa-download"></i> to download</div>
+                                <div id="aplusImagesList" class="aplus-img-list"></div>
+                            </div>
                             <div class="small text-muted mt-1">Changes are saved to our database only (not pushed to any marketplace).</div>
                         </div>
                     </div>
@@ -664,7 +674,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="preview-cell" title="${esc(pm)}">${esc(prev100)}</td>
                 <td class="action-buttons-cell">
                     <div class="action-buttons-group">
-                        <button type="button" class="action-btn view-btn" data-view-row="${esc(sku)}" title="View descriptions (read-only)"><i class="fas fa-eye"></i></button>
                         <button type="button" class="action-btn pm-tier-btn" data-edit-pm="${esc(sku)}" title="Edit descriptions &amp; push"><i class="fas fa-edit"></i></button>
                         ${aplusButtonHtml(sku, r)}
                     </div>
@@ -984,6 +993,88 @@ document.addEventListener('DOMContentLoaded', () => {
     let aplusEditorPromise = null;
     let aplusEditing = false;
 
+    // Every different image in the A+ editor, in the order of the content.
+    function aplusImageSources() {
+        const body = aplusEditor ? aplusEditor.getBody() : null;
+        if (!body) return [];
+        const seen = [];
+        body.querySelectorAll('img').forEach((img) => {
+            const src = (img.getAttribute('src') || '').trim();
+            if (src && seen.indexOf(src) === -1) seen.push(src);
+        });
+        return seen;
+    }
+
+    function refreshAplusImages() {
+        const panel = document.getElementById('aplusImagesPanel');
+        const list = document.getElementById('aplusImagesList');
+        if (!panel || !list) return;
+        const sources = aplusImageSources();
+        panel.style.display = sources.length ? '' : 'none';
+        document.getElementById('aplusImagesCount').textContent = String(sources.length);
+        list.innerHTML = '';
+        sources.forEach((src, i) => {
+            const item = document.createElement('div');
+            item.className = 'aplus-img-item';
+            const img = document.createElement('img');
+            img.src = src;
+            img.alt = '';
+            const num = document.createElement('span');
+            num.className = 'aplus-img-num';
+            num.textContent = String(i + 1);
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'aplus-img-dl';
+            btn.title = 'Download image ' + (i + 1);
+            btn.innerHTML = '<i class="fas fa-download"></i>';
+            btn.addEventListener('click', () => downloadAplusImage(src, i + 1, btn));
+            item.appendChild(img);
+            item.appendChild(num);
+            item.appendChild(btn);
+            list.appendChild(item);
+        });
+    }
+
+    function saveBlobAs(blob, name) {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    }
+
+    // Images on other sites cannot be saved by the browser directly, so the server fetches them (Image Master download).
+    async function downloadAplusImage(src, number, btn) {
+        const sku = document.getElementById('aplusSku').value || 'image';
+        if (btn) btn.disabled = true;
+        try {
+            if (/^data:/i.test(src)) {
+                const blob = await (await fetch(src)).blob();
+                const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+                saveBlobAs(blob, sku.replace(/[^A-Za-z0-9_\-]+/g, '_') + '_' + String(number).padStart(2, '0') + '.' + ext);
+                return;
+            }
+            const absolute = new URL(src, window.location.href).href;
+            const res = await fetch('/image-master/download?url=' + encodeURIComponent(absolute) + '&sku=' + encodeURIComponent(sku) + '&n=' + number, {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' },
+            });
+            if (!res.ok) {
+                const j = await res.json().catch(() => null);
+                throw new Error((j && j.message) || ('HTTP ' + res.status));
+            }
+            const disposition = res.headers.get('Content-Disposition') || '';
+            const match = disposition.match(/filename="?([^";]+)"?/i);
+            saveBlobAs(await res.blob(), match ? match[1] : ('image_' + number + '.jpg'));
+        } catch (e) {
+            toast('Image download failed: ' + e.message, false);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
     function ensureAplusEditor() {
         if (aplusEditor) return Promise.resolve(aplusEditor);
         if (typeof tinymce === 'undefined') return Promise.resolve(null);
@@ -1005,6 +1096,30 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (el) el.textContent = stripHtmlToPlain(editor.getContent()).length + ' chars';
                 };
                 editor.on('init input change keyup SetContent Undo Redo', count);
+
+                // A download icon for every image inside the content (list under the editor + a button on the selected image).
+                let imagesTimer = null;
+                editor.on('init input change keyup SetContent Undo Redo', () => {
+                    clearTimeout(imagesTimer);
+                    imagesTimer = setTimeout(refreshAplusImages, 250);
+                });
+                editor.ui.registry.addButton('aplusdownload', {
+                    icon: 'download',
+                    tooltip: 'Download this image',
+                    onAction: () => {
+                        const node = editor.selection.getNode();
+                        if (!node || node.nodeName !== 'IMG') return;
+                        const src = node.getAttribute('src') || '';
+                        const at = aplusImageSources().indexOf(src);
+                        downloadAplusImage(src, at >= 0 ? at + 1 : 1);
+                    },
+                });
+                editor.ui.registry.addContextToolbar('aplusimagedownload', {
+                    predicate: (node) => node.nodeName === 'IMG',
+                    items: 'aplusdownload',
+                    position: 'node',
+                    scope: 'node',
+                });
             },
         }).then((eds) => {
             aplusEditor = (eds && eds[0]) || (tinymce.get ? tinymce.get('aplusEditorHtml') : null);
@@ -1046,6 +1161,7 @@ document.addEventListener('DOMContentLoaded', () => {
             else { const el = document.getElementById('aplusEditorHtml'); if (el) el.value = aplusCurrentHtml || ''; }
             const c = document.getElementById('aplusEditorCount');
             if (c) c.textContent = stripHtmlToPlain(aplusCurrentHtml).length + ' chars';
+            refreshAplusImages();
         });
     });
 

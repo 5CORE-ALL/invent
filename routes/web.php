@@ -4641,6 +4641,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/image-master/upload', [ImageMasterController::class, 'uploadImages'])->name('image.master.upload');
     Route::get('/image-master/amazon-images', [ImageMasterController::class, 'getAmazonImages'])->name('image.master.amazon.images');
     Route::get('/image-master/ebay-images', [ImageMasterController::class, 'getEbayImages'])->name('image.master.ebay.images');
+    Route::get('/image-master/download', [ImageMasterController::class, 'downloadImage'])->name('image.master.download');
+    Route::post('/image-master/download-zip', [ImageMasterController::class, 'downloadImagesZip'])->name('image.master.download.zip');
     Route::get('/image-master/sku-images', [ImageMasterController::class, 'getSkuImages'])->name('image.master.sku.images');
     Route::delete('/image-master/sku-image/{id}', [ImageMasterController::class, 'deleteSkuImage'])->name('image.master.sku.image.delete');
     Route::post('/image-master/shopify-pull-one', [ImageMasterController::class, 'pullShopifyImagesToMaster'])->name('image.master.shopify.pull.one');
@@ -4739,6 +4741,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/videos-master', [\App\Http\Controllers\PurchaseMaster\VideosMasterController::class, 'videosMaster'])->name('videos.master');
     Route::get('/videos-master-data-view', [\App\Http\Controllers\PurchaseMaster\VideosMasterController::class, 'getVideosMasterData'])->name('videos.master.data');
     Route::post('/videos-master/save', [ProductMasterController::class, 'saveVideosData'])->name('videos.master.save');
+    Route::get('/videos-master/upload-info', [\App\Http\Controllers\PurchaseMaster\VideosMasterController::class, 'uploadInfo'])->name('videos.master.upload.info');
+    Route::post('/videos-master/upload-chunk', [\App\Http\Controllers\PurchaseMaster\VideosMasterController::class, 'uploadChunk'])->name('videos.master.upload.chunk');
+    Route::get('/videos-master/download', [\App\Http\Controllers\PurchaseMaster\VideosMasterController::class, 'download'])->name('videos.master.download');
     Route::get('/videos-for-ads', [VideosForAdsController::class, 'index'])->name('videos.for.ads');
     Route::get('/videos-for-ads/data', [VideosForAdsController::class, 'getData'])->name('videos.for.ads.data');
     Route::post('/videos-for-ads/store', [VideosForAdsController::class, 'store'])->name('videos.for.ads.store');
