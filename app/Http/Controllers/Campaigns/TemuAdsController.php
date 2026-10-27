@@ -119,7 +119,25 @@ class TemuAdsController extends Controller
 
         $soldL7BySku = TemuSoldRoasRuleService::soldL7BySku();
 
-        $rows = $records->map(function (TemuAdsApiReport $r) use ($soldL7BySku, $l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $inSpendWindow) {
+        // Listing status per goods_id (temu.local.sku.list.retrieve → temu_metrics.listing_status).
+        // A goods is "active" if any of its SKUs is active on Temu; otherwise "inactive".
+        $listingByGoods = [];
+        if (Schema::hasTable('temu_metrics') && Schema::hasColumn('temu_metrics', 'listing_status')) {
+            TemuMetric::query()
+                ->whereNotNull('goods_id')
+                ->where('goods_id', '!=', '')
+                ->whereNotNull('listing_status')
+                ->get(['goods_id', 'listing_status'])
+                ->each(function ($m) use (&$listingByGoods) {
+                    $gid = (string) $m->goods_id;
+                    $st = strtolower(trim((string) $m->listing_status));
+                    if ($st === 'active' || ! isset($listingByGoods[$gid])) {
+                        $listingByGoods[$gid] = $st;
+                    }
+                });
+        }
+
+        $rows = $records->map(function (TemuAdsApiReport $r) use ($listingByGoods, $soldL7BySku, $l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $inSpendWindow) {
             $clicks = (int) ($r->clicks ?? 0);
             $orders = (int) ($r->order_pay_cnt ?? 0);
             $gid = (string) $r->goods_id;
@@ -176,6 +194,7 @@ class TemuAdsController extends Controller
                 'roas' => $r->roas,
                 'acos' => $r->acos,
                 'ad_status' => $r->displayAdStatus(),
+                'listing_status' => $listingByGoods[$gid] ?? '',
                 // A create-ad reject is only meaningful while the ad does not exist on Temu.
                 // If the ad is now Active/Inactive/Paused, the stored reject is stale — hide it.
                 'ad_create_reject' => ($hasCreateReject && ! in_array((string) $r->ad_status, ['Active', 'Inactive', 'Paused'], true))

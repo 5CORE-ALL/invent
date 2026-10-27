@@ -1942,10 +1942,10 @@
                     { title: 'Impr', field: 'impressions', width: 70, minWidth: 62, hozAlign: 'center', formatter: numFmt, sorter: 'number',
                       headerTooltip: 'Impressions (Overall) for the selected period — L30 = Temu Ads Last 30 days. CTR = period Clicks ÷ Impr.' },
                     {
-                        title: 'Status',
+                        title: 'Ads Status',
                         field: 'ad_status',
-                        width: 88,
-                        minWidth: 72,
+                        width: 100,
+                        minWidth: 90,
                         hozAlign: 'center',
                         sorter: 'string',
                         headerTooltip: 'Temu ad campaign status from ad.detail.query (Active / Paused / No ad). Not sync = API not confirmed.',
@@ -1959,6 +1959,21 @@
                             else if (v === 'No ad') cls = 'bg-danger';
                             else if (v === 'Not sync') cls = 'bg-secondary';
                             return '<span class="badge ' + cls + '">' + label + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Listing',
+                        field: 'listing_status',
+                        width: 80,
+                        minWidth: 70,
+                        hozAlign: 'center',
+                        sorter: 'string',
+                        headerTooltip: 'Listing status of this goods ID on Temu (temu.local.sku.list.retrieve): Active = on sale, Inactive = not on sale. Blank = Temu did not return it.',
+                        formatter: function (cell) {
+                            const v = String(cell.getValue() || '').toLowerCase();
+                            if (v === 'active') return '<span class="badge bg-success">Active</span>';
+                            if (v === 'inactive') return '<span class="badge bg-secondary">Inactive</span>';
+                            return '<span class="text-muted">—</span>';
                         }
                     },
                     { title: 'CTR', field: 'ctr', width: 62, minWidth: 56, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
