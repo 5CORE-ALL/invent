@@ -3578,6 +3578,18 @@ class Kernel extends ConsoleKernel
                 ->runInBackground()
                 ->appendOutputTo($log);
         }
+        // Create missing ads for Parents per Ads Rules (slab Target ROAS > 0) and push ROAS. 5 min before each Auto run slot,
+        // after the status refresh, so only goods Temu really has no ad for are created. Needs Auto run ON in /temu/ads > Ads Rules.
+        foreach ([15, 16, 17, 18, 19] as $autoCreateHour) {
+            $schedule->command('temu:auto-create-ads')
+                ->dailyAt(sprintf('%02d:45', $autoCreateHour))
+                ->timezone('Asia/Kolkata')
+                ->name('temu-ads-auto-create-'.$autoCreateHour.'45')
+                ->when(fn () => app(\App\Services\TemuSoldRoasRuleService::class)->autoRunEnabled())
+                ->withoutOverlapping()
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
         // Morning IST slots finish ~3–6 AM PDT, so /temu/ads stays stale all US day.
         // Do not wrap in $ist() — 22:30–23:45 IST is after IST_WINDOW_END (20:00).
         $schedule->command('temu:fetch-ads-data --period=L30')

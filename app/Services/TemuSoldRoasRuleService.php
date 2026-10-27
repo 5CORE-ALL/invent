@@ -388,6 +388,173 @@ class TemuSoldRoasRuleService
     }
 
     /**
+     * Create the missing Temu ad for every PARENT that matches a slab with Target ROAS > 0 but has no ad yet.
+     * The ad is created with that slab's Target ROAS (so nothing else needs pushing for it).
+     *
+     * Safety rules:
+     *  - live check with Temu first: only goods Temu says have "No ad" are created (stale statuses are fixed instead)
+     *  - goods Temu rejected earlier are skipped for $retryDays days (the listing must be fixed first);
+     *    a "daily budget must be between N and ..." reject is retried at N, but only if N <= $maxBudget
+     *  - at most $limit ads per run (each ad is a live daily budget)
+     *
+     * @param  callable(int,int):void|null  $onEach
+     * @return array<string, mixed>
+     */
+    public function createMissingAds(float $budget = 10.0, float $maxBudget = 10.0, int $limit = 50, int $retryDays = 7, bool $dryRun = false, ?callable $onEach = null): array
+    {
+        $maxBudget = max($budget, $maxBudget);
+        $slabs = $this->slabs();
+        $parents = $this->parents();
+
+        $stats = [
+            'parents' => count($parents),
+            'candidates' => 0,
+            'created' => 0,
+            'failed' => 0,
+            'skipped' => 0,
+            'skipped_rejected' => 0,
+            'skipped_budget' => 0,
+            'already_has_ad' => 0,
+            'unverified' => 0,
+            'actions' => [],
+            'errors' => [],
+        ];
+
+        $rejects = [];
+        if (Schema::hasColumn((new TemuAdsApiReport)->getTable(), 'ad_create_reject')) {
+            TemuAdsApiReport::query()
+                ->whereNotNull('ad_create_reject')->where('ad_create_reject', '!=', '')
+                ->get(['goods_id', 'ad_create_reject', 'ad_create_reject_at'])
+                ->each(function ($r) use (&$rejects) {
+                    $rejects[(string) $r->goods_id] = ['msg' => (string) $r->ad_create_reject, 'at' => $r->ad_create_reject_at];
+                });
+        }
+
+        $candidates = [];
+        foreach ($parents as $p) {
+            if (($p['status'] ?? '') !== 'No ad') {
+                continue;
+            }
+            $i = self::slabIndexFor((int) $p['sold_l7'], $slabs);
+            $roas = $i === null ? null : $slabs[$i]['target_roas'];
+            if ($i === null || $roas === null || (float) $roas <= 0) {
+                $stats['skipped']++;
+
+                continue;
+            }
+            $gid = (string) $p['goods_id'];
+            $useBudget = $budget;
+            if (isset($rejects[$gid])) {
+                $msg = $rejects[$gid]['msg'];
+                if (preg_match('/between\s+(\d+(?:\.\d+)?)\s+and/i', $msg, $m)) {
+                    if ((float) $m[1] > $maxBudget) {
+                        $stats['skipped_budget']++;
+
+                        continue;
+                    }
+                    $useBudget = max($budget, (float) $m[1]);
+                } else {
+                    $at = $rejects[$gid]['at'];
+                    if ($at !== null && $at->greaterThan(now()->subDays(max(0, $retryDays)))) {
+                        $stats['skipped_rejected']++;
+
+                        continue;
+                    }
+                }
+            }
+            $candidates[] = ['p' => $p, 'roas' => min(self::MAX_ROAS, max(0.1, round((float) $roas, 2))), 'budget' => $useBudget, 'slab' => self::slabLabel($slabs[$i])];
+        }
+
+        usort($candidates, fn ($a, $b) => $b['p']['inv'] <=> $a['p']['inv']);
+        $stats['candidates'] = count($candidates);
+        if ($candidates === []) {
+            return $stats;
+        }
+
+        $api = app(TemuApiService::class);
+        $rejectSvc = $dryRun ? null : app(TemuAdCreateRejectService::class);
+
+        // Ask Temu which of these really have no ad right now.
+        $live = $api->queryAdStatuses(array_map(fn ($c) => (string) $c['p']['goods_id'], $candidates));
+        $todo = [];
+        foreach ($candidates as $c) {
+            $gid = (string) $c['p']['goods_id'];
+            $ls = $live['statuses'][$gid] ?? null;
+            if ($ls === null) {
+                $stats['unverified']++;
+
+                continue;
+            }
+            if ($ls !== 'No ad') {
+                $stats['already_has_ad']++;
+                if (! $dryRun) {
+                    TemuAdsApiReport::query()->where('goods_id', $gid)->update(['ad_status' => $ls]);
+                }
+
+                continue;
+            }
+            $todo[] = $c;
+        }
+        $todo = array_slice($todo, 0, max(1, $limit));
+
+        $pushedRow = ChannelTabulatorColumnSetting::query()->firstOrNew(['channel_name' => self::PUSHED_KEY]);
+        $pushedMap = is_array($pushedRow->visibility) ? $pushedRow->visibility : [];
+        $created = [];
+        $total = count($todo);
+        foreach ($todo as $n => $c) {
+            $gid = (string) $c['p']['goods_id'];
+            $label = $c['slab'];
+            if ($dryRun) {
+                $stats['actions'][] = ['goods_id' => $gid, 'sold_l7' => $c['p']['sold_l7'], 'slab' => $label, 'action' => 'create budget $'.$c['budget'].' ROAS '.$c['roas']];
+
+                continue;
+            }
+            if ($n > 0) {
+                usleep(250000);
+            }
+            $useBudget = $c['budget'];
+            $res = $api->createAd($gid, $useBudget, $c['roas']);
+            if (! ($res['ok'] ?? false) && preg_match('/between\s+(\d+(?:\.\d+)?)\s+and/i', (string) ($res['error_msg'] ?? ''), $m)
+                && (float) $m[1] <= $maxBudget) {
+                $useBudget = max($useBudget, (float) $m[1]);
+                $res = $api->createAd($gid, $useBudget, $c['roas']);
+            }
+            if ($res['ok'] ?? false) {
+                $rejectSvc->clearReject($gid);
+                $created[] = $gid;
+                $pushedMap[$gid] = $c['roas'];
+                $stats['created']++;
+                $stats['actions'][] = ['goods_id' => $gid, 'sold_l7' => $c['p']['sold_l7'], 'slab' => $label, 'action' => 'created $'.$useBudget.' ROAS '.$c['roas'], 'ok' => true];
+            } else {
+                $msg = (string) ($res['error_msg'] ?? 'unknown error');
+                $rejectSvc->handleFailedCreate($gid, null, $msg, $res['error_code'] ?? null);
+                $stats['failed']++;
+                $stats['errors'][] = $gid.': create — '.$msg;
+                $stats['actions'][] = ['goods_id' => $gid, 'sold_l7' => $c['p']['sold_l7'], 'slab' => $label, 'action' => 'create', 'ok' => false];
+                Log::warning('temu:auto-create-ads failed', ['goods_id' => $gid, 'error' => $msg]);
+            }
+            if ($onEach) {
+                $onEach($n + 1, $total);
+            }
+        }
+
+        if (! $dryRun && $created !== []) {
+            $after = $api->queryAdStatuses($created);
+            foreach ($created as $gid) {
+                TemuAdsApiReport::query()->where('goods_id', $gid)->update(['ad_status' => $after['statuses'][$gid] ?? 'Inactive']);
+            }
+            \App\Http\Controllers\Campaigns\Temu1MissingAdsController::forgetMissingTotalCache();
+            $pushedRow->visibility = $pushedMap;
+            if ($pushedRow->column_order === null) {
+                $pushedRow->column_order = [];
+            }
+            $pushedRow->save();
+        }
+
+        return $stats;
+    }
+
+    /**
      * Daily Auto run: check each parent's L7 sold, find its slab and push run/pause/ROAS to Temu.
      *
      * @param  callable(int,int):void|null  $onEach
