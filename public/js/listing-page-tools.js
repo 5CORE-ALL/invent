@@ -1554,9 +1554,14 @@
         }
     }
 
-    function collectEbaySpecifics() {
+    // sku given: only that SKU's fields (single listings, each SKU has its own category and fields).
+    // no sku: the shared fields used by variation listings.
+    function collectEbaySpecifics(sku) {
         const out = {};
+        const want = sku ? String(sku).trim() : '';
         $('#listing-publish-ebay-specifics [data-aspect]').each(function () {
+            const own = String(this.getAttribute('data-sku') || '');
+            if (own !== want) return;
             const name = String(this.getAttribute('data-aspect') || '').trim();
             const value = String(this.value || '').trim();
             if (name && value) out[name] = value;
@@ -1567,25 +1572,38 @@
     function renderEbaySpecifics(missing) {
         const box = ebaySpecificsBox();
         if (!box) return;
-        const current = collectEbaySpecifics();
-        let html = '<div class="fw-semibold mb-1">eBay needs these fields for this category</div>' +
-            '<div class="small text-muted mb-2">Not found in our masters, Amazon listing or Shopify. Pick or type a value, then click Publish again.</div>';
+        const currentBySku = {};
+        $('#listing-publish-ebay-specifics [data-aspect]').each(function () {
+            const k = String(this.getAttribute('data-sku') || '');
+            const n = String(this.getAttribute('data-aspect') || '');
+            const v = String(this.value || '').trim();
+            if (v) (currentBySku[k] = currentBySku[k] || {})[n] = v;
+        });
+        let html = '<div class="fw-semibold mb-1">eBay needs these fields for the category</div>' +
+            '<div class="small text-muted mb-2">Not found in our masters, Amazon listing or Shopify. Pick or type a value for each field below, then click Publish again.</div>';
+        let lastSku = null;
         missing.forEach(function (m, i) {
             const name = String(m.name || '');
+            const skuKey = String(m.sku || '');
             const id = 'listing-publish-ebay-spec-' + i;
             const values = Array.isArray(m.values) ? m.values : [];
-            const val = current[name] || '';
+            const val = (currentBySku[skuKey] || {})[name] || '';
             const hint = m.suggested ? 'e.g. ' + m.suggested : 'Enter ' + name;
+            const skuAttr = skuKey ? ' data-sku="' + escapeHtml(skuKey) + '"' : '';
+            if (skuKey && skuKey !== lastSku) {
+                html += '<div class="small fw-semibold mt-2 mb-1" style="color:#0d6efd;">SKU ' + escapeHtml(skuKey) + '</div>';
+            }
+            lastSku = skuKey;
             html += '<div class="mb-2"><label class="form-label small mb-1" for="' + id + '">' + escapeHtml(name) + ' <span class="text-danger">*</span></label>';
             if (values.length && m.free_text === false) {
-                html += '<select class="form-select form-select-sm" id="' + id + '" data-aspect="' + escapeHtml(name) + '">' +
+                html += '<select class="form-select form-select-sm" id="' + id + '" data-aspect="' + escapeHtml(name) + '"' + skuAttr + '>' +
                     '<option value="">Select ' + escapeHtml(name) + '</option>';
                 values.forEach(function (v) {
                     html += '<option value="' + escapeHtml(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
                 });
                 html += '</select>';
             } else {
-                html += '<input type="text" class="form-control form-control-sm" id="' + id + '" data-aspect="' + escapeHtml(name) + '"' +
+                html += '<input type="text" class="form-control form-control-sm" id="' + id + '" data-aspect="' + escapeHtml(name) + '"' + skuAttr +
                     ' value="' + escapeHtml(val) + '" placeholder="' + escapeHtml(hint) + '"' +
                     (values.length ? ' list="' + id + '-list"' : '') + '>';
                 if (values.length) {
@@ -1604,9 +1622,11 @@
 
     function checkEbaySpecifics(groups) {
         const c = cfg();
-        const specifics = collectEbaySpecifics();
+        const perSku = selectedPublishMode() === 'single';
+        const skuKeyOf = function (group) { return perSku && group.skus.length === 1 ? String(group.skus[0]) : ''; };
         const requests = groups.map(function (group) {
             const own = perSkuCategoryFor(group.skus);
+            const specifics = collectEbaySpecifics(skuKeyOf(group));
             return $.ajax({
                 url: actionUrl(),
                 type: 'POST',
@@ -1628,10 +1648,14 @@
         $.when.apply($, requests).always(function () {
             const responses = requests.length === 1 ? [arguments] : Array.prototype.slice.call(arguments);
             const byName = {};
-            responses.forEach(function (args) {
+            responses.forEach(function (args, idx) {
                 const res = args && args[0];
+                const key = skuKeyOf(groups[idx] || { skus: [] });
+                const specifics = collectEbaySpecifics(key);
                 ((res && res.missing) || []).forEach(function (m) {
-                    if (m && m.name && !specifics[m.name]) byName[m.name] = m;
+                    if (m && m.name && !specifics[m.name]) {
+                        byName[key + '\u0001' + m.name] = Object.assign({}, m, { sku: key });
+                    }
                 });
             });
             done.resolve(Object.keys(byName).map(function (k) { return byName[k]; }));
@@ -1703,7 +1727,9 @@
                 category_name: selectedCategoryName(),
                 category_uuid: selectedCategoryUuid(),
                 weight_lb: (isAliexpressChannel() || isTiktokChannel() || isSheinChannel()) ? selectedWeightLb() : '',
-                item_specifics: isEbayChannel() ? collectEbaySpecifics() : {}
+                item_specifics: isEbayChannel()
+                    ? collectEbaySpecifics(selectedPublishMode() === 'single' && skus && skus.length === 1 ? skus[0] : '')
+                    : {}
         };
     }
 
@@ -1874,7 +1900,7 @@
                     $btn.prop('disabled', false).html(checkHtml);
                     if (missing.length) {
                         renderEbaySpecifics(missing);
-                        notify('danger', 'Fill the required eBay field(s): ' + missing.map(function (m) { return m.name; }).join(', ') + '.');
+                        notify('danger', 'eBay needs more details before publishing. Fill ' + missing.map(function (m) { return (m.sku ? m.sku + ': ' : '') + m.name; }).join(', ') + ' in the yellow box of this window, then click Publish again.');
                         return;
                     }
                     $btn.data('specificsChecked', true);
