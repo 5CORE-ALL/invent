@@ -5557,6 +5557,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/temu/ads/sold-roas-rules', 'saveSoldRoasRules')->name('temu.ads.sold-roas-rules.save');
         Route::post('/temu/ads/sold-roas-rules/auto-run', 'setSoldRoasAutoRun')->name('temu.ads.sold-roas-rules.auto-run');
         Route::post('/temu/ads/sold-roas-rules/run-now', 'runSoldRoasRules')->name('temu.ads.sold-roas-rules.run-now');
+        Route::get('/temu/ads/sold-roas-rules/run-status', 'soldRoasRunStatus')->name('temu.ads.sold-roas-rules.run-status');
         Route::get('/temu/ads/sold-roas-history', 'soldRoasHistory')->name('temu.ads.sold-roas-history');
         Route::get('/temu/ads/badge-history', 'badgeHistory')->name('temu.ads.badge-history');
         Route::post('/temu/ads/badge-snapshot', 'saveBadgeSnapshot')->name('temu.ads.badge-snapshot');

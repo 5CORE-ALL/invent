@@ -840,16 +840,41 @@ class TemuAdsController extends Controller
 
     /**
      * Run Auto run right now (same as the daily `temu:auto-run-ads` command).
+     * The run checks every ad on Temu and can take minutes, so it runs in the background
+     * and the page polls soldRoasRunStatus() — a long web request would be cut off by the web server.
      */
     public function runSoldRoasRules(TemuSoldRoasRuleService $rules)
     {
-        @set_time_limit(0);
-        $stats = $rules->run(false);
+        if (Cache::has(TemuSoldRoasRuleService::RUN_LOCK_KEY)) {
+            return response()->json(['success' => true, 'started' => false, 'running' => true, 'message' => 'A run is already in progress.']);
+        }
 
+        try {
+            $php = PHP_BINARY;
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $log = storage_path('logs/temu-auto-run-web.log');
+            Cache::put(TemuSoldRoasRuleService::RUN_LOCK_KEY, now()->toDateTimeString(), 3600);
+            exec('nohup '.escapeshellarg($php).' '.escapeshellarg(base_path('artisan')).' temu:auto-run-ads --force >> '.escapeshellarg($log).' 2>&1 &');
+        } catch (\Throwable $e) {
+            Cache::forget(TemuSoldRoasRuleService::RUN_LOCK_KEY);
+            Log::warning('Temu ads rules run could not start', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Could not start the run: '.$e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true, 'started' => true, 'running' => true, 'last_run' => $rules->lastRun()]);
+    }
+
+    public function soldRoasRunStatus(TemuSoldRoasRuleService $rules)
+    {
         return response()->json([
-            'success' => $stats['failed'] === 0,
-            'stats' => collect($stats)->except(['actions', 'errors'])->all(),
-            'errors' => array_slice($stats['errors'], 0, 10),
+            'running' => Cache::has(TemuSoldRoasRuleService::RUN_LOCK_KEY),
+            'last_run' => $rules->lastRun(),
         ]);
     }
 

@@ -2180,6 +2180,7 @@
             const ADS_RULES_SAVE_URL = @json(route('temu.ads.sold-roas-rules.save'));
             const ADS_RULES_AUTORUN_URL = @json(route('temu.ads.sold-roas-rules.auto-run'));
             const ADS_RULES_RUNNOW_URL = @json(route('temu.ads.sold-roas-rules.run-now'));
+            const ADS_RULES_RUNSTATUS_URL = @json(route('temu.ads.sold-roas-rules.run-status'));
             const ADS_RULES_HISTORY_URL = @json(route('temu.ads.sold-roas-history'));
             const ADS_RULES_DOT_COLORS = ['#dc3545', '#fd7e14', '#ffc107', '#20c997', '#198754'];
             // L7 sold of every parent (one entry per ad / goods_id, SKUs summed) — from the server.
@@ -2280,7 +2281,7 @@
                 if (el && lastRun !== undefined) {
                     const sm = lastRun && lastRun.summary;
                     el.textContent = lastRun && lastRun.at && sm
-                        ? 'Last run ' + lastRun.at + ' — run ' + (sm.resumed || 0) + ', paused ' + (sm.paused || 0) + ', ROAS set ' + (sm.roas_set || 0) + ', failed ' + (sm.failed || 0)
+                        ? 'Last run ' + lastRun.at + ' — run ' + (sm.resumed || 0) + ', paused ' + (sm.paused || 0) + ', ROAS set ' + (sm.roas_set || 0) + ', no ad on Temu ' + (sm.no_ad || 0) + ', failed ' + (sm.failed || 0)
                         : 'Not run yet';
                 }
             }
@@ -2365,25 +2366,56 @@
                     }
                     btn.disabled = false;
                 });
+                function adsRulesRunSummaryHtml(lr) {
+                    const st = (lr && lr.summary) || {};
+                    return 'Done. Matched ' + (st.matched || 0) + ', run ' + (st.resumed || 0) + ', paused ' + (st.paused || 0) +
+                        ', ROAS set ' + (st.roas_set || 0) + ', unchanged ' + (st.unchanged || 0) +
+                        ', skipped ' + (st.skipped || 0) + ' (no ad on Temu ' + (st.no_ad || 0) + ', not verified ' + (st.unverified || 0) + ')' +
+                        ', failed ' + (st.failed || 0) + '.' +
+                        (((lr && lr.errors) || []).length ? '<br>' + lr.errors.map(escapeAttr).join('<br>') : '');
+                }
                 document.getElementById('ads-rules-runnow-btn').addEventListener('click', async function () {
                     const btn = this;
-                    if (!confirm('Apply the SAVED slabs to Temu now? Ads will be run / paused and Target ROAS pushed through the API.')) return;
+                    if (!confirm('Apply the SAVED slabs to Temu now? Each ad is checked live on Temu first; only ads that exist are run / paused and get the Target ROAS.')) return;
                     btn.disabled = true;
-                    adsRulesStatus('Running… this can take a few minutes.', true);
+                    adsRulesStatus('Starting…', true);
                     try {
-                        const r = await adsRulesPost(ADS_RULES_RUNNOW_URL, {});
-                        const st = r.data && r.data.stats;
-                        if (r.ok && st) {
-                            adsRulesStatus('Done. Matched ' + st.matched + ', run ' + st.resumed + ', paused ' + st.paused + ', ROAS set ' + st.roas_set + ', unchanged ' + st.unchanged + ', failed ' + st.failed + '.' +
-                                ((r.data.errors || []).length ? '<br>' + r.data.errors.join('<br>') : ''), st.failed === 0);
-                            paintAdsRulesAutoRun(btnOn(), { at: new Date().toISOString().replace('T', ' ').slice(0, 19), summary: st });
-                        } else {
-                            adsRulesStatus((r.data && r.data.message) ? r.data.message : 'Run failed.', false);
+                        const before = await adsRulesPost(ADS_RULES_RUNNOW_URL, {});
+                        if (!before.ok || !before.data || before.data.success === false) {
+                            adsRulesStatus((before.data && before.data.message) ? before.data.message : 'Could not start the run.', false);
+                            btn.disabled = false;
+                            return;
                         }
+                        const startedAt = (before.data.last_run && before.data.last_run.at) || null;
+                        adsRulesStatus('Running in the background — checking each ad on Temu, then applying the rule. You can close this window.', true);
+                        const t0 = Date.now();
+                        const poll = async function () {
+                            try {
+                                const res = await fetch(ADS_RULES_RUNSTATUS_URL, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+                                const d = await res.json();
+                                const lr = d.last_run || {};
+                                if (!d.running) {
+                                    const finished = lr.at && lr.at !== startedAt;
+                                    adsRulesStatus(finished ? adsRulesRunSummaryHtml(lr) : 'The run stopped without a result. Check storage/logs/temu-auto-run-web.log.',
+                                        finished && ((lr.summary || {}).failed || 0) === 0);
+                                    if (finished) paintAdsRulesAutoRun(btnOn(), lr);
+                                    btn.disabled = false;
+                                    table.setData(dataUrl());
+                                    return;
+                                }
+                            } catch (err) { /* keep polling */ }
+                            if (Date.now() - t0 > 30 * 60 * 1000) {
+                                adsRulesStatus('Still running — reopen Ads Rules later to see the result.', true);
+                                btn.disabled = false;
+                                return;
+                            }
+                            setTimeout(poll, 4000);
+                        };
+                        setTimeout(poll, 4000);
                     } catch (err) {
-                        adsRulesStatus('Run failed.', false);
+                        adsRulesStatus('Could not start the run.', false);
+                        btn.disabled = false;
                     }
-                    btn.disabled = false;
                 });
                 function btnOn() { return document.getElementById('ads-rules-autorun-btn').dataset.on === '1'; }
                 fetch(ADS_RULES_URL, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })

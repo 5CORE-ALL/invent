@@ -25,6 +25,7 @@ class TemuSoldRoasRuleService
     public const AUTO_RUN_KEY = 'temu_ads_sold_roas_auto_run';
     public const HISTORY_KEY = 'temu_ads_sold_roas_history';
     public const PUSHED_KEY = 'temu_ads_sold_roas_pushed';
+    public const RUN_LOCK_KEY = 'temu_ads_sold_roas_run_lock';
 
     /** Temu accepts a ROAS multiple up to 12. */
     public const MAX_ROAS = 12.0;
@@ -123,7 +124,7 @@ class TemuSoldRoasRuleService
     }
 
     /**
-     * @return array{at: string|null, summary: array<string, mixed>|null}
+     * @return array{at: string|null, summary: array<string, mixed>|null, errors: array<int, string>}
      */
     public function lastRun(): array
     {
@@ -133,6 +134,7 @@ class TemuSoldRoasRuleService
         return [
             'at' => $v['last_run_at'] ?? null,
             'summary' => is_array($v['last_run'] ?? null) ? $v['last_run'] : null,
+            'errors' => is_array($v['last_run_errors'] ?? null) ? $v['last_run_errors'] : [],
         ];
     }
 
@@ -389,6 +391,8 @@ class TemuSoldRoasRuleService
             'roas_set' => 0,
             'unchanged' => 0,
             'skipped' => 0,
+            'no_ad' => 0,
+            'unverified' => 0,
             'failed' => 0,
             'actions' => [],
             'errors' => [],
@@ -415,6 +419,39 @@ class TemuSoldRoasRuleService
             $work[] = [$p, $i, (float) $roas];
         }
 
+        // Never trust the stored status: ask Temu which of these goods really have an ad right now.
+        // No ad / deleted -> nothing to run, pause or modify (Temu answers "bad query params"). Fix the stale status instead.
+        if ($work !== []) {
+            $liveQuery = app(TemuApiService::class)->queryAdStatuses(array_map(fn ($w) => $w[0]['goods_id'], $work));
+            $verified = [];
+            foreach ($work as [$p, $i, $roas]) {
+                $gid = $p['goods_id'];
+                $ls = $liveQuery['statuses'][$gid] ?? null;
+                if ($ls === null) {
+                    $stats['unverified']++; // Temu lookup failed: do nothing for this goods
+                    $stats['skipped']++;
+
+                    continue;
+                }
+                if (! in_array($ls, ['Active', 'Inactive', 'Paused'], true)) {
+                    $stats['no_ad']++;
+                    $stats['skipped']++;
+                    if (! $dryRun && $ls !== $p['status']) {
+                        TemuAdsApiReport::query()->where('goods_id', $gid)->update(['ad_status' => $ls]);
+                    }
+
+                    continue;
+                }
+                if (! $dryRun && $ls !== $p['status']) {
+                    TemuAdsApiReport::query()->where('goods_id', $gid)->update(['ad_status' => $ls]);
+                }
+                $p['status'] = $ls;
+                $verified[] = [$p, $i, $roas];
+            }
+            $work = $verified;
+        }
+
+        $touched = [];
         $total = count($work);
         $done = 0;
         foreach ($work as [$p, $i, $roas]) {
@@ -459,10 +496,10 @@ class TemuSoldRoasRuleService
                     }
                     if ($a === 'pause') {
                         $stats['paused']++;
-                        TemuAdsApiReport::query()->where('goods_id', $gid)->update(['ad_status' => 'Inactive']);
+                        $touched[$gid] = true;
                     } elseif ($a === 'resume') {
                         $stats['resumed']++;
-                        TemuAdsApiReport::query()->where('goods_id', $gid)->update(['ad_status' => 'Active']);
+                        $touched[$gid] = true;
                     } else {
                         $stats['roas_set']++;
                         $pushedMap[$gid] = (float) substr($a, 5);
@@ -477,6 +514,14 @@ class TemuSoldRoasRuleService
             }
         }
 
+        if (! $dryRun && $touched !== []) {
+            // Store what Temu reports after our calls — not what we assume.
+            $after = app(TemuApiService::class)->queryAdStatuses(array_keys($touched));
+            foreach ($after['statuses'] as $gid => $st) {
+                TemuAdsApiReport::query()->where('goods_id', (string) $gid)->update(['ad_status' => $st]);
+            }
+        }
+
         if (! $dryRun) {
             $pushedRow->visibility = $pushedMap;
             if ($pushedRow->column_order === null) {
@@ -487,7 +532,8 @@ class TemuSoldRoasRuleService
             $row = ChannelTabulatorColumnSetting::query()->firstOrNew(['channel_name' => self::AUTO_RUN_KEY]);
             $v = is_array($row->visibility) ? $row->visibility : [];
             $v['last_run_at'] = now()->toDateTimeString();
-            $v['last_run'] = collect($stats)->only(['parents', 'matched', 'resumed', 'paused', 'roas_set', 'unchanged', 'skipped', 'failed'])->all();
+            $v['last_run'] = collect($stats)->only(['parents', 'matched', 'resumed', 'paused', 'roas_set', 'unchanged', 'skipped', 'no_ad', 'unverified', 'failed'])->all();
+            $v['last_run_errors'] = array_slice($stats['errors'], 0, 10);
             $row->visibility = $v;
             if ($row->column_order === null) {
                 $row->column_order = [];

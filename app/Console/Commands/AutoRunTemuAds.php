@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\TemuSoldRoasRuleService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class AutoRunTemuAds extends Command
@@ -36,14 +37,23 @@ class AutoRunTemuAds extends Command
             }
         };
 
-        $stats = $service->run($dryRun, $onEach);
+        if (! $dryRun) {
+            Cache::put(TemuSoldRoasRuleService::RUN_LOCK_KEY, now()->toDateTimeString(), 3600);
+        }
+        try {
+            $stats = $service->run($dryRun, $onEach);
+        } finally {
+            if (! $dryRun) {
+                Cache::forget(TemuSoldRoasRuleService::RUN_LOCK_KEY);
+            }
+        }
         if ($bar) {
             $bar->finish();
             $this->newLine();
         }
 
         Log::info('temu:auto-run-ads finished', collect($stats)->except(['actions', 'errors'])->all() + ['dry_run' => $dryRun]);
-        $this->info("Parents {$stats['parents']}. Matched {$stats['matched']}. Resumed {$stats['resumed']}. Paused {$stats['paused']}. ROAS set {$stats['roas_set']}. Unchanged {$stats['unchanged']}. Skipped {$stats['skipped']}. Failed {$stats['failed']}.");
+        $this->info("Parents {$stats['parents']}. Matched {$stats['matched']}. Resumed {$stats['resumed']}. Paused {$stats['paused']}. ROAS set {$stats['roas_set']}. Unchanged {$stats['unchanged']}. Skipped {$stats['skipped']} (no ad on Temu {$stats['no_ad']}, not verified {$stats['unverified']}). Failed {$stats['failed']}.");
         if ($dryRun) {
             foreach (array_slice($stats['actions'], 0, 100) as $a) {
                 $this->line("  {$a['goods_id']}  sold {$a['sold_l7']}  slab {$a['slab']}  -> {$a['action']}");
