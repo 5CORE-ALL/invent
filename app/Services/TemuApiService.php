@@ -3861,16 +3861,26 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
 
         $skus = [];
+        $specs = [];
         foreach ($list as $row) {
             if (! is_array($row) || ! isset($row['skuId'])) {
                 continue;
             }
-            $skus[(string) $row['skuId']] = trim((string) ($row['outSkuSn'] ?? ''));
+            $skuId = (string) $row['skuId'];
+            $skus[$skuId] = trim((string) ($row['outSkuSn'] ?? ''));
+            // Variation label Temu Seller Center shows under the SKU (e.g. 'Coaxial Speaker 5.25" 2Way').
+            $specNames = is_array($row['specNameList'] ?? null) ? $row['specNameList'] : [];
+            $specs[$skuId] = trim(implode(' / ', array_filter(array_map(
+                fn ($n) => is_scalar($n) ? trim((string) $n) : '',
+                $specNames
+            ))));
         }
 
         return [
             'out_goods_sn' => trim((string) ($detail['outGoodsSn'] ?? '')),
+            'goods_name' => trim((string) ($detail['goodsName'] ?? '')),
             'skus' => $skus,
+            'specs' => $specs,
         ];
     }
 

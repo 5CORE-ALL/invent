@@ -1198,8 +1198,10 @@ class TemuAdsController extends Controller
         $names = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::CACHE_KEY);
         $names = is_array($names) ? $names : [];
 
-        $children = collect($rows)->map(function (array $row): array {
+        $children = collect($rows)->map(function (array $row) use ($names): array {
             $row['is_parent'] = false;
+            // Second line under the SKU, as Temu shows it: the variation's own label.
+            $row['sku_detail'] = (string) ($names[(string) ($row['goods_id'] ?? '')]['specs'][trim((string) ($row['sku_id'] ?? ''))] ?? '');
 
             return $row;
         });
@@ -1237,6 +1239,7 @@ class TemuAdsController extends Controller
                     'is_parent' => true,
                     'parent' => $parent !== '' ? $parent : $parentName,
                     'sku' => $parentSku,
+                    'sku_detail' => (string) ($names[$gid]['goods_name'] ?? ''), // Temu's product name for the goods
                     'sku_id' => '',
                     'child_count' => $kids->count(),
                     'sold_l7' => $kids->contains(fn (array $k) => array_key_exists('sold_l7', $k))

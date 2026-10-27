@@ -1721,7 +1721,14 @@
                         headerTooltip: 'Exact SKU names as Temu Seller Center shows them: the PARENT line for the goods, then its variations.',
                         sorter: 'string',
                         formatter: function (cell) {
-                            return escapeAttr(String(cell.getValue() || ''));
+                            const d = cell.getRow().getData() || {};
+                            const sku = escapeAttr(String(cell.getValue() || ''));
+                            const detail = String(d.sku_detail || '').trim();
+                            if (!detail) return sku;
+                            // Temu layout: SKU on top, the variation label / product name beneath it.
+                            return '<div style="line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + sku
+                                + '<div style="font-size:11px;font-weight:400;color:#6c757d;overflow:hidden;text-overflow:ellipsis;" title="' + escapeAttr(detail) + '">'
+                                + escapeAttr(detail) + '</div></div>';
                         },
                     },
                     { title: 'SKU ID', field: 'sku_id', width: 130, minWidth: 100, sorter: 'string',
