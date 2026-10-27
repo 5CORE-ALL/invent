@@ -291,6 +291,11 @@
         #temu-ads-table .tabulator-row.temu-ads-parent-row:hover .tabulator-cell {
             background-color: #fefce8 !important;
         }
+        /* Frozen left block (checkbox / Image / Parent / SKU): divider on the last frozen column */
+        #temu-ads-table .tabulator-cell.tabulator-frozen.tabulator-frozen-left,
+        #temu-ads-table .tabulator-col.tabulator-frozen.tabulator-frozen-left {
+            border-right: 2px solid #cbd5e1;
+        }
         #temu-ads-table .temu-ads-parent-sku {
             font-weight: 700;
             letter-spacing: 0.01em;
@@ -1763,6 +1768,7 @@
                     {
                         title: 'Image',
                         field: 'image_path',
+                        frozen: true,
                         width: 52,
                         hozAlign: 'center',
                         vertAlign: 'middle',
@@ -1779,6 +1785,7 @@
                     {
                         title: 'Parent',
                         field: 'parent',
+                        frozen: true,
                         width: 120,
                         minWidth: 80,
                         headerTooltip: 'Parent from Product Master. Shown on both Parent Ads and SKU Ads.',
@@ -1802,6 +1809,7 @@
                     {
                         title: 'SKU',
                         field: 'sku',
+                        frozen: true,
                         width: 160,
                         minWidth: 110,
                         hozAlign: 'left',
