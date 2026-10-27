@@ -7,6 +7,7 @@ use App\Models\ProductMaster;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Order;
 use App\Models\Temu2Pricing;
+use App\Models\Temu3ApiOrder;
 use App\Models\Temu3DailyData;
 use App\Models\Temu3DailyDataL60;
 use App\Models\Temu3Order;
@@ -1053,7 +1054,7 @@ class TemuShopifySalesService
     /** /temu3-tabulator Y Line Sales: Σ goods-base line sales for yesterday (Pacific). */
     public static function sumYesterdayLineSalesTemu3(): float
     {
-        if (! Schema::hasTable('temu3_orders')) {
+        if (! self::temu3OrdersSourceExists()) {
             return 0.0;
         }
 
@@ -1119,7 +1120,7 @@ class TemuShopifySalesService
             'gpft' => 0.0,
             'cogs' => 0.0,
         ];
-        if (! Schema::hasTable('temu3_orders')) {
+        if (! self::temu3OrdersSourceExists()) {
             return $empty;
         }
 
@@ -1361,7 +1362,7 @@ class TemuShopifySalesService
     public static function temu3DailySalesByDate(Carbon $startDate, Carbon $endDate): array
     {
         $out = [];
-        if (! Schema::hasTable('temu3_orders')) {
+        if (! self::temu3OrdersSourceExists()) {
             return $out;
         }
 
@@ -1558,7 +1559,7 @@ class TemuShopifySalesService
 
     public static function computeYSalesFromTemu3Orders(): ?float
     {
-        if (! Schema::hasTable('temu3_orders')) {
+        if (! self::temu3OrdersSourceExists()) {
             return null;
         }
 
@@ -1572,7 +1573,7 @@ class TemuShopifySalesService
 
     public static function computeL7SalesFromTemu3Orders(): ?float
     {
-        if (! Schema::hasTable('temu3_orders')) {
+        if (! self::temu3OrdersSourceExists()) {
             return null;
         }
 
@@ -1616,6 +1617,38 @@ class TemuShopifySalesService
      * (`temu3_orders`). SKU = contribution sku, unit price = goods base price.
      */
     public static function getTemu3OrdersTableRows(Carbon $startDate, Carbon $endDate): array
+    {
+        // Orders come from the Temu 3 API (app:fetch-temu3-orders -> temu3_api_orders), same as Temu 1 / Temu 2.
+        // The uploaded Seller Center sheet is only used while the API table has never been filled.
+        if (self::temu3ApiOrdersAvailable()) {
+            return self::getChannelOrdersTableRows($startDate, $endDate, false, true);
+        }
+
+        return self::getTemu3SheetOrdersTableRows($startDate, $endDate);
+    }
+
+    /** Either Temu 3 order source exists: the API table or the legacy uploaded sheet. */
+    public static function temu3OrdersSourceExists(): bool
+    {
+        return Schema::hasTable('temu3_api_orders') || Schema::hasTable('temu3_orders');
+    }
+
+    /** True once app:fetch-temu3-orders has stored at least one order in temu3_api_orders. */
+    public static function temu3ApiOrdersAvailable(): bool
+    {
+        static $available = null;
+        if ($available !== null) {
+            return $available;
+        }
+        try {
+            return $available = Schema::hasTable('temu3_api_orders') && Temu3ApiOrder::query()->exists();
+        } catch (\Throwable $e) {
+            return $available = false;
+        }
+    }
+
+    /** Legacy source: the uploaded Seller Center order export (`temu3_orders`). */
+    public static function getTemu3SheetOrdersTableRows(Carbon $startDate, Carbon $endDate): array
     {
         if (! Schema::hasTable('temu3_orders')) {
             return [];
@@ -1779,7 +1812,7 @@ class TemuShopifySalesService
         return $cache[$key] = $out;
     }
 
-    private static function getChannelOrdersTableRows(Carbon $startDate, Carbon $endDate, bool $isTemu2): array
+    private static function getChannelOrdersTableRows(Carbon $startDate, Carbon $endDate, bool $isTemu2, bool $isTemu3 = false): array
     {
         // FetchTemuOrders / FetchTemu2Orders store parent_order_time in Pacific (Temu's
         // reporting tz) and the app timezone is America/Los_Angeles, so Pacific windows
@@ -1793,8 +1826,11 @@ class TemuShopifySalesService
         if ($isTemu2 && ! Schema::hasTable('temu2_orders')) {
             return [];
         }
+        if ($isTemu3 && ! Schema::hasTable('temu3_api_orders')) {
+            return [];
+        }
 
-        $orderModel = $isTemu2 ? Temu2Order::class : TemuOrder::class;
+        $orderModel = $isTemu3 ? Temu3ApiOrder::class : ($isTemu2 ? Temu2Order::class : TemuOrder::class);
         $orders = $orderModel::whereBetween('parent_order_time', [$start, $end])
             ->where(function ($q) {
                 $q->whereNull('order_status_text')
@@ -1810,19 +1846,32 @@ class TemuShopifySalesService
 
         // Per-channel take-home from marketplace_percentages: the Temu row for Temu 1,
         // the Temu 2 row for Temu 2 (same as /temu-decrease and /temu2-decrease).
-        $margin = $isTemu2 ? self::temu2MarginDecimal() : self::temuMarginDecimal();
-        $skus = $orders->map(function ($o) {
-            $sku = trim((string) ($o->ext_code ?? ''));
-            if ($sku === '') {
-                $sku = trim((string) ($o->display_sku ?? ''));
+        $margin = $isTemu3 ? self::temu3MarginDecimal() : ($isTemu2 ? self::temu2MarginDecimal() : self::temuMarginDecimal());
+        // Temu 3 stores the listing SKU (sku_id -> temu3_metrics) in display_sku; ext_code is the fallback.
+        $orderSku = static function ($o) use ($isTemu3): string {
+            $ext = trim((string) ($o->ext_code ?? ''));
+            $display = trim((string) ($o->display_sku ?? ''));
+            if ($isTemu3) {
+                return $display !== '' ? $display : $ext;
             }
 
-            return $sku;
-        });
+            return $ext !== '' ? $ext : $display;
+        };
+        $skus = $orders->map(static fn ($o) => $orderSku($o));
         $skuList = $skus->filter()->unique()->values()->toArray();
         $pmSet = [];
         $noSpaceToNormalized = [];
-        if ($isTemu2) {
+        if ($isTemu3) {
+            $productMasters = self::productMastersForSkus($skus);
+            $priceBySku = collect();
+            if (! empty($skuList) && Schema::hasTable('temu3_pricing')) {
+                foreach (Temu3Pricing::whereIn('sku', $skuList)->pluck('base_price', 'sku') as $skuKey => $unit) {
+                    if ((float) $unit > 0) {
+                        $priceBySku[$skuKey] = $unit;
+                    }
+                }
+            }
+        } elseif ($isTemu2) {
             [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
             $productMasters = self::productMastersMatchedForSkus($skus);
             $priceBySku = self::temu2ListingPricesByOrderSku($skuList);
@@ -1862,9 +1911,9 @@ class TemuShopifySalesService
         }
 
         foreach ($orders as $o) {
-            $sku = trim((string) ($o->ext_code ?? ''));
-            if ($sku === '') {
-                $sku = trim((string) ($o->display_sku ?? ''));
+            $sku = $orderSku($o);
+            if ($isTemu3 && (int) ($o->quantity ?? 0) <= 0) {
+                continue;
             }
             $pm = ($sku !== '' && isset($productMasters[$sku])) ? $productMasters[$sku] : null;
             [$lp, $temuShip] = self::lpAndTemuShip($productMasters, $sku);

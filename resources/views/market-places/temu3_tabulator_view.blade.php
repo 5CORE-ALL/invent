@@ -220,7 +220,7 @@
                         <span class="spinner-border spinner-border-sm text-success" role="status"></span>
                         <span class="ms-1">Loading L7 data...</span>
                     </span>
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadOrdersModal" title="Upload Temu Seller Center order export (replaces temu3_orders)">
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadOrdersModal" title="Orders load from the Temu 3 API (daily). Upload is only a fallback until the first API fetch.">
                         <i class="fa fa-upload"></i> Upload Sales
                     </button>
                     <a href="{{ route('temu3.decrease') }}" class="btn btn-sm btn-outline-primary" title="View Temu 3 pricing (DIL%, CVR, orders from temu3_orders)">
@@ -323,6 +323,10 @@
                             <div class="form-text">
                                 Accepts .xlsx, .xls, .csv, .tsv, or .txt (Max: 40MB)
                             </div>
+                        </div>
+                        <div class="alert alert-warning mb-2">
+                            This page now reads orders from the <strong>Temu 3 API</strong> (<code>app:fetch-temu3-orders</code>, daily).
+                            An upload is only used while the API has no orders stored.
                         </div>
                         <div class="alert alert-info mb-2">
                             <strong>Format:</strong> Order ID, order status, contribution sku, SKU ID,
