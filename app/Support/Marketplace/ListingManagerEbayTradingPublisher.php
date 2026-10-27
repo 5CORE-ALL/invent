@@ -184,6 +184,31 @@ class ListingManagerEbayTradingPublisher
     }
 
     /**
+     * eBay rejects listings with active content: "Your listing cannot contain javascript (".cookie",
+     * "cookie(", "replace(", IFRAME, META, or includes), cookies or base href." Product copy and A+ HTML
+     * pulled from Shopify / Amazon can carry script tags, event handlers or text such as "replace(s)".
+     */
+    public static function sanitizeDescription(string $html): string
+    {
+        if ($html === '') {
+            return $html;
+        }
+        // Whole elements that eBay does not allow, with their content.
+        $html = preg_replace('~<\s*(script|iframe|object|embed|applet|noscript|frameset|frame)\b[^>]*>.*?<\s*/\s*\1\s*>~is', '', $html) ?? $html;
+        // Any remaining opening / closing / self-closing tags of the same kind, plus meta, base, link, form fields.
+        $html = preg_replace('~<\s*/?\s*(script|iframe|object|embed|applet|noscript|frameset|frame|meta|base|link|form|input|button|textarea|select)\b[^>]*>~i', '', $html) ?? $html;
+        // Inline handlers (onclick=, onerror= ...) and javascript:/vbscript: links.
+        $html = preg_replace('~\s+on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)~i', '', $html) ?? $html;
+        $html = preg_replace('~(href|src|action)\s*=\s*(["\'])\s*(javascript|vbscript):[^"\']*\2~i', '$1=$2#$2', $html) ?? $html;
+        // Text that looks like script to eBay's filter ("replace(s)", "document.cookie", ".includes(").
+        $html = preg_replace('~\.\s*cookie~i', ' cookie', $html) ?? $html;
+        $html = preg_replace('~\b(cookie|replace|includes|eval|unescape)\s*\(~i', '$1 (', $html) ?? $html;
+        $html = preg_replace('~document\s*\.\s*(write|writeln|location)~i', 'document $1', $html) ?? $html;
+
+        return trim($html);
+    }
+
+    /**
      * @param  array<string, mixed>  $ctx
      * @param  array<string, mixed>  $payload
      * @return array{success: bool, message: string, item_id?: string|null, raw?: string}
@@ -193,7 +218,7 @@ class ListingManagerEbayTradingPublisher
         $label = (string) ($ctx['label'] ?? 'eBay');
         $sku = trim((string) ($payload['sku'] ?? ''));
         $title = trim((string) ($payload['title'] ?? ''));
-        $description = (string) ($payload['description'] ?? '');
+        $description = self::sanitizeDescription((string) ($payload['description'] ?? ''));
         $price = (float) ($payload['price'] ?? 0);
         $quantity = (int) ($payload['quantity'] ?? 0);
         $categoryId = trim((string) ($payload['primary_category_id'] ?? ''));

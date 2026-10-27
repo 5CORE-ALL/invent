@@ -118,8 +118,82 @@ class ListingVariationPreviewService
         if ($this->isSheinChannel($channel) && $seedList !== []) {
             $payload['suggested_category'] = $this->shein->suggestCategoryForSku($seedList[0]);
         }
+        if ($mode === 'single') {
+            $perSku = $this->suggestCategoriesPerSku($groups, $channel);
+            if ($perSku !== []) {
+                $payload['suggested_categories'] = $perSku;
+            }
+        }
 
         return $payload;
+    }
+
+    /**
+     * Single listings: every SKU is its own listing, so each gets the category that fits its own
+     * product type (listed sibling, Listing Manager draft or title) instead of one shared category.
+     * Spends at most ~20 seconds; SKUs not reached are resolved again when they are published.
+     *
+     * @param  list<array<string, mixed>>  $groups
+     * @return array<string, array{id: string, path: string, name: string}>
+     */
+    private function suggestCategoriesPerSku(array $groups, string $channel): array
+    {
+        $isReverb = in_array($channel, ['reverb', 'reverbcom'], true);
+        $supported = $isReverb || $channel === 'aliexpress' || $channel === 'wayfair'
+            || $this->isEbayChannel($channel) || $this->isTiktokChannel($channel) || $this->isSheinChannel($channel);
+        if (! $supported) {
+            return [];
+        }
+
+        $skus = [];
+        foreach ($groups as $group) {
+            foreach (($group['children'] ?? []) as $child) {
+                $sku = trim((string) ($child['sku'] ?? ''));
+                if ($sku !== '' && ($child['status'] ?? '') === 'will_publish') {
+                    $skus[$sku] = true;
+                }
+            }
+        }
+
+        $out = [];
+        $deadline = microtime(true) + 20;
+        foreach (array_slice(array_keys($skus), 0, 60) as $sku) {
+            if (microtime(true) > $deadline) {
+                break;
+            }
+            try {
+                if ($isReverb) {
+                    $row = $this->reverb->suggestCategoryForSku($sku);
+                } elseif ($channel === 'aliexpress') {
+                    $row = $this->aliexpress->suggestCategoryForSku($sku);
+                } elseif ($channel === 'wayfair') {
+                    $row = $this->wayfair->suggestClassForSku($sku);
+                } elseif ($this->isEbayChannel($channel)) {
+                    $row = $this->ebay->suggestCategoryForSku($sku, $channel);
+                } elseif ($this->isTiktokChannel($channel)) {
+                    $row = $this->tiktok->suggestCategoryForSku($sku, $channel);
+                } else {
+                    $row = $this->shein->suggestCategoryForSku($sku);
+                }
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+            $id = trim((string) ($row['id'] ?? ''));
+            if ($id === '0') {
+                $id = '';
+            }
+            $path = trim((string) ($row['path'] ?? ''));
+            $name = trim((string) ($row['name'] ?? ''));
+            if ($id === '' && $path === '' && $name === '') {
+                continue;
+            }
+            $out[$sku] = ['id' => $id, 'path' => $path, 'name' => $name];
+        }
+
+        return $out;
     }
 
     /**

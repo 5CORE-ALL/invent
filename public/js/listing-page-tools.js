@@ -1132,8 +1132,131 @@
         return '<span class="listing-publish-status is-skip">' + escapeHtml(reason || 'Skipped') + '</span>';
     }
 
+    // ---- Per-SKU category (single listing mode) ------------------------------------------------
+    // Every SKU in a single listing is its own product, so it gets its own category: auto-detected
+    // from the product type, and the user can search and pick a different one per SKU.
+    let skuCats = {};
+    let skuCatTimer = null;
+    let skuCatXhr = null;
+
+    function perSkuCategoryMode() {
+        if (selectedPublishMode() !== 'single') return false;
+        return isEbayChannel() || isTiktokChannel() || isSheinChannel() || isWayfairChannel() || isReverbChannel();
+    }
+
+    function ensureSkuCatStyle() {
+        if (document.getElementById('lp-sku-cat-style')) return;
+        const st = document.createElement('style');
+        st.id = 'lp-sku-cat-style';
+        st.textContent =
+            'body.lp-per-sku-cat #listingPublishModal .listing-publish-category{display:none !important;}' +
+            '.lp-cat-label{font-size:12px;line-height:1.3;word-break:break-word;}' +
+            '.lp-cat-label.is-auto{color:#6c757d;font-style:italic;}' +
+            '.lp-cat-results{max-height:170px;overflow:auto;border:1px solid #dee2e6;border-radius:4px;background:#fff;margin-top:4px;}' +
+            '.lp-cat-item{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid #f1f1f1;background:#fff;padding:4px 6px;font-size:12px;}' +
+            '.lp-cat-item:hover{background:#eef4ff;}' +
+            '.lp-cat-empty{padding:6px;font-size:12px;color:#6c757d;}';
+        document.head.appendChild(st);
+    }
+
+    function skuCategoryCell(sku) {
+        const cat = skuCats[sku] || {};
+        const text = String(cat.path || cat.name || '').trim();
+        return '<td class="lp-cat-cell" data-sku="' + escapeHtml(sku) + '" style="min-width:230px;">' +
+            '<div class="lp-cat-label' + (text ? '' : ' is-auto') + '">' +
+            (text ? escapeHtml(text) : 'Auto-detect from product type') + '</div>' +
+            '<button type="button" class="btn btn-link btn-sm p-0 lp-cat-change" data-sku="' + escapeHtml(sku) + '">Change category</button>' +
+            '<div class="lp-cat-editor" hidden>' +
+            '<input type="text" class="form-control form-control-sm lp-cat-input" placeholder="Search a category…" autocomplete="off">' +
+            '<div class="lp-cat-results" hidden></div></div></td>';
+    }
+
+    function skuCategorySearch(cell, query) {
+        const results = cell.querySelector('.lp-cat-results');
+        if (!results) return;
+        query = String(query || '').trim();
+        if (query.length < 2) {
+            results.hidden = true;
+            results.innerHTML = '';
+            return;
+        }
+        results.hidden = false;
+        results.innerHTML = '<div class="lp-cat-empty">Searching…</div>';
+        if (skuCatXhr && skuCatXhr.abort) skuCatXhr.abort();
+        skuCatXhr = $.ajax({
+            url: cfg().categorySearchUrl || '/listing-manager/ebay/categories',
+            type: 'GET',
+            data: { q: query, channel: isReverbChannel() ? 'reverb' : (cfg().channel || ''), title: query },
+            dataType: 'json',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            success: function (res) {
+                const rows = (res && res.categories) || [];
+                if (!rows.length) {
+                    results.innerHTML = '<div class="lp-cat-empty">' + escapeHtml((res && res.message) || 'No categories matched.') + '</div>';
+                    return;
+                }
+                results.innerHTML = rows.map(function (row) {
+                    return '<button type="button" class="lp-cat-item" data-id="' + escapeHtml(row.id || '') +
+                        '" data-path="' + escapeHtml(row.path || '') + '">' + escapeHtml(row.path || row.id || '') + '</button>';
+                }).join('');
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                results.innerHTML = '<div class="lp-cat-empty">' + escapeHtml(ajaxError(xhr) || 'Category search failed.') + '</div>';
+            }
+        });
+    }
+
+    function bindSkuCategoryUi() {
+        $(document).off('click.lpSkuCat', '.lp-cat-change').on('click.lpSkuCat', '.lp-cat-change', function (e) {
+            e.preventDefault();
+            const cell = this.closest('.lp-cat-cell');
+            const editor = cell && cell.querySelector('.lp-cat-editor');
+            if (!editor) return;
+            editor.hidden = !editor.hidden;
+            if (!editor.hidden) {
+                const input = editor.querySelector('.lp-cat-input');
+                if (input) input.focus();
+            }
+        });
+        $(document).off('input.lpSkuCat', '.lp-cat-input').on('input.lpSkuCat', '.lp-cat-input', function () {
+            const cell = this.closest('.lp-cat-cell');
+            const q = this.value;
+            clearTimeout(skuCatTimer);
+            skuCatTimer = setTimeout(function () { skuCategorySearch(cell, q); }, 280);
+        });
+        $(document).off('click.lpSkuCat', '.lp-cat-item').on('click.lpSkuCat', '.lp-cat-item', function (e) {
+            e.preventDefault();
+            const cell = this.closest('.lp-cat-cell');
+            if (!cell) return;
+            const sku = String(cell.getAttribute('data-sku') || '');
+            const path = String(this.getAttribute('data-path') || '').trim();
+            const id = String(this.getAttribute('data-id') || '').trim();
+            skuCats[sku] = { id: id, path: path, name: path, own: true };
+            const label = cell.querySelector('.lp-cat-label');
+            if (label) {
+                label.textContent = path || id;
+                label.classList.remove('is-auto');
+            }
+            const editor = cell.querySelector('.lp-cat-editor');
+            if (editor) editor.hidden = true;
+        });
+    }
+
+    // Category sent with one SKU's publish request. Empty values make the server detect it for that SKU.
+    function perSkuCategoryFor(skus) {
+        if (!perSkuCategoryMode() || !skus || skus.length !== 1) return null;
+        const cat = skuCats[String(skus[0] || '').trim()] || {};
+        const id = String(cat.id || '').trim();
+        const name = String(cat.path || cat.name || '').trim();
+        if (isReverbChannel()) return { category_id: '', category_name: name, category_uuid: id };
+        return { category_id: id.replace(/\D+/g, ''), category_name: name, category_uuid: '' };
+    }
+
     function renderGroups(groups) {
         lastPreviewGroups = groups || [];
+        ensureSkuCatStyle();
+        document.body.classList.toggle('lp-per-sku-cat', perSkuCategoryMode());
         const box = document.getElementById('listing-publish-groups');
         const confirm = document.getElementById('listing-publish-confirm');
         if (!box) return;
@@ -1143,6 +1266,7 @@
             return;
         }
         const single = selectedPublishMode() === 'single';
+        const perSku = perSkuCategoryMode();
         let html = '';
         let canPublish = false;
         groups.forEach(function (group, gi) {
@@ -1157,7 +1281,7 @@
             html += attachBlock(group, gi, single);
             html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th>';
             if (!single) html += '<th>Variation Type</th><th>Variation Name</th>';
-            html += '<th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
+            html += '<th>INV</th><th>In this listing</th>' + (perSku ? '<th>Category</th>' : '') + '<th>Status</th></tr></thead><tbody>';
             children.forEach(function (child) {
                 const sku = String(child.sku || '');
                 const publishable = child.status === 'will_publish';
@@ -1177,6 +1301,7 @@
                 }
                 html += '<td>' + escapeHtml(String(child.inv ?? 0)) + '</td>';
                 html += '<td>' + role + '</td>';
+                if (perSku) html += skuCategoryCell(sku);
                 html += '<td>' + statusLabel(child.status, child.reason) + '</td></tr>';
             });
             html += '</tbody></table></div>';
@@ -1364,6 +1489,9 @@
             },
             headers: { 'X-CSRF-TOKEN': csrf() },
             success: function (response) {
+                skuCats = {};
+                const suggestedMap = (response && response.suggested_categories) || {};
+                Object.keys(suggestedMap).forEach(function (k) { skuCats[k] = suggestedMap[k]; });
                 renderGroups((response && response.groups) || []);
                 if (isReverbChannel()) applySuggestedCategory(response && response.suggested_category);
                 if (isAliexpressChannel()) {
@@ -1478,6 +1606,7 @@
         const c = cfg();
         const specifics = collectEbaySpecifics();
         const requests = groups.map(function (group) {
+            const own = perSkuCategoryFor(group.skus);
             return $.ajax({
                 url: actionUrl(),
                 type: 'POST',
@@ -1487,8 +1616,8 @@
                     channel: c.channel || '',
                     mode: selectedPublishMode(),
                     parent: group.parent || '',
-                    category_id: selectedCategoryId(),
-                    category_name: selectedCategoryName(),
+                    category_id: own ? own.category_id : selectedCategoryId(),
+                    category_name: own ? own.category_name : selectedCategoryName(),
                     item_specifics: specifics
                 },
                 headers: { 'X-CSRF-TOKEN': csrf() },
@@ -1552,6 +1681,17 @@
     }
 
     function publishPayloadBase(skus, parent, c) {
+        const own = perSkuCategoryFor(skus);
+        const base = publishPayloadShared(skus, parent, c);
+        if (own) {
+            base.category_id = own.category_id;
+            base.category_name = own.category_name;
+            base.category_uuid = own.category_uuid;
+        }
+        return base;
+    }
+
+    function publishPayloadShared(skus, parent, c) {
         return {
                 skus: skus,
                 confirmed: 1,
@@ -1605,6 +1745,7 @@
     }
 
     function bindUi(table) {
+        bindSkuCategoryUi();
         const wrap = cfg().wrap || document;
         $(document).off('click.listingPageTools', (typeof wrap === 'string' ? wrap + ' ' : '') + '.copy-sku-btn');
         $(document).on('click.listingPageTools', '.copy-sku-btn', function (e) {
