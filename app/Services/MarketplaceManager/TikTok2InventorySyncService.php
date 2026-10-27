@@ -67,7 +67,7 @@ class TikTok2InventorySyncService
                 $skipped++;
                 continue;
             }
-            $outcome = $this->pushMetric($metric, $shopifyQty, $qtyPercent, $maxQty, false, $exactShopifyQty, $liveMpQty);
+            $outcome = $this->pushMetric($metric, $shopifyQty, $qtyPercent, $maxQty, false, $exactShopifyQty, $liveMpQty, $qtyOffset);
             $updated += $outcome['updated'];
             $failed += $outcome['failed'];
             $skipped += $outcome['skipped'];
@@ -235,7 +235,7 @@ class TikTok2InventorySyncService
                 $skipped++;
                 continue;
             }
-            $outcome = $this->pushMetric($metric, $shopifyQty, $qtyPercent, $maxQty, $dryRun, false, $liveMpQty);
+            $outcome = $this->pushMetric($metric, $shopifyQty, $qtyPercent, $maxQty, $dryRun, false, $liveMpQty, $qtyOffset);
             $updated += $outcome['updated'];
             $failed += $outcome['failed'];
             $skipped += $outcome['skipped'];
@@ -298,7 +298,8 @@ class TikTok2InventorySyncService
         mixed $maxQty,
         bool $dryRun,
         bool $exactShopifyQty = false,
-        array $liveMpQty = []
+        array $liveMpQty = [],
+        int $qtyOffset = 0
     ): array {
         $empty = ['updated' => 0, 'failed' => 0, 'skipped' => 0, 'error' => null];
         $sku = trim((string) $metric->sku);
