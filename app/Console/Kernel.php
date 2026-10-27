@@ -3556,6 +3556,8 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('temu:fetch-ads-api-reports --period=L7', 'temu-ads-api-reports-l7', '15:55');
         // Status column only — not Pause/Run. Picks up ads created on Temu Seller Center.
         $retryFiveTimesUntil('temu:refresh-ad-status', 'temu-ads-refresh-status', '19:30');
+        // Ads Rules Auto run (only acts when Auto run is ON in /temu/ads > Ads Rules): L7 sold per parent -> slab Target ROAS -> Temu API.
+        $retryFiveTimesUntil('temu:auto-run-ads', 'temu-ads-auto-run', '19:50');
         // Morning IST slots finish ~3–6 AM PDT, so /temu/ads stays stale all US day.
         // Do not wrap in $ist() — 22:30–23:45 IST is after IST_WINDOW_END (20:00).
         $schedule->command('temu:fetch-ads-data --period=L30')
@@ -3577,6 +3579,13 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('temu-ads-refresh-status-pdt-midday')
             ->withoutOverlapping(15)
+            ->runInBackground()
+            ->appendOutputTo($log);
+        $schedule->command('temu:auto-run-ads')
+            ->dailyAt('23:55')
+            ->timezone('Asia/Kolkata')
+            ->name('temu-ads-auto-run-pdt-midday')
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
         $retryFiveTimesUntil('temu2:fetch-ads-data --period=L30', 'temu2-ads-data-sync-l30', '16:15');

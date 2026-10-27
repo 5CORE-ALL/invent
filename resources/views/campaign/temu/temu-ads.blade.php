@@ -564,14 +564,26 @@
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Ads Rules <span class="text-muted fw-normal small">(L7 Sold — Temu 1 sales)</span></h5>
+                    <h5 class="modal-title">Ads Rules <span class="text-muted fw-normal small">(L7 Sold per Parent — Temu 1 sales)</span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2 p-2 border rounded bg-light">
+                        <button type="button" class="btn btn-sm btn-secondary" id="ads-rules-autorun-btn"
+                                title="When ON, every day the system checks each parent's L7 sold and runs / pauses the ad and pushes the slab Target ROAS through the Temu API.">
+                            Auto run: <span id="ads-rules-autorun-state">OFF</span>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="ads-rules-runnow-btn"
+                                title="Apply the saved slabs to Temu right now (same as the daily Auto run).">
+                            <i class="fa fa-play"></i> Run now
+                        </button>
+                        <span class="small text-muted" id="ads-rules-lastrun"></span>
+                    </div>
                     <p class="small text-muted mb-2">
-                        Slabs by <strong>Sold 7</strong> (units sold in the last 7 days from Temu 1 orders, per SKU).
+                        Slabs by <strong>Sold 7</strong> (units sold in the last 7 days from Temu 1 orders), grouped per <strong>Parent</strong> (one ad = all its SKUs added together).
                         Enter the <strong>Target ROAS</strong> for each slab. First matching range wins.
-                        Leave <strong>Sold to</strong> empty for that value and above. <strong>Count</strong> shows how many SKUs fall in each slab.
+                        Leave <strong>Sold to</strong> empty for that value and above.
+                        <strong>Auto run</strong>: ROAS &gt; 0 = run the ad with that ROAS, ROAS 0 = pause the ad, blank = leave as is.
                     </p>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-2">
@@ -580,11 +592,18 @@
                                     <th>Sold from</th>
                                     <th>Sold to</th>
                                     <th>Target ROAS</th>
-                                    <th style="width:90px;" title="SKUs (unique) in the current table data that fall in this slab">Count</th>
+                                    <th style="width:110px;" title="Parents (ads) whose L7 sold falls in this slab. Click the dot for daily history.">Parents</th>
                                     <th style="width:70px;"></th>
                                 </tr>
                             </thead>
                             <tbody id="ads-rules-slabs-tbody"></tbody>
+                            <tfoot>
+                                <tr class="table-light fw-semibold">
+                                    <td colspan="3" class="text-end">Total of Parents</td>
+                                    <td class="text-center"><span id="ads-rules-total">0</span><span class="temu-ads-history-dot ar-dot" id="ads-rules-total-dot" style="background:#0d6efd;" data-metric="total" data-label="Total Parents" title="History"></span></td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="ads-rules-add-btn">
@@ -1504,7 +1523,8 @@
                     days: String(days),
                     period: currentPeriodKey(),
                 });
-                fetch(@json(route('temu.ads.badge-history')) + '?' + params.toString(), { credentials: 'same-origin' })
+                const isSlabMetric = activeBadgeMetric === 'total' || activeBadgeMetric.indexOf('slab:') === 0;
+                fetch((isSlabMetric ? ADS_RULES_HISTORY_URL : @json(route('temu.ads.badge-history'))) + '?' + params.toString(), { credentials: 'same-origin' })
                     .then(function (r) { return r.json(); })
                     .then(function (resp) {
                         renderTemuAdsBadgeChart(activeBadgeMetric, (resp && resp.data) || []);
@@ -2036,6 +2056,12 @@
             // ---- Ads Rules: L7 Sold slabs with a Target ROAS input per slab ----
             const ADS_RULES_URL = @json(route('temu.ads.sold-roas-rules'));
             const ADS_RULES_SAVE_URL = @json(route('temu.ads.sold-roas-rules.save'));
+            const ADS_RULES_AUTORUN_URL = @json(route('temu.ads.sold-roas-rules.auto-run'));
+            const ADS_RULES_RUNNOW_URL = @json(route('temu.ads.sold-roas-rules.run-now'));
+            const ADS_RULES_HISTORY_URL = @json(route('temu.ads.sold-roas-history'));
+            const ADS_RULES_DOT_COLORS = ['#dc3545', '#fd7e14', '#ffc107', '#20c997', '#198754'];
+            // L7 sold of every parent (one entry per ad / goods_id, SKUs summed) — from the server.
+            let adsRulesParents = [];
             const adsRulesTbody = document.getElementById('ads-rules-slabs-tbody');
 
             function adsRulesStatus(html, ok) {
@@ -2059,7 +2085,8 @@
                         '<td><input type="number" class="form-control form-control-sm ar-sold-min" min="0" step="1" value="' + adsRulesNum(slab.sold_min) + '"></td>' +
                         '<td><input type="number" class="form-control form-control-sm ar-sold-max" min="0" step="1" placeholder="and above" value="' + adsRulesNum(slab.sold_max) + '"></td>' +
                         '<td><input type="number" class="form-control form-control-sm ar-roas" min="0" step="0.1" placeholder="ROAS" value="' + adsRulesNum(slab.target_roas) + '"></td>' +
-                        '<td class="text-center fw-semibold ar-count">0</td>' +
+                        '<td class="text-center fw-semibold"><span class="ar-count">0</span>' +
+                            '<span class="temu-ads-history-dot ar-dot" title="History"></span></td>' +
                         '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger ar-remove" title="Remove">&times;</button></td>';
                     adsRulesTbody.appendChild(tr);
                 });
@@ -2089,24 +2116,66 @@
                     const max = maxRaw === '' ? null : parseInt(maxRaw, 10);
                     items.push({ tr: tr, min: min, max: (max === null || !isFinite(max)) ? null : max, n: 0 });
                 });
-                const seen = {};
-                (allAdsRows || []).forEach(function (r) {
-                    if (!r || r.is_parent) return;
-                    const key = rowGoodsId(r) || ('sku:' + String(r.sku || ''));
-                    if (seen[key]) return;
-                    seen[key] = true;
-                    const v = parseInt(r.sold_l7, 10) || 0;
+                (adsRulesParents || []).forEach(function (sold) {
+                    const v = parseInt(sold, 10) || 0;
                     for (let i = 0; i < items.length; i++) {
                         if (v >= items[i].min && (items[i].max == null || v <= items[i].max)) { items[i].n++; break; }
                     }
                 });
-                items.forEach(function (it) {
+                items.forEach(function (it, idx) {
                     const cell = it.tr.querySelector('.ar-count');
                     if (cell) {
                         cell.textContent = Number(it.n).toLocaleString();
-                        cell.title = it.n + ' SKU(s) in this slab';
+                        cell.title = it.n + ' parent(s) in this slab';
+                    }
+                    const dot = it.tr.querySelector('.ar-dot');
+                    if (dot) {
+                        const label = adsRulesSlabLabel(it.min, it.max);
+                        dot.dataset.metric = 'slab:' + label;
+                        dot.dataset.label = 'Parents — Sold ' + label;
+                        dot.style.background = ADS_RULES_DOT_COLORS[Math.min(idx, ADS_RULES_DOT_COLORS.length - 1)];
                     }
                 });
+                const totalEl = document.getElementById('ads-rules-total');
+                if (totalEl) totalEl.textContent = Number((adsRulesParents || []).length).toLocaleString();
+            }
+
+            function adsRulesSlabLabel(min, max) {
+                if (max == null) return min + '+';
+                return min === max ? String(min) : (min + '-' + max);
+            }
+
+            function paintAdsRulesAutoRun(on, lastRun) {
+                const btn = document.getElementById('ads-rules-autorun-btn');
+                const st = document.getElementById('ads-rules-autorun-state');
+                if (btn && st) {
+                    st.textContent = on ? 'ON' : 'OFF';
+                    btn.classList.toggle('btn-success', !!on);
+                    btn.classList.toggle('btn-secondary', !on);
+                    btn.dataset.on = on ? '1' : '0';
+                }
+                const el = document.getElementById('ads-rules-lastrun');
+                if (el && lastRun !== undefined) {
+                    const sm = lastRun && lastRun.summary;
+                    el.textContent = lastRun && lastRun.at && sm
+                        ? 'Last run ' + lastRun.at + ' — run ' + (sm.resumed || 0) + ', paused ' + (sm.paused || 0) + ', ROAS set ' + (sm.roas_set || 0) + ', failed ' + (sm.failed || 0)
+                        : 'Not run yet';
+                }
+            }
+
+            async function adsRulesPost(url, body) {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(body || {}),
+                });
+                const data = await res.json().catch(function () { return {}; });
+                return { ok: res.ok, data: data };
             }
 
             if (adsRulesTbody) {
@@ -2156,9 +2225,52 @@
                 if (adsRulesModalEl) {
                     adsRulesModalEl.addEventListener('shown.bs.modal', paintAdsRuleCounts);
                 }
+                document.getElementById('ads-rules-autorun-btn').addEventListener('click', async function () {
+                    const btn = this;
+                    const turnOn = btn.dataset.on !== '1';
+                    if (turnOn && !confirm('Turn Auto run ON? Every day each parent will be run / paused and its Target ROAS pushed to Temu from its L7 sold slab.')) return;
+                    btn.disabled = true;
+                    try {
+                        const r = await adsRulesPost(ADS_RULES_AUTORUN_URL, { enabled: turnOn });
+                        if (r.ok && r.data.success) {
+                            paintAdsRulesAutoRun(!!r.data.auto_run);
+                            adsRulesStatus('Auto run is ' + (r.data.auto_run ? 'ON' : 'OFF') + '.', true);
+                        } else {
+                            adsRulesStatus('Could not change Auto run.', false);
+                        }
+                    } catch (err) {
+                        adsRulesStatus('Could not change Auto run.', false);
+                    }
+                    btn.disabled = false;
+                });
+                document.getElementById('ads-rules-runnow-btn').addEventListener('click', async function () {
+                    const btn = this;
+                    if (!confirm('Apply the SAVED slabs to Temu now? Ads will be run / paused and Target ROAS pushed through the API.')) return;
+                    btn.disabled = true;
+                    adsRulesStatus('Running… this can take a few minutes.', true);
+                    try {
+                        const r = await adsRulesPost(ADS_RULES_RUNNOW_URL, {});
+                        const st = r.data && r.data.stats;
+                        if (r.ok && st) {
+                            adsRulesStatus('Done. Matched ' + st.matched + ', run ' + st.resumed + ', paused ' + st.paused + ', ROAS set ' + st.roas_set + ', unchanged ' + st.unchanged + ', failed ' + st.failed + '.' +
+                                ((r.data.errors || []).length ? '<br>' + r.data.errors.join('<br>') : ''), st.failed === 0);
+                            paintAdsRulesAutoRun(btnOn(), { at: new Date().toISOString().replace('T', ' ').slice(0, 19), summary: st });
+                        } else {
+                            adsRulesStatus((r.data && r.data.message) ? r.data.message : 'Run failed.', false);
+                        }
+                    } catch (err) {
+                        adsRulesStatus('Run failed.', false);
+                    }
+                    btn.disabled = false;
+                });
+                function btnOn() { return document.getElementById('ads-rules-autorun-btn').dataset.on === '1'; }
                 fetch(ADS_RULES_URL, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
                     .then(function (r) { return r.json(); })
-                    .then(function (data) { renderAdsRulesSlabs(data && data.slabs ? data.slabs : []); })
+                    .then(function (data) {
+                        adsRulesParents = (data && data.parents) || [];
+                        paintAdsRulesAutoRun(!!(data && data.auto_run), data ? data.last_run : null);
+                        renderAdsRulesSlabs(data && data.slabs ? data.slabs : []);
+                    })
                     .catch(function () {
                         renderAdsRulesSlabs([
                             { sold_min: 0, sold_max: 0, target_roas: '' },
@@ -2168,7 +2280,6 @@
                             { sold_min: 4, sold_max: '', target_roas: '' },
                         ]);
                     });
-                table.on('dataLoaded', function () { setTimeout(paintAdsRuleCounts, 0); });
             }
 
             const TABULATOR_COLUMN_CHANNEL = 'temu_ads';
@@ -2956,7 +3067,7 @@
                     openTemuAdsBadgeChart(this.dataset.metric, this.dataset.label || this.dataset.metric);
                 });
             });
-            document.querySelectorAll('.temu-ads-history-dot').forEach(function (dot) {
+            document.querySelectorAll('.temu-ads-history-dot:not(.ar-dot)').forEach(function (dot) {
                 dot.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -2965,6 +3076,13 @@
                     const label = this.dataset.label || (host && host.dataset.label) || metric;
                     openTemuAdsBadgeChart(metric, label);
                 });
+            });
+            // Ads Rules parent-count dots (rows are re-rendered, so delegate).
+            document.getElementById('adsRulesModal').addEventListener('click', function (e) {
+                const dot = e.target.closest('.ar-dot');
+                if (!dot || !dot.dataset.metric) return;
+                e.preventDefault();
+                openTemuAdsBadgeChart(dot.dataset.metric, dot.dataset.label || dot.dataset.metric);
             });
             document.getElementById('temuAdsBadgeChartRange').addEventListener('change', function () {
                 if (activeBadgeMetric) loadTemuAdsBadgeChart();

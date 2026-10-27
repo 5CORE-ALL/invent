@@ -14,6 +14,7 @@ use App\Services\TemuAdCreateRejectService;
 use App\Services\TemuAdsApiReportService;
 use App\Services\TemuApiService;
 use App\Services\TemuShopifySalesService;
+use App\Services\TemuSoldRoasRuleService;
 use App\Support\TemuAdsBadgeHistory;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -116,7 +117,7 @@ class TemuAdsController extends Controller
         $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skuLookup, false);
         $productMasterByNorm = $this->productMasterByNormalizedSku($skuLookup);
 
-        $soldL7BySku = $this->soldL7BySku();
+        $soldL7BySku = TemuSoldRoasRuleService::soldL7BySku();
 
         $rows = $records->map(function (TemuAdsApiReport $r) use ($soldL7BySku, $l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $inSpendWindow) {
             $clicks = (int) ($r->clicks ?? 0);
@@ -764,14 +765,29 @@ class TemuAdsController extends Controller
     }
 
     /**
-     * Ads Rules: L7 Sold Qty slabs with a Target ROAS input per slab.
+     * Ads Rules: L7 Sold slabs (per parent) with a Target ROAS input per slab, plus Auto run state.
      */
-    public function getSoldRoasRules()
+    public function getSoldRoasRules(TemuSoldRoasRuleService $rules)
     {
-        return response()->json(['slabs' => $this->soldRoasSlabs()]);
+        $slabs = $rules->slabs();
+        $parents = $rules->parents();
+        // Today's per-slab parent counts feed the colour history dot.
+        try {
+            $rules->snapshot($rules->counts($slabs, $parents));
+        } catch (\Throwable $e) {
+            Log::warning('Temu ads rules snapshot failed: '.$e->getMessage());
+        }
+
+        return response()->json([
+            'slabs' => $slabs,
+            'labels' => array_map([TemuSoldRoasRuleService::class, 'slabLabel'], $slabs),
+            'parents' => array_map(fn ($p) => (int) $p['sold_l7'], array_values($parents)),
+            'auto_run' => $rules->autoRunEnabled(),
+            'last_run' => $rules->lastRun(),
+        ]);
     }
 
-    public function saveSoldRoasRules(Request $request)
+    public function saveSoldRoasRules(Request $request, TemuSoldRoasRuleService $rules)
     {
         $request->validate([
             'slabs' => 'required|array|min:1|max:50',
@@ -780,119 +796,51 @@ class TemuAdsController extends Controller
             'slabs.*.target_roas' => 'nullable|numeric|min:0|max:1000',
         ]);
 
-        $slabs = $this->normalizeSoldRoasSlabs($request->input('slabs'));
-        ChannelTabulatorColumnSetting::query()->updateOrCreate(
-            ['channel_name' => 'temu_ads_sold_roas_slabs'],
-            ['column_order' => [json_encode($slabs)]]
-        );
+        $slabs = $rules->normalizeSlabs($request->input('slabs'));
+        $rules->saveSlabs($slabs);
+        $rules->snapshot($rules->counts($slabs, $rules->parents()));
 
-        return response()->json(['success' => true, 'slabs' => $slabs]);
+        return response()->json([
+            'success' => true,
+            'slabs' => $slabs,
+            'labels' => array_map([TemuSoldRoasRuleService::class, 'slabLabel'], $slabs),
+        ]);
+    }
+
+    public function setSoldRoasAutoRun(Request $request, TemuSoldRoasRuleService $rules)
+    {
+        $request->validate(['enabled' => 'required|boolean']);
+        $rules->setAutoRun($request->boolean('enabled'));
+
+        return response()->json(['success' => true, 'auto_run' => $rules->autoRunEnabled()]);
     }
 
     /**
-     * @return array<int, array{sold_min: int, sold_max: int|null, target_roas: float|null}>
+     * Run Auto run right now (same as the daily `temu:auto-run-ads` command).
      */
-    private function defaultSoldRoasSlabs(): array
+    public function runSoldRoasRules(TemuSoldRoasRuleService $rules)
     {
-        return [
-            ['sold_min' => 0, 'sold_max' => 0, 'target_roas' => null],
-            ['sold_min' => 1, 'sold_max' => 1, 'target_roas' => null],
-            ['sold_min' => 2, 'sold_max' => 2, 'target_roas' => null],
-            ['sold_min' => 3, 'sold_max' => 3, 'target_roas' => null],
-            ['sold_min' => 4, 'sold_max' => null, 'target_roas' => null],
-        ];
+        @set_time_limit(0);
+        $stats = $rules->run(false);
+
+        return response()->json([
+            'success' => $stats['failed'] === 0,
+            'stats' => collect($stats)->except(['actions', 'errors'])->all(),
+            'errors' => array_slice($stats['errors'], 0, 10),
+        ]);
     }
 
-    /**
-     * @return array<int, array{sold_min: int, sold_max: int|null, target_roas: float|null}>
-     */
-    private function soldRoasSlabs(): array
+    public function soldRoasHistory(Request $request, TemuSoldRoasRuleService $rules)
     {
-        $row = ChannelTabulatorColumnSetting::query()
-            ->where('channel_name', 'temu_ads_sold_roas_slabs')
-            ->first();
-        $raw = $row && is_array($row->column_order) ? $row->column_order : [];
+        $metric = (string) $request->query('metric', '');
+        $days = max(1, min(180, (int) $request->query('days', 30)));
 
-        return $this->normalizeSoldRoasSlabs($raw) ?: $this->defaultSoldRoasSlabs();
-    }
-
-    /**
-     * @param  mixed  $raw
-     * @return array<int, array{sold_min: int, sold_max: int|null, target_roas: float|null}>
-     */
-    private function normalizeSoldRoasSlabs($raw): array
-    {
-        if (is_string($raw)) {
-            $decoded = json_decode($raw, true);
-            $raw = is_array($decoded) ? $decoded : [];
-        }
-        if (! is_array($raw)) {
-            return [];
-        }
-        if (count($raw) === 1 && is_string($raw[0] ?? null)) {
-            $decoded = json_decode((string) $raw[0], true);
-            $raw = is_array($decoded) ? $decoded : [];
-        }
-
-        $out = [];
-        foreach ($raw as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-            $min = isset($item['sold_min']) && $item['sold_min'] !== '' && is_numeric($item['sold_min'])
-                ? max(0, (int) $item['sold_min'])
-                : 0;
-            $max = isset($item['sold_max']) && $item['sold_max'] !== '' && is_numeric($item['sold_max'])
-                ? max(0, (int) $item['sold_max'])
-                : null;
-            if ($max !== null && $max < $min) {
-                $max = $min;
-            }
-            $roas = isset($item['target_roas']) && $item['target_roas'] !== '' && is_numeric($item['target_roas'])
-                ? round((float) $item['target_roas'], 2)
-                : null;
-            $out[] = ['sold_min' => $min, 'sold_max' => $max, 'target_roas' => $roas];
-        }
-
-        return $out;
-    }
-
-    /**
-     * Units sold per SKU in the last 7 complete Pacific days (Temu 1 `temu_orders`, cancelled excluded).
-     * Keyed by ShopifySku::normalizeSkuForShopifyLookup(sku).
-     *
-     * @return array<string, int>
-     */
-    private function soldL7BySku(): array
-    {
-        if (! Schema::hasTable('temu_orders')) {
-            return [];
-        }
-
-        [$start, $end] = TemuShopifySalesService::channelMasterL7Window();
-        $appTz = config('app.timezone');
-        $start = $start->copy()->setTimezone($appTz);
-        $end = $end->copy()->setTimezone($appTz);
-
-        $out = [];
-        TemuOrder::query()
-            ->whereBetween('parent_order_time', [$start, $end])
-            ->where(function ($q) {
-                $q->whereNull('order_status_text')
-                    ->orWhereRaw('UPPER(order_status_text) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
-            })
-            ->get(['id', 'ext_code', 'display_sku', 'quantity'])
-            ->each(function ($o) use (&$out) {
-                $ext = trim((string) ($o->ext_code ?? ''));
-                $sku = $ext !== '' ? $ext : trim((string) ($o->display_sku ?? ''));
-                $key = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                if ($key === '') {
-                    return;
-                }
-                $out[$key] = ($out[$key] ?? 0) + (int) ($o->quantity ?? 0);
-            });
-
-        return $out;
+        return response()->json([
+            'success' => true,
+            'metric' => $metric,
+            'days' => $days,
+            'data' => $rules->history($metric, $days),
+        ]);
     }
 
     private function skuForGoodsId(string $goodsId): ?string
