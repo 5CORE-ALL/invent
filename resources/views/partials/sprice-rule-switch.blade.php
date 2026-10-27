@@ -99,6 +99,9 @@
                 if (typeof window.reverbRefreshSpriceCells === 'function') {
                     try { window.reverbRefreshSpriceCells(); } catch (e9) { /* ignore */ }
                 }
+                if (typeof window.temu3RefreshSpriceCells === 'function') {
+                    try { window.temu3RefreshSpriceCells(); } catch (e19) { /* ignore */ }
+                }
                 if (spriceRuleResolve) {
                     const done = spriceRuleResolve;
                     spriceRuleResolve = null;

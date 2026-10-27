@@ -903,11 +903,13 @@
             const lmp = (typeof temuLmpRefPrice === 'function') ? temuLmpRefPrice(d) : 0;
             const std = parseFloat(d.STANDARD_PRICE) || 0;
 
-            steps.push(temuRuleStep('info', '1 · Std prc vs dil',
-                'S PRC starts at the Std prc vs dil price: Std Prc ' + temuRuleMoney(std) + ' less the Age, Dil, CVR and Review discounts = <b>' + temuRuleMoney(rulePrice) + '</b>.'));
             if (dilOn) {
-                steps.push(temuRuleStep('info', 'Sprc Dil (switch ON)', 'The Sprc Dil column and the server run use the Target SNROI below. This cell is still priced from Std prc vs dil.'));
+                steps.push(temuRuleStep('info', '1 · Sprc Dil (switch ON)',
+                    'S PRC is the price that lands SNROI on the Target SNROI below = <b>' + temuRuleMoney(rulePrice) + '</b>. Std Prc ' + temuRuleMoney(std) + ' is the maximum.'));
                 temuRuleDilTargetSteps(d, steps);
+            } else {
+                steps.push(temuRuleStep('info', '1 · Std prc vs dil',
+                    'S PRC starts at the Std prc vs dil price: Std Prc ' + temuRuleMoney(std) + ' less the Age, Dil, CVR and Review discounts = <b>' + temuRuleMoney(rulePrice) + '</b>.'));
             }
             let after = null;
             let sg = null;

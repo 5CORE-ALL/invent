@@ -2060,9 +2060,20 @@
         return getTemu3DisplayLmp(row);
     }
 
-    /** Discounted Price = Std prc vs dil only. Sprc Dil does not write S PRC. */
+    /** The Sprc Dil switch is ON: S PRC comes from the Sprc Dil Target SNROI (the same price the server saves), not from Std prc vs dil. */
+    function temu3DilRuleOn() {
+        return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+    }
+    window.temu3DilRuleOn = temu3DilRuleOn;
+    /** Discounted Price = the ON rule: Sprc Dil (Dil slab + CVR / Age / Diff points, solved to Target SNROI), else Std prc vs dil. */
     function temuDiscountedPrice(row) {
         if (!row || (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(row))) return 0;
+        if (temu3DilRuleOn()) {
+            // Same price as the Sprc Dil column. A SKU with no Sprc Dil price (INV 0, outside every slab) gets none, like the server run.
+            const meta = (typeof ebayDilGroiMetaForRow === 'function') ? ebayDilGroiMetaForRow(row) : null;
+            const dilPrice = meta ? Number(meta.sprc) : 0;
+            return dilPrice > 0 ? +dilPrice.toFixed(2) : 0;
+        }
         if (typeof window.chStdPriceForRow === 'function') {
             const stdRule = Number(window.chStdPriceForRow(row)) || 0;
             if (stdRule > 0) return +stdRule.toFixed(2);
@@ -2107,6 +2118,11 @@
                 sprice = +(lmp * (1 - ((isFinite(bandPct) && bandPct >= 0 ? bandPct : 2) / 100))).toFixed(2);
                 lmpAlert = true;
             }
+        }
+        // Sprc Dil ON: Std Prc is the maximum S PRC (the server run caps the same way, after the LMP step). A blank Std Prc leaves the price.
+        if (temu3DilRuleOn()) {
+            const stdMax = parseFloat(row && row.STANDARD_PRICE) || 0;
+            if (stdMax > 0 && sprice > stdMax + 0.0001) sprice = +stdMax.toFixed(2);
         }
         return { sprice: +sprice.toFixed(2), labels: [], lmpAlert: lmpAlert, lmp: lmp };
     }
@@ -2178,6 +2194,30 @@
         return stored > 0 ? +stored.toFixed(2) : 0;
     }
     window.temuDisplayedSprice = temuDisplayedSprice;
+
+    /** Repaint every S column (S PRC, S R prc, S Base Prc, S Profit, SGROI, SNROI ...) from the ON rule. */
+    function temu3RepaintSCells() {
+        try {
+            if (typeof table === 'undefined' || !table || table.initialized === false) return;
+            if (typeof table.redraw === 'function') table.redraw(true);
+            if (typeof updateSummary === 'function') updateSummary();
+        } catch (e) { /* table not built yet */ }
+    }
+    // The saved rule arrives from the server after the table can already be drawn: repaint when it settles.
+    window.temu3RefreshSpriceCells = temu3RepaintSCells;
+    // The Sprc Dil / Std prc vs dil switch was flipped: repaint from the ON rule at once, then save that price (no push).
+    window.spriceOnRuleSwitched = function(rule) {
+        temu3RepaintSCells();
+        if (rule === 'dil') {
+            if (typeof ebayApplySprcDilToTable === 'function') {
+                Promise.resolve(ebayApplySprcDilToTable({ persist: true, push: false }))
+                    .then(temu3RepaintSCells)
+                    .catch(function() { /* ignore */ });
+            }
+        } else if (typeof window.chStdApplyActivePrices === 'function') {
+            window.chStdApplyActivePrices();
+        }
+    };
 
     function temuSortNum(a, b) {
         const an = (a === '' || a == null) ? NaN : Number(a);
@@ -4237,7 +4277,7 @@
                     sorter: temuSortBy(function(d) {
                         return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
                     }),
-                    headerTooltip: "S PRC from Std prc vs dil (Std minus Age, Dil, CVR, and Review discounts), then capped at LMP when LMP is lower. Sprc Dil does not set this cell. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC follows the ON switch. Sprc Dil ON: the price that lands SNROI on the Dil slab's Target SNROI (plus CVR / Age / Diff points), then LMP − x%, and never above Std Prc. Std prc vs dil ON: Std minus Age, Dil, CVR and Review discounts, then LMP. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(rowData)) return '';
@@ -4361,7 +4401,7 @@
                     field: "snroi_percent",
                     hozAlign: "center",
                     sorter: temuSortBy(function(d) { return temuExportSnroi(d); }),
-                    headerTooltip: "SNROI% = live SNPFT ÷ LP at S PRC. S PRC is solved so this matches the Dil + CVR target.",
+                    headerTooltip: "SNROI% = live SNPFT ÷ LP at S PRC. With Sprc Dil ON it matches the Dil + CVR + Age + Diff Target SNROI (lower only when LMP or Std Prc caps S PRC). With Std prc vs dil ON it follows that rule's price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const lp = parseFloat(rowData['lp']) || 0;
