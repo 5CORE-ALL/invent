@@ -165,7 +165,7 @@ class TemuAdsController extends Controller
             $dilPercent = $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0;
 
             return [
-                'id' => $r->id,
+                'id' => $r->getAttribute('synthetic_id') ?: $r->id,
                 'goods_id' => $r->goods_id,
                 'parent' => $this->productMasterParent($productMaster),
                 'sku' => $r->getAttribute('temu_sku_name') ?: $r->sku,
@@ -1276,7 +1276,8 @@ class TemuAdsController extends Controller
                         continue;
                     }
                     $clone = $first->replicate();
-                    $clone->setAttribute('id', 'v-'.$skuId.'-'.$first->period);
+                    // 'id' is an integer-cast key and would become 0: carry the grid row id separately.
+                    $clone->setAttribute('synthetic_id', 'v-'.$skuId.'-'.$first->period);
                     $clone->sku = $name;
                     $clone->sku_id = $skuId;
                     $clone->setAttribute('ad_create_reject', null);
