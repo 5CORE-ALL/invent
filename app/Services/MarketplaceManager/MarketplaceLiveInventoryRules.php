@@ -431,6 +431,12 @@ final class MarketplaceLiveInventoryRules
         if ($marketplaceQty === $target) {
             return true;
         }
+        // eBay 1: a listing showing "out of stock" (0) while Shopify has stock is never a match.
+        // The 3-unit band used to hide Shopify 1-3 vs eBay 0, so those listings stayed sold out.
+        if ($marketplaceQty <= 0 && $target > 0
+            && in_array(strtolower(trim((string) $marketplace)), ['ebay', 'ebay1', 'ebayone'], true)) {
+            return false;
+        }
 
         return abs($marketplaceQty - $target) <= self::mismatchIgnoreThreshold($target);
     }
