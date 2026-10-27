@@ -362,7 +362,7 @@
                             </select>
                             <button type="button" id="temu-ads-rules-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
                                     data-bs-toggle="modal" data-bs-target="#temuAdsRulesModal"
-                                    title="Ad rules — L7 clicks Pause/Run and Auto Cron">
+                                    title="Ad rules — L7 clicks, Pause/Run and ROAS rule">
                                 <i class="fas fa-sliders-h me-1"></i>Ad rules
                             </button>
                             <div class="dropdown d-inline-block pricing-filter-item">
@@ -389,16 +389,6 @@
                                     title="Create ads Rule — budget and target ROAS used for Create">
                                 <i class="fa fa-plus"></i> Create ads Rule
                             </button>
-                            <button type="button" id="pause-run-rule-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
-                                    data-bs-toggle="modal" data-bs-target="#pauseRunRuleModal"
-                                    title="Pause/Run slabs by L7 Clicks">
-                                <i class="fas fa-sliders-h"></i> Pause/Run Rule
-                            </button>
-                            <button type="button" id="roas-rule-btn" class="btn btn-sm btn-outline-danger pricing-filter-item"
-                                    data-bs-toggle="modal" data-bs-target="#roasRuleModal"
-                                    title="Target ROAS from clicks slabs">
-                                <i class="fas fa-palette"></i> ROAS rule
-                            </button>
                             <button type="button" id="refresh-btn" class="btn btn-sm btn-primary pricing-filter-item"
                                     title="Fetch from Temu API and store raw data">
                                 <i class="fa fa-sync"></i> Fetch from API
@@ -415,9 +405,9 @@
                         <div class="temu-ads-badge-row" role="group" aria-label="Summary metrics">
                             <span class="badge fs-6 p-2" id="roas-rule-badge"
                                 style="background-color: #be185d; color: white; font-weight: bold; cursor: pointer;"
-                                data-bs-toggle="modal" data-bs-target="#roasRuleModal"
-                                title="Target ROAS from clicks slabs">
-                                ROAS rule<span id="roas-rule-summary" class="d-none"></span>
+                                data-bs-toggle="modal" data-bs-target="#temuAdsRulesModal" data-ad-rules-tab="roas"
+                                title="Ad rules — L7 clicks, Pause/Run and ROAS rule">
+                                Ad rules<span id="roas-rule-summary" class="d-none"></span>
                             </span>
                             <span class="badge bg-dark fs-6 p-2 temu-ads-chart-badge" id="row-count"
                                 data-metric="rows" data-label="Rows"
@@ -481,15 +471,45 @@
         </div>
     </div>
 
-    {{-- Shared L7 Clicks → T ROAS bidding rule --}}
+    {{-- Ad rules: L7 threshold / Auto Cron, Pause/Run slabs, ROAS rule --}}
     <div class="modal fade" id="temuAdsRulesModal" tabindex="-1" aria-labelledby="temuAdsRulesModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="temuAdsRulesModalLabel">Ad rules</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="d-flex flex-wrap align-items-center gap-3 border rounded px-3 py-2 mb-3 bg-light" id="ad-rules-count-box">
+                        <span class="fw-semibold small text-uppercase text-muted">Count</span>
+                        <span class="d-inline-flex align-items-center gap-1">
+                            <span class="fw-bold" style="color:#dc3545;">Pause</span>
+                            <span class="badge bg-dark fs-6" id="ad-rules-pause-count">0</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 temu-ads-rules-history-btn" data-metric="pause" data-label="Pause" title="Pause count history">
+                                <i class="fas fa-chart-line me-1"></i>History
+                            </button>
+                        </span>
+                        <span class="d-inline-flex align-items-center gap-1">
+                            <span class="fw-bold" style="color:#198754;">Run</span>
+                            <span class="badge bg-dark fs-6" id="ad-rules-run-count">0</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 temu-ads-rules-history-btn" data-metric="run" data-label="Run" title="Run count history">
+                                <i class="fas fa-chart-line me-1"></i>History
+                            </button>
+                        </span>
+                    </div>
+                    <ul class="nav nav-tabs mb-3" id="temuAdsRulesTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="ad-rules-tab-clicks" data-bs-toggle="tab" data-bs-target="#ad-rules-pane-clicks" type="button" role="tab">L7 Clicks &amp; Cron</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="ad-rules-tab-pauserun" data-bs-toggle="tab" data-bs-target="#ad-rules-pane-pauserun" type="button" role="tab">Pause/Run Rule</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="ad-rules-tab-roas" data-bs-toggle="tab" data-bs-target="#ad-rules-pane-roas" type="button" role="tab">ROAS rule</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="ad-rules-pane-clicks" role="tabpanel">
                     <p class="text-muted small mb-3">Shared with Temu 2 Analytics. L7 clicks below the threshold stay in Run mode. L7 clicks at or above the threshold are Pause. Auto Cron only pushes rows whose Active/Pause status actually changes.</p>
                     <div class="d-inline-flex flex-wrap align-items-center gap-1 border rounded px-3 py-2 bg-light">
                         <label for="temu-l7-clicks-red-threshold" class="mb-0 small fw-semibold text-nowrap">L7 Clicks &lt;</label>
@@ -502,8 +522,7 @@
                     </div>
                     <div id="temu-ads-cron-status" class="small mt-2 text-success">Daily cron: ON — only rows whose Active/Pause status changes from the click limit, after L7 fetch and at 16:10 IST.</div>
                     <div id="temu-ads-pause-status" class="mt-3" style="display:none;"></div>
-                </div>
-                <div class="modal-footer flex-wrap gap-1">
+                            <div class="d-flex flex-wrap justify-content-end gap-1 border-top pt-3 mt-3">
                     <button type="button" class="btn btn-sm btn-warning" id="temu-ads-cron-toggle-btn"
                             data-enabled="1"
                             title="Auto cron is ON. Only rows whose Active/Pause status changes from the click limit are pushed. Click to turn off.">
@@ -513,20 +532,9 @@
                             title="Save the L7 clicks threshold">
                         <i class="fas fa-save me-1"></i>Save
                     </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- Pause/Run Rule slabs --}}
-    <div class="modal fade" id="pauseRunRuleModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Pause/Run Rule</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="ad-rules-pane-pauserun" role="tabpanel">
                     <p class="small text-muted mb-2">
                         Slabs by <strong>Clicks 7</strong>. First matching range wins.
                         Leave <strong>To</strong> empty for that value and above.
@@ -556,8 +564,7 @@
                         <i class="fa fa-plus"></i> Add slab
                     </button>
                     <div id="pause-run-rule-status" class="small mt-2"></div>
-                </div>
-                <div class="modal-footer flex-wrap gap-1">
+                            <div class="d-flex flex-wrap justify-content-end gap-1 border-top pt-3 mt-3">
                     <button type="button" class="btn btn-sm btn-primary" id="pause-run-rule-save-btn"
                             title="Save slabs and refresh Pause/Run switches">Save</button>
                     <button type="button" class="btn btn-sm btn-primary d-none" id="pause-run-rule-apply-btn"
@@ -565,20 +572,9 @@
                     <button type="button" class="btn btn-sm btn-success d-none" id="pause-run-rule-apply-site-btn"
                             title="Save for /temu/ads and /temu-decrease, then update this page">Apply To Site</button>
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- ROAS Rule: clicks slabs set Target ROAS --}}
-    <div class="modal fade" id="roasRuleModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">ROAS rule</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="ad-rules-pane-roas" role="tabpanel">
                     <p class="small text-muted mb-2">
                         <strong>Clicks</strong> uses the Clicks from/to columns (period clicks).
                         <strong>Target ROAS</strong> fills the T ROAS column from the matching clicks slab.
@@ -609,15 +605,27 @@
                         </button>
                     </div>
                     <div id="roas-rule-status" class="small mt-2"></div>
-                </div>
-                <div class="modal-footer flex-wrap gap-1">
+                            <div class="d-flex flex-wrap justify-content-end gap-1 border-top pt-3 mt-3">
                     <button type="button" class="btn btn-sm btn-outline-primary" id="roas-rule-save-btn">Save</button>
                     <button type="button" class="btn btn-sm btn-primary" id="roas-rule-apply-btn">Apply</button>
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('[data-ad-rules-tab]').forEach(function (el) {
+                el.addEventListener('click', function () {
+                    const tabBtn = document.getElementById('ad-rules-tab-' + el.getAttribute('data-ad-rules-tab'));
+                    if (tabBtn && window.bootstrap) bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+                });
+            });
+        });
+    </script>
 
     {{-- Create Ad modal --}}
     <div class="modal fade" id="createAdModal" tabindex="-1" aria-hidden="true">
@@ -1066,6 +1074,10 @@
                 const runEl = document.getElementById('run-count-num');
                 if (pauseEl) pauseEl.textContent = Number(pauseN).toLocaleString();
                 if (runEl) runEl.textContent = Number(runN).toLocaleString();
+                const rulesPauseEl = document.getElementById('ad-rules-pause-count');
+                const rulesRunEl = document.getElementById('ad-rules-run-count');
+                if (rulesPauseEl) rulesPauseEl.textContent = Number(pauseN).toLocaleString();
+                if (rulesRunEl) rulesRunEl.textContent = Number(runN).toLocaleString();
                 return { pause: pauseN, run: runN };
             }
 
@@ -2951,6 +2963,12 @@
             document.querySelectorAll('.temu-ads-chart-badge').forEach(function (el) {
                 el.addEventListener('click', function () {
                     openTemuAdsBadgeChart(this.dataset.metric, this.dataset.label);
+                });
+            });
+            document.querySelectorAll('.temu-ads-rules-history-btn').forEach(function (btn) {
+                btn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    openTemuAdsBadgeChart(this.dataset.metric, this.dataset.label || this.dataset.metric);
                 });
             });
             document.querySelectorAll('.temu-ads-history-dot').forEach(function (dot) {

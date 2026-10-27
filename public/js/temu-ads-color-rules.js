@@ -11,11 +11,16 @@
     var SLABS_STORAGE_KEY = 'temu_ads_pause_run_slabs';
     var INV_ZERO_STORAGE_KEY = 'temu_ads_pause_run_inv_zero';
     var ROAS_RULE_STORAGE_KEY = 'temu_ads_roas_rule_slabs';
+    var SOLD_QTY_STORAGE_KEY = 'temu_ads_sold_qty_slabs';
     var DEFAULT_BELOW = 70;
     var DEFAULT_TARGET_ROAS = 8;
     var DEFAULT_PAUSE_RUN_SLABS = [
         { min: 0, max: 69, action: 'run' },
         { min: 70, max: null, action: 'pause' },
+    ];
+    // L7 Sold Qty (Temu 1 orders) slabs. Default: every qty → Run (no effect on Pause/Run).
+    var DEFAULT_SOLD_QTY_SLABS = [
+        { min: 0, max: null, action: 'run' },
     ];
     var DEFAULT_ROAS_RULE_SLABS = [
         { clicks_min: 0, clicks_max: 0, target_roas: 4 },
@@ -65,12 +70,20 @@
     }
 
     function normalizePauseRunSlabs(raw) {
+        return normalizeActionSlabs(raw, DEFAULT_PAUSE_RUN_SLABS);
+    }
+
+    function normalizeSoldQtySlabs(raw) {
+        return normalizeActionSlabs(raw, DEFAULT_SOLD_QTY_SLABS);
+    }
+
+    function normalizeActionSlabs(raw, defaults) {
         var list = raw;
         if (typeof raw === 'string') {
             try { list = JSON.parse(raw); } catch (e) { list = null; }
         }
         if (!Array.isArray(list) || !list.length) {
-            list = DEFAULT_PAUSE_RUN_SLABS;
+            list = defaults;
         }
         var out = [];
         list.forEach(function (item) {
@@ -85,10 +98,18 @@
             out.push({ min: min, max: max, action: action });
         });
         if (!out.length) {
-            DEFAULT_PAUSE_RUN_SLABS.forEach(function (s) { out.push({ min: s.min, max: s.max, action: s.action }); });
+            defaults.forEach(function (s) { out.push({ min: s.min, max: s.max, action: s.action }); });
         }
         out.sort(function (a, b) { return a.min - b.min; });
         return out;
+    }
+
+    function loadLocalSoldQtySlabs() {
+        try {
+            return normalizeSoldQtySlabs(global.localStorage && localStorage.getItem(SOLD_QTY_STORAGE_KEY));
+        } catch (e) {
+            return normalizeSoldQtySlabs(null);
+        }
     }
 
     function loadLocalSlabs() {
@@ -335,6 +356,7 @@
         pauseRunSlabs: loadLocalSlabs(),
         pauseRunInvZero: loadInvZeroPause(),
         roasRuleSlabs: loadLocalRoasRuleSlabs(),
+        soldQtySlabs: loadLocalSoldQtySlabs(),
         autoPauseCron: true,
     };
 
@@ -345,6 +367,7 @@
         SLABS_STORAGE_KEY = prefix + '_pause_run_slabs';
         INV_ZERO_STORAGE_KEY = prefix + '_pause_run_inv_zero';
         ROAS_RULE_STORAGE_KEY = prefix + '_roas_rule_slabs';
+        SOLD_QTY_STORAGE_KEY = prefix + '_sold_qty_slabs';
     }
 
     function reloadRulesFromStorage() {
@@ -353,6 +376,7 @@
         rules.pauseRunSlabs = loadLocalSlabs();
         rules.pauseRunInvZero = loadInvZeroPause();
         rules.roasRuleSlabs = loadLocalRoasRuleSlabs();
+        rules.soldQtySlabs = loadLocalSoldQtySlabs();
     }
 
     function configureChannel(prefix) {
@@ -367,6 +391,7 @@
             localStorage.setItem(SLABS_STORAGE_KEY, JSON.stringify(rules.pauseRunSlabs));
             localStorage.setItem(INV_ZERO_STORAGE_KEY, rules.pauseRunInvZero ? '1' : '0');
             localStorage.setItem(ROAS_RULE_STORAGE_KEY, JSON.stringify(rules.roasRuleSlabs));
+            localStorage.setItem(SOLD_QTY_STORAGE_KEY, JSON.stringify(rules.soldQtySlabs));
         } catch (e) { /* ignore */ }
     }
 
@@ -432,8 +457,17 @@
             body: JSON.stringify({
                 pause_run_slabs: rules.pauseRunSlabs,
                 pause_run_inv_zero: !!rules.pauseRunInvZero,
+                sold_qty_slabs: rules.soldQtySlabs,
             }),
         }).catch(function () { /* keep local value */ });
+    }
+
+    function setSoldQtySlabs(slabs, doSaveRemote) {
+        rules.soldQtySlabs = normalizeSoldQtySlabs(slabs);
+        persistLocal();
+        notify();
+        if (doSaveRemote === false) return;
+        savePauseRunSlabsRemote();
     }
 
     function setRoasRuleSlabs(slabs, doSaveRemote) {
@@ -486,6 +520,23 @@
             if (n >= s.min && (s.max == null || n <= s.max)) return s.action;
         }
         return n < rules.l7ClicksRedBelow ? 'run' : 'pause';
+    }
+
+    function actionFromSoldQtySlabs(sold) {
+        var n = parseClicks(sold);
+        if (!isFinite(n)) n = 0;
+        var slabs = normalizeSoldQtySlabs(rules.soldQtySlabs);
+        for (var i = 0; i < slabs.length; i++) {
+            var s = slabs[i];
+            if (n >= s.min && (s.max == null || n <= s.max)) return s.action;
+        }
+        return 'run';
+    }
+
+    // Sold Qty rule only applies when the row carries L7 sold qty (Temu 1 /temu/ads).
+    function soldQtyBlocksRun(row) {
+        if (!row || row.sold_l7 == null || row.sold_l7 === '') return false;
+        return actionFromSoldQtySlabs(row.sold_l7) === 'pause';
     }
 
     function isLowL7Clicks(clicks) {
@@ -652,7 +703,10 @@
         if (tRoasIsZero(row)) {
             return 'pause';
         }
-        return actionFromSlabs(row && row.clicks_l7 != null ? row.clicks_l7 : 0);
+        var base = actionFromSlabs(row && row.clicks_l7 != null ? row.clicks_l7 : 0);
+        // Run only when BOTH the L7 Clicks slabs and the L7 Sold Qty slabs say Run.
+        if (base === 'run' && soldQtyBlocksRun(row)) return 'pause';
+        return base;
     }
 
     function pauseRunAction(row) {
@@ -667,7 +721,7 @@
         }
         var action = pauseRunAction(row);
         var goodsId = String(row.goods_id || '');
-        var reason = tRoasIsZero(row) ? 'T ROAS is 0' : 'L7 Clicks';
+        var reason = tRoasIsZero(row) ? 'T ROAS is 0' : (soldQtyBlocksRun(row) ? 'L7 Sold Qty' : 'L7 Clicks');
         return '<button type="button" class="temu-pause-run-btn is-' + action + '" data-goods-id="' + goodsId +
             '" data-action="' + action + '" title="' + (action === 'pause' ? 'Pause' : 'Run') + ' — recommended from ' + reason + '. Click to ' +
             (action === 'pause' ? 'run' : 'pause') + ' this ad on Temu">' +
@@ -924,6 +978,9 @@
                 if (data.pause_run_inv_zero != null) {
                     setPauseRunInvZero(!!data.pause_run_inv_zero, false);
                 }
+                if (data.sold_qty_slabs != null) {
+                    setSoldQtySlabs(data.sold_qty_slabs, false);
+                }
                 if (data.roas_rule_slabs != null) {
                     setRoasRuleSlabs(data.roas_rule_slabs, false);
                 }
@@ -973,6 +1030,11 @@
         setPauseRunInvZero: setPauseRunInvZero,
         normalizePauseRunSlabs: normalizePauseRunSlabs,
         DEFAULT_PAUSE_RUN_SLABS: DEFAULT_PAUSE_RUN_SLABS,
+        getSoldQtySlabs: function () { return normalizeSoldQtySlabs(rules.soldQtySlabs); },
+        setSoldQtySlabs: setSoldQtySlabs,
+        normalizeSoldQtySlabs: normalizeSoldQtySlabs,
+        actionFromSoldQtySlabs: actionFromSoldQtySlabs,
+        DEFAULT_SOLD_QTY_SLABS: DEFAULT_SOLD_QTY_SLABS,
         getRoasRuleSlabs: function () { return normalizeRoasRuleSlabs(rules.roasRuleSlabs); },
         setRoasRuleSlabs: setRoasRuleSlabs,
         normalizeRoasRuleSlabs: normalizeRoasRuleSlabs,

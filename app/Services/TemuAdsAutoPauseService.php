@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
+use App\Models\TemuOrder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -250,20 +251,101 @@ class TemuAdsAutoPauseService
         return $out;
     }
 
-    public function actionFromPauseRunSlabs(int $clicksL7, int $inv = 0): string
+    /**
+     * L7 Sold Qty slabs (Temu 1 orders). Default: every qty → Run (rule has no effect).
+     *
+     * @return array<int, array{min: int, max: int|null, action: string}>
+     */
+    public function soldQtySlabs(): array
     {
-        if ($this->pauseRunInvZero() && $inv <= 0) {
-            return 'pause';
-        }
-        foreach ($this->pauseRunSlabs() as $slab) {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'temu_ads_sold_qty_slabs')
+            ->first();
+        $raw = $row && is_array($row->column_order) ? $row->column_order : [];
+        $slabs = $this->normalizePauseRunSlabs($raw);
+
+        return $slabs !== [] ? $slabs : [['min' => 0, 'max' => null, 'action' => 'run']];
+    }
+
+    public function actionFromSoldQtySlabs(int $soldL7): string
+    {
+        foreach ($this->soldQtySlabs() as $slab) {
             $min = (int) ($slab['min'] ?? 0);
             $max = $slab['max'] ?? null;
-            if ($clicksL7 >= $min && ($max === null || $clicksL7 <= (int) $max)) {
+            if ($soldL7 >= $min && ($max === null || $soldL7 <= (int) $max)) {
                 return (($slab['action'] ?? '') === 'run') ? 'run' : 'pause';
             }
         }
 
-        return $clicksL7 < $this->l7ClicksRedBelow() ? 'run' : 'pause';
+        return 'run';
+    }
+
+    /**
+     * Units sold per SKU in the last 7 complete Pacific days (Temu 1 `temu_orders`, cancelled excluded).
+     * Keyed by ShopifySku::normalizeSkuForShopifyLookup(sku).
+     *
+     * @return array<string, int>
+     */
+    public static function soldL7BySku(): array
+    {
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+        if (! Schema::hasTable('temu_orders')) {
+            return $cache = [];
+        }
+
+        [$start, $end] = TemuShopifySalesService::channelMasterL7Window();
+        $appTz = config('app.timezone');
+        $start = $start->copy()->setTimezone($appTz);
+        $end = $end->copy()->setTimezone($appTz);
+
+        $out = [];
+        TemuOrder::query()
+            ->whereBetween('parent_order_time', [$start, $end])
+            ->where(function ($q) {
+                $q->whereNull('order_status_text')
+                    ->orWhereRaw('UPPER(order_status_text) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
+            })
+            ->get(['id', 'ext_code', 'display_sku', 'quantity'])
+            ->each(function ($o) use (&$out) {
+                $ext = trim((string) ($o->ext_code ?? ''));
+                $sku = $ext !== '' ? $ext : trim((string) ($o->display_sku ?? ''));
+                $key = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($key === '') {
+                    return;
+                }
+                $out[$key] = ($out[$key] ?? 0) + (int) ($o->quantity ?? 0);
+            });
+
+        return $cache = $out;
+    }
+
+    /**
+     * Pause/Run for a row: Run only when BOTH the L7 Clicks slabs and the L7 Sold Qty slabs say Run.
+     */
+    public function actionFromPauseRunSlabs(int $clicksL7, int $inv = 0, ?int $soldL7 = null): string
+    {
+        if ($this->pauseRunInvZero() && $inv <= 0) {
+            return 'pause';
+        }
+        $action = null;
+        foreach ($this->pauseRunSlabs() as $slab) {
+            $min = (int) ($slab['min'] ?? 0);
+            $max = $slab['max'] ?? null;
+            if ($clicksL7 >= $min && ($max === null || $clicksL7 <= (int) $max)) {
+                $action = (($slab['action'] ?? '') === 'run') ? 'run' : 'pause';
+                break;
+            }
+        }
+        $action ??= $clicksL7 < $this->l7ClicksRedBelow() ? 'run' : 'pause';
+
+        if ($action === 'run' && $soldL7 !== null && $this->actionFromSoldQtySlabs($soldL7) === 'pause') {
+            return 'pause';
+        }
+
+        return $action;
     }
 
     /**
@@ -346,7 +428,9 @@ class TemuAdsAutoPauseService
             $shopify = $skuKey !== '' ? ($shopifyByNorm[$skuKey] ?? null) : null;
             $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
 
-            $desired = $this->actionFromPauseRunSlabs($l7Clicks, $inv);
+            $soldBySku ??= self::soldL7BySku();
+            $soldL7 = (int) ($soldBySku[$skuKey] ?? 0);
+            $desired = $this->actionFromPauseRunSlabs($l7Clicks, $inv, $soldL7);
             if ($tRoas <= 0) {
                 $desired = 'pause';
             }

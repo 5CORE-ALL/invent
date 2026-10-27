@@ -122,7 +122,9 @@ class TemuAdsController extends Controller
         $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skuLookup, false);
         $productMasterByNorm = $this->productMasterByNormalizedSku($skuLookup);
 
-        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $hasPauseRunOk, $inSpendWindow) {
+        $soldL7BySku = TemuAdsAutoPauseService::soldL7BySku();
+
+        $rows = $records->map(function (TemuAdsApiReport $r) use ($soldL7BySku, $l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $hasPauseRunOk, $inSpendWindow) {
             $clicks = (int) ($r->clicks ?? 0);
             $orders = (int) ($r->order_pay_cnt ?? 0);
             $gid = (string) $r->goods_id;
@@ -166,6 +168,7 @@ class TemuAdsController extends Controller
                 'clicks' => $r->clicks,
                 'clicks_l7' => $clicksL7,
                 'clicks_l30' => $clicksL30,
+                'sold_l7' => (int) ($soldL7BySku[$skuKey] ?? 0),
                 'ctr' => $r->ctr,
                 'ctr_l7' => $impressionsL7 > 0 ? round($clicksL7 / $impressionsL7 * 100, 4) : 0.0,
                 'cvr' => $clicks > 0 ? round($orders / $clicks * 100, 2) : 0,
@@ -593,6 +596,7 @@ class TemuAdsController extends Controller
                 'target_roas_bidding' => $pause->targetRoasBidding(),
                 'pause_run_slabs' => $this->pauseRunSlabs(),
                 'pause_run_inv_zero' => $this->pauseRunInvZero(),
+                'sold_qty_slabs' => $pause->soldQtySlabs(),
                 'roas_rule_slabs' => $this->roasRuleSlabs(),
                 'auto_pause_cron' => $pause->cronEnabled(),
                 'matching_active_ads' => $matching,
@@ -605,6 +609,7 @@ class TemuAdsController extends Controller
                 'target_roas_bidding' => 8.0,
                 'pause_run_slabs' => $this->defaultPauseRunSlabs(),
                 'pause_run_inv_zero' => true,
+                'sold_qty_slabs' => [['min' => 0, 'max' => null, 'action' => 'run']],
                 'roas_rule_slabs' => $this->defaultRoasRuleSlabs(),
                 'auto_pause_cron' => true,
                 'matching_active_ads' => 0,
@@ -622,6 +627,10 @@ class TemuAdsController extends Controller
             'pause_run_slabs.*.max' => 'nullable|integer|min:0|max:1000000',
             'pause_run_slabs.*.action' => 'required_with:pause_run_slabs|in:pause,run',
             'pause_run_inv_zero' => 'nullable|boolean',
+            'sold_qty_slabs' => 'nullable|array',
+            'sold_qty_slabs.*.min' => 'required_with:sold_qty_slabs|integer|min:0|max:1000000',
+            'sold_qty_slabs.*.max' => 'nullable|integer|min:0|max:1000000',
+            'sold_qty_slabs.*.action' => 'required_with:sold_qty_slabs|in:pause,run',
             'roas_rule_slabs' => 'nullable|array',
             'roas_rule_slabs.*.clicks_min' => 'nullable|numeric|min:0|max:1000000',
             'roas_rule_slabs.*.clicks_max' => 'nullable|numeric|min:0|max:1000000',
@@ -667,6 +676,16 @@ class TemuAdsController extends Controller
             );
         }
 
+        $soldQtySlabs = $pause->soldQtySlabs();
+        if ($request->has('sold_qty_slabs')) {
+            $soldQtySlabs = $this->normalizePauseRunSlabs($request->input('sold_qty_slabs'))
+                ?: [['min' => 0, 'max' => null, 'action' => 'run']];
+            ChannelTabulatorColumnSetting::query()->updateOrCreate(
+                ['channel_name' => 'temu_ads_sold_qty_slabs'],
+                ['column_order' => [json_encode($soldQtySlabs)]]
+            );
+        }
+
         $roasRuleSlabs = $this->roasRuleSlabs();
         if ($request->has('roas_rule_slabs')) {
             $roasRuleSlabs = $this->normalizeRoasRuleSlabs($request->input('roas_rule_slabs'));
@@ -682,6 +701,7 @@ class TemuAdsController extends Controller
             'target_roas_bidding' => $targetRoas,
             'pause_run_slabs' => $slabs,
             'pause_run_inv_zero' => $invZero,
+            'sold_qty_slabs' => $soldQtySlabs,
             'roas_rule_slabs' => $roasRuleSlabs,
             'auto_pause_cron' => $pause->cronEnabled(),
             'matching_active_ads' => 0,
@@ -1141,7 +1161,7 @@ class TemuAdsController extends Controller
             }
             $status = (string) ($row['ad_status'] ?? '');
             if (in_array($status, ['Active', 'Inactive', 'Paused'], true)) {
-                $action = $this->actionFromPauseRunSlabs((int) ($row['clicks_l7'] ?? 0), (int) ($row['inv'] ?? 0));
+                $action = $this->actionFromPauseRunSlabs((int) ($row['clicks_l7'] ?? 0), (int) ($row['inv'] ?? 0), isset($row['sold_l7']) ? (int) $row['sold_l7'] : null);
                 if ($action === 'run') {
                     $runN++;
                 } else {
@@ -1491,6 +1511,9 @@ class TemuAdsController extends Controller
                     'sku' => $parentSku,
                     'sku_id' => '',
                     'child_count' => $kids->count(),
+                    'sold_l7' => $kids->contains(fn (array $k) => array_key_exists('sold_l7', $k))
+                        ? (int) $kids->sum(fn (array $k) => (int) ($k['sold_l7'] ?? 0))
+                        : null,
                     'image_path' => $image,
                     'inv' => $inv,
                     'ovl30' => $ovl30,
@@ -1566,21 +1589,28 @@ class TemuAdsController extends Controller
         return ! in_array(strtolower((string) $raw), ['0', 'false', 'off'], true);
     }
 
-    private function actionFromPauseRunSlabs(int $clicksL7, int $inv = 0): string
+    private function actionFromPauseRunSlabs(int $clicksL7, int $inv = 0, ?int $soldL7 = null): string
     {
         if ($inv <= 0) {
             return 'pause';
         }
 
+        $action = $clicksL7 < 70 ? 'run' : 'pause';
         foreach ($this->pauseRunSlabs() as $slab) {
             $min = (int) ($slab['min'] ?? 0);
             $max = $slab['max'] ?? null;
             if ($clicksL7 >= $min && ($max === null || $clicksL7 <= (int) $max)) {
-                return (($slab['action'] ?? '') === 'run') ? 'run' : 'pause';
+                $action = (($slab['action'] ?? '') === 'run') ? 'run' : 'pause';
+                break;
             }
         }
 
-        return $clicksL7 < 70 ? 'run' : 'pause';
+        // Run only when BOTH the L7 Clicks slabs and the L7 Sold Qty slabs say Run.
+        if ($action === 'run' && $soldL7 !== null && app(TemuAdsAutoPauseService::class)->actionFromSoldQtySlabs($soldL7) === 'pause') {
+            return 'pause';
+        }
+
+        return $action;
     }
 
     /**
