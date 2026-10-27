@@ -4518,6 +4518,96 @@ PROMPT;
         }
     }
 
+    /**
+     * Batch edit: set the chosen compliance fields (REQ or N/A) on many SKUs at once.
+     * Fields that are not in the request are left alone, and so are the files attached to REQ fields.
+     * Setting a field to N/A clears its image and PDF, exactly like a single edit does.
+     */
+    public function batchUpdateComplianceMaster(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'skus' => 'required|array|min:1|max:1000',
+                'skus.*' => 'required|string',
+                'fields' => 'required|array|min:1',
+            ]);
+
+            $allowed = ComplianceMasterBadgeCalculator::FIELD_KEYS;
+            $fields = [];
+            foreach ($validated['fields'] as $key => $mode) {
+                $mode = strtoupper(trim((string) $mode));
+                if (! in_array($key, $allowed, true) || ! in_array($mode, ['REQ', 'N/A'], true)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid field or value: '.$key.'.',
+                    ], 422);
+                }
+                $fields[$key] = $mode;
+            }
+
+            $updated = [];
+            $missing = [];
+            $seen = [];
+            foreach ($validated['skus'] as $sku) {
+                $normalized = strtoupper($this->normalizeSkuDisplayValue($sku));
+                if ($normalized === '' || isset($seen[$normalized])) {
+                    continue;
+                }
+                $seen[$normalized] = true;
+
+                $product = $this->findProductMasterBySkuForCompliance($sku);
+                if (! $product) {
+                    $missing[] = $sku;
+
+                    continue;
+                }
+
+                $values = is_array($product->Values) ? $product->Values
+                    : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+                if (! is_array($values)) {
+                    $values = [];
+                }
+                foreach ($fields as $key => $mode) {
+                    $values[$key] = $mode;
+                    if ($mode === 'N/A') {
+                        $values[$key.'_img'] = '';
+                        $values[$key.'_pdf'] = '';
+                    }
+                }
+                $product->Values = $values;
+                $product->save();
+                $updated[] = $this->normalizeSkuDisplayValue((string) $product->sku);
+            }
+
+            self::forgetMissingComplianceSidebarCountCache();
+
+            $message = 'Updated '.count($updated).' SKU'.(count($updated) === 1 ? '' : 's').'.';
+            if ($missing !== []) {
+                $message .= ' '.count($missing).' not found.';
+            }
+
+            return response()->json([
+                'success' => $updated !== [],
+                'message' => $message,
+                'updated' => $updated,
+                'missing' => $missing,
+            ], $updated !== [] ? 200 : 404);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Error batch updating Compliance Master: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error saving data: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function importComplianceMaster(Request $request)
     {
         $request->validate([

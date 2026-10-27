@@ -1150,4 +1150,5 @@
         };
     </script>
     <script src="{{ asset('js/listing-page-tools.js') }}?v={{ @filemtime(public_path('js/listing-page-tools.js')) }}"></script>
+@include('partials.listing-sku-search')
 @endsection
