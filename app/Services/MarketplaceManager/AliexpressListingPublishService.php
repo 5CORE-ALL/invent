@@ -197,9 +197,19 @@ class AliexpressListingPublishService
         $resolved = $this->resolveCategory($primary, $primarySku, $title, $gallery[0] ?? '', $categoryId, $categoryName);
         $resolved = $this->ensureLeafCategory($resolved, $title, $gallery[0] ?? '', $this->productTypeHints($primary, $primarySku, $title));
         $categoryId = (int) ($resolved['id'] ?? $categoryId ?? 0);
-        $attached = $this->attachToListedSibling($parentKey, $publishSkus, $prepared, $categoryId > 0 ? $categoryId : null);
-        if ($attached !== null) {
-            return $attached;
+        // Publish window choice: 'existing' = this product id, 'new' = never attach, '' = auto (old behaviour).
+        $attachMode = strtolower(trim((string) ($overrides['attach_mode'] ?? '')));
+        $chosenProductId = $attachMode === 'existing'
+            ? preg_replace('/\D+/', '', (string) ($overrides['existing_listing_id'] ?? ''))
+            : '';
+        if ($attachMode === 'existing' && $chosenProductId === '') {
+            return ['success' => false, 'message' => 'Select the existing AliExpress product to add this variation to.'];
+        }
+        if ($attachMode !== 'new' || $mode === 'single') {
+            $attached = $this->attachToListedSibling($parentKey, $publishSkus, $prepared, $categoryId > 0 ? $categoryId : null, $chosenProductId);
+            if ($attached !== null) {
+                return $attached;
+            }
         }
 
         if ($categoryId <= 0) {
@@ -1055,9 +1065,9 @@ class AliexpressListingPublishService
      * @param  list<array{sku: string, product: ProductMaster, price: float, inv: int, images: list<string>}>  $prepared
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}|null
      */
-    private function attachToListedSibling(string $parentKey, array $publishSkus, array $prepared, ?int $categoryId = null): ?array
+    private function attachToListedSibling(string $parentKey, array $publishSkus, array $prepared, ?int $categoryId = null, string $forcedProductId = ''): ?array
     {
-        $siblingId = $this->listedSiblingProductId($parentKey, $publishSkus);
+        $siblingId = $forcedProductId !== '' ? $forcedProductId : $this->listedSiblingProductId($parentKey, $publishSkus);
         if ($siblingId === '') {
             return null;
         }

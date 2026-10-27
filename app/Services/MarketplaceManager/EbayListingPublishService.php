@@ -48,12 +48,16 @@ class EbayListingPublishService
         string $parentHint = '',
         ?int $categoryId = null,
         ?string $categoryName = null,
-        array $itemSpecifics = []
+        array $itemSpecifics = [],
+        array $options = []
     ): array {
         $channel = $this->normalizeChannel($channel);
         $label = $this->channelLabel($channel);
         $skus = $this->uniqueSkus($skus);
         $itemSpecifics = $this->cleanSpecifics($itemSpecifics);
+        $attachItemId = strtolower(trim((string) ($options['attach_mode'] ?? ''))) === 'existing'
+            ? preg_replace('/\D+/', '', (string) ($options['existing_listing_id'] ?? ''))
+            : '';
         if ($skus === []) {
             return ['success' => false, 'message' => 'SKU is required.'];
         }
@@ -76,6 +80,10 @@ class EbayListingPublishService
                 'success' => false,
                 'message' => $this->publishBlockReason($skus, $channel),
             ];
+        }
+
+        if ($attachItemId !== '' && $mode === 'variation') {
+            return $this->publishToExistingListing($publishSkus, $channel, $attachItemId, $parentHint);
         }
 
         if ($mode === 'single' && count($publishSkus) > 1) {
@@ -632,6 +640,129 @@ class EbayListingPublishService
         }
 
         return array_values(array_unique($out));
+    }
+
+    /**
+     * Add the picked SKUs as new variations of a live eBay variation listing.
+     *
+     * @param  list<string>  $publishSkus
+     * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
+     */
+    private function publishToExistingListing(array $publishSkus, string $channel, string $itemId, string $parentHint): array
+    {
+        $label = $this->channelLabel($channel);
+        $current = ListingManagerEbayTradingPublisher::getItem($channel, $itemId);
+        $item = is_array($current['Item'] ?? null) ? $current['Item'] : null;
+        if ($item === null) {
+            return ['success' => false, 'message' => $label.' could not read listing '.$itemId.'. It may have ended, or it belongs to another eBay account.'];
+        }
+        $status = trim((string) ($item['SellingStatus']['ListingStatus'] ?? ''));
+        if ($status !== '' && $status !== 'Active') {
+            return ['success' => false, 'message' => $label.' listing '.$itemId.' is '.$status.', so variations cannot be added to it.'];
+        }
+
+        $asList = static fn ($node): array => ! is_array($node) ? ($node === null || $node === '' ? [] : [$node])
+            : (($node === [] || array_keys($node) === range(0, count($node) - 1)) ? $node : [$node]);
+        $variationNodes = $asList($item['Variations']['Variation'] ?? null);
+        if ($variationNodes === []) {
+            return ['success' => false, 'message' => $label.' listing '.$itemId.' is a single-SKU listing. eBay cannot turn it into a variation listing. Choose "Create a new parent listing" instead.'];
+        }
+        $aspects = $asList($item['Variations']['VariationSpecificsSet']['NameValueList'] ?? null);
+        if (count($aspects) !== 1) {
+            $names = implode(', ', array_map(fn ($a) => (string) ($a['Name'] ?? ''), $aspects));
+
+            return ['success' => false, 'message' => $label.' listing '.$itemId.' varies by '.($names !== '' ? $names : 'more than one aspect').'. Adding to it from here supports listings with exactly one variation aspect.'];
+        }
+        $aspect = trim((string) ($aspects[0]['Name'] ?? ''));
+        $existingValues = array_values(array_map('strval', $asList($aspects[0]['Value'] ?? null)));
+        $existingSkus = [];
+        foreach ($variationNodes as $node) {
+            $existingSkus[strtoupper(trim((string) ($node['SKU'] ?? '')))] = true;
+        }
+
+        $taken = [];
+        foreach ($existingValues as $value) {
+            $taken[strtolower(trim($value))] = true;
+        }
+        ListingManagerFamily::warmAttributes($publishSkus);
+        $rows = [];
+        $problems = [];
+        foreach ($publishSkus as $sku) {
+            if (isset($existingSkus[strtoupper($sku)])) {
+                $problems[] = $sku.': already a variation of this listing';
+                continue;
+            }
+            $product = $this->findProduct($sku);
+            $parent = $parentHint !== '' ? $parentHint : ($product ? $this->groupKey($product) : '');
+            $hydrated = ListingManagerAmazonHydrator::hydrate($sku, false);
+            $price = $this->resolvePrice($sku, $hydrated);
+            if ($price === null || $price <= 0) {
+                $problems[] = $sku.': no Std Prc on LMP Overall';
+                continue;
+            }
+            $value = ListingManagerFamily::variationLabel($sku, $parent);
+            if (isset($taken[strtolower(trim($value))])) {
+                $problems[] = $sku.': this listing already has a "'.$value.'" variation (change the variation name in Product Master)';
+                continue;
+            }
+            $taken[strtolower(trim($value))] = true;
+            $rows[] = [
+                'sku' => $sku,
+                'price' => $price,
+                'quantity' => $this->resolveQuantity($sku, $hydrated),
+                'variation_label' => $value,
+                'images' => ListingManagerAmazonHydrator::publishImageUrls($sku, $parent, 12),
+            ];
+        }
+        if ($rows === []) {
+            return ['success' => false, 'message' => 'Nothing to add to '.$label.' listing '.$itemId.': '.implode('; ', $problems).'.'];
+        }
+
+        $pictureAspect = trim((string) ($item['Variations']['Pictures']['VariationSpecificName'] ?? ''));
+        $pictureSets = [];
+        foreach ($asList($item['Variations']['Pictures']['VariationSpecificPictureSet'] ?? null) as $set) {
+            $value = trim((string) ($set['VariationSpecificValue'] ?? ''));
+            $urls = array_values(array_filter(array_map('strval', $asList($set['PictureURL'] ?? null))));
+            if ($value !== '' && $urls !== []) {
+                $pictureSets[] = ['value' => $value, 'urls' => $urls];
+            }
+        }
+
+        Log::info('Ebay listing publish: add variations to existing listing', [
+            'channel' => $channel,
+            'item_id' => $itemId,
+            'aspect' => $aspect,
+            'skus' => array_column($rows, 'sku'),
+        ]);
+
+        $result = ListingManagerEbayTradingPublisher::addVariationsToItem(
+            $channel,
+            $itemId,
+            $aspect,
+            $existingValues,
+            $rows,
+            $pictureSets,
+            $pictureAspect
+        );
+        if (empty($result['success'])) {
+            return ['success' => false, 'message' => $label.': '.($result['message'] ?? 'eBay rejected the new variations.')];
+        }
+
+        $title = trim((string) ($item['Title'] ?? ''));
+        foreach ($rows as $row) {
+            $this->persistMetrics($channel, [$row['sku']], $itemId, $title, $row['price'], $row['quantity']);
+        }
+        $this->forgetListingCaches($channel);
+        $added = array_column($rows, 'sku');
+
+        return [
+            'success' => true,
+            'message' => 'Added '.implode(', ', $added).' to '.$label.' listing '.$itemId.($title !== '' ? ' ('.$title.')' : '').'.'
+                .($problems !== [] ? ' Skipped: '.implode('; ', $problems).'.' : ''),
+            'goods_id' => $itemId,
+            'sku_id' => $itemId,
+            'skus' => $added,
+        ];
     }
 
     /**
