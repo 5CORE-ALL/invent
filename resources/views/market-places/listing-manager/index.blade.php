@@ -2294,7 +2294,7 @@
         $descHeadBtn.removeClass('d-none').prop('disabled', false);
         setCharCount($('#lm-desc-char-count'), description.length);
         $('#lm-masters-description').removeClass('lm-desc-edit-wrap').html(description
-            ? description
+            ? '<div style="white-space:pre-wrap;word-break:break-word">' + escapeHtml(description) + '</div>'
             : '<span class="text-muted">No text description on Description Master for this SKU. Click <strong>Fetch Text</strong> to reload, or edit to add one.</span>');
         setCharCount($('#lm-aplus-char-count'), aplus.length);
         $('#lm-masters-aplus').html(aplus
