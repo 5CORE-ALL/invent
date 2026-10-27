@@ -544,6 +544,8 @@
 
 @section('script-bottom')
     <script>
+        // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes; the cell shows the price and a red C.
+        window.CH_CLEARANCE_KEEPS_RULES = true;
         const COLUMN_VIS_KEY = "doba_tabulator_column_visibility";
         /**
          * Server-persisted column visibility, same pattern as /ebay3-tabulator-view.
@@ -746,6 +748,10 @@
         function dobaLiveRuleSprice(data) {
             if (!data || isDobaParentRow(data)) return 0;
             try {
+                // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No Diff or Std rule.
+                if (window.chStdIsClearance && window.chStdIsClearance(data)) {
+                    return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;
+                }
                 if (dobaSpriceRule() === 'dil') {
                     if (window._ebayDilRulesLoaded !== true) return 0;
                     const raw = dobaDilRawSprice(data);
@@ -763,8 +769,6 @@
         /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
         function dobaDisplayedSprice(data) {
             if (!data || isDobaParentRow(data)) return 0;
-            // A SKU under clearance gets no S PRC from any rule (the cell shows C).
-            if (window.chStdIsClearance && window.chStdIsClearance(data)) return 0;
             const live = dobaLiveRuleSprice(data);
             if (live > 0) return live;
             return dobaSavedSprice(data);
@@ -2646,13 +2650,21 @@
                                 const parentSprice = parseFloat(rowData.sprice) || 0;
                                 return parentSprice > 0 ? ('$' + parentSprice.toFixed(2)) : '';
                             }
-                            if (window.chClr && chClr.isClearance(rowData)) return chClr.markHtml(rowData);
+                            const clrMark = window.chClr ? chClr.markHtml(rowData) : '';
                             let value = dobaDisplayedSprice(rowData);
                             if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
                             const live = parseFloat(rowData['doba Price']) || 0;
                             const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
-                            if (!(value > 0)) return '';
+                            if (!(value > 0)) return clrMark;
+                            // Clearance: the Clearance Target NROI% price, no cap marks. The red C follows the price.
+                            if (window.chClr && chClr.isClearance(rowData)) {
+                                const cBlue = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                                    ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                        + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                    : '';
+                                return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="color:#000;font-weight:600;">$${value.toFixed(2)}</span>${clrMark}${cBlue}</span>`;
+                            }
                             const formatted = '$' + value.toFixed(2);
                             const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                             const priceHtml = overLmp
@@ -2676,7 +2688,7 @@
                                     capTris = flags ? flags.stdTri : '';
                                 }
                             }
-                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}${capTris}</span>`;
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clrMark}${redTri}${blueTri}${capTris}</span>`;
                         }
                     },
                     {
