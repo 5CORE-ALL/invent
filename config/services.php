@@ -1234,6 +1234,19 @@ return [
         'key' => env('CLAUDE_API_KEY'),
     ],
 
+    // Company meeting rooms (/meetings). Video is served by a Jitsi Meet server.
+    // NOTE: the public meet.jit.si server limits embedded (iframe) meetings; for unlimited
+    // use point MEETING_JITSI_DOMAIN at a self-hosted Jitsi (or a JaaS domain).
+    'meetings' => [
+        'jitsi_domain' => env('MEETING_JITSI_DOMAIN', 'meet.jit.si'),
+        // Timezone meeting times are entered/shown in (the app itself runs in America/Los_Angeles).
+        'timezone' => env('MEETING_TIMEZONE', 'Asia/Kolkata'),
+        'transcribe_model' => env('MEETING_TRANSCRIBE_MODEL', 'whisper-1'),
+        'minutes_model' => env('MEETING_MINUTES_MODEL', 'gpt-4o-mini'),
+        // Storage disk (private) for recordings.
+        'disk' => env('MEETING_RECORDING_DISK', 'local'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | JungleScout

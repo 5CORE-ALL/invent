@@ -251,6 +251,20 @@
                                             </select>
                                         </div>
 
+                                        <!-- Current Inventory -->
+                                        <div class="mb-3" id="currentInventoryBox" style="display:none;">
+                                            <div class="alert alert-info py-2 mb-0 d-flex flex-wrap align-items-center gap-3">
+                                                <span><i class="fas fa-boxes me-1"></i><strong>Current Inventory:</strong>
+                                                    <span id="currentInventoryValue" class="badge bg-primary fs-6">-</span>
+                                                </span>
+                                                <span id="currentInventoryExtra" class="small text-muted"></span>
+                                                <span id="afterAdjustmentWrap" class="ms-auto" style="display:none;">
+                                                    <strong>After Adjustment:</strong>
+                                                    <span id="afterAdjustmentValue" class="badge bg-success fs-6">-</span>
+                                                </span>
+                                            </div>
+                                        </div>
+
                                         <!-- Auto-filled Parent -->
                                         <div class="mb-3">
                                             <label for="parent" class="form-label fw-bold">Parent</label>
@@ -794,13 +808,79 @@ MS RBP5 2PCS,100,Main Godawn,Add,Other</pre>
                 $('#sku').on('change', function () {
                     const parent = $(this).find('option:selected').data('parent');
                     $('#parent').val(parent || '');
+                    loadCurrentInventory($(this).val());
                 });
+
+                // Current inventory of the selected SKU
+                let currentInventoryQty = null;
+                let currentInventoryReq = null;
+
+                function updateAfterAdjustment() {
+                    const qty = parseInt($('#qty').val(), 10);
+                    const type = $('#adjustment').val();
+                    if (currentInventoryQty === null || isNaN(qty) || (type !== 'Add' && type !== 'Reduce')) {
+                        $('#afterAdjustmentWrap').hide();
+                        return;
+                    }
+                    const after = type === 'Add' ? currentInventoryQty + qty : currentInventoryQty - qty;
+                    $('#afterAdjustmentValue')
+                        .text(after)
+                        .toggleClass('bg-danger', after < 0)
+                        .toggleClass('bg-success', after >= 0);
+                    $('#afterAdjustmentWrap').show();
+                }
+
+                function resetCurrentInventory() {
+                    if (currentInventoryReq) { currentInventoryReq.abort(); currentInventoryReq = null; }
+                    currentInventoryQty = null;
+                    $('#currentInventoryBox').hide();
+                    $('#currentInventoryValue').text('-');
+                    $('#currentInventoryExtra').text('');
+                    $('#afterAdjustmentWrap').hide();
+                }
+
+                function loadCurrentInventory(sku) {
+                    resetCurrentInventory();
+                    if (!sku) return;
+
+                    $('#currentInventoryBox').show();
+                    $('#currentInventoryValue').text('Loading...');
+
+                    currentInventoryReq = $.ajax({
+                        url: '{{ route("stock.adjustment.current.inventory") }}',
+                        method: 'GET',
+                        data: { sku: sku }
+                    }).done(function (res) {
+                        if (res && res.found) {
+                            currentInventoryQty = res.inv;
+                            $('#currentInventoryValue').text(res.inv);
+                            const extra = [];
+                            if (res.on_hand !== null) extra.push('On hand: ' + res.on_hand);
+                            if (res.committed !== null) extra.push('Committed: ' + res.committed);
+                            if (res.available_to_sell !== null) extra.push('Available: ' + res.available_to_sell);
+                            $('#currentInventoryExtra').text(extra.join(' | '));
+                            updateAfterAdjustment();
+                        } else {
+                            $('#currentInventoryValue').text('N/A');
+                            $('#currentInventoryExtra').text((res && res.message) || '');
+                        }
+                    }).fail(function (xhr, status) {
+                        if (status === 'abort') return;
+                        $('#currentInventoryValue').text('N/A');
+                        $('#currentInventoryExtra').text('Could not load current inventory');
+                    });
+                }
+
+                $('#qty').on('input', updateAfterAdjustment);
+                $('#adjustment').on('change', updateAfterAdjustment);
 
                
 
                
                 $(document).on('click', '#openAddWarehouseModal', function () {
                     $('#stockAdjustmentForm')[0].reset(); // Only resets for add
+                    $('#sku').val(null).trigger('change.select2');
+                    resetCurrentInventory();
                     $('#warehouseId').val('');
                     $('#warehouseModalLabel').text('Create Stock Adjustment');
                     // $('#warehouseGroup').val('').trigger('change');

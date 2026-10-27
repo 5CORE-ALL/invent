@@ -1320,6 +1320,9 @@
     @include('layouts.shared.announcement-board-modal')
     @include('layouts.shared.rr-topbar-modal')
 
+    {{-- Floating "Request a meeting" icon (every page; opt out with 'hideMeetingFab' => true) --}}
+    @include('layouts.shared.meeting-request-fab')
+
     {{-- Runs after Vite so jQuery matches head.js; DataTables and similar plugins attach here --}}
     @yield('script-after-vite')
 

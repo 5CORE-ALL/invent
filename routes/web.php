@@ -3495,6 +3495,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/stock-adjustment-store', [StockAdjustmentController::class, 'store'])->name('stock.adjustment.store');
     Route::post('/stock-adjustment-bulk-csv', [StockAdjustmentController::class, 'processBulkCSV']);
     Route::get('/stock-adjustment-data-list', [StockAdjustmentController::class, 'list']);
+    Route::get('/stock-adjustment-current-inventory', [StockAdjustmentController::class, 'currentInventory'])->name('stock.adjustment.current.inventory');
 
     // Stock Transfer
     Route::get('/stock-transfer-view', [StockTransferController::class, 'index'])->name('stock.transfer.view');
@@ -5672,6 +5673,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Forecast Analysis archive / restore (server-side enforces president@5core.com only).
     Route::post('/forecast.analysis/archive', [ForecastAnalysisController::class, 'archiveRows'])->name('forecast.analysis.archive');
+    Route::post('/forecast.analysis/delete-sku', [ForecastAnalysisController::class, 'deleteSku'])->name('forecast.analysis.delete.sku');
     Route::post('/forecast.analysis/restore', [ForecastAnalysisController::class, 'restoreRows'])->name('forecast.analysis.restore');
     Route::get('/forecast.analysis/archived', [ForecastAnalysisController::class, 'archivedForecastView'])->name('forecast.analysis.archived');
     Route::get('/forecast.analysis/archived/data', [ForecastAnalysisController::class, 'archivedForecastData'])->name('forecast.analysis.archived.data');
@@ -7675,6 +7677,25 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Unified route for all eBay accounts (eBay1, eBay2, eBay3)
     Route::get('/ebay/generate-token', [\App\Http\Controllers\EbayTokenController::class, 'generate'])->name('ebay.token.generate');
     Route::match(['get', 'post'], '/ebay/token-callback', [\App\Http\Controllers\EbayTokenController::class, 'callback'])->name('ebay.token.callback');
+    // Team directory + hierarchy (read-only, visible to all logged-in team members)
+    Route::get('/team-view', [\App\Http\Controllers\TeamViewController::class, 'index'])->name('team.view');
+    // Company meeting rooms: mandatory recording, AI minutes and auto-generated tasks
+    Route::get('/meetings', [\App\Http\Controllers\MeetingController::class, 'index'])->name('meetings.index');
+    Route::post('/meetings', [\App\Http\Controllers\MeetingController::class, 'store'])->name('meetings.store');
+    Route::get('/meetings/members', [\App\Http\Controllers\MeetingController::class, 'members'])->name('meetings.members');
+    Route::post('/meetings/request', [\App\Http\Controllers\MeetingController::class, 'requestStore'])->name('meetings.request');
+    Route::get('/meetings/requests', [\App\Http\Controllers\MeetingController::class, 'requests'])->name('meetings.requests');
+    Route::post('/meetings/{meeting}/rsvp', [\App\Http\Controllers\MeetingController::class, 'rsvp'])->name('meetings.rsvp');
+    Route::get('/meetings/minutes', [\App\Http\Controllers\MeetingController::class, 'minutesIndex'])->name('meetings.minutes.index');
+    Route::get('/meetings/{meeting}/room', [\App\Http\Controllers\MeetingController::class, 'room'])->name('meetings.room');
+    Route::post('/meetings/{meeting}/join', [\App\Http\Controllers\MeetingController::class, 'join'])->name('meetings.join');
+    Route::post('/meetings/{meeting}/heartbeat', [\App\Http\Controllers\MeetingController::class, 'heartbeat'])->name('meetings.heartbeat');
+    Route::post('/meetings/{meeting}/recording', [\App\Http\Controllers\MeetingController::class, 'recording'])->name('meetings.recording');
+    Route::post('/meetings/{meeting}/leave', [\App\Http\Controllers\MeetingController::class, 'leave'])->name('meetings.leave');
+    Route::post('/meetings/{meeting}/end', [\App\Http\Controllers\MeetingController::class, 'end'])->name('meetings.end');
+    Route::get('/meetings/{meeting}/minutes', [\App\Http\Controllers\MeetingController::class, 'minutesShow'])->name('meetings.minutes.show');
+    Route::post('/meetings/{meeting}/minutes/regenerate', [\App\Http\Controllers\MeetingController::class, 'regenerate'])->name('meetings.minutes.regenerate');
+    Route::get('/meetings/{meeting}/recordings/{recording}', [\App\Http\Controllers\MeetingController::class, 'recordingFile'])->name('meetings.recording.file');
     // Task Manager Routes
     Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');
     Route::get('/tasks/summary', [\App\Http\Controllers\TaskController::class, 'taskSummary'])->name('tasks.summary');

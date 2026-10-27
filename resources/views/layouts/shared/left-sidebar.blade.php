@@ -31,7 +31,7 @@
 
 
             {{-- Tasks --}}
-            @php $tasksMenuOpen = request()->routeIs('incentives.*'); @endphp
+            @php $tasksMenuOpen = request()->routeIs('incentives.*') || request()->routeIs('meetings.*'); @endphp
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#actionManager" aria-expanded="{{ $tasksMenuOpen ? 'true' : 'false' }}" aria-controls="actionManager"
                     class="side-nav-link {{ $tasksMenuOpen ? 'active' : '' }}">
@@ -59,6 +59,21 @@
                         <li>
                             <a href="{{ route('tasks.summary') }}">
                                 <i class="ri-file-list-3-line me-2"></i>Tasks Summary
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('team.view') }}" class="{{ request()->routeIs('team.view') ? 'active' : '' }}">
+                                <i class="ri-team-line me-2"></i>Team View
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('meetings.index') }}" class="{{ request()->routeIs('meetings.index') || request()->routeIs('meetings.room') ? 'active' : '' }}">
+                                <i class="ri-vidicon-line me-2"></i>Meeting Room
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('meetings.minutes.index') }}" class="{{ request()->routeIs('meetings.minutes.*') ? 'active' : '' }}">
+                                <i class="ri-draft-line me-2"></i>Meeting Minutes
                             </a>
                         </li>
                         <li>

@@ -435,6 +435,33 @@ class StockAdjustmentController extends Controller
     }
 
 
+    /**
+     * Current inventory for a SKU (shown in the Create Stock Adjustment modal).
+     */
+    public function currentInventory(Request $request)
+    {
+        $sku = trim((string) $request->query('sku', ''));
+
+        if ($sku === '') {
+            return response()->json(['found' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $shopifySku = ShopifySku::where('sku', $sku)->first();
+
+        if (!$shopifySku) {
+            return response()->json(['found' => false, 'message' => 'SKU not found in Shopify inventory']);
+        }
+
+        return response()->json([
+            'found' => true,
+            'sku' => $shopifySku->sku,
+            'inv' => (int) ($shopifySku->inv ?? 0),
+            'on_hand' => $shopifySku->on_hand !== null ? (int) $shopifySku->on_hand : null,
+            'available_to_sell' => $shopifySku->available_to_sell !== null ? (int) $shopifySku->available_to_sell : null,
+            'committed' => $shopifySku->committed !== null ? (int) $shopifySku->committed : null,
+        ]);
+    }
+
     public function list()
     {
         $data = Inventory::with('warehouse')

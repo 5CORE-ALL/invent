@@ -1446,6 +1446,23 @@
         </div>
     </div>
 
+    {{-- Archive SKU from CP Master: confirm / blocked (INV > 0) / result --}}
+    <div class="modal fade" id="forecastDeleteSkuModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" id="fdsHeader">
+                    <h5 class="modal-title" id="fdsTitle">Archive SKU</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="fdsBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="fdsCloseBtn">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="fdsConfirmBtn">Archive SKU</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="scouthProductsModal" tabindex="-1">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
@@ -3760,6 +3777,10 @@
                         // Copy icon
                         const copyBtn = `<i class="fa fa-copy forecast-copy-sku" data-sku="${safeSku}" title="Copy SKU" style="cursor:pointer;margin-left:6px;color:#6c757d;font-size:12px;flex-shrink:0;"></i>`;
 
+                        // Delete (archive from CP Master) — child SKUs only, blocked server-side when INV > 0
+                        const isParentRow = !!(rowData.is_parent || rowData.isParent) || /^PARENT/i.test(v.trim());
+                        const deleteBtn = isParentRow ? '' : `<i class="fa fa-trash forecast-delete-sku" data-sku="${safeSku}" data-inv="${Number(rowData.INV) || 0}" title="Archive SKU from CP Master" style="cursor:pointer;margin-left:6px;color:#dc3545;font-size:12px;flex-shrink:0;"></i>`;
+
                         // B link (Buyer). Seller link removed per request.
                         const buyerLink  = String(rowData.Clink || '').trim();
                         const buyerBtn   = buyerLink
@@ -3772,6 +3793,7 @@
                         return `<div style="display:flex;align-items:center;gap:4px;min-width:0;">
                             <span title="${title}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc}</span>
                             ${copyBtn}
+                            ${deleteBtn}
                             ${linkPart}
                         </div>`;
                     }
@@ -8521,6 +8543,91 @@
                 setTimeout(() => icon.removeClass('fa-check').addClass('fa-copy').css('color', '#6c757d'), 1500);
             });
         });
+
+        // Delete SKU (archive from CP Master). INV > 0 -> popup, no request. Otherwise confirm, then archive + create channel tasks.
+        (function () {
+            let fdsSku = '';
+            const fdsEl = document.getElementById('forecastDeleteSkuModal');
+            const fdsModal = () => bootstrap.Modal.getOrCreateInstance(fdsEl);
+            const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+            function fdsShow(opts) {
+                $('#fdsHeader').attr('class', 'modal-header ' + (opts.headerClass || ''));
+                $('#fdsTitle').text(opts.title);
+                $('#fdsBody').html(opts.body);
+                $('#fdsConfirmBtn').toggle(!!opts.showConfirm).prop('disabled', false).text('Archive SKU');
+                $('#fdsCloseBtn').text(opts.closeText || 'Close');
+                fdsModal().show();
+            }
+
+            function rowInv(sku) {
+                let inv = null;
+                try {
+                    (table.getRows() || []).some(function (r) {
+                        const d = r.getData() || {};
+                        if (String(d.SKU || '').trim() === sku) { inv = Number(d.INV) || 0; return true; }
+                        return false;
+                    });
+                } catch (e) { /* ignore */ }
+                return inv;
+            }
+
+            $(document).on('click', '.forecast-delete-sku', function (e) {
+                e.stopPropagation();
+                fdsSku = String($(this).data('sku') || '').trim();
+                if (!fdsSku) return;
+                const inv = rowInv(fdsSku) ?? (Number($(this).data('inv')) || 0);
+
+                if (inv > 0) {
+                    fdsShow({
+                        headerClass: 'bg-warning',
+                        title: 'Cannot archive SKU',
+                        body: '<p class="mb-1"><strong>' + esc(fdsSku) + '</strong> still has <strong>' + inv +
+                            '</strong> unit(s) in inventory.</p><p class="mb-0">A SKU can only be archived from CP Master when its inventory is 0.</p>',
+                        showConfirm: false
+                    });
+                    return;
+                }
+
+                fdsShow({
+                    headerClass: '',
+                    title: 'Archive SKU from CP Master?',
+                    body: '<p class="mb-1">Archive <strong>' + esc(fdsSku) + '</strong> from CP Master?</p>' +
+                        '<p class="mb-0 text-muted small">A one-time task (assignor: Sneha) will be created for every active channel to delete this SKU on its marketplace.</p>',
+                    showConfirm: true,
+                    closeText: 'Cancel'
+                });
+            });
+
+            $('#fdsConfirmBtn').on('click', function () {
+                const $btn = $(this);
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Archiving…');
+                $.ajax({
+                    url: '{{ route('forecast.analysis.delete.sku') }}',
+                    method: 'POST',
+                    data: { _token: $('meta[name="csrf-token"]').attr('content'), sku: fdsSku },
+                    success: function (res) {
+                        fdsShow({
+                            headerClass: 'bg-success text-white',
+                            title: 'SKU archived',
+                            body: '<p class="mb-0">' + esc((res && res.message) || 'Archived.') + '</p>',
+                            showConfirm: false
+                        });
+                        try { table.replaceData(); } catch (err) { /* ignore */ }
+                    },
+                    error: function (xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to archive SKU (network or server error).';
+                        const blocked = xhr.responseJSON && xhr.responseJSON.blocked;
+                        fdsShow({
+                            headerClass: blocked ? 'bg-warning' : 'bg-danger text-white',
+                            title: blocked ? 'Cannot archive SKU' : 'Archive failed',
+                            body: '<p class="mb-0">' + esc(msg) + '</p>',
+                            showConfirm: false
+                        });
+                    }
+                });
+            });
+        })();
 
         $(document).on('click', '.forecast-copy-parent', function(e) {
             e.stopPropagation();

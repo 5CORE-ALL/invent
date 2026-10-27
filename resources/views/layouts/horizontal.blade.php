@@ -59,6 +59,9 @@
     @include('layouts.shared.announcement-board-modal')
     @include('layouts.shared.rr-topbar-modal')
 
+    {{-- Floating "Request a meeting" icon (every page; opt out with 'hideMeetingFab' => true) --}}
+    @include('layouts.shared.meeting-request-fab')
+
     @yield('script-after-vite')
 
     @include('components.ai-chat-widget')

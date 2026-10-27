@@ -3870,6 +3870,23 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Meeting rooms: close stale participants/rooms (fast, every minute) ...
+        $schedule->command('meetings:sweep --housekeeping')
+            ->everyMinute()
+            ->name('meetings-housekeeping')
+            ->withoutOverlapping(10)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // ... and turn finished meetings' recordings into transcript + AI minutes + tasks (slow;
+        // has its own lock so a long transcription never delays the housekeeping above).
+        $schedule->command('meetings:sweep --minutes')
+            ->everyMinute()
+            ->name('meetings-minutes')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Backup only. The reliable fire is /etc/cron.d/cron-run-missed,
         // because this slot is itself skipped when schedule:run is late.
         // Must NOT use $ist() (06:15 is before the window; 20:15 is after).

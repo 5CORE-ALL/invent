@@ -2870,6 +2870,214 @@ class ForecastAnalysisController extends Controller
         ]);
     }
 
+    // -----------------------------------------------------------------------
+    // Delete (archive) SKU from CP Master
+    //
+    // Soft-deletes the ProductMaster row (same "archive" CP Master uses; it can
+    // be restored from /product_master/archived). Blocked while INV > 0. On
+    // success, creates one one-time Task per Active channel asking the channel
+    // owner to delete the same SKU on that marketplace; assignor is Sneha.
+    // -----------------------------------------------------------------------
+
+    private const SKU_DELETE_FALLBACK_ASSIGNEE = 'president@5core.com';
+
+    public function deleteSku(Request $request)
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+        if (stripos($sku, 'PARENT') === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parent rows cannot be deleted here. Delete the child SKUs from CP Master instead.',
+            ], 422);
+        }
+
+        $skuUpper = strtoupper($sku);
+
+        $product = ProductMaster::whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])->first();
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'SKU not found in CP Master (it may already be archived).'], 404);
+        }
+
+        // Current inventory: same source as the INV column on this page (shopify_skus.inv).
+        $inv = $this->currentInventoryForSku($sku);
+        if ($inv > 0) {
+            return response()->json([
+                'success' => false,
+                'blocked' => true,
+                'inv' => $inv,
+                'message' => "Cannot archive {$product->sku}: it still has {$inv} unit(s) in inventory. Inventory must be 0 before the SKU can be archived.",
+            ], 422);
+        }
+
+        $sneha = $this->resolveSnehaUser();
+        if (! $sneha) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not find the user "Sneha" to assign the channel tasks. Nothing was archived.',
+            ], 422);
+        }
+
+        $channels = \App\Models\ChannelMaster::where('status', 'Active')
+            ->orderBy('channel')
+            ->get();
+
+        $created = 0;
+        $skipped = 0;
+        $fallbackChannels = [];
+
+        try {
+            DB::transaction(function () use ($product, $channels, $sneha, &$created, &$skipped, &$fallbackChannels) {
+                $product->deleted_by = Auth::id();
+                $product->save();
+                $product->delete();
+
+                [$byId, $byEmail, $byName] = $this->activeUserLookups();
+                $start = now();
+                $due = $start->copy()->addDays(5);
+
+                foreach ($channels as $channel) {
+                    $channelName = trim((string) $channel->channel);
+                    if ($channelName === '') {
+                        continue;
+                    }
+
+                    $marker = 'sku_delete_' . strtolower(trim((string) $product->sku)) . '_' . $channel->id;
+                    $exists = \App\Models\Task::where('link8', $marker)
+                        ->whereNotIn('status', ['Done', 'Archived'])
+                        ->exists();
+                    if ($exists) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $owner = null;
+                    if (! empty($channel->user_id) && isset($byId[(int) $channel->user_id])) {
+                        $owner = $byId[(int) $channel->user_id];
+                    } elseif (! empty($channel->executive)) {
+                        $exec = strtolower(trim((string) $channel->executive));
+                        $owner = $byEmail[$exec] ?? $byName[$exec] ?? null;
+                    }
+                    if (! $owner) {
+                        $fallbackChannels[] = $channelName;
+                    }
+                    $assignee = $owner ? $owner->email : self::SKU_DELETE_FALLBACK_ASSIGNEE;
+
+                    $data = [
+                        'title' => "Delete SKU {$product->sku} from {$channelName}",
+                        'description' => "SKU {$product->sku} was archived from CP Master (inventory is 0). "
+                            . "Please delete / deactivate this SKU's listing on {$channelName} and mark this task done.",
+                        'group' => 'Listing',
+                        'priority' => 'High',
+                        'assignor' => $sneha->email,
+                        'assign_to' => $assignee,
+                        'status' => 'Todo',
+                        'eta_time' => 15,
+                        'start_date' => $start,
+                        'completion_date' => $due,
+                        'due_date' => $due,
+                        'completion_day' => 0,
+                        'etc_done' => 0,
+                        'is_missed' => 0,
+                        'is_missed_track' => 0,
+                        'workspace' => 0,
+                        'order' => 0,
+                        'task_id' => '',
+                        'link1' => url('/forecast.analysis'),
+                        'link2' => '',
+                        'link3' => '',
+                        'link4' => '',
+                        'link5' => '',
+                        'link6' => '',
+                        'link7' => '',
+                        'link8' => $marker,
+                        'link9' => '',
+                        'is_data_from' => 0,
+                        'is_automate_task' => 0,
+                        'task_type' => 'manual',
+                        'rework_reason' => '',
+                        'delete_rating' => 0,
+                        'delete_feedback' => '',
+                        'split_tasks' => 0,
+                    ];
+                    if (Schema::hasColumn('tasks', 'is_corrective_action')) {
+                        $data['is_corrective_action'] = 0;
+                    }
+
+                    \App\Models\Task::create($data);
+                    $created++;
+                }
+            });
+        } catch (\Throwable $e) {
+            Log::error('Forecast SKU delete failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to archive SKU. Nothing was changed. ' . $e->getMessage(),
+            ], 500);
+        }
+
+        $message = "SKU {$product->sku} archived from CP Master. {$created} task(s) created (assignor: {$sneha->name}) to delete it on the marketplaces.";
+        if ($skipped > 0) {
+            $message .= " {$skipped} channel(s) already had an open task.";
+        }
+        if (! empty($fallbackChannels)) {
+            $message .= ' No channel owner found for: ' . implode(', ', $fallbackChannels)
+                . '; those tasks were assigned to ' . self::SKU_DELETE_FALLBACK_ASSIGNEE . '.';
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'tasks_created' => $created,
+            'tasks_skipped' => $skipped,
+        ]);
+    }
+
+    /** Shopify on-hand units for a SKU, matching the INV column (exact, then space-insensitive). */
+    private function currentInventoryForSku(string $sku): int
+    {
+        $skuUpper = strtoupper(trim($sku));
+        $rows = ShopifySku::whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])->get(['inv']);
+        if ($rows->isEmpty()) {
+            $rows = ShopifySku::whereRaw("REPLACE(UPPER(sku), ' ', '') = ?", [str_replace(' ', '', $skuUpper)])->get(['inv']);
+        }
+
+        return (int) $rows->sum(fn ($r) => (int) ($r->inv ?? 0));
+    }
+
+    private function resolveSnehaUser(): ?\App\Models\User
+    {
+        $matches = \App\Models\User::active()
+            ->where(function ($q) {
+                $q->whereRaw('LOWER(name) LIKE ?', ['sneha%'])
+                  ->orWhereRaw('LOWER(email) LIKE ?', ['sneha%']);
+            })
+            ->orderBy('id')
+            ->get();
+
+        if ($matches->isEmpty()) {
+            return null;
+        }
+
+        return $matches->first(fn ($u) => strtolower(trim((string) $u->name)) === 'sneha') ?? $matches->first();
+    }
+
+    /** @return array{0: array<int,\App\Models\User>, 1: array<string,\App\Models\User>, 2: array<string,\App\Models\User>} */
+    private function activeUserLookups(): array
+    {
+        $byId = $byEmail = $byName = [];
+        foreach (\App\Models\User::active()->get(['id', 'name', 'email']) as $u) {
+            $byId[(int) $u->id] = $u;
+            $byEmail[strtolower(trim((string) $u->email))] = $u;
+            $byName[strtolower(trim((string) $u->name))] ??= $u;
+        }
+
+        return [$byId, $byEmail, $byName];
+    }
+
     /**
      * Render the president-only Restore page. The page shells out to
      * archivedForecastData() via AJAX for its row list.
