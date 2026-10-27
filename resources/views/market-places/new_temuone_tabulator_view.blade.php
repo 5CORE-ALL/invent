@@ -638,6 +638,15 @@
             <div class="card-body" style="padding: 0;">
                 <div id="new-temuone-table-wrapper" style="height: calc(100vh - 160px); display: flex; flex-direction: column;">
                     <div class="px-2 py-1 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                        <div class="d-flex align-items-center gap-1">
+                            <label for="view-type-filter" class="form-label mb-0 text-nowrap small" style="font-size: 13px;">View:</label>
+                            <select id="view-type-filter" class="form-select form-select-sm" style="width: 100px; font-size: 13px;"
+                                title="All = Parent + SKU rows, Parent = parent summary rows only, SKU = child SKU rows only">
+                                <option value="all" selected>All</option>
+                                <option value="parent">Parent</option>
+                                <option value="sku">SKU</option>
+                            </select>
+                        </div>
                         <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                         <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
                     </div>
@@ -3129,6 +3138,16 @@
         table.clearFilter();
         if (window.chClr && chClr.filterOn()) table.addFilter(chClr.filterFn);
 
+        // View: All | Parent (parent summary rows only) | SKU (child SKU rows only)
+        const viewTypeFilter = $('#view-type-filter').val() || 'all';
+        if (viewTypeFilter === 'parent' || viewTypeFilter === 'sku') {
+            table.addFilter(function(data) {
+                const sku = String((data && (data['(Child) sku'] || data.SKU || data.sku)) || '').trim();
+                const isParent = !!(data && data.is_parent_summary) || sku.toUpperCase().indexOf('PARENT') === 0;
+                return viewTypeFilter === 'parent' ? isParent : !isParent;
+            });
+        }
+
         if (inventoryFilter === 'zero') {
             table.addFilter('INV', '=', 0);
         } else if (inventoryFilter === 'more') {
@@ -4438,7 +4457,7 @@
         });
 
         $('#sku-search, #parent-search').on('input', applyFiltersDebounced);
-        $('#inventory-filter, #dil-filter, #cvr-filter, #gpft-filter, #groi-filter, #cvr-trend-filter').on('change', applyFilters);
+        $('#view-type-filter, #inventory-filter, #dil-filter, #cvr-filter, #gpft-filter, #groi-filter, #cvr-trend-filter').on('change', applyFilters);
 
         temuLoadCvrCpnRules();
 

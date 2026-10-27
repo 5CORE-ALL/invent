@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
+use App\Http\Controllers\Sales\AmazonSalesController;
+use App\Models\AmazonOrder;
 use App\Models\AmazonSkuDailyData;
 use App\Models\AmazonDataView;
 use App\Models\AmazonDatasheet;
@@ -21,7 +23,8 @@ class CollectAmazonMetrics extends Command
     use ProcessesUpdatesInChunks;
 
     protected $signature = 'amazon:collect-metrics
-        {--chunk= : Override chunk size (default from cron-monitor config)}';
+        {--chunk= : Override chunk size (default from cron-monitor config)}
+        {--backfill-days= : Rebuild A L30 history for the last N Pacific days from real Amazon orders (fills missing days), then exit}';
 
     protected $description = 'Collect daily Amazon metrics (Price, Views, CVR%, AD%) for historical tracking';
 
@@ -42,6 +45,24 @@ class CollectAmazonMetrics extends Command
         $today = Carbon::now('America/Los_Angeles')->toDateString();
         $chunkSize = $this->monitoredChunkSize();
 
+        $backfillDays = (int) $this->option('backfill-days');
+        if ($backfillDays > 0) {
+            return $this->backfillAl30History($monitor, $backfillDays, $chunkSize);
+        }
+
+        // A L30 = real Amazon order units, same source / window as the tabulator
+        // column and /amazon/daily-sales. The datasheet units_ordered_l30 is only a
+        // fallback (it can go stale and is not what the table shows).
+        $ordersUnitsBySku = null;
+        try {
+            [$ordersStart, $ordersEnd] = AmazonOrder::dailySalesL30Window(AmazonSalesController::DAILY_SALES_WINDOW_DAYS);
+            $ordersUnitsBySku = AmazonOrder::unitsSoldBySkuForWindow($ordersStart, $ordersEnd);
+        } catch (\Throwable $e) {
+            Log::warning('Amazon metrics: could not load order-based A L30, falling back to datasheet units', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         $amazonDatasheets = collect();
         AmazonDatasheet::whereNotNull('sku')
             ->orderBy('id')
@@ -59,12 +80,6 @@ class CollectAmazonMetrics extends Command
         $amazonSpCampaignReportsL30 = collect();
         AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
-            ->where(function ($q) use ($allSkus) {
-                foreach ($allSkus as $sku) {
-                    $q->orWhere('campaignName', 'NOT LIKE', '%' . $sku . '% PT')
-                      ->orWhere('campaignName', 'NOT LIKE', '%' . $sku . '% pt');
-                }
-            })
             ->orderBy('id')
             ->chunkById($chunkSize, function ($rows) use (&$amazonSpCampaignReportsL30) {
                 foreach ($rows as $row) {
@@ -104,6 +119,7 @@ class CollectAmazonMetrics extends Command
                 $amazonSpCampaignReportsL30,
                 $amazonSpCampaignReportsPtL30,
                 $shopifyBySku,
+                $ordersUnitsBySku,
                 &$collected,
                 &$skipped
             ) {
@@ -143,7 +159,9 @@ class CollectAmazonMetrics extends Command
                     try {
                         $price = floatval($amazonSheet->price ?? 0);
                         $views = intval($amazonSheet->sessions_l30 ?? 0);
-                        $aL30 = intval($amazonSheet->units_ordered_l30 ?? 0);
+                        $aL30 = $ordersUnitsBySku !== null
+                            ? AmazonOrder::unitsSoldForProductSku($sku, $ordersUnitsBySku, $amazonSheet->sku ?? null)
+                            : intval($amazonSheet->units_ordered_l30 ?? 0);
                         $organicViews = intval($amazonSheet->organic_views ?? 0);
 
                         // Same formula as amazon-tabulator-view CVR L30: (A_L30 / Sess30) × 100
@@ -182,6 +200,7 @@ class CollectAmazonMetrics extends Command
                             'cvr_percent' => round($cvr, 2),
                             'ad_percent' => round($adPercent, 2),
                             'a_l30' => $aL30,
+                            'a_l30_source' => $ordersUnitsBySku !== null ? 'orders' : 'datasheet',
                             'ad_spend_l30' => round($adSpendL30, 2),
                             'organic_views' => $organicViews,
                             'l30' => (int) ($shopify?->quantity ?? 0),
@@ -222,6 +241,133 @@ class CollectAmazonMetrics extends Command
             'collected' => $collected,
             'skipped' => $skipped
         ]);
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Rebuild the rolling A L30 history from real Amazon orders.
+     *
+     * For each Pacific record date D the value is the units sold in the 30 days
+     * ending D-1 (identical to what the tabulator showed on that day). Existing
+     * rows only get a_l30 / cvr refreshed; days with no row are created, carrying
+     * price / views from the SKU's previous snapshot so other charts stay continuous.
+     */
+    protected function backfillAl30History(CronExecutionContext $monitor, int $days, int $chunkSize): int
+    {
+        $days = min(max($days, 1), 400);
+        $windowDays = AmazonSalesController::DAILY_SALES_WINDOW_DAYS;
+        $todayPt = Carbon::now('America/Los_Angeles')->startOfDay();
+
+        $dates = [];
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $dates[] = $todayPt->copy()->subDays($i)->toDateString();
+        }
+        $firstDate = $dates[0];
+
+        $this->info("Backfilling A L30 for {$days} day(s): {$firstDate} → {$todayPt->toDateString()}");
+
+        $unitsByDate = [];
+        foreach ($dates as $date) {
+            $end = Carbon::parse($date, 'America/Los_Angeles')->subDay()->endOfDay();
+            $start = $end->copy()->subDays($windowDays - 1)->startOfDay();
+            $unitsByDate[$date] = AmazonOrder::unitsSoldBySkuForWindow($start, $end);
+        }
+
+        $skus = AmazonDatasheet::whereNotNull('sku')
+            ->pluck('sku')
+            ->map(fn ($s) => strtoupper(trim((string) $s)))
+            ->filter(fn ($s) => $s !== '' && stripos($s, 'PARENT') === false)
+            ->unique()
+            ->values();
+
+        $monitor->setFetched($skus->count());
+        $monitor->setExpected($skus->count());
+
+        $carryFields = ['price', 'sprice', 'views', 'cvr_percent', 'ad_percent', 'ad_spend_l30', 'organic_views', 'l30'];
+        $written = 0;
+        $unchanged = 0;
+
+        foreach ($skus->chunk(max(50, min($chunkSize, 300))) as $skuChunk) {
+            $chunkSkus = $skuChunk->values()->all();
+
+            $existing = [];
+            AmazonSkuDailyData::whereIn('sku', $chunkSkus)
+                ->where('record_date', '>=', $firstDate)
+                ->get()
+                ->each(function ($row) use (&$existing) {
+                    $existing[strtoupper(trim((string) $row->sku))][Carbon::parse($row->record_date)->toDateString()] = $row;
+                });
+
+            // Last snapshot before the window — seed for carry-forward on missing days.
+            $carry = [];
+            AmazonSkuDailyData::whereIn('sku', $chunkSkus)
+                ->where('record_date', '<', $firstDate)
+                ->where('record_date', '>=', Carbon::parse($firstDate)->subDays(120)->toDateString())
+                ->orderByDesc('record_date')
+                ->get()
+                ->each(function ($row) use (&$carry, $carryFields) {
+                    $key = strtoupper(trim((string) $row->sku));
+                    if (isset($carry[$key])) {
+                        return;
+                    }
+                    $data = is_array($row->daily_data) ? $row->daily_data : [];
+                    $carry[$key] = array_intersect_key($data, array_flip($carryFields));
+                });
+
+            foreach ($chunkSkus as $sku) {
+                foreach ($dates as $date) {
+                    $aL30 = AmazonOrder::unitsSoldForProductSku($sku, $unitsByDate[$date], $sku);
+                    $row = $existing[$sku][$date] ?? null;
+
+                    try {
+                        if ($row) {
+                            $data = is_array($row->daily_data) ? $row->daily_data : [];
+                            $views = (int) ($data['views'] ?? 0);
+                            if ((int) ($data['a_l30'] ?? -1) === $aL30 && ($data['a_l30_source'] ?? null) === 'orders') {
+                                $unchanged++;
+                            } else {
+                                $data['a_l30'] = $aL30;
+                                $data['a_l30_source'] = 'orders';
+                                if ($views > 0) {
+                                    $data['cvr_percent'] = round(($aL30 / $views) * 100, 2);
+                                }
+                                $row->daily_data = $data;
+                                $row->save();
+                                $written++;
+                            }
+                            $carry[$sku] = array_intersect_key($data, array_flip($carryFields));
+                            continue;
+                        }
+
+                        $seed = $carry[$sku] ?? [];
+                        if ($aL30 <= 0 && $seed === []) {
+                            continue;
+                        }
+
+                        $views = (int) ($seed['views'] ?? 0);
+                        $payload = array_merge($seed, [
+                            'a_l30' => $aL30,
+                            'a_l30_source' => 'orders',
+                            'cvr_percent' => $views > 0 ? round(($aL30 / $views) * 100, 2) : (float) ($seed['cvr_percent'] ?? 0),
+                            'backfilled' => true,
+                        ]);
+                        AmazonSkuDailyData::updateOrCreate(
+                            ['sku' => $sku, 'record_date' => $date],
+                            ['daily_data' => $payload]
+                        );
+                        $written++;
+                    } catch (\Throwable $e) {
+                        Log::error("Amazon A L30 backfill failed for SKU {$sku} on {$date}", ['error' => $e->getMessage()]);
+                    }
+                }
+            }
+
+            $this->line('… ' . count($chunkSkus) . ' SKU(s) processed');
+        }
+
+        $this->info("Backfill complete. Rows written/updated: {$written}, already correct: {$unchanged}");
+        Log::info('Amazon A L30 backfill', ['days' => $days, 'written' => $written, 'unchanged' => $unchanged]);
 
         return self::SUCCESS;
     }

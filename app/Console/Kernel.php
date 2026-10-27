@@ -387,6 +387,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Safety-net re-run (idempotent upsert for today's PT row) so one missed/failed run
+        // does not leave a gap in the A L30 / CVR / price history charts.
+        $ist($schedule->command('amazon:collect-metrics')
+            ->dailyAt('19:35')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-collect-metrics-retry')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         /*
         |--------------------------------------------------------------------------
         | EBAY JOBS

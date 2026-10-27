@@ -204,9 +204,9 @@ class TemuSoldRoasRuleService
     }
 
     /**
-     * One entry per parent (ad / goods_id): L7 sold is the sum over every SKU under that ad.
+     * One entry per parent (ad / goods_id) with Inv > 0: L7 sold and Inv are the sum over every SKU under that ad.
      *
-     * @return array<string, array{goods_id: string, parent: string, skus: int, sold_l7: int, status: string}>
+     * @return array<string, array{goods_id: string, parent: string, skus: int, sold_l7: int, inv: int, status: string}>
      */
     public function parents(): array
     {
@@ -221,6 +221,7 @@ class TemuSoldRoasRuleService
 
         /** @var array<string, array{goods_id: string, skus: array<string, true>, status: string, status_rank: int}> $groups */
         $groups = [];
+        $rawSkus = [];
         foreach ($rows as $r) {
             $gid = trim((string) $r->goods_id);
             if ($gid === '') {
@@ -232,6 +233,12 @@ class TemuSoldRoasRuleService
             $key = ShopifySku::normalizeSkuForShopifyLookup(trim((string) ($r->sku ?? '')));
             if ($key !== '') {
                 $groups[$gid]['skus'][$key] = true;
+                $rawSku = trim((string) $r->sku);
+                $rawSkus[$rawSku] = true;
+                $stripped = rtrim($rawSku, '.');
+                if ($stripped !== '') {
+                    $rawSkus[$stripped] = true;
+                }
             }
             $status = trim((string) ($r->ad_status ?? ''));
             $rank = match ($status) {
@@ -246,17 +253,27 @@ class TemuSoldRoasRuleService
             }
         }
 
+        // Inventory per SKU (Shopify inv) — same source as the Inv column on /temu/ads.
+        $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku(array_keys($rawSkus), false);
+
         $out = [];
         foreach ($groups as $gid => $g) {
             $total = 0;
+            $inv = 0;
             foreach (array_keys($g['skus']) as $k) {
                 $total += (int) ($sold[$k] ?? 0);
+                $inv += (int) (($shopifyByNorm[$k] ?? null)?->inv ?? 0);
+            }
+            // Only parents that have stock.
+            if ($inv <= 0) {
+                continue;
             }
             $out[$gid] = [
                 'goods_id' => $gid,
                 'parent' => '',
                 'skus' => count($g['skus']),
                 'sold_l7' => $total,
+                'inv' => $inv,
                 'status' => $g['status'],
             ];
         }

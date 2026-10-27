@@ -5292,7 +5292,11 @@ class OverallAmazonController extends Controller
             if ($live) {
                 $todayKey = $endDate->toDateString();
                 $views = (int) ($live->sessions_l30 ?? 0);
-                $aL30 = (int) ($live->units_ordered_l30 ?? 0);
+                // Today's saved snapshot holds A L30 from real Amz orders (same as the tabulator);
+                // datasheet units_ordered_l30 is only a fallback when no snapshot exists yet.
+                $aL30 = isset($dataByDate[$todayKey]['a_l30'])
+                    ? (int) $dataByDate[$todayKey]['a_l30']
+                    : (int) ($live->units_ordered_l30 ?? 0);
                 $price = round((float) ($live->price ?? 0), 2);
                 $cvr = $views > 0 ? round(($aL30 / $views) * 100, 2) : 0;
                 if ($views > 0 || $aL30 > 0 || $cvr > 0) {

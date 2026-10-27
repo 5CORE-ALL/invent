@@ -580,7 +580,7 @@
                         <span class="small text-muted" id="ads-rules-lastrun"></span>
                     </div>
                     <p class="small text-muted mb-2">
-                        Slabs by <strong>Sold 7</strong> (units sold in the last 7 days from Temu 1 orders), grouped per <strong>Parent</strong> (one ad = all its SKUs added together).
+                        Slabs by <strong>Sold 7</strong> (units sold in the last 7 days from Temu 1 orders), grouped per <strong>Parent</strong> (one ad = all its SKUs added together). Only parents with <strong>Inv &gt; 0</strong> are counted.
                         Enter the <strong>Target ROAS</strong> for each slab. First matching range wins.
                         Leave <strong>Sold to</strong> empty for that value and above.
                         <strong>Auto run</strong>: ROAS &gt; 0 = run the ad with that ROAS, ROAS 0 = pause the ad, blank = leave as is.
