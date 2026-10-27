@@ -264,7 +264,85 @@ class TemuAdsController extends Controller
             }
         }
 
+        try {
+            $this->storeWindowSnapshot($out);
+        } catch (\Throwable $e) {
+            Log::warning('Temu ads store window snapshot failed', ['error' => $e->getMessage()]);
+        }
+
         return $out;
+    }
+
+    public const STORE_HISTORY_BUCKET = 'STORE';
+
+    /**
+     * Daily history for the Today / Yesterday / Projected boxes.
+     * Today + Projected are stored on today's date (last load of the day wins);
+     * Yesterday is stored on yesterday's own date so the chart shows each day's true result.
+     *
+     * @param  array<string, array<string, mixed>|null>  $windows
+     */
+    private function storeWindowSnapshot(array $windows): void
+    {
+        $build = static function (string $prefix, ?array $m, float $k): array {
+            if ($m === null) {
+                return [];
+            }
+            $spend = (float) ($m['spend'] ?? 0) * $k;
+            $impr = (float) ($m['impressions'] ?? 0) * $k;
+            $clicks = (float) ($m['clicks'] ?? 0) * $k;
+            $sold = (float) ($m['sold'] ?? 0) * $k;
+            $sales = (float) ($m['sales'] ?? 0) * $k;
+
+            return [
+                $prefix.'_spend' => round($spend, 2),
+                $prefix.'_impressions' => round($impr, 2),
+                $prefix.'_clicks' => round($clicks, 2),
+                $prefix.'_sold' => round($sold, 2),
+                $prefix.'_sales' => round($sales, 2),
+                $prefix.'_roas' => $spend > 0 ? round($sales / $spend, 2) : 0.0,
+                $prefix.'_acos' => $sales > 0 ? round(($spend / $sales) * 100, 2) : ($spend > 0 ? 100.0 : 0.0),
+                $prefix.'_ctr' => $impr > 0 ? round(($clicks / $impr) * 100, 2) : 0.0,
+                $prefix.'_cvr' => $clicks > 0 ? round(($sold / $clicks) * 100, 2) : 0.0,
+            ];
+        };
+
+        $today = now()->toDateString();
+        $yesterday = now()->subDay()->toDateString();
+        $byDate = [
+            $today => $build('td', $windows['today'] ?? null, 1.0) + $build('pj', $windows['l7'] ?? null, 30 / 7),
+            $yesterday => $build('yd', $windows['yesterday'] ?? null, 1.0),
+        ];
+        if (! array_filter($byDate)) {
+            return;
+        }
+
+        $row = ChannelTabulatorColumnSetting::query()->firstOrNew([
+            'channel_name' => 'temu_ads_badge_history',
+        ]);
+        $hist = TemuAdsBadgeHistory::ensureYSpendInDollars(
+            is_array($row->visibility) ? $row->visibility : []
+        );
+        $bucket = $hist[self::STORE_HISTORY_BUCKET] ?? [];
+        if (! is_array($bucket)) {
+            $bucket = [];
+        }
+        foreach ($byDate as $date => $metrics) {
+            if ($metrics === []) {
+                continue;
+            }
+            $bucket[$date] = array_merge(is_array($bucket[$date] ?? null) ? $bucket[$date] : [], $metrics);
+        }
+        ksort($bucket);
+        if (count($bucket) > 180) {
+            $bucket = array_slice($bucket, -180, 180, true);
+        }
+        $hist[self::STORE_HISTORY_BUCKET] = $bucket;
+        $row->visibility = $hist;
+        if ($row->column_order === null) {
+            $row->column_order = [];
+        }
+        $row->save();
     }
 
     public function getRaw(int $id)
@@ -553,6 +631,12 @@ class TemuAdsController extends Controller
         }
 
         $allowed = ['rows', 'impressions', 'clicks', 'spend', 'y_spend', 'sales', 'create', 'ctr', 'cvr', 'roas', 'acos', 'tacos'];
+        // Store-level Today / Yesterday / Projected boxes keep their own history bucket (not per period).
+        $isStoreMetric = (bool) preg_match('/^(td|yd|pj)_(spend|impressions|clicks|sold|sales|roas|acos|ctr|cvr)$/', $metric);
+        if ($isStoreMetric) {
+            $allowed[] = $metric;
+            $period = self::STORE_HISTORY_BUCKET;
+        }
         if (! in_array($metric, $allowed, true)) {
             return response()->json([
                 'success' => false,
