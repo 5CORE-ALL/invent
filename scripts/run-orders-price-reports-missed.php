@@ -186,7 +186,6 @@ $rest = [
     'meta-ads:sync',
     'meta-ads:run-automation',
     'temu:refresh-ad-status',
-    'temu:auto-pause-ads',
     'temu2:auto-pause-ads',
     'shopify:sync --store=main',
     'sync:shopify-quantity',

@@ -3579,24 +3579,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(15)
             ->runInBackground()
             ->appendOutputTo($log);
-        // After the morning L30 fetch: send each ad's click-slab Target ROAS. Skips rows already on that target.
-        $schedule->command('temu:push-target-roas')
-            ->dailyAt('16:08')
-            ->timezone('Asia/Kolkata')
-            ->name('temu-ads-push-target-roas')
-            ->withoutOverlapping(40)
-            ->runInBackground()
-            ->appendOutputTo($log);
-        $schedule->command('temu:push-target-roas')
-            ->dailyAt('23:20')
-            ->timezone('Asia/Kolkata')
-            ->name('temu-ads-push-target-roas-pdt')
-            ->withoutOverlapping(40)
-            ->runInBackground()
-            ->appendOutputTo($log);
-        // After L7 reports: push only ads whose Active/Pause status changes from the click limit.
-        // Toggle from Ad rules modal (temu_ads_auto_pause_cron). Command also no-ops when paused.
-        $retryFiveTimesUntil('temu:auto-pause-ads', 'temu-ads-auto-pause', '16:10');
         $retryFiveTimesUntil('temu2:fetch-ads-data --period=L30', 'temu2-ads-data-sync-l30', '16:15');
         $retryFiveTimesUntil('temu2:fetch-ads-data --period=L60', 'temu2-ads-data-sync-l60', '16:25');
         $retryFiveTimesUntil('temu2:fetch-ads-api-reports --period=L7', 'temu2-ads-api-reports-l7', '16:30');

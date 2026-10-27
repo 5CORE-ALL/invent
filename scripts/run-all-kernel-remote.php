@@ -233,7 +233,6 @@ $others = [
     'temu:fetch-ads-data --period=L60',
     'temu:fetch-ads-api-reports --period=L7',
     'temu:refresh-ad-status',
-    'temu:auto-pause-ads',
     'temu2:fetch-ads-data --period=L30',
     'temu2:fetch-ads-data --period=L60',
     'temu2:fetch-ads-api-reports --period=L7',

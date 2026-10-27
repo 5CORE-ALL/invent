@@ -69,50 +69,6 @@
             accent-color: #0d6efd;
             vertical-align: middle;
         }
-        .temu-pause-run-btn {
-            position: relative;
-            display: inline-block;
-            border: 0;
-            border-radius: 999px;
-            width: 44px;
-            height: 24px;
-            padding: 0;
-            cursor: pointer;
-            vertical-align: middle;
-        }
-        .temu-pause-run-btn.is-pause { background: #dc3545; }
-        .temu-pause-run-btn.is-run { background: #198754; }
-        .temu-pause-run-knob {
-            position: absolute;
-            top: 3px;
-            left: 3px;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: #fff;
-        }
-        .temu-pause-run-btn.is-run .temu-pause-run-knob { left: auto; right: 3px; }
-        .temu-pause-run-btn:disabled { opacity: 0.65; cursor: wait; }
-        .temu-pause-run-ok {
-            color: #198754;
-            font-weight: 800;
-            font-size: 1.2rem;
-            line-height: 1;
-        }
-        .temu-pause-run-fail {
-            color: #dc3545;
-            font-weight: 800;
-            font-size: 1.2rem;
-            line-height: 1;
-            cursor: help;
-        }
-        .temu-pause-run-hist-n {
-            display: inline-block;
-            margin-left: 3px;
-            font-size: 10px;
-            font-weight: 700;
-            vertical-align: super;
-        }
         #temu-ads-table .tabulator-footer {
             background: #f4f7fa;
             padding: 8px;
@@ -464,12 +420,6 @@
                                 <option value="Deleted" data-label="Deleted">Deleted</option>
                                 <option value="Not sync" data-label="Not sync">Not sync</option>
                             </select>
-                            <select id="pause-run-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
-                                    title="Filter by Pause/Run">
-                                <option value="" data-label="All Pause/Run">All Pause/Run</option>
-                                <option value="pause" data-label="Pause">Pause</option>
-                                <option value="run" data-label="Run">Run</option>
-                            </select>
                             <select id="inv-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
                                     title="Filter by Inv">
                                 <option value="" data-label="ALL">ALL</option>
@@ -498,10 +448,10 @@
                                 <option value="631-700" data-label="631–700">631–700</option>
                                 <option value="gt700" data-label="&gt;700">&gt;700</option>
                             </select>
-                            <button type="button" id="temu-ads-rules-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
-                                    data-bs-toggle="modal" data-bs-target="#temuAdsRulesModal"
-                                    title="Ad rules — L7 clicks, Pause/Run and ROAS rule">
-                                <i class="fas fa-sliders-h me-1"></i>Ad rules
+                            <button type="button" id="ads-rules-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
+                                    data-bs-toggle="modal" data-bs-target="#adsRulesModal"
+                                    title="Ads Rules — L7 Sold slabs with Target ROAS">
+                                <i class="fas fa-sliders-h me-1"></i>Ads Rules
                             </button>
                             <div class="dropdown d-inline-block pricing-filter-item">
                                 <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -541,12 +491,6 @@
 
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                         <div class="temu-ads-badge-row" role="group" aria-label="Summary metrics">
-                            <span class="badge fs-6 p-2" id="roas-rule-badge"
-                                style="background-color: #be185d; color: white; font-weight: bold; cursor: pointer;"
-                                data-bs-toggle="modal" data-bs-target="#temuAdsRulesModal" data-ad-rules-tab="roas"
-                                title="Ad rules — L7 clicks, Pause/Run and ROAS rule">
-                                Ad rules<span id="roas-rule-summary" class="d-none"></span>
-                            </span>
                             <span class="badge bg-dark fs-6 p-2 temu-ads-chart-badge" id="row-count"
                                 data-metric="rows" data-label="Rows"
                                 style="color: white; font-weight: bold;"
@@ -602,12 +546,6 @@
                                 </span>
                                 <span class="temu-ads-badge-val">0</span>
                             </span>
-                            <span class="badge fs-6 p-2" id="pause-run-count"
-                                style="background-color: #212529; color: white; font-weight: bold; cursor: pointer;"
-                                title="Pause and Run counts (live ads). Click for Pause + Run budget and details.">
-                                Pause <span id="pause-count-num" style="color:#ff8a80;">0</span><span class="temu-ads-history-dot" data-metric="pause" data-label="Pause" title="Pause history"></span>
-                                / Run <span id="run-count-num" style="color:#81c784;">0</span><span class="temu-ads-history-dot" data-metric="run" data-label="Run" title="Run history"></span>
-                            </span>
                         </div>
                     </div>
                 </div>
@@ -621,185 +559,46 @@
         </div>
     </div>
 
-    {{-- Ad rules: L7 threshold / Auto Cron, Pause/Run slabs, ROAS rule --}}
-    <div class="modal fade" id="temuAdsRulesModal" tabindex="-1" aria-labelledby="temuAdsRulesModalLabel" aria-hidden="true">
+    {{-- Ads Rules: L7 Sold slabs with Target ROAS --}}
+    <div class="modal fade" id="adsRulesModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="temuAdsRulesModalLabel">Ad rules</h5>
+                    <h5 class="modal-title">Ads Rules <span class="text-muted fw-normal small">(L7 Sold — Temu 1 sales)</span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="d-flex flex-wrap align-items-center gap-3 border rounded px-3 py-2 mb-3 bg-light" id="ad-rules-count-box">
-                        <span class="fw-semibold small text-uppercase text-muted">Count</span>
-                        <span class="d-inline-flex align-items-center gap-1">
-                            <span class="fw-bold" style="color:#dc3545;">Pause</span>
-                            <span class="badge bg-dark fs-6" id="ad-rules-pause-count">0</span>
-                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 temu-ads-rules-history-btn" data-metric="pause" data-label="Pause" title="Pause count history">
-                                <i class="fas fa-chart-line me-1"></i>History
-                            </button>
-                        </span>
-                        <span class="d-inline-flex align-items-center gap-1">
-                            <span class="fw-bold" style="color:#198754;">Run</span>
-                            <span class="badge bg-dark fs-6" id="ad-rules-run-count">0</span>
-                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 temu-ads-rules-history-btn" data-metric="run" data-label="Run" title="Run count history">
-                                <i class="fas fa-chart-line me-1"></i>History
-                            </button>
-                        </span>
-                    </div>
-                    <ul class="nav nav-tabs mb-3" id="temuAdsRulesTabs" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="ad-rules-tab-clicks" data-bs-toggle="tab" data-bs-target="#ad-rules-pane-clicks" type="button" role="tab">L7 Clicks &amp; Cron</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="ad-rules-tab-pauserun" data-bs-toggle="tab" data-bs-target="#ad-rules-pane-pauserun" type="button" role="tab">Pause/Run Rule</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="ad-rules-tab-roas" data-bs-toggle="tab" data-bs-target="#ad-rules-pane-roas" type="button" role="tab">ROAS rule</button>
-                        </li>
-                    </ul>
-                    <div class="tab-content">
-                        <div class="tab-pane fade show active" id="ad-rules-pane-clicks" role="tabpanel">
-                    <p class="text-muted small mb-3">Shared with /temu-decrease. L7 clicks below the threshold stay in Run mode. L7 clicks at or above the threshold are Pause. Auto Cron only pushes rows whose Active/Pause status actually changes.</p>
-                    <div class="d-inline-flex flex-wrap align-items-center gap-1 border rounded px-3 py-2 bg-light">
-                        <label for="temu-l7-clicks-red-threshold" class="mb-0 small fw-semibold text-nowrap">L7 Clicks &lt;</label>
-                        <input type="number" id="temu-l7-clicks-red-threshold" class="form-control form-control-sm"
-                               min="0" max="100000" step="1" value="70" style="width: 70px;">
-                        <span class="small fw-bold" style="color:#198754;">Run</span>
-                        <span class="text-muted px-1">→</span>
-                        <span class="small fw-semibold text-nowrap">L7 Clicks ≥ <span data-temu-l7-pause-threshold>70</span></span>
-                        <span class="small fw-bold" style="color:#0d6efd;">Pause</span>
-                    </div>
-                    <div id="temu-ads-cron-status" class="small mt-2 text-success">Daily cron: ON — only rows whose Active/Pause status changes from the click limit, after L7 fetch and at 16:10 IST.</div>
-                    <div id="temu-ads-pause-status" class="mt-3" style="display:none;"></div>
-                            <div class="d-flex flex-wrap justify-content-end gap-1 border-top pt-3 mt-3">
-                    <button type="button" class="btn btn-sm btn-warning" id="temu-ads-cron-toggle-btn"
-                            data-enabled="1"
-                            title="Auto cron is ON. Only rows whose Active/Pause status changes from the click limit are pushed. Click to turn off.">
-                        <i class="fas fa-bolt me-1"></i>Auto Cron
-                    </button>
-                    <button type="button" class="btn btn-sm btn-primary" id="temu-ads-save-rule-btn"
-                            title="Save the L7 clicks threshold">
-                        <i class="fas fa-save me-1"></i>Save
-                    </button>
-                            </div>
-                        </div>
-                        <div class="tab-pane fade" id="ad-rules-pane-pauserun" role="tabpanel">
-                    <p class="small text-muted mb-2">
-                        Slabs by <strong>Clicks 7</strong>. First matching range wins.
-                        Leave <strong>To</strong> empty for that value and above.
-                        Default: <strong>0–69 → Run</strong>, <strong>70+ → Pause</strong>.
-                    </p>
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="pause-run-inv-zero" checked>
-                        <label class="form-check-label" for="pause-run-inv-zero">
-                            <strong>Inv = 0 → Pause</strong>
-                            <span class="text-muted"> — SKUs with 0 inventory are Pause (overrides L7 clicks slabs)</span>
-                        </label>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-2">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>L7 Clicks from</th>
-                                    <th>L7 Clicks to</th>
-                                    <th>Pause/Run</th>
-                                    <th style="width:70px;"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="pause-run-slabs-tbody"></tbody>
-                        </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="pause-run-slab-add-btn">
-                        <i class="fa fa-plus"></i> Add slab
-                    </button>
-                    <hr class="my-3">
-                    <h6 class="fw-semibold mb-1">Sold Qty rule <span class="text-muted fw-normal small">(L7 — Temu 1 sales)</span></h6>
                     <p class="small text-muted mb-2">
                         Slabs by <strong>Sold 7</strong> (units sold in the last 7 days from Temu 1 orders, per SKU).
-                        An ad runs only when <strong>both</strong> the L7 Clicks slabs above and these Sold Qty slabs say <strong>Run</strong>;
-                        otherwise it is Pause. Leave <strong>To</strong> empty for that value and above. Default: <strong>0+ → Run</strong> (no effect).
+                        Enter the <strong>Target ROAS</strong> for each slab. First matching range wins.
+                        Leave <strong>Sold to</strong> empty for that value and above. <strong>Count</strong> shows how many SKUs fall in each slab.
                     </p>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-2">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Sold 7 from</th>
-                                    <th>Sold 7 to</th>
-                                    <th>Pause/Run</th>
+                                    <th>Sold from</th>
+                                    <th>Sold to</th>
+                                    <th>Target ROAS</th>
+                                    <th style="width:90px;" title="SKUs (unique) in the current table data that fall in this slab">Count</th>
                                     <th style="width:70px;"></th>
                                 </tr>
                             </thead>
-                            <tbody id="sold-qty-slabs-tbody"></tbody>
+                            <tbody id="ads-rules-slabs-tbody"></tbody>
                         </table>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="sold-qty-slab-add-btn">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="ads-rules-add-btn">
                         <i class="fa fa-plus"></i> Add slab
                     </button>
-                    <div id="pause-run-rule-status" class="small mt-2"></div>
-                            <div class="d-flex flex-wrap justify-content-end gap-1 border-top pt-3 mt-3">
-                    <button type="button" class="btn btn-sm btn-primary" id="pause-run-rule-save-btn"
-                            title="Save slabs and refresh Pause/Run switches">Save</button>
-                    <button type="button" class="btn btn-sm btn-primary d-none" id="pause-run-rule-apply-btn"
-                            title="Save and update Pause/Run on this page">Apply</button>
-                    <button type="button" class="btn btn-sm btn-success d-none" id="pause-run-rule-apply-site-btn"
-                            title="Save for /temu/ads and /temu-decrease, then update this page">Apply To Site</button>
+                    <div id="ads-rules-status" class="small mt-2"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-primary" id="ads-rules-save-btn">Save</button>
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                            </div>
-                        </div>
-                        <div class="tab-pane fade" id="ad-rules-pane-roas" role="tabpanel">
-                    <p class="small text-muted mb-2">
-                        <strong>Clicks</strong> uses the Clicks from/to columns (period clicks).
-                        <strong>Target ROAS</strong> fills the T ROAS column from the matching clicks slab.
-                        <strong>Target ROAS 0</strong> pauses that ad.
-                        The daily job sends each row's T ROAS to Temu after the L30 ads fetch.
-                        <strong>Push ROAS</strong> sends it now via <code>temu.searchrec.ad.modify</code> (status 5).
-                        Leave To empty for that value and above. First matching range wins.
-                    </p>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-2">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Clicks from</th>
-                                    <th>Clicks to</th>
-                                    <th>Target ROAS</th>
-                                    <th style="width:70px;"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="roas-rule-slabs-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div class="d-flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="roas-rule-slab-add-btn">
-                            <i class="fa fa-plus"></i> Add slab
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="roas-rule-push-btn"
-                            title="Push Target ROAS from each clicks slab to Temu for existing ads">
-                            <i class="fa fa-cloud-upload"></i> Push ROAS
-                        </button>
-                    </div>
-                    <div id="roas-rule-status" class="small mt-2"></div>
-                            <div class="d-flex flex-wrap justify-content-end gap-1 border-top pt-3 mt-3">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="roas-rule-save-btn">Save</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="roas-rule-apply-btn">Apply</button>
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
     </div>
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            document.querySelectorAll('[data-ad-rules-tab]').forEach(function (el) {
-                el.addEventListener('click', function () {
-                    const tabBtn = document.getElementById('ad-rules-tab-' + el.getAttribute('data-ad-rules-tab'));
-                    if (tabBtn && window.bootstrap) bootstrap.Tab.getOrCreateInstance(tabBtn).show();
-                });
-            });
-        });
-    </script>
 
     {{-- Create Ad modal --}}
     <div class="modal fade" id="createAdModal" tabindex="-1" aria-hidden="true">
@@ -831,45 +630,6 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-sm btn-warning" id="create-ad-submit">Create Ad</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- Running ads (Pause/Run badge) --}}
-    <div class="modal fade" id="pauseRunRunningModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Pause / Run ads</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="d-flex flex-wrap gap-2 mb-3" id="pause-run-running-summary"></div>
-                    <div class="table-responsive" style="max-height: 55vh;">
-                        <table class="table table-sm table-striped table-bordered mb-0" id="pause-run-running-table">
-                            <thead class="table-light sticky-top">
-                                <tr>
-                                    <th>SKU</th>
-                                    <th>Goods ID</th>
-                                    <th>Status</th>
-                                    <th>Clicks 7</th>
-                                    <th>Clicks 30</th>
-                                    <th>Impr</th>
-                                    <th>Spend</th>
-                                    <th>Ord</th>
-                                    <th>Ord$</th>
-                                    <th>ROAS</th>
-                                    <th>ACOS</th>
-                                    <th>Budget</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -979,9 +739,6 @@
                 }
                 if (shown === null || shown === undefined || shown === '') return '';
                 const n = Number(String(shown).replace(/,/g, ''));
-                if (window.TemuAdsColorRules) {
-                    TemuAdsColorRules.colorL7Clicks(el, n);
-                }
                 return n.toLocaleString('en-US');
             };
             const clicks30Fmt = (cell) => {
@@ -1032,22 +789,6 @@
                     return Number(v).toFixed(2) + '%';
                 }
                 return Number(v).toFixed(1) + '%';
-            };
-            function targetRoasValue(row) {
-                if (window.TemuAdsColorRules && typeof TemuAdsColorRules.targetRoasForSpend === 'function') {
-                    return TemuAdsColorRules.targetRoasForClicks
-                        ? TemuAdsColorRules.targetRoasForClicks(row && row.clicks)
-                        : TemuAdsColorRules.targetRoasForSpend(row && row.clicks);
-                }
-                return 8;
-            }
-            const tRoasFmt = (cell) => {
-                const el = cell.getElement && cell.getElement();
-                if (el) el.title = 'Target ROAS';
-                const row = cell.getRow ? cell.getRow().getData() : {};
-                const n = Number(targetRoasValue(row));
-                if (!isFinite(n)) return '';
-                return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
             };
             const decFmt = (cell) => {
                 const v = cell.getValue();
@@ -1100,16 +841,6 @@
             function rowInvValue(row) {
                 const n = parseInt(String(row && row.inv != null ? row.inv : 0).replace(/,/g, ''), 10);
                 return isFinite(n) ? n : 0;
-            }
-
-            function rowPauseRunAction(row) {
-                if (window.TemuAdsColorRules && TemuAdsColorRules.computedPauseRunAction) {
-                    return TemuAdsColorRules.computedPauseRunAction(row || {});
-                }
-                if (window.TemuAdsColorRules && TemuAdsColorRules.pauseRunAction) {
-                    return TemuAdsColorRules.pauseRunAction(row || {});
-                }
-                return String((row && row.pause_run) || '');
             }
 
             function rowStatusValue(row) {
@@ -1166,7 +897,6 @@
                     skuQ: (document.getElementById('search-sku').value || '').trim().toLowerCase(),
                     rowType: currentRowType(),
                     statusQ: (document.getElementById('status-filter').value || '').trim(),
-                    pauseRunQ: (document.getElementById('pause-run-filter').value || '').trim(),
                     invQ: (document.getElementById('inv-filter').value || '').trim(),
                     dilQ: (document.getElementById('dil-filter').value || '').trim(),
                     clicksQ: (document.getElementById('clicks-filter').value || '').trim(),
@@ -1293,7 +1023,6 @@
                     }
                 }
                 if (skip !== 'status' && q.statusQ && rowStatusValue(data) !== q.statusQ) return false;
-                if (skip !== 'pause_run' && q.pauseRunQ && rowPauseRunAction(data) !== q.pauseRunQ) return false;
                 if (skip !== 'inv' && q.invQ && rowInvBucket(data) !== q.invQ) return false;
                 if (skip !== 'dil' && q.dilQ && rowDilBand(data) !== q.dilQ) return false;
                 if (skip !== 'clicks' && q.clicksQ && rowClicksBucket(data) !== q.clicksQ) return false;
@@ -1317,13 +1046,11 @@
                 const all = Array.isArray(rows) ? flattenAdsRows(rows) : (allAdsRows.length ? allAdsRows : flattenAdsRows(table ? (table.getData() || []) : []));
                 const q = currentFilterQuery();
                 const statusCounts = {};
-                const pauseCounts = {};
                 const invCounts = {};
                 const dilCounts = {};
                 const clicksCounts = {};
                 const periodCounts = {};
                 let statusTotal = 0;
-                let pauseTotal = 0;
                 let invTotal = 0;
                 let dilTotal = 0;
                 let clicksTotal = 0;
@@ -1342,13 +1069,6 @@
                         statusTotal++;
                         const s = rowStatusValue(row);
                         statusCounts[s] = (statusCounts[s] || 0) + 1;
-                    }
-                    if (rowInViewExcept(row, 'pause_run')) {
-                        const a = rowPauseRunAction(row);
-                        if (a === 'pause' || a === 'run') {
-                            pauseTotal++;
-                            pauseCounts[a] = (pauseCounts[a] || 0) + 1;
-                        }
                     }
                     if (rowInViewExcept(row, 'inv')) {
                         invTotal++;
@@ -1370,7 +1090,6 @@
                     if (p) periodCounts[p] = (periodCounts[p] || 0) + 1;
                 });
                 paintSelectOptionCounts('status-filter', statusCounts, statusTotal);
-                paintSelectOptionCounts('pause-run-filter', pauseCounts, pauseTotal);
                 paintSelectOptionCounts('inv-filter', invCounts, invTotal);
                 paintSelectOptionCounts('dil-filter', dilCounts, dilTotal);
                 paintSelectOptionCounts('clicks-filter', clicksCounts, clicksTotal);
@@ -1387,30 +1106,6 @@
                     sku: rowTypeSku,
                     all: rowTypeParent + rowTypeSku,
                 }, rowTypeParent + rowTypeSku);
-            }
-
-            function paintPauseRunBadge(rows) {
-                const list = flattenAdsRows(Array.isArray(rows) ? rows : []);
-                let pauseN = 0;
-                let runN = 0;
-                const seen = {};
-                list.forEach(function (r) {
-                    const gid = String((r && r.goods_id) || '') || ('sku:' + String((r && r.sku) || ''));
-                    if (seen[gid]) return;
-                    seen[gid] = true;
-                    const action = rowPauseRunAction(r);
-                    if (action === 'run') runN++;
-                    else if (action === 'pause') pauseN++;
-                });
-                const pauseEl = document.getElementById('pause-count-num');
-                const runEl = document.getElementById('run-count-num');
-                if (pauseEl) pauseEl.textContent = Number(pauseN).toLocaleString();
-                if (runEl) runEl.textContent = Number(runN).toLocaleString();
-                const rulesPauseEl = document.getElementById('ad-rules-pause-count');
-                const rulesRunEl = document.getElementById('ad-rules-run-count');
-                if (rulesPauseEl) rulesPauseEl.textContent = Number(pauseN).toLocaleString();
-                if (rulesRunEl) rulesRunEl.textContent = Number(runN).toLocaleString();
-                return { pause: pauseN, run: runN };
             }
 
             function setBadgeVal(id, text) {
@@ -1611,7 +1306,7 @@
             function badgeCounts(rows) {
                 const list = flattenAdsRows(Array.isArray(rows) ? rows : []);
                 const periodKey = currentPeriodKey();
-                let impr = 0, clicks = 0, spend = 0, ySpend = 0, sold = 0, sales = 0, tacosSpend = 0, createN = 0, pauseN = 0, runN = 0;
+                let impr = 0, clicks = 0, spend = 0, ySpend = 0, sold = 0, sales = 0, tacosSpend = 0, createN = 0;
                 const seenGoods = {};
                 list.forEach(function (r) {
                     const gid = String(r.goods_id || '');
@@ -1632,9 +1327,6 @@
                     }
                     if (!firstGoods) return;
                     if (canCreateAdRow(r)) createN++;
-                    const action = rowPauseRunAction(r);
-                    if (action === 'run') runN++;
-                    else if (action === 'pause') pauseN++;
                 });
                 const allSales = channelSales > 0 ? channelSales : 0;
                 const tacos = channelTacos != null && isFinite(channelTacos)
@@ -1650,8 +1342,6 @@
                     sales: sales,
                     all_sales: allSales,
                     create: createN,
-                    pause: pauseN,
-                    run: runN,
                     ctr: impr > 0 ? (clicks / impr) * 100 : 0,
                     cvr: clicks > 0 ? (sold / clicks) * 100 : 0,
                     roas: spend > 0 ? (sales / spend) : 0,
@@ -1714,7 +1404,7 @@
             function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
                 const q = currentFilterQuery();
-                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.pauseRunQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.alertOnly && q.rowType === 'all';
+                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.alertOnly && q.rowType === 'all';
                 const hasStoreSpend = response && response.mall && response.mall.spend != null && isFinite(parseFloat(response.mall.spend));
                 if (hasStoreSpend || (noLocalFilter && response)) {
                     applyStoreBadge(m, response);
@@ -1734,7 +1424,6 @@
                 setBadgeVal('cvr-avg', Number(m.cvr).toFixed(1) + '%');
                 paintCreateBadge();
                 paintAlertBadge();
-                paintPauseRunBadge(rows);
                 applyCtrAvgColors();
                 return m;
             }
@@ -1760,8 +1449,6 @@
                             spend: m.spend,
                             y_spend: Math.round((m.y_spend || 0) * 100) / 100,
                             create: m.create,
-                            pause: m.pause,
-                            run: m.run,
                             ctr: Math.round(m.ctr * 100) / 100,
                             cvr: Math.round(m.cvr * 100) / 100,
                             roas: Math.round((m.roas || 0) * 100) / 100,
@@ -1951,21 +1638,6 @@
                 });
             }
 
-            function runningAdsRows(rows) {
-                const seen = {};
-                const out = [];
-                flattenAdsRows(rows || []).forEach(function (r) {
-                    const action = rowPauseRunAction(r);
-                    if (action !== 'run' && action !== 'pause') return;
-                    const gid = String(r.goods_id || '').trim();
-                    const key = gid || ('sku:' + String(r.sku || ''));
-                    if (seen[key]) return;
-                    seen[key] = true;
-                    out.push(r);
-                });
-                return out;
-            }
-
             function dailyCreateBudget() {
                 const el = document.getElementById('create-budget');
                 const n = parseFloat(el && el.value ? el.value : 10);
@@ -1974,60 +1646,6 @@
 
             function moneyText(n) {
                 return '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-            }
-
-            function fillRunningAdsModal() {
-                const rows = runningAdsRows(filteredFlatAdsRows());
-                const budgetEach = dailyCreateBudget();
-                const totalBudget = rows.length * budgetEach;
-                let spend = 0, impr = 0, clicks7 = 0, clicks30 = 0, orders = 0, orderAmt = 0;
-                let pauseN = 0, runN = 0;
-                rows.forEach(function (r) {
-                    const action = rowPauseRunAction(r);
-                    if (action === 'pause') pauseN++;
-                    else if (action === 'run') runN++;
-                    spend += parseFloat(r.ad_spend) || 0;
-                    impr += parseFloat(r.impressions) || 0;
-                    clicks7 += parseFloat(r.clicks_l7) || 0;
-                    clicks30 += parseFloat(r.clicks_l30) || 0;
-                    orders += parseFloat(r.order_pay_cnt) || 0;
-                    orderAmt += parseFloat(r.order_pay_amt) || 0;
-                });
-                const roas = spend > 0 ? (orderAmt / spend) : 0;
-                const summary = document.getElementById('pause-run-running-summary');
-                const pills = [
-                    ['Pause ads', pauseN.toLocaleString()],
-                    ['Run ads', runN.toLocaleString()],
-                    ['Daily budget each', moneyText(budgetEach)],
-                    ['Total ads budget', moneyText(totalBudget)],
-                    ['Spend', moneyText(spend)],
-                    ['Impr', Math.round(impr).toLocaleString()],
-                    ['Clicks 7', Math.round(clicks7).toLocaleString()],
-                    ['Clicks 30', Math.round(clicks30).toLocaleString()],
-                    ['Ord', Math.round(orders).toLocaleString()],
-                    ['Ord$', moneyText(orderAmt)],
-                    ['ROAS', String(Math.round(roas))],
-                ];
-                summary.innerHTML = pills.map(function (p) {
-                    return '<span class="badge bg-light text-dark border fs-6 p-2">' + p[0] + ': <strong>' + p[1] + '</strong></span>';
-                }).join('');
-                const tbody = document.querySelector('#pause-run-running-table tbody');
-                tbody.innerHTML = rows.length ? rows.map(function (r) {
-                    return '<tr>' +
-                        '<td>' + String(r.sku || '') + '</td>' +
-                        '<td>' + String(r.goods_id || '') + '</td>' +
-                        '<td>' + String(r.ad_status || '') + '</td>' +
-                        '<td>' + Number(r.clicks_l7 || 0).toLocaleString() + '</td>' +
-                        '<td>' + Number(r.clicks_l30 || 0).toLocaleString() + '</td>' +
-                        '<td>' + Number(r.impressions || 0).toLocaleString() + '</td>' +
-                        '<td>' + moneyText(r.ad_spend) + '</td>' +
-                        '<td>' + Number(r.order_pay_cnt || 0).toLocaleString() + '</td>' +
-                        '<td>' + moneyText(r.order_pay_amt) + '</td>' +
-                        '<td>' + String(Math.round(Number(r.roas) || 0)) + '</td>' +
-                        '<td>' + String(Math.round(Number(r.acos) || 0)) + '%</td>' +
-                        '<td>' + moneyText(budgetEach) + '</td>' +
-                        '</tr>';
-                }).join('') : '<tr><td colspan="12" class="text-center text-muted">No Pause / Run ads in the current view.</td></tr>';
             }
 
             function setBadges(rows, response) {
@@ -2306,45 +1924,11 @@
                     { title: 'Clicks 30', field: 'clicks_l30', width: 78, minWidth: 70, hozAlign: 'center', formatter: clicks30Fmt, sorter: 'number',
                       headerTooltip: 'Last 30 days clicks (Overall). Red when below 300.' },
                     { title: 'Clicks 7', field: 'clicks_l7', width: 70, minWidth: 62, hozAlign: 'center', formatter: clicksFmt, sorter: 'number',
-                      headerTooltip: 'Last 7 days clicks (Overall). Red when at or above the shared L7 Clicks rule (default 70) — pause zone.' },
+                      headerTooltip: 'Last 7 days clicks (Overall).' },
                     { title: 'Sold 7', field: 'sold_l7', width: 66, minWidth: 58, hozAlign: 'center', formatter: numFmt, sorter: 'number',
-                      headerTooltip: 'Units sold in the last 7 complete Pacific days from Temu 1 orders (temu_orders), per SKU. Used by the Sold Qty rule.' },
+                      headerTooltip: 'Units sold in the last 7 complete Pacific days from Temu 1 orders (temu_orders), per SKU.' },
                     { title: 'Impr', field: 'impressions', width: 70, minWidth: 62, hozAlign: 'center', formatter: numFmt, sorter: 'number',
                       headerTooltip: 'Impressions (Overall) for the selected period — L30 = Temu Ads Last 30 days. CTR = period Clicks ÷ Impr.' },
-                    {
-                        title: 'Pause/Run',
-                        field: 'pause_run',
-                        width: 86,
-                        minWidth: 78,
-                        hozAlign: 'center',
-                        sorter: function (a, b, aRow, bRow) {
-                            function action(row) {
-                                const data = row.getData() || {};
-                                if (window.TemuAdsColorRules && TemuAdsColorRules.pauseRunAction) {
-                                    return TemuAdsColorRules.pauseRunAction(data);
-                                }
-                                return String(data.pause_run || '');
-                            }
-                            return action(aRow).localeCompare(action(bRow));
-                        },
-                        headerTooltip: 'NOT Temu Active/Paused. This is only a recommended Pause/Run from L7 Clicks, and only when Status is Active or Paused. No ad = no campaign on Temu.',
-                        formatter: function (cell) {
-                            const data = cell.getRow().getData() || {};
-                            const status = String(data.ad_status || '').trim();
-                            const live = status === 'Paused' ? 'Inactive' : status;
-                            if (live !== 'Active' && live !== 'Inactive') {
-                                return '<span class="text-muted" title="Temu has no campaign (Status: ' + status + '). Use Create. Pause/Run is not Active.">—</span>';
-                            }
-                            if (!window.TemuAdsColorRules || typeof TemuAdsColorRules.pauseRunButtonHtml !== 'function') return '';
-                            return TemuAdsColorRules.pauseRunButtonHtml(data);
-                        },
-                        cellClick: function (e, cell) {
-                            e.stopPropagation();
-                            const btn = e.target.closest('.temu-pause-run-btn');
-                            if (!btn || !window.TemuAdsColorRules || typeof TemuAdsColorRules.pushPauseRun !== 'function') return;
-                            TemuAdsColorRules.pushPauseRun(btn, cell, @json(route('temu.ads.toggle')));
-                        }
-                    },
                     {
                         title: 'Status',
                         field: 'ad_status',
@@ -2365,22 +1949,6 @@
                             return '<span class="badge ' + cls + '">' + label + '</span>';
                         }
                     },
-                    {
-                        title: 'Success',
-                        field: 'pause_run_ok',
-                        width: 64,
-                        minWidth: 56,
-                        hozAlign: 'center',
-                        sorter: function (a, b) {
-                            const rank = function (v) { return v === true ? 2 : (v === false ? 1 : 0); };
-                            return rank(a) - rank(b);
-                        },
-                        headerTooltip: 'History of Pause/Run pushes to Temu. Hover for each attempt.',
-                        formatter: function (cell) {
-                            if (!window.TemuAdsColorRules || typeof TemuAdsColorRules.pauseRunResultHtml !== 'function') return '';
-                            return TemuAdsColorRules.pauseRunResultHtml(cell.getRow().getData() || {});
-                        }
-                    },
                     { title: 'CTR', field: 'ctr', width: 62, minWidth: 56, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
                       headerTooltip: 'CTR (Overall) for the selected period = period Clicks ÷ Impr. L30 = Temu Ads Last 30 days.' },
                     { title: 'CVR', field: 'cvr', width: 56, minWidth: 50, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
@@ -2391,18 +1959,6 @@
                     { title: 'Spend 30', field: 'ad_spend', width: 76, minWidth: 68, hozAlign: 'center', formatter: moneyFmt, sorter: 'number' },
                     { title: 'Y Spend', field: 'spend_l1', width: 70, minWidth: 62, hozAlign: 'center', formatter: moneyFmt, sorter: 'number',
                       headerTooltip: 'Y Spend = last 1 day ad spend.' },
-                    {
-                        title: 'T ROAS',
-                        field: 't_roas',
-                        width: 68,
-                        minWidth: 60,
-                        hozAlign: 'center',
-                        headerTooltip: 'Target ROAS',
-                        formatter: tRoasFmt,
-                        sorter: function (a, b, aRow, bRow) {
-                            return Number(targetRoasValue(aRow && aRow.getData())) - Number(targetRoasValue(bRow && bRow.getData()));
-                        }
-                    },
                     { title: 'ROAS', field: 'roas', width: 58, minWidth: 52, hozAlign: 'center', formatter: decFmt, sorter: 'number',
                       headerTooltip: 'Actual ROAS.' },
                     { title: 'ACOS', field: 'acos', width: 58, minWidth: 52, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
@@ -2477,490 +2033,142 @@
                 }, 0);
             });
 
-            try {
-            if (window.TemuAdsColorRules) {
-                    if (typeof TemuAdsColorRules.setUrls === 'function') {
-                TemuAdsColorRules.setUrls(
-                    @json(route('temu.ads.color-rules')),
-                            @json(route('temu.ads.color-rules.save')),
-                            @json(route('temu.ads.auto-pause')),
-                            @json(route('temu.ads.toggle')),
-                            @json(route('temu.ads.auto-pause-cron')),
-                            @json(route('temu.ads.push-roas'))
-                );
-                    }
-                    if (typeof TemuAdsColorRules.bindThresholdInput === 'function') {
-                TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
-                    }
-                    if (typeof TemuAdsColorRules.bindRoasRuleSummary === 'function') {
-                        TemuAdsColorRules.bindRoasRuleSummary(document.getElementById('roas-rule-summary'));
-                    }
-                    if (typeof TemuAdsColorRules.bindCronToggleButton === 'function') {
-                        TemuAdsColorRules.bindCronToggleButton(
-                            document.getElementById('temu-ads-cron-toggle-btn'),
-                            document.getElementById('temu-ads-cron-status')
-                        );
-                    }
-                    if (typeof TemuAdsColorRules.bindSaveRuleButton === 'function') {
-                        TemuAdsColorRules.bindSaveRuleButton(
-                            document.getElementById('temu-ads-save-rule-btn'),
-                            document.getElementById('temu-ads-pause-status')
-                        );
-                    }
-                    if (typeof TemuAdsColorRules.onChange === 'function') {
-                TemuAdsColorRules.onChange(function () {
-                            if (!document.activeElement || !document.activeElement.closest('#sold-qty-slabs-tbody')) {
-                                renderSoldQtySlabs();
-                            }
-                            if (!document.activeElement || !document.activeElement.closest('#pause-run-slabs-tbody, #pause-run-inv-zero')) {
-                                renderPauseRunSlabs();
-                                syncPauseRunInvZeroCheckbox();
-                            }
-                            renderRoasRuleSlabs();
-                    table.redraw(true);
-                            if (typeof applyPauseRunSlabsToTable === 'function') applyPauseRunSlabsToTable();
-                            else if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
-                        });
-                    }
-                }
-            } catch (err) {
-                console.warn('TemuAdsColorRules init skipped', err);
-            }
+            // ---- Ads Rules: L7 Sold slabs with a Target ROAS input per slab ----
+            const ADS_RULES_URL = @json(route('temu.ads.sold-roas-rules'));
+            const ADS_RULES_SAVE_URL = @json(route('temu.ads.sold-roas-rules.save'));
+            const adsRulesTbody = document.getElementById('ads-rules-slabs-tbody');
 
-            function pauseRunSlabStatus(html, ok) {
-                const el = document.getElementById('pause-run-rule-status');
+            function adsRulesStatus(html, ok) {
+                const el = document.getElementById('ads-rules-status');
                 if (!el) return;
                 el.innerHTML = html
                     ? '<div class="alert ' + (ok ? 'alert-success' : 'alert-danger') + ' py-1 px-2 mb-0">' + html + '</div>'
                     : '';
             }
 
-            function renderPauseRunSlabs(slabs) {
-                const tbody = document.getElementById('pause-run-slabs-tbody');
-                if (!tbody || !window.TemuAdsColorRules) return;
-                const list = Array.isArray(slabs) ? slabs : TemuAdsColorRules.getPauseRunSlabs();
-                tbody.innerHTML = '';
-                list.forEach(function (slab) {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML =
-                        '<td><input type="number" class="form-control form-control-sm pr-slab-min" min="0" step="1" value="' + slab.min + '"></td>' +
-                        '<td><input type="number" class="form-control form-control-sm pr-slab-max" min="0" step="1" placeholder="and above" value="' +
-                            (slab.max == null ? '' : slab.max) + '"></td>' +
-                        '<td><select class="form-select form-select-sm pr-slab-action">' +
-                            '<option value="run"' + (slab.action === 'run' ? ' selected' : '') + '>Run</option>' +
-                            '<option value="pause"' + (slab.action === 'pause' ? ' selected' : '') + '>Pause</option>' +
-                        '</select></td>' +
-                        '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger pr-slab-remove" title="Remove">&times;</button></td>';
-                    tbody.appendChild(tr);
-                });
-            }
-
-            function renderSoldQtySlabs(slabs) {
-                const tbody = document.getElementById('sold-qty-slabs-tbody');
-                if (!tbody || !window.TemuAdsColorRules) return;
-                const list = Array.isArray(slabs) ? slabs : TemuAdsColorRules.getSoldQtySlabs();
-                tbody.innerHTML = '';
-                list.forEach(function (slab) {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML =
-                        '<td><input type="number" class="form-control form-control-sm pr-slab-min" min="0" step="1" value="' + slab.min + '"></td>' +
-                        '<td><input type="number" class="form-control form-control-sm pr-slab-max" min="0" step="1" placeholder="and above" value="' +
-                            (slab.max == null ? '' : slab.max) + '"></td>' +
-                        '<td><select class="form-select form-select-sm pr-slab-action">' +
-                            '<option value="run"' + (slab.action === 'run' ? ' selected' : '') + '>Run</option>' +
-                            '<option value="pause"' + (slab.action === 'pause' ? ' selected' : '') + '>Pause</option>' +
-                        '</select></td>' +
-                        '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger pr-slab-remove" title="Remove">&times;</button></td>';
-                    tbody.appendChild(tr);
-                });
-            }
-
-            function collectSoldQtySlabs() {
-                const slabs = [];
-                document.querySelectorAll('#sold-qty-slabs-tbody tr').forEach(function (tr) {
-                    const minEl = tr.querySelector('.pr-slab-min');
-                    const maxEl = tr.querySelector('.pr-slab-max');
-                    const actEl = tr.querySelector('.pr-slab-action');
-                    const min = parseInt(minEl && minEl.value, 10);
-                    const maxRaw = maxEl ? String(maxEl.value || '').trim() : '';
-                    const max = maxRaw === '' ? null : parseInt(maxRaw, 10);
-                    slabs.push({
-                        min: isFinite(min) && min >= 0 ? min : 0,
-                        max: (max === null || !isFinite(max)) ? null : max,
-                        action: (actEl && actEl.value) === 'run' ? 'run' : 'pause',
-                    });
-                });
-                return window.TemuAdsColorRules
-                    ? TemuAdsColorRules.normalizeSoldQtySlabs(slabs)
-                    : slabs;
-            }
-
-            function collectPauseRunSlabs() {
-                const rows = document.querySelectorAll('#pause-run-slabs-tbody tr');
-                const slabs = [];
-                rows.forEach(function (tr) {
-                    const minEl = tr.querySelector('.pr-slab-min');
-                    const maxEl = tr.querySelector('.pr-slab-max');
-                    const actEl = tr.querySelector('.pr-slab-action');
-                    const min = parseInt(minEl && minEl.value, 10);
-                    const maxRaw = maxEl ? String(maxEl.value || '').trim() : '';
-                    const max = maxRaw === '' ? null : parseInt(maxRaw, 10);
-                    slabs.push({
-                        min: isFinite(min) && min >= 0 ? min : 0,
-                        max: (max === null || !isFinite(max)) ? null : max,
-                        action: (actEl && actEl.value) === 'run' ? 'run' : 'pause',
-                    });
-                });
-                return window.TemuAdsColorRules
-                    ? TemuAdsColorRules.normalizePauseRunSlabs(slabs)
-                    : slabs;
-            }
-
-            function applyPauseRunSlabsToTable() {
-                if (!table) return 0;
-                const col = typeof table.getColumn === 'function' ? table.getColumn('pause_run') : null;
-                if (col && typeof col.getCells === 'function') {
-                    col.getCells().forEach(function (cell) {
-                        if (cell && typeof cell.setValue === 'function') {
-                            const data = cell.getRow().getData() || {};
-                            const action = rowPauseRunAction(data);
-                            if (data.pause_run !== action) cell.setValue(action, true);
-                        }
-                    });
-                }
-                if (typeof updateBadgesFromTable === 'function') updateBadgesFromTable();
-                return table.getDataCount ? table.getDataCount() : 0;
-            }
-
-            renderPauseRunSlabs();
-            renderSoldQtySlabs();
-            syncPauseRunInvZeroCheckbox();
-
-            const slabTbody = document.getElementById('pause-run-slabs-tbody');
-            let pauseRunAutoApplyTimer = null;
-            let pauseRunTemuPushTimer = null;
-            function applyPauseRunResultsFromCron(res) {
-                const stats = res && res.data && res.data.stats ? res.data.stats : {};
-                const results = Array.isArray(stats.results) ? stats.results : [];
-                if (!table || !results.length) return;
-                const byId = {};
-                results.forEach(function (item) {
-                    if (item && item.goods_id) byId[String(item.goods_id)] = item;
-                });
-                walkAdsRows(function (row) {
-                    const data = row.getData() || {};
-                    const item = byId[String(data.goods_id || '')];
-                    if (!item) return;
-                    const patch = {
-                        pause_run_ok: !!item.ok,
-                        pause_run_error: item.ok ? '' : (item.message || 'Temu update failed'),
-                    };
-                    if (item.pause_run_history) patch.pause_run_history = item.pause_run_history;
-                    if (item.ok && item.action === 'run') patch.ad_status = 'Active';
-                    if (item.ok && item.action === 'pause') patch.ad_status = 'Inactive';
-                    row.update(patch);
-                });
-            }
-            function pushPauseRunRulesToTemu() {
-                if (!window.TemuAdsColorRules || typeof TemuAdsColorRules.runAutoPauseCron !== 'function') return;
-                pauseRunSlabStatus('Pushing Pause/Run changes to Temu…', true);
-                TemuAdsColorRules.runAutoPauseCron(function (res) {
-                    applyPauseRunResultsFromCron(res);
-                    const ok = !!(res && res.ok && res.data && res.data.success !== false);
-                    const msg = (res && res.data && res.data.message) ? res.data.message : (ok ? 'Temu update done' : 'Temu update failed');
-                    pauseRunSlabStatus(msg, ok);
-                });
-            }
-            function autoApplyPauseRunRules() {
-                if (pauseRunAutoApplyTimer) clearTimeout(pauseRunAutoApplyTimer);
-                if (pauseRunTemuPushTimer) clearTimeout(pauseRunTemuPushTimer);
-                pauseRunAutoApplyTimer = setTimeout(function () {
-                    pauseRunAutoApplyTimer = null;
-                    savePauseRunSlabsFromModal();
-                    const n = applyPauseRunSlabsToTable();
-                    pauseRunSlabStatus('Rules applied to ' + n + ' Pause/Run switches. Updating Temu…', true);
-                }, 200);
-                pauseRunTemuPushTimer = setTimeout(function () {
-                    pauseRunTemuPushTimer = null;
-                    pushPauseRunRulesToTemu();
-                }, 900);
-            }
-            if (slabTbody) {
-                slabTbody.addEventListener('click', function (e) {
-                    const btn = e.target.closest('.pr-slab-remove');
-                    if (!btn) return;
-                    const rows = slabTbody.querySelectorAll('tr');
-                    if (rows.length <= 1) return;
-                    btn.closest('tr').remove();
-                    autoApplyPauseRunRules();
-                });
-                slabTbody.addEventListener('change', autoApplyPauseRunRules);
-            }
-            const soldTbody = document.getElementById('sold-qty-slabs-tbody');
-            if (soldTbody) {
-                soldTbody.addEventListener('click', function (e) {
-                    const btn = e.target.closest('.pr-slab-remove');
-                    if (!btn) return;
-                    if (soldTbody.querySelectorAll('tr').length <= 1) return;
-                    btn.closest('tr').remove();
-                    autoApplyPauseRunRules();
-                });
-                soldTbody.addEventListener('change', autoApplyPauseRunRules);
-            }
-            const addSoldSlabBtn = document.getElementById('sold-qty-slab-add-btn');
-            if (addSoldSlabBtn) {
-                addSoldSlabBtn.addEventListener('click', function () {
-                    const current = collectSoldQtySlabs();
-                    const last = current[current.length - 1];
-                    const nextMin = last && last.max != null ? last.max + 1 : (last ? last.min + 1 : 0);
-                    current.push({ min: nextMin, max: null, action: 'pause' });
-                    renderSoldQtySlabs(current);
-                    autoApplyPauseRunRules();
-                });
-            }
-            const addSlabBtn = document.getElementById('pause-run-slab-add-btn');
-            if (addSlabBtn) {
-                addSlabBtn.addEventListener('click', function () {
-                    const current = collectPauseRunSlabs();
-                    const last = current[current.length - 1];
-                    const nextMin = last && last.max != null ? last.max + 1 : (last ? last.min + 1 : 0);
-                    current.push({ min: nextMin, max: null, action: 'pause' });
-                    renderPauseRunSlabs(current);
-                    autoApplyPauseRunRules();
-                });
-            }
-            const invZeroEl = document.getElementById('pause-run-inv-zero');
-            if (invZeroEl) {
-                invZeroEl.addEventListener('change', autoApplyPauseRunRules);
-            }
-            function syncPauseRunInvZeroCheckbox() {
-                const el = document.getElementById('pause-run-inv-zero');
-                if (!el || !window.TemuAdsColorRules || !TemuAdsColorRules.getPauseRunInvZero) return;
-                el.checked = !!TemuAdsColorRules.getPauseRunInvZero();
-            }
-
-            function savePauseRunSlabsFromModal() {
-                if (!window.TemuAdsColorRules) return collectPauseRunSlabs();
-                const invZeroEl = document.getElementById('pause-run-inv-zero');
-                if (invZeroEl && TemuAdsColorRules.setPauseRunInvZero) {
-                    TemuAdsColorRules.setPauseRunInvZero(invZeroEl.checked, false);
-                }
-                const slabs = collectPauseRunSlabs();
-                if (TemuAdsColorRules.setSoldQtySlabs) {
-                    TemuAdsColorRules.setSoldQtySlabs(collectSoldQtySlabs(), false);
-                }
-                TemuAdsColorRules.setPauseRunSlabs(slabs, true);
-                return slabs;
-            }
-            document.getElementById('pause-run-rule-save-btn').addEventListener('click', function () {
-                savePauseRunSlabsFromModal();
-                const n = applyPauseRunSlabsToTable();
-                pauseRunSlabStatus('Saved and applied Pause/Run to ' + n + ' switches. Updating Temu…', true);
-                pushPauseRunRulesToTemu();
-            });
-            document.getElementById('pause-run-rule-apply-btn').addEventListener('click', function () {
-                savePauseRunSlabsFromModal();
-                const n = applyPauseRunSlabsToTable();
-                pauseRunSlabStatus('Saved and applied Pause/Run to ' + n + ' rows. Updating Temu…', true);
-                pushPauseRunRulesToTemu();
-            });
-            document.getElementById('pause-run-rule-apply-site-btn').addEventListener('click', function () {
-                savePauseRunSlabsFromModal();
-                const n = applyPauseRunSlabsToTable();
-                pauseRunSlabStatus('Saved for /temu/ads and /temu-decrease. Updating Temu…', true);
-                pushPauseRunRulesToTemu();
-            });
-
-            function roasRuleStatus(html, ok) {
-                const el = document.getElementById('roas-rule-status');
-                if (!el) return;
-                el.innerHTML = html
-                    ? '<div class="alert ' + (ok ? 'alert-success' : 'alert-danger') + ' py-1 px-2 mb-0">' + html + '</div>'
-                    : '';
-            }
-
-            function roasRuleNumAttr(v) {
+            function adsRulesNum(v) {
                 return v == null || v === '' ? '' : String(v);
             }
 
-            function renderRoasRuleSlabs(slabs) {
-                const tbody = document.getElementById('roas-rule-slabs-tbody');
-                if (!tbody) return;
-                const list = Array.isArray(slabs)
-                    ? slabs
-                    : (window.TemuAdsColorRules && TemuAdsColorRules.getRoasRuleSlabs
-                        ? TemuAdsColorRules.getRoasRuleSlabs()
-                        : []);
-                tbody.innerHTML = '';
-                list.forEach(function (slab) {
+            function renderAdsRulesSlabs(slabs) {
+                if (!adsRulesTbody) return;
+                adsRulesTbody.innerHTML = '';
+                (slabs || []).forEach(function (slab) {
                     const tr = document.createElement('tr');
                     tr.innerHTML =
-                        '<td><input type="number" class="form-control form-control-sm rr-clicks-min" min="0" step="1" placeholder="from" value="' + roasRuleNumAttr(slab.clicks_min) + '"></td>' +
-                        '<td><input type="number" class="form-control form-control-sm rr-clicks-max" min="0" step="1" placeholder="and above" value="' + roasRuleNumAttr(slab.clicks_max) + '"></td>' +
-                        '<td><input type="number" class="form-control form-control-sm rr-target-roas" step="0.1" placeholder="T ROAS" title="Target ROAS" value="' + roasRuleNumAttr(slab.target_roas != null ? slab.target_roas : 8) + '"></td>' +
-                        '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger rr-slab-remove" title="Remove">&times;</button></td>';
-                    tbody.appendChild(tr);
+                        '<td><input type="number" class="form-control form-control-sm ar-sold-min" min="0" step="1" value="' + adsRulesNum(slab.sold_min) + '"></td>' +
+                        '<td><input type="number" class="form-control form-control-sm ar-sold-max" min="0" step="1" placeholder="and above" value="' + adsRulesNum(slab.sold_max) + '"></td>' +
+                        '<td><input type="number" class="form-control form-control-sm ar-roas" min="0" step="0.1" placeholder="ROAS" value="' + adsRulesNum(slab.target_roas) + '"></td>' +
+                        '<td class="text-center fw-semibold ar-count">0</td>' +
+                        '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger ar-remove" title="Remove">&times;</button></td>';
+                    adsRulesTbody.appendChild(tr);
                 });
+                paintAdsRuleCounts();
             }
 
-            function collectRoasRuleSlabs() {
-                const rows = document.querySelectorAll('#roas-rule-slabs-tbody tr');
+            function collectAdsRulesSlabs() {
                 const slabs = [];
-                rows.forEach(function (tr) {
-                    const clicksMin = tr.querySelector('.rr-clicks-min');
-                    const clicksMax = tr.querySelector('.rr-clicks-max');
-                    const targetRoas = tr.querySelector('.rr-target-roas');
+                if (!adsRulesTbody) return slabs;
+                adsRulesTbody.querySelectorAll('tr').forEach(function (tr) {
                     slabs.push({
-                        clicks_min: clicksMin ? clicksMin.value : '',
-                        clicks_max: clicksMax ? clicksMax.value : '',
-                        target_roas: targetRoas ? targetRoas.value : '',
+                        sold_min: tr.querySelector('.ar-sold-min').value,
+                        sold_max: tr.querySelector('.ar-sold-max').value,
+                        target_roas: tr.querySelector('.ar-roas').value,
                     });
                 });
-                return window.TemuAdsColorRules && TemuAdsColorRules.normalizeRoasRuleSlabs
-                    ? TemuAdsColorRules.normalizeRoasRuleSlabs(slabs)
-                    : slabs;
-            }
-
-            function saveRoasRuleFromModal() {
-                const slabs = collectRoasRuleSlabs();
-                if (window.TemuAdsColorRules && TemuAdsColorRules.setRoasRuleSlabs) {
-                    TemuAdsColorRules.setRoasRuleSlabs(slabs, true);
-                }
                 return slabs;
             }
 
-            renderRoasRuleSlabs();
-
-            const roasRuleTbody = document.getElementById('roas-rule-slabs-tbody');
-            if (roasRuleTbody) {
-                roasRuleTbody.addEventListener('click', function (e) {
-                    const btn = e.target.closest('.rr-slab-remove');
-                    if (!btn) return;
-                    const rows = roasRuleTbody.querySelectorAll('tr');
-                    if (rows.length <= 1) return;
-                    btn.closest('tr').remove();
-                });
-            }
-            const addRoasSlabBtn = document.getElementById('roas-rule-slab-add-btn');
-            if (addRoasSlabBtn) {
-                addRoasSlabBtn.addEventListener('click', function () {
-                    const current = collectRoasRuleSlabs();
-                    const last = current[current.length - 1];
-                    const nextMin = last && last.clicks_max != null ? Number(last.clicks_max) + 1 : 0;
-                    current.push({ clicks_min: nextMin, clicks_max: null, target_roas: 8 });
-                    renderRoasRuleSlabs(current);
-                });
-            }
-            document.getElementById('roas-rule-save-btn').addEventListener('click', function () {
-                saveRoasRuleFromModal();
-                roasRuleStatus('ROAS Rule saved.', true);
-            });
-            document.getElementById('roas-rule-apply-btn').addEventListener('click', function () {
-                saveRoasRuleFromModal();
-                if (table) table.redraw(true);
-                roasRuleStatus('ROAS Rule saved and applied to the T ROAS column.', true);
-            });
-
-            function rowHasTemuAd(row) {
-                const status = String((row && row.ad_status) || '');
-                return status === 'Active' || status === 'Inactive';
-            }
-
-            function queuePushRoasItems() {
-                const usingSelection = hasRowSelection();
-                const rows = filteredFlatAdsRows().filter(function (row) {
-                    if (!rowHasTemuAd(row)) return false;
-                    if (usingSelection && !selectedGoodsIds.has(rowGoodsId(row))) return false;
-                    return !!rowGoodsId(row);
-                });
+            function paintAdsRuleCounts() {
+                if (!adsRulesTbody) return;
                 const items = [];
-                const seen = {};
-                rows.slice().sort(function (a, b) {
-                    return (a.is_parent ? 1 : 0) - (b.is_parent ? 1 : 0);
-                }).forEach(function (row) {
-                    const gid = rowGoodsId(row);
-                    if (!gid || seen[gid]) return;
-                    seen[gid] = true;
-                    items.push({
-                        goods_id: gid,
-                        roas: roasFromRow(row, 8),
-                    });
+                adsRulesTbody.querySelectorAll('tr').forEach(function (tr) {
+                    const minRaw = String(tr.querySelector('.ar-sold-min').value || '').trim();
+                    const maxRaw = String(tr.querySelector('.ar-sold-max').value || '').trim();
+                    const min = minRaw === '' ? 0 : (parseInt(minRaw, 10) || 0);
+                    const max = maxRaw === '' ? null : parseInt(maxRaw, 10);
+                    items.push({ tr: tr, min: min, max: (max === null || !isFinite(max)) ? null : max, n: 0 });
                 });
-                return { items: items, usingSelection: usingSelection };
+                const seen = {};
+                (allAdsRows || []).forEach(function (r) {
+                    if (!r || r.is_parent) return;
+                    const key = rowGoodsId(r) || ('sku:' + String(r.sku || ''));
+                    if (seen[key]) return;
+                    seen[key] = true;
+                    const v = parseInt(r.sold_l7, 10) || 0;
+                    for (let i = 0; i < items.length; i++) {
+                        if (v >= items[i].min && (items[i].max == null || v <= items[i].max)) { items[i].n++; break; }
+                    }
+                });
+                items.forEach(function (it) {
+                    const cell = it.tr.querySelector('.ar-count');
+                    if (cell) {
+                        cell.textContent = Number(it.n).toLocaleString();
+                        cell.title = it.n + ' SKU(s) in this slab';
+                    }
+                });
             }
 
-            async function runPushRoasRule() {
-                const slabs = saveRoasRuleFromModal();
-                if (table) table.redraw(true);
-                const queued = queuePushRoasItems();
-                const items = queued.items;
-                if (!items.length) {
-                    roasRuleStatus(queued.usingSelection
-                        ? 'No selected Active/Inactive ads to push.'
-                        : 'No visible Active/Inactive ads to push.', false);
-                    return;
-                }
-                if (!confirm(
-                    (queued.usingSelection
-                        ? 'Push Target ROAS to Temu for the ' + items.length + ' selected ads?'
-                        : 'Push Target ROAS to Temu for all ' + items.length + ' visible ads?') +
-                    '\nEach ad uses T ROAS from its clicks slab via temu.searchrec.ad.modify.'
-                )) {
-                    return;
-                }
-                const btn = document.getElementById('roas-rule-push-btn');
-                if (btn) btn.disabled = true;
-                let updated = 0;
-                let failed = 0;
-                const failNotes = [];
-                const chunkSize = 8;
-                for (let i = 0; i < items.length; i += chunkSize) {
-                    const chunk = items.slice(i, i + chunkSize);
-                    roasRuleStatus(
-                        '<i class="fas fa-spinner fa-spin me-1"></i> Pushing ROAS ' +
-                        Math.min(i + chunk.length, items.length) + '/' + items.length + '…',
-                        true
-                    );
-                    const el = document.getElementById('roas-rule-status');
-                    if (el && el.firstElementChild) {
-                        el.firstElementChild.className = 'alert alert-info py-1 px-2 mb-0';
-                    }
+            if (adsRulesTbody) {
+                adsRulesTbody.addEventListener('input', paintAdsRuleCounts);
+                adsRulesTbody.addEventListener('click', function (e) {
+                    const btn = e.target.closest('.ar-remove');
+                    if (!btn) return;
+                    if (adsRulesTbody.querySelectorAll('tr').length <= 1) return;
+                    btn.closest('tr').remove();
+                    paintAdsRuleCounts();
+                });
+                document.getElementById('ads-rules-add-btn').addEventListener('click', function () {
+                    const current = collectAdsRulesSlabs();
+                    const last = current[current.length - 1];
+                    const lastMax = last && String(last.sold_max).trim() !== '' ? parseInt(last.sold_max, 10) : null;
+                    const nextMin = lastMax != null && isFinite(lastMax) ? lastMax + 1 : (last ? (parseInt(last.sold_min, 10) || 0) + 1 : 0);
+                    current.push({ sold_min: nextMin, sold_max: '', target_roas: '' });
+                    renderAdsRulesSlabs(current);
+                });
+                document.getElementById('ads-rules-save-btn').addEventListener('click', async function () {
+                    const btn = this;
+                    btn.disabled = true;
                     try {
-                        const res = window.TemuAdsColorRules && TemuAdsColorRules.pushRoasRule
-                            ? await TemuAdsColorRules.pushRoasRule(chunk, { slabs: slabs })
-                            : { ok: false, data: { message: 'Push ROAS function is not available' } };
-                        const data = res.data || {};
-                        updated += (data.updated && data.updated.length) ? data.updated.length : 0;
-                        if (data.failed && data.failed.length) {
-                            failed += data.failed.length;
-                            data.failed.slice(0, 5).forEach(function (row) {
-                                failNotes.push((row.goods_id || '') + ': ' + (row.message || 'failed'));
-                            });
-                        } else if (!res.ok && !(data.updated && data.updated.length)) {
-                            failed += chunk.length;
-                            failNotes.push(data.message || 'Push failed');
+                        const res = await fetch(ADS_RULES_SAVE_URL, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({ slabs: collectAdsRulesSlabs() }),
+                        });
+                        const data = await res.json().catch(function () { return {}; });
+                        if (res.ok && data.success) {
+                            renderAdsRulesSlabs(data.slabs);
+                            adsRulesStatus('Ads Rules saved.', true);
+                        } else {
+                            adsRulesStatus((data && data.message) ? data.message : 'Save failed.', false);
                         }
                     } catch (err) {
-                        failed += chunk.length;
-                        failNotes.push(err && err.message ? err.message : 'network error');
+                        adsRulesStatus('Save failed.', false);
                     }
-                }
-                const note = failNotes.length
-                    ? ' — ' + failNotes.slice(0, 3).join('; ')
-                    : '';
-                roasRuleStatus(
-                    'Pushed ROAS for ' + updated + '/' + items.length + ' ads' +
-                    (failed ? ', failed ' + failed + note : ''),
-                    failed === 0
-                );
-                if (btn) btn.disabled = false;
-            }
-
-            const pushRoasBtn = document.getElementById('roas-rule-push-btn');
-            if (pushRoasBtn) {
-                pushRoasBtn.addEventListener('click', function () {
-                    runPushRoasRule();
+                    btn.disabled = false;
                 });
+                const adsRulesModalEl = document.getElementById('adsRulesModal');
+                if (adsRulesModalEl) {
+                    adsRulesModalEl.addEventListener('shown.bs.modal', paintAdsRuleCounts);
+                }
+                fetch(ADS_RULES_URL, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) { renderAdsRulesSlabs(data && data.slabs ? data.slabs : []); })
+                    .catch(function () {
+                        renderAdsRulesSlabs([
+                            { sold_min: 0, sold_max: 0, target_roas: '' },
+                            { sold_min: 1, sold_max: 1, target_roas: '' },
+                            { sold_min: 2, sold_max: 2, target_roas: '' },
+                            { sold_min: 3, sold_max: 3, target_roas: '' },
+                            { sold_min: 4, sold_max: '', target_roas: '' },
+                        ]);
+                    });
+                table.on('dataLoaded', function () { setTimeout(paintAdsRuleCounts, 0); });
             }
 
             const TABULATOR_COLUMN_CHANNEL = 'temu_ads';
@@ -3001,7 +2209,7 @@
             function classifyTemuAdsColumn(field) {
                 const f = String(field || '');
                 if (/^(parent|sku|sku_id|inv|image_path|ad_status|create_ad|ad_create_reject|ovl30|dil_percent|goods_id|period)$/.test(f)) return 'basic';
-                if (/^(impressions|impressions_l7|clicks_l30|clicks_l7|pause_run|pause_run_ok|ctr|ctr_l7|cvr|cart_cnt|order_pay_cnt|order_pay_amt|ad_spend|spend_l1|t_roas|roas|acos)$/.test(f)) {
+                if (/^(impressions|impressions_l7|clicks_l30|clicks_l7|sold_l7|ctr|ctr_l7|cvr|cart_cnt|order_pay_cnt|order_pay_amt|ad_spend|spend_l1|roas|acos)$/.test(f)) {
                     return 'ads';
                 }
                 return 'others';
@@ -3119,16 +2327,12 @@
                 });
                 existing.forEach(function (f) {
                     if (seen[f]) return;
-                    if (f === 'spend_l1' || f === 't_roas') return;
+                    if (f === 'spend_l1') return;
                     valid.push(f);
                     seen[f] = true;
                     if (f === 'ad_spend' && existing.indexOf('spend_l1') !== -1) {
                         valid.push('spend_l1');
                         seen.spend_l1 = true;
-                        if (existing.indexOf('t_roas') !== -1) {
-                            valid.push('t_roas');
-                            seen.t_roas = true;
-                        }
                     }
                 });
                 existing.forEach(function (f) {
@@ -3155,7 +2359,6 @@
                 pinAfter(valid, 'ovl30', 'ad_create_reject');
                 pinAfter(valid, 'dil_percent', 'ovl30');
                 pinAfter(valid, 'impressions', 'clicks_l7');
-                pinAfter(valid, 'ad_status', 'pause_run');
                 applyingColumnOrder = true;
                 try {
                     for (let i = 0; i < valid.length; i++) {
@@ -3494,7 +2697,6 @@
             document.getElementById('search-goods-id').addEventListener('input', scheduleSearchFilters);
             document.getElementById('search-sku').addEventListener('input', scheduleSearchFilters);
             document.getElementById('status-filter').addEventListener('change', applySearchFilters);
-            document.getElementById('pause-run-filter').addEventListener('change', applySearchFilters);
             document.getElementById('inv-filter').addEventListener('change', applySearchFilters);
             document.getElementById('dil-filter').addEventListener('change', applySearchFilters);
             document.getElementById('clicks-filter').addEventListener('change', applySearchFilters);
@@ -3558,15 +2760,9 @@
                 return null;
             }
 
-            function roasFromRow(row, fallbackRoas) {
-                const fromRule = Number(targetRoasValue(row || {}));
-                if (isFinite(fromRule) && fromRule >= 0 && fromRule <= 12) return fromRule;
+            function createRoasForGoods(goodsId, fallbackRoas) {
                 const fb = Number(fallbackRoas);
                 return (isFinite(fb) && fb >= 0.1) ? fb : 4;
-            }
-
-            function createRoasForGoods(goodsId, fallbackRoas) {
-                return roasFromRow(rowByGoodsId(goodsId), fallbackRoas);
             }
 
             function escapeAttr(s) {
@@ -3749,12 +2945,6 @@
                 toggleAlertFilter();
             });
 
-            document.getElementById('pause-run-count').addEventListener('click', function (e) {
-                if (e.target.closest('.temu-ads-history-dot')) return;
-                fillRunningAdsModal();
-                new bootstrap.Modal(document.getElementById('pauseRunRunningModal')).show();
-            });
-
             document.querySelectorAll('.temu-ads-chart-badge').forEach(function (el) {
                 el.addEventListener('click', function () {
                     openTemuAdsBadgeChart(this.dataset.metric, this.dataset.label);
@@ -3930,9 +3120,6 @@
                 let fetchMsg = 'Fetch Temu ads API reports for ' + period + ' for ' + scope + '?';
                 if (!goodsId) {
                     fetchMsg += '\nThis may take several minutes.';
-                }
-                if (period === 'L7') {
-                    fetchMsg += '\n\nAuto Cron will push only ads whose Active/Pause status changes from the click limit.';
                 }
                 if (!confirm(fetchMsg)) {
                     return;
