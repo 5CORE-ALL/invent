@@ -1072,14 +1072,14 @@
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="faMetricChartTitle">Avg NROI (12 months)</span>
+                        <span id="faMetricChartTitle">Avg NROI (30 days)</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="faMetricChartRange" class="form-select form-select-sm bg-white" style="width: 120px; height: 26px; font-size: 11px; padding: 1px 8px;">
-                            <option value="30">30 Days</option>
+                            <option value="30" selected>30 Days</option>
                             <option value="90">90 Days</option>
                             <option value="180">6 Months</option>
-                            <option value="365" selected>12 Months</option>
+                            <option value="365">12 Months</option>
                         </select>
                         <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
                     </div>
@@ -7894,7 +7894,7 @@
             let faAvailablePctChartInstance = null;
             let faAvailablePctChartDays = 30;
             let faMetricChartInstance = null;
-            let faMetricChartState = { metric: 'avg_nroi', sku: '', parent: '', current: '', days: 365 };
+            let faMetricChartState = { metric: 'avg_nroi', sku: '', parent: '', current: '', days: 30 };
             const faMetricChartLabels = { avg_nroi: 'Avg NROI', avg_npft: 'Avg NPFT' };
 
             function faMetricChartRangeLabel(days) {
@@ -7987,8 +7987,36 @@
                     prevVal = v;
                     return c;
                 });
+                // Draw each reading's value above its dot (only recorded days; thinned if crowded)
+                const valueLabelPlugin = {
+                    id: 'faMetricValueLabels',
+                    afterDatasetsDraw(chart) {
+                        const ctx = chart.ctx;
+                        const meta = chart.getDatasetMeta(0);
+                        const pts = meta.data;
+                        const area = chart.chartArea;
+                        const minGap = 26; // px between labels
+                        let lastX = -Infinity;
+                        ctx.save();
+                        ctx.font = '600 9px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        pts.forEach((pt, i) => {
+                            const v = values[i];
+                            if (v === null || !pt || pt.skip) return;
+                            if (pt.x - lastX < minGap) return;
+                            lastX = pt.x;
+                            ctx.fillStyle = dotColors[i] === '#6c757d' ? '#495057' : dotColors[i];
+                            const y = Math.max(area.top + 9, pt.y - 6);
+                            ctx.fillText(fmtVal(v), Math.min(Math.max(pt.x, area.left + 12), area.right - 12), y);
+                        });
+                        ctx.restore();
+                    }
+                };
+
                 faMetricChartInstance = new Chart(canvas, {
                     type: 'line',
+                    plugins: [valueLabelPlugin],
                     data: {
                         labels: labels,
                         datasets: [{
@@ -8010,12 +8038,12 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                        layout: { padding: { top: 22, left: 2, right: 14, bottom: 2 } },
                         plugins: { legend: { display: false } },
                         scales: {
                             y: {
                                 min: dataMin - range * 0.1,
-                                max: dataMax + range * 0.1,
+                                max: dataMax + range * 0.2,
                                 ticks: { font: { size: 9 }, callback: (value) => fmtVal(value) }
                             },
                             x: {
@@ -8038,9 +8066,9 @@
                 }
                 faMetricChartState.current = el.getAttribute('data-current');
                 if (faMetricChartState.current === null) faMetricChartState.current = '';
-                faMetricChartState.days = 365;
+                faMetricChartState.days = 30;
                 const rangeEl = document.getElementById('faMetricChartRange');
-                if (rangeEl) rangeEl.value = '365';
+                if (rangeEl) rangeEl.value = '30';
                 const titleEl = document.getElementById('faMetricChartTitle');
                 if (titleEl) titleEl.textContent = faMetricChartTitle();
                 const modalEl = document.getElementById('faMetricChartModal');
