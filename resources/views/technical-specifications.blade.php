@@ -921,10 +921,22 @@
                 }
             }
 
-            function applyCategorySearch() {
-                applyStatusFilter();
-                if (table) buildTsColumnPicker();
+            // Several events fire for one pick; run the refresh once, after the dropdown has closed.
+            let filterRefreshTimer = null;
+            let filterRefreshRefill = false;
+            function scheduleFilterRefresh(refillCategories) {
+                if (refillCategories) filterRefreshRefill = true;
+                clearTimeout(filterRefreshTimer);
+                filterRefreshTimer = setTimeout(function () {
+                    const refill = filterRefreshRefill;
+                    filterRefreshRefill = false;
+                    if (refill) fillCategoryFilter();
+                    applyStatusFilter();
+                    if (table) buildTsColumnPicker();
+                }, 30);
             }
+
+            let categoryTypeTimer = null;
 
             function mountSearchSelect(sel, placeholder) {
                 if (!window.jQuery || !jQuery.fn.select2) return;
@@ -947,18 +959,20 @@
                     if (sel.id !== 'categoryFilter') return;
                     field.oninput = function () {
                         categorySearchQuery = field.value || '';
-                        applyStatusFilter();
+                        clearTimeout(categoryTypeTimer);
+                        categoryTypeTimer = setTimeout(applyStatusFilter, 250);
                     };
                 });
                 $sel.on('select2:close.tsQuick', function () {
                     if (sel.id !== 'categoryFilter' || !categorySearchQuery) return;
+                    clearTimeout(categoryTypeTimer);
                     categorySearchQuery = '';
-                    applyStatusFilter();
+                    scheduleFilterRefresh(false);
                 });
                 $sel.on('select2:select.tsQuick select2:clear.tsQuick', function () {
+                    clearTimeout(categoryTypeTimer);
                     categorySearchQuery = '';
-                    if (sel.id === 'channelFilter') fillCategoryFilter();
-                    applyCategorySearch();
+                    scheduleFilterRefresh(sel.id === 'channelFilter');
                 });
             }
 
@@ -1403,6 +1417,23 @@
                 return specShowAll ? names : limited;
             }
 
+            // The field names the edit form shows for a whole category (top 25, crossed-out fields left out).
+            function categoryFormFieldNames(categoryRows) {
+                if (!categoryRows.length) return [];
+                const probe = { SKU: '', hide_scope: categoryRows[0].hide_scope, description_v2_specifications: [], ebay_required: [], ebay_required_only: [], ebay_values: {} };
+                const showAll = specShowAll;
+                const crossed = specFieldNames.crossed;
+                const hiddenCount = specFieldNames.hiddenCount;
+                specShowAll = false;
+                try {
+                    return specFieldNames([probe].concat(categoryRows));
+                } finally {
+                    specShowAll = showAll;
+                    specFieldNames.crossed = crossed;
+                    specFieldNames.hiddenCount = hiddenCount;
+                }
+            }
+
             function specHideScope(rows) {
                 return String((rows && rows[0] && rows[0].hide_scope) || '');
             }
@@ -1544,6 +1575,8 @@
                 if (hide && at === -1) list.push(identity);
                 if (!hide && at !== -1) list.splice(at, 1);
                 rerenderSpecFields();
+                // The grid shows the same fields as the form, so a crossed-out field leaves the columns too.
+                if (table) buildTsColumnPicker();
             }
 
             // "N hidden · Show" lists every field of the category; click again to go back to the top 25.
@@ -1665,17 +1698,18 @@
                 keep[field] = true;
                 if (field === 'category_ebay') {
                     const want = normCat(category);
-                    allRows.forEach(function (row) {
-                        if (normCat(row.category_ebay) !== want) return;
-                        const names = Array.isArray(row.ebay_required_only) ? row.ebay_required_only : (row.ebay_required || []);
-                        names.forEach(function (name) {
-                            if (isRealAspect(name)) keep[aspectKey(name)] = true;
-                        });
-                        // Imported or saved values belong to the category too, so they stay visible.
-                        (row.ebay_required || []).forEach(function (name) {
-                            if (!isRealAspect(name)) return;
-                            if (String((row.ebay_values || {})[name] || '').trim() !== '') keep[aspectKey(name)] = true;
-                        });
+                    const categoryRows = allRows.filter(function (row) { return normCat(row.category_ebay) === want; });
+                    // The same fields the edit form shows for this category: fields crossed out there and
+                    // fields beyond the top 25 are not columns here either.
+                    const formNames = categoryFormFieldNames(categoryRows);
+                    const columnByIdentity = {};
+                    ebayAspectNames.forEach(function (name) {
+                        const id = specIdentity(name);
+                        if (columnByIdentity[id] === undefined || specNameKey(name) === id) columnByIdentity[id] = name;
+                    });
+                    formNames.forEach(function (name) {
+                        const column = columnByIdentity[specIdentity(name)];
+                        if (column !== undefined) keep[aspectKey(column)] = true;
                     });
                 }
                 return keep;
@@ -1684,24 +1718,24 @@
             function prepareColumnVisibility() {
                 if (!table) return;
                 const keep = focusedSpecFields();
-                if (!keep) {
-                    columnFocusActive = false;
-                    const saved = loadTsColumnVisibility();
+                const saved = keep ? null : loadTsColumnVisibility();
+                columnFocusActive = !!keep;
+                // One redraw for all the column changes, and only the columns that really change.
+                table.blockRedraw();
+                try {
                     table.getColumns().forEach(function (col) {
                         const field = col.getDefinition().field;
                         if (!tsColumnGroup(field)) return;
-                        if (!Object.prototype.hasOwnProperty.call(saved, field) || saved[field] !== false) col.show();
+                        const want = keep
+                            ? !!keep[field]
+                            : (!Object.prototype.hasOwnProperty.call(saved, field) || saved[field] !== false);
+                        if (col.isVisible() === want) return;
+                        if (want) col.show();
                         else col.hide();
                     });
-                    return;
+                } finally {
+                    table.restoreRedraw();
                 }
-                columnFocusActive = true;
-                table.getColumns().forEach(function (col) {
-                    const field = col.getDefinition().field;
-                    if (!tsColumnGroup(field)) return;
-                    if (keep[field]) col.show();
-                    else col.hide();
-                });
             }
 
             function saveTsColumnVisibility() {
@@ -1825,10 +1859,21 @@
                 menu.style.transform = 'none';
             }
 
+            // The column list is only drawn when the Columns menu is open; until then it is just marked as outdated.
+            let tsPickerDirty = true;
+
             function buildTsColumnPicker() {
                 const menu = document.getElementById('ts-column-dropdown');
                 if (!menu || !table) return;
                 prepareColumnVisibility();
+                tsPickerDirty = true;
+                if (menu.classList.contains('show')) renderTsColumnPicker();
+            }
+
+            function renderTsColumnPicker() {
+                const menu = document.getElementById('ts-column-dropdown');
+                if (!menu || !table) return;
+                tsPickerDirty = false;
                 menu.innerHTML = '';
                 const wrap = document.createElement('div');
                 wrap.className = 'col-vis-groups';
@@ -2131,8 +2176,17 @@
                 }
             }
 
-            function exportExcel() {
+            async function exportExcel() {
                 if (!table) return;
+                // The long descriptions are not part of the page data; they are fetched once for the export.
+                let descriptions = {};
+                try {
+                    const res = await fetch('/technical-specifications-descriptions', { headers: { Accept: 'application/json' } });
+                    const json = await res.json();
+                    descriptions = (json && json.data) || {};
+                } catch (e) {
+                    toast('Could not load the descriptions for the export; they will be blank.', 'error');
+                }
                 const rows = table.getData('active').map(function (r) {
                     const row = {
                     SKU: r.SKU || '',
@@ -2146,10 +2200,11 @@
                     ebayAspectNames.forEach(function (name) {
                         row[name] = rowRequiresAspect(r, name) ? (r[aspectKey(name)] || '') : '';
                     });
-                    row.description_1500 = r.description_1500 || '';
-                    row.description_1000 = r.description_1000 || '';
-                    row.description_800 = r.description_800 || '';
-                    row.description_600 = r.description_600 || '';
+                    const d = descriptions[r.SKU] || {};
+                    row.description_1500 = d.description_1500 || '';
+                    row.description_1000 = d.description_1000 || '';
+                    row.description_800 = d.description_800 || '';
+                    row.description_600 = d.description_600 || '';
                     return row;
                 });
                 const ws = XLSX.utils.json_to_sheet(rows);
@@ -2661,13 +2716,13 @@
                     e.target.value = '';
                 });
                 document.getElementById('channelFilter').addEventListener('change', function () {
-                    fillCategoryFilter();
-                    applyStatusFilter();
-                    if (table) buildTsColumnPicker();
+                    scheduleFilterRefresh(true);
                 });
                 document.getElementById('categoryFilter').addEventListener('change', function () {
-                    applyStatusFilter();
-                    if (table) buildTsColumnPicker();
+                    scheduleFilterRefresh(false);
+                });
+                document.addEventListener('show.bs.dropdown', function (e) {
+                    if (e.target && e.target.id === 'tsColumnVisibility' && tsPickerDirty) renderTsColumnPicker();
                 });
                 document.getElementById('statusFilter').addEventListener('change', applyStatusFilter);
                 document.getElementById('rowTypeFilter').addEventListener('change', applyStatusFilter);

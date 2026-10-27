@@ -95,8 +95,12 @@ class EbayCategoryAspects
 
                 continue;
             }
-            $missing[] = $categoryId;
             $out[$categoryId] = [];
+            // A category eBay just failed to answer for is not asked again for a while, so the page does not wait on it at every load.
+            if (Cache::has(self::failKey($categoryId))) {
+                continue;
+            }
+            $missing[] = $categoryId;
         }
 
         if ($missing === []) {
@@ -127,6 +131,9 @@ class EbayCategoryAspects
                 });
             } catch (\Throwable $e) {
                 Log::warning('eBay taxonomy aspects batch failed', ['error' => $e->getMessage()]);
+                foreach ($chunk as $categoryId) {
+                    Cache::put(self::failKey($categoryId), 1, now()->addMinutes(30));
+                }
 
                 continue;
             }
@@ -134,10 +141,14 @@ class EbayCategoryAspects
             foreach ($chunk as $categoryId) {
                 $res = $responses[$categoryId] ?? null;
                 if (! is_object($res) || ! method_exists($res, 'successful') || ! $res->successful()) {
+                    Cache::put(self::failKey($categoryId), 1, now()->addMinutes(30));
+
                     continue;
                 }
                 $parsed = self::parseAspects((array) ($res->json('aspects') ?? []));
                 if ($parsed === []) {
+                    Cache::put(self::failKey($categoryId), 1, now()->addMinutes(30));
+
                     continue;
                 }
                 Cache::put(self::cacheKey($categoryId), $parsed, now()->addDays(7));
@@ -193,6 +204,11 @@ class EbayCategoryAspects
         }
 
         return $names;
+    }
+
+    private static function failKey(string $categoryId): string
+    {
+        return 'ebay_category_aspects_fail:'.$categoryId;
     }
 
     private static function cacheKey(string $categoryId): string

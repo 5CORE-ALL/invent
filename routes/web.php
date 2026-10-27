@@ -4917,6 +4917,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/about-brand/save', [AboutBrandController::class, 'save'])->name('about.brand.save');
     Route::get('/technical-specifications', [TechnicalSpecificationsController::class, 'index'])->name('technical.specifications');
     Route::get('/technical-specifications-data', [TechnicalSpecificationsController::class, 'getData'])->name('technical.specifications.data');
+    Route::get('/technical-specifications-descriptions', [TechnicalSpecificationsController::class, 'descriptions'])->name('technical.specifications.descriptions');
     Route::post('/technical-specifications/save', [TechnicalSpecificationsController::class, 'save'])->name('technical.specifications.save');
     Route::post('/technical-specifications/pull-ebay', [TechnicalSpecificationsController::class, 'pullEbay'])->name('technical.specifications.pull.ebay');
     Route::post('/technical-specifications/push-ebay', [TechnicalSpecificationsController::class, 'pushEbay'])->name('technical.specifications.push.ebay');

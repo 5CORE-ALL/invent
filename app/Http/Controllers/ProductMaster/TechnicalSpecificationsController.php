@@ -34,10 +34,8 @@ class TechnicalSpecificationsController extends Controller
             @set_time_limit(300);
             @ini_set('memory_limit', '512M');
 
-            $select = [
-                'id', 'parent', 'sku', 'title150',
-                'product_description', 'description_1500', 'description_1000', 'description_800', 'description_600',
-            ];
+            // The long description texts are not loaded here (only Export needs them, see descriptions()).
+            $select = ['id', 'parent', 'sku', 'title150'];
             if (Schema::hasColumn('product_master', 'description_v2_specifications')) {
                 $select[] = 'description_v2_specifications';
             }
@@ -73,14 +71,8 @@ class TechnicalSpecificationsController extends Controller
                     'Parent' => $product->parent,
                     'SKU' => $product->sku,
                     'title150' => $product->title150,
-                    'product_description' => $product->product_description,
-                    'description_1500' => $product->description_1500,
-                    'description_1000' => $product->description_1000,
-                    'description_800' => $product->description_800,
-                    'description_600' => $product->description_600,
                     'description_v2_specifications' => $specs,
                     'technical_specifications' => $text,
-                    'specifications_text' => $text,
                 ];
             }
 
@@ -144,6 +136,32 @@ class TechnicalSpecificationsController extends Controller
                 'status' => 500,
             ], 500);
         }
+    }
+
+    /**
+     * GET /technical-specifications-descriptions — long description texts by SKU, used only by Export.
+     */
+    public function descriptions()
+    {
+        @set_time_limit(300);
+        @ini_set('memory_limit', '512M');
+
+        $map = [];
+        ProductMaster::query()
+            ->select(['sku', 'description_1500', 'description_1000', 'description_800', 'description_600'])
+            ->orderBy('id')
+            ->chunk(500, function ($products) use (&$map) {
+                foreach ($products as $product) {
+                    $map[(string) $product->sku] = [
+                        'description_1500' => (string) ($product->description_1500 ?? ''),
+                        'description_1000' => (string) ($product->description_1000 ?? ''),
+                        'description_800' => (string) ($product->description_800 ?? ''),
+                        'description_600' => (string) ($product->description_600 ?? ''),
+                    ];
+                }
+            });
+
+        return response()->json(['status' => 200, 'data' => $map]);
     }
 
     /**
