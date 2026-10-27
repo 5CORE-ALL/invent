@@ -73,7 +73,13 @@
             background: #f4f7fa;
             padding: 8px;
         }
-        .temu-ads-blocks { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+        .temu-ads-blocks { display: flex; flex-wrap: nowrap; gap: 6px; align-items: stretch; overflow-x: auto; }
+        .temu-ads-block { flex: 1 1 0; min-width: 0; }
+        .temu-ads-block--today, .temu-ads-block--yesterday { flex-grow: 9; }
+        .temu-ads-block--l30 { flex-grow: 10; }
+        .temu-ads-block--projected { flex-grow: 7; }
+        .temu-ads-block--filters { flex-grow: 2; flex-basis: 110px; }
+        .temu-ads-block .temu-ads-badge-row { gap: 3px !important; }
         .temu-ads-block {
             background: #fffbe6;
             border: 1.5px solid #e6d36f;
@@ -90,7 +96,8 @@
             color: #3b3200;
         }
         .temu-ads-block-sub { font-weight: 500; text-transform: none; letter-spacing: 0; color: #6b7280; }
-        .temu-ads-block .badge { font-size: .8rem !important; padding: .35rem .5rem !important; }
+        .temu-ads-block .badge { font-size: .68rem !important; padding: .25rem .35rem !important; }
+        .temu-ads-block-title { font-size: 11px; margin-bottom: 3px; }
         #summary-stats .temu-ads-badge-row {
             display: flex;
             flex-wrap: wrap;
