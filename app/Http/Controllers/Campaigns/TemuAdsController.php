@@ -1217,6 +1217,13 @@ class TemuAdsController extends Controller
                 $period = (string) ($first['period'] ?? '');
                 $parent = trim((string) ($first['parent'] ?? ''));
 
+                // A goods with ONE SKU has nothing to group: Seller Center lists just that SKU (its outSkuSn).
+                // The goods-level name (outGoodsSn) is not a SKU there, so never draw a parent line for it.
+                $distinctSkuIds = $kids->map(fn (array $k) => trim((string) ($k['sku_id'] ?? '')))->filter()->unique()->count();
+                if ($distinctSkuIds < 2) {
+                    return null;
+                }
+
                 $temuName = trim((string) ($names[$gid]['out_goods_sn'] ?? ''));
                 if ($temuName !== '') {
                     $parentSku = $temuName;

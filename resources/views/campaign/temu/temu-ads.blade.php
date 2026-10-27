@@ -402,6 +402,13 @@
                                 <option value="Deleted" data-label="Deleted">Deleted</option>
                                 <option value="Not sync" data-label="Not sync">Not sync</option>
                             </select>
+                            <select id="listing-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Filter by Listing status on Temu (Seller Center)">
+                                <option value="" data-label="All Listing">All Listing</option>
+                                <option value="active" data-label="Listing Active">Listing Active</option>
+                                <option value="inactive" data-label="Listing Inactive">Listing Inactive</option>
+                                <option value="none" data-label="Listing —">Listing —</option>
+                            </select>
                             <select id="inv-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
                                     title="Filter by Inv">
                                 <option value="" data-label="ALL">ALL</option>
@@ -896,6 +903,11 @@
                 return v === 'Paused' ? 'Inactive' : v;
             }
 
+            function rowListingValue(row) {
+                const v = String((row && row.listing_status) || '').trim().toLowerCase();
+                return v === 'active' || v === 'inactive' ? v : 'none';
+            }
+
             function rowDilBand(row) {
                 const dil = parseFloat(row && row.dil_percent) || 0;
                 if (window.TemuAdsColorRules && typeof TemuAdsColorRules.dilBand === 'function') {
@@ -934,6 +946,7 @@
                     dilQ: (document.getElementById('dil-filter').value || '').trim(),
                     clicksQ: (document.getElementById('clicks-filter').value || '').trim(),
                     typeQ: (document.getElementById('sku-type-filter').value || '').trim(),
+                    listingQ: (document.getElementById('listing-filter').value || '').trim(),
                     alertOnly: !!alertFilterOn,
                 };
             }
@@ -1134,6 +1147,7 @@
                 if (skip !== 'inv' && q.invQ && rowInvBucket(data) !== q.invQ) return false;
                 if (skip !== 'dil' && q.dilQ && rowDilBand(data) !== q.dilQ) return false;
                 if (skip !== 'clicks' && q.clicksQ && rowClicksBucket(data) !== q.clicksQ) return false;
+                if (skip !== 'listing' && q.listingQ && rowListingValue(data) !== q.listingQ) return false;
                 if (skip !== 'type' && q.typeQ && String(data._sku_type || 'single') !== q.typeQ) return false;
                 if (skip !== 'alert' && q.alertOnly && !rowCreateAlertText(data)) return false;
                 return true;
@@ -1177,6 +1191,8 @@
                 let periodTotal = 0;
                 const typeCounts = {};
                 let typeTotal = 0;
+                const listingCounts = {};
+                let listingTotal = 0;
                 function rowInViewExcept(row, skip) {
                     return rowMatchesQuery(row, q, skip);
                 }
@@ -1187,6 +1203,11 @@
                         statusTotal++;
                         const s = rowStatusValue(row);
                         statusCounts[s] = (statusCounts[s] || 0) + 1;
+                    }
+                    if (rowInViewExcept(row, 'listing')) {
+                        listingTotal++;
+                        const l = rowListingValue(row);
+                        listingCounts[l] = (listingCounts[l] || 0) + 1;
                     }
                     if (rowInViewExcept(row, 'inv')) {
                         invTotal++;
@@ -1214,6 +1235,7 @@
                     if (p) periodCounts[p] = (periodCounts[p] || 0) + 1;
                 });
                 paintSelectOptionCounts('status-filter', statusCounts, statusTotal);
+                paintSelectOptionCounts('listing-filter', listingCounts, listingTotal);
                 paintSelectOptionCounts('inv-filter', invCounts, invTotal);
                 paintSelectOptionCounts('dil-filter', dilCounts, dilTotal);
                 paintSelectOptionCounts('clicks-filter', clicksCounts, clicksTotal);
@@ -1518,7 +1540,7 @@
             function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
                 const q = currentFilterQuery();
-                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.typeQ && !q.alertOnly;
+                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.typeQ && !q.listingQ && !q.alertOnly;
                 const hasStoreSpend = response && response.mall && response.mall.spend != null && isFinite(parseFloat(response.mall.spend));
                 if (hasStoreSpend || (noLocalFilter && response)) {
                     applyStoreBadge(m, response);
@@ -2957,6 +2979,7 @@
             document.getElementById('dil-filter').addEventListener('change', applySearchFilters);
             document.getElementById('clicks-filter').addEventListener('change', applySearchFilters);
             document.getElementById('sku-type-filter').addEventListener('change', applySearchFilters);
+            document.getElementById('listing-filter').addEventListener('change', applySearchFilters);
 
             document.getElementById('export-btn').addEventListener('click', function () {
                 table.download('csv', 'temu-ads-api-reports.csv', {}, {
