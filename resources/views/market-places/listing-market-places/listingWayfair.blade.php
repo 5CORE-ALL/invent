@@ -1324,7 +1324,7 @@
             categorySearchUrl: '/listing-manager/ebay/categories'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261028-attach'js/listing-page-tools.js')) }}"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v={{ @filemtime(public_path('js/listing-page-tools.js')) }}"></script>
     <script>
         (function () {
             var label = (window.listingPageConfig && window.listingPageConfig.channelLabel) || 'Wayfair';
