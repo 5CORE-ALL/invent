@@ -60,7 +60,7 @@ class TemuAdsController extends Controller
         if ($hasCreateReject) {
             $listColumns[] = 'ad_create_reject';
         }
-        $records = $this->applyTemuSkuNames($query->get($listColumns));
+        $records = $this->applyTemuSkuNames($this->dropGoodsNotOnTemu($query->get($listColumns)));
         $windowPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
         $spendWindow = TemuAdsApiReport::latestWindow($windowPeriod);
         $inSpendWindow = function (TemuAdsApiReport $r) use ($period, $spendWindow): bool {
@@ -135,18 +135,6 @@ class TemuAdsController extends Controller
                         $listingByGoods[$gid] = $st;
                     }
                 });
-        }
-
-        // Goods Temu still lists in Seller Center. Removed/ended goods can still answer sku.list as
-        // "active", so anything missing from this list is shown as "removed" instead.
-        $liveGoods = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::LIVE_GOODS_CACHE_KEY);
-        if (is_array($liveGoods) && $liveGoods !== []) {
-            foreach ($records as $rec) {
-                $g = (string) $rec->goods_id;
-                if ($g !== '' && ! array_key_exists($g, $liveGoods)) {
-                    $listingByGoods[$g] = 'removed';
-                }
-            }
         }
 
         $rows = $records->map(function (TemuAdsApiReport $r) use ($listingByGoods, $soldL7BySku, $l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $inSpendWindow) {
@@ -1060,6 +1048,25 @@ class TemuAdsController extends Controller
 
             return $row;
         })->values();
+    }
+
+    /**
+     * Hide goods that are no longer in Temu's Seller Center product list (removed / ended).
+     * Source: cache from temu:sync-goods-sku-names. If the cache is missing or looks incomplete
+     * nothing is hidden, so a failed sync can never blank the page.
+     *
+     * @param  \Illuminate\Support\Collection<int, TemuAdsApiReport>  $records
+     */
+    private function dropGoodsNotOnTemu($records)
+    {
+        $live = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::LIVE_GOODS_CACHE_KEY);
+        if (! is_array($live) || count($live) < 50) {
+            return $records;
+        }
+
+        return $records
+            ->filter(fn (TemuAdsApiReport $r) => array_key_exists((string) $r->goods_id, $live))
+            ->values();
     }
 
     /**

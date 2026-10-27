@@ -3602,6 +3602,13 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
+        // Which goods Temu still lists (/temu/ads hides everything else). ~5 API calls, so hourly.
+        $schedule->command('temu:sync-goods-sku-names --live-only')
+            ->hourly()
+            ->name('temu-sync-live-goods')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
         $schedule->command('temu:refresh-ad-status')
             ->dailyAt('23:45')
             ->timezone('Asia/Kolkata')
