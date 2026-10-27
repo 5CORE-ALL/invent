@@ -94,6 +94,9 @@
             color: #fff !important;
             font-weight: 800;
         }
+        #create-count.is-create-filter-on {
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #fd7e14;
+        }
         #single-alert-count.is-alert-filter-on {
             box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626;
         }
@@ -528,7 +531,7 @@
                                 title="Avg CVR = Sold / Clicks from badges. Click for history">Avg CVR: <span class="temu-ads-badge-val">0.0%</span><span class="temu-ads-history-dot" title="History"></span></span>
                             <span class="badge fs-6 p-2" id="create-count"
                                 style="background-color: #fd7e14; color: white; font-weight: bold; cursor: pointer;"
-                                title="Create ads for selected No ad rows (Inv > 0). Follows Parent/SKU/All, search, status, inv, dil, and clicks filters. If nothing is selected, uses visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
+                                title="Click to show only rows you can create an ad for (No ad, Inv > 0). Click again to clear.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
                             <span class="badge fs-6 p-2" id="single-alert-count"
                                 style="cursor: pointer;"
                                 title="Click to show only Single SKU listings (Ads Rules do not run on them). Click again to clear.">
@@ -923,6 +926,7 @@
             }
 
             let alertFilterOn = false;
+            let createFilterOn = false;
 
             function currentFilterQuery() {
                 return {
@@ -935,6 +939,7 @@
                     typeQ: (document.getElementById('sku-type-filter').value || '').trim(),
                     listingQ: (document.getElementById('listing-filter').value || '').trim(),
                     alertOnly: !!alertFilterOn,
+                    createOnly: !!createFilterOn,
                 };
             }
 
@@ -1137,6 +1142,7 @@
                 if (skip !== 'listing' && q.listingQ && rowListingValue(data) !== q.listingQ) return false;
                 if (skip !== 'type' && q.typeQ && String(data._sku_type || 'single') !== q.typeQ) return false;
                 if (skip !== 'alert' && q.alertOnly && !rowCreateAlertText(data)) return false;
+                if (skip !== 'create' && q.createOnly && !canCreateAdRow(data)) return false;
                 return true;
             }
 
@@ -1312,9 +1318,10 @@
                 const n = createBadgeCount();
                 setBadgeVal('create-count', Number(n).toLocaleString());
                 if (!el) return;
-                el.title = hasRowSelection()
-                    ? 'Create the ' + n + ' selected No ad row(s) with Inv > 0.'
-                    : 'Create all ' + n + ' filtered No ad rows with Inv > 0.';
+                el.classList.toggle('is-create-filter-on', !!createFilterOn);
+                el.title = createFilterOn
+                    ? 'Showing only the ' + n + ' row(s) you can create an ad for (No ad, Inv > 0). Click to show all rows again.'
+                    : 'Click to show only the ' + n + ' row(s) you can create an ad for (No ad, Inv > 0).';
             }
 
             function csvCell(v) {
@@ -1495,7 +1502,7 @@
             function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
                 const q = currentFilterQuery();
-                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.typeQ && !q.listingQ && !q.alertOnly;
+                const noLocalFilter = !q.goodsQ && !q.skuQ && !q.statusQ && !q.invQ && !q.dilQ && !q.clicksQ && !q.typeQ && !q.listingQ && !q.alertOnly && !q.createOnly;
                 const hasStoreSpend = response && response.mall && response.mall.spend != null && isFinite(parseFloat(response.mall.spend));
                 if (hasStoreSpend || (noLocalFilter && response)) {
                     applyStoreBadge(m, response);
@@ -2095,7 +2102,6 @@
                       headerTooltip: 'CTR (Overall) for the selected period = period Clicks ÷ Impr. L30 = Temu Ads Last 30 days.' },
                     { title: 'CVR', field: 'cvr', width: 56, minWidth: 50, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
                       headerTooltip: 'CVR (Overall) = Orders ÷ Clicks' },
-                    { title: 'Cart', field: 'cart_cnt', width: 56, minWidth: 50, hozAlign: 'center', formatter: numFmt, sorter: 'number' },
                     { title: 'Ord L30', field: 'order_pay_cnt', width: 70, minWidth: 60, headerTooltip: 'Ad orders (order_pay_cnt) for the selected Period — L30 by default', hozAlign: 'center', formatter: numFmt, sorter: 'number' },
                     { title: 'Ord$', field: 'order_pay_amt', width: 70, minWidth: 62, hozAlign: 'center', formatter: moneyFmt, sorter: 'number' },
                     { title: 'Spend 30', field: 'ad_spend', width: 76, minWidth: 68, hozAlign: 'center', formatter: moneyFmt, sorter: 'number' },
@@ -3213,7 +3219,10 @@
 
             document.getElementById('create-count').addEventListener('click', function (e) {
                 if (e.target.closest('.temu-ads-history-dot')) return;
-                runBulkCreateQueue();
+                createFilterOn = !createFilterOn;
+                if (table && typeof table.setPage === 'function') table.setPage(1);
+                applySearchFilters();
+                paintCreateBadge();
             });
             document.getElementById('single-alert-count').addEventListener('click', function () {
                 const sel = document.getElementById('sku-type-filter');
