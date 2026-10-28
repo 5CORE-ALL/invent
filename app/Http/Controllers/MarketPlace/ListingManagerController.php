@@ -3000,6 +3000,27 @@ class ListingManagerController extends Controller
                 $details['variation_skus'] = $family['skus'];
             }
         }
+        // Never list a SKU twice on the same marketplace.
+        if ($draft->status !== 'listed' && ($details['publish_mode'] ?? 'single') !== 'variation') {
+            $duplicate = $this->existingMarketplaceListing($draft, $channelName);
+            if ($duplicate !== null) {
+                $draft->status = 'listed';
+                if ($duplicate['id'] !== '' && trim((string) $draft->external_listing_id) === '') {
+                    $draft->external_listing_id = $duplicate['id'];
+                }
+                $draft->listed_at = $draft->listed_at ?: now();
+                $draft->notes = trim((string) $draft->notes."\nSKU already listed on {$channelName}; not published again.");
+                $draft->save();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $draft->seller_sku.' is already listed on '.$channelName
+                        .($duplicate['id'] !== '' ? ' (ID '.$duplicate['id'].')' : '').'. It was not listed again; the draft is now marked as Active.',
+                    'draft' => $this->serializeDraft($draft->fresh()->load('channel:id,channel,logo'), true),
+                ], 409);
+            }
+        }
+
         $draft->listing_details = $details;
         $draft->save();
 
@@ -3015,6 +3036,39 @@ class ListingManagerController extends Controller
         $outcome = $this->executeDraftPublish($draft, $details, $channelName);
 
         return response()->json($outcome['body'], $outcome['status']);
+    }
+
+    /**
+     * Where this SKU already exists on the draft's marketplace: another draft of the same SKU that is
+     * listed, or (PLS) a live Shopify product. Null when it is safe to publish.
+     *
+     * @return array{id: string}|null
+     */
+    private function existingMarketplaceListing(ListingManagerChannelDraft $draft, string $channelName): ?array
+    {
+        try {
+            $other = ListingManagerChannelDraft::query()
+                ->where('channel_id', $draft->channel_id)
+                ->where('id', '!=', $draft->id)
+                ->whereRaw('UPPER(TRIM(seller_sku)) = ?', [strtoupper(trim((string) $draft->seller_sku))])
+                ->where('status', 'listed')
+                ->first();
+            if ($other) {
+                return ['id' => trim((string) $other->external_listing_id)];
+            }
+
+            if (\App\Services\MarketplaceManager\DirectStoreListingPublishService::channelFor($channelName) === 'pls') {
+                $live = app(\App\Services\MarketplaceManager\DirectStoreListingPublishService::class)
+                    ->existingPlsProduct((string) $draft->seller_sku);
+                if ($live) {
+                    return ['id' => (string) ($live['product_id'] ?? '')];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager duplicate check failed', ['draft_id' => $draft->id, 'error' => $e->getMessage()]);
+        }
+
+        return null;
     }
 
     /**

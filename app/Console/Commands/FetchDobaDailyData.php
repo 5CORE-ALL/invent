@@ -278,89 +278,114 @@ class FetchDobaDailyData extends Command
     }
 
     /**
-     * Fetch a single page of orders, retrying with a smaller pageSize when the
-     * upstream RPC rejects the response as "request is too large!".
+     * Fetch one logical page of orders (pageSize rows). When Doba rejects the full size
+     * ("request is too large!", timeouts, rate limits) the same rows are fetched again as several
+     * smaller sub-pages, so the rows after this page are never skipped and the crawl keeps its place.
      *
      * @return array<int, array<string, mixed>>|null  null = give up on this page after retries
      */
     protected function fetchOrdersPage(int $pageNo, int $pageSize, string $beginTime, string $endTime, int $timeout = 60): ?array
     {
         $attempts = [$pageSize];
-        if ($pageSize > 25) {
-            $attempts[] = 25;
-        }
-        if ($pageSize > 10) {
-            $attempts[] = 10;
+        foreach ([25, 10] as $smaller) {
+            // Only sizes that divide the page evenly, so sub-pages cover exactly the same rows.
+            if ($pageSize > $smaller && $pageSize % $smaller === 0) {
+                $attempts[] = $smaller;
+            }
         }
 
         foreach ($attempts as $size) {
-            $timestamp = $this->getMillisecond();
-            $getContent = $this->getContent($timestamp);
-            $sign = $this->generateSignature($getContent);
-
-            $this->info("  Fetching page {$pageNo} (size {$size})...");
-
-            try {
-                $response = Http::withoutVerifying()->timeout($timeout)->withHeaders([
-                    'appKey' => config('services.doba.app_key'),
-                    'signType' => 'rsa2',
-                    'timestamp' => $timestamp,
-                    'sign' => $sign,
-                    'Content-Type' => 'application/json',
-                ])->post($this->baseUrl . '/seller/queryOrderDetail', [
-                    'pageNo' => $pageNo,
-                    'pageSize' => $size,
-                    'beginTime' => $beginTime,
-                    'endTime' => $endTime,
-                ]);
-            } catch (\Throwable $e) {
-                $this->warn('  Doba HTTP exception: ' . $e->getMessage());
-                Log::warning('Doba HTTP exception', ['page' => $pageNo, 'size' => $size, 'message' => $e->getMessage()]);
-                continue;
-            }
-
-            $bodyPreview = mb_substr((string) $response->body(), 0, 400);
-
-            if (!$response->ok()) {
-                $this->warn("  HTTP {$response->status()} on page {$pageNo} (size {$size}). Preview: {$bodyPreview}");
-                Log::warning('Doba HTTP error', ['status' => $response->status(), 'page' => $pageNo, 'size' => $size, 'body' => $bodyPreview]);
-
-                // "request is too large!" => retry with smaller chunk
-                if (stripos((string) $response->body(), 'request is too large') !== false) {
-                    continue;
+            $ratio = intdiv($pageSize, $size);
+            $merged = [];
+            $failed = false;
+            for ($part = 1; $part <= $ratio; $part++) {
+                $rows = $this->fetchOrdersPageOnce(($pageNo - 1) * $ratio + $part, $size, $beginTime, $endTime, $timeout);
+                if ($rows === null) {
+                    $failed = true;
+                    break;
                 }
-                continue;
-            }
-
-            $json = $response->json();
-            $this->info("  API Response Code: " . ($json['responseCode'] ?? 'N/A'));
-
-            // Doba returns businessData as a numerically-indexed array on success
-            // (so [0]['data'] works) but as a flat object on error (businessStatus / businessMessage).
-            $businessData = $json['businessData'] ?? null;
-            $businessStatus = is_array($businessData)
-                ? ($businessData['businessStatus'] ?? $businessData[0]['businessStatus'] ?? null)
-                : null;
-            $businessMessage = is_array($businessData)
-                ? ($businessData['businessMessage'] ?? $businessData[0]['businessMessage'] ?? null)
-                : null;
-
-            if (($json['responseCode'] ?? '') !== '000000'
-                || ($businessStatus !== null && $businessStatus !== '000000')) {
-                $message = $businessMessage ?? $json['responseMessage'] ?? 'Unknown error';
-                $this->warn("  API error on page {$pageNo} (size {$size}): " . mb_substr((string) $message, 0, 300));
-                Log::warning('Doba API error', ['page' => $pageNo, 'size' => $size, 'message' => $message]);
-
-                if (stripos((string) $message, 'request is too large') !== false) {
-                    continue;
+                $merged = array_merge($merged, $rows);
+                if (count($rows) < $size) {
+                    break; // last page of the window
                 }
-                continue;
+                if ($ratio > 1) {
+                    usleep(300000);
+                }
             }
-
-            return $businessData[0]['data'] ?? [];
+            if (! $failed) {
+                return $merged;
+            }
+            usleep(500000);
         }
 
         return null;
+    }
+
+    /**
+     * One API request.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    protected function fetchOrdersPageOnce(int $pageNo, int $size, string $beginTime, string $endTime, int $timeout): ?array
+    {
+        $timestamp = $this->getMillisecond();
+        $getContent = $this->getContent($timestamp);
+        $sign = $this->generateSignature($getContent);
+
+        $this->info("  Fetching page {$pageNo} (size {$size})...");
+
+        try {
+            $response = Http::withoutVerifying()->timeout($timeout)->withHeaders([
+                'appKey' => config('services.doba.app_key'),
+                'signType' => 'rsa2',
+                'timestamp' => $timestamp,
+                'sign' => $sign,
+                'Content-Type' => 'application/json',
+            ])->post($this->baseUrl . '/seller/queryOrderDetail', [
+                'pageNo' => $pageNo,
+                'pageSize' => $size,
+                'beginTime' => $beginTime,
+                'endTime' => $endTime,
+            ]);
+        } catch (\Throwable $e) {
+            $this->warn('  Doba HTTP exception: ' . $e->getMessage());
+            Log::warning('Doba HTTP exception', ['page' => $pageNo, 'size' => $size, 'message' => $e->getMessage()]);
+
+            return null;
+        }
+
+        $bodyPreview = mb_substr((string) $response->body(), 0, 400);
+
+        if (! $response->ok()) {
+            $this->warn("  HTTP {$response->status()} on page {$pageNo} (size {$size}). Preview: {$bodyPreview}");
+            Log::warning('Doba HTTP error', ['status' => $response->status(), 'page' => $pageNo, 'size' => $size, 'body' => $bodyPreview]);
+
+            return null;
+        }
+
+        $json = $response->json();
+        $this->info("  API Response Code: " . ($json['responseCode'] ?? 'N/A'));
+
+        // Doba returns businessData as a numerically-indexed array on success
+        // (so [0]['data'] works) but as a flat object on error (businessStatus / businessMessage).
+        $businessData = $json['businessData'] ?? null;
+        $businessStatus = is_array($businessData)
+            ? ($businessData['businessStatus'] ?? $businessData[0]['businessStatus'] ?? null)
+            : null;
+        $businessMessage = is_array($businessData)
+            ? ($businessData['businessMessage'] ?? $businessData[0]['businessMessage'] ?? null)
+            : null;
+
+        if (($json['responseCode'] ?? '') !== '000000'
+            || ($businessStatus !== null && $businessStatus !== '000000')) {
+            $message = $businessMessage ?? $json['responseMessage'] ?? 'Unknown error';
+            $this->warn("  API error on page {$pageNo} (size {$size}): " . mb_substr((string) $message, 0, 300));
+            Log::warning('Doba API error', ['page' => $pageNo, 'size' => $size, 'message' => $message]);
+
+            return null;
+        }
+
+        return $businessData[0]['data'] ?? [];
     }
 
     /**

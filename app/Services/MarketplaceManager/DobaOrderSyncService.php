@@ -73,6 +73,14 @@ class DobaOrderSyncService
         $before = (int) DobaDailyData::query()->count();
         $daysArg = $days <= 0 ? 60 : max(1, min(730, $days));
 
+        // Newest orders first: the 60-day crawl below walks oldest to newest, so any hiccup partway
+        // used to leave the latest orders unfetched. A short recent window always runs on its own.
+        try {
+            $this->fetchRecentOrders(4, 6);
+        } catch (\Throwable $e) {
+            Log::warning('DobaOrderSyncService: recent pass failed', ['error' => $e->getMessage()]);
+        }
+
         try {
             Artisan::call('doba:daily', ['--days' => $daysArg]);
             $output = trim(Artisan::output());
