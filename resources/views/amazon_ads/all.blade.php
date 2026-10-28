@@ -2159,8 +2159,8 @@
 @endsection
 
 @section('script')
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
-    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <script defer src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             var rawSources = @json($rawSources ?? []);
@@ -6301,6 +6301,23 @@
                 if (typeof amzBgtSpendRefreshCounts === 'function') amzBgtSpendRefreshCounts();
                 if (typeof amzSbidPaint === 'function') amzSbidPaint();
             }
+            // The full campaign set (up to 20,000 rows, two heavy queries) is fetched once things have settled,
+            // not during page load or on every filter keystroke, and never for a hidden tab.
+            var amzBgtUniverseTimer = null;
+            function amzBgtEnsureUniverseSoon() {
+                if (amzBgtUniverseTimer) clearTimeout(amzBgtUniverseTimer);
+                amzBgtUniverseTimer = setTimeout(function () {
+                    amzBgtUniverseTimer = null;
+                    if (document.hidden) {
+                        document.addEventListener('visibilitychange', function once() {
+                            document.removeEventListener('visibilitychange', once);
+                            amzBgtEnsureUniverseSoon();
+                        });
+                        return;
+                    }
+                    amzBgtEnsureUniverse();
+                }, amzBgtRulesModalOpen() ? 100 : 3000);
+            }
             function amzBgtEnsureUniverse() {
                 var key = amzBgtFilterKey();
                 if (amzBgtUniverse.key === key && Array.isArray(amzBgtUniverse.rows)) {
@@ -6389,7 +6406,7 @@
                             if (typeof amzBgtRefreshAllRuleCounts === 'function') amzBgtRefreshAllRuleCounts();
                         }
                         var fast = Date.now() < (amzBgtPollStoredCounts.fastUntil || 0);
-                        var wait = running || fast || !amzBgtHasSavedCounts() ? 2500 : 30000;
+                        var wait = running || fast ? 2500 : (document.hidden ? 180000 : (amzBgtHasSavedCounts() ? 90000 : 20000));
                         amzBgtPollStoredCounts.timer = setTimeout(function () {
                             amzBgtPollStoredCounts.timer = null;
                             tick();
@@ -6556,6 +6573,13 @@
                     return true;
                 } catch (e) { return false; }
             }
+            // A count only describes the whole view when it covers (nearly) every campaign the server reports for these filters.
+            // A short count (34 of 227) once got stored as "full" and then showed a tiny SUGG DAILY BGT everywhere.
+            function amzBgtCoversAllCampaigns(n) {
+                var total = (typeof amzDistinctCampaignCount === 'number' && isFinite(amzDistinctCampaignCount)) ? amzDistinctCampaignCount : null;
+                if (total === null || total <= 0) return true;
+                return Number(n) >= Math.floor(total * 0.98);
+            }
             // Saved by the nightly job ('ENABLED') or by this page for the same filter key.
             function amzBgtSavedMatchesView() {
                 if (!amzBgtSaved || !amzBgtIsDefaultView()) return false;
@@ -6571,11 +6595,13 @@
                 var counts = saved.counts.map(function (n) { return Number(n) || 0; });
                 counts.unmatched = Number(saved.unmatched) || 0;
                 counts.campaigns = Number(saved.campaigns) || 0;
+                if (!amzBgtCoversAllCampaigns(counts.campaigns)) return null;
                 return counts;
             }
             function amzBgtStageColumn(key, counts, bands) {
                 var list = [];
                 for (var i = 0; i < counts.length; i++) list.push(Number(counts[i]) || 0);
+                amzBgtStaged.key = amzBgtFilterKey();
                 amzBgtStaged.columns[key] = {
                     counts: list,
                     ranges: amzBgtRangesOf(bands),
@@ -6591,6 +6617,8 @@
                 if (amzBgtSaveCountsTimer) clearTimeout(amzBgtSaveCountsTimer);
                 amzBgtSaveCountsTimer = setTimeout(function () {
                     amzBgtSaveCountsTimer = null;
+                    // The filters changed after these counts were taken. They describe a different view now, so drop them.
+                    if (amzBgtStaged.key && amzBgtStaged.key !== amzBgtFilterKey()) { amzBgtStaged.dirty = false; amzBgtStaged.sum = null; amzBgtStaged.columns = {}; return; }
                     var columns = {};
                     var base = (amzBgtSaved && amzBgtSaved.columns) || {};
                     Object.keys(base).forEach(function (k) { columns[k] = base[k]; });
@@ -6793,7 +6821,7 @@
                 var stored = amzBgtStoredColumn(key, bands);
                 if (stored && !(counts && counts._live)) counts = stored;
                 if (!counts) { amzBgtWriteBandCounts(key, null, 0, ''); return; }
-                if (counts._live) {
+                if (counts._live && amzBgtCoversAllCampaigns(counts.campaigns)) {
                     amzBgtStageColumn(key, counts, bands);
                     amzBgtScheduleSaveCounts();
                 }
@@ -6997,7 +7025,7 @@
                 var campaigns = 0;
                 var sbgtTotal = 0;
                 var sumRows = amzBgtCountRows();
-                var savedSum = amzBgtSaved && amzBgtSaved.sum && amzBgtSavedMatchesView() ? amzBgtSaved.sum : null;
+                var savedSum = amzBgtSaved && amzBgtSaved.sum && amzBgtSavedMatchesView() && amzBgtCoversAllCampaigns(amzBgtSaved.sum.campaigns) ? amzBgtSaved.sum : null;
                 // Full stored sum is exact while the rules are unchanged. Prefer it over a page-only count.
                 if ((!sumRows || sumRows._partial) && savedSum && !amzBgtSumIsStale() && amzBgtApplySavedSum(savedSum)) return;
                 if (!sumRows) {
@@ -7007,7 +7035,7 @@
                 var sumPartial = !!sumRows._partial;
                 // No usable stored sum (for example one saved before GPFT existed). The grid holds one page only,
                 // so load every campaign. It repaints this panel when it lands and stores the new full sum.
-                if (sumPartial && !amzBgtUniverse.failed) amzBgtEnsureUniverse();
+                if (sumPartial && !amzBgtUniverse.failed) amzBgtEnsureUniverseSoon();
                 sumRows.forEach(function (row) {
                     var parts;
                     try { parts = amzBgtDraftParts(row); } catch (e) { return; }
@@ -7048,7 +7076,7 @@
                     rows.forEach(function (r) { sumHist[amzHistSlug(r.label)] = r.n; });
                     amzHistRecord('bgt_sum', sumHist);
                 }
-                if (canvas && typeof Chart !== 'undefined') {
+                if (canvas && typeof Chart !== 'undefined' && amzBgtRulesModalOpen()) {
                     if (amzBgtColCharts.sum) { try { amzBgtColCharts.sum.destroy(); } catch (e) {} amzBgtColCharts.sum = null; }
                     amzBgtColCharts.sum = new Chart(canvas.getContext('2d'), {
                         type: 'bar',
@@ -7103,6 +7131,7 @@
                     countTotal += partCount[p.key];
                     bgtTotal += partSum[p.key];
                 });
+                amzBgtStaged.key = amzBgtFilterKey();
                 amzBgtStaged.sum = {
                     rows: rows.map(function (r) { return { label: String(r.label), n: r.n, color: r.color }; }),
                     totalN: totalN,
@@ -7114,7 +7143,7 @@
                         return { label: p.label, count: partCount[p.key], sum: partSum[p.key] };
                     })
                 };
-                if (!sumPartial && !amzBgtDraftEdited) {
+                if (!sumPartial && !amzBgtDraftEdited && amzBgtCoversAllCampaigns(campaigns)) {
                     // A sum built from unsaved draft amounts is never stored; it would show wrong totals after a reload.
                     amzBgtStaged.dirty = true;
                     amzBgtScheduleSaveCounts();
@@ -7161,7 +7190,7 @@
                     rows.forEach(function (r) { savedSumHist[amzHistSlug(r.label)] = r.n; });
                     amzHistRecord('bgt_sum', savedSumHist);
                 }
-                if (canvas && typeof Chart !== 'undefined') {
+                if (canvas && typeof Chart !== 'undefined' && amzBgtRulesModalOpen()) {
                     if (amzBgtColCharts.sum) { try { amzBgtColCharts.sum.destroy(); } catch (e) {} amzBgtColCharts.sum = null; }
                     amzBgtColCharts.sum = new Chart(canvas.getContext('2d'), {
                         type: 'bar',
@@ -9153,7 +9182,8 @@
                         return '<div class="amz-sbid-leg-row"><span class="amz-sbid-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-sbid-leg-pct">' + pct + '%</span>' + (r.hid ? amzHistDot('sbid:' + r.hid, r.label, r.color, 'SBID ' + (key === 'below' ? '< Utilized' : (key === 'above' ? '> Utilized' : 'Between')), r.hid === 'above_none' || r.hid === 'below_fb') : '') + '</div>';
                     }).join('') + '<div class="amz-sbid-leg-row amz-sbid-leg-total"><span></span><span>Sum</span><strong>' + total.toLocaleString('en-US') + '</strong><span class="amz-sbid-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>';
                 }
-                if (!canvas || typeof Chart === 'undefined') return;
+                var sbidModal = document.getElementById('amazonAdsSbidRuleModal');
+                if (!canvas || typeof Chart === 'undefined' || !sbidModal || !sbidModal.classList.contains('show')) return;
                 if (amzSbidCharts[key]) { try { amzSbidCharts[key].destroy(); } catch (e) {} amzSbidCharts[key] = null; }
                 amzSbidCharts[key] = new Chart(canvas.getContext('2d'), {
                     type: 'bar',
