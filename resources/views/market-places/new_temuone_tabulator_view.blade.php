@@ -850,112 +850,34 @@
     function chPromoRound2(n) {
         return Math.round((Number(n) || 0) * 100) / 100;
     }
-    function chPromoTemuInvertSgroiAtSprice(sprice, lp, ship) {
-        const s = Number(sprice);
-        const cost = Number(lp);
-        const shipN = Number(ship);
-        if (!(s > 0) || !(cost > 0) || !isFinite(s) || !isFinite(cost)) return null;
-        const shipUse = isFinite(shipN) && shipN > 0 ? shipN : 0;
-        const mult = 1.1364;
-        const candidates = [(s - 2.99) / mult, s / mult];
-        let best = 0;
-        let bestErr = Infinity;
-        candidates.forEach(function(base) {
-            if (!(base > 0)) return;
-            let full = base * mult;
-            if (full <= 26.99) full += 2.99;
-            const err = Math.abs(full - s);
-            if (err < bestErr - 1e-6) {
-                bestErr = err;
-                best = base;
-            } else if (Math.abs(err - bestErr) <= 1e-6 && base < best) {
-                best = base;
-            }
-        });
-        // Reject base×1.1364 with the $2.99 missing ($1.63 when Temu Price is $4.62).
-        if (!(best > 0) || bestErr > 0.05) return null;
-        const sR = best <= 26.99 ? best + 2.99 : best;
-        return ((sR * 0.95 - shipUse - cost) / cost) * 100;
-    }
-    function chPromoTemuAdsPct() {
-        if (typeof temuAdsPercentForNet === 'function') {
-            const n = parseFloat(temuAdsPercentForNet());
-            if (isFinite(n) && n > 0) return n;
-        }
-        return 0;
-    }
-    /** Live SNROI at S PRC: SGROI − (S PRC × Ads%) / LP. Dil + CVR target this, not SGROI. */
-    function chPromoTemuInvertSnroiAtSprice(sprice, lp, ship) {
-        const sgroi = chPromoTemuInvertSgroiAtSprice(sprice, lp, ship);
-        if (sgroi == null) return null;
-        const ads = chPromoTemuAdsPct();
-        const s = Number(sprice);
-        const cost = Number(lp);
-        if (!(ads > 0) || !(s > 0) || !(cost > 0)) return sgroi;
-        return sgroi - ((s * ads / 100) / cost) * 100;
-    }
-    /** Inverted S R of a full Temu price. Same base pick as S Base Prc / SGROI. */
-    function chPromoTemuInvertSrAtSprice(sprice) {
-        const s = Number(sprice);
-        if (!(s > 0) || !isFinite(s)) return 0;
-        const mult = 1.1364;
-        const candidates = [(s - 2.99) / mult, s / mult];
-        let best = 0;
-        let bestErr = Infinity;
-        candidates.forEach(function(base) {
-            if (!(base > 0)) return;
-            let full = base * mult;
-            if (full <= 26.99) full += 2.99;
-            const err = Math.abs(full - s);
-            if (err < bestErr - 1e-6) {
-                bestErr = err;
-                best = base;
-            } else if (Math.abs(err - bestErr) <= 1e-6 && (best <= 0 || base < best)) {
-                best = base;
-            }
-        });
-        if (!(best > 0) || bestErr > 0.05) return 0;
-        return best <= 26.99 ? best + 2.99 : best;
-    }
-    /** Full Temu Price whose inverted S R matches the target (same as PHP spriceFromTargetSR). */
-    function chPromoTemuSpriceFromTargetSR(targetSR) {
-        const sr = Number(targetSR);
-        if (!(sr > 0) || !isFinite(sr)) return 0;
-        const mult = 1.1364;
-        const base = sr > 26.99 ? sr : Math.max(0.01, sr - 2.99);
-        let official = base * mult;
-        if (official <= 26.99) official += 2.99;
-        const cands = [chPromoRound2(official), chPromoRound2(base * mult + 2.99), chPromoRound2(base * mult)];
-        let best = 0;
-        let bestErr = Infinity;
-        cands.forEach(function(full) {
-            if (!(full > 0)) return;
-            const inv = chPromoTemuInvertSrAtSprice(full);
-            if (!(inv > 0)) return;
-            const err = Math.abs(inv - sr);
-            if (err < bestErr - 0.001) {
-                bestErr = err;
-                best = full;
-            }
-        });
-        return best > 0 ? best : 0;
-    }
     const chPromoSnroiPriceCache = {};
-    /** Back-solve S PRC so the measured SNROI (same invert as SGROI) equals the target. */
+    /** Live SNROI at a candidate S PRC. Same math as the SNROI column (S Profit ÷ LP; no ads on this page). */
+    function chPromoTemuSnroiAt(d, price, lp) {
+        const parts = temuSpriceCalcParts(d, price);
+        if (!parts || parts.sgroi == null || !isFinite(parts.sgroi)) return null;
+        const ads = (typeof temuAdsPercentForNet === 'function') ? (parseFloat(temuAdsPercentForNet()) || 0) : 0;
+        if (!(ads > 0) || !(lp > 0) || parts.spft == null) return parts.sgroi;
+        return ((parts.spft - (price * ads / 100)) / lp) * 100;
+    }
+    /**
+     * Back-solve S PRC so the SNROI column (S Recovery = S PRC × 0.88; S Profit = S R × margin − ship − LP) equals the target.
+     * Same as /temu3-decrease chPromoSpriceFromTargetRoi.
+     */
     function chPromoSpriceFromTargetRoi(d, roiPct) {
-        const lp = parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp)) || 0;
+        const lp = parseFloat(d && (d.lp != null ? d.lp : d.LP_productmaster)) || 0;
         if (!(lp > 0)) return 0;
         const ship = parseFloat(d && (d.temu_ship != null ? d.temu_ship : d.Ship_productmaster)) || 0;
         const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
-        const ads = chPromoTemuAdsPct();
-        const key = lp.toFixed(2) + '|' + ship.toFixed(2) + '|' + roi.toFixed(2) + '|' + ads.toFixed(2);
+        const margin = temuRowMargin(d);
+        const ads = (typeof temuAdsPercentForNet === 'function') ? (parseFloat(temuAdsPercentForNet()) || 0) : 0;
+        const key = lp.toFixed(2) + '|' + ship.toFixed(2) + '|' + roi.toFixed(2) + '|' + ads.toFixed(2) + '|' + Number(margin).toFixed(4);
         if (chPromoSnroiPriceCache[key] != null) return chPromoSnroiPriceCache[key];
         let best = 0;
         let bestErr = Infinity;
         function consider(price) {
             const p = chPromoRound2(price);
             if (!(p >= 0.01)) return;
-            const sn = chPromoTemuInvertSnroiAtSprice(p, lp, ship);
+            const sn = chPromoTemuSnroiAt(d, p, lp);
             if (sn == null || !isFinite(sn)) return;
             const err = Math.abs(sn - roi);
             if (err < bestErr - 0.0001) {
@@ -963,9 +885,11 @@
                 best = p;
             }
         }
-        const seedSr = (lp * (1 + roi / 100) + ship) / 0.95;
-        const seed = chPromoTemuSpriceFromTargetSR(seedSr);
-        if (seed > 0) consider(seed);
+        const denom = (TEMU_S_RECOVERY_RATE * margin) - (ads / 100);
+        if (denom > 0) {
+            const seed = (lp * (1 + roi / 100) + ship) / denom;
+            if (isFinite(seed) && seed > 0) consider(seed);
+        }
         const hi = Math.max(80, lp * 6 + ship * 4 + 20);
         for (let cents = 50; cents <= Math.round(hi * 100); cents += 5) consider(cents / 100);
         if (best > 0) {
@@ -3185,7 +3109,7 @@
             return 'basics';
         }
         if (
-            /^(_push|cvr_percent|cvr_30|cvr_45|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_recovery|stemu_price|s_profit|temu_price_12|disc_amt|price_after_disc|ship_disc|promo_base_prc|lp|temu_ship|gpft_dollar|pm_discount|profit_percent|roi_percent|sgprft_percent|sgroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /^(_push|cvr_percent|cvr_30|cvr_45|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_recovery|stemu_price|s_profit|temu_price_12|disc_amt|price_after_disc|ship_disc|promo_base_prc|lp|temu_ship|gpft_dollar|pm_discount|age_discount|dil_discount|lmp_discount|moq_m_discount|buss_discount|pricing_discount|roi_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|profit_percent|roi_percent|sgprft_percent|sgroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
             /\b(cvr|cpn|price|prc|gpft|gprft|groi|lmp|sprc\s*dil|s\s*prc|s\s*profit|s\s*r\s*prc|sgprft|sgroi|snpft|snroi)\b/i.test(tl)
         ) {
             return 'pricing';
@@ -3902,23 +3826,11 @@
                         }
                     }
                 },
-                {
-                    title: 'PM',
-                    field: 'pm_discount',
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    width: 58,
-                    headerSort: true,
-                    sorter: function(a, b, aRow, bRow) {
-                        return ntoRowPm(aRow.getData() || {}) - ntoRowPm(bRow.getData() || {});
-                    },
-                    headerTooltip: 'PM = Sum disc % of the row (Disc $ is Std Prc × PM).',
-                    formatter: function(cell) {
-                        const pm = ntoRowPm(cell.getRow().getData() || {});
-                        if (!(pm > 0)) return '<span style="color:#adb5bd;font-weight:600;">—</span>';
-                        return '<span style="font-weight:700;" title="Sum disc ' + (Math.round(pm * 10) / 10) + '%">' + (Math.round(pm * 10) / 10) + '</span>';
-                    }
-                },
+                // Age Disc, Dil Disc, LMP Disc, B Disc, Pricing, 0 Sold, CVR Disc, Rev Disc, Sum disc, Sum Disc $ — the same Std prc vs dil
+                // discount columns /amazon-tabulator-view and /temu3-decrease show (Sum disc is the Disc % Disc $ uses).
+                ...((typeof chStdDiscColumns === 'function')
+                    ? chStdDiscColumns().filter(function(c) { return typeof chStdAppendDiscColumnsFilter !== 'function' || chStdAppendDiscColumnsFilter(c); })
+                    : []),
                 {
                     title: 'Sprc Dil',
                     field: 'SPRC_DIL',

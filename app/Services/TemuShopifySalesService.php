@@ -464,7 +464,7 @@ class TemuShopifySalesService
     /**
      * Temu 1 SGROI% at S PRC: ((S R Prc × 0.95) − ship − LP) / LP × 100, with S R Prc = S PRC × 0.88.
      */
-    public static function newTemuoneSgroiAtSprice(float $sprice, float $lp, float $ship): ?float
+    public static function newTemuoneSgroiAtSprice(float $sprice, float $lp, float $ship, ?float $margin = null): ?float
     {
         if (! ($lp > 0) || ! is_finite($lp)) {
             return null;
@@ -476,8 +476,46 @@ class TemuShopifySalesService
         if (! is_finite($ship)) {
             $ship = 0.0;
         }
+        // Temu 1 passes the marketplace "Temu" take-home (same margin /temu3-decrease uses); Temu 2 keeps 0.95.
+        $take = ($margin !== null && $margin > 0 && is_finite($margin)) ? $margin : self::DECREASE_TAKEHOME;
 
-        return (($sR * self::DECREASE_TAKEHOME) - $ship - $lp) / $lp * 100;
+        return (($sR * $take) - $ship - $lp) / $lp * 100;
+    }
+
+    /**
+     * Temu 1 / Temu 3 back-solve: S PRC whose SNROI (S R = S PRC × 0.88; S Profit = S R × margin − ship − LP) equals the target.
+     * Nearest cent to the closed-form price, so the page lands on the target (70 → 70, not 63).
+     */
+    public static function newTemuoneSpriceFromTarget(float $lp, float $ship, float $targetPct, float $margin): float
+    {
+        if (! ($lp > 0) || ! is_finite($lp) || ! is_finite($targetPct) || ! ($margin > 0)) {
+            return 0.0;
+        }
+        if (! is_finite($ship)) {
+            $ship = 0.0;
+        }
+        $denom = self::S_RECOVERY_RATE * $margin;
+        $seed = ($lp * (1 + $targetPct / 100) + $ship) / $denom;
+        if (! ($seed > 0) || ! is_finite($seed)) {
+            return 0.0;
+        }
+        $best = 0.0;
+        $bestErr = INF;
+        $center = (int) round($seed * 100);
+        for ($cents = max(1, $center - 8); $cents <= $center + 8; $cents++) {
+            $price = $cents / 100;
+            $roi = self::newTemuoneSgroiAtSprice($price, $lp, $ship, $margin);
+            if ($roi === null) {
+                continue;
+            }
+            $err = abs($roi - $targetPct);
+            if ($err < $bestErr - 0.0001) {
+                $bestErr = $err;
+                $best = $price;
+            }
+        }
+
+        return $best;
     }
 
     /**

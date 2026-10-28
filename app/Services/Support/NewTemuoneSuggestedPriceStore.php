@@ -338,7 +338,7 @@ class NewTemuoneSuggestedPriceStore
             return;
         }
         $inverted = ($lp > 0)
-            ? TemuShopifySalesService::newTemuoneSgroiAtSprice($sprice, $lp, $ship)
+            ? TemuShopifySalesService::newTemuoneSgroiAtSprice($sprice, $lp, $ship, TemuShopifySalesService::temuMarginDecimal())
             : null;
         $sBase = TemuShopifySalesService::newTemuoneSBasePrice($sprice);
         $uncapped = $sprcDil > 0 ? round($sprcDil, 2) : $sprice;
@@ -366,9 +366,12 @@ class NewTemuoneSuggestedPriceStore
     /**
      * S PRC from Dil + CVR Target NROI (SNROI), including channel Ads%.
      */
-    public static function priceFromExactSgroi(float $lp, float $ship, float $sgroi, float $adsPercent = 0.0): float
+    public static function priceFromExactSgroi(float $lp, float $ship, float $sgroi, float $adsPercent = 0.0, ?float $margin = null): float
     {
-        $raw = TemuShopifySalesService::spriceFromTargetSnroi($lp, $ship, $sgroi, $adsPercent, 0.0);
+        // Same inversion as /temu3-decrease: S R = S PRC × 0.88, S Profit = S R × margin − ship − LP (no ads on this page).
+        unset($adsPercent);
+        $margin = ($margin !== null && $margin > 0) ? $margin : TemuShopifySalesService::temuMarginDecimal();
+        $raw = TemuShopifySalesService::newTemuoneSpriceFromTarget($lp, $ship, $sgroi, $margin);
         if (! is_finite($raw) || $raw < 0.01) {
             return 0.0;
         }
@@ -456,14 +459,15 @@ class NewTemuoneSuggestedPriceStore
             return $empty;
         }
         $ads = (float) ($inputs['ads'] ?? 0);
-        $sprcDil = self::priceFromExactSgroi($lp, $ship, $ruleSgroi, $ads);
+        $margin = (float) ($inputs['margin'] ?? 0);
+        $sprcDil = self::priceFromExactSgroi($lp, $ship, $ruleSgroi, $ads, $margin > 0 ? $margin : null);
         $cap = $this->capSprice($sprcDil, $inputs['lmp'] ?? 0);
         $sprice = (float) $cap['sprice'];
         if (! ($sprice > 0)) {
             return $empty;
         }
         $capped = $sprcDil > 0 && round($sprice, 2) !== round($sprcDil, 2);
-        $inverted = TemuShopifySalesService::newTemuoneSgroiAtSprice($sprice, $lp, $ship);
+        $inverted = TemuShopifySalesService::newTemuoneSgroiAtSprice($sprice, $lp, $ship, $margin > 0 ? $margin : TemuShopifySalesService::temuMarginDecimal());
         $sgroi = $inverted !== null ? round($inverted, 2) : $ruleSgroi;
         $sBase = TemuShopifySalesService::newTemuoneSBasePrice($sprice);
 
@@ -643,7 +647,9 @@ class NewTemuoneSuggestedPriceStore
         $payload = [
             // v9: Amazon / eBay caps removed. Rows saved under v8 may be capped to those prices.
             // v10: S R Prc = S PRC × 0.88, S Base = S R (− $2.99 under $30). Saved NTO_S_BASE / SGROI used the old inversion.
-            'v' => 10,
+            // v11: S PRC inverts SNROI with the Temu margin (S Profit = S R × margin − ship − LP), same as /temu3-decrease.
+            'v' => 11,
+            'margin' => round((float) ($inputs['margin'] ?? 0), 4),
             'ads' => round((float) ($inputs['ads'] ?? 0), 2),
             'rules' => $normRules,
             'temu_l30' => (int) ($inputs['temu_l30'] ?? $inputs['sold'] ?? 0),

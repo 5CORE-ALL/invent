@@ -477,6 +477,7 @@ class NewTemuoneController extends Controller
                         'cvr' => $cvrPercent,
                         'cvr60' => $cvr60,
                         'ads' => $adsPercent,
+                        'margin' => $percentage,
                         'lmp' => $lmpInfo['raw'],
                     ],
                     $dilRules,
@@ -500,7 +501,7 @@ class NewTemuoneController extends Controller
                 $gpftPercent = ($rPrice > 0 && $tPrice > 0) ? round(($gpftDollars / $tPrice) * 100, 2) : 0.0;
                 $groiPercent = ($rPrice > 0 && $lp > 0) ? round(($gpftDollars / $lp) * 100, 2) : 0.0;
                 $spftDollars = ($sRPrice > 0)
-                    ? ($sRPrice * TemuShopifySalesService::DECREASE_TAKEHOME) - $temuShip - $lp
+                    ? ($sRPrice * $percentage) - $temuShip - $lp
                     : 0.0;
                 $sgpftPercent = ($sRPrice > 0 && $sprice > 0) ? round(($spftDollars / $sprice) * 100, 2) : 0.0;
                 $sroiPercent = ($sRPrice > 0 && $lp > 0) ? round(($spftDollars / $lp) * 100, 2) : 0.0;
