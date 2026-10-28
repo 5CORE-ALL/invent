@@ -564,6 +564,10 @@
                                     title="Export create-ad errors with Temu's exact reason">
                                 <i class="fa fa-download"></i> Export Alerts
                             </button>
+                            <button type="button" id="refresh-alerts-btn" class="btn btn-sm btn-outline-danger pricing-filter-item"
+                                    title="Re-check every goods that has an alert on Temu and clear the alerts that are no longer valid (ad now exists)">
+                                <i class="fa fa-sync"></i> Refresh Alerts
+                            </button>
                             <input type="text" id="search-goods-id" class="form-control form-control-sm pricing-filter-item"
                                    placeholder="Search Goods ID" style="width: 170px;">
                             <input type="text" id="search-sku" class="form-control form-control-sm pricing-filter-item"
@@ -3467,6 +3471,35 @@
                 document.getElementById('create-budget').value = String(createBudgetForGoods(goodsId, createAdDefaults().budget));
                 new bootstrap.Modal(document.getElementById('createAdModal')).show();
             }
+
+            document.getElementById('refresh-alerts-btn').addEventListener('click', function () {
+                const status = document.getElementById('fetch-status');
+                const btn = this;
+                cancelFetchStatusHide();
+                status.style.display = 'block';
+                status.innerHTML = '<div class="alert alert-info py-2 mb-0"><i class="fas fa-spinner fa-spin me-1"></i> Refreshing alerts from Temu…</div>';
+                btn.disabled = true;
+                $.ajax({
+                    url: '{{ route("temu.ads.refresh-alerts") }}',
+                    method: 'POST',
+                    data: { _token: '{{ csrf_token() }}' },
+                    timeout: 0,
+                    success: function (response) {
+                        Object.keys(createAlertByGoods).forEach(function (k) { delete createAlertByGoods[k]; });
+                        status.innerHTML = '<div class="alert ' + (response.success ? 'alert-success' : 'alert-danger') + ' py-2 mb-0">' + escapeAttr(response.message || 'Done') + '</div>';
+                        scheduleFetchStatusHide(8000);
+                        table.setData(dataUrl());
+                    },
+                    error: function (xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Alert refresh failed';
+                        status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeAttr(msg) + '</div>';
+                        scheduleFetchStatusHide(8000);
+                    },
+                    complete: function () {
+                        btn.disabled = false;
+                    }
+                });
+            });
 
             document.getElementById('refresh-status-btn').addEventListener('click', function () {
                 const status = document.getElementById('fetch-status');

@@ -712,6 +712,69 @@ class TemuAdsController extends Controller
     }
 
     /**
+     * Refresh the Alert column: re-check on Temu every goods that still carries a create-ad alert.
+     * If the goods now has an ad (Active / Inactive / Paused) its alert is stale, so it is cleared;
+     * goods Temu could not be asked about keep their alert.
+     */
+    public function refreshAlerts(TemuApiService $temuApi, TemuAdCreateRejectService $rejects)
+    {
+        if (! $this->reportHasColumn('ad_create_reject')) {
+            return response()->json(['success' => true, 'message' => 'No alerts to refresh', 'checked' => 0, 'cleared' => 0, 'remaining' => 0]);
+        }
+
+        @set_time_limit(180);
+
+        $goodsIds = TemuAdsApiReport::query()
+            ->whereNotNull('ad_create_reject')
+            ->where('ad_create_reject', '!=', '')
+            ->whereNotNull('goods_id')
+            ->distinct()
+            ->pluck('goods_id')
+            ->map(fn ($id) => trim((string) $id))
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($goodsIds === []) {
+            return response()->json(['success' => true, 'message' => 'No alerts to refresh', 'checked' => 0, 'cleared' => 0, 'remaining' => 0]);
+        }
+
+        $statuses = $temuApi->queryAdStatuses($goodsIds);
+        $cleared = 0;
+        $checked = 0;
+        foreach ($goodsIds as $goodsId) {
+            $status = $statuses['statuses'][$goodsId] ?? null;
+            if ($status === null) {
+                continue; // Temu did not answer for this goods: keep its alert
+            }
+            $checked++;
+            TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => $status]);
+            if (in_array($status, ['Active', 'Inactive', 'Paused'], true)) {
+                $rejects->clearReject($goodsId);
+                $cleared++;
+            }
+        }
+        if ($cleared > 0) {
+            Temu1MissingAdsController::forgetMissingTotalCache();
+        }
+
+        $remaining = count($goodsIds) - $cleared;
+        $failed = count($goodsIds) - $checked;
+        $message = "Alerts refreshed: {$cleared} cleared (ad now exists), {$remaining} still open";
+        if ($failed > 0) {
+            $message .= " — {$failed} could not be checked on Temu";
+        }
+
+        return response()->json([
+            'success' => $checked > 0 || $failed === 0,
+            'message' => $message,
+            'checked' => $checked,
+            'cleared' => $cleared,
+            'remaining' => $remaining,
+        ]);
+    }
+
+    /**
      * Daily badge history for the Temu Ads summary strip (Chart.js dot graph).
      */
     public function badgeHistory(Request $request)

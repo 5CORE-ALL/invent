@@ -5554,6 +5554,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/temu/ads/create', 'createAd')->name('temu.ads.create');
         Route::post('/temu/ads/create-bulk', 'createAdsBulk')->name('temu.ads.create-bulk');
         Route::post('/temu/ads/create-plan', 'createPlan')->name('temu.ads.create-plan');
+        Route::post('/temu/ads/refresh-alerts', 'refreshAlerts')->name('temu.ads.refresh-alerts');
         Route::post('/temu/ads/predict-roas', 'predictRoas')->name('temu.ads.predict-roas');
         Route::post('/temu/ads/refresh-status', 'refreshStatus')->name('temu.ads.refresh-status');
         Route::get('/temu/ads/sold-roas-rules', 'getSoldRoasRules')->name('temu.ads.sold-roas-rules');
