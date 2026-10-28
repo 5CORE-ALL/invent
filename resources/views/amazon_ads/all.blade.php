@@ -531,6 +531,10 @@
         .amz-card--sbgt { grid-column: span 4; }
         .amz-card--sbgt .amz-card-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .amz-kpi-tile.amz-sbgt-group { flex-direction: row; gap: 8px; }
+        .amz-bgt-refresh-btn { cursor: pointer; gap: 6px; font-weight: 700; }
+        .amz-bgt-refresh-btn:disabled { cursor: progress; opacity: .75; }
+        .amz-bgt-refresh-btn.is-busy i { animation: amzBgtSpin 0.9s linear infinite; }
+        @keyframes amzBgtSpin { to { transform: rotate(360deg); } }
         .amz-card--util .amz-card-tiles { grid-template-columns: minmax(0, 1fr); }
         .amz-card-title {
             font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
@@ -1322,6 +1326,7 @@
                             <div class="amz-card-tiles">
                                 <span id="amazonAdsDailyBudgetBadgeWrap" class="amz-kpi-tile" title="SUGGESTED daily budget = sum of floored SBGT (from the ACOS vs SBGT rule) across campaigns in the current filters. This is what the rules want, not what is set on Amazon now (see CURRENT BGT in the L30 card). Open BGT Rules for the count at each budget.">SUGG DAILY BGT:<span class="amz-kpi-val" id="amazonAdsDailyBudgetBadgeValue">$0</span></span>
                                 <span id="amazonAdsMonthlyBudgetBadgeWrap" class="amz-kpi-tile" title="SUGGESTED monthly budget = suggested daily budget (SBGT) × 30.">SUGG MONTHLY BGT:<span class="amz-kpi-val" id="amazonAdsMonthlyBudgetBadgeValue">$0</span></span>
+                                <button type="button" id="amzBgtRefreshBtn" class="amz-kpi-tile amz-bgt-refresh-btn" title="Recount every campaign and refresh SUGG DAILY / MONTHLY BGT"><i class="fa-solid fa-rotate"></i><span class="amz-bgt-refresh-label">Refresh</span></button>
                                 <div class="amz-kpi-tile amz-sbgt-group" title="Click an Lbgt color to show only those rows. Click again to clear.">
                                     <span class="amz-sync-toolbar-label">Lbgt</span>
                                     <div class="amz-sync-head-badges" data-sync-field="bgt"></div>
@@ -1473,7 +1478,7 @@
                             </div>
                             <div class="amz-raw-filter-field" style="min-width:140px;">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterAcos">Acos</label>
-                                <select id="amazonAdsFilterAcos" class="form-select form-select-sm amz-raw-filter-select" title="Filter by LT ACOS band (same ranges as BGT Vs ACOS)">
+                                <select id="amazonAdsFilterAcos" class="form-select form-select-sm amz-raw-filter-select" title="Filter by L30 ACOS band (same ranges as BGT Vs ACOS)">
                                     <option value="" selected>All</option>
                                 </select>
                             </div>
@@ -1744,7 +1749,7 @@
                     <div class="amz-bgt-cols">
                         <div class="amz-bgt-col" data-amz-bgt-panel="acos">
                             <div class="amz-bgt-col-head">
-                                <div class="amz-bgt-title" title="Inclusive LT ACOS range. Use 9999 on To for the highest band. A $0 here is added as zero. The campaign pauses only when the six-part SBGT total is $0.">BGT Vs ACOS</div>
+                                <div class="amz-bgt-title" title="Inclusive L30 ACOS% range. Use 9999 on To for the highest band. A $0 here is added as zero. The campaign pauses only when the six-part SBGT total is $0.">BGT Vs ACOS</div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs ACOS" aria-label="Minimize BGT Vs ACOS">−</button></span>
                             </div>
                             <div class="table-responsive">
@@ -2313,7 +2318,7 @@
             function amzApplyAcosDrivenBgt(rows) {
                 (rows || []).forEach(function (row) {
                     if (!row) return;
-                    var tier = amzBgtAcosFromAcos(row.ltAcos);
+                    var tier = amzBgtAcosFromAcos(row.ACOS);
                     if (tier !== null) row.bgtAcos = tier;
                     var sum = amzSumSbgtFromRow(row);
                     if (sum !== null) row.sbgt = sum;
@@ -2770,7 +2775,7 @@
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var field = cell.getField ? cell.getField() : '';
                 if (field === 'bgtAcos') {
-                    var fromAcos = amzBgtAcosFromAcos(row && row.ltAcos);
+                    var fromAcos = amzBgtAcosFromAcos(row && row.ACOS);
                     if (fromAcos !== null) v = fromAcos;
                 }
                 if (v === null || v === undefined || v === '') return amzDash();
@@ -2779,7 +2784,7 @@
                 if (t === 0) {
                     return '<span class="fw-semibold" style="color:#dc2626;" title="This part adds $0">0</span>';
                 }
-                var color = (field === 'bgtAcos') ? amzAcosTierColor(row && row.ltAcos) : amzSbgtTierColor(t);
+                var color = (field === 'bgtAcos') ? amzAcosTierColor(row && row.ACOS) : amzSbgtTierColor(t);
                 return '<span class="fw-semibold" style="color:' + color + ';">' + t + '</span>';
             }
             function fmtSbgtSum(cell) {
@@ -3258,7 +3263,7 @@
                 }
                 if (c === 'bgtAcos') {
                     col.title = 'BGT ACOS';
-                    col.headerTooltip = 'Suggested budget from BGT Vs ACOS Rule — band is the campaign LT ACOS (spend with no sales is 100%)';
+                    col.headerTooltip = 'Suggested budget from BGT Vs ACOS Rule — band is the campaign L30 ACOS% (spend with no sales is 100%)';
                     col.formatter = fmtSbgt;
                     col.width = 72;
                     col.minWidth = 64;
@@ -4227,18 +4232,22 @@
 
             // ---- AJAX bridge: translate Tabulator remote params -> DataTables protocol ----
             var amzAjaxAbort = null;
-            function amzAjaxRequestFunc(url, config, params) {
-                var source = activeRawSourceKey || 'all_reports';
+            // Opening, paging, sorting and filtering are served from the server's short-lived cache. Anything that changes
+            // data (a rule save, a push, the Refresh button) asks for a rebuild once instead.
+            var amzForceFreshNext = false;
+            function amzSetDataFresh() {
+                amzForceFreshNext = true;
+                return table.setData();
+            }
+            function amzGridBody(source, size, page, sorters) {
                 var cols = (rawSources[source] && rawSources[source].columns) ? rawSources[source].columns : [];
-                var size = parseInt(params.size, 10) || 100;
-                var page = parseInt(params.page, 10) || 1;
                 var body = new URLSearchParams();
                 body.set('draw', String(++amzDrawCounter));
                 body.set('start', String((page - 1) * size));
                 body.set('length', String(size));
                 body.set('search[value]', amzSearchQueryVal());
                 body.set('search[regex]', 'false');
-                var sorters = params.sort || [];
+                sorters = sorters || [];
                 if (sorters.length) {
                     var idx = cols.indexOf(sorters[0].field);
                     if (idx < 0) idx = 0;
@@ -4250,7 +4259,15 @@
                 }
                 var f = amzFilterPayload();
                 Object.keys(f).forEach(function (k) { body.set(k, f[k]); });
+                return body;
+            }
+            function amzAjaxRequestFunc(url, config, params) {
+                var source = activeRawSourceKey || 'all_reports';
+                var size = parseInt(params.size, 10) || 100;
+                var page = parseInt(params.page, 10) || 1;
+                var body = amzGridBody(source, size, page, params.sort || []);
                 body.set('_token', csrfToken);
+                if (amzForceFreshNext) { body.set('fresh', '1'); amzForceFreshNext = false; }
                 if (amzAjaxAbort) {
                     try { amzAjaxAbort.abort(); } catch (e) {}
                 }
@@ -4341,6 +4358,71 @@
                 }
                 console.error('amazon-ads raw data load error', error);
                 amzUpdateTotalBadge(NaN);
+            });
+
+            // ---- Background refresh: update the cells that are on screen, no page reload, no spinner ----
+            // The server keeps the answer ready (scheduler warms it every 2 minutes). This only changes cells whose value
+            // moved, and only while the tab is visible and nothing is being edited or pushed.
+            var amzBgRefreshBusy = false;
+            var amzBgRefreshLast = Date.now();
+            function amzBackgroundRefresh() {
+                if (!table || amzBgRefreshBusy || document.hidden) return;
+                if (typeof amzBgtRulesModalOpen === 'function' && amzBgtRulesModalOpen()) return;
+                if (typeof amzSbgtAutoPushBusy !== 'undefined' && amzSbgtAutoPushBusy) return;
+                var source = activeRawSourceKey || 'all_reports';
+                if (source !== 'all_reports' && source !== 'sp_reports' && source !== 'sb_reports') return;
+                var page, size, sorters = [];
+                try { page = table.getPage(); size = table.getPageSize(); } catch (e) { return; }
+                if (!page || !size) return;
+                try { sorters = (table.getSorters() || []).map(function (s) { return { field: s.field, dir: s.dir }; }); } catch (e2) {}
+                var sig = source + '|' + page + '|' + size + '|' + JSON.stringify(sorters) + '|' + amzSearchQueryVal() + '|' + JSON.stringify(amzFilterPayload());
+                var body = amzGridBody(source, size, page, sorters);
+                body.set('_token', csrfToken);
+                amzBgRefreshBusy = true;
+                fetch(dataUrlTemplate + encodeURIComponent(source), {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                    },
+                    credentials: 'same-origin',
+                    body: body.toString()
+                }).then(function (res) { return res.json(); }).then(function (json) {
+                    amzBgRefreshLast = Date.now();
+                    if (!json || !Array.isArray(json.data)) return;
+                    // The user paged, sorted or filtered while this was loading: the normal load already handled it.
+                    var now = (activeRawSourceKey || 'all_reports') + '|' + table.getPage() + '|' + table.getPageSize() + '|' + JSON.stringify((table.getSorters() || []).map(function (s) { return { field: s.field, dir: s.dir }; })) + '|' + amzSearchQueryVal() + '|' + JSON.stringify(amzFilterPayload());
+                    if (now !== sig) return;
+                    var rows = amzApplyAcosDrivenBgt(json.data);
+                    var byCampaign = {};
+                    rows.forEach(function (r) { if (r && r.campaign_id != null) byCampaign[String(r.campaign_id)] = r; });
+                    var shown = table.getRows();
+                    // A different set of campaigns on this page (new rank order): leave it to the next real load.
+                    var missing = shown.some(function (row) { var d = row.getData(); return d && d.campaign_id != null && !byCampaign[String(d.campaign_id)]; });
+                    if (missing) return;
+                    amzUpdateBadges(json);
+                    amzApplyServerSyncCounts(json);
+                    var filtered = Number(json.recordsFiltered);
+                    if (isFinite(filtered)) amzUpdateTotalBadge(filtered);
+                    shown.forEach(function (row) {
+                        var d = row.getData();
+                        var nd = d && d.campaign_id != null ? byCampaign[String(d.campaign_id)] : null;
+                        if (!nd) return;
+                        var changed = {};
+                        var any = false;
+                        Object.keys(nd).forEach(function (k) {
+                            if (JSON.stringify(nd[k]) !== JSON.stringify(d[k])) { changed[k] = nd[k]; any = true; }
+                        });
+                        if (any) { try { row.update(changed); } catch (e3) {} }
+                    });
+                    if (typeof amzBgtPaintSum === 'function') amzBgtPaintSum();
+                }).catch(function () {}).finally(function () { amzBgRefreshBusy = false; });
+            }
+            setInterval(amzBackgroundRefresh, 120000);
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden && Date.now() - amzBgRefreshLast > 120000) amzBackgroundRefresh();
             });
 
             var AMZ_COL_VIS_URL = @json(url('/tabulator-column-visibility'));
@@ -4791,7 +4873,7 @@
             }
 
             document.getElementById('amz-raw-refresh').addEventListener('click', function () {
-                Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
+                Promise.resolve(amzSetDataFresh()).finally(amzRefreshUiSoon);
             });
             document.querySelector('.amz-ads-all').addEventListener('click', function (e) {
                 var btn = e.target && e.target.closest ? e.target.closest('.amz-sync-badge') : null;
@@ -5889,7 +5971,7 @@
                             'Pulled live Amazon BGT/BID, pushed only mismatches, marked synced only after verify.\n' + messages.join('\n'),
                             failed > 0 ? 'error' : 'success'
                         );
-                        if (table) Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
+                        if (table) Promise.resolve(amzSetDataFresh()).finally(amzRefreshUiSoon);
                         return;
                     }
                     amzMarkChunkPending(chunks[index]);
@@ -5991,7 +6073,7 @@
                                 + JSON.stringify(b, null, 2);
                         }).join('\n\n');
                     amzShowPushResult(title, text || '(no response body)', failedN > 0 ? 'error' : 'success');
-                    if (table) Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
+                    if (table) Promise.resolve(amzSetDataFresh()).finally(amzRefreshUiSoon);
                     btn.innerHTML = origHtml;
                     btn.disabled = false;
                 }
@@ -6412,6 +6494,7 @@
                             }
                             if (typeof amzBgtRefreshAllRuleCounts === 'function') amzBgtRefreshAllRuleCounts();
                         }
+                        amzBgtManualRefreshTick(running, stamp);
                         var fast = Date.now() < (amzBgtPollStoredCounts.fastUntil || 0);
                         var wait = running || fast ? 2500 : (document.hidden ? 180000 : (amzBgtHasSavedCounts() ? 90000 : 20000));
                         amzBgtPollStoredCounts.timer = setTimeout(function () {
@@ -6427,6 +6510,48 @@
                 };
                 tick();
             }
+            // Refresh button next to SUGG DAILY / MONTHLY BGT.
+            var amzBgtManual = { on: false, stamp: '', since: 0 };
+            function amzBgtManualPaint(on, label) {
+                var btn = document.getElementById('amzBgtRefreshBtn');
+                if (!btn) return;
+                btn.disabled = !!on;
+                btn.classList.toggle('is-busy', !!on);
+                var lab = btn.querySelector('.amz-bgt-refresh-label');
+                if (lab) lab.textContent = label || 'Refresh';
+            }
+            function amzBgtManualDone() {
+                amzBgtManual.on = false;
+                amzBgtManualPaint(false, 'Refresh');
+            }
+            function amzBgtManualRefreshTick(running, stamp) {
+                if (!amzBgtManual.on) return;
+                var timedOut = Date.now() - amzBgtManual.since > 5 * 60 * 1000;
+                if ((!running && stamp !== amzBgtManual.stamp) || timedOut) amzBgtManualDone();
+            }
+            function amzBgtManualRefresh() {
+                if (amzBgtManual.on) return;
+                amzBgtManual.on = true;
+                amzBgtManual.stamp = amzBgtCountsStamp;
+                amzBgtManual.since = Date.now();
+                amzBgtManualPaint(true, 'Counting…');
+                if (amzBgtIsDefaultView()) {
+                    // Page-wide view: the server recounts everything and saves it. The poll picks the new total up.
+                    amzBgtRequestRecount();
+                    return;
+                }
+                // A filtered view is counted in the browser: forget what was kept and load the campaigns again.
+                amzBgtSumCacheClear();
+                amzBgtUniverse.key = '';
+                amzBgtUniverse.rows = null;
+                amzBgtUniverse.promise = null;
+                amzBgtUniverse.failed = false;
+                amzBgtEnsureUniverse().then(amzBgtManualDone, amzBgtManualDone);
+            }
+            (function () {
+                var btn = document.getElementById('amzBgtRefreshBtn');
+                if (btn) btn.addEventListener('click', amzBgtManualRefresh);
+            })();
             function amzBgtRequestRecount() {
                 // Poll every couple of seconds for a few minutes. The job can start a moment after this request returns.
                 amzBgtPollStoredCounts.fastUntil = Date.now() + 240000;
@@ -7264,7 +7389,7 @@
             // ---- BGT rule modal (ACOS bands -> SBGT) ----
             var amzCurrentBands = [];
             function amzAcosValueOfRow(row) {
-                var n = parseFloat(row && row.ltAcos);
+                var n = parseFloat(row && row.ACOS);
                 return isFinite(n) ? n : null;
             }
             function amzAcosCounts(bands) {
@@ -7397,7 +7522,7 @@
                             amzFillAcosFilterOptions();
                             amzBgtNoteSaved('BGT Vs ACOS');
                             amzUpdatePushButtons();
-                            return Promise.resolve(table.setData());
+                            return Promise.resolve(amzSetDataFresh());
                         })
                         .then(function () { amzRefreshUiSoon(); })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
@@ -7567,7 +7692,7 @@
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtViewsRule = b.rule || window.amazonAdsBgtViewsRule;
                             amzBgtNoteSaved('BGT Vs VIEWS');
-                            return Promise.resolve(table.setData());
+                            return Promise.resolve(amzSetDataFresh());
                         })
                         .then(function () { amzRefreshUiSoon(); })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
@@ -7737,7 +7862,7 @@
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtCvrRule = b.rule || window.amazonAdsBgtCvrRule;
                             amzBgtNoteSaved('BGT Vs CVR');
-                            return Promise.resolve(table.setData());
+                            return Promise.resolve(amzSetDataFresh());
                         })
                         .then(function () { amzRefreshUiSoon(); })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
@@ -7902,7 +8027,7 @@
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtPrcRule = b.rule || window.amazonAdsBgtPrcRule;
                             amzBgtNoteSaved('BGT PRC');
-                            return Promise.resolve(table.setData());
+                            return Promise.resolve(amzSetDataFresh());
                         })
                         .then(function () { amzRefreshUiSoon(); })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
@@ -8086,7 +8211,7 @@
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtReviewsRule = b.rule || window.amazonAdsBgtReviewsRule;
                             amzBgtNoteSaved('BGT Vs REVIEWS');
-                            return Promise.resolve(table.setData());
+                            return Promise.resolve(amzSetDataFresh());
                         })
                         .then(function () { amzRefreshUiSoon(); })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
@@ -8252,7 +8377,7 @@
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtDilRule = b.rule || window.amazonAdsBgtDilRule;
                             amzBgtNoteSaved('BGT Vs Dil');
-                            return Promise.resolve(table.setData());
+                            return Promise.resolve(amzSetDataFresh());
                         })
                         .then(function () { amzRefreshUiSoon(); })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
@@ -8909,7 +9034,7 @@
                         if (typeof amzBgtRefreshAllRuleCounts === 'function') amzBgtRefreshAllRuleCounts();
                         if (typeof amzBgtRequestRecount === 'function') amzBgtRequestRecount();
                         // The rules are saved at this point. Do not keep the button locked on a slow grid reload.
-                        var reloaded = table ? Promise.resolve(table.setData()).catch(function () { return null; }) : Promise.resolve();
+                        var reloaded = table ? Promise.resolve(amzSetDataFresh()).catch(function () { return null; }) : Promise.resolve();
                         var slow = new Promise(function (resolve) { setTimeout(function () { resolve('slow'); }, 6000); });
                         reloaded.then(function () {
                             amzRefreshUiSoon();
@@ -9407,7 +9532,7 @@
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsSbidRule = b.rule || window.amazonAdsSbidRule;
                             if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(sbidModalEl); if (inst) inst.hide(); }
-                            return Promise.resolve(table.setData());
+                            return Promise.resolve(amzSetDataFresh());
                         })
                         .then(function () { amzRefreshUiSoon(); })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
@@ -9506,7 +9631,7 @@
                             var inst = bootstrap.Modal.getInstance(document.getElementById('amazonAdsPrRuleModal'));
                             if (inst) inst.hide();
                         }
-                        return table ? Promise.resolve(table.setData()) : null;
+                        return table ? Promise.resolve(amzSetDataFresh()) : null;
                     })
                     .then(function () { amzRefreshUiSoon(); })
                     .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })

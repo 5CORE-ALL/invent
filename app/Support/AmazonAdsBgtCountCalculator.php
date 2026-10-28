@@ -37,7 +37,7 @@ final class AmazonAdsBgtCountCalculator
         $flaggedRows = array_values(array_filter($campaigns, fn (array $row): bool => $this->num($row['bgt_flag_value'] ?? null) !== null));
 
         $columns = [
-            'acos' => $this->tally($campaigns, $acos, 'acos_from', 'acos_to', fn (array $row): ?float => $this->num($row['ltAcos'] ?? null)),
+            'acos' => $this->tally($campaigns, $acos, 'acos_from', 'acos_to', fn (array $row): ?float => $this->num($row['ACOS'] ?? null)),
             'views' => $this->tally($campaigns, $views, 'views_from', 'views_to', fn (array $row): ?float => $this->viewsOf($row)),
             'cvr' => $this->tally($campaigns, $cvr, 'cvr_from', 'cvr_to', fn (array $row): ?float => $this->cvrOf($row)),
             'prc' => $this->tally($campaigns, $prc, 'prc_from', 'prc_to', fn (array $row): ?float => $this->picked($row, 'bgt_prc_price', 'price')),
@@ -70,6 +70,7 @@ final class AmazonAdsBgtCountCalculator
             'start' => 0,
             'length' => 20000,
             'bgt_universe' => 1,
+            'fresh' => 1,
             'search' => ['value' => '', 'regex' => 'false'],
             'date_from' => $day ?? '',
             'date_to' => $day ?? '',
@@ -259,7 +260,7 @@ final class AmazonAdsBgtCountCalculator
             $parts = [
                 'views' => $this->amount($views, $this->bandIndex($this->viewsOf($row), $views, 'views_from', 'views_to'), 'bgt'),
                 'cvr' => $this->amount($cvr, $this->bandIndex($this->cvrOf($row), $cvr, 'cvr_from', 'cvr_to'), 'bgt'),
-                'acos' => $this->amount($acos, $this->bandIndex($this->num($row['ltAcos'] ?? null), $acos, 'acos_from', 'acos_to'), 'sbgt'),
+                'acos' => $this->amount($acos, $this->bandIndex($this->num($row['ACOS'] ?? null), $acos, 'acos_from', 'acos_to'), 'sbgt'),
                 'prc' => $this->amount($prc, $this->bandIndex($this->picked($row, 'bgt_prc_price', 'price'), $prc, 'prc_from', 'prc_to'), 'bgt'),
                 'reviews' => $this->amount($reviews, $this->reviewsIndex($this->picked($row, 'bgt_reviews_rating', 'reviews'), $reviews), 'bgt'),
                 'dil' => $this->amount($dil, $this->bandIndex($this->dilOf($row), $dil, 'dil_from', 'dil_to'), 'bgt'),

@@ -1350,6 +1350,25 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * L30 ACOS% of one report row (the ACOS% column), for sorting by BGT ACOS / SBGT.
+     *
+     * @param  array<string, mixed>  $r
+     * @param  array<int, string>  $dbColumns
+     * @param  array<string, array{spend: ?float, purchases30d: ?int, sales30d: ?float, clicks: ?int}>  $l30Map
+     */
+    private static function l30AcosForSortRow(array $r, array $dbColumns, array $l30Map, string $lk): ?float
+    {
+        $arr = [];
+        if (isset($l30Map[$lk]) && $l30Map[$lk]['spend'] !== null) {
+            $arr['cost'] = $l30Map[$lk]['spend'];
+        }
+        $acosRow = self::acosCalculationRowFromGridOverlays($r, $arr, $dbColumns, $l30Map, $lk);
+        $acos = self::computedAcosPercentFromReportRow($acosRow, $dbColumns);
+
+        return ($acos !== null && is_finite((float) $acos)) ? (float) $acos : null;
+    }
+
+    /**
      * GPFT% − ACOS% for a flagged row (null when the row is not flagged), for sorting by Bgt Flag / SBGT.
      *
      * @param  array<string, mixed>  $r
@@ -3702,7 +3721,7 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Filter by LT ACOS band (same first-match ranges as BGT Vs ACOS).
+     * Filter by L30 ACOS band (same first-match ranges as BGT Vs ACOS).
      * Request value is `band:{index}`, a 0-based index, or a band label / hex color.
      */
     private static function applyAcosColorFilter(Builder $query, string $table, Request $request): void
@@ -3733,15 +3752,23 @@ class AmazonAdsController extends Controller
             $select[] = 'ad_type';
         }
         $pairs = $query->clone()->reorder()->select($select)->distinct()->get();
-        $map = self::prefetchLifetimeAcosForPageRows($table, $dbColumns, $pairs);
+        $l30 = self::l30AcosSpendForCampaigns($table, array_values(array_unique(array_filter(array_map(
+            static fn ($row): string => trim((string) ($row->campaign_id ?? '')),
+            $pairs->all()
+        )))));
+        $map = [];
+        foreach ($l30 as $cid => $v) {
+            if (isset($v['acos']) && is_numeric($v['acos'])) {
+                $map[(string) $cid] = (float) $v['acos'];
+            }
+        }
         $keep = [];
         foreach ($pairs as $row) {
             $cid = trim((string) ($row->campaign_id ?? ''));
             if ($cid === '') {
                 continue;
             }
-            $ad = $hasAd ? trim((string) ($row->ad_type ?? '')) : '';
-            $acos = $map[$cid."\0".$ad] ?? null;
+            $acos = $map[$cid] ?? null;
             if ($acos === null || self::firstAcosBandIndex((float) $acos, $bands) !== $idx) {
                 continue;
             }
@@ -4315,12 +4342,12 @@ class AmazonAdsController extends Controller
         $defaultReportRangeDates['sp_negatives'] = null;
 
         // The scheduler recounts every 30 minutes and saving rules recounts at once.
-        // Opening the page only needs a recount when there are none yet or they are old.
+        // Opening the page only needs a recount when there are none yet or the scheduler has stopped (>45 min old).
         try {
             $countedAt = AmazonAdsBgtCountStore::updatedAt();
             $fresh = $countedAt !== null
                 && AmazonAdsBgtCountStore::read() !== null
-                && Carbon::parse($countedAt)->gt(Carbon::now()->subMinutes(15));
+                && Carbon::parse($countedAt)->gt(Carbon::now()->subMinutes(45));
             if (! $fresh) {
                 AmazonAdsBgtCountRunner::startInBackground();
             }
@@ -4367,6 +4394,7 @@ class AmazonAdsController extends Controller
      */
     public function saveBgtRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             $normalized = AmazonAcosSbgtRule::normalizeRule($request->all());
             AmazonAcosSbgtRule::persistRule($normalized);
@@ -4558,6 +4586,7 @@ class AmazonAdsController extends Controller
      */
     public function saveBgtViewsRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             $normalized = AmazonAdsBgtViewsRule::normalizeRule($request->all());
             AmazonAdsBgtViewsRule::persistRule($normalized);
@@ -4605,6 +4634,7 @@ class AmazonAdsController extends Controller
      */
     public function saveBgtCvrRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             $normalized = AmazonAdsBgtCvrRule::normalizeRule($request->all());
             AmazonAdsBgtCvrRule::persistRule($normalized);
@@ -4652,6 +4682,7 @@ class AmazonAdsController extends Controller
      */
     public function saveBgtPrcRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             $normalized = AmazonAdsBgtPrcRule::normalizeRule($request->all());
             AmazonAdsBgtPrcRule::persistRule($normalized);
@@ -4699,6 +4730,7 @@ class AmazonAdsController extends Controller
      */
     public function saveBgtReviewsRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             $normalized = AmazonAdsBgtReviewsRule::normalizeRule($request->all());
             AmazonAdsBgtReviewsRule::persistRule($normalized);
@@ -4746,6 +4778,7 @@ class AmazonAdsController extends Controller
      */
     public function saveBgtDilRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             $normalized = AmazonAdsBgtDilRule::normalizeRule($request->all());
             AmazonAdsBgtDilRule::persistRule($normalized);
@@ -4793,6 +4826,7 @@ class AmazonAdsController extends Controller
      */
     public function saveBgtSpendRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             $normalized = AmazonAdsBgtSpendRule::normalizeRule($request->all());
             AmazonAdsBgtSpendRule::persistRule($normalized);
@@ -4840,6 +4874,7 @@ class AmazonAdsController extends Controller
      */
     public function saveBgtInvRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             $normalized = AmazonAdsBgtInvRule::normalizeRule($request->all());
             AmazonAdsBgtInvRule::persistRule($normalized);
@@ -4884,6 +4919,7 @@ class AmazonAdsController extends Controller
      */
     public function saveBgtGpftRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             $normalized = AmazonAdsBgtGpftRule::normalizeRule($request->all());
             AmazonAdsBgtGpftRule::persistRule($normalized);
@@ -4928,6 +4964,7 @@ class AmazonAdsController extends Controller
      */
     public function saveBgtFlagRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             $normalized = AmazonAdsBgtFlagRule::normalizeRule($request->all());
             AmazonAdsBgtFlagRule::persistRule($normalized);
@@ -6533,6 +6570,7 @@ class AmazonAdsController extends Controller
      */
     public function saveSbidRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             $normalized = AmazonAdsSbidRule::normalizeRule($request->all());
             AmazonAdsSbidRule::persistRule($normalized);
@@ -6584,6 +6622,7 @@ class AmazonAdsController extends Controller
      */
     public function savePrRule(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         try {
             AmazonAdsPauseRule::persistPr([
                 'enabled' => $request->boolean('enabled', true),
@@ -6880,6 +6919,124 @@ class AmazonAdsController extends Controller
      * Server-side JSON for DataTables (GET). Source must match RAW_TABLE_SOURCES key.
      */
     public function rawData(Request $request, string $source)
+    {
+        $universe = $request->boolean('bgt_universe') || $request->boolean('sbid_universe');
+        // Opening the page, paging, sorting and the background refresh all ask for the same slice of data many times a
+        // minute. The answer is built once (by the first visitor, the scheduled warm-up or the Refresh button) and
+        // reused for a short while. fresh=1 rebuilds it.
+        if (! in_array($source, ['all_reports', 'sp_reports', 'sb_reports', 'sd_reports'], true)) {
+            return $this->rawDataUncached($request, $source);
+        }
+        $key = self::rawDataCacheKey($request, $source);
+        $ttl = 300;
+        if (! $request->boolean('fresh')) {
+            try {
+                $hit = Cache::get($key);
+            } catch (\Throwable) {
+                $hit = null;
+            }
+            if (is_array($hit)) {
+                if (array_key_exists('draw', $hit)) {
+                    $hit['draw'] = (int) $request->input('draw', $hit['draw']);
+                }
+
+                return response()->json($hit);
+            }
+        }
+        $response = $this->rawDataUncached($request, $source);
+        if ($response instanceof JsonResponse && $response->getStatusCode() === 200) {
+            $data = $response->getData(true);
+            if (is_array($data)) {
+                try {
+                    Cache::put($key, $data, $ttl);
+                } catch (\Throwable) {
+                }
+            }
+        }
+
+        return $response;
+    }
+
+    private const RAW_CACHE_VERSION_KEY = 'amz_ads_raw_ver';
+
+    /**
+     * Rebuilds the cached answer for the page as it opens (All, active campaigns, first page, sorted by yesterday's
+     * spend), so a visitor gets it from cache. Run by the scheduler; the page itself never has to wait for it.
+     *
+     * @return array{ok: bool, rows: int, ms: int}
+     */
+    public function warmDefaultGrid(): array
+    {
+        $started = microtime(true);
+        $day = self::latestAvailableReportDayYmd('amazon_sp_campaign_reports') ?? '';
+        $cols = self::displayColumnsForTable('amazon_sp_campaign_reports');
+        $idx = array_search('ySpend', $cols, true);
+        $params = [
+            'draw' => 1,
+            'start' => 0,
+            'length' => 100,
+            'search' => ['value' => '', 'regex' => 'false'],
+            'date_from' => $day,
+            'date_to' => $day,
+            'summary_report_range' => '',
+            'filter_campaign_status' => 'ENABLED',
+            'want_acos_gpft_count' => '1',
+            'fresh' => 1,
+        ];
+        if ($idx !== false) {
+            $params['order'] = [['column' => (string) $idx, 'dir' => 'desc']];
+        }
+        $request = Request::create('/amazon-ads/raw-data/all_reports', 'POST', $params);
+        $response = $this->rawData($request, 'all_reports');
+        $data = $response instanceof JsonResponse ? $response->getData(true) : [];
+
+        return [
+            'ok' => $response->getStatusCode() === 200,
+            'rows' => is_array($data['data'] ?? null) ? count($data['data']) : 0,
+            'ms' => (int) round((microtime(true) - $started) * 1000),
+        ];
+    }
+
+    /** Same request (ignoring draw, token and fresh, and empty filters) -> same key. */
+    public static function rawDataCacheKey(Request $request, string $source): string
+    {
+        $params = $request->except(['draw', '_token', 'fresh', '_']);
+        $clean = static function ($v) use (&$clean) {
+            if (is_array($v)) {
+                $out = [];
+                foreach ($v as $k => $x) {
+                    $x = $clean($x);
+                    if ($x !== null && $x !== '' && $x !== []) {
+                        $out[$k] = $x;
+                    }
+                }
+                ksort($out);
+
+                return $out;
+            }
+
+            return is_scalar($v) ? (string) $v : null;
+        };
+        $params = $clean($params);
+        $ver = 'v0';
+        try {
+            $ver = (string) Cache::get(self::RAW_CACHE_VERSION_KEY, 'v0');
+        } catch (\Throwable) {
+        }
+
+        return 'amz_ads_raw:'.$ver.':'.$source.':'.md5(json_encode($params));
+    }
+
+    /** Drop every cached grid answer (after a push or anything else that changes what the grid shows). */
+    public static function forgetRawDataCache(): void
+    {
+        try {
+            Cache::forever(self::RAW_CACHE_VERSION_KEY, (string) microtime(true));
+        } catch (\Throwable) {
+        }
+    }
+
+    private function rawDataUncached(Request $request, string $source)
     {
         if ($request->boolean('bgt_universe') || $request->boolean('sbid_universe')) {
             @set_time_limit(app()->runningInConsole() ? 0 : 180);
@@ -7707,7 +7864,7 @@ class AmazonAdsController extends Controller
             $acosPct = $needAcosCalc
                 ? self::computedAcosPercentFromReportRow($acosCalcRow, $dbColumns)
                 : null;
-            if (in_array('ACOS', $columns, true)) {
+            if (in_array('ACOS', $columns, true) || in_array('sbgt', $columns, true) || in_array('bgtAcos', $columns, true)) {
                 $arr['ACOS'] = $acosPct;
             }
             if (in_array('acosFlag', $columns, true)) {
@@ -7726,10 +7883,10 @@ class AmazonAdsController extends Controller
                 $arr['bgt_flag_value'] = $flagGap;
             }
             if (in_array('sbgt', $columns, true) || in_array('bgtAcos', $columns, true)) {
-                $ltForBgt = (isset($arr['ltAcos']) && is_numeric($arr['ltAcos'])) ? (float) $arr['ltAcos'] : null;
-                $arr['bgtAcos'] = $ltForBgt === null
+                // BGT Vs ACOS band is the campaign's L30 ACOS% (the ACOS% column), not lifetime ACOS.
+                $arr['bgtAcos'] = ($acosPct === null || ! is_finite((float) $acosPct))
                     ? null
-                    : AmazonAcosSbgtRule::bgtAcosDecimal($ltForBgt);
+                    : AmazonAcosSbgtRule::bgtAcosDecimal((float) $acosPct);
             }
             if (in_array('sbgt', $columns, true)) {
                 $arr['sbgt'] = self::summedSbgtFromParts(
@@ -7967,7 +8124,7 @@ class AmazonAdsController extends Controller
     private static function bgtUniverseCampaign(array $row): array
     {
         $keys = [
-            'campaign_id', 'ad_type', 'ltAcos', 'viewsL7', 'page_cvr_sess7',
+            'campaign_id', 'ad_type', 'ACOS', 'ltAcos', 'viewsL7', 'page_cvr_sess7',
             'bgt_cvr_page_cvr', 'pageCvr', 'bgt_prc_price', 'price',
             'bgt_reviews_rating', 'reviews', 'bgt_dil_value', 'dil', 'Inv', 'ovl30', 'bgt_gpft_value', 'gpft', 'bgt_flag_value',
             'cost', 'spend', 'bgt', 'U7%', 'U1%', 'costPerClick', 'CPC2', 'CPC3', 'CPCAvg',
@@ -8440,7 +8597,7 @@ class AmazonAdsController extends Controller
         $needsLtCvr = $column === 'ltCvr';
         $needsLtSpendSales = in_array($column, ['ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc'], true);
         $needsL1 = $column === 'L1cost' || $column === 'L1clicks';
-        $needsAcosFlag = in_array($column, ['acosFlag', 'bgtFlag', 'sbgt'], true);
+        $needsAcosFlag = in_array($column, ['acosFlag', 'bgtFlag', 'bgtAcos', 'sbgt'], true);
 
         $names = [];
         $cids = [];
@@ -8583,7 +8740,8 @@ class AmazonAdsController extends Controller
                     ? ($ltSpendSalesMap[$lk][$ltField] ?? null)
                     : null;
             } elseif ($column === 'bgtAcos') {
-                $keys[] = is_numeric($ltAcos) ? AmazonAcosSbgtRule::bgtAcosDecimal((float) $ltAcos) : null;
+                $l30Acos = self::l30AcosForSortRow($r, $dbColumns, $l30FlagMap, $lk);
+                $keys[] = $l30Acos !== null ? AmazonAcosSbgtRule::bgtAcosDecimal($l30Acos) : null;
             } elseif ($column === 'sbgt') {
                 $fromAds = $cid !== '' ? ($ratingsByCid[$cid] ?? null) : null;
                 $rating = is_array($fromAds) && $fromAds['rating'] !== null
@@ -8596,7 +8754,7 @@ class AmazonAdsController extends Controller
                 $keys[] = self::summedSbgtFromParts(
                     AmazonAdsBgtViewsRule::apply($sess7)['bgt'],
                     AmazonAdsBgtCvrRule::apply($cvrIn)['bgt'],
-                    is_numeric($ltAcos) ? AmazonAcosSbgtRule::bgtAcosDecimal((float) $ltAcos) : null,
+                    ($l30AcosForSbgt = self::l30AcosForSortRow($r, $dbColumns, $l30FlagMap, $lk)) !== null ? AmazonAcosSbgtRule::bgtAcosDecimal($l30AcosForSbgt) : null,
                     AmazonAdsBgtPrcRule::apply($pricePrc !== null && is_numeric($pricePrc) ? (float) $pricePrc : null)['bgt'],
                     AmazonAdsBgtReviewsRule::apply($rating)['bgt'],
                     AmazonAdsBgtDilRule::apply($dil)['bgt'],
@@ -8873,6 +9031,7 @@ class AmazonAdsController extends Controller
      */
     public function pushSpSbids(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         @ini_set('memory_limit', '512M');
         @ini_set('max_execution_time', '0');
         set_time_limit(0);
@@ -9016,6 +9175,7 @@ class AmazonAdsController extends Controller
      */
     public function pushSbSbids(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         @ini_set('memory_limit', '512M');
         @ini_set('max_execution_time', '0');
         set_time_limit(0);
@@ -9291,6 +9451,7 @@ class AmazonAdsController extends Controller
         }
 
         $out = $sync->syncRows($rows, 'web');
+        self::forgetRawDataCache();
         $failed = (int) ($out['failed'] ?? 0);
         $synced = (int) ($out['synced'] ?? 0);
 
@@ -9315,6 +9476,7 @@ class AmazonAdsController extends Controller
      */
     public function pushSpSbgts(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         @ini_set('memory_limit', '512M');
         @ini_set('max_execution_time', '0');
         set_time_limit(0);
@@ -9402,6 +9564,7 @@ class AmazonAdsController extends Controller
      */
     public function pushSbSbgts(Request $request): JsonResponse
     {
+        self::forgetRawDataCache();
         @ini_set('memory_limit', '512M');
         @ini_set('max_execution_time', '0');
         set_time_limit(0);

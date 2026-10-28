@@ -42,7 +42,8 @@ final class AmazonAdsDesiredSbgtResolver
             return [];
         }
 
-        $useLifetime = $channel === 'sp' || $channel === 'sb' || $lifetimeAcosByCid !== null;
+        // BGT Vs ACOS is banded on the campaign's L30 ACOS% (same as the grid). A caller-supplied map still wins (tests).
+        $useLifetime = $lifetimeAcosByCid !== null;
         if ($useLifetime && $lifetimeAcosByCid === null && ($channel === 'sp' || $channel === 'sb')) {
             try {
                 $lifetimeAcosByCid = self::lifetimeAcosByCampaign($channel, array_keys($rows));
@@ -76,7 +77,7 @@ final class AmazonAdsDesiredSbgtResolver
 
         // BGT Vs FLAG part: GPFT-flagged campaigns only (L30 ACOS% below GPFT%), same as the grid.
         $l30ByCid = [];
-        if (($channel === 'sp' || $channel === 'sb') && AmazonAdsBgtFlagRule::hasBudgets()) {
+        if ($channel === 'sp' || $channel === 'sb') {
             try {
                 $l30ByCid = AmazonAdsController::l30AcosSpendForCampaigns(
                     $channel === 'sb' ? 'amazon_sb_campaign_reports' : 'amazon_sp_campaign_reports',
@@ -119,7 +120,10 @@ final class AmazonAdsDesiredSbgtResolver
                 $lt = $lifetimeAcosByCid[$cid] ?? null;
                 $bgtAcos = is_numeric($lt) ? AmazonAcosSbgtRule::bgtAcosDecimal((float) $lt) : null;
             } else {
-                $acos = $arr['acos_L30'] ?? $arr['acos'] ?? $arr['ACOS'] ?? null;
+                $acos = $l30ByCid[(string) $cid]['acos'] ?? null;
+                if ($acos === null) {
+                    $acos = $arr['acos_L30'] ?? $arr['acos'] ?? $arr['ACOS'] ?? null;
+                }
                 if ($acos === null || ! is_numeric($acos)) {
                     $acos = AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow($arr);
                 }

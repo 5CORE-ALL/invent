@@ -1982,6 +1982,13 @@ class Kernel extends ConsoleKernel
       
         $retryFiveTimesUntil('app:amazon-sp-keyword-reports', 'amazon-sp-keyword-reports', '18:15');
         $retryFiveTimesUntil('app:amazon-sp-negative-keywords --prune', 'amazon-sp-negative-keywords', '18:20');
+        $schedule->command('amazon-ads:warm-grid')
+            ->everyTwoMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-ads-warm-grid')
+            ->withoutOverlapping(10)
+            ->runInBackground()
+            ->appendOutputTo($log);
         $schedule->command('amazon-ads:bgt-counts')
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
