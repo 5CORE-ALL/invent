@@ -179,7 +179,7 @@ return [
         'flush_on_critical' => env('CRON_MONITOR_ALERT_FLUSH_CRITICAL', false),
     ],
 
-    'retention_days' => (int) env('CRON_MONITOR_RETENTION_DAYS', 90),
+    'retention_days' => (int) env('CRON_MONITOR_RETENTION_DAYS', 14),
 
     'notifications' => [
         'enabled' => env('CRON_MONITOR_NOTIFY_ENABLED', true),

@@ -47,10 +47,11 @@ final class AmazonAdsBgtCountRunner
         if (! is_executable($php)) {
             $php = 'php';
         }
-        $cmd = 'cd '.escapeshellarg(base_path())
+        // The whole group is detached from exec()'s pipe; otherwise exec() waits for the job to finish.
+        $cmd = '(cd '.escapeshellarg(base_path())
             .' && nohup '.escapeshellarg($php)
             .' artisan amazon-ads:bgt-counts >> '.escapeshellarg(storage_path('logs/amazon-ads-bgt-counts.log'))
-            .' 2>&1 &';
+            .' 2>&1) > /dev/null 2>&1 &';
         exec($cmd);
     }
 }

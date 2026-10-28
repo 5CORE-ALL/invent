@@ -1053,6 +1053,42 @@
         @media (max-width: 720px) {
             #amazonAdsBgtRulesModal .amz-bgt-col { flex-basis: 100%; max-width: 100%; min-width: 0; }
         }
+        /* One row of cards, left to right; the row scrolls sideways when the cards do not fit. */
+        #amazonAdsBgtRulesModal .amz-bgt-cols {
+            flex-wrap: nowrap;
+            /* Every card is as tall as the tallest one; each shows its whole table, no inner scrollbar. */
+            align-items: stretch;
+            overflow-x: auto;
+            overflow-y: visible;
+            padding-bottom: 10px;
+            scroll-snap-type: x proximity;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-cols > .amz-bgt-col {
+            flex: 0 0 340px;
+            width: 340px;
+            min-width: 340px;
+            max-width: 340px;
+            scroll-snap-align: start;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-cols > .amz-bgt-col:not(.is-min) { height: auto; overflow: visible; }
+        /* Card header on one line: title on the left, the count badges (they change with the data) in the middle,
+           expand / minimize on the right. */
+        #amazonAdsBgtRulesModal .amz-bgt-cols > .amz-bgt-col:not(.is-min) > .amz-bgt-col-head {
+            display: grid;
+            grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+            align-items: center;
+            column-gap: 8px;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-cols > .amz-bgt-col:not(.is-min) > .amz-bgt-col-head > .amz-bgt-title { grid-column: 1; justify-self: start; min-width: 0; }
+        #amazonAdsBgtRulesModal .amz-bgt-cols > .amz-bgt-col:not(.is-min) > .amz-bgt-col-head > .amz-bgt-count-badges { grid-column: 2; justify-self: center; margin: 0; flex-wrap: nowrap; min-width: 0; }
+        #amazonAdsBgtRulesModal .amz-bgt-cols > .amz-bgt-col:not(.is-min) > .amz-bgt-col-head > .amz-bgt-head-actions { grid-column: 3; justify-self: end; }
+        #amazonAdsBgtRulesModal .amz-bgt-cols > .amz-bgt-col:not(.is-min) .amz-bgt-count-badge { font-size: 11px; padding: 3px 7px; }
+        #amazonAdsBgtRulesModal .amz-bgt-cols > .amz-bgt-col:not(.is-min) .table-responsive { flex: 1 1 auto; overflow: visible; }
+        #amazonAdsBgtRulesModal .amz-bgt-cols > .amz-bgt-col:not(.is-min) .amz-bgt-add { margin-top: 8px; }
+        #amazonAdsBgtRulesModal .amz-bgt-cols > .amz-bgt-col.is-min { flex: 0 0 40px; width: 40px; min-width: 40px; max-width: 40px; }
+        #amazonAdsBgtRulesModal .amz-bgt-cols > .amz-bgt-col.is-max { flex: 1 0 100%; width: auto; min-width: 100%; max-width: none; }
         #amazonAdsBgtRulesModal .amz-bgt-col-head { padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid #eef2f7; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-col-head { border-bottom: 0; padding-bottom: 0; }
         #amazonAdsBgtRulesModal .amz-bgt-title { font-size: 14px; }
@@ -1731,7 +1767,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="amazonAdsBgtRulesModalLabel">BGT Rules</h5>
-                        <div class="amz-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT + Bgt FLAG. Save and apply writes every rule, then refreshes the page. Auto Push &amp; Pull, when on, pulls live Amazon BGT and BID and pushes only mismatches.</div>
+                        <div class="amz-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt GPFT + Bgt FLAG. Save and apply writes every rule, then refreshes the page. Auto Push &amp; Pull, when on, pulls live Amazon BGT and BID and pushes only mismatches.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1739,7 +1775,7 @@
                     <div class="amz-bgt-col amz-bgt-sumbar" data-amz-bgt-panel="sum">
                             <div class="amz-bgt-col-head">
                                 <div>
-                                    <div class="amz-bgt-title" title="SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT + Bgt FLAG. The total is floored. A total of 0 pauses the campaign.">Sum</div>
+                                    <div class="amz-bgt-title" title="SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt GPFT + Bgt FLAG. The total is floored. A total of 0 pauses the campaign.">Sum</div>
                                     <div class="amz-bgt-sum-sub">Each badge is one daily budget: campaign count, and what that group costs per day. Daily budget is the sum.</div>
                                 </div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
@@ -1891,29 +1927,6 @@
                             <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtDilRuleModalError" role="alert"></p>
                         </div>
 
-                        <div class="amz-bgt-col" data-amz-bgt-panel="inv">
-                            <div class="amz-bgt-col-head">
-                                <div class="amz-bgt-title" title="Inclusive on-hand inventory (the Inv column). First matching slab wins, top to bottom. Default budgets are 0 until you set them.">Inv Rule</div>
-                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize Inv Rule" aria-label="Minimize Inv Rule">−</button></span>
-                            </div>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtInvRuleTable">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>#</th>
-                                            <th>From</th>
-                                            <th>To</th>
-                                            <th>Bgt</th>
-                                            <th class="text-center">Count</th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="amazonAdsBgtInvRuleBandsBody"></tbody>
-                                </table>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtInvRuleAddBandBtn">Add slab</button>
-                            <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtInvRuleModalError" role="alert"></p>
-                        </div>
 
                         <div class="amz-bgt-col" data-amz-bgt-panel="gpft">
                             <div class="amz-bgt-col-head">
@@ -1963,29 +1976,6 @@
                             <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtFlagRuleModalError" role="alert"></p>
                         </div>
 
-                        <div class="amz-bgt-col" data-amz-bgt-panel="spend">
-                            <div class="amz-bgt-col-head">
-                                <div class="amz-bgt-title" title="Inclusive L30 spend (the cost column). First matching slab wins, top to bottom. Negative From, To, and Bgt are allowed.">Spend Rule</div>
-                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize Spend Rule" aria-label="Minimize Spend Rule">−</button></span>
-                            </div>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtSpendRuleTable">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>#</th>
-                                            <th>From</th>
-                                            <th>To</th>
-                                            <th>Bgt</th>
-                                            <th class="text-center">Count</th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="amazonAdsBgtSpendRuleBandsBody"></tbody>
-                                </table>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtSpendRuleAddBandBtn">Add slab</button>
-                            <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtSpendRuleModalError" role="alert"></p>
-                        </div>
 
                         </div>
                     </div>
@@ -2202,14 +2192,10 @@
             var bgtReviewsRuleSaveUrl = @json(route('amazon.ads.bgt-reviews-rule.save'));
             var bgtDilRuleGetUrl = @json(route('amazon.ads.bgt-dil-rule'));
             var bgtDilRuleSaveUrl = @json(route('amazon.ads.bgt-dil-rule.save'));
-            var bgtInvRuleGetUrl = @json(route('amazon.ads.bgt-inv-rule'));
-            var bgtInvRuleSaveUrl = @json(route('amazon.ads.bgt-inv-rule.save'));
             var bgtGpftRuleGetUrl = @json(route('amazon.ads.bgt-gpft-rule'));
             var bgtGpftRuleSaveUrl = @json(route('amazon.ads.bgt-gpft-rule.save'));
             var bgtFlagRuleGetUrl = @json(route('amazon.ads.bgt-flag-rule'));
             var bgtFlagRuleSaveUrl = @json(route('amazon.ads.bgt-flag-rule.save'));
-            var bgtSpendRuleGetUrl = @json(route('amazon.ads.bgt-spend-rule'));
-            var bgtSpendRuleSaveUrl = @json(route('amazon.ads.bgt-spend-rule.save'));
             var sbidRuleGetUrl = @json(route('amazon.ads.sbid-rule'));
             var sbidRuleSaveUrl = @json(route('amazon.ads.sbid-rule.save'));
             var pauseRuleGetUrl = @json(route('amazon.ads.pause-rule'));
@@ -2236,10 +2222,8 @@
             window.amazonAdsBgtPrcRule = @json($amazonAdsBgtPrcRule ?? null);
             window.amazonAdsBgtReviewsRule = @json($amazonAdsBgtReviewsRule ?? null);
             window.amazonAdsBgtDilRule = @json($amazonAdsBgtDilRule ?? null);
-            window.amazonAdsBgtInvRule = @json($amazonAdsBgtInvRule ?? null);
             window.amazonAdsBgtGpftRule = @json($amazonAdsBgtGpftRule ?? null);
             window.amazonAdsBgtFlagRule = @json($amazonAdsBgtFlagRule ?? null);
-            window.amazonAdsBgtSpendRule = @json($amazonAdsBgtSpendRule ?? null);
             window.amazonAdsBgtCounts = @json($amazonAdsBgtCounts ?? null);
             window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
             window.amazonAdsPauseRule = @json($amazonAdsPauseRule ?? null);
@@ -2251,9 +2235,9 @@
             var amzU7PieChart = null;
             var amzU7PieRefreshTimer = null;
 
-            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_inv_color', 'bgt_inv_label', 'bgt_inv_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value', 'bgt_flag_color', 'bgt_flag_label', 'bgt_flag_value'];
+            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value', 'bgt_flag_color', 'bgt_flag_label', 'bgt_flag_value'];
             var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'acosFlag', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'acosFlag', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -2301,7 +2285,7 @@
                 return isNaN(t) ? null : t;
             }
             function amzSumSbgtFromRow(row) {
-                var parts = [row && row.bgtViews, row && row.bgtCvr, row && row.bgtAcos, row && row.bgtPrc, row && row.bgtReviews, row && row.bgtDil, row && row.bgtInv, row && row.bgtGpft, row && row.bgtFlag];
+                var parts = [row && row.bgtViews, row && row.bgtCvr, row && row.bgtAcos, row && row.bgtPrc, row && row.bgtReviews, row && row.bgtDil, row && row.bgtGpft, row && row.bgtFlag];
                 var sum = 0, has = false;
                 for (var i = 0; i < parts.length; i++) {
                     if (parts[i] === null || parts[i] === undefined || parts[i] === '') continue;
@@ -2799,15 +2783,14 @@
                 var prc = amzBgtPartNum(row && row.bgtPrc);
                 var rev = amzBgtPartNum(row && row.bgtReviews);
                 var dilBgt = amzBgtPartNum(row && row.bgtDil);
-                var invBgt = amzBgtPartNum(row && row.bgtInv);
                 var gpftBgt = amzBgtPartNum(row && row.bgtGpft);
                 var flagBgt = amzBgtPartNum(row && row.bgtFlag);
                 var bgt = parseFloat(row && row.bgt);
                 var inSync = isFinite(bgt) && Math.round(bgt) === t;
                 var color = t === 0 ? '#dc2626' : (inSync ? '#64748b' : '#0f766e');
-                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT + Bgt FLAG';
-                var partsSum = (isFinite(views) ? views : 0) + (isFinite(cvr) ? cvr : 0) + (isFinite(acos) ? acos : 0) + (isFinite(prc) ? prc : 0) + (isFinite(rev) ? rev : 0) + (isFinite(dilBgt) ? dilBgt : 0) + (isFinite(invBgt) ? invBgt : 0) + (isFinite(gpftBgt) ? gpftBgt : 0) + (isFinite(flagBgt) ? flagBgt : 0);
-                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0) + ' + ' + (isFinite(dilBgt) ? dilBgt : 0) + ' + ' + (isFinite(invBgt) ? invBgt : 0) + ' + ' + (isFinite(gpftBgt) ? gpftBgt : 0) + ' + ' + (isFinite(flagBgt) ? flagBgt : 0);
+                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt GPFT + Bgt FLAG';
+                var partsSum = (isFinite(views) ? views : 0) + (isFinite(cvr) ? cvr : 0) + (isFinite(acos) ? acos : 0) + (isFinite(prc) ? prc : 0) + (isFinite(rev) ? rev : 0) + (isFinite(dilBgt) ? dilBgt : 0) + (isFinite(gpftBgt) ? gpftBgt : 0) + (isFinite(flagBgt) ? flagBgt : 0);
+                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0) + ' + ' + (isFinite(dilBgt) ? dilBgt : 0) + ' + ' + ' + ' + (isFinite(gpftBgt) ? gpftBgt : 0) + ' + ' + (isFinite(flagBgt) ? flagBgt : 0);
                 if (Math.abs(partsSum - Math.round(partsSum)) > 0.0001) {
                     tip += ' = ' + (Math.round(partsSum * 100) / 100) + ' → floored to ' + t;
                 }
@@ -2894,20 +2877,6 @@
                 var label = String((row && row.bgt_dil_label) || '').trim();
                 var tip = 'Bgt Dil from campaign Dil%';
                 if (isFinite(dil)) tip += ' · Dil ' + Math.round(dil) + '%';
-                if (label) tip += ' · ' + label;
-                return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
-            }
-            function fmtBgtInv(cell) {
-                var v = cell.getValue();
-                if (v === null || v === undefined || v === '') return amzDash();
-                var t = amzBgtPartNum(v);
-                if (isNaN(t)) return amzDash();
-                var row = cell.getRow ? cell.getRow().getData() : {};
-                var color = (row && row.bgt_inv_color) ? String(row.bgt_inv_color) : '#6c757d';
-                var inv = parseFloat(row && (row.bgt_inv_value != null ? row.bgt_inv_value : row.Inv));
-                var label = String((row && row.bgt_inv_label) || '').trim();
-                var tip = 'Bgt Inv from on-hand inventory';
-                if (isFinite(inv)) tip += ' · Inv ' + inv;
                 if (label) tip += ' · ' + label;
                 return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
             }
@@ -3280,7 +3249,7 @@
                 }
                 if (c === 'sbgt') {
                     col.title = 'SBGT';
-                    col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv + Bgt GPFT + Bgt FLAG. Auto-pushes daily budget when this sum differs from BGT. SBGT 0 pauses the campaign ($0 cannot be pushed).';
+                    col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt GPFT + Bgt FLAG. Auto-pushes daily budget when this sum differs from BGT. SBGT 0 pauses the campaign ($0 cannot be pushed).';
                     col.formatter = fmtSbgtSum;
                     col.width = 56;
                     col.minWidth = 50;
@@ -3322,14 +3291,6 @@
                     col.title = 'Bgt Dil';
                     col.headerTooltip = 'Suggested budget from BGT Vs Dil — same Dil% as the dil column (ovl30 ÷ Inv × 100)';
                     col.formatter = fmtBgtDil;
-                    col.width = 64;
-                    col.minWidth = 56;
-                    return;
-                }
-                if (c === 'bgtInv') {
-                    col.title = 'Bgt Inv';
-                    col.headerTooltip = 'Suggested budget from Inv Rule — on-hand inventory (Inv)';
-                    col.formatter = fmtBgtInv;
                     col.width = 64;
                     col.minWidth = 56;
                     return;
@@ -6384,10 +6345,8 @@
                 if (typeof amzBgtPrcRefreshCounts === 'function') amzBgtPrcRefreshCounts();
                 if (typeof amzBgtReviewsRefreshCounts === 'function') amzBgtReviewsRefreshCounts();
                 if (typeof amzBgtDilRefreshCounts === 'function') amzBgtDilRefreshCounts();
-                if (typeof amzBgtInvRefreshCounts === 'function') amzBgtInvRefreshCounts();
                 if (typeof amzBgtGpftRefreshCounts === 'function') amzBgtGpftRefreshCounts();
                 if (typeof amzBgtFlagRefreshCounts === 'function') amzBgtFlagRefreshCounts();
-                if (typeof amzBgtSpendRefreshCounts === 'function') amzBgtSpendRefreshCounts();
                 if (typeof amzSbidPaint === 'function') amzSbidPaint();
             }
             // The full campaign set (up to 20,000 rows, two heavy queries) is fetched once things have settled,
@@ -6575,7 +6534,6 @@
                 if (!table || typeof table.getData !== 'function') return [];
                 try { return table.getData() || []; } catch (e) { return []; }
             }
-            var amzBgtInvBands = [];
             var amzBgtGpftBands = [];
             var amzBgtFlagBands = [];
             function amzBgtSeedRuleBands() {
@@ -6592,7 +6550,6 @@
                 if (!amzBgtPrcBands.length) amzBgtPrcBands = amzBgtPrcNormalizeBands((window.amazonAdsBgtPrcRule && window.amazonAdsBgtPrcRule.bands) || []);
                 if (!amzBgtReviewsBands.length) amzBgtReviewsBands = amzBgtReviewsNormalizeBands((window.amazonAdsBgtReviewsRule && window.amazonAdsBgtReviewsRule.bands) || []);
                 if (!amzBgtDilBands.length) amzBgtDilBands = amzBgtDilNormalizeBands((window.amazonAdsBgtDilRule && window.amazonAdsBgtDilRule.bands) || []);
-                if (!amzBgtInvBands.length) amzBgtInvBands = amzBgtInvNormalizeBands((window.amazonAdsBgtInvRule && window.amazonAdsBgtInvRule.bands) || []);
                 if (!amzBgtGpftBands.length) amzBgtGpftBands = amzBgtGpftNormalizeBands((window.amazonAdsBgtGpftRule && window.amazonAdsBgtGpftRule.bands) || []);
                 if (!amzBgtFlagBands.length) amzBgtFlagBands = amzBgtFlagNormalizeBands((window.amazonAdsBgtFlagRule && window.amazonAdsBgtFlagRule.bands) || []);
             }
@@ -6620,7 +6577,7 @@
             }
             var amzBgtBandRangePairs = [
                 ['acos_from', 'acos_to'], ['views_from', 'views_to'], ['cvr_from', 'cvr_to'], ['prc_from', 'prc_to'],
-                ['rev_from', 'rev_to'], ['dil_from', 'dil_to'], ['inv_from', 'inv_to'], ['spend_from', 'spend_to'], ['gpft_from', 'gpft_to'], ['flag_from', 'flag_to']
+                ['rev_from', 'rev_to'], ['dil_from', 'dil_to'], ['gpft_from', 'gpft_to'], ['flag_from', 'flag_to']
             ];
             function amzBgtRangesOf(bands) {
                 return (bands || []).map(function (b) {
@@ -6906,8 +6863,6 @@
                     ['prc_from', 'prc_to'],
                     ['rev_from', 'rev_to'],
                     ['dil_from', 'dil_to'],
-                    ['inv_from', 'inv_to'],
-                    ['spend_from', 'spend_to'],
                     ['gpft_from', 'gpft_to'],
                     ['flag_from', 'flag_to']
                 ];
@@ -6920,7 +6875,7 @@
             var AMZ_BGT_BAND_TBODY = {
                 acos: 'amazonAdsBgtRuleBandsBody', views: 'amazonAdsBgtViewsRuleBandsBody', cvr: 'amazonAdsBgtCvrRuleBandsBody',
                 prc: 'amazonAdsBgtPrcRuleBandsBody', reviews: 'amazonAdsBgtReviewsRuleBandsBody', dil: 'amazonAdsBgtDilRuleBandsBody',
-                inv: 'amazonAdsBgtInvRuleBandsBody', gpft: 'amazonAdsBgtGpftRuleBandsBody', flag: 'amazonAdsBgtFlagRuleBandsBody', spend: 'amazonAdsBgtSpendRuleBandsBody'
+                gpft: 'amazonAdsBgtGpftRuleBandsBody', flag: 'amazonAdsBgtFlagRuleBandsBody'
             };
             // Campaign count per slab, written into the slab table itself (Count column + a Total footer).
             function amzBgtWriteBandCounts(key, rows, total, note) {
@@ -7017,7 +6972,6 @@
                     prc: amzBgtBandAmount(amzBgtPrcBands, amzBgtFirstBandIndex(amzBgtPrcValueOfRow(row), amzBgtPrcBands, 'prc_from', 'prc_to'), 'bgt'),
                     reviews: amzBgtBandAmount(amzBgtReviewsBands, amzBgtReviewsBandIndexForRating(amzBgtReviewsRatingOfRow(row), amzBgtReviewsBands), 'bgt'),
                     dil: amzBgtBandAmount(amzBgtDilBands, amzBgtFirstBandIndex(amzBgtDilValueOfRow(row), amzBgtDilBands, 'dil_from', 'dil_to'), 'bgt'),
-                    inv: amzBgtBandAmount(amzBgtInvBands, amzBgtFirstBandIndex(amzBgtInvValueOfRow(row), amzBgtInvBands, 'inv_from', 'inv_to'), 'bgt'),
                     gpft: amzBgtBandAmount(amzBgtGpftBands, amzBgtFirstBandIndex(amzBgtGpftValueOfRow(row), amzBgtGpftBands, 'gpft_from', 'gpft_to'), 'bgt'),
                     flag: amzBgtBandAmount(amzBgtFlagBands, amzBgtFirstBandIndex(amzBgtFlagValueOfRow(row), amzBgtFlagBands, 'flag_from', 'flag_to'), 'bgt')
                 };
@@ -7174,7 +7128,6 @@
                     { key: 'prc', label: 'PRC' },
                     { key: 'reviews', label: 'Reviews' },
                     { key: 'dil', label: 'Dil' },
-                    { key: 'inv', label: 'Inv' },
                     { key: 'gpft', label: 'GPFT' },
                     { key: 'flag', label: 'Flag' }
                 ];
@@ -8385,122 +8338,6 @@
                 });
             }
 
-            // ---- Inv Rule (on-hand Inv → Bgt); dynamic slabs ----
-            var AMZ_BGT_INV_DEFAULTS = [
-                { inv_from: 50, inv_to: 9999, bgt: 0, label: 'Pink', color: '#e83e8c' },
-                { inv_from: 10, inv_to: 50, bgt: 0, label: 'Green', color: '#28a745' },
-                { inv_from: 0, inv_to: 10, bgt: 0, label: 'Red', color: '#a00211' }
-            ];
-            var AMZ_BGT_INV_LABELS = ['Pink', 'Green', 'Red', 'Yellow', 'Purple', 'Blue'];
-            var AMZ_BGT_INV_COLORS = ['#e83e8c', '#28a745', '#a00211', '#ffc107', '#7c3aed', '#2563eb'];
-            function amzBgtInvNormalizeBands(existing) {
-                var prev = Array.isArray(existing) ? existing : [];
-                var out = [];
-                prev.forEach(function (keep) {
-                    if (!keep || typeof keep !== 'object') return;
-                    var from = parseFloat(keep.inv_from);
-                    var to = parseFloat(keep.inv_to);
-                    var bgt = parseFloat(keep.bgt);
-                    out.push({
-                        inv_from: isFinite(from) ? from : '',
-                        inv_to: isFinite(to) ? to : '',
-                        bgt: isFinite(bgt) ? bgt : '',
-                        label: keep.label != null ? String(keep.label) : '',
-                        color: keep.color || '#6c757d'
-                    });
-                });
-                return out.length ? out : AMZ_BGT_INV_DEFAULTS.map(function (d) { return Object.assign({}, d); });
-            }
-            function amzBgtInvNewBand() {
-                var next = amzBgtNextAddedSlab(amzBgtInvBands, 'inv_from', 'inv_to', 'bgt');
-                var i = amzBgtInvBands.length;
-                return {
-                    inv_from: next.from,
-                    inv_to: next.to,
-                    bgt: next.amt,
-                    label: AMZ_BGT_INV_LABELS[i] || ('Slab ' + (i + 1)),
-                    color: AMZ_BGT_INV_COLORS[i] || AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
-                };
-            }
-            function amzBgtInvValueOfRow(row) {
-                var raw = row && (row.bgt_inv_value != null && row.bgt_inv_value !== '' ? row.bgt_inv_value : row.Inv);
-                var n = parseFloat(raw);
-                return isFinite(n) ? n : null;
-            }
-            function amzBgtInvCounts(bands) {
-                return amzBgtCountByBands(bands, 'inv_from', 'inv_to', amzBgtInvValueOfRow);
-            }
-            function amzBgtInvRefreshCounts() {
-                var counts = amzBgtInvCounts(amzBgtInvBands);
-                amzBgtRefreshCountCells('amazonAdsBgtInvRuleBandsBody', counts);
-                amzBgtPaintColumn('inv', amzBgtInvBands, counts);
-            }
-            function amzRenderBgtInvBands(bands) {
-                var tbody = document.getElementById('amazonAdsBgtInvRuleBandsBody');
-                if (!tbody) return;
-                var canDelete = bands.length > 1;
-                var counts = amzBgtInvCounts(bands);
-                tbody.innerHTML = '';
-                bands.forEach(function (band, i) {
-                    var tr = document.createElement('tr');
-                    tr.innerHTML = ''
-                        + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="text" inputmode="decimal" step="1" class="form-control form-control-sm" value="' + (band.inv_from != null ? band.inv_from : '') + '" data-idx="' + i + '" data-field="inv_from" placeholder="0"></td>'
-                        + '<td><input type="text" inputmode="decimal" step="1" class="form-control form-control-sm" value="' + (band.inv_to != null ? band.inv_to : '') + '" data-idx="' + i + '" data-field="inv_to" placeholder="9999"></td>'
-                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
-                    tbody.appendChild(tr);
-                });
-                tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
-                    var writeBand = function (el) {
-                        var idx = +el.dataset.idx, fld = el.dataset.field;
-                        if (!amzBgtInvBands[idx]) return;
-                        amzBgtInvBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
-                    };
-                    inp.addEventListener('input', function () {
-                        writeBand(this);
-                        amzBgtInvRefreshCounts();
-                    });
-                    inp.addEventListener('change', function () {
-                        writeBand(this);
-                        amzBgtInvRefreshCounts();
-                    });
-                });
-                tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
-                    btn.addEventListener('click', function () {
-                        if (amzBgtInvBands.length <= 1) return;
-                        amzBgtInvBands.splice(+this.dataset.removeIdx, 1);
-                        amzRenderBgtInvBands(amzBgtInvBands);
-                    });
-                });
-                amzBgtInvRefreshCounts();
-            }
-            function amzLoadBgtInvBandsFromRule(rule) {
-                var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
-                amzBgtInvBands = amzBgtInvNormalizeBands(bands);
-                amzRenderBgtInvBands(amzBgtInvBands);
-            }
-            function amzRefreshBgtInvRuleFromServer(cb) {
-                amzBgtFetchRule(bgtInvRuleGetUrl, function (body) {
-                    if (body && body.rule) window.amazonAdsBgtInvRule = body.rule;
-                    if (cb) cb();
-                });
-            }
-            var bgtInvModalEl = document.getElementById('amazonAdsBgtRulesModal');
-            if (bgtInvModalEl) {
-                bgtInvModalEl.addEventListener('show.bs.modal', function () {
-                    var err = document.getElementById('amazonAdsBgtInvRuleModalError');
-                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                });
-            }
-            var bgtInvAddBtn = document.getElementById('amazonAdsBgtInvRuleAddBandBtn');
-            if (bgtInvAddBtn) {
-                bgtInvAddBtn.addEventListener('click', function () {
-                    amzBgtInvBands.push(amzBgtInvNewBand());
-                    amzRenderBgtInvBands(amzBgtInvBands);
-                });
-            }
-
             // ---- BGT Vs GPFT% Rule (campaign Avg GPFT% → Bgt); dynamic slabs, negatives allowed ----
             var AMZ_BGT_GPFT_DEFAULTS = [
                 { gpft_from: 30, gpft_to: 9999, bgt: 0, label: 'Pink', color: '#e83e8c' },
@@ -8734,163 +8571,6 @@
                 });
             }
 
-            // ---- Spend Rule (L30 cost → Bgt); dynamic slabs ----
-            var AMZ_BGT_SPEND_DEFAULTS = [
-                { spend_from: 50, spend_to: 9999, bgt: 3, label: 'Pink', color: '#e83e8c' },
-                { spend_from: 10, spend_to: 50, bgt: 2, label: 'Green', color: '#28a745' },
-                { spend_from: 0, spend_to: 10, bgt: 1, label: 'Blue', color: '#2563eb' }
-            ];
-            var AMZ_BGT_SPEND_LABELS = ['Pink', 'Green', 'Blue', 'Yellow', 'Purple', 'Red'];
-            var AMZ_BGT_SPEND_COLORS = ['#e83e8c', '#28a745', '#2563eb', '#ffc107', '#7c3aed', '#a00211'];
-            var amzBgtSpendBands = [];
-            function amzBgtSpendNormalizeBands(existing) {
-                var prev = Array.isArray(existing) ? existing : [];
-                var out = [];
-                prev.forEach(function (keep) {
-                    if (!keep || typeof keep !== 'object') return;
-                    var from = parseFloat(keep.spend_from);
-                    var to = parseFloat(keep.spend_to);
-                    var bgt = parseFloat(keep.bgt);
-                    out.push({
-                        spend_from: isFinite(from) ? from : '',
-                        spend_to: isFinite(to) ? to : '',
-                        bgt: isFinite(bgt) ? bgt : '',
-                        label: keep.label != null ? String(keep.label) : '',
-                        color: keep.color || '#6c757d'
-                    });
-                });
-                return out.length ? out : AMZ_BGT_SPEND_DEFAULTS.map(function (d) { return Object.assign({}, d); });
-            }
-            function amzBgtSpendNewBand() {
-                var next = amzBgtNextAddedSlab(amzBgtSpendBands, 'spend_from', 'spend_to', 'bgt');
-                var i = amzBgtSpendBands.length;
-                return {
-                    spend_from: next.from,
-                    spend_to: next.to,
-                    bgt: next.amt,
-                    label: AMZ_BGT_SPEND_LABELS[i] || ('Slab ' + (i + 1)),
-                    color: AMZ_BGT_SPEND_COLORS[i] || AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
-                };
-            }
-            function amzBgtSpendValueOfRow(row) {
-                var raw = row && (row.cost != null && row.cost !== '' ? row.cost : row.spend);
-                var n = parseFloat(raw);
-                return isFinite(n) ? n : null;
-            }
-            function amzBgtSpendCounts(bands) {
-                return amzBgtCountByBands(bands, 'spend_from', 'spend_to', amzBgtSpendValueOfRow);
-            }
-            function amzBgtSpendRefreshCounts() {
-                var counts = amzBgtSpendCounts(amzBgtSpendBands);
-                amzBgtRefreshCountCells('amazonAdsBgtSpendRuleBandsBody', counts);
-                amzBgtPaintColumn('spend', amzBgtSpendBands, counts);
-            }
-            function amzRenderBgtSpendBands(bands) {
-                var tbody = document.getElementById('amazonAdsBgtSpendRuleBandsBody');
-                if (!tbody) return;
-                var canDelete = bands.length > 1;
-                tbody.innerHTML = '';
-                bands.forEach(function (band, i) {
-                    var tr = document.createElement('tr');
-                    tr.innerHTML = ''
-                        + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.spend_from != null ? band.spend_from : '') + '" data-idx="' + i + '" data-field="spend_from" placeholder="0"></td>'
-                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.spend_to != null ? band.spend_to : '') + '" data-idx="' + i + '" data-field="spend_to" placeholder="9999"></td>'
-                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. The chart counts campaigns by L30 spend."></td>'
-                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
-                    tbody.appendChild(tr);
-                });
-                tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
-                    var writeBand = function (el) {
-                        var idx = +el.dataset.idx, fld = el.dataset.field;
-                        if (!amzBgtSpendBands[idx]) return;
-                        if (fld === 'bgt' || fld === 'spend_from' || fld === 'spend_to') {
-                            amzBgtSpendBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
-                        } else {
-                            amzBgtSpendBands[idx][fld] = el.value;
-                        }
-                    };
-                    inp.addEventListener('input', function () {
-                        writeBand(this);
-                        if (this.dataset.field === 'spend_from' || this.dataset.field === 'spend_to') amzBgtSpendRefreshCounts();
-                    });
-                    inp.addEventListener('change', function () {
-                        writeBand(this);
-                        if (this.dataset.field === 'spend_from' || this.dataset.field === 'spend_to') amzBgtSpendRefreshCounts();
-                    });
-                });
-                tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
-                    btn.addEventListener('click', function () {
-                        if (amzBgtSpendBands.length <= 1) return;
-                        amzBgtSpendBands.splice(+this.dataset.removeIdx, 1);
-                        amzRenderBgtSpendBands(amzBgtSpendBands);
-                    });
-                });
-                amzBgtSpendRefreshCounts();
-            }
-            function amzLoadBgtSpendBandsFromRule(rule) {
-                var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
-                amzBgtSpendBands = amzBgtSpendNormalizeBands(bands);
-                amzRenderBgtSpendBands(amzBgtSpendBands);
-            }
-            function amzRefreshBgtSpendRuleFromServer(cb) {
-                amzBgtFetchRule(bgtSpendRuleGetUrl, function (body) {
-                    if (body && body.rule) window.amazonAdsBgtSpendRule = body.rule;
-                    if (cb) cb();
-                });
-            }
-            var bgtSpendModalEl = document.getElementById('amazonAdsBgtRulesModal');
-            if (bgtSpendModalEl) {
-                bgtSpendModalEl.addEventListener('show.bs.modal', function () {
-                    var err = document.getElementById('amazonAdsBgtSpendRuleModalError');
-                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                });
-            }
-            var bgtSpendAddBtn = document.getElementById('amazonAdsBgtSpendRuleAddBandBtn');
-            if (bgtSpendAddBtn) {
-                bgtSpendAddBtn.addEventListener('click', function () {
-                    amzBgtSpendBands.push(amzBgtSpendNewBand());
-                    amzRenderBgtSpendBands(amzBgtSpendBands);
-                });
-            }
-            var bgtSpendSaveBtn = document.getElementById('amazonAdsBgtSpendRuleSaveBtn');
-            if (bgtSpendSaveBtn) {
-                bgtSpendSaveBtn.addEventListener('click', function () {
-                    var err = document.getElementById('amazonAdsBgtSpendRuleModalError');
-                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    var cleaned = (amzBgtSpendBands || []).map(function (b) {
-                        return {
-                            spend_from: (b.spend_from === '' || b.spend_from == null) ? NaN : parseFloat(b.spend_from),
-                            spend_to: (b.spend_to === '' || b.spend_to == null) ? NaN : parseFloat(b.spend_to),
-                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseFloat(b.bgt),
-                            label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
-                        };
-                    });
-                    if (!cleaned.length) { if (err) { err.textContent = 'Add at least one slab before saving.'; err.classList.remove('d-none'); } return; }
-                    for (var i = 0; i < cleaned.length; i++) {
-                        var vb = cleaned[i];
-                        if (!isFinite(vb.spend_from) || !isFinite(vb.spend_to) || !isFinite(vb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt values.'; err.classList.remove('d-none'); } return; }
-                        if (vb.spend_from > vb.spend_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
-                    }
-                    bgtSpendSaveBtn.disabled = true;
-                    fetch(bgtSpendRuleSaveUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
-                        credentials: 'same-origin',
-                        body: JSON.stringify({ bands: cleaned })
-                    })
-                        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
-                        .then(function (out) {
-                            var b = out.body || {};
-                            if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
-                            window.amazonAdsBgtSpendRule = b.rule || window.amazonAdsBgtSpendRule;
-                            amzBgtNoteSaved('Spend Rule');
-                        })
-                        .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
-                        .finally(function () { bgtSpendSaveBtn.disabled = false; });
-                });
-            }
-
             var AMZ_AUTO_PUSH_PULL_KEY = 'amzAutoPushPull';
             // Held in memory only: a reload always starts OFF, so opening or reloading the page never pulls or pushes.
             var amzAutoPushPullFlag = false;
@@ -8963,10 +8643,8 @@
                     { label: 'BGT PRC', url: bgtPrcRuleSaveUrl, body: 'amazonAdsBgtPrcRuleBandsBody', bands: amzBgtPrcBands, from: 'prc_from', to: 'prc_to', amt: 'bgt', store: 'amazonAdsBgtPrcRule', load: amzLoadBgtPrcBandsFromRule },
                     { label: 'BGT Vs REVIEWS', url: bgtReviewsRuleSaveUrl, body: 'amazonAdsBgtReviewsRuleBandsBody', bands: amzBgtReviewsBands, from: 'rev_from', to: 'rev_to', amt: 'bgt', store: 'amazonAdsBgtReviewsRule', load: amzLoadBgtReviewsBandsFromRule },
                     { label: 'BGT Vs Dil', url: bgtDilRuleSaveUrl, body: 'amazonAdsBgtDilRuleBandsBody', bands: amzBgtDilBands, from: 'dil_from', to: 'dil_to', amt: 'bgt', store: 'amazonAdsBgtDilRule', load: amzLoadBgtDilBandsFromRule },
-                    { label: 'Inv Rule', url: bgtInvRuleSaveUrl, body: 'amazonAdsBgtInvRuleBandsBody', bands: amzBgtInvBands, from: 'inv_from', to: 'inv_to', amt: 'bgt', store: 'amazonAdsBgtInvRule', load: amzLoadBgtInvBandsFromRule },
                     { label: 'BGT Vs GPFT%', url: bgtGpftRuleSaveUrl, body: 'amazonAdsBgtGpftRuleBandsBody', bands: amzBgtGpftBands, from: 'gpft_from', to: 'gpft_to', amt: 'bgt', store: 'amazonAdsBgtGpftRule', load: amzLoadBgtGpftBandsFromRule },
-                    { label: 'BGT Vs FLAG', url: bgtFlagRuleSaveUrl, body: 'amazonAdsBgtFlagRuleBandsBody', bands: amzBgtFlagBands, from: 'flag_from', to: 'flag_to', amt: 'bgt', store: 'amazonAdsBgtFlagRule', load: amzLoadBgtFlagBandsFromRule },
-                    { label: 'Spend Rule', url: bgtSpendRuleSaveUrl, body: 'amazonAdsBgtSpendRuleBandsBody', bands: amzBgtSpendBands, from: 'spend_from', to: 'spend_to', amt: 'bgt', store: 'amazonAdsBgtSpendRule', load: amzLoadBgtSpendBandsFromRule }
+                    { label: 'BGT Vs FLAG', url: bgtFlagRuleSaveUrl, body: 'amazonAdsBgtFlagRuleBandsBody', bands: amzBgtFlagBands, from: 'flag_from', to: 'flag_to', amt: 'bgt', store: 'amazonAdsBgtFlagRule', load: amzLoadBgtFlagBandsFromRule }
                 ];
                 var jobs = [];
                 var errors = [];
@@ -9072,10 +8750,8 @@
             amzLoadBgtPrcBandsFromRule(window.amazonAdsBgtPrcRule || {});
             amzLoadBgtReviewsBandsFromRule(window.amazonAdsBgtReviewsRule || {});
             amzLoadBgtDilBandsFromRule(window.amazonAdsBgtDilRule || {});
-            amzLoadBgtInvBandsFromRule(window.amazonAdsBgtInvRule || {});
             amzLoadBgtGpftBandsFromRule(window.amazonAdsBgtGpftRule || {});
             amzLoadBgtFlagBandsFromRule(window.amazonAdsBgtFlagRule || {});
-            amzLoadBgtSpendBandsFromRule(window.amazonAdsBgtSpendRule || {});
             amzBgtPollStoredCounts();
             (function () {
                 // Capture phase: runs before a slab input repaints, so stored sums are skipped once a rule is being edited.

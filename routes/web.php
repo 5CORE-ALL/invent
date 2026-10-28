@@ -3915,10 +3915,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/bgt-reviews-rule', [AmazonAdsController::class, 'saveBgtReviewsRule'])->name('amazon.ads.bgt-reviews-rule.save');
     Route::get('/amazon-ads/bgt-dil-rule', [AmazonAdsController::class, 'getBgtDilRule'])->name('amazon.ads.bgt-dil-rule');
     Route::post('/amazon-ads/bgt-dil-rule', [AmazonAdsController::class, 'saveBgtDilRule'])->name('amazon.ads.bgt-dil-rule.save');
-    Route::get('/amazon-ads/bgt-spend-rule', [AmazonAdsController::class, 'getBgtSpendRule'])->name('amazon.ads.bgt-spend-rule');
-    Route::post('/amazon-ads/bgt-spend-rule', [AmazonAdsController::class, 'saveBgtSpendRule'])->name('amazon.ads.bgt-spend-rule.save');
-    Route::get('/amazon-ads/bgt-inv-rule', [AmazonAdsController::class, 'getBgtInvRule'])->name('amazon.ads.bgt-inv-rule');
-    Route::post('/amazon-ads/bgt-inv-rule', [AmazonAdsController::class, 'saveBgtInvRule'])->name('amazon.ads.bgt-inv-rule.save');
     Route::get('/amazon-ads/bgt-gpft-rule', [AmazonAdsController::class, 'getBgtGpftRule'])->name('amazon.ads.bgt-gpft-rule');
     Route::post('/amazon-ads/bgt-gpft-rule', [AmazonAdsController::class, 'saveBgtGpftRule'])->name('amazon.ads.bgt-gpft-rule.save');
     Route::get('/amazon-ads/bgt-flag-rule', [AmazonAdsController::class, 'getBgtFlagRule'])->name('amazon.ads.bgt-flag-rule');

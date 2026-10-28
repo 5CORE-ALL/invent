@@ -20,10 +20,11 @@ final class AmazonAdsGridRefresher
             if (! is_executable($php)) {
                 $php = 'php';
             }
-            $cmd = 'cd '.escapeshellarg(base_path())
+            // The whole group is detached from exec()'s pipe; otherwise exec() waits for the job to finish.
+            $cmd = '(cd '.escapeshellarg(base_path())
                 .' && nohup nice -n 10 '.escapeshellarg($php).' -d memory_limit=2G'
                 .' artisan amazon-ads:warm-grid >> '.escapeshellarg(storage_path('logs/amazon-ads-jobs.log'))
-                .' 2>&1 &';
+                .' 2>&1) > /dev/null 2>&1 &';
             exec($cmd);
         } catch (\Throwable) {
         }

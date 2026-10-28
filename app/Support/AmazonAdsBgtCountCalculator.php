@@ -29,8 +29,6 @@ final class AmazonAdsBgtCountCalculator
         $prc = AmazonAdsBgtPrcRule::resolvedRule()['bands'] ?? [];
         $reviews = AmazonAdsBgtReviewsRule::resolvedRule()['bands'] ?? [];
         $dil = AmazonAdsBgtDilRule::resolvedRule()['bands'] ?? [];
-        $inv = AmazonAdsBgtInvRule::resolvedRule()['bands'] ?? [];
-        $spend = AmazonAdsBgtSpendRule::resolvedRule()['bands'] ?? [];
         $gpft = AmazonAdsBgtGpftRule::resolvedRule()['bands'] ?? [];
         $flag = AmazonAdsBgtFlagRule::resolvedRule()['bands'] ?? [];
         // BGT Vs FLAG counts flagged campaigns only (rows carry bgt_flag_value = GPFT% − ACOS%).
@@ -43,8 +41,6 @@ final class AmazonAdsBgtCountCalculator
             'prc' => $this->tally($campaigns, $prc, 'prc_from', 'prc_to', fn (array $row): ?float => $this->picked($row, 'bgt_prc_price', 'price')),
             'reviews' => $this->tallyReviews($campaigns, $reviews),
             'dil' => $this->tally($campaigns, $dil, 'dil_from', 'dil_to', fn (array $row): ?float => $this->dilOf($row)),
-            'inv' => $this->tally($campaigns, $inv, 'inv_from', 'inv_to', fn (array $row): ?float => $this->picked($row, 'bgt_inv_value', 'Inv')),
-            'spend' => $this->tally($campaigns, $spend, 'spend_from', 'spend_to', fn (array $row): ?float => $this->picked($row, 'cost', 'spend')),
             'gpft' => $this->tally($campaigns, $gpft, 'gpft_from', 'gpft_to', fn (array $row): ?float => $this->picked($row, 'bgt_gpft_value', 'gpft')),
             'flag' => $this->tally($flaggedRows, $flag, 'flag_from', 'flag_to', fn (array $row): ?float => $this->num($row['bgt_flag_value'] ?? null)),
         ];
@@ -52,7 +48,7 @@ final class AmazonAdsBgtCountCalculator
         $saved = [
             'filter' => self::STATUS,
             'columns' => $columns,
-            'sum' => $this->sum($campaigns, $views, $cvr, $acos, $prc, $reviews, $dil, $inv, $gpft, $flag),
+            'sum' => $this->sum($campaigns, $views, $cvr, $acos, $prc, $reviews, $dil, $gpft, $flag),
         ];
         AmazonAdsBgtCountStore::write($saved);
 
@@ -229,12 +225,11 @@ final class AmazonAdsBgtCountCalculator
      * @param  list<array<string, mixed>>  $prc
      * @param  list<array<string, mixed>>  $reviews
      * @param  list<array<string, mixed>>  $dil
-     * @param  list<array<string, mixed>>  $inv
      * @param  list<array<string, mixed>>  $gpft
      * @param  list<array<string, mixed>>  $flag
      * @return array<string, mixed>
      */
-    private function sum(array $rows, array $views, array $cvr, array $acos, array $prc, array $reviews, array $dil, array $inv, array $gpft = [], array $flag = []): array
+    private function sum(array $rows, array $views, array $cvr, array $acos, array $prc, array $reviews, array $dil, array $gpft = [], array $flag = []): array
     {
         $order = [
             ['key' => 'views', 'label' => 'Views'],
@@ -243,7 +238,6 @@ final class AmazonAdsBgtCountCalculator
             ['key' => 'prc', 'label' => 'PRC'],
             ['key' => 'reviews', 'label' => 'Reviews'],
             ['key' => 'dil', 'label' => 'Dil'],
-            ['key' => 'inv', 'label' => 'Inv'],
             ['key' => 'gpft', 'label' => 'GPFT'],
             ['key' => 'flag', 'label' => 'Flag'],
         ];
@@ -264,7 +258,6 @@ final class AmazonAdsBgtCountCalculator
                 'prc' => $this->amount($prc, $this->bandIndex($this->picked($row, 'bgt_prc_price', 'price'), $prc, 'prc_from', 'prc_to'), 'bgt'),
                 'reviews' => $this->amount($reviews, $this->reviewsIndex($this->picked($row, 'bgt_reviews_rating', 'reviews'), $reviews), 'bgt'),
                 'dil' => $this->amount($dil, $this->bandIndex($this->dilOf($row), $dil, 'dil_from', 'dil_to'), 'bgt'),
-                'inv' => $this->amount($inv, $this->bandIndex($this->picked($row, 'bgt_inv_value', 'Inv'), $inv, 'inv_from', 'inv_to'), 'bgt'),
                 'gpft' => $this->amount($gpft, $this->bandIndex($this->picked($row, 'bgt_gpft_value', 'gpft'), $gpft, 'gpft_from', 'gpft_to'), 'bgt'),
                 'flag' => $this->amount($flag, $this->bandIndex($this->num($row['bgt_flag_value'] ?? null), $flag, 'flag_from', 'flag_to'), 'bgt'),
             ];
@@ -283,7 +276,6 @@ final class AmazonAdsBgtCountCalculator
                 $parts['prc'],
                 $parts['reviews'],
                 $parts['dil'],
-                $parts['inv'],
                 $parts['gpft'],
                 $parts['flag']
             );

@@ -37,7 +37,7 @@ class AmazonAdsBgtGpftRuleTest extends TestCase
 
     public function test_bgt_gpft_is_the_eighth_sbgt_part(): void
     {
-        $this->assertSame(5, AmazonAdsSbgt::sumFromParts(1, 1, 1, null, null, null, null, 2));
-        $this->assertSame(1, AmazonAdsSbgt::sumFromParts(2, 0, 0, null, null, null, null, -1));
+        $this->assertSame(5, AmazonAdsSbgt::sumFromParts(1, 1, 1, null, null, null, 2));
+        $this->assertSame(1, AmazonAdsSbgt::sumFromParts(2, 0, 0, null, null, null, -1));
     }
 }

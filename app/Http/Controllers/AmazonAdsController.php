@@ -19,10 +19,8 @@ use App\Support\AmazonAdsBgtCvrRule;
 use App\Support\AmazonAdsBgtDilRule;
 use App\Support\AmazonAdsBgtFlagRule;
 use App\Support\AmazonAdsBgtGpftRule;
-use App\Support\AmazonAdsBgtInvRule;
 use App\Support\AmazonAdsBgtPrcRule;
 use App\Support\AmazonAdsBgtReviewsRule;
-use App\Support\AmazonAdsBgtSpendRule;
 use App\Support\AmazonAdsBgtViewsRule;
 use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsCampaignSkuSync;
@@ -100,7 +98,7 @@ class AmazonAdsController extends Controller
      * @var list<string>
      */
     private const PHP_SORT_DISPLAY_COLUMNS = [
-        'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt',
+        'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt',
         'U7%', 'U2%', 'U1%', 'CPC3', 'CPCAvg', 'CPC2', 'ltCvr',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
         'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos',
@@ -202,7 +200,7 @@ class AmazonAdsController extends Controller
     /**
      * Columns sent to the Amazon Ads All DataTables, including Inv/ovl30/dil/price and utilization % after `campaignName`
      * (U7%/U2%/U1% from L7 SP / L2 SP / L1 SP vs `campaignBudgetAmount`; so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
-     * `campaignStatus` (Stat) sits immediately before `bgt` (Lbgt); `ruleStatus` follows Stat; `activeAgain` is the last column; `sbgt` and `sbgtAlert` sit beside Lbgt, then `bgtAcos`, `bgtViews`, `bgtCvr`, `bgtPrc`, `bgtReviews`, `bgtDil`, `bgtInv`.
+     * `campaignStatus` (Stat) sits immediately before `bgt` (Lbgt); `ruleStatus` follows Stat; `activeAgain` is the last column; `sbgt` and `sbgtAlert` sit beside Lbgt, then `bgtAcos`, `bgtViews`, `bgtCvr`, `bgtPrc`, `bgtReviews`, `bgtDil`.
      * `sbidHistory` sits beside SBID and `sbgtHistory` beside SBGT. Both open the daily history chart.
      * Lbid has no column of its own: its history dot sits inside the Lbid cell.
      */
@@ -320,12 +318,12 @@ class AmazonAdsController extends Controller
 
         // Lbgt, SBGT, and the SBGT alert sit together. The budget parts follow that pair.
         if (in_array('campaignBudgetAmount', self::orderedColumnsForTable($table), true)) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'bgtAcos' && $c !== 'sbgt' && $c !== 'sbgtAlert' && $c !== 'bgtViews' && $c !== 'bgtCvr' && $c !== 'bgtPrc' && $c !== 'bgtReviews' && $c !== 'bgtDil' && $c !== 'bgtInv' && $c !== 'bgtGpft' && $c !== 'bgtFlag'));
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'bgtAcos' && $c !== 'sbgt' && $c !== 'sbgtAlert' && $c !== 'bgtViews' && $c !== 'bgtCvr' && $c !== 'bgtPrc' && $c !== 'bgtReviews' && $c !== 'bgtDil' && $c !== 'bgtGpft' && $c !== 'bgtFlag'));
             $idxBgtForSbgt = array_search('bgt', $ordered, true);
             if ($idxBgtForSbgt !== false) {
-                $budgetTail = ['sbgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'bgtGpft', 'bgtFlag'];
+                $budgetTail = ['sbgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtGpft', 'bgtFlag'];
                 if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
-                    $budgetTail = ['sbgt', 'sbgtAlert', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'bgtGpft', 'bgtFlag'];
+                    $budgetTail = ['sbgt', 'sbgtAlert', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtGpft', 'bgtFlag'];
                 }
                 array_splice($ordered, $idxBgtForSbgt + 1, 0, $budgetTail);
             }
@@ -355,9 +353,6 @@ class AmazonAdsController extends Controller
             $idxAfterBgt = array_search('bgtFlag', $ordered, true);
             if ($idxAfterBgt === false) {
                 $idxAfterBgt = array_search('bgtGpft', $ordered, true);
-            }
-            if ($idxAfterBgt === false) {
-                $idxAfterBgt = array_search('bgtInv', $ordered, true);
             }
             if ($idxAfterBgt === false) {
                 $idxAfterBgt = array_search('bgtDil', $ordered, true);
@@ -640,9 +635,9 @@ class AmazonAdsController extends Controller
      * Grid SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv.
      * A part of 0 is added as zero. The campaign pauses only when the total is 0.
      */
-    private static function summedSbgtFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null, mixed $bgtDil = null, mixed $bgtInv = null, mixed $bgtGpft = null, mixed $bgtFlag = null): ?int
+    private static function summedSbgtFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null, mixed $bgtDil = null, mixed $bgtGpft = null, mixed $bgtFlag = null): ?int
     {
-        return AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil, $bgtInv, $bgtGpft, $bgtFlag);
+        return AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil, $bgtGpft, $bgtFlag);
     }
 
     /**
@@ -4363,10 +4358,8 @@ class AmazonAdsController extends Controller
             'amazonAdsBgtPrcRule' => AmazonAdsBgtPrcRule::resolvedRule(),
             'amazonAdsBgtReviewsRule' => AmazonAdsBgtReviewsRule::resolvedRule(),
             'amazonAdsBgtDilRule' => AmazonAdsBgtDilRule::resolvedRule(),
-            'amazonAdsBgtInvRule' => AmazonAdsBgtInvRule::resolvedRule(),
             'amazonAdsBgtGpftRule' => AmazonAdsBgtGpftRule::resolvedRule(),
             'amazonAdsBgtFlagRule' => AmazonAdsBgtFlagRule::resolvedRule(),
-            'amazonAdsBgtSpendRule' => AmazonAdsBgtSpendRule::resolvedRule(),
             'amazonAdsBgtCounts' => AmazonAdsBgtCountStore::read(),
             'amazonAdsSbidRule' => AmazonAdsSbidRule::resolvedRule(),
             'amazonAdsPauseRule' => AmazonAdsPauseRule::resolvedRule(),
@@ -4800,114 +4793,6 @@ class AmazonAdsController extends Controller
             'message' => 'BGT Vs Dil saved. Bgt Dil on the grid will use the new Dil% bands after reload.',
             'rule' => $normalized,
             'status' => 200,
-            'timestamp' => time(),
-        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-          ->header('Pragma', 'no-cache')
-          ->header('Expires', '0');
-    }
-
-    /**
-     * Current L30 spend → Bgt Spend rule (Spend Rule column).
-     */
-    public function getBgtSpendRule(): JsonResponse
-    {
-        AmazonAdsBgtSpendRule::forgetResolvedCache();
-
-        return response()->json([
-            'rule' => AmazonAdsBgtSpendRule::resolvedRule(),
-            'timestamp' => time(),
-        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-          ->header('Pragma', 'no-cache')
-          ->header('Expires', '0');
-    }
-
-    /**
-     * Persist L30 spend bands → Bgt Spend.
-     */
-    public function saveBgtSpendRule(Request $request): JsonResponse
-    {
-        self::forgetRawDataCache();
-        try {
-            $normalized = AmazonAdsBgtSpendRule::normalizeRule($request->all());
-            AmazonAdsBgtSpendRule::persistRule($normalized);
-            AmazonAdsBgtSpendRule::forgetResolvedCache();
-        } catch (\InvalidArgumentException $e) {
-            return response()->json([
-                'message' => $e->getMessage(),
-                'status' => 422,
-            ], 422);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'message' => 'Could not save Spend Rule.',
-                'error' => $e->getMessage(),
-                'status' => 500,
-            ], 500);
-        }
-
-        return response()->json([
-            'message' => 'Spend Rule saved.',
-            'rule' => $normalized,
-            'status' => 200,
-            'timestamp' => time(),
-        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-          ->header('Pragma', 'no-cache')
-          ->header('Expires', '0');
-    }
-
-    /**
-     * Current on-hand inventory → Bgt Inv rule.
-     */
-    public function getBgtInvRule(): JsonResponse
-    {
-        AmazonAdsBgtInvRule::forgetResolvedCache();
-
-        return response()->json([
-            'rule' => AmazonAdsBgtInvRule::resolvedRule(),
-            'timestamp' => time(),
-        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-          ->header('Pragma', 'no-cache')
-          ->header('Expires', '0');
-    }
-
-    /**
-     * Persist inventory slabs → Bgt Inv.
-     */
-    public function saveBgtInvRule(Request $request): JsonResponse
-    {
-        self::forgetRawDataCache();
-        try {
-            $normalized = AmazonAdsBgtInvRule::normalizeRule($request->all());
-            AmazonAdsBgtInvRule::persistRule($normalized);
-            AmazonAdsBgtInvRule::forgetResolvedCache();
-        } catch (\InvalidArgumentException $e) {
-            return response()->json([
-                'message' => $e->getMessage(),
-                'status' => 422,
-            ], 422);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'message' => 'Could not save Inv Rule.',
-                'error' => $e->getMessage(),
-                'status' => 500,
-            ], 500);
-        }
-
-        return response()->json([
-            'message' => 'Inv Rule saved.',
-            'rule' => $normalized,
-            'status' => 200,
-            'timestamp' => time(),
-        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-          ->header('Pragma', 'no-cache')
-          ->header('Expires', '0');
-    }
-
-    public function getBgtGpftRule(): JsonResponse
-    {
-        AmazonAdsBgtGpftRule::forgetResolvedCache();
-
-        return response()->json([
-            'rule' => AmazonAdsBgtGpftRule::resolvedRule(),
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache')
@@ -7563,7 +7448,7 @@ class AmazonAdsController extends Controller
             || in_array('pageCvr', $columns, true) || in_array('bgtViews', $columns, true)
             || in_array('bgtCvr', $columns, true) || in_array('bgtPrc', $columns, true)
             || in_array('bgtReviews', $columns, true) || in_array('bgtDil', $columns, true)
-            || in_array('bgtInv', $columns, true) || in_array('bgtGpft', $columns, true) || in_array('bgtFlag', $columns, true) || in_array('acosGpft', $columns, true) || in_array('acosFlag', $columns, true)
+            || in_array('bgtGpft', $columns, true) || in_array('bgtFlag', $columns, true) || in_array('acosGpft', $columns, true) || in_array('acosFlag', $columns, true)
             || in_array('viewsL30', $columns, true) || in_array('viewsL7', $columns, true);
         foreach (self::SKU_METRIC_DISPLAY_COLUMNS as $skuCol) {
             if (in_array($skuCol, $columns, true)) {
@@ -7825,14 +7710,6 @@ class AmazonAdsController extends Controller
                         $arr['bgt_dil_value'] = $dilVal;
                     }
                 }
-                if (in_array('bgtInv', $columns, true) || in_array('sbgt', $columns, true)) {
-                    $invForRule = isset($mSku['inv']) && is_numeric($mSku['inv']) ? (float) $mSku['inv'] : null;
-                    $hitInv = AmazonAdsBgtInvRule::apply($invForRule);
-                    $arr['bgtInv'] = $hitInv['bgt'];
-                    $arr['bgt_inv_color'] = $hitInv['color'];
-                    $arr['bgt_inv_label'] = $hitInv['label'];
-                    $arr['bgt_inv_value'] = $invForRule;
-                }
                 if (in_array('acosGpft', $columns, true)) {
                     $arr['acosGpft'] = isset($mSku['gpft']) && is_numeric($mSku['gpft']) ? (float) $mSku['gpft'] : null;
                 }
@@ -8048,7 +7925,6 @@ class AmazonAdsController extends Controller
                     $arr['bgtPrc'] ?? null,
                     $arr['bgtReviews'] ?? null,
                     $arr['bgtDil'] ?? null,
-                    $arr['bgtInv'] ?? null,
                     $arr['bgtGpft'] ?? null,
                     $arr['bgtFlag'] ?? null
                 );
@@ -8730,7 +8606,7 @@ class AmazonAdsController extends Controller
     {
         $handled = [
             'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain',
-            'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'gpft', 'acosGpft', 'acosFlag', 'bgtGpft', 'bgtFlag', 'sbgt',
+            'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'acosGpft', 'acosFlag', 'bgtGpft', 'bgtFlag', 'sbgt',
             'CPC3', 'CPCAvg', 'CPC2', 'ltCvr', 'L1cost', 'L1clicks',
             'pageCvr', 'viewsL30', 'viewsL7', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc',
         ];
@@ -8739,11 +8615,11 @@ class AmazonAdsController extends Controller
         }
 
         $hasAd = in_array('ad_type', $dbColumns, true);
-        $needsSku = in_array($column, ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgtDil', 'bgtInv', 'gpft', 'acosGpft', 'acosFlag', 'bgtGpft', 'bgtFlag', 'bgtPrc', 'bgtReviews', 'sbgt', 'ruleStatus'], true);
+        $needsSku = in_array($column, ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgtDil', 'gpft', 'acosGpft', 'acosFlag', 'bgtGpft', 'bgtFlag', 'bgtPrc', 'bgtReviews', 'sbgt', 'ruleStatus'], true);
         $needsViews = in_array($column, ['bgtViews', 'bgtCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'sbgt'], true);
         $needsLtAcos = in_array($column, ['ltAcos', 'bgtAcos', 'sbgt'], true);
         $needsRatings = in_array($column, ['reviews', 'bgtReviews', 'sbgt'], true);
-        $needsShopifyInv = in_array($column, ['Inv', 'INV', 'ovl30', 'dil', 'bgtDil', 'bgtInv', 'sbgt'], true);
+        $needsShopifyInv = in_array($column, ['Inv', 'INV', 'ovl30', 'dil', 'bgtDil', 'sbgt'], true);
         $needsCpcDay = $column === 'CPC2' || $column === 'CPC3';
         $needsCpcAvg = $column === 'CPCAvg';
         $needsLtCvr = $column === 'ltCvr';
@@ -8862,8 +8738,6 @@ class AmazonAdsController extends Controller
                 $keys[] = $column === 'reviews'
                     ? $rating
                     : AmazonAdsBgtReviewsRule::apply($rating)['bgt'];
-            } elseif ($column === 'bgtInv') {
-                $keys[] = AmazonAdsBgtInvRule::apply($inv)['bgt'];
             } elseif ($column === 'bgtFlag') {
                 $keys[] = AmazonAdsBgtFlagRule::apply(self::flagGapForSortRow($r, $dbColumns, $l30FlagMap, $lk, isset($m['gpft']) && is_numeric($m['gpft']) ? (float) $m['gpft'] : null))['bgt'];
             } elseif ($column === 'acosFlag') {
@@ -8910,7 +8784,6 @@ class AmazonAdsController extends Controller
                     AmazonAdsBgtPrcRule::apply($pricePrc !== null && is_numeric($pricePrc) ? (float) $pricePrc : null)['bgt'],
                     AmazonAdsBgtReviewsRule::apply($rating)['bgt'],
                     AmazonAdsBgtDilRule::apply($dil)['bgt'],
-                    AmazonAdsBgtInvRule::apply($inv)['bgt'],
                     AmazonAdsBgtGpftRule::apply(isset($m['gpft']) && is_numeric($m['gpft']) ? (float) $m['gpft'] : null)['bgt'],
                     AmazonAdsBgtFlagRule::apply(self::flagGapForSortRow($r, $dbColumns, $l30FlagMap, $lk, isset($m['gpft']) && is_numeric($m['gpft']) ? (float) $m['gpft'] : null))['bgt']
                 );

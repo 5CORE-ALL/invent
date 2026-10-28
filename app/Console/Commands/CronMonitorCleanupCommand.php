@@ -13,7 +13,7 @@ class CronMonitorCleanupCommand extends Command
 
     public function handle(CronExecutionLogRepository $repository): int
     {
-        $days = (int) ($this->option('days') ?: config('cron-monitor.retention_days', 90));
+        $days = (int) ($this->option('days') ?: config('cron-monitor.retention_days', 14));
         $deleted = $repository->purgeOlderThan($days);
         $this->info("Deleted {$deleted} cron execution log(s) older than {$days} days.");
 

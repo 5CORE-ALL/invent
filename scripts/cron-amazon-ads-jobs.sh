@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Amazon Ads background jobs, run every 10 minutes straight from cron (not through the overloaded schedule:run).
-#   amazon-ads:warm-grid   rebuilds the cached first page of /amazon-ads/all
+#   amazon-ads:warm-grid   rebuilds the cached views of /amazon-ads/all (the default one and the ones people opened lately)
 #   amazon-ads:bgt-counts  recounts the BGT rule bands and the SUGG DAILY / MONTHLY BGT total
 # Each job has its own lock, so a slow run is skipped instead of piling up, and the next slot starts on time.
 # Install: see /etc/cron.d/amazon-ads-jobs (runs this as inventory_5c_usr).

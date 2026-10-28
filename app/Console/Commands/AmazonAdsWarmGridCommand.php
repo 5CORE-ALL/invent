@@ -36,9 +36,14 @@ class AmazonAdsWarmGridCommand extends Command
             $ok = true;
 
             $last = 0;
+            $ver = AmazonAdsController::rawDataVersion();
             if (! $this->option('force')) {
                 try {
-                    $last = (int) Cache::get(self::STAMP_KEY, 0);
+                    $stamp = Cache::get(self::STAMP_KEY);
+                    // Only counts when no rule save or push happened since.
+                    if (is_array($stamp) && ($stamp['ver'] ?? null) === $ver) {
+                        $last = (int) ($stamp['at'] ?? 0);
+                    }
                 } catch (\Throwable) {
                     $last = 0;
                 }
@@ -50,7 +55,7 @@ class AmazonAdsWarmGridCommand extends Command
                 $ok = (bool) $out['ok'];
                 if ($ok) {
                     try {
-                        Cache::put(self::STAMP_KEY, time(), 3600);
+                        Cache::put(self::STAMP_KEY, ['at' => time(), 'ver' => $ver], 3600);
                     } catch (\Throwable) {
                     }
                 }

@@ -32,8 +32,8 @@ class AmazonAdsSortPageTest extends TestCase
 
         $this->assertEqualsWithDelta(8.84, $dil, 0.01);
         // Name-only metrics drop Bgt Dil. Linked SKUs (Inv 995, OV L30 88) add that $1, so SBGT is 2 not 1.
-        $this->assertSame(1, AmazonAdsSbgt::sumFromParts(1, 0, 0, null, 0, null, null));
-        $this->assertSame(2, AmazonAdsSbgt::sumFromParts(1, 0, 0, null, 0, 1, 0));
+        $this->assertSame(1, AmazonAdsSbgt::sumFromParts(1, 0, 0, null, 0, null));
+        $this->assertSame(2, AmazonAdsSbgt::sumFromParts(1, 0, 0, null, 0, 1));
     }
 
     public function test_positive_name_inv_is_kept(): void

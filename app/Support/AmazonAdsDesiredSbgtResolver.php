@@ -133,7 +133,6 @@ final class AmazonAdsDesiredSbgtResolver
             $bgtPrc = AmazonAdsBgtPrcRule::apply($gm['price'] ?? null)['bgt'] ?? null;
             $bgtReviews = AmazonAdsBgtReviewsRule::apply($rating)['bgt'] ?? null;
             $bgtDil = AmazonAdsBgtDilRule::apply($dilVal)['bgt'] ?? null;
-            $bgtInv = AmazonAdsBgtInvRule::apply($inv)['bgt'] ?? null;
             $gpftVal = isset($mSku['gpft']) && is_numeric($mSku['gpft']) ? (float) $mSku['gpft'] : null;
             $bgtGpft = AmazonAdsBgtGpftRule::apply($gpftVal)['bgt'] ?? null;
 
@@ -141,7 +140,7 @@ final class AmazonAdsDesiredSbgtResolver
             $flagGap = AmazonAdsBgtFlagRule::flagGap($l30['acos'] ?? null, $gpftVal, $l30['spend'] ?? null);
             $bgtFlag = AmazonAdsBgtFlagRule::apply($flagGap)['bgt'] ?? null;
 
-            $sum = AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil, $bgtInv, $bgtGpft, $bgtFlag);
+            $sum = AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil, $bgtGpft, $bgtFlag);
             if ($sum === null && isset($arr['sbgt']) && is_numeric($arr['sbgt'])) {
                 $sum = (int) $arr['sbgt'];
             }

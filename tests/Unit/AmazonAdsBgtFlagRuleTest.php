@@ -37,7 +37,7 @@ class AmazonAdsBgtFlagRuleTest extends TestCase
 
     public function test_flag_budget_is_the_ninth_sbgt_part(): void
     {
-        $this->assertSame(6, AmazonAdsSbgt::sumFromParts(1, 1, 1, null, null, null, null, 2, 1));
-        $this->assertSame(5, AmazonAdsSbgt::sumFromParts(1, 1, 1, null, null, null, null, 2, null));
+        $this->assertSame(6, AmazonAdsSbgt::sumFromParts(1, 1, 1, null, null, null, 2, 1));
+        $this->assertSame(5, AmazonAdsSbgt::sumFromParts(1, 1, 1, null, null, null, 2, null));
     }
 }

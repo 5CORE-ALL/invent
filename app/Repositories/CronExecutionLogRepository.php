@@ -197,10 +197,28 @@ class CronExecutionLogRepository
     public function purgeOlderThan(int $days): int
     {
         $cutoff = now()->subDays($days);
+        $deleted = 0;
 
-        return CronExecutionLog::query()
+        // Small batches: one delete of hundreds of thousands of rows holds locks and floods MySQL's log.
+        // started_at is indexed; rows without it fall back to created_at.
+        do {
+            $n = CronExecutionLog::query()
+                ->where('started_at', '<', $cutoff)
+                ->orderBy('started_at')
+                ->limit(5000)
+                ->delete();
+            $deleted += $n;
+            if ($n >= 5000) {
+                usleep(200000);
+            }
+        } while ($n >= 5000);
+
+        $deleted += CronExecutionLog::query()
+            ->whereNull('started_at')
             ->where('created_at', '<', $cutoff)
             ->delete();
+
+        return $deleted;
     }
 
     public function memoryUsage(): string

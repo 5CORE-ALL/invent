@@ -14,7 +14,7 @@ final class AmazonAdsBgtCountStore
 
     private const KEY = 'counts';
 
-    private const COLUMNS = ['acos', 'views', 'cvr', 'prc', 'reviews', 'dil', 'inv', 'spend', 'gpft', 'flag'];
+    private const COLUMNS = ['acos', 'views', 'cvr', 'prc', 'reviews', 'dil', 'gpft', 'flag'];
 
     /**
      * @return array<string, mixed>|null
