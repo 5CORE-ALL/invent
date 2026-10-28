@@ -214,6 +214,7 @@ class TemuAdsController extends Controller
         $rows = $this->fillMissingParentsOnAdsRows($rows);
         $rows = $this->unifyParentPerGoods($rows);
         $rows = $this->layoutAdsRowsLikeTemu($rows);
+        $rows = $this->attachSkuVsParent($rows);
 
         $tacosPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
         $channelSales = $this->temuChannelSalesForPeriod($tacosPeriod);
@@ -1465,6 +1466,124 @@ class TemuAdsController extends Controller
                     ."\n".mb_strtolower((string) ($row['sku'] ?? ''));
             })
             ->values();
+    }
+
+    /**
+     * "SKU VS Parent": for each row's Product Master parent, how many of that parent's SKUs (our CP master)
+     * are listed on Temu, and which ones are missing.
+     *
+     * A SKU counts as listed when ANY Temu goods carries it (a parent can be split across several goods).
+     * Variation rows folded under a parent line get no value (the parent line carries it).
+     *
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $rows
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function attachSkuVsParent($rows)
+    {
+        $rows = collect($rows);
+        $parentKey = static fn (string $p): string => mb_strtolower(trim((string) preg_replace('/^PARENT\s+/i', '', trim($p))));
+
+        $parents = [];
+        foreach ($rows as $row) {
+            $p = trim((string) preg_replace('/^PARENT\s+/i', '', trim((string) ($row['parent'] ?? ''))));
+            if ($p !== '') {
+                $parents[$parentKey($p)] = $p;
+            }
+        }
+        if ($parents === []) {
+            return $rows;
+        }
+
+        // Master SKUs per parent (Product Master; the PARENT summary line itself is not a SKU).
+        $wanted = [];
+        foreach ($parents as $p) {
+            $wanted[] = $p;
+            $wanted[] = 'PARENT '.$p;
+        }
+        $masterByParent = [];
+        foreach (array_chunk(array_values(array_unique($wanted)), 500) as $chunk) {
+            ProductMaster::query()
+                ->whereIn('parent', $chunk)
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->whereRaw("UPPER(sku) NOT LIKE 'PARENT %'")
+                ->get(['sku', 'parent'])
+                ->each(function ($pm) use (&$masterByParent, $parentKey): void {
+                    $key = $parentKey((string) $pm->parent);
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+                    if ($key !== '' && $norm !== '') {
+                        $masterByParent[$key][$norm] = trim((string) $pm->sku);
+                    }
+                });
+        }
+
+        // Every SKU Temu lists (any goods / period). Parent summary lines are not SKUs.
+        $listed = [];
+        foreach ($rows as $row) {
+            if (! empty($row['is_parent'])) {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($row['sku'] ?? ''));
+            if ($norm !== '') {
+                $listed[$norm] = true;
+            }
+        }
+
+        // Plus every named variation Temu itself holds (covers goods that have no ads-report row at all).
+        $temuMap = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::CACHE_KEY);
+        if (is_array($temuMap)) {
+            $live = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::LIVE_GOODS_CACHE_KEY);
+            $live = (is_array($live) && count($live) >= 50) ? $live : null;
+            foreach ($temuMap as $gid => $goods) {
+                if ($live !== null && ! array_key_exists((string) $gid, $live)) {
+                    continue; // removed from Temu: not listed
+                }
+                foreach ((array) ($goods['skus'] ?? []) as $name) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $name);
+                    if ($norm !== '') {
+                        $listed[$norm] = true;
+                    }
+                }
+            }
+        }
+
+        $summary = [];
+        foreach ($masterByParent as $key => $skus) {
+            $missing = [];
+            foreach ($skus as $norm => $sku) {
+                if (! isset($listed[$norm])) {
+                    $missing[] = $sku;
+                }
+            }
+            natcasesort($missing);
+            $summary[$key] = [
+                'listed' => count($skus) - count($missing),
+                'total' => count($skus),
+                'missing' => array_values($missing),
+            ];
+        }
+
+        $foldedGroups = $rows->filter(fn (array $r) => ! empty($r['is_parent']))
+            ->mapWithKeys(fn (array $r) => [((string) ($r['goods_id'] ?? ''))."\n".((string) ($r['period'] ?? '')) => true])
+            ->all();
+
+        return $rows->map(function (array $row) use ($summary, $foldedGroups, $parentKey): array {
+            $row['sku_parent_listed'] = null;
+            $row['sku_parent_total'] = null;
+            $row['sku_parent_missing'] = [];
+
+            $isFoldedChild = empty($row['is_parent'])
+                && isset($foldedGroups[((string) ($row['goods_id'] ?? ''))."\n".((string) ($row['period'] ?? ''))]);
+            $key = $parentKey((string) ($row['parent'] ?? ''));
+            if ($isFoldedChild || $key === '' || ! isset($summary[$key])) {
+                return $row;
+            }
+            $row['sku_parent_listed'] = $summary[$key]['listed'];
+            $row['sku_parent_total'] = $summary[$key]['total'];
+            $row['sku_parent_missing'] = $summary[$key]['missing'];
+
+            return $row;
+        })->values();
     }
 
     private function productMasterParent(?ProductMaster $productMaster): string

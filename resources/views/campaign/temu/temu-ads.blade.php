@@ -349,12 +349,6 @@
         }
         .temu-ads-var-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; }
         .temu-ads-var-wrap .temu-ads-alert-tri { flex: 0 0 auto; }
-        .temu-ads-var-btn {
-            display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto;
-            padding: 1px 6px; border: 1px solid #93c5fd; border-radius: 10px;
-            background: #eff6ff; color: #1d4ed8; font-size: 11px; font-weight: 700; line-height: 1.4; cursor: pointer;
-        }
-        .temu-ads-var-btn:hover { background: #dbeafe; }
         .temu-ads-chart-badge { cursor: pointer; }
         .temu-ads-history-dot {
             display: inline-block;
@@ -399,116 +393,7 @@
         <div class="col-12">
             <div class="card shadow-sm border-0 mb-3">
                 <div class="card-body py-3">
-                    <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-2">
-                        <div class="d-flex flex-wrap gap-2 align-items-center">
-                            <select id="period-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;">
-                                <option value="" data-label="All Periods">All Periods</option>
-                                <option value="L7" data-label="L7">L7</option>
-                                <option value="L30" data-label="L30" selected>L30</option>
-                                <option value="L60" data-label="L60">L60</option>
-                            </select>
-                            <span id="period-range-label" class="small text-muted fw-semibold" title="Same calendar window as Temu Seller Center (US Pacific)"></span>
-                            <button type="button" id="export-alerts-btn" class="btn btn-sm btn-outline-warning pricing-filter-item"
-                                    title="Export create-ad errors with Temu's exact reason">
-                                <i class="fa fa-download"></i> Export Alerts
-                            </button>
-                            <input type="text" id="search-goods-id" class="form-control form-control-sm pricing-filter-item"
-                                   placeholder="Search Goods ID" style="width: 170px;">
-                            <input type="text" id="search-sku" class="form-control form-control-sm pricing-filter-item"
-                                   placeholder="Search SKU / Parent" style="width: 170px;">
-                            <select id="status-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
-                                    title="Filter by Status">
-                                <option value="" data-label="All Status">All Status</option>
-                                <option value="Active" data-label="Active">Active</option>
-                                <option value="Inactive" data-label="Paused">Paused</option>
-                                <option value="No ad" data-label="No ad">No ad</option>
-                                <option value="Deleted" data-label="Deleted">Deleted</option>
-                                <option value="Not sync" data-label="Not sync">Not sync</option>
-                            </select>
-                            <select id="listing-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
-                                    title="Filter by Listing status on Temu (Seller Center)">
-                                <option value="" data-label="All Listing">All Listing</option>
-                                <option value="active" data-label="Listing Active">Listing Active</option>
-                                <option value="inactive" data-label="Listing Inactive">Listing Inactive</option>
-                                <option value="none" data-label="Listing —">Listing —</option>
-                            </select>
-                            <select id="inv-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
-                                    title="Filter by Inv">
-                                <option value="" data-label="ALL">ALL</option>
-                                <option value="eq0" data-label="INV=0">INV=0</option>
-                                <option value="gt0" data-label="INV&gt;0">INV&gt;0</option>
-                            </select>
-                            <select id="dil-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
-                                    title="Dil% color — same as /temu-decrease (red &lt;25, green 25–50, pink 50%+)">
-                                <option value="" data-label="All Dil%">All Dil%</option>
-                                <option value="red" data-label="Dil% Red">Dil% Red</option>
-                                <option value="green" data-label="Dil% Green">Dil% Green</option>
-                                <option value="pink" data-label="Dil% Pink">Dil% Pink</option>
-                            </select>
-                            <select id="sku-type-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
-                                    title="Parent = goods with several SKU IDs (variations); SKU = goods with one SKU">
-                                <option value="" data-label="Parent &amp; SKU">Parent &amp; SKU</option>
-                                <option value="multi" data-label="Parent">Parent</option>
-                                <option value="single" data-label="SKU">SKU</option>
-                            </select>
-                            <select id="clicks-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
-                                    title="Filter by Clicks 7">
-                                <option value="" data-label="All Clicks">All Clicks</option>
-                                <option value="0-70" data-label="0–70">0–70</option>
-                                <option value="71-140" data-label="71–140">71–140</option>
-                                <option value="141-210" data-label="141–210">141–210</option>
-                                <option value="211-280" data-label="211–280">211–280</option>
-                                <option value="281-350" data-label="281–350">281–350</option>
-                                <option value="351-420" data-label="351–420">351–420</option>
-                                <option value="421-490" data-label="421–490">421–490</option>
-                                <option value="491-560" data-label="491–560">491–560</option>
-                                <option value="561-630" data-label="561–630">561–630</option>
-                                <option value="631-700" data-label="631–700">631–700</option>
-                                <option value="gt700" data-label="&gt;700">&gt;700</option>
-                            </select>
-                            <button type="button" id="ads-rules-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
-                                    data-bs-toggle="modal" data-bs-target="#adsRulesModal"
-                                    title="Ads Rules — L7 Sold slabs with Target ROAS">
-                                <i class="fas fa-sliders-h me-1"></i>Ads Rules
-                            </button>
-                            <div class="dropdown d-inline-block pricing-filter-item">
-                                <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                                    id="temuAdsColumnVisibilityDropdown" data-bs-toggle="dropdown"
-                                    data-bs-auto-close="outside" aria-expanded="false"
-                                    title="Show / hide table columns">
-                                    <i class="fas fa-table-columns"></i>
-                                </button>
-                                <ul class="dropdown-menu" aria-labelledby="temuAdsColumnVisibilityDropdown"
-                                    id="temu-ads-column-dropdown-menu"></ul>
-                            </div>
-                        </div>
-                        <div class="d-flex flex-wrap gap-2 align-items-center">
-                            <button type="button" id="refresh-status-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item"
-                                    title="Sync Active/Inactive from Temu ad.detail.query (adsDetail.adShowStatus)">
-                                <i class="fa fa-toggle-on"></i> Refresh Status
-                            </button>
-                            <a href="{{ route('temu.ads.missing') }}" class="btn btn-sm btn-outline-danger pricing-filter-item"
-                               title="Temu 1 goods with Status No ad and Inv > 0">
-                                Temu 1 Missing Ads
-                            </a>
-                            <button type="button" id="create-ad-btn" class="btn btn-sm btn-warning pricing-filter-item d-none"
-                                    title="Create ads Rule — budget and target ROAS used for Create">
-                                <i class="fa fa-plus"></i> Create ads Rule
-                            </button>
-                            <button type="button" id="refresh-btn" class="btn btn-sm btn-primary pricing-filter-item"
-                                    title="Fetch from Temu API and store raw data">
-                                <i class="fa fa-sync"></i> Fetch from API
-                            </button>
-                            <button type="button" id="export-btn" class="btn btn-sm btn-success pricing-filter-item" title="Export CSV">
-                                <i class="fa fa-download"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div id="data-refresh-info" class="mb-2 small text-muted" title="Data comes from the Temu API; times shown in IST"></div>
-                    <div id="fetch-status" class="mb-2" style="display:none;"></div>
-
-                    <div id="summary-stats" class="mt-2 temu-ads-blocks">
+                    <div id="summary-stats" class="mb-3 temu-ads-blocks">
                         <div class="temu-ads-block temu-ads-block--today">
                             <div class="temu-ads-block-title">Today <span class="temu-ads-block-sub">(store, PT)</span></div>
                             <div class="temu-ads-badge-row" role="group">
@@ -614,6 +499,114 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-2">
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <select id="period-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;">
+                                <option value="" data-label="All Periods">All Periods</option>
+                                <option value="L7" data-label="L7">L7</option>
+                                <option value="L30" data-label="L30" selected>L30</option>
+                                <option value="L60" data-label="L60">L60</option>
+                            </select>
+                            <span id="period-range-label" class="small text-muted fw-semibold" title="Same calendar window as Temu Seller Center (US Pacific)"></span>
+                            <button type="button" id="export-alerts-btn" class="btn btn-sm btn-outline-warning pricing-filter-item"
+                                    title="Export create-ad errors with Temu's exact reason">
+                                <i class="fa fa-download"></i> Export Alerts
+                            </button>
+                            <input type="text" id="search-goods-id" class="form-control form-control-sm pricing-filter-item"
+                                   placeholder="Search Goods ID" style="width: 170px;">
+                            <input type="text" id="search-sku" class="form-control form-control-sm pricing-filter-item"
+                                   placeholder="Search SKU / Parent" style="width: 170px;">
+                            <select id="status-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Filter by Status">
+                                <option value="" data-label="All Status">All Status</option>
+                                <option value="Active" data-label="Active">Active</option>
+                                <option value="Inactive" data-label="Paused">Paused</option>
+                                <option value="No ad" data-label="No ad">No ad</option>
+                                <option value="Deleted" data-label="Deleted">Deleted</option>
+                                <option value="Not sync" data-label="Not sync">Not sync</option>
+                            </select>
+                            <select id="listing-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Filter by Listing status on Temu (Seller Center)">
+                                <option value="" data-label="All Listing">All Listing</option>
+                                <option value="active" data-label="Listing Active">Listing Active</option>
+                                <option value="inactive" data-label="Listing Inactive">Listing Inactive</option>
+                                <option value="none" data-label="Listing —">Listing —</option>
+                            </select>
+                            <select id="inv-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Filter by Inv">
+                                <option value="" data-label="ALL">ALL</option>
+                                <option value="eq0" data-label="INV=0">INV=0</option>
+                                <option value="gt0" data-label="INV&gt;0">INV&gt;0</option>
+                            </select>
+                            <select id="dil-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Dil% color — same as /temu-decrease (red &lt;25, green 25–50, pink 50%+)">
+                                <option value="" data-label="All Dil%">All Dil%</option>
+                                <option value="red" data-label="Dil% Red">Dil% Red</option>
+                                <option value="green" data-label="Dil% Green">Dil% Green</option>
+                                <option value="pink" data-label="Dil% Pink">Dil% Pink</option>
+                            </select>
+                            <select id="sku-type-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Parent = goods with several SKU IDs (variations); SKU = goods with one SKU">
+                                <option value="" data-label="Parent &amp; SKU">Parent &amp; SKU</option>
+                                <option value="multi" data-label="Parent">Parent</option>
+                                <option value="single" data-label="SKU">SKU</option>
+                            </select>
+                            <select id="clicks-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;"
+                                    title="Filter by Clicks 7">
+                                <option value="" data-label="All Clicks">All Clicks</option>
+                                <option value="0-70" data-label="0–70">0–70</option>
+                                <option value="71-140" data-label="71–140">71–140</option>
+                                <option value="141-210" data-label="141–210">141–210</option>
+                                <option value="211-280" data-label="211–280">211–280</option>
+                                <option value="281-350" data-label="281–350">281–350</option>
+                                <option value="351-420" data-label="351–420">351–420</option>
+                                <option value="421-490" data-label="421–490">421–490</option>
+                                <option value="491-560" data-label="491–560">491–560</option>
+                                <option value="561-630" data-label="561–630">561–630</option>
+                                <option value="631-700" data-label="631–700">631–700</option>
+                                <option value="gt700" data-label="&gt;700">&gt;700</option>
+                            </select>
+                            <button type="button" id="ads-rules-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
+                                    data-bs-toggle="modal" data-bs-target="#adsRulesModal"
+                                    title="Ads Rules — L7 Sold slabs with Target ROAS">
+                                <i class="fas fa-sliders-h me-1"></i>Ads Rules
+                            </button>
+                            <div class="dropdown d-inline-block pricing-filter-item">
+                                <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                    id="temuAdsColumnVisibilityDropdown" data-bs-toggle="dropdown"
+                                    data-bs-auto-close="outside" aria-expanded="false"
+                                    title="Show / hide table columns">
+                                    <i class="fas fa-table-columns"></i>
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="temuAdsColumnVisibilityDropdown"
+                                    id="temu-ads-column-dropdown-menu"></ul>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <button type="button" id="refresh-status-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item"
+                                    title="Sync Active/Inactive from Temu ad.detail.query (adsDetail.adShowStatus)">
+                                <i class="fa fa-toggle-on"></i> Refresh Status
+                            </button>
+                            <a href="{{ route('temu.ads.missing') }}" class="btn btn-sm btn-outline-danger pricing-filter-item"
+                               title="Temu 1 goods with Status No ad and Inv > 0">
+                                Temu 1 Missing Ads
+                            </a>
+                            <button type="button" id="create-ad-btn" class="btn btn-sm btn-warning pricing-filter-item d-none"
+                                    title="Create ads Rule — budget and target ROAS used for Create">
+                                <i class="fa fa-plus"></i> Create ads Rule
+                            </button>
+                            <button type="button" id="refresh-btn" class="btn btn-sm btn-primary pricing-filter-item"
+                                    title="Fetch from Temu API and store raw data">
+                                <i class="fa fa-sync"></i> Fetch from API
+                            </button>
+                            <button type="button" id="export-btn" class="btn btn-sm btn-success pricing-filter-item" title="Export CSV">
+                                <i class="fa fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="data-refresh-info" class="mb-2 small text-muted" title="Data comes from the Temu API; times shown in IST"></div>
+                    <div id="fetch-status" class="mb-2" style="display:none;"></div>
                 </div>
             </div>
 
@@ -763,38 +756,6 @@
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- Variations modal (PARENT row with several SKUs under the same goods_id) --}}
-    <div class="modal fade" id="temuAdsVariationsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div>
-                        <h5 class="modal-title" id="temuAdsVariationsTitle">Variations</h5>
-                        <div class="small text-muted" id="temuAdsVariationsMeta"></div>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body p-0">
-                    <table class="table table-sm table-hover align-middle mb-0">
-                        <thead class="table-light">
-                            <tr class="text-center">
-                                <th style="width:60px;">Image</th>
-                                <th class="text-start">SKU</th>
-                                <th>SKU ID</th>
-                                <th>Parent</th>
-                                <th>Inv</th>
-                                <th>Ovl30</th>
-                                <th>Dil%</th>
-                                <th>Sold 7</th>
-                            </tr>
-                        </thead>
-                        <tbody id="temuAdsVariationsBody"></tbody>
-                    </table>
                 </div>
             </div>
         </div>
@@ -1136,35 +1097,6 @@
                     }
                 }
                 return false;
-            }
-
-            function showVariationsModal(parentData) {
-                const kids = (variationsByGroup[adsGroupKey(parentData)] || []).slice().sort(function (a, b) {
-                    return String(a.sku || '').localeCompare(String(b.sku || ''), undefined, { sensitivity: 'base' });
-                });
-                const titleEl = document.getElementById('temuAdsVariationsTitle');
-                const metaEl = document.getElementById('temuAdsVariationsMeta');
-                const bodyEl = document.getElementById('temuAdsVariationsBody');
-                if (!titleEl || !bodyEl) return;
-                titleEl.textContent = String(parentData.sku || '') + ' — ' + kids.length + ' variations';
-                metaEl.textContent = 'Goods ID ' + String(parentData.goods_id || '') + ' · Ad metrics are shared by the whole goods (see the row in the grid).';
-                const n = function (v) { return Number(parseInt(v, 10) || 0).toLocaleString('en-US'); };
-                bodyEl.innerHTML = kids.map(function (k) {
-                    const img = String(k.image_path || '').trim();
-                    const detail = String(k.sku_detail || '').trim();
-                    return '<tr>'
-                        + '<td class="text-center">' + (img ? '<img class="temu-ads-thumb" src="' + escapeAttr(img) + '" alt="">' : '') + '</td>'
-                        + '<td class="text-start"><div class="fw-semibold">' + escapeAttr(k.sku) + '</div>'
-                        + (detail ? '<div class="text-muted" style="font-size:11px;">' + escapeAttr(detail) + '</div>' : '') + '</td>'
-                        + '<td class="text-center">' + escapeAttr(k.sku_id) + '</td>'
-                        + '<td class="text-center">' + escapeAttr(k.parent) + '</td>'
-                        + '<td class="text-center">' + n(k.inv) + '</td>'
-                        + '<td class="text-center">' + n(k.ovl30) + '</td>'
-                        + '<td class="text-center">' + (Number(k.dil_percent) || 0).toFixed(0) + '%</td>'
-                        + '<td class="text-center">' + n(k.sold_l7) + '</td>'
-                        + '</tr>';
-                }).join('');
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('temuAdsVariationsModal')).show();
             }
 
             function rowVisibleForView(data, q) {
@@ -2039,6 +1971,41 @@
                         },
                     },
                     {
+                        title: 'SKU VS Parent',
+                        field: 'sku_vs_parent',
+                        frozen: true,
+                        width: 92,
+                        minWidth: 80,
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerWordWrap: true,
+                        headerTooltip: 'SKUs of this parent listed on Temu vs the SKUs under the parent in our Product Master (CP master). Hover a value to see the missing SKUs.',
+                        sorter: function (a, b, aRow, bRow) {
+                            function missingCount(row) {
+                                const d = (row && row.getData()) || {};
+                                if (d.sku_parent_total == null) return -1;
+                                return (parseInt(d.sku_parent_total, 10) || 0) - (parseInt(d.sku_parent_listed, 10) || 0);
+                            }
+                            return missingCount(aRow) - missingCount(bRow);
+                        },
+                        formatter: function (cell) {
+                            const d = cell.getRow().getData() || {};
+                            if (d.sku_parent_total == null) return '';
+                            const listed = parseInt(d.sku_parent_listed, 10) || 0;
+                            const total = parseInt(d.sku_parent_total, 10) || 0;
+                            const missing = Array.isArray(d.sku_parent_missing) ? d.sku_parent_missing : [];
+                            const ok = missing.length === 0;
+                            const shown = missing.slice(0, 60);
+                            const tip = ok
+                                ? 'All ' + total + ' SKUs of this parent are listed on Temu'
+                                : 'Missing on Temu (' + missing.length + '):\n' + shown.join('\n')
+                                    + (missing.length > shown.length ? '\n+' + (missing.length - shown.length) + ' more' : '');
+                            return '<span title="' + escapeAttr(tip) + '" style="display:inline-block;padding:1px 8px;border-radius:10px;font-weight:700;cursor:help;'
+                                + (ok ? 'background:#dcfce7;color:#15803d;' : 'background:#fee2e2;color:#b91c1c;') + '">'
+                                + listed + ' / ' + total + '</span>';
+                        },
+                    },
+                    {
                         title: 'SKU',
                         field: 'sku',
                         frozen: true,
@@ -2052,22 +2019,14 @@
                             const d = cell.getRow().getData() || {};
                             const sku = escapeAttr(String(cell.getValue() || ''));
                             const detail = String(d.sku_detail || '').trim();
-                            const folded = d.is_parent && d._var_count
-                                ? '<button type="button" class="temu-ads-var-btn" title="Show ' + d._var_count + ' variations">'
-                                    + '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M5.5 2.5 11 8l-5.5 5.5-1.4-1.4L8.2 8 4.1 3.9z"/></svg><span>' + d._var_count + '</span></button>'
-                                : (!d.is_parent && d._sku_type === 'single'
-                                    ? adsAlertTriangleHtml('Single SKU listing — Ads Rules / Auto run do not run ads on single-SKU goods (only on Multi SKU parents).', 'is-danger')
-                                    : '');
+                            const folded = (!d.is_parent && d._sku_type === 'single')
+                                ? adsAlertTriangleHtml('Single SKU listing — Ads Rules / Auto run do not run ads on single-SKU goods (only on Multi SKU parents).', 'is-danger')
+                                : '';
                             if (!detail) return folded ? '<div class="temu-ads-var-wrap">' + folded + '<span>' + sku + '</span></div>' : sku;
                             // Temu layout: SKU on top, the variation label / product name beneath it.
                             return '<div class="temu-ads-var-wrap">' + folded + '<div style="min-width:0;flex:1;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + sku
                                 + '<div style="font-size:11px;font-weight:400;color:#6c757d;overflow:hidden;text-overflow:ellipsis;" title="' + escapeAttr(detail) + '">'
                                 + escapeAttr(detail) + '</div></div></div>';
-                        },
-                        cellClick: function (e, cell) {
-                            if (!e.target.closest || !e.target.closest('.temu-ads-var-btn')) return;
-                            e.stopPropagation();
-                            showVariationsModal(cell.getRow().getData() || {});
                         },
                     },
                     { title: 'SKU ID', field: 'sku_id', width: 130, minWidth: 100, sorter: 'string',
@@ -2575,7 +2534,7 @@
 
             function classifyTemuAdsColumn(field) {
                 const f = String(field || '');
-                if (/^(parent|sku|sku_id|inv|image_path|ad_status|create_ad|ad_create_reject|ovl30|dil_percent|goods_id|period)$/.test(f)) return 'basic';
+                if (/^(parent|sku|sku_vs_parent|sku_id|inv|image_path|ad_status|create_ad|ad_create_reject|ovl30|dil_percent|goods_id|period)$/.test(f)) return 'basic';
                 if (/^(impressions|impressions_l7|clicks_l30|clicks_l7|sold_l30|sold_l7|ctr|ctr_l7|cvr|cart_cnt|order_pay_cnt|order_pay_amt|ad_spend|spend_l1|roas|acos)$/.test(f)) {
                     return 'ads';
                 }
@@ -2720,6 +2679,7 @@
                     list.splice(list.indexOf(before), 0, field);
                 }
                 pinBefore(valid, 'parent', 'sku');
+                pinBefore(valid, 'sku_vs_parent', 'sku');
                 pinBefore(valid, 'sku_id', 'goods_id');
                 pinAfter(valid, 'create_ad', 'inv');
                 pinAfter(valid, 'ad_create_reject', 'create_ad');
