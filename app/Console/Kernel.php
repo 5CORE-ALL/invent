@@ -1982,18 +1982,20 @@ class Kernel extends ConsoleKernel
       
         $retryFiveTimesUntil('app:amazon-sp-keyword-reports', 'amazon-sp-keyword-reports', '18:15');
         $retryFiveTimesUntil('app:amazon-sp-negative-keywords --prune', 'amazon-sp-negative-keywords', '18:20');
+        // Both Amazon Ads jobs run every 10 minutes in their own background process, so a slow run never delays the
+        // scheduler or the other jobs. The lock expires after 9 minutes so one stuck run cannot block the next slot.
         $schedule->command('amazon-ads:warm-grid')
-            ->everyTwoMinutes()
+            ->everyTenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('amazon-ads-warm-grid')
-            ->withoutOverlapping(10)
+            ->withoutOverlapping(9)
             ->runInBackground()
             ->appendOutputTo($log);
         $schedule->command('amazon-ads:bgt-counts')
-            ->everyThirtyMinutes()
+            ->everyTenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('amazon-ads-bgt-counts')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(9)
             ->runInBackground()
             ->appendOutputTo($log);
 

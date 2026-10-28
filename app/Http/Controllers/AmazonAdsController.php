@@ -6921,14 +6921,71 @@ class AmazonAdsController extends Controller
     public function rawData(Request $request, string $source)
     {
         $universe = $request->boolean('bgt_universe') || $request->boolean('sbid_universe');
-        // Opening the page, paging, sorting and the background refresh all ask for the same slice of data many times a
-        // minute. The answer is built once (by the first visitor, the scheduled warm-up or the Refresh button) and
-        // reused for a short while. fresh=1 rebuilds it.
+        // Building the table takes 10-20 seconds on a busy server, so a visitor never waits for it:
+        //  - an answer built before is returned at once, even when it is a few minutes old;
+        //  - when it is older than RAW_SOFT_TTL, or a rule / push changed the data, a background job rebuilds it
+        //    and the page picks the new numbers up in place (its background refresh);
+        //  - only a view nobody opened before is built while the visitor waits;
+        //  - fresh=1 (Refresh button, a rule save, a push) rebuilds right away.
         if (! in_array($source, ['all_reports', 'sp_reports', 'sb_reports', 'sd_reports'], true)) {
             return $this->rawDataUncached($request, $source);
         }
+
+        if ($universe) {
+            return $this->rawDataUniverseCached($request, $source);
+        }
+
+        $key = self::rawDataViewKey($request, $source);
+        $ver = self::rawDataVersion();
+        $fresh = $request->boolean('fresh');
+        if (! $fresh) {
+            try {
+                $hit = Cache::get($key);
+            } catch (\Throwable) {
+                $hit = null;
+            }
+            if (is_array($hit) && is_array($hit['data'] ?? null)) {
+                $data = $hit['data'];
+                if (array_key_exists('draw', $data)) {
+                    $data['draw'] = (int) $request->input('draw', $data['draw']);
+                }
+                $age = time() - (int) ($hit['at'] ?? 0);
+                if ($age > self::RAW_SOFT_TTL || (string) ($hit['ver'] ?? '') !== $ver) {
+                    \App\Support\AmazonAdsGridRefresher::kick();
+                }
+                self::touchHotView($request, $source, $key);
+
+                return response()->json($data);
+            }
+        }
+
+        $response = $this->rawDataUncached($request, $source);
+        if ($response instanceof JsonResponse && $response->getStatusCode() === 200) {
+            $data = $response->getData(true);
+            if (is_array($data)) {
+                try {
+                    Cache::put($key, ['at' => time(), 'ver' => $ver, 'data' => $data], self::RAW_KEEP_TTL);
+                } catch (\Throwable) {
+                }
+                self::touchHotView($request, $source, $key);
+            }
+        }
+
+        return $response;
+    }
+
+    /** Younger than this: served as is. Older: served, and a background rebuild is started. */
+    private const RAW_SOFT_TTL = 600;
+
+    /** How long a built answer is kept for instant serving. */
+    private const RAW_KEEP_TTL = 86400;
+
+    private const HOT_VIEWS_KEY = 'amz_ads_hot_views';
+
+    /** The 20,000-row downloads the BGT counts use: cached shortly, no stale serving. */
+    private function rawDataUniverseCached(Request $request, string $source)
+    {
         $key = self::rawDataCacheKey($request, $source);
-        $ttl = 300;
         if (! $request->boolean('fresh')) {
             try {
                 $hit = Cache::get($key);
@@ -6948,13 +7005,132 @@ class AmazonAdsController extends Controller
             $data = $response->getData(true);
             if (is_array($data)) {
                 try {
-                    Cache::put($key, $data, $ttl);
+                    Cache::put($key, $data, 900);
                 } catch (\Throwable) {
                 }
             }
         }
 
         return $response;
+    }
+
+    /** Same view (ignoring draw, token, fresh and empty filters) -> same key, whatever the data version is. */
+    public static function rawDataViewKey(Request $request, string $source): string
+    {
+        return 'amz_ads_view:'.$source.':'.md5(json_encode(self::cleanRawParams($request)));
+    }
+
+    /** @return array<string, mixed> */
+    private static function cleanRawParams(Request $request): array
+    {
+        $params = $request->except(['draw', '_token', 'fresh', '_']);
+        $clean = static function ($v) use (&$clean) {
+            if (is_array($v)) {
+                $out = [];
+                foreach ($v as $k => $x) {
+                    $x = $clean($x);
+                    if ($x !== null && $x !== '' && $x !== []) {
+                        $out[$k] = $x;
+                    }
+                }
+                ksort($out);
+
+                return $out;
+            }
+
+            return is_scalar($v) ? (string) $v : null;
+        };
+
+        return $clean($params);
+    }
+
+    public static function rawDataVersion(): string
+    {
+        try {
+            return (string) Cache::get(self::RAW_CACHE_VERSION_KEY, 'v0');
+        } catch (\Throwable) {
+            return 'v0';
+        }
+    }
+
+    /**
+     * Remember the views people open (not searches, not the 20,000-row downloads) so the scheduled job keeps them
+     * rebuilt: next time someone opens the same view it is already waiting.
+     */
+    private static function touchHotView(Request $request, string $source, string $key): void
+    {
+        if (trim((string) $request->input('search.value', '')) !== '') {
+            return;
+        }
+        try {
+            $hot = Cache::get(self::HOT_VIEWS_KEY, []);
+            if (! is_array($hot)) {
+                $hot = [];
+            }
+            $now = time();
+            if (isset($hot[$key]) && $now - (int) ($hot[$key]['used'] ?? 0) < 300) {
+                return;
+            }
+            $hot[$key] = ['source' => $source, 'params' => self::cleanRawParams($request), 'used' => $now];
+            foreach ($hot as $k => $v) {
+                if ($now - (int) ($v['used'] ?? 0) > 86400) {
+                    unset($hot[$k]);
+                }
+            }
+            uasort($hot, static fn ($a, $b) => ((int) ($b['used'] ?? 0)) <=> ((int) ($a['used'] ?? 0)));
+            Cache::forever(self::HOT_VIEWS_KEY, array_slice($hot, 0, 25, true));
+        } catch (\Throwable) {
+        }
+    }
+
+    /**
+     * Rebuild the views people opened lately whose answer is older than $maxAgeSeconds or predates a rule / push.
+     *
+     * @return array{views: int, rebuilt: int, ms: int}
+     */
+    public function warmHotViews(int $maxAgeSeconds = 240, int $budgetSeconds = 420): array
+    {
+        $started = microtime(true);
+        $ver = self::rawDataVersion();
+        $views = 0;
+        $rebuilt = 0;
+        try {
+            $hot = Cache::get(self::HOT_VIEWS_KEY, []);
+        } catch (\Throwable) {
+            $hot = [];
+        }
+        foreach (is_array($hot) ? $hot : [] as $key => $view) {
+            if ((microtime(true) - $started) > $budgetSeconds) {
+                break;
+            }
+            if (! is_array($view) || ! is_array($view['params'] ?? null) || (time() - (int) ($view['used'] ?? 0)) > 86400) {
+                continue;
+            }
+            $views++;
+            try {
+                $entry = Cache::get($key);
+            } catch (\Throwable) {
+                $entry = null;
+            }
+            if (is_array($entry)
+                && (string) ($entry['ver'] ?? '') === $ver
+                && (time() - (int) ($entry['at'] ?? 0)) < $maxAgeSeconds) {
+                continue;
+            }
+            $params = $view['params'];
+            $params['draw'] = 1;
+            $params['fresh'] = 1;
+            try {
+                $response = $this->rawData(Request::create('/amazon-ads/raw-data/'.$view['source'], 'POST', $params), (string) $view['source']);
+                if ($response->getStatusCode() === 200) {
+                    $rebuilt++;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Amazon Ads hot view rebuild failed: '.$e->getMessage());
+            }
+        }
+
+        return ['views' => $views, 'rebuilt' => $rebuilt, 'ms' => (int) round((microtime(true) - $started) * 1000)];
     }
 
     private const RAW_CACHE_VERSION_KEY = 'amz_ads_raw_ver';
@@ -7000,31 +7176,7 @@ class AmazonAdsController extends Controller
     /** Same request (ignoring draw, token and fresh, and empty filters) -> same key. */
     public static function rawDataCacheKey(Request $request, string $source): string
     {
-        $params = $request->except(['draw', '_token', 'fresh', '_']);
-        $clean = static function ($v) use (&$clean) {
-            if (is_array($v)) {
-                $out = [];
-                foreach ($v as $k => $x) {
-                    $x = $clean($x);
-                    if ($x !== null && $x !== '' && $x !== []) {
-                        $out[$k] = $x;
-                    }
-                }
-                ksort($out);
-
-                return $out;
-            }
-
-            return is_scalar($v) ? (string) $v : null;
-        };
-        $params = $clean($params);
-        $ver = 'v0';
-        try {
-            $ver = (string) Cache::get(self::RAW_CACHE_VERSION_KEY, 'v0');
-        } catch (\Throwable) {
-        }
-
-        return 'amz_ads_raw:'.$ver.':'.$source.':'.md5(json_encode($params));
+        return 'amz_ads_raw:'.self::rawDataVersion().':'.$source.':'.md5(json_encode(self::cleanRawParams($request)));
     }
 
     /** Drop every cached grid answer (after a push or anything else that changes what the grid shows). */
