@@ -1301,6 +1301,7 @@
                                 ['y_bid', 'Y AVG BID', 'Yesterday avg bid = yesterday spend ÷ clicks (avg CPC).', null],
                                 ['y_cvr', 'Y CVR%', 'Yesterday CVR% = yesterday sold ÷ clicks.', null],
                                 ['y_acos', 'Y ACOS%', 'Yesterday ACOS% = yesterday spend ÷ yesterday ads sales.', ['amazonAdsYesterdayAcosBadgeDot', 'yacos', 'ACOS']],
+                                ['y_tacos', 'Y TACOS%', 'Yesterday TACOS% = yesterday spend ÷ yesterday sales.', null],
                                 ['y_clicks', 'Y CLICKS', 'Yesterday clicks (Amazon L1).', null],
                                 ['y_sold', 'Y SOLD', 'Yesterday units sold (Amazon L1).', null],
                                 ['y_sales', 'Y SALES', 'Yesterday ads sales (Amazon L1).', ['amazonAdsYesterdaySalesBadgeDot', 'ysales', 'Ads Sales']],
@@ -3975,6 +3976,7 @@
                 bid: { fmt: function (v) { return '$' + v.toFixed(2); }, lower: true },
                 cvr: { fmt: function (v) { return v.toFixed(2) + '%'; }, lower: false },
                 acos: { fmt: function (v) { return Math.round(v) + '%'; }, lower: true },
+                tacos: { fmt: function (v) { return Math.round(v) + '%'; }, lower: true },
                 clicks: { fmt: function (v) { return Math.round(v).toLocaleString('en-US'); }, lower: false },
                 sold: { fmt: function (v) { return Math.round(v).toLocaleString('en-US'); }, lower: false },
                 sales: { fmt: function (v) { return '$' + Math.round(v).toLocaleString('en-US'); }, lower: false },
@@ -3990,6 +3992,8 @@
                 o.bid = (sp !== null && cl !== null && cl > 0) ? sp / cl : null;
                 o.cvr = (so !== null && cl !== null && cl > 0) ? so / cl * 100 : null;
                 o.acos = amzNum(acosPct);
+                // TACOS% = spend ÷ sales × 100.
+                o.tacos = (sp !== null && amzNum(w.sales) !== null && amzNum(w.sales) > 0) ? sp / amzNum(w.sales) * 100 : (sp !== null && sp > 0 ? 100 : (sp !== null ? 0 : null));
                 o.clicks = cl; o.sold = so; o.sales = amzNum(w.sales); o.spend = sp;
                 return o;
             }
@@ -4072,7 +4076,7 @@
             // ---- History dots on every summary tile: trend of the latest day vs the day before (daily history from the Amazon reports) ----
             // green = up, red = down, yellow = same, grey = no prior day. Lower-is-better (AVG BID, ACOS%) and the red util band are inverted.
             // The three original Yesterday dots (Spend / Sales / ACOS) keep their own tones and history.
-            var AMZ_KPI_EPS = { bgt: 0.5, bgt_total: 0.5, clicks: 0.5, sold: 0.5, sales: 0.5, spend: 0.5, util: 0.05, bid: 0.005, cvr: 0.05, acos: 0.05 };
+            var AMZ_KPI_EPS = { bgt: 0.5, bgt_total: 0.5, clicks: 0.5, sold: 0.5, sales: 0.5, spend: 0.5, util: 0.05, bid: 0.005, cvr: 0.05, acos: 0.05, tacos: 0.05 };
             var AMZ_KPI_OLD_DOTS = { y_spend: 1, y_sales: 1, y_acos: 1 };
             function amzKpiKind(key) { return key.replace(/^(y|p|l30)_/, ''); }
             function amzKpiUtilKey(key) { return /^u[17]_/.test(key); }
@@ -5375,7 +5379,7 @@
             }
             function amzHistoryIsCvr() { return amzHistoryKind === 'cvr'; }
             function amzHistoryIsPercent() {
-                if (amzHistoryKind === 'kpi') return /^(util|cvr|acos)$/.test(amzKpiKind(amzCpcAvgRow.kpiKey || '')) || /_avg$/.test(amzCpcAvgRow.kpiKey || '');
+                if (amzHistoryKind === 'kpi') return /^(util|cvr|acos|tacos)$/.test(amzKpiKind(amzCpcAvgRow.kpiKey || '')) || /_avg$/.test(amzCpcAvgRow.kpiKey || '');
                 return amzHistoryKind === 'cvr' || amzHistoryKind === 'acos' || amzHistoryKind === 'yacos';
             }
             function amzHistoryLowerIsBetter() {

@@ -5425,6 +5425,7 @@ class AmazonAdsController extends Controller
             $o['bid'] = $w['clicks'] > 0 ? $spend / $w['clicks'] : null;
             $o['cvr'] = $w['clicks'] > 0 ? $w['sold'] / $w['clicks'] * 100 : null;
             $o['acos'] = AmazonAdsYesterdayBadgeHistory::acos($spend, $w['sales']);
+            $o['tacos'] = $o['acos']; // Y TACOS% = spend ÷ sales (only the y_tacos key is exposed)
             $o['clicks'] = $w['clicks'] * $mul;
             $o['sold'] = $w['sold'] * $mul;
             $o['sales'] = $w['sales'] * $mul;
@@ -5634,6 +5635,7 @@ class AmazonAdsController extends Controller
                 $keys[] = $w.'_'.$k;
             }
         }
+        $keys[] = 'y_tacos';
         $keys[] = 'l30_bgt_total';
         $keys[] = 'p_bgt_total';
         foreach (['u1', 'u7'] as $u) {
