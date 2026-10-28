@@ -3295,7 +3295,7 @@
             return 'basics';
         }
         if (
-            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|temu_price_12|disc_amt|price_after_disc|ship_disc|promo_base_prc|lp|temu_ship|pft_dollars|pm_discount|lmp_alert_prc|s_twelve|s_disc_amt|s_price_after_disc|s_ship_disc|s_promo_base_prc|req_m|dil_moq|moq|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|temu_price_12|disc_amt|price_after_disc|ship_disc|promo_base_prc|lp|temu_ship|pft_dollars|spft_dollars|pm_discount|lmp_alert_prc|s_twelve|s_disc_amt|s_price_after_disc|s_ship_disc|s_promo_base_prc|req_m|dil_moq|moq|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
             /\b(cvr|cpn|price|prc|gpft|npft|groi|nroi|lmp|sprc\s*dil|s\s*prc|sgpft|sgroi|snpft|snroi)\b/i.test(tl)
         ) {
             return 'pricing';
@@ -4359,6 +4359,28 @@
                     headerTooltip: 'Push to Temu: Std Prc as the cross (strikethrough) price and S Promo Base Prc as the base price. Double tick = that price is already pushed. Arrow = not pushed, or the price changed after the last push. Checked rows push together.',
                     formatter: function(cell) {
                         return ntoPushCellHtml(cell.getRow().getData());
+                    }
+                },
+                {
+                    title: 'SPft $',
+                    field: 'spft_dollars',
+                    hozAlign: 'center',
+                    width: 66,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = temuSpftDollars(aRow.getData() || {});
+                        const y = temuSpftDollars(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'SPft $ = SPFT = (S Promo Prc × 0.95) − Temu Ship − LP. This is the profit behind SGPFT% (SGPFT% = SPft $ ÷ Std Prc).',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const v = temuSpftDollars(row);
+                        if (v == null) return '<span style="color: #6c757d;">—</span>';
+                        const pad = ntoRowSPriceAfterDisc(row);
+                        const tip = '($' + pad.toFixed(2) + ' × 95%) − Ship $' + (parseFloat(row.temu_ship) || 0).toFixed(2)
+                            + ' − LP $' + (parseFloat(row.lp) || 0).toFixed(2) + ' = $' + v.toFixed(2);
+                        const color = v < 0 ? '#dc3545' : '#198754';
+                        return '<span style="font-weight: 600; color: ' + color + ';" title="' + tip + '">$' + v.toFixed(2) + '</span>';
                     }
                 },
                 {
