@@ -115,6 +115,16 @@ class AttendanceAccess
     }
 
     /**
+     * Only president@5core.com sees the fraud-alert triangle and the Team Monitor Video / Team Timeline shortcuts.
+     */
+    public static function isPresident(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+
+        return $user && strtolower(trim((string) $user->email)) === 'president@5core.com';
+    }
+
+    /**
      * Team Monitoring summary page (/attendance/summary): President, Software 5, HR and Tech Support only.
      */
     public static function canViewSummary(?User $user = null): bool

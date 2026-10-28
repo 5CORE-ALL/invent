@@ -355,6 +355,7 @@
                         <h4 class="mb-0">Team Monitoring</h4>
                     </div>
                     <div class="es-header-actions">
+                        @if(\App\Support\AttendanceAccess::isPresident())
                         <a href="{{ route('attendance.live.team', array_filter(['team' => $team, 'timezone' => $timezone, 'executive' => $executive ?? null])) }}"
                            target="_blank" rel="noopener noreferrer"
                            class="btn btn-sm btn-danger">
@@ -364,6 +365,7 @@
                            class="btn btn-sm btn-outline-primary">
                             <i class="ri-time-line me-1"></i> Team Timeline
                         </a>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -473,6 +475,7 @@
                                 <th class="es-sort es-input-col" data-sort="keys" data-type="num" style="width:6%" title="Keystrokes for {{ $from }} → {{ $to }}">Keys</th>
                                 <th class="es-sort" data-sort="worked" data-type="num" style="width:11%">L30 T</th>
                                 <th class="es-sort es-th-idle" data-sort="idle" data-type="num" style="width:9%">Idle L30</th>
+                                <th class="es-sort es-th-idle" data-sort="idleCount" data-type="num" style="width:7%" title="Separate idle episodes for {{ $from }} → {{ $to }}">Idle Count</th>
                             </tr>
                         </thead>
                         <tbody id="summaryBody">
@@ -491,6 +494,7 @@
                                 data-clicks="{{ !empty($row['input_tracked']) ? (int) ($row['click_count'] ?? 0) : (!empty($row['input_has_activity']) ? 0 : -1) }}"
                                 data-keys="{{ !empty($row['input_tracked']) ? (int) ($row['key_count'] ?? 0) : (!empty($row['input_has_activity']) ? 0 : -1) }}"
                                 data-idle="{{ (int) ($row['idle_seconds'] ?? 0) }}"
+                                data-idle-count="{{ (int) ($row['idle_count'] ?? 0) }}"
                                 data-wt-current="{{ (int) ($row['wt_current_seconds'] ?? 0) }}"
                                 data-including="{{ (int) ($row['work_time_seconds'] ?? $row['including_idle_seconds'] ?? 0) }}"
                                 data-live="{{ (int) ($row['live_sort'] ?? 3) }}"
@@ -599,11 +603,12 @@
                                 @endif
                                 <td><span class="es-pill blue">{{ $row['worked_clock'] }}</span></td>
                                 <td><span class="es-pill red">{{ $row['idle_clock'] }}</span></td>
+                                <td><span class="es-pill red">{{ number_format((int) ($row['idle_count'] ?? 0)) }}</span></td>
                             </tr>
                             @endforeach
                             @if(count($rows) === 0)
                             <tr class="es-empty-row">
-                                <td colspan="16" class="text-center text-muted py-4">No employees match the current filters.</td>
+                                <td colspan="17" class="text-center text-muted py-4">No employees match the current filters.</td>
                             </tr>
                             @endif
                         </tbody>
@@ -955,7 +960,7 @@
     // server-rendered partial attendance/partials/fraud-alert.blade.php).
     function fraudTriangle(row) {
         const a = row.fraud_alert;
-        if (!a) return '';
+        if (!a || !@json(\App\Support\AttendanceAccess::isPresident())) return '';
         return '<a href="' + escapeAttr(row.detail_url || '#') + '" class="fraud-tri ' + escapeAttr(a.level) + '"'
             + ' title="' + escapeAttr(a.tooltip) + '" aria-label="Fraud check: ' + escapeAttr(a.count) + ' open alert(s), ' + escapeAttr(a.level) + ' risk">'
             + '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">'
@@ -1045,11 +1050,11 @@
         if (!body) return;
         const selectedId = String(executiveSelect?.value || 0);
         if (!rows.length) {
-            body.innerHTML = '<tr class="es-empty-row"><td colspan="16" class="text-center text-muted py-4">No employees match the current filters.</td></tr>';
+            body.innerHTML = '<tr class="es-empty-row"><td colspan="17" class="text-center text-muted py-4">No employees match the current filters.</td></tr>';
             return;
         }
         body.innerHTML = rows.map(row => `
-            <tr class="es-selectable${selectedId !== '0' && String(row.user_id) === selectedId ? ' es-selected' : ''}" data-user-id="${row.user_id || ''}" data-name="${(row.name || '').toLowerCase()}" data-display-name="${escapeAttr(row.name || '')}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}" data-span="${row.activity_start_minutes ?? -1}" data-worked="${row.worked_seconds || 0}" data-meeting="${row.meeting_seconds || 0}" data-manual="${row.manual_seconds || 0}" data-input-pct="${row.input_tracked ? (row.input_pct || 0) : (row.input_has_activity ? 0 : -1)}" data-clicks="${row.input_tracked ? (row.click_count || 0) : (row.input_has_activity ? 0 : -1)}" data-keys="${row.input_tracked ? (row.key_count || 0) : (row.input_has_activity ? 0 : -1)}" data-idle="${row.idle_seconds || 0}" data-wt-current="${row.wt_current_seconds || 0}" data-including="${row.work_time_seconds ?? row.including_idle_seconds ?? 0}" data-live="${row.live_sort ?? 3}" data-live-status="${escapeAttr(row.live_status || 'absent')}" data-last-image="${row.last_image_sort || 0}">
+            <tr class="es-selectable${selectedId !== '0' && String(row.user_id) === selectedId ? ' es-selected' : ''}" data-user-id="${row.user_id || ''}" data-name="${(row.name || '').toLowerCase()}" data-display-name="${escapeAttr(row.name || '')}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}" data-span="${row.activity_start_minutes ?? -1}" data-worked="${row.worked_seconds || 0}" data-meeting="${row.meeting_seconds || 0}" data-manual="${row.manual_seconds || 0}" data-input-pct="${row.input_tracked ? (row.input_pct || 0) : (row.input_has_activity ? 0 : -1)}" data-clicks="${row.input_tracked ? (row.click_count || 0) : (row.input_has_activity ? 0 : -1)}" data-keys="${row.input_tracked ? (row.key_count || 0) : (row.input_has_activity ? 0 : -1)}" data-idle="${row.idle_seconds || 0}" data-idle-count="${row.idle_count || 0}" data-wt-current="${row.wt_current_seconds || 0}" data-including="${row.work_time_seconds ?? row.including_idle_seconds ?? 0}" data-live="${row.live_sort ?? 3}" data-live-status="${escapeAttr(row.live_status || 'absent')}" data-last-image="${row.last_image_sort || 0}">
                 <td class="es-avatar-col">${avatarCell(row)}</td>
                 <td>
                     <div class="es-name">${row.name}${fraudTriangle(row)}</div>
@@ -1070,6 +1075,7 @@
                 ${inputCells(row)}
                 <td><span class="es-pill blue">${row.worked_clock}</span></td>
                 <td><span class="es-pill red">${row.idle_clock}</span></td>
+                <td><span class="es-pill red">${Number(row.idle_count || 0).toLocaleString()}</span></td>
             </tr>
         `).join('');
         applySort();

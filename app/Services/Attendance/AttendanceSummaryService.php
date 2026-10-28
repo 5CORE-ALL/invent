@@ -130,7 +130,7 @@ class AttendanceSummaryService
             // Range filter is already "this month".
             $monthStats = ($from === $monthFrom && $to === $monthTo)
                 ? $stats
-                : $this->timelineService->employeePeriodStats($employee, $monthFrom, $monthTo, $timezone);
+                : $this->timelineService->employeePeriodStats($employee, $monthFrom, $monthTo, $timezone, null, false);
             $monthIdle = (int) $monthStats['idle_seconds'];
             $monthLogin = (int) $monthStats['active_seconds'] + $monthIdle;
             $wtCurrent = max(0, $monthLogin - $monthIdle);
@@ -205,6 +205,7 @@ class AttendanceSummaryService
                 'input_has_activity' => $inputBeats > 0,
                 'idle_seconds' => $idle,
                 'idle_clock' => $this->formatClock($idle),
+                'idle_count' => (int) ($stats['idle_count'] ?? 0),
                 'wt_current_seconds' => $wtCurrent,
                 'wt_current_clock' => $this->formatClock($wtCurrent),
                 'work_time_seconds' => $workTime,

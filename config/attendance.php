@@ -19,6 +19,16 @@ return [
     ],
 
     /*
+    | People left out of Team Monitoring only (summary, video wall, timeline, checkups).
+    | They stay in payroll and everywhere else. Match by exact name (case-insensitive)
+    | or email. Extra entries can be added via ATTENDANCE_MONITORING_EXEMPT (comma separated).
+    */
+    'monitoring_exempt' => array_values(array_filter(array_merge(
+        ['Shivaji R'],
+        array_map('trim', explode(',', (string) env('ATTENDANCE_MONITORING_EXEMPT', '')))
+    ))),
+
+    /*
     | Emails that can open Team Monitoring (/attendance/summary). Always enforced,
     | independent of restrictions_enabled.
     */

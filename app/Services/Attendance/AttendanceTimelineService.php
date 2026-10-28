@@ -546,7 +546,7 @@ class AttendanceTimelineService
   /**
    * @return array<string, mixed>
    */
-  public function employeePeriodStats(User $employee, string $from, string $to, ?string $timezone = null, ?string $dayReset = null): array
+  public function employeePeriodStats(User $employee, string $from, string $to, ?string $timezone = null, ?string $dayReset = null, bool $withIdleCount = true): array
   {
     $timezone = $timezone ?: self::defaultTimezone();
     $dayReset = $dayReset ?: self::defaultDayReset($timezone);
@@ -612,6 +612,7 @@ class AttendanceTimelineService
       'days_worked' => $daysWorked,
       'active_seconds' => $active,
       'idle_seconds' => $idle,
+      'idle_count' => $withIdleCount ? $this->countIdleEpisodes((int) $employee->id, $rangeStart, $rangeEnd) : 0,
       'break_seconds' => $break,
       'total_seconds' => $total,
       'active_label' => $this->formatDuration($active),
@@ -1025,6 +1026,42 @@ class AttendanceTimelineService
    *
    * @return array{0: string, 1: string}
    */
+  /**
+   * Number of separate idle episodes: each time the heartbeat state flips into "idle" from
+   * working/break (or a session starts idle). A long idle stretch counts once.
+   */
+  private function countIdleEpisodes(int $userId, Carbon $fromAt, Carbon $toAt): int
+  {
+    [$fromBound, $toBound] = $this->appTimezoneBounds($fromAt, $toAt);
+
+    $rows = AttendanceActivityLog::query()
+      ->where('user_id', $userId)
+      ->where('recorded_at', '>=', $fromBound)
+      ->where('recorded_at', '<', $toBound)
+      ->orderBy('attendance_session_id')
+      ->orderBy('recorded_at')
+      ->toBase()
+      ->select(['attendance_session_id', 'activity_state'])
+      ->cursor();
+
+    $count = 0;
+    $lastSession = null;
+    $wasIdle = false;
+    foreach ($rows as $row) {
+      if ($row->attendance_session_id !== $lastSession) {
+        $lastSession = $row->attendance_session_id;
+        $wasIdle = false;
+      }
+      $isIdle = $row->activity_state === 'idle';
+      if ($isIdle && ! $wasIdle) {
+        $count++;
+      }
+      $wasIdle = $isIdle;
+    }
+
+    return $count;
+  }
+
   private function appTimezoneBounds(Carbon $fromAt, Carbon $toAt): array
   {
     $appTz = (string) config('app.timezone', 'UTC');

@@ -250,7 +250,7 @@
         </div>
         <div class="period-stat idle">
             <div class="label">Total Idle</div>
-            <div class="value">{{ $periodStats['idle_label'] }}</div>
+            <div class="value">{{ $periodStats['idle_label'] }} <span class="small fw-normal text-muted" title="Number of separate idle episodes">· {{ number_format((int) ($periodStats['idle_count'] ?? 0)) }}x</span></div>
         </div>
         <div class="period-stat break">
             <div class="label">Total Break</div>

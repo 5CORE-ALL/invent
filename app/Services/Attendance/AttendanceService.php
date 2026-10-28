@@ -576,8 +576,16 @@ class AttendanceService
         // Directors do not sign in to the attendance agent, so they are exempt from team monitoring
         // (a director row would only ever show as "not logged"). Payroll passes false to keep them.
         if ($excludeDirectors) {
+            $exempt = array_map(
+                fn ($v) => mb_strtolower(trim((string) $v)),
+                (array) config('attendance.monitoring_exempt', [])
+            );
+
+            // Directors plus anyone on the monitoring-exempt list (Team Monitoring only; payroll keeps them).
             $employees = $employees
-                ->reject(fn (User $u) => \App\Support\AttendanceAccess::isDirector($u))
+                ->reject(fn (User $u) => \App\Support\AttendanceAccess::isDirector($u)
+                    || in_array(mb_strtolower(trim((string) $u->name)), $exempt, true)
+                    || in_array(mb_strtolower(trim((string) $u->email)), $exempt, true))
                 ->values();
         }
 

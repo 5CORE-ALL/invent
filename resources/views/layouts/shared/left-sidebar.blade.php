@@ -3428,11 +3428,13 @@
                             </a>
                         </li>
                         @endif
+                        @if(\App\Support\AttendanceAccess::isPresident())
                         <li>
                             <a href="{{ route('attendance.live.team') }}" class="{{ request()->routeIs('attendance.live.team') ? 'active' : '' }}">
                                 <i class="ri-vidicon-line me-2"></i>Team Monitor Video
                             </a>
                         </li>
+                        @endif
                         <li>
                             <a href="{{ route('attendance.payroll.index') }}" class="{{ request()->routeIs('attendance.payroll*') ? 'active' : '' }}">
                                 <i class="ri-wallet-3-line me-2"></i>Payroll

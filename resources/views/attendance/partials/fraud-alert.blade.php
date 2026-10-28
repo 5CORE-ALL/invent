@@ -20,7 +20,7 @@
     }
 </style>
 @endonce
-@if(!empty($alert))
+@if(!empty($alert) && \App\Support\AttendanceAccess::isPresident())
     <a href="{{ $href ?? '#' }}" class="fraud-tri {{ $alert['level'] }}"
        title="{{ $alert['tooltip'] }}"
        aria-label="Fraud check: {{ $alert['count'] }} open alert(s), {{ $alert['level'] }} risk">
