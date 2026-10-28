@@ -15,9 +15,11 @@
     .es-toolbar > div, .es-toolbar #customRangeFields > div { flex: 0 0 auto; }
     .es-toolbar .form-select, .es-toolbar .form-control { min-height: 34px; font-size: .85rem; width: auto; min-width: 118px; }
     .es-toolbar .es-field-exec .form-select { min-width: 150px; max-width: 180px; }
-    .es-toolbar .es-field-range .form-select { min-width: 118px; max-width: 130px; }
-    .es-toolbar .es-field-reset .form-select { min-width: 170px; max-width: 210px; }
-    .es-toolbar .es-field-tz .form-select { min-width: 140px; max-width: 170px; }
+    /* Range and Day reset are 50% of their previous width (118-130px -> 59-65px, 170-210px -> 85-105px). */
+    .es-toolbar .es-field-range .form-select { min-width: 59px; max-width: 65px; padding-left: .4rem; padding-right: 1.4rem; background-position: right .35rem center; }
+    .es-toolbar .es-field-reset .form-select { min-width: 85px; max-width: 105px; padding-left: .4rem; padding-right: 1.4rem; background-position: right .35rem center; }
+    /* Timezone is 50% of its previous width (140-170px -> 70-85px). */
+    .es-toolbar .es-field-tz .form-select { min-width: 70px; max-width: 85px; padding-left: .4rem; padding-right: 1.4rem; background-position: right .35rem center; }
     .es-toolbar input[type=date] { min-width: 138px; }
     .es-toolbar .btn { flex: 0 0 auto; white-space: nowrap; }
     .es-ss { position: relative; min-width: 168px; }
@@ -56,6 +58,12 @@
         display: flex; flex-direction: column; justify-content: center;
         align-items: center; text-align: center;
     }
+    /* One line, left to right: width fits the content and every badge gets the widest badge's size. */
+    .es-kpi-row {
+        display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+        gap: .5rem; width: max-content; max-width: 100%; overflow-x: auto;
+    }
+    .es-kpi-row .es-kpi { white-space: nowrap; }
     .es-kpi .val { font-size: 1.35rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
     .es-kpi .lbl { font-size: .72rem; opacity: .92; margin-top: .15rem; }
     .es-kpi.blue { background: linear-gradient(135deg, #3b82f6, #2563eb); }
@@ -299,14 +307,29 @@
         min-width: 0;
         flex-wrap: wrap;
     }
-    .es-table-toolbar .es-search { max-width: 280px; width: 100%; flex: 0 1 280px; }
+    /* Status is 50% of its previous width (160-200px -> 80-100px). */
     .es-status-filter {
         width: auto;
-        min-width: 160px;
-        max-width: 200px;
-        height: 31px;
+        min-width: 80px;
+        max-width: 100px;
+        height: 34px;
         font-size: .85rem;
+        padding-left: .4rem;
+        padding-right: 1.4rem;
+        background-position: right .35rem center;
     }
+    /* Single line, left to right. Every item is only as wide as its content; badges share one size. */
+    .es-topbar {
+        display: flex; flex-wrap: nowrap; align-items: flex-end; gap: .5rem;
+        overflow-x: auto; padding-bottom: 4px; margin-bottom: 1rem;
+    }
+    .es-topbar > * { flex: 0 0 auto; }
+    .es-topbar #filterForm { display: contents; }
+    .es-topbar .es-search { width: 95px; min-height: 34px; font-size: .85rem; padding-left: .4rem; padding-right: .4rem; }
+    .es-topbar .es-kpi-row { overflow: visible; max-width: none; }
+    .es-topbar .es-kpi { height: 54px; padding: .35rem .9rem; }
+    .es-topbar .es-field-team-summary .es-live-toggles { flex-wrap: nowrap; height: 34px; }
+    .es-topbar .es-live-toggle { min-width: 76px; text-align: center; height: 28px; white-space: nowrap; }
     .es-header-actions { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
 </style>
 @endsection
@@ -321,8 +344,7 @@
             <div class="es-card p-3">
                 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
                     <div>
-                        <h4 class="mb-1">Team Monitoring</h4>
-                        <p class="text-muted small mb-0">View aggregated work hours, activity levels, and time breakdown for your team.</p>
+                        <h4 class="mb-0">Team Monitoring</h4>
                     </div>
                     <div class="es-header-actions">
                         <a href="{{ route('attendance.live.team', array_filter(['team' => $team, 'timezone' => $timezone, 'executive' => $executive ?? null])) }}"
@@ -333,25 +355,9 @@
                            class="btn btn-sm btn-outline-primary">
                             <i class="ri-time-line me-1"></i> Team Timeline
                         </a>
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="small text-muted">Auto Refresh</span>
-                            <div class="form-check form-switch mb-0">
-                                <input class="form-check-input" type="checkbox" id="autoRefresh">
-                            </div>
-                            <span class="small text-muted" id="autoRefreshLabel">Off</span>
-                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <div class="row g-2 mb-3" id="kpiRow">
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="es-kpi orange"><div class="val" id="kpiManual">{{ $totals['manual_entry'] }}</div><div class="lbl">Manual Entry · L30</div></div>
-        </div>
-        <div class="col-6 col-md-4 col-xl-2">
-            <div class="es-kpi gray"><div class="val" id="kpiEmployees">{{ $totals['employees_worked'] }}</div><div class="lbl">Employees Worked · L30</div></div>
         </div>
     </div>
 
@@ -362,8 +368,14 @@
                     $liveToggleCounts = collect($rows)->countBy(fn ($row) => $row['live_status'] ?? 'absent');
                     $allToggleCount = count($rows);
                 @endphp
-                <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-                    <h6 class="mb-0"><i class="ri-group-line me-1"></i> Team Summary</h6>
+                {{-- One line, left to right: KPI badges, live-status pills, filters, search and status. --}}
+                <div class="es-topbar">
+                <div class="es-kpi-row" id="kpiRow">
+                    <div class="es-kpi orange"><div class="val" id="kpiManual">{{ $totals['manual_entry'] }}</div><div class="lbl">Manual Entry · L30</div></div>
+                    <div class="es-kpi gray"><div class="val" id="kpiEmployees">{{ $totals['employees_worked'] }}</div><div class="lbl">Employees Worked · L30</div></div>
+                </div>
+                <div class="es-field-team-summary">
+                    <label class="form-label small text-muted mb-0" title="Team Summary"><i class="ri-group-line"></i></label>
                     <div class="es-live-toggles" id="liveToggles" role="group" aria-label="Live status filter">
                         <button type="button" class="es-live-toggle is-live" data-live-filter="working" title="Show live executives">
                             Live <span id="liveCount">{{ (int) ($liveToggleCounts['working'] ?? 0) }}</span>
@@ -380,56 +392,7 @@
                     </div>
                 </div>
 
-                <form method="get" class="es-toolbar mb-2" id="filterForm">
-                    <div class="es-field-team">
-                        <label class="form-label small text-muted mb-0">Designation</label>
-                        @php
-                            $teamLabel = $team === 'all' ? 'All Employees' : $team;
-                        @endphp
-                        <div class="es-ss" data-ss>
-                            <select name="team" id="teamSelect" class="form-select form-select-sm es-ss-native">
-                                <option value="all" {{ $team === 'all' ? 'selected' : '' }}>All Employees</option>
-                                @foreach($teams as $t)
-                                <option value="{{ $t }}" {{ $team === $t ? 'selected' : '' }}>{{ $t }}</option>
-                                @endforeach
-                            </select>
-                            <button type="button" class="form-select form-select-sm es-ss-btn" data-ss-btn>{{ $teamLabel }}</button>
-                            <div class="es-ss-panel" data-ss-panel>
-                                <input type="search" class="form-control form-control-sm es-ss-q" placeholder="Quick search..." autocomplete="off">
-                                <div class="es-ss-list">
-                                    <button type="button" class="es-ss-item {{ $team === 'all' ? 'is-on' : '' }}" data-ss-val="all">All Employees</button>
-                                    @foreach($teams as $t)
-                                    <button type="button" class="es-ss-item {{ $team === $t ? 'is-on' : '' }}" data-ss-val="{{ $t }}">{{ $t }}</button>
-                                    @endforeach
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="es-field-exec">
-                        <label class="form-label small text-muted mb-0">Executive</label>
-                        @php
-                            $selectedExec = collect($executives ?? [])->firstWhere('id', (int) ($executive ?? 0));
-                            $execLabel = is_array($selectedExec) ? ($selectedExec['name'] ?? 'All executives') : 'All executives';
-                        @endphp
-                        <div class="es-ss" data-ss>
-                            <select name="executive" class="form-select form-select-sm es-ss-native" id="executiveSelect">
-                                <option value="0" {{ (int) ($executive ?? 0) === 0 ? 'selected' : '' }}>All executives</option>
-                                @foreach($executives as $exec)
-                                <option value="{{ $exec['id'] }}" {{ (int) ($executive ?? 0) === (int) $exec['id'] ? 'selected' : '' }}>{{ $exec['name'] }}</option>
-                                @endforeach
-                            </select>
-                            <button type="button" class="form-select form-select-sm es-ss-btn" data-ss-btn>{{ $execLabel }}</button>
-                            <div class="es-ss-panel" data-ss-panel>
-                                <input type="search" class="form-control form-control-sm es-ss-q" placeholder="Quick search..." autocomplete="off">
-                                <div class="es-ss-list">
-                                    <button type="button" class="es-ss-item {{ (int) ($executive ?? 0) === 0 ? 'is-on' : '' }}" data-ss-val="0">All executives</button>
-                                    @foreach($executives as $exec)
-                                    <button type="button" class="es-ss-item {{ (int) ($executive ?? 0) === (int) $exec['id'] ? 'is-on' : '' }}" data-ss-val="{{ $exec['id'] }}">{{ $exec['name'] }}</button>
-                                    @endforeach
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                <form method="get" class="es-toolbar" id="filterForm">
                     <div class="es-field-range">
                         <label class="form-label small text-muted mb-0">Range</label>
                         <select name="range" class="form-select form-select-sm" id="rangeSelect">
@@ -467,20 +430,17 @@
                             @endforeach
                         </select>
                     </div>
-                    <button type="submit" class="btn btn-sm btn-primary">
-                        <i class="ri-refresh-line"></i> Refresh
+                    <button type="submit" class="btn btn-sm btn-primary" title="Refresh" aria-label="Refresh">
+                        <i class="ri-refresh-line"></i>
                     </button>
                 </form>
 
-                <div class="es-table-toolbar">
-                    <div class="es-table-toolbar-left">
-                        <input type="search" class="form-control form-control-sm es-search" id="employeeSearch" placeholder="Search employees...">
-                        <select class="form-select form-select-sm es-status-filter" id="statusFilter" aria-label="Status filter">
-                            <option value="all">Status: All</option>
-                            <option value="logged">Status: Logged</option>
-                            <option value="not_logged">Status: Not logged</option>
-                        </select>
-                    </div>
+                <input type="search" class="form-control form-control-sm es-search" id="employeeSearch" placeholder="Search employees...">
+                <select class="form-select form-select-sm es-status-filter" id="statusFilter" aria-label="Status filter">
+                    <option value="all">Status: All</option>
+                    <option value="logged">Status: Logged</option>
+                    <option value="not_logged">Status: Not logged</option>
+                </select>
                 </div>
 
                 @include('attendance.partials.fraud-alert', ['alert' => null])
@@ -496,14 +456,14 @@
                                 <th class="es-sort es-live-col" data-sort="live" data-type="num" style="width:6%">Live</th>
                                 <th class="es-sort es-shot-col" data-sort="lastImage" data-type="num" style="width:9%">Last Image</th>
                                 <th class="es-sort" data-sort="span" data-type="num" style="width:12%">Activity Span</th>
-                                <th class="es-sort" data-sort="worked" data-type="num" style="width:11%">Total Time L30</th>
+                                <th class="es-sort" data-sort="including" data-type="num" style="width:9%">Work Time</th>
+                                <th class="es-sort" data-sort="worked" data-type="num" style="width:11%">L30</th>
                                 <th class="es-sort" data-sort="manual" data-type="num" style="width:10%">Manual</th>
                                 <th class="es-sort" data-sort="activeMin" data-type="num" style="width:10%" title="Active ÷ (Active + Idle) for {{ $from }} → {{ $to }}">% Min</th>
                                 <th class="es-sort" data-sort="activeSec" data-type="num" style="width:10%" title="Active ÷ (Active + Idle + Break) for {{ $from }} → {{ $to }}">% Secs</th>
                                 <th class="es-sort es-input-col" data-sort="clicks" data-type="num" style="width:6%" title="Mouse clicks for {{ $from }} → {{ $to }}">Clicks</th>
                                 <th class="es-sort es-input-col" data-sort="keys" data-type="num" style="width:6%" title="Keystrokes for {{ $from }} → {{ $to }}">Keys</th>
                                 <th class="es-sort es-th-idle" data-sort="idle" data-type="num" style="width:9%">Idle L30</th>
-                                <th class="es-sort" data-sort="including" data-type="num" style="width:9%">Work Time</th>
                             </tr>
                         </thead>
                         <tbody id="summaryBody">
@@ -608,6 +568,7 @@
                                     <div class="es-span-updated">{{ $row['activity_updated'] }}</div>
                                     @endif
                                 </td>
+                                <td><span class="es-pill blue-text">{{ $row['work_time_clock'] ?? $row['including_idle_clock'] }}</span></td>
                                 <td><span class="es-pill blue">{{ $row['worked_clock'] }}</span></td>
                                 <td>{{ $row['manual_clock'] }}</td>
                                 <td class="es-pct">
@@ -629,7 +590,6 @@
                                 <td class="es-input-col text-muted" title="No activity recorded in this period">—</td>
                                 @endif
                                 <td><span class="es-pill red">{{ $row['idle_clock'] }}</span></td>
-                                <td><span class="es-pill blue-text">{{ $row['work_time_clock'] ?? $row['including_idle_clock'] }}</span></td>
                             </tr>
                             @endforeach
                             @if(count($rows) === 0)
@@ -797,10 +757,7 @@
     const searchInput = document.getElementById('employeeSearch');
     const statusFilter = document.getElementById('statusFilter');
     const liveToggles = document.getElementById('liveToggles');
-    const autoRefresh = document.getElementById('autoRefresh');
-    const autoRefreshLabel = document.getElementById('autoRefreshLabel');
     const executiveSelect = document.getElementById('executiveSelect');
-    let refreshTimer = null;
     let sortKey = 'name';
     let sortDir = 'asc';
     let kpiOnlyRefresh = false;
@@ -927,7 +884,7 @@
         }
     });
 
-    filterForm?.querySelectorAll('select:not(#rangeSelect):not(#executiveSelect), input[type=date]').forEach(el => {
+    filterForm?.querySelectorAll('select:not(#rangeSelect), input[type=date]').forEach(el => {
         el.addEventListener('change', () => filterForm?.submit());
     });
 
@@ -967,10 +924,6 @@
         await refreshData();
         kpiOnlyRefresh = false;
     }
-
-    executiveSelect?.addEventListener('change', function() {
-        selectExecutive(this.value);
-    });
 
     toggleCustomRange();
 
@@ -1095,13 +1048,13 @@
                     <div class="es-span">${row.activity_is_live ? '<span class="es-live-dot me-1"></span>' : ''}${row.activity_span}</div>
                     ${row.activity_updated ? `<div class="es-span-updated">${row.activity_updated}</div>` : ''}
                 </td>
+                <td><span class="es-pill blue-text">${row.work_time_clock || row.including_idle_clock}</span></td>
                 <td><span class="es-pill blue">${row.worked_clock}</span></td>
                 <td>${row.manual_clock}</td>
                 <td class="es-pct"><div>${row.active_min_pct}%</div><div class="bar"><span style="width:${row.active_min_pct}%;background:#22c55e"></span></div></td>
                 <td class="es-pct"><div>${row.active_sec_pct}%</div><div class="bar"><span style="width:${row.active_sec_pct}%;background:${barColor(row.active_sec_pct)}"></span></div></td>
                 ${inputCells(row)}
                 <td><span class="es-pill red">${row.idle_clock}</span></td>
-                <td><span class="es-pill blue-text">${row.work_time_clock || row.including_idle_clock}</span></td>
             </tr>
         `).join('');
         applySort();
@@ -1129,14 +1082,6 @@
             }
         } catch (_) {}
     }
-
-    autoRefresh?.addEventListener('change', function() {
-        autoRefreshLabel.textContent = this.checked ? 'On' : 'Off';
-        if (refreshTimer) clearInterval(refreshTimer);
-        if (this.checked) {
-            refreshTimer = setInterval(refreshData, 60000);
-        }
-    });
 
     function openLiveWatch(url, name) {
         if (!url) return;
@@ -1233,11 +1178,6 @@
             openLiveWatch(btn.dataset.liveUrl, btn.dataset.name || 'Employee');
             return;
         }
-        if (e.target.closest('a, button')) return;
-        const tr = e.target.closest('tr[data-user-id]');
-        if (!tr) return;
-        const id = tr.dataset.userId || '0';
-        selectExecutive(executiveSelect?.value === id ? 0 : id);
     });
 })();
 </script>
