@@ -417,7 +417,7 @@ class AppServiceProvider extends ServiceProvider
             $user = Auth::user();
             if ($user) {
                 try {
-                    $count = ChatWorkspace::activeChatCount($user);
+                    $count = ChatWorkspace::yellowChatCount($user);
                     $unreadChats = ChatWorkspace::unreadChatCount($user);
                 } catch (\Throwable $e) {
                     $count = 0;

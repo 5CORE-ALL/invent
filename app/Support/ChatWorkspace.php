@@ -800,8 +800,17 @@ class ChatWorkspace
     }
 
     /**
+     * Yellow-dot chats: live (not archived) chats that still have visible messages
+     * and nothing unread. Drives the yellow count on the topbar chat icon.
+     */
+    public static function yellowChatCount(?User $user): int
+    {
+        return max(0, self::activeChatCount($user) - self::unreadChatCount($user));
+    }
+
+    /**
      * Number of live (not archived) chats this user is in that still have visible
-     * messages. Drives the yellow count on the topbar chat icon.
+     * messages (read or unread).
      */
     public static function activeChatCount(?User $user): int
     {

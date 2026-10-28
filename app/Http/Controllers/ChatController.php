@@ -137,7 +137,7 @@ class ChatController extends Controller
 
         return response()->json([
             'unread' => ChatWorkspace::unreadTotal($user),
-            'chats' => ChatWorkspace::activeChatCount($user),
+            'chats' => ChatWorkspace::yellowChatCount($user),
             'unread_chats' => ChatWorkspace::unreadChatCount($user),
         ]);
     }

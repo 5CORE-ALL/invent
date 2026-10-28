@@ -329,7 +329,7 @@
                 openChannel(Number(btn.dataset.channel));
             });
         });
-        updateTopbar(channels.filter(function (ch) { return ch.has_messages || (ch.unread || 0) > 0; }).length);
+        updateTopbar(channels.filter(function (ch) { return ch.has_messages && !((ch.unread || 0) > 0); }).length);
     }
 
     function updateTopbar(n) {

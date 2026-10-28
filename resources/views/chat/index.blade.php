@@ -385,6 +385,13 @@
         .slack-arch-row:hover { background: #f8f6fc; }
         .slack-arch-row img { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; }
         .slack-arch-row__type { margin-left: auto; font-size: 11px; color: #7a62a0; text-transform: uppercase; font-weight: 700; }
+        .slack-sec__yellow {
+            display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 1px 7px 1px 5px;
+            border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 10px; font-weight: 800;
+            letter-spacing: 0; text-transform: none; vertical-align: middle;
+        }
+        .slack-sec__yellow[hidden] { display: none; }
+        .slack-sec__yellow::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #ecb22e; }
         .slack-install { display: none; margin: 8px 12px; width: calc(100% - 24px); border: 0; border-radius: 6px; background: #1164a3; color: #fff; font-weight: 700; padding: 8px; }
         .slack-install.is-on { display: block; }
         .slack-progress { display: none; height: 3px; background: #e8e8e8; margin: 0 16px 8px; }
@@ -497,27 +504,27 @@
                 <div class="slack-pick" id="slackPeopleList"></div>
             </div>
             <div class="slack-nav__scroll">
-                <div class="slack-sec">5 Core Bot</div>
+                <div class="slack-sec"><span>5 Core Bot <span class="slack-sec__yellow" data-yellow="bot" hidden></span></span></div>
                 <div id="slackBotList"></div>
                 <div class="slack-sec">
-                    <span>Channels</span>
+                    <span>Channels <span class="slack-sec__yellow" data-yellow="channel" hidden></span></span>
                     @if ($canManageChannels)
                         <button type="button" id="slackNewChannelBtn" title="New channel">+</button>
                     @endif
                 </div>
                 <div id="slackChannelList"></div>
                 <div class="slack-sec">
-                    <span>Groups</span>
+                    <span>Groups <span class="slack-sec__yellow" data-yellow="group" hidden></span></span>
                     <button type="button" id="slackNewGroupBtn" title="New group">+</button>
                 </div>
                 <div id="slackGroupList"></div>
                 <div class="slack-sec" id="slackTaskSec">
-                    <span>Task chats</span>
+                    <span>Task chats <span class="slack-sec__yellow" data-yellow="task" hidden></span></span>
                     <a href="{{ url('/tasks') }}" title="Open Tasks to start a task chat" style="color:inherit;text-decoration:none;font-size:15px;line-height:1;">+</a>
                 </div>
                 <div id="slackTaskList"></div>
                 <div class="slack-sec">
-                    <span>Direct messages</span>
+                    <span>Direct messages <span class="slack-sec__yellow" data-yellow="dm" hidden></span></span>
                     <button type="button" id="slackNewDmBtn" title="New message">+</button>
                 </div>
                 <div id="slackDmList"></div>
@@ -941,6 +948,16 @@
         return res.json();
     }
 
+    // Task chats are named "#123 Title". Hide the id in the list; hover shows the full task title.
+    function chatLabel(ch) {
+        if (ch && ch.type === 'task') return String(ch.name || '').replace(/^#\d+\s*/, '') || String(ch.name || '');
+        return (ch && ch.name) || '';
+    }
+    function chatHoverTitle(ch) {
+        if (ch && ch.type === 'task') return ch.topic || chatLabel(ch);
+        return '';
+    }
+
     function bucket(ch) {
         if (ch.type === 'bot') return 'bot';
         if (ch.type === 'dm') return 'dm';
@@ -969,7 +986,9 @@
             const dot = dmMessageDot(ch);
             const badge = ch.unread > 0 ? '<span class="slack-item__badge">' + ch.unread + '</span>' : '';
             const pinMark = ch.pinned ? '<i class="ri-pushpin-fill slack-pin-mark" title="Pinned"></i>' : '';
-            btn.innerHTML = avatar + prefix + dot + pinMark + '<span class="slack-item__name">' + esc(ch.name) + '</span>' + badge +
+            const hoverTitle = chatHoverTitle(ch);
+            if (hoverTitle) btn.title = hoverTitle;
+            btn.innerHTML = avatar + prefix + dot + pinMark + '<span class="slack-item__name">' + esc(chatLabel(ch)) + '</span>' + badge +
                 '<span class="slack-item__pin" title="' + (ch.pinned ? 'Remove pin' : 'Pin') + '"><i class="ri-pushpin-' + (ch.pinned ? 'fill' : 'line') + '"></i></span>';
             btn.addEventListener('click', function (e) {
                 if (e.target.closest('.slack-item__pin')) return;
@@ -983,9 +1002,24 @@
             });
             lists[bucket(ch)].appendChild(btn);
         });
+        paintYellowCounts();
         updateTopbar();
         fillForwardTargets();
         renderArchived();
+    }
+
+    // Yellow dot = chat has messages and nothing unread. Count per sidebar section.
+    function paintYellowCounts() {
+        const counts = { bot: 0, channel: 0, group: 0, task: 0, dm: 0 };
+        channels.forEach(function (ch) {
+            if (ch.has_messages && !((ch.unread || 0) > 0)) counts[bucket(ch)]++;
+        });
+        document.querySelectorAll('.slack-sec__yellow').forEach(function (el) {
+            const n = counts[el.dataset.yellow] || 0;
+            el.textContent = String(n);
+            el.hidden = n < 1;
+            el.title = n + ' chat' + (n === 1 ? '' : 's') + ' with a yellow dot';
+        });
     }
 
     function channelById(id) {
@@ -1021,7 +1055,8 @@
             const avatar = ch.avatar
                 ? '<img class="' + (ch.type === 'bot' ? 'slack-bot-logo' : '') + '" src="' + esc(ch.avatar) + '" alt="">'
                 : (ch.type === 'group' ? '<i class="ri-group-line"></i>' : (ch.type === 'task' ? '<i class="ri-task-line"></i>' : '<i class="ri-archive-line"></i>'));
-            item.innerHTML = avatar + prefix + '<span class="slack-item__name">' + esc(ch.name) + '</span>';
+            if (chatHoverTitle(ch)) item.title = chatHoverTitle(ch);
+            item.innerHTML = avatar + prefix + '<span class="slack-item__name">' + esc(chatLabel(ch)) + '</span>';
             item.addEventListener('click', function () { openChannel(ch.id); });
             list.appendChild(item);
         });
@@ -1042,8 +1077,8 @@
     function updateTopbar() {
         const btn = document.getElementById('chatTopbarBtn');
         if (!btn) return;
-        // Yellow count = live (not archived) chats that still have messages.
-        const n = channels.filter(function (ch) { return ch.has_messages || (ch.unread || 0) > 0; }).length;
+        // Yellow count = live (not archived) chats with messages and nothing unread (yellow dot).
+        const n = channels.filter(function (ch) { return ch.has_messages && !((ch.unread || 0) > 0); }).length;
         btn.classList.toggle('has-unread', n > 0);
         btn.dataset.chatUnread = String(n);
         const red = channels.filter(function (ch) { return (ch.unread || 0) > 0; }).length;
@@ -1259,7 +1294,7 @@
     }
 
     function dmMessageDot(ch) {
-        if (!ch || ch.type !== 'dm') return '';
+        if (!ch) return '';
         if ((ch.unread || 0) > 0) {
             return '<span class="slack-dot is-msg-unread" title="Unread messages"></span>';
         }
@@ -2489,9 +2524,10 @@
             const row = document.createElement('button');
             row.type = 'button';
             row.className = 'slack-arch-row';
+            if (chatHoverTitle(ch)) row.title = chatHoverTitle(ch);
             const prefix = (ch.type === 'public' || ch.type === 'private') ? '# ' : '';
             const avatar = ch.avatar ? '<img src="' + esc(ch.avatar) + '" alt="">' : '<i class="ri-archive-line"></i>';
-            row.innerHTML = avatar + '<span>' + esc(prefix + ch.name) + '</span><span class="slack-arch-row__type">' + esc(ch.type || '') + '</span>';
+            row.innerHTML = avatar + '<span>' + esc(prefix + chatLabel(ch)) + '</span><span class="slack-arch-row__type">' + esc(ch.type || '') + '</span>';
             row.addEventListener('click', function () {
                 window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackArchChatsModal')).hide();
                 showArchived = true;
