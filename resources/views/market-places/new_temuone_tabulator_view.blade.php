@@ -489,6 +489,13 @@
         <div class="card shadow-sm">
             <div class="card-body py-2">
                 <div id="summary-stats" class="d-flex align-items-center flex-wrap gap-1">
+                    <select id="view-type-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;"
+                        title="SKU = child SKU rows only, Parent = parent summary rows only, ALL = Parent + SKU rows">
+                        <option value="sku" selected>SKU</option>
+                        <option value="parent">Parent</option>
+                        <option value="all">ALL</option>
+                    </select>
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All INV</option>
@@ -646,15 +653,6 @@
             <div class="card-body" style="padding: 0;">
                 <div id="new-temuone-table-wrapper" style="height: calc(100vh - 160px); display: flex; flex-direction: column;">
                     <div class="px-2 py-1 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
-                        <div class="d-flex align-items-center gap-1">
-                            <label for="view-type-filter" class="form-label mb-0 text-nowrap small" style="font-size: 13px;">View:</label>
-                            <select id="view-type-filter" class="form-select form-select-sm" style="width: 100px; font-size: 13px;"
-                                title="All = Parent + SKU rows, Parent = parent summary rows only, SKU = child SKU rows only">
-                                <option value="all" selected>All</option>
-                                <option value="parent">Parent</option>
-                                <option value="sku">SKU</option>
-                            </select>
-                        </div>
                         <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                         <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
                     </div>
