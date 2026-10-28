@@ -38,13 +38,13 @@ class AttendancePayrollController extends Controller
         }
 
         $viewableIds = AttendanceAccess::viewableUserIds();
-        $employees = $this->attendanceService->monitorableEmployees($viewableIds);
+        $employees = $this->attendanceService->monitorableEmployees($viewableIds, false);
 
         if ($team !== 'all') {
             $employees = $employees->filter(fn (User $u) => (string) $u->designation === $team)->values();
         }
 
-        $teams = $this->attendanceService->monitorableEmployees($viewableIds)
+        $teams = $this->attendanceService->monitorableEmployees($viewableIds, false)
             ->pluck('designation')
             ->filter()
             ->unique()
@@ -123,7 +123,7 @@ class AttendancePayrollController extends Controller
         }
 
         $viewableIds = AttendanceAccess::viewableUserIds();
-        $employees = $this->attendanceService->monitorableEmployees($viewableIds);
+        $employees = $this->attendanceService->monitorableEmployees($viewableIds, false);
 
         if ($team !== 'all') {
             $employees = $employees->filter(fn (User $u) => (string) $u->designation === $team)->values();

@@ -11,7 +11,6 @@ use App\Support\AttendanceAccess;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttendanceSummaryController extends Controller
 {
@@ -57,19 +56,6 @@ class AttendanceSummaryController extends Controller
         $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
 
         return response()->json($this->buildSummary($request, $timezone));
-    }
-
-    public function export(Request $request): StreamedResponse
-    {
-        abort_unless(AttendanceAccess::canViewSummary(), 403);
-
-        $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
-        $payload = $this->buildSummary($request, $timezone);
-        $csv = $this->summaryService->toCsv($payload['rows'], $payload['from'], $payload['to']);
-
-        return response()->streamDownload(function () use ($csv) {
-            echo $csv;
-        }, 'employee-summary_'.$payload['from'].'_'.$payload['to'].'.csv', ['Content-Type' => 'text/csv']);
     }
 
     /**

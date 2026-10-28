@@ -89,10 +89,13 @@ class AttendanceSummaryService
 
         // Keyboard / click totals for the same period as the table. `tracked_beats` counts heartbeats
         // where the agent's input hook was verified working, so "0" can be told apart from "not tracked".
+        $trackedExpr = AttendanceService::inputTrackedColumnExists()
+            ? 'SUM(CASE WHEN input_tracked = 1 THEN 1 ELSE 0 END)'
+            : 'SUM(CASE WHEN keystroke_count > 0 OR mouse_click_count > 0 THEN 1 ELSE 0 END)';
         $inputByUser = $userIds === []
             ? collect()
             : AttendanceActivityLog::query()
-                ->selectRaw('user_id, SUM(keystroke_count) as keys_total, SUM(mouse_click_count) as clicks_total, SUM(CASE WHEN input_tracked = 1 THEN 1 ELSE 0 END) as tracked_beats')
+                ->selectRaw("user_id, COUNT(*) as beats, SUM(keystroke_count) as keys_total, SUM(mouse_click_count) as clicks_total, {$trackedExpr} as tracked_beats")
                 ->whereIn('user_id', $userIds)
                 ->where('recorded_at', '>=', $fromBound)
                 ->where('recorded_at', '<=', $toBound)
@@ -126,9 +129,12 @@ class AttendanceSummaryService
                 : 0;
 
             $input = $inputByUser->get($employee->id);
-            $inputTracked = (int) ($input?->tracked_beats ?? 0) > 0;
             $clickCount = (int) ($input?->clicks_total ?? 0);
             $keyCount = (int) ($input?->keys_total ?? 0);
+            // Real numbers whenever input was tracked or any count was recorded; otherwise the agent
+            // sent heartbeats without input data (old agent / no Accessibility permission).
+            $inputTracked = (int) ($input?->tracked_beats ?? 0) > 0 || $clickCount > 0 || $keyCount > 0;
+            $inputBeats = (int) ($input?->beats ?? 0);
 
             $userSessions = $sessionsByUser->get($employee->id, collect());
             $activitySpan = $this->activitySpan($userSessions, $fromAt, $toAt, $now, $timezone);
@@ -189,6 +195,7 @@ class AttendanceSummaryService
                 'click_count' => $clickCount,
                 'key_count' => $keyCount,
                 'input_tracked' => $inputTracked,
+                'input_has_activity' => $inputBeats > 0,
                 'idle_seconds' => $idle,
                 'idle_clock' => $this->formatClock($idle),
                 'work_time_seconds' => $workTime,
@@ -314,21 +321,14 @@ class AttendanceSummaryService
             return ['label' => '—', 'updated_label' => null, 'is_live' => false];
         }
 
-        $firstSession = $sessions->sortBy('started_at')->first();
-        $lastSession = $sessions->sortByDesc(fn (AttendanceSession $s) => $s->ended_at?->timestamp ?? $now->timestamp)->first();
-        $isLive = $sessions->contains(fn (AttendanceSession $s) => $s->isActive());
+        // Last activity only: the most recent session's login → logout (not the first login of the range).
+        $lastSession = $sessions->sortByDesc(fn (AttendanceSession $s) => $s->started_at?->timestamp ?? 0)->first();
+        $isLive = $lastSession->isActive();
 
-        $start = $firstSession?->started_at?->timezone($timezone) ?? $fromAt->copy();
+        $start = $lastSession->started_at->copy()->timezone($timezone);
         $end = $isLive
             ? $now
-            : (($lastSession?->ended_at ?? $lastSession?->started_at ?? $now)->timezone($timezone));
-
-        if ($start->lt($fromAt)) {
-            $start = $fromAt->copy();
-        }
-        if ($end->gt($toAt)) {
-            $end = $toAt->copy();
-        }
+            : (($lastSession->ended_at ?? $lastSession->started_at)->copy()->timezone($timezone));
 
         $updatedLabel = null;
         if ($isLive) {
@@ -422,51 +422,6 @@ class AttendanceSummaryService
         }
 
         return sprintf('%dm', $m);
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $rows
-     */
-    public function toCsv(array $rows, string $from, string $to): string
-    {
-        $handle = fopen('php://temp', 'r+');
-        fputcsv($handle, [
-            'Employee',
-            'Activity Span',
-            'Total Time',
-            'Manual',
-            'Active Minutes %',
-            'Active Seconds %',
-            'Mouse Clicks',
-            'Keystrokes',
-            'Idle',
-            'Work Time',
-            'Period From',
-            'Period To',
-        ]);
-
-        foreach ($rows as $row) {
-            fputcsv($handle, [
-                $row['name'],
-                $row['activity_span'],
-                $row['worked_clock'],
-                $row['manual_clock'],
-                $row['active_min_pct'].'%',
-                $row['active_sec_pct'].'%',
-                ! empty($row['input_tracked']) ? $row['click_count'] : '',
-                ! empty($row['input_tracked']) ? $row['key_count'] : '',
-                $row['idle_clock'],
-                $row['work_time_clock'] ?? $row['including_idle_clock'],
-                $from,
-                $to,
-            ]);
-        }
-
-        rewind($handle);
-        $csv = stream_get_contents($handle);
-        fclose($handle);
-
-        return $csv ?: '';
     }
 
     public function defaultDateRange(?string $timezone = null): array

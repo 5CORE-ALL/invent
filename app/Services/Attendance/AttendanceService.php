@@ -554,7 +554,7 @@ class AttendanceService
     /**
      * @return \Illuminate\Support\Collection<int, User>
      */
-    public function monitorableEmployees(?array $userIds = null)
+    public function monitorableEmployees(?array $userIds = null, bool $excludeDirectors = true)
     {
         $query = User::query()
             ->where('is_active', true)
@@ -571,7 +571,17 @@ class AttendanceService
             $query->whereIn('id', $userIds);
         }
 
-        return $query->orderBy('name')->get(['id', 'name', 'email', 'designation', 'avatar', 'org_level', 'role']);
+        $employees = $query->orderBy('name')->get(['id', 'name', 'email', 'designation', 'avatar', 'org_level', 'role']);
+
+        // Directors do not sign in to the attendance agent, so they are exempt from team monitoring
+        // (a director row would only ever show as "not logged"). Payroll passes false to keep them.
+        if ($excludeDirectors) {
+            $employees = $employees
+                ->reject(fn (User $u) => \App\Support\AttendanceAccess::isDirector($u))
+                ->values();
+        }
+
+        return $employees;
     }
 
     /**
