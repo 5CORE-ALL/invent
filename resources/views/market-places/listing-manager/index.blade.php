@@ -1003,6 +1003,12 @@
                     </div>
                     <div class="lc-desc-side">
                         <div id="lc-desc-count" class="lc-char-ok">Characters: 0/500000</div>
+                        <div id="lc-desc-over" class="mt-2" style="display:none;">
+                            <div class="small text-danger mb-1" id="lc-desc-over-msg"></div>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lc-desc-proceed-btn" title="Ignore the character limit for this listing and publish it with the full description">
+                                <i class="fas fa-forward me-1"></i>Proceed anyway
+                            </button>
+                        </div>
                     </div>
                     <div class="mt-3">
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
@@ -1876,6 +1882,7 @@
     let titleLimit = 80;
     let faireTags = [];
     let descLimit = 500000;
+    let allowLongDesc = false;
     let categoryTimer = null;
     let policyDefaults = {};
     let descMode = 'code'; // code|preview|rich
@@ -2892,6 +2899,7 @@
         };
         return {
             description: getDescriptionValue(),
+            allow_long_description: !!allowLongDesc,
             condition: $('#lc-topdawg-condition').val() || $('#lc-condition').val() || 'New',
             condition_description: $('#lc-condition-desc').val() || '',
             brand,
@@ -3223,7 +3231,7 @@
         if (!title) errors.title.push('Title');
         else if (title.length > titleLimit) errors.title.push('Title length');
         if (!desc) errors.title.push('Description');
-        else if (desc.length > descLimit) errors.title.push('Description length');
+        else if (desc.length > descLimit && !allowLongDesc) errors.title.push('Description length');
         if (!d.images.length) errors.images.push('Images');
         if (!(price > 0)) errors.pricing.push('Price');
         if (qty === '' || qty === null) errors.pricing.push('Quantity');
@@ -3341,6 +3349,15 @@
             .text(`Characters: ${desc.length}/${descLimit}`)
             .toggleClass('lc-char-warn', desc.length > descLimit)
             .toggleClass('lc-char-ok', desc.length <= descLimit);
+        if (desc.length > descLimit) {
+            $('#lc-desc-over').show();
+            $('#lc-desc-over-msg').text(allowLongDesc
+                ? `Over the ${descLimit.toLocaleString()} character limit — allowed for this listing.`
+                : `Description is over the ${descLimit.toLocaleString()} character limit (${desc.length.toLocaleString()}).`);
+            $('#lc-desc-proceed-btn').toggle(!allowLongDesc);
+        } else {
+            $('#lc-desc-over').hide();
+        }
         updateDescGutter();
 
         renderImages();
@@ -3874,6 +3891,7 @@
         const isFaire = !!(draft.editor && draft.editor.faire) || editorFamilyName === 'faire' || /faire/i.test(String(draft.channel || ''));
         titleLimit = isFaire ? 60 : Number((draft.limits && draft.limits.title) || 80);
         descLimit = Number((draft.limits && draft.limits.description) || 500000);
+        allowLongDesc = !!(d && d.allow_long_description);
         $('#lc-draft-id').val(draft.id);
         $('#lc-editor-title').text(draft.title || draft.sku || 'Listing');
         $('#lc-sku').val(draft.sku || '');
@@ -6165,6 +6183,16 @@
             });
         });
         $('#lc-publish-btn').on('click', publishDraft);
+        $('#lc-desc-proceed-btn').on('click', function () {
+            allowLongDesc = true;
+            dirty = true;
+            refreshEditorUi(currentDraft);
+            if ($('#lc-publish-btn').prop('disabled')) {
+                toast('Character limit ignored for this listing. Complete the other required fields to publish.', 'info');
+                return;
+            }
+            publishDraft();
+        });
         $(document).on('click', '.listing-publish-mode-card', function (e) {
             const $input = $(this).find('input[type="radio"]');
             if (!$input.length || $input.prop('disabled')) return;
