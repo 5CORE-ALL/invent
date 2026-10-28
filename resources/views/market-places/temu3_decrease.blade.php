@@ -1169,25 +1169,36 @@
         if (p == null) return null;
         return +(p - (temu3ShipDisc(d) || 0)).toFixed(2);
     }
+    /**
+     * Price side, same chain as the S side: R prc = Temu Price × 0.88, Gpft = R prc × margin − Temu Ship − LP.
+     * (S side: S R prc = S PRC × 0.88, S Profit = S R prc × margin − LP − Ship.) null without a Price.
+     */
     function temu2PftDollars(rowData) {
-        const pad = temu3PriceAfterDisc(rowData);
-        if (pad == null || !(pad > 0)) return null;
+        const price = temu2FullPriceFromRow(rowData);
+        if (!(price > 0)) return null;
         const lp = parseFloat(rowData && rowData.lp) || 0;
         const ship = parseFloat(rowData && rowData.temu_ship) || 0;
-        return (pad * 0.95) - ship - lp;
+        return (price * TEMU2_S_RECOVERY_RATE * temuSpriceMargin(rowData)) - ship - lp;
     }
     function temu2GpftDollar(rowData) {
-        const pad = temu3PriceAfterDisc(rowData);
-        if (pad == null || !(pad > 0)) return null;
-        const lp = parseFloat(rowData && rowData.lp) || 0;
-        const ship = parseFloat(rowData && rowData.temu_ship) || 0;
-        return pad * temuSpriceMargin(rowData) - lp - ship;
+        return temu2PftDollars(rowData);
     }
+    /** NPFT$ = Gpft − (Temu Price × Ads%). Ads% is the channel Ads badge (0 on Temu 3, so NPFT = Gpft). */
     function temu2NpftDollars(rowData) {
         const pft = temu2PftDollars(rowData);
         if (pft == null) return null;
         const temuPrice = temu2FullPriceFromRow(rowData);
         return pft - (temuPrice * (temuAdsPercentForNet() / 100));
+    }
+    function temu2NpftPercent(rowData) {
+        const npft = temu2NpftDollars(rowData);
+        const price = temu2FullPriceFromRow(rowData);
+        return (npft != null && price > 0) ? (npft / price) * 100 : null;
+    }
+    function temu2NroiPercent(rowData) {
+        const npft = temu2NpftDollars(rowData);
+        const lp = parseFloat(rowData && rowData.lp) || 0;
+        return (npft != null && lp > 0) ? (npft / lp) * 100 : null;
     }
     function temu2RowSpriceValue(rowData, spriceOverride) {
         if (spriceOverride != null) {
@@ -4088,7 +4099,7 @@
                         const n = typeof temu2GpftDollar === 'function' ? temu2GpftDollar(d) : null;
                         return n == null ? 0 : n;
                     }),
-                    headerTooltip: "GPFT$ = Price After Discount × margin − LP − Temu Ship",
+                    headerTooltip: "GPFT$ = (Price × 0.88) × margin − LP − Temu Ship. Same chain as S Profit, run on Price instead of S PRC.",
                     formatter: function(cell) {
                         const n = typeof temu2GpftDollar === 'function' ? temu2GpftDollar(cell.getRow().getData()) : null;
                         if (n == null) return '';
@@ -4118,7 +4129,7 @@
                         const lp = parseFloat(d.lp) || 0;
                         return (pft != null && lp > 0) ? (pft / lp) * 100 : (parseFloat(d.roi_percent) || 0);
                     }),
-                    headerTooltip: "GROI% = Gpft / LP. Gpft = (Price After Discount × 0.95) − Temu Ship − LP",
+                    headerTooltip: "GROI% = Gpft / LP. Gpft = (Price × 0.88 R prc) × margin − Temu Ship − LP, same as S Profit on S PRC",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
@@ -4135,7 +4146,7 @@
                     field: "profit_percent",
                     hozAlign: "center",
                     minWidth: 80,
-                    headerTooltip: "GPRFT% = Gpft / Temu Price. Gpft = (Price After Discount × 0.95) − Temu Ship − LP",
+                    headerTooltip: "GPRFT% = Gpft / Temu Price. Gpft = (Price × 0.88 R prc) × margin − Temu Ship − LP, same as S Profit on S PRC",
                     sorter: function(a, b, aRow, bRow) {
                         const calc = (row) => {
                             const gpft = typeof temu2PftDollars === 'function' ? temu2PftDollars(row) : null;
@@ -4154,6 +4165,37 @@
                         const colorClass = getPftColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="profit_percent" title="View GPRFT% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff1493;"></span></button>` : '';
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
+                    }
+                },
+                {
+                    title: "NPFT%",
+                    field: "npft_percent",
+                    hozAlign: "center",
+                    minWidth: 80,
+                    headerTooltip: "NPFT% = NPFT$ ÷ Temu Price. NPFT$ = Gpft − (Temu Price × Ads%). Gpft = (Price × 0.88 R prc) × margin − Temu Ship − LP. Ads% is the channel Ads badge (0 on Temu 3).",
+                    sorter: temuSortBy(function(d) { const v = temu2NpftPercent(d); return v == null ? 0 : v; }),
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = temu2NpftPercent(rowData);
+                        if (value == null) return '<span style="color: #6c757d;">—</span>';
+                        const tip = 'NPFT $' + temu2NpftDollars(rowData).toFixed(2) + ' (Gpft $' + temu2PftDollars(rowData).toFixed(2)
+                            + ' − Ads ' + temuAdsPercentForNet().toFixed(1) + '% of Temu Price) ÷ Temu Price $' + temu2FullPriceFromRow(rowData).toFixed(2);
+                        return `<span class="dil-percent-value ${getPftColor(value)}" title="${tip}">${Math.round(value)}%</span>`;
+                    }
+                },
+                {
+                    title: "NROI%",
+                    field: "nroi_percent",
+                    hozAlign: "center",
+                    minWidth: 80,
+                    headerTooltip: "NROI% = NPFT$ ÷ LP. NPFT$ = Gpft − (Temu Price × Ads%). Ads% is the channel Ads badge (0 on Temu 3).",
+                    sorter: temuSortBy(function(d) { const v = temu2NroiPercent(d); return v == null ? 0 : v; }),
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = temu2NroiPercent(rowData);
+                        if (value == null) return '<span style="color: #6c757d;">—</span>';
+                        const tip = 'NPFT $' + temu2NpftDollars(rowData).toFixed(2) + ' ÷ LP $' + (parseFloat(rowData.lp) || 0).toFixed(2);
+                        return `<span class="dil-percent-value ${getRoiColor(value)}" title="${tip}">${Math.round(value)}%</span>`;
                     }
                 },
                 {
@@ -4475,7 +4517,7 @@
         };
         const TEMU2_AUTOFIT_FLOOR = {
             s_profit: 88, temu_price: 86, base_price: 92, gpft_dollar: 80,
-            roi_percent: 80, profit_percent: 80, lmp: 88,
+            roi_percent: 80, profit_percent: 80, npft_percent: 80, nroi_percent: 80, lmp: 88,
             STANDARD_PRICE: 88, sprice: 88, temu_price_display: 90
         };
         let temu2AutofitTimer = null;
