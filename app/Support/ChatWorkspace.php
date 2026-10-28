@@ -775,6 +775,31 @@ class ChatWorkspace
     }
 
     /**
+     * Number of live (not archived) chats with at least one unread message.
+     * Drives the red count on the topbar chat icon.
+     */
+    public static function unreadChatCount(?User $user): int
+    {
+        if (! $user || ! self::tablesReady()) {
+            return 0;
+        }
+
+        $cacheKey = 'chat_unread_chats_'.$user->id;
+
+        return (int) Cache::remember($cacheKey, now()->addSeconds(3), function () use ($user) {
+            $ids = array_keys(array_filter(self::unreadByChannel($user), fn ($n) => $n > 0));
+            if ($ids === []) {
+                return 0;
+            }
+
+            return (int) ChatChannel::query()
+                ->whereIn('id', $ids)
+                ->where('is_archived', false)
+                ->count();
+        });
+    }
+
+    /**
      * Number of live (not archived) chats this user is in that still have visible
      * messages. Drives the yellow count on the topbar chat icon.
      */
@@ -904,6 +929,7 @@ class ChatWorkspace
     {
         Cache::forget('chat_unread_total_'.$userId);
         Cache::forget('chat_active_total_'.$userId);
+        Cache::forget('chat_unread_chats_'.$userId);
         Cache::forget('chat_inbox_'.$userId);
     }
 

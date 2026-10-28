@@ -338,6 +338,10 @@
         n = parseInt(n, 10) || 0;
         btn.classList.toggle('has-unread', n > 0);
         btn.dataset.chatUnread = String(n);
+        const red = channels.filter(function (ch) { return (ch.unread || 0) > 0; }).length;
+        btn.classList.toggle('has-unread-red', red > 0);
+        const redEl = btn.querySelector('.topbar-chat-btn__red');
+        if (redEl) redEl.textContent = red > 99 ? '99+' : String(red);
         const el = btn.querySelector('.topbar-chat-btn__count');
         if (el) el.textContent = n > 99 ? '99+' : String(n);
     }

@@ -365,6 +365,24 @@
                 text-align: center;
             }
             .topbar-chat-btn.has-unread .topbar-chat-btn__count { display: inline-block; }
+            .topbar-chat-btn__red {
+                display: none;
+                position: absolute;
+                top: -4px;
+                left: -4px;
+                min-width: 18px;
+                height: 18px;
+                padding: 0 5px;
+                border-radius: 999px;
+                background: #dc2626;
+                color: #fff;
+                box-shadow: 0 0 0 2px #fff;
+                font-size: 0.65rem;
+                font-weight: 800;
+                line-height: 18px;
+                text-align: center;
+            }
+            .topbar-chat-btn.has-unread-red .topbar-chat-btn__red { display: inline-block; }
 
             .topbar-rr-btn {
                 display: inline-flex;
@@ -437,13 +455,15 @@
 
         @php
             $topbarChatUnread = (int) ($topbarChatUnread ?? 0);
+            $topbarChatUnreadChats = (int) ($topbarChatUnreadChats ?? 0);
         @endphp
         <a href="{{ route('chat.index') }}" id="chatTopbarBtn" target="_blank" rel="noopener"
-            class="topbar-chat-btn{{ $topbarChatUnread > 0 ? ' has-unread' : '' }}"
+            class="topbar-chat-btn{{ $topbarChatUnread > 0 ? ' has-unread' : '' }}{{ $topbarChatUnreadChats > 0 ? ' has-unread-red' : '' }}"
             data-chat-unread="{{ $topbarChatUnread }}"
             title="5Core Chat"
             aria-label="5Core Chat{{ $topbarChatUnread > 0 ? ' — '.$topbarChatUnread.' chats' : '' }}">
             <i class="ri-chat-3-fill"></i>
+            <span class="topbar-chat-btn__red" title="Unread chats">{{ $topbarChatUnreadChats > 99 ? '99+' : $topbarChatUnreadChats }}</span>
             <span class="topbar-chat-btn__count">{{ $topbarChatUnread > 99 ? '99+' : $topbarChatUnread }}</span>
         </a>
 
@@ -639,6 +659,12 @@
     const btn = document.getElementById('chatTopbarBtn');
     if (!btn || window.__inventChatUnreadPoll) return;
     window.__inventChatUnreadPoll = true;
+    function paintRed(r) {
+        r = parseInt(r, 10) || 0;
+        btn.classList.toggle('has-unread-red', r > 0);
+        const el = btn.querySelector('.topbar-chat-btn__red');
+        if (el) el.textContent = r > 99 ? '99+' : String(r);
+    }
     function paint(n) {
         n = parseInt(n, 10) || 0;
         btn.classList.toggle('has-unread', n > 0);
@@ -655,6 +681,7 @@
             if (!res.ok) return;
             const data = await res.json();
             paint(data.chats || 0);
+            paintRed(data.unread_chats || 0);
         } catch (e) {}
     }
     setInterval(tick, 15000);

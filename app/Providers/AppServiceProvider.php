@@ -413,16 +413,19 @@ class AppServiceProvider extends ServiceProvider
     {
         if ($this->chatUnreadBadge === null) {
             $count = 0;
+            $unreadChats = 0;
             $user = Auth::user();
             if ($user) {
                 try {
                     $count = ChatWorkspace::activeChatCount($user);
+                    $unreadChats = ChatWorkspace::unreadChatCount($user);
                 } catch (\Throwable $e) {
                     $count = 0;
                 }
             }
             $this->chatUnreadBadge = [
                 'topbarChatUnread' => $count,
+                'topbarChatUnreadChats' => $unreadChats,
             ];
         }
 
