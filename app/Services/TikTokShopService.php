@@ -2535,7 +2535,7 @@ class TikTokShopService
         // Drop any legacy bullet list an earlier push put in the description; bullets now live in Product highlights.
         $body = self::mergeBulletsIntoDescription($description, []);
 
-        $result = $this->updateTikTokProductFields($identifier, ['description' => self::tiktokDescriptionHtml($body)]);
+        $result = $this->updateTikTokProductFields($identifier, ['description' => self::tiktokDescriptionHtml($this->prepareDescriptionImages($body))]);
         if ($result['success'] ?? false) {
             $result['message'] = 'TikTok Shop description updated.';
         }
@@ -2806,7 +2806,7 @@ class TikTokShopService
                             ?? ''
                         ));
                         if ($uri !== '') {
-                            return ['uri' => $uri, 'message' => ''];
+                            return ['uri' => $uri, 'url' => trim((string) ($json['data']['url'] ?? '')), 'message' => ''];
                         }
                     }
                     $msg = $this->sanitizeTikTokClientError((string) ($json['message'] ?? $response->body()));
@@ -2882,7 +2882,7 @@ class TikTokShopService
                     $data = is_array($data) ? $data : [];
                     $uri = trim((string) ($data['uri'] ?? $data['url'] ?? $data['image_uri'] ?? ''));
                     if ($uri !== '') {
-                        return ['uri' => $uri, 'message' => ''];
+                        return ['uri' => $uri, 'url' => trim((string) ($data['url'] ?? '')), 'message' => ''];
                     }
                 } catch (\Throwable $e) {
                     $lastError = $this->sanitizeTikTokClientError($e->getMessage());
@@ -6637,10 +6637,79 @@ class TikTokShopService
      * @param  array<string, mixed>  $payload
      * @return array{success: bool, message: string, product_id?: string, sku_id?: string, skus?: list<array<string, mixed>>}
      */
+    /**
+     * TikTok only accepts <img> tags in a description when the src is the URL returned by
+     * "Upload Product Image" (use_case DESCRIPTION_IMAGE). Upload each picture and swap the src;
+     * pictures that cannot be uploaded are dropped so the rest of the description still publishes.
+     */
+    public function prepareDescriptionImages(string $html): string
+    {
+        if ($html === '' || stripos($html, '<img') === false || ! $this->accessToken) {
+            return $html;
+        }
+        $this->ensureShopCipher();
+
+        $cache = [];
+        $uploads = 0;
+        $started = microtime(true);
+        $out = preg_replace_callback('/<img\b[^>]*>/i', function (array $m) use (&$cache, &$uploads, $started): string {
+            if (! preg_match('/\bsrc\s*=\s*(["\'])(.*?)\1/is', $m[0], $s)) {
+                return '';
+            }
+            $src = trim(html_entity_decode($s[2], ENT_QUOTES | ENT_HTML5));
+            if ($src === '' || str_starts_with($src, 'data:')) {
+                return '';
+            }
+            if (isset($cache[$src])) {
+                return $cache[$src] !== '' ? '<img src="'.htmlspecialchars($cache[$src], ENT_QUOTES).'">' : '';
+            }
+            if ($uploads >= 15 || (microtime(true) - $started) > 70) {
+                $cache[$src] = '';
+
+                return '';
+            }
+            $uploads++;
+            $cache[$src] = $this->uploadDescriptionImage($src);
+
+            return $cache[$src] !== '' ? '<img src="'.htmlspecialchars($cache[$src], ENT_QUOTES).'">' : '';
+        }, $html);
+
+        return is_string($out) ? $out : $html;
+    }
+
+    private function uploadDescriptionImage(string $src): string
+    {
+        try {
+            if (str_starts_with($src, '//')) {
+                $src = 'https:'.$src;
+            } elseif (str_starts_with($src, '/')) {
+                $src = rtrim((string) config('app.url'), '/').$src;
+            }
+            $bytes = $this->listingImageBytes($src);
+            if ($bytes === null || $bytes === '') {
+                return '';
+            }
+            $converted = $this->listingImageToTikTokBytes($bytes, basename((string) (parse_url($src, PHP_URL_PATH) ?: 'image.jpg')));
+            if ($converted === null) {
+                return '';
+            }
+            $uploaded = $this->tiktokUploadImageBytes($converted['bytes'], $converted['filename'], 'DESCRIPTION_IMAGE');
+
+            return trim((string) ($uploaded['url'] ?? ''));
+        } catch (\Throwable $e) {
+            Log::warning('TikTok description image upload failed', ['channel' => $this->configKey, 'src' => mb_substr($src, 0, 200), 'error' => $e->getMessage()]);
+
+            return '';
+        }
+    }
+
     public function createListingProduct(array $payload): array
     {
         if (! $this->isConfigured()) {
             return ['success' => false, 'message' => 'TikTok Shop is not connected. Open Connect and authorize the shop.'];
+        }
+        if (isset($payload['description']) && is_string($payload['description'])) {
+            $payload['description'] = self::tiktokDescriptionHtml($this->prepareDescriptionImages($payload['description']));
         }
 
         $this->client->setAccessToken($this->accessToken);
