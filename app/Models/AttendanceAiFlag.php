@@ -19,7 +19,6 @@ class AttendanceAiFlag extends Model
         'input_simulation' => 'Possible Input Simulation',
         'marathon_session' => 'Unbroken Marathon Session',
         'no_screenshots' => 'Screen Capture Missing',
-        'multi_device' => 'Account Used From Several Machines',
     ];
 
     /**
@@ -30,7 +29,6 @@ class AttendanceAiFlag extends Model
         'input_simulation',
         'marathon_session',
         'no_screenshots',
-        'multi_device',
     ];
 
     protected $fillable = [

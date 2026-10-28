@@ -9,7 +9,6 @@ use App\Models\AttendanceScreenshot;
 use App\Models\AttendanceSession;
 use App\Models\User;
 use App\Support\OpenAiRequest;
-use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -335,7 +334,7 @@ class AttendanceAiMisuseService
 
     /**
      * Other ways time can be inflated or monitoring dodged: a session that never ends, screen capture
-     * silently blocked while "working", or one account used from several machines.
+     * silently blocked while "working". Using a different laptop or browser is never a finding by itself.
      *
      * @return AttendanceAiFlag[]
      */
@@ -410,37 +409,6 @@ class AttendanceAiMisuseService
             }
         }
 
-        $windowDays = max(1, (int) ($cfg['multi_device_days'] ?? 7));
-        $minDevices = max(2, (int) ($cfg['multi_device_min'] ?? 3));
-        $deviceCount = AttendanceSession::query()
-            ->where('user_id', $user->id)
-            ->whereNotNull('attendance_device_id')
-            ->whereDate('started_at', '<=', $date)
-            ->whereDate('started_at', '>', Carbon::parse($date)->subDays($windowDays)->toDateString())
-            ->distinct()
-            ->count('attendance_device_id');
-
-        // This signal spans several days, so a person's review of it covers the whole window
-        // instead of being re-raised under tomorrow's date.
-        $alreadyTriaged = AttendanceAiFlag::query()
-            ->where('user_id', $user->id)
-            ->where('flag_type', 'multi_device')
-            ->where('status', '!=', 'open')
-            ->whereDate('flag_date', '>', Carbon::parse($date)->subDays($windowDays)->toDateString())
-            ->exists();
-
-        if ($deviceCount >= $minDevices && $sessions->isNotEmpty() && ! $alreadyTriaged) {
-            $flags[] = $this->upsertFlag($user, [
-                'flag_date' => $date,
-                'flag_type' => 'multi_device',
-                'severity' => $deviceCount > $minDevices ? 'medium' : 'low',
-                'title' => "Account used from {$deviceCount} machines in {$windowDays} days",
-                'description' => "{$deviceCount} different computers clocked in on this account within {$windowDays} days — possible account sharing or someone else working under this login.",
-                'evidence' => ['distinct_devices' => $deviceCount, 'window_days' => $windowDays],
-                'source' => 'rules',
-            ]);
-        }
-
         return $flags;
     }
 
@@ -498,27 +466,6 @@ class AttendanceAiMisuseService
         $ceiling = (int) ($cfg['max_os_idle_ceiling_seconds'] ?? 65);
         $lowIdle = $idleShare < (float) ($cfg['min_idle_share_percent'] ?? 2) && $maxOsIdle <= $ceiling;
 
-        // Longest unbroken stretch on the same app + window while counted as working.
-        $run = 0;
-        $longestRun = 0;
-        $runTitle = null;
-        $longestTitle = null;
-        foreach ($logs as $log) {
-            $key = strtolower(trim((string) ($log->app_name ?: $log->process_name).'|'.(string) $log->window_title));
-            if ($key !== '|' && $log->activity_state === 'working' && $key === $runTitle) {
-                $run++;
-            } else {
-                $run = ($key !== '|' && $log->activity_state === 'working') ? 1 : 0;
-                $runTitle = $run > 0 ? $key : null;
-            }
-            if ($run > $longestRun) {
-                $longestRun = $run;
-                $longestTitle = $runTitle;
-            }
-        }
-        $staticTitleMinutes = (int) round(($longestRun * $interval) / 60);
-        $staticTitle = $staticTitleMinutes >= (int) ($cfg['static_title_minutes'] ?? 90);
-
         // Real keyboard / click counts. Only heartbeats where the agent's input hook was verified
         // working are judged, so old agents, or a Mac without Accessibility permission, are never
         // mistaken for "typed nothing".
@@ -541,9 +488,6 @@ class AttendanceAiMisuseService
         if ($noRealInput) {
             $signals[] = "{$keystrokes} keystrokes and {$clicks} clicks in ".round($trackedHours, 1)."h of 'working' time ({$inputsPerHour} inputs/hour)";
         }
-        if ($staticTitle) {
-            $signals[] = "same window for {$staticTitleMinutes} min";
-        }
 
         return [$this->upsertFlag($user, [
             'attendance_session_id' => $session->id,
@@ -558,8 +502,6 @@ class AttendanceAiMisuseService
                 'hours_sampled' => round($hours, 2),
                 'idle_share_percent' => $idleShare,
                 'max_os_idle_seconds' => $maxOsIdle,
-                'longest_same_window_minutes' => $staticTitleMinutes,
-                'longest_same_window' => $longestTitle,
                 'input_tracked_hours' => round($trackedHours, 2),
                 'keystrokes' => $keystrokes,
                 'mouse_clicks' => $clicks,

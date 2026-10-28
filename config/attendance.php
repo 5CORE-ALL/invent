@@ -15,7 +15,6 @@ return [
         'president@5core.com',
         'hr@5core.com',
         'tech-support@5core.com',
-        'software@5core.com',
         'software5@5core.com',
     ],
 
@@ -125,9 +124,6 @@ return [
         'marathon_hours' => (float) env('ATTENDANCE_CHECKUP_MARATHON_HOURS', 14),
         // Fewer screenshots than this share of the expected count: screen capture blocked or disabled.
         'min_screenshot_ratio' => (float) env('ATTENDANCE_CHECKUP_MIN_SCREENSHOT_RATIO', 0.4),
-        // This many distinct machines used within the window looks like account sharing.
-        'multi_device_days' => (int) env('ATTENDANCE_CHECKUP_MULTI_DEVICE_DAYS', 7),
-        'multi_device_min' => (int) env('ATTENDANCE_CHECKUP_MULTI_DEVICE_MIN', 3),
     ],
 
     /*
@@ -165,8 +161,6 @@ return [
         // Keystrokes + clicks per "working" hour below which a long session looks like no real work
         // (only judged where the agent's input hook was verified working).
         'min_inputs_per_hour' => (float) env('ATTENDANCE_SIM_MIN_INPUTS_PER_HOUR', 30),
-        // Same app + window title for this long while counted as working.
-        'static_title_minutes' => (int) env('ATTENDANCE_SIM_STATIC_TITLE_MINUTES', 90),
     ],
 
 ];
