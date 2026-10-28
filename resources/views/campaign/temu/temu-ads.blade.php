@@ -311,7 +311,24 @@
         .alert .temu-ads-alert-tri { color: #111827; margin-left: 6px; }
         .alert-danger .temu-ads-alert-tri { color: #7f1d1d; }
         #temu-ads-table .tabulator-cell[tabulator-field="ad_create_reject"] {
-            overflow: visible;
+            overflow: hidden;
+        }
+        .temu-ads-alert-line {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            min-width: 0;
+            cursor: help;
+        }
+        .temu-ads-alert-line .temu-ads-alert-tri { flex: 0 0 auto; }
+        .temu-ads-alert-text {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #b91c1c;
+            font-size: 11.5px;
+            font-weight: 600;
         }
         #temu-ads-hover-tip {
             position: fixed;
@@ -2120,18 +2137,22 @@
                     {
                         title: 'Alert',
                         field: 'ad_create_reject',
-                        width: 56,
-                        minWidth: 48,
-                        hozAlign: 'center',
+                        width: 260,
+                        minWidth: 120,
+                        hozAlign: 'left',
                         headerHozAlign: 'center',
-                        headerTooltip: 'Triangle when Temu rejected or failed creating an ad. Hover to read the full message.',
+                        headerTooltip: 'Triangle + message when Temu rejected or failed creating an ad. Hover to read the full message.',
                         sorter: function (a, b) {
                             const as = String(a || '').trim() ? 1 : 0;
                             const bs = String(b || '').trim() ? 1 : 0;
                             return as - bs;
                         },
                         formatter: function (cell) {
-                            return adsAlertTriangleHtml(rowCreateAlertText(cell.getRow().getData() || {}), 'is-danger');
+                            const text = rowCreateAlertText(cell.getRow().getData() || {});
+                            if (!text) return '';
+                            return '<span class="temu-ads-alert-line" data-ads-alert="' + escapeAttr(text) + '">'
+                                + adsAlertTriangleHtml(text, 'is-danger')
+                                + '<span class="temu-ads-alert-text">' + escapeAttr(text) + '</span></span>';
                         },
                     },
                     { title: 'Ovl30', field: 'ovl30', width: 62, minWidth: 54, hozAlign: 'center', formatter: numFmt, sorter: 'number',
