@@ -3131,7 +3131,7 @@
             return 'advertisement';
         }
         if (
-            /^(_select|image_path|parent|\(child\) sku|links_column|inv|inventory|temu_stock|l30|temu_l30|views|dil%)$/i.test(f) ||
+            /^(_select|image_path|parent|\(child\) sku|links_column|red_alert|inv|inventory|temu_stock|l30|temu_l30|views|dil%)$/i.test(f) ||
             /\b(sku|links|inv|stock|ovl|dil|temu\s*l\d+|views|parent)\b/i.test(tl)
         ) {
             return 'basics';
@@ -3511,6 +3511,29 @@
                     },
                     cellDblClick: function(e, cell) {
                         openNewTemuoneEditLinksModal(cell.getRow());
+                    }
+                },
+                {
+                    title: 'Red Alert',
+                    field: 'red_alert',
+                    width: 260,
+                    minWidth: 120,
+                    hozAlign: 'left',
+                    headerHozAlign: 'center',
+                    headerTooltip: 'Listing issue on the parent (Temu ad reject / failure message). Parent rows only.',
+                    tooltip: false,
+                    sorter: function(a, b) {
+                        return (String(a || '').trim() ? 1 : 0) - (String(b || '').trim() ? 1 : 0);
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (!d.is_parent_summary) return '';
+                        const text = String(cell.getValue() || '').trim();
+                        if (!text) return '';
+                        const esc = text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        return '<span title="' + esc + '" style="display:flex;align-items:center;gap:5px;min-width:0;cursor:help;color:#b91c1c;font-size:11.5px;font-weight:600;">'
+                            + '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="flex:0 0 auto;color:#dc2626;"><path fill="currentColor" d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>'
+                            + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc + '</span></span>';
                     }
                 },
                 {

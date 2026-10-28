@@ -489,6 +489,8 @@ class TemuAdsController extends Controller
             'goods_ids.*' => 'string|max:64',
             'budget' => 'required|numeric|min:1|max:10000',
             'roas' => 'required|numeric|min:0.1|max:12',
+            'budget_by_goods' => 'nullable|array',
+            'budget_by_goods.*' => 'numeric|min:1|max:10000',
             'roas_by_goods' => 'nullable|array',
             'roas_by_goods.*' => 'numeric|min:0.1|max:12',
         ]);
@@ -498,6 +500,8 @@ class TemuAdsController extends Controller
         $budget = (float) $request->input('budget');
         $roas = (float) $request->input('roas');
         $roasByGoods = $request->input('roas_by_goods', []);
+        // Per-goods budget (e.g. the minimum Temu asked for after a "daily budget must be between X and Y" reject).
+        $budgetByGoods = $request->input('budget_by_goods', []);
         $ids = [];
         foreach ($request->input('goods_ids', []) as $id) {
             $gid = trim((string) $id);
@@ -515,7 +519,8 @@ class TemuAdsController extends Controller
                 usleep(250000);
             }
             $rowRoas = isset($roasByGoods[$goodsId]) ? (float) $roasByGoods[$goodsId] : $roas;
-            $result = $temuApi->createAd($goodsId, $budget, $rowRoas);
+            $rowBudget = isset($budgetByGoods[$goodsId]) ? (float) $budgetByGoods[$goodsId] : $budget;
+            $result = $temuApi->createAd($goodsId, $rowBudget, $rowRoas);
             if ($result['ok'] ?? false) {
                 $rejects->clearReject($goodsId);
                 $created[] = $goodsId;

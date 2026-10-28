@@ -3151,6 +3151,29 @@
                 return null;
             }
 
+            // Temu rejected the ad because of the daily budget ("...daily budget must be between 17 and 999,999"):
+            // creating again from the + icon uses that minimum instead of the default budget.
+            function createBudgetForGoods(goodsId, fallbackBudget) {
+                const fb = Number(fallbackBudget);
+                const base = (isFinite(fb) && fb >= 1) ? fb : 10;
+                const gid = String(goodsId || '').trim();
+                if (!gid) return base;
+                let text = String(createAlertByGoods[gid] || '').trim();
+                if (!text) {
+                    const hit = (allAdsRows || []).find(function (r) {
+                        return r && String(r.goods_id || '') === gid && String(r.ad_create_reject || '').trim() !== '';
+                    });
+                    text = hit ? String(hit.ad_create_reject || '').trim() : '';
+                }
+                const m = text.match(/daily\s+budget[^0-9]*between\s*\$?\s*([\d,]+(?:\.\d+)?)\s*and\s*\$?\s*([\d,]+(?:\.\d+)?)/i);
+                if (!m) return base;
+                const min = parseFloat(m[1].replace(/,/g, ''));
+                const max = parseFloat(m[2].replace(/,/g, ''));
+                if (!isFinite(min) || min < 1 || min > 10000) return base;
+                if (isFinite(max) && base >= min && base <= max) return base;
+                return min;
+            }
+
             function createRoasForGoods(goodsId, fallbackRoas) {
                 const fb = Number(fallbackRoas);
                 return (isFinite(fb) && fb >= 0.1) ? fb : 4;
@@ -3252,6 +3275,18 @@
                     return;
                 }
                 const defaults = createAdDefaults();
+                const budgetByGoods = {};
+                let budgetOverrides = 0;
+                ids.forEach(function (gid) {
+                    const b = createBudgetForGoods(gid, defaults.budget);
+                    budgetByGoods[gid] = b;
+                    if (b !== defaults.budget) budgetOverrides++;
+                });
+                const budgetLine = budgetOverrides > 0
+                    ? (ids.length === 1
+                        ? 'Daily budget: $' + budgetByGoods[ids[0]] + ' (minimum Temu asked for in the alert)'
+                        : 'Daily budget: $' + defaults.budget + ' (' + budgetOverrides + ' goods use the minimum Temu asked for in their alert)')
+                    : 'Daily budget: $' + defaults.budget;
                 const confirmLead = usingExplicit && ids.length === 1
                     ? 'Create a Temu ad for this goods ID?'
                     : (usingSelection
@@ -3259,7 +3294,7 @@
                         : 'Create Temu ads for all ' + ids.length + ' required goods?');
                 if (!confirm(
                     confirmLead + '\n' +
-                    'Daily budget: $' + defaults.budget + '\n' +
+                    budgetLine + '\n' +
                     'Target ROAS: ' + defaults.roas + '\n' +
                     '(Same as Create ads Rule)'
                 )) {
@@ -3289,6 +3324,10 @@
                             body: JSON.stringify({
                                 goods_ids: chunk,
                                 budget: defaults.budget,
+                                budget_by_goods: chunk.reduce(function (map, gid) {
+                                    map[gid] = budgetByGoods[gid];
+                                    return map;
+                                }, {}),
                                 roas: defaults.roas,
                                 roas_by_goods: chunk.reduce(function (map, gid) {
                                     map[gid] = createRoasForGoods(gid, defaults.roas);
@@ -3378,6 +3417,7 @@
                 document.getElementById('create-goods-id').value = goodsId || '';
                 document.getElementById('create-ad-status').style.display = 'none';
                 document.getElementById('create-roas').value = String(createRoasForGoods(goodsId, createAdDefaults().roas));
+                document.getElementById('create-budget').value = String(createBudgetForGoods(goodsId, createAdDefaults().budget));
                 new bootstrap.Modal(document.getElementById('createAdModal')).show();
             }
 

@@ -166,6 +166,8 @@ class NewTemuoneController extends Controller
             $groups[$parent][] = $r;
         }
 
+        $alertByGoods = $this->listingIssueByGoodsId($rows);
+
         $out = [];
         foreach ($groups as $parent => $kids) {
             $inv = 0.0;
@@ -191,8 +193,15 @@ class NewTemuoneController extends Controller
             }
             $views = $viewsNoGoods + array_sum($viewsByGoods);
             $label = 'PARENT '.$parent;
+            $alerts = [];
+            foreach (array_keys($viewsByGoods) as $gid) {
+                if (isset($alertByGoods[$gid])) {
+                    $alerts[$alertByGoods[$gid]] = true;
+                }
+            }
             $out[] = [
                 'is_parent_summary' => true,
+                'red_alert' => implode(' | ', array_keys($alerts)),
                 'Parent' => $parent,
                 'parent' => $parent,
                 'sku' => $label,
@@ -213,6 +222,74 @@ class NewTemuoneController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Listing issue per Goods ID: the Temu reject / failure message stored when an ad could not be created for the
+     * listing (e.g. "Failed the ad approval: Misleading statements") — same text as the Alert column on /temu-ads.
+     * Stale once the goods has a live ad (Active / Inactive / Paused), so those goods are skipped.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, string> goods_id => message
+     */
+    private function listingIssueByGoodsId(array $rows): array
+    {
+        if (! $this->hasTable('temu_ads_api_reports')) {
+            return [];
+        }
+
+        $goodsIds = [];
+        foreach ($rows as $r) {
+            $gid = trim((string) ($r['temu_goods_id'] ?? ''));
+            if ($gid !== '') {
+                $goodsIds[$gid] = true;
+            }
+        }
+        if ($goodsIds === []) {
+            return [];
+        }
+
+        $out = [];
+        try {
+            if (! Schema::hasColumn('temu_ads_api_reports', 'ad_create_reject')) {
+                return [];
+            }
+            $live = ['Active', 'Inactive', 'Paused'];
+            $hasLive = [];
+            foreach (array_chunk(array_map('strval', array_keys($goodsIds)), 1000) as $chunk) {
+                TemuAdsApiReport::query()
+                    ->whereIn('goods_id', $chunk)
+                    ->whereIn('ad_status', $live)
+                    ->distinct()
+                    ->pluck('goods_id')
+                    ->each(function ($gid) use (&$hasLive): void {
+                        $hasLive[(string) $gid] = true;
+                    });
+
+                TemuAdsApiReport::query()
+                    ->whereIn('goods_id', $chunk)
+                    ->whereNotNull('ad_create_reject')
+                    ->where('ad_create_reject', '!=', '')
+                    ->orderByDesc('fetched_at')
+                    ->orderByDesc('id')
+                    ->get(['goods_id', 'ad_create_reject'])
+                    ->each(function ($r) use (&$out): void {
+                        $gid = (string) $r->goods_id;
+                        if (! isset($out[$gid])) {
+                            $out[$gid] = trim((string) $r->ad_create_reject);
+                        }
+                    });
+            }
+            foreach ($hasLive as $gid => $_) {
+                unset($out[$gid]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('New Temu One listing issue lookup failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        return array_filter($out, fn ($m) => $m !== '');
     }
 
     /**
