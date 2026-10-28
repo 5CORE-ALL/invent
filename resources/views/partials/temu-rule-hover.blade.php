@@ -68,21 +68,39 @@
                 steps.push(temuRuleStep('skip', '2 · CVR overlay',
                     'CVR ' + cvrTxt + (trend ? ' (' + trend + ' arrow)' : '') + ' is inside the thresholds, so no adjustment'));
             }
+            // Ageing Rule: points for the SKU's age band (Sprc Dil modal, Ageing table). Only on pages that have the rule.
+            let stepNo = 3;
+            if (typeof EBAY_AGE_ADJ_ON !== 'undefined' && EBAY_AGE_ADJ_ON && typeof ebayDilGroiAgeAdj === 'function') {
+                const ageDays = (typeof ebayRowAgeDays === 'function') ? ebayRowAgeDays(d) : null;
+                const ageAdj = Number(ebayDilGroiAgeAdj(d)) || 0;
+                const ageIdx = (typeof ebayAgeAdjSlabIdx === 'function' && typeof ebayAgeAdj !== 'undefined') ? ebayAgeAdjSlabIdx(ageDays, ebayAgeAdj) : -1;
+                const ageBand = (ageIdx >= 0 && typeof ebayAgeAdjBand === 'function') ? ebayAgeAdjBand(ebayAgeAdj[ageIdx]) : null;
+                const ageLabel = ageBand ? (ageBand.min + '–' + ageBand.max) : '';
+                if (ageAdj) {
+                    steps.push(temuRuleStep('ok', stepNo + ' · Ageing rule',
+                        'Age <b>' + ageDays + '</b> days → slab ' + ageLabel + ' → <b>' + (ageAdj > 0 ? '+' : '') + ageAdj + '</b> to Target SNROI'));
+                } else {
+                    steps.push(temuRuleStep('skip', stepNo + ' · Ageing rule',
+                        ageDays === null ? 'No age for this SKU. Not applied.'
+                            : ('Age ' + ageDays + ' days: ' + (ageLabel ? 'slab ' + ageLabel + ' adds 0.' : 'no Ageing slab matches.'))));
+                }
+                stepNo++;
+            }
             const diffAdj = ebayDilGroiDiffAdj(d);
             const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : 0;
             const price = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : 0;
             const diffPct = (std > 0 && price > 0) ? ((std - price) / price) * 100 : null;
             if (diffAdj) {
-                steps.push(temuRuleStep('ok', '3 · Diff rule',
+                steps.push(temuRuleStep('ok', stepNo + ' · Diff rule',
                     'Diff ' + diffPct.toFixed(1) + '% (Std Prc ' + temuRuleMoney(std) + ' vs {{ $temuRuleLiveLabel }} ' + temuRuleMoney(price) + ') is above ' + temuRuleDiffCfg().gt_pct + '% → <b>'
                     + temuRuleDiffPts(diffAdj) + '</b> to Target SNROI'));
             } else {
-                steps.push(temuRuleStep('skip', '3 · Diff rule',
+                steps.push(temuRuleStep('skip', stepNo + ' · Diff rule',
                     diffPct === null ? 'Needs both Std Prc and {{ $temuRuleLiveLabel }}. Not applied.'
                         : ('Diff ' + diffPct.toFixed(1) + '% is not above ' + temuRuleDiffCfg().gt_pct + '%. No ' + temuRuleDiffPts(temuRuleDiffCfg().points))));
             }
             const target = Number(ebayDilGroiApplyCvrAdj(rule.groi, d));
-            steps.push(temuRuleStep('info', '4 · Target SNROI', 'Final target <b>' + (isFinite(target) ? target : '—') + '%</b>'));
+            steps.push(temuRuleStep('info', (stepNo + 1) + ' · Target SNROI', 'Final target <b>' + (isFinite(target) ? target : '—') + '%</b>'));
             return isFinite(target) ? target : null;
         }
 
@@ -918,7 +936,7 @@
                 sg = parts && parts.sgroi != null ? Number(parts.sgroi) : null;
                 if (sg === null || sg >= 20) after = +(lmp * (1 - temuRuleBandPct(d) / 100)).toFixed(2);
             }
-            temuRuleLmpStep(steps, { n: '2', base: rulePrice, lmp: lmp, sgroiAtLmp: sg, pct: temuRuleBandPct(d), after: after });
+            temuRuleLmpStep(steps, { n: dilOn ? '6' : '2', base: rulePrice, lmp: lmp, sgroiAtLmp: sg, pct: temuRuleBandPct(d), after: after });
             const zeroSold = typeof chPromoTemuZeroSoldOwnsSprice === 'function' && chPromoTemuZeroSoldOwnsSprice(d);
             if (zeroSold) notes.push('0 Sold SKU: the 0 Sold rule owns S PRC, so the LMP rule is skipped.');
             if (lmp > 0 && std > 0 && lmp > std + 0.0001) notes.push('LMP ' + temuRuleMoney(lmp) + ' is above Std Prc ' + temuRuleMoney(std) + '. Review the Std price.');
