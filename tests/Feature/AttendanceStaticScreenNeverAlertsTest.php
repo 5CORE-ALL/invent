@@ -173,6 +173,83 @@ class AttendanceStaticScreenNeverAlertsTest extends TestCase
         $this->assertSame(['no_screenshots'], $this->openTypes($u));
     }
 
+    private function analyze(User $u): array
+    {
+        $r = app(AttendanceAiMisuseService::class)->analyzeUserDay($u, self::DAY, false);
+
+        return AttendanceAiFlag::where('user_id', $u->id)->get()->all() ?: ($r['flags'] ?? []);
+    }
+
+    public function test_same_window_all_day_creates_no_repetitive_window_flag(): void
+    {
+        $u = $this->user();
+        // 100% of heartbeats on one window title (the old rule fired above 85%).
+        $this->agentSession($u);
+
+        app(AttendanceAiMisuseService::class)->analyzeUserDay($u, self::DAY, false);
+
+        $this->assertSame(0, AttendanceAiFlag::where('user_id', $u->id)->where('title', 'Repetitive window activity')->count());
+        $this->assertSame(0, AttendanceAiFlag::where('user_id', $u->id)->where('flag_type', 'suspicious_pattern')->count());
+        $this->assertSame([], AttendanceFraudAlerts::forUsers([$u->id]));
+    }
+
+    public function test_ecommerce_screen_switching_and_manual_hours_raise_nothing(): void
+    {
+        $u = $this->user();
+        // Normal ecommerce day: a few tabs, switching often, one window dominating.
+        $titles = ['Seller Central - Amazon', 'Seller Central - Amazon', 'Seller Central - Amazon', 'eBay Seller Hub', 'Shopify admin', 'Google Sheets'];
+        $s = $this->agentSession($u);
+        foreach (DB::table('attendance_activity_logs')->where('attendance_session_id', $s->id)->orderBy('id')->pluck('id') as $i => $id) {
+            DB::table('attendance_activity_logs')->where('id', $id)->update(['window_title' => $titles[$i % count($titles)]]);
+        }
+        // Plus a manual correction session with no agent data.
+        AttendanceSession::create([
+            'user_id' => $u->id, 'started_at' => self::DAY.' 14:00:00', 'ended_at' => self::DAY.' 16:00:00',
+            'status' => 'completed', 'clock_source' => 'manual', 'total_active_seconds' => 7200,
+            'heartbeat_count' => 0, 'work_location' => 'wfh',
+        ]);
+
+        app(AttendanceAiMisuseService::class)->analyzeUserDay($u, self::DAY, false);
+
+        $this->assertSame(0, AttendanceAiFlag::where('user_id', $u->id)->where('flag_type', 'suspicious_pattern')->count());
+        // Ordinary attendance rules (late start, hours) are separate and may apply; none of the
+        // red-alert types and no suspicious_pattern may.
+        $blocked = array_merge(AttendanceAiFlag::FRAUD_TYPES, ['suspicious_pattern']);
+        $this->assertSame([], array_values(array_intersect($this->openTypes($u), $blocked)));
+        $this->assertSame([], AttendanceFraudAlerts::forUsers([$u->id]));
+    }
+
+    public function test_unproductive_app_rule_is_preserved(): void
+    {
+        $u = $this->user();
+        $this->agentSession($u, ['process_name' => 'steam']);
+
+        app(AttendanceAiMisuseService::class)->analyzeUserDay($u, self::DAY, false);
+
+        $flag = AttendanceAiFlag::where('user_id', $u->id)->where('flag_type', 'suspicious_pattern')->first();
+        $this->assertNotNull($flag);
+        $this->assertSame('Unproductive desktop app usage', $flag->title);
+        // Not a Red Alert type.
+        $this->assertSame([], AttendanceFraudAlerts::forUsers([$u->id]));
+    }
+
+    public function test_historical_repetitive_window_record_is_left_alone_and_shows_no_alert(): void
+    {
+        $u = $this->user();
+        $old = AttendanceAiFlag::create([
+            'user_id' => $u->id, 'flag_date' => now()->toDateString(), 'flag_type' => 'suspicious_pattern',
+            'severity' => 'low', 'title' => 'Repetitive window activity', 'description' => 'Historical',
+            'source' => 'rules', 'status' => 'open', 'evidence' => ['dominant_title' => 'x', 'dominance_ratio' => 0.99],
+        ]);
+        $this->agentSession($u);
+
+        app(AttendanceAiMisuseService::class)->analyzeUserDay($u, self::DAY, false);
+
+        $this->assertSame('open', $old->fresh()->status);   // historical record not deleted or changed
+        $this->assertSame([], AttendanceFraudAlerts::forUsers([$u->id]));
+        $this->assertSame(1, AttendanceAiFlag::where('user_id', $u->id)->where('title', 'Repetitive window activity')->count());
+    }
+
     public function test_ten_minute_auto_logout_still_ends_a_genuinely_idle_session(): void
     {
         $this->assertSame(10, (int) config('attendance.auto_logout_idle_minutes'));

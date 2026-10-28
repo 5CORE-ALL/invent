@@ -208,26 +208,6 @@ class AttendanceAiMisuseService
                     ]);
                 }
             }
-
-            $titles = $session->activityLogs->pluck('window_title')->filter()->countBy();
-            $dominant = $titles->sortDesc()->first();
-            $total = $titles->sum();
-            if ($total > 10 && $dominant && ($dominant / $total) > 0.85) {
-                $topTitle = $titles->sortDesc()->keys()->first();
-                $flags[] = $this->upsertFlag($user, [
-                    'attendance_session_id' => $session->id,
-                    'flag_date' => $date,
-                    'flag_type' => 'suspicious_pattern',
-                    'severity' => 'low',
-                    'title' => 'Repetitive window activity',
-                    'description' => 'Activity logs show the same window title for most of the session — verify genuine work.',
-                    'evidence' => [
-                        'dominant_title' => $topTitle,
-                        'dominance_ratio' => round($dominant / $total, 2),
-                    ],
-                    'source' => 'rules',
-                ]);
-            }
         }
 
         return $flags;
