@@ -471,6 +471,14 @@ class ListingChannelCounts
             Log::warning('ListingChannelCounts totalMissingL cache failed: ' . $e->getMessage());
         }
 
+        // Same rows as the /missing-listing page, so the sidebar can never show another number.
+        $fromPage = self::totalFromPagePayload();
+        if ($fromPage !== null) {
+            self::storeTotalMissingL($fromPage);
+
+            return $fromPage;
+        }
+
         // Never live-scan every channel on a web request (Cloudflare 504).
         try {
             return (int) round((float) (\App\Models\BadgeData::dataForPage('all-marketplace-master', ['missing_l' => 0])['missing_l'] ?? 0));
@@ -480,14 +488,130 @@ class ListingChannelCounts
     }
 
     /**
+     * Missing L total of the cached /missing-listing payload (API + CSV rows only).
+     */
+    private static function totalFromPagePayload(): ?int
+    {
+        try {
+            $cached = Cache::get(\App\Http\Controllers\MarketPlace\MissingListingController::PAGE_CACHE_KEY);
+            if (! is_array($cached) || empty($cached['data']) || ! is_array($cached['data'])) {
+                return null;
+            }
+
+            return self::sumPageRows($cached['data']);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private static function sumPageRows(array $rows): int
+    {
+        return (int) collect($rows)
+            ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
+            ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
+    }
+
+    /**
      * Persist a precomputed total (e.g. after /missing-listing/data loads).
+     * Kept as long as the page payload, so the sidebar never falls back to another figure.
      */
     public static function storeTotalMissingL(int $total): void
     {
         try {
-            Cache::put(self::TOTAL_CACHE_KEY, max(0, $total), now()->addMinutes(30));
+            Cache::put(self::TOTAL_CACHE_KEY, max(0, $total), now()->addDays(7));
         } catch (\Throwable $e) {
             // ignore
+        }
+    }
+
+    /**
+     * Called by a listing page right after it built its rows: makes the Missing Listing page,
+     * the sidebar total and the daily snapshot show exactly what the listing page shows.
+     *
+     * @param  array{REQ: int, NRL: int, Listed: int, Pending: int}  $counts
+     */
+    public static function syncChannelCounts(string $channel, array $counts): void
+    {
+        $key = self::normalize($channel);
+        if ($key === '') {
+            return;
+        }
+        $counts = [
+            'REQ' => (int) ($counts['REQ'] ?? 0),
+            'NRL' => (int) ($counts['NRL'] ?? 0),
+            'Listed' => (int) ($counts['Listed'] ?? 0),
+            'Pending' => (int) ($counts['Pending'] ?? $counts['MissingL'] ?? 0),
+        ];
+
+        $cacheKey = 'listing_channel_counts_v2:inv:'.$key;
+        $previous = Cache::get($cacheKey);
+        Cache::put($cacheKey, $counts, now()->addMinutes(10));
+
+        $changed = ! is_array($previous) || $previous !== $counts;
+        $patched = self::patchPageCache($key, $counts);
+        if (! $changed && ! $patched) {
+            return;
+        }
+
+        self::snapshotMissingListing($key, $counts);
+    }
+
+    /**
+     * Write one channel's counts into the cached /missing-listing payload and refresh the total.
+     *
+     * @param  array{REQ: int, NRL: int, Listed: int, Pending: int}  $counts
+     * @return bool whether any row or the total changed
+     */
+    private static function patchPageCache(string $key, array $counts): bool
+    {
+        try {
+            $pageKey = \App\Http\Controllers\MarketPlace\MissingListingController::PAGE_CACHE_KEY;
+            $cached = Cache::get($pageKey);
+            if (! is_array($cached) || ! is_array($cached['data'] ?? null)) {
+                return false;
+            }
+
+            $aliases = array_keys(array_filter(self::$listingPaths, static fn ($p) => $p !== null && $p === (self::$listingPaths[$key] ?? false)));
+            $aliases[] = $key;
+            $changed = false;
+            foreach ($cached['data'] as $i => $row) {
+                if (! in_array(self::normalize((string) ($row['channel'] ?? '')), $aliases, true) || ($row['req'] ?? null) === null) {
+                    continue;
+                }
+                $new = [
+                    'req' => $counts['REQ'],
+                    'nrl' => $counts['NRL'],
+                    'listed' => $counts['Listed'],
+                    'missing_listing' => $counts['Pending'],
+                ];
+                foreach ($new as $field => $value) {
+                    if ((int) ($row[$field] ?? -1) !== $value) {
+                        $cached['data'][$i][$field] = $value;
+                        $changed = true;
+                    }
+                }
+            }
+
+            $total = self::sumPageRows($cached['data']);
+            if ($changed || (int) ($cached['total_missing_l'] ?? -1) !== $total) {
+                $cached['total_missing_l'] = $total;
+                Cache::put($pageKey, $cached, now()->addDays(7));
+                $changed = true;
+            }
+            $storedTotal = Cache::get(self::TOTAL_CACHE_KEY);
+            if ($storedTotal === null || (int) $storedTotal !== $total) {
+                self::storeTotalMissingL($total);
+                $changed = true;
+            }
+
+            return $changed;
+        } catch (\Throwable $e) {
+            Log::warning('ListingChannelCounts page cache patch failed ('.$key.'): '.$e->getMessage());
+
+            return false;
         }
     }
 
@@ -534,7 +658,7 @@ class ListingChannelCounts
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
      */
-    public static function forChannel(string $channel, bool $useCache = true, bool $requirePositiveInv = true): array
+    public static function forChannel(string $channel, bool $useCache = true, bool $requirePositiveInv = true, bool $throwOnFailure = false): array
     {
         $empty = ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0];
         $key = self::normalize($channel);
@@ -547,6 +671,9 @@ class ListingChannelCounts
                 return self::loadCounts($key, $requirePositiveInv) ?: $empty;
             } catch (\Throwable $e) {
                 Log::warning('ListingChannelCounts load failed for ' . $key . ': ' . $e->getMessage());
+                if ($throwOnFailure) {
+                    throw $e;
+                }
 
                 return $empty;
             }
@@ -565,6 +692,9 @@ class ListingChannelCounts
                 return self::loadCounts($key, $requirePositiveInv) ?: $empty;
             } catch (\Throwable $e2) {
                 Log::warning('ListingChannelCounts load failed for ' . $key . ': ' . $e2->getMessage());
+                if ($throwOnFailure) {
+                    throw $e2;
+                }
 
                 return $empty;
             }
@@ -587,30 +717,7 @@ class ListingChannelCounts
         $counts = self::forChannel($channel, true);
         self::snapshotMissingListing($key, $counts);
 
-        try {
-            $pageKey = \App\Http\Controllers\MarketPlace\MissingListingController::PAGE_CACHE_KEY;
-            $cached = Cache::get($pageKey);
-            if (is_array($cached) && is_array($cached['data'] ?? null)) {
-                $aliases = array_keys(array_filter(self::$listingPaths, static fn ($p) => $p !== null && $p === (self::$listingPaths[$key] ?? false)));
-                $aliases[] = $key;
-                foreach ($cached['data'] as $i => $row) {
-                    if (! in_array(self::normalize((string) ($row['channel'] ?? '')), $aliases, true) || ($row['req'] ?? null) === null) {
-                        continue;
-                    }
-                    $cached['data'][$i]['req'] = $counts['REQ'];
-                    $cached['data'][$i]['nrl'] = $counts['NRL'];
-                    $cached['data'][$i]['listed'] = $counts['Listed'];
-                    $cached['data'][$i]['missing_listing'] = $counts['Pending'];
-                }
-                $cached['total_missing_l'] = (int) collect($cached['data'])
-                    ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
-                    ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
-                Cache::put($pageKey, $cached, now()->addDays(7));
-                self::storeTotalMissingL((int) $cached['total_missing_l']);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('ListingChannelCounts missing-listing patch failed ('.$key.'): '.$e->getMessage());
-        }
+        self::patchPageCache($key, $counts);
 
         return $counts;
     }

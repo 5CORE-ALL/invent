@@ -14,7 +14,77 @@ class AutomatedListingPage
     /**
      * @return Collection<int, ProductMaster>
      */
-    public static function rows(string $channelKey): Collection
+    public static function rows(string $channelKey, bool $withPrice = true, bool $syncCounts = true): Collection
+    {
+        $rows = self::buildRows($channelKey);
+
+        if ($syncCounts && $rows->isNotEmpty()) {
+            // The listing page and /missing-listing must show the same numbers, so every
+            // time a listing page loads its rows, the outer counts are brought in line.
+            try {
+                ListingChannelCounts::syncChannelCounts($channelKey, self::countsFromRows($rows));
+            } catch (\Throwable $e) {
+                // counts sync must never break a listing page
+            }
+        }
+
+        return $withPrice ? LmpStdPrice::attach($rows) : $rows;
+    }
+
+    /**
+     * REQ / NRL / Listed / Missing L using the exact rules the listing pages use
+     * (CP Master SKUs with stock, PARENT rows left out, NRL never counts as Listed or Missing L,
+     * pages created but not yet live are neither Listed nor Missing L).
+     *
+     * @param  iterable<int, object>  $rows
+     * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
+     */
+    public static function countsFromRows(iterable $rows, bool $requirePositiveInv = true): array
+    {
+        $req = 0;
+        $nrl = 0;
+        $listed = 0;
+        $missing = 0;
+
+        foreach ($rows as $item) {
+            $sku = trim((string) ($item->sku ?? ''));
+            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            if ($requirePositiveInv && (float) ($item->INV ?? 0) <= 0) {
+                continue;
+            }
+            if (($item->nr_req ?? 'REQ') === 'NR') {
+                $nrl++;
+
+                continue;
+            }
+            $req++;
+            if (! empty($item->page_created)) {
+                continue;
+            }
+            if ((string) ($item->listed ?? '') === 'Listed') {
+                $listed++;
+            } else {
+                $missing++;
+            }
+        }
+
+        return ['REQ' => $req, 'NRL' => $nrl, 'Listed' => $listed, 'Pending' => $missing, 'MissingL' => $missing];
+    }
+
+    /**
+     * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
+     */
+    public static function counts(string $channelKey, bool $requirePositiveInv = true): array
+    {
+        return self::countsFromRows(self::rows($channelKey, false, false), $requirePositiveInv);
+    }
+
+    /**
+     * @return Collection<int, ProductMaster>
+     */
+    private static function buildRows(string $channelKey): Collection
     {
         $cfg = ChannelListingRegistry::get($channelKey);
         if ($cfg === null) {
@@ -140,6 +210,6 @@ class AutomatedListingPage
             return $item;
         })->values();
 
-        return LmpStdPrice::attach($rows);
+        return $rows;
     }
 }

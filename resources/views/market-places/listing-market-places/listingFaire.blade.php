@@ -665,7 +665,7 @@
                 const itemId = String(item.eBay_item_id || '').trim();
                 // Automated: NRL from EbayTwoDataView; Listed from faire_metric.product_id
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
-                const listed = itemId ? 'Listed' : 'Pending';
+                const listed = item.page_created ? 'Created' : (itemId ? 'Listed' : 'Pending');
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',
