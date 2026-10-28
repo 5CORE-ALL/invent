@@ -260,7 +260,7 @@ class NewTemuoneController extends Controller
             };
 
             $temuMetricsBySku = [];
-            foreach (TemuMetric::query()->get(['sku', 'base_price', 'goods_id', 'sku_id', 'product_clicks_l30']) as $metric) {
+            foreach (TemuMetric::query()->get(['sku', 'base_price', 'goods_id', 'sku_id', 'product_clicks_l30', 'quantity']) as $metric) {
                 $key = $normalizeSku($metric->sku);
                 if ($key === '') {
                     continue;
@@ -379,8 +379,8 @@ class NewTemuoneController extends Controller
             $suggestedStore = new NewTemuoneSuggestedPriceStore();
             $suggestedStore->loadForSkus($skus);
             $percentage = TemuShopifySalesService::temuMarginDecimal();
-            // One channel-level Ads% nets every row, same as /temu2-decrease.
-            $adsPercent = (float) $this->temuChannelAdsSummary()['percent'];
+            // Same as /temu3-decrease: no ads on this page (Ads% = 0), so SNROI = SGROI and SNPFT = SGPRFT.
+            $adsPercent = 0.0;
 
             $temuLmpByNormalizedSku = [];
             if ($this->hasTable('temu_lmp')) {
@@ -391,8 +391,6 @@ class NewTemuoneController extends Controller
                     }
                 }
             }
-
-            $forecastApprovedBySku = $this->forecastApprovedQtyBySku();
 
             $result = [];
 
@@ -442,7 +440,6 @@ class NewTemuoneController extends Controller
                     ? $pm->Values
                     : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
                 $lp = $this->productMasterLp($values, $pm);
-                $moq = $this->forecastMoq($sku, $values, $forecastApprovedBySku);
                 $temuShip = ProductMasterTemuShip::forPricing($values, $pm);
                 $basePrice = $temuMetric ? (float) ($temuMetric->base_price ?? 0) : 0.0;
                 $rPrice = TemuShopifySalesService::computeRPrice($basePrice);
@@ -525,8 +522,9 @@ class NewTemuoneController extends Controller
                     'INV' => $inv,
                     'inventory' => $inv,
                     'L30' => $ovL30,
-                    'moq' => $moq,
                     'temu_l30' => $temuL30,
+                    'temu_stock' => (float) ($temuMetric->quantity ?? 0),
+                    'image_path' => TemuShopifySalesService::cpMasterImageUrl($pm, $values),
                     'temu_l45' => $temuL45,
                     'temu_l60' => $temuL60,
                     'views' => $views,

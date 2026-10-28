@@ -1955,7 +1955,7 @@ class TemuShopifySalesService
      *
      * @param  array<string, mixed>  $values
      */
-    private static function cpMasterImageUrl(?ProductMaster $pm, array $values): string
+    public static function cpMasterImageUrl(?ProductMaster $pm, array $values): string
     {
         if (! $pm) {
             return '';
