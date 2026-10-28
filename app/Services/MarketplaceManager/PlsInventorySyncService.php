@@ -344,6 +344,20 @@ class PlsInventorySyncService
     }
 
     /**
+     * Set an exact qty on the PLS listing of one SKU (used right after Listing Manager creates/updates it).
+     *
+     * @return array{success: bool, message: string, qty?: int}
+     */
+    public function pushQuantity(string $sku, int $qty): array
+    {
+        if (! $this->tokenService->isConfigured()) {
+            return ['success' => false, 'message' => 'Shopify PLS is not connected.'];
+        }
+
+        return $this->pushSku(trim($sku), max(0, $qty));
+    }
+
+    /**
      * @return array{success: bool, message: string, qty?: int}
      */
     protected function pushSku(string $sku, int $qty): array

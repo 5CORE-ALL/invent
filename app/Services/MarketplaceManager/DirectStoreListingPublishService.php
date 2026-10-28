@@ -59,6 +59,7 @@ class DirectStoreListingPublishService
 
         $ok = [];
         $errors = [];
+        $warnings = [];
         $created = 0;
         $updated = 0;
         $lastId = null;
@@ -87,6 +88,9 @@ class DirectStoreListingPublishService
                 continue;
             }
             $ok[] = $sku;
+            if (stripos((string) ($result['message'] ?? ''), 'inventory not') !== false) {
+                $warnings[] = $sku.': '.trim((string) $result['message']);
+            }
             $lastId = $result['id'] ?? $lastId;
             ($result['created'] ?? false) ? $created++ : $updated++;
         }
@@ -120,6 +124,9 @@ class DirectStoreListingPublishService
         $message = $label.': '.implode(', ', $parts).' listing(s).';
         if ($errors !== []) {
             $message .= ' Failed: '.implode(' ', $errors);
+        }
+        if ($warnings !== []) {
+            $message .= ' Warning: '.implode(' ', $warnings);
         }
 
         return [
@@ -173,9 +180,14 @@ class DirectStoreListingPublishService
             static fn (string $u) => preg_match('#^https?://#i', $u) === 1
         )));
 
-        $quantity = ListingManagerAmazonHydrator::shopifyQuantity($sku, false);
-        if ($quantity === null && $primary && isset($overrides['quantity']) && is_numeric($overrides['quantity'])) {
-            $quantity = (int) $overrides['quantity'];
+        // The draft quantity was just refreshed live from the 5 Core store on Save & Publish, so it beats
+        // the cached row (a stale 0 there is what left new PLS listings with no inventory).
+        $quantity = null;
+        if ($primary && isset($overrides['quantity']) && is_numeric($overrides['quantity'])) {
+            $quantity = max(0, (int) $overrides['quantity']);
+        }
+        if ($quantity === null) {
+            $quantity = ListingManagerAmazonHydrator::shopifyQuantity($sku, false);
         }
 
         $upc = $primary ? trim((string) ($overrides['upc'] ?? '')) : '';
@@ -216,6 +228,66 @@ class DirectStoreListingPublishService
      */
     private function publishPls(array $item): array
     {
+        // One create/update per SKU at a time: a double click or a retry while the first request
+        // is still running used to create the same SKU twice.
+        $lock = null;
+        try {
+            $lock = Cache::lock('pls.publish.'.md5(strtoupper(trim((string) $item['sku']))), 150);
+            if (! $lock->get()) {
+                return ['success' => false, 'message' => 'This SKU is already being published to PLS. Wait for it to finish.'];
+            }
+        } catch (\Throwable) {
+            $lock = null;
+        }
+
+        try {
+            return $this->publishPlsLocked($item);
+        } finally {
+            try {
+                $lock?->release();
+            } catch (\Throwable) {
+            }
+        }
+    }
+
+    private static function plsCreatedKey(string $sku): string
+    {
+        return 'pls.created.'.md5(strtoupper(trim($sku)));
+    }
+
+    /**
+     * Existing PLS product/variant for a SKU, or null. Looks at what this app created recently,
+     * the synced catalog, then Shopify itself (exact SKU match).
+     *
+     * @return array{product_id: string, variant_id: string}|null
+     */
+    public function existingPlsProduct(string $sku): ?array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+        $remembered = Cache::get(self::plsCreatedKey($sku));
+        if (is_array($remembered) && ! empty($remembered['product_id']) && ! empty($remembered['variant_id'])) {
+            $check = $this->plsRequest('GET', '/variants/'.$remembered['variant_id'].'.json', [], 15);
+            if ($check['ok']) {
+                return [
+                    'product_id' => (string) ($check['json']['variant']['product_id'] ?? $remembered['product_id']),
+                    'variant_id' => (string) $remembered['variant_id'],
+                ];
+            }
+            Cache::forget(self::plsCreatedKey($sku));
+        }
+
+        return $this->plsCatalogIds($sku) ?? $this->plsFindBySku($sku);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array{success: bool, message: string, id?: string, created?: bool}
+     */
+    private function publishPlsLocked(array $item): array
+    {
         $tokens = app(ShopifyPlsTokenService::class);
         $domain = $tokens->getDomain();
         $token = $tokens->getAccessToken();
@@ -224,7 +296,7 @@ class DirectStoreListingPublishService
         }
 
         $sku = $item['sku'];
-        $existing = $this->plsCatalogIds($sku) ?? $this->plsFindBySku($sku);
+        $existing = $this->existingPlsProduct($sku);
 
         if ($existing) {
             $productId = (string) $existing['product_id'];
@@ -270,9 +342,9 @@ class DirectStoreListingPublishService
             }
 
             $this->savePlsCatalog($productId, $variantId, $sku, $item);
-            $this->plsSetAvailable($variantId, $item['quantity']);
+            $qtyWarning = $this->plsSetAvailable($variantId, $item['quantity'], 0, $sku);
 
-            return ['success' => true, 'message' => 'Updated', 'id' => $productId, 'created' => false];
+            return ['success' => true, 'message' => 'Updated'.($qtyWarning ? ' (inventory not updated: '.$qtyWarning.')' : ''), 'id' => $productId, 'created' => false];
         }
 
         if ($item['title'] === '') {
@@ -316,10 +388,12 @@ class DirectStoreListingPublishService
             return ['success' => false, 'message' => 'Shopify PLS did not return a product id.'];
         }
 
+        // Remember it first: Shopify's SKU search lags behind a create, and a retry must not create it again.
+        Cache::put(self::plsCreatedKey($sku), ['product_id' => $productId, 'variant_id' => $variantId], now()->addDays(7));
         $this->savePlsCatalog($productId, $variantId, $sku, $item, true);
-        $this->plsSetAvailable($variantId, $item['quantity'], $inventoryItemId);
+        $qtyWarning = $this->plsSetAvailable($variantId, $item['quantity'], $inventoryItemId, $sku);
 
-        return ['success' => true, 'message' => 'Created', 'id' => $productId, 'created' => true];
+        return ['success' => true, 'message' => 'Created'.($qtyWarning ? ' (inventory not set: '.$qtyWarning.')' : ''), 'id' => $productId, 'created' => true];
     }
 
     /**
@@ -417,14 +491,32 @@ class DirectStoreListingPublishService
     {
         $quoted = str_replace(['\\', '"'], ['\\\\', '\\"'], $sku);
         $res = $this->plsRequest('POST', 'graphql.json', [
-            'query' => 'query ($query: String!) { productVariants(first: 1, query: $query) { edges { node { id product { id } } } } }',
+            'query' => 'query ($query: String!) { productVariants(first: 10, query: $query) { edges { node { id sku product { id } } } } }',
             'variables' => ['query' => 'sku:"'.$quoted.'"'],
         ], 15);
         if (! $res['ok']) {
             return null;
         }
 
-        $node = $res['json']['data']['productVariants']['edges'][0]['node'] ?? null;
+        // Only an exact SKU match counts; the search is fuzzy on spaces and would otherwise
+        // update a different product or miss this one.
+        $node = null;
+        $want = strtoupper(trim($sku));
+        $wantNorm = \App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku);
+        foreach ((array) ($res['json']['data']['productVariants']['edges'] ?? []) as $edge) {
+            $n = $edge['node'] ?? null;
+            if (! is_array($n)) {
+                continue;
+            }
+            $found = strtoupper(trim((string) ($n['sku'] ?? '')));
+            if ($found === $want) {
+                $node = $n;
+                break;
+            }
+            if ($node === null && $wantNorm !== '' && \App\Models\ShopifySku::normalizeSkuForShopifyLookup($found) === $wantNorm) {
+                $node = $n;
+            }
+        }
         if (! is_array($node)) {
             return null;
         }
@@ -441,24 +533,41 @@ class DirectStoreListingPublishService
         ];
     }
 
-    private function plsSetAvailable(string $variantId, mixed $qty, int $inventoryItemId = 0): void
+    /**
+     * Push the quantity to the PLS inventory. Returns a warning text when it could not be set.
+     */
+    private function plsSetAvailable(string $variantId, mixed $qty, int $inventoryItemId = 0, string $sku = ''): ?string
     {
         if (! is_numeric($qty)) {
-            return;
+            return 'no quantity available for this SKU';
         }
         $qty = max(0, (int) $qty);
+
+        // Same routine the PLS inventory sync uses: picks the location the item is stocked at,
+        // zeroes any other, and reads the qty back to confirm it landed.
+        if ($sku !== '') {
+            try {
+                $push = app(PlsInventorySyncService::class)->pushQuantity($sku, $qty);
+                if ($push['success'] ?? false) {
+                    return null;
+                }
+                Log::warning('PLS qty push after publish failed, trying direct set', ['sku' => $sku, 'qty' => $qty, 'error' => $push['message'] ?? '']);
+            } catch (\Throwable $e) {
+                Log::warning('PLS qty push after publish crashed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            }
+        }
 
         try {
             if ($inventoryItemId <= 0) {
                 $variantId = preg_replace('/\D+/', '', $variantId) ?? '';
                 if ($variantId === '') {
-                    return;
+                    return 'missing variant id';
                 }
                 $variant = $this->plsRequest('GET', 'variants/'.$variantId.'.json', [], 15);
                 $inventoryItemId = (int) ($variant['json']['variant']['inventory_item_id'] ?? 0);
             }
             if ($inventoryItemId <= 0) {
-                return;
+                return 'no inventory item on the PLS variant';
             }
 
             $locationId = Cache::get('mm.pls.primary_location_id');
@@ -471,7 +580,7 @@ class DirectStoreListingPublishService
             }
             $locationId = (int) $locationId;
             if ($locationId <= 0) {
-                return;
+                return 'no PLS inventory location';
             }
 
             $set = $this->plsRequest('POST', 'inventory_levels/set.json', [
@@ -484,14 +593,18 @@ class DirectStoreListingPublishService
                     'location_id' => $locationId,
                     'inventory_item_id' => $inventoryItemId,
                 ], 15);
-                $this->plsRequest('POST', 'inventory_levels/set.json', [
+                $set = $this->plsRequest('POST', 'inventory_levels/set.json', [
                     'location_id' => $locationId,
                     'inventory_item_id' => $inventoryItemId,
                     'available' => $qty,
                 ], 15);
             }
+
+            return $set['ok'] ? null : $set['message'];
         } catch (\Throwable $e) {
             Log::warning('PLS qty set after publish failed', ['variant_id' => $variantId, 'error' => $e->getMessage()]);
+
+            return $e->getMessage();
         }
     }
 
