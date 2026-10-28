@@ -366,7 +366,7 @@ class ListingManagerPublishStatus
         $desc = trim((string) ($details['description'] ?? ''));
         if ($desc === '') {
             $tabErrors['title_description'][] = 'Description is required.';
-        } elseif (mb_strlen($desc) > $descLimit) {
+        } elseif (mb_strlen($desc) > $descLimit && empty($details['allow_long_description'])) {
             $tabErrors['title_description'][] = "Description must be {$descLimit} characters or less.";
         }
 
