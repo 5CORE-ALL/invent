@@ -19,6 +19,7 @@
 
 @section('content')
     @php
+        $deleteConfirm = 'Delete this meeting permanently? Its recordings, transcript and minutes will be erased. Tasks already created from it are kept. This cannot be undone.';
         $dur = $meeting->durationSeconds();
         $fmt = fn (?int $s) => $s === null ? '—' : sprintf('%d:%02d:%02d', intdiv($s, 3600), intdiv($s % 3600, 60), $s % 60);
         $inProgress = in_array($meeting->minutes_status, ['pending', 'processing'], true) && $meeting->isEnded();
@@ -37,6 +38,12 @@
                             <form method="POST" action="{{ route('meetings.minutes.regenerate', $meeting) }}" onsubmit="return confirm('Generate the minutes again from the recordings? Tasks already created are kept and not duplicated.');">
                                 @csrf
                                 <button class="btn btn-outline-primary btn-sm"><i class="ri-refresh-line me-1"></i>{{ $meeting->minutes_status === 'ready' ? 'Regenerate minutes' : 'Generate minutes now' }}</button>
+                            </form>
+                        @endif
+                        @if($canManage)
+                            <form method="POST" action="{{ route('meetings.destroy', $meeting) }}" onsubmit="return confirm(@js($deleteConfirm));">
+                                @csrf @method('DELETE')
+                                <button class="btn btn-outline-danger btn-sm"><i class="ri-delete-bin-line me-1"></i>Delete meeting</button>
                             </form>
                         @endif
                         <button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="ri-printer-line me-1"></i>Print</button>

@@ -7684,6 +7684,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/meetings', [\App\Http\Controllers\MeetingController::class, 'store'])->name('meetings.store');
     Route::get('/meetings/members', [\App\Http\Controllers\MeetingController::class, 'members'])->name('meetings.members');
     Route::post('/meetings/request', [\App\Http\Controllers\MeetingController::class, 'requestStore'])->name('meetings.request');
+    Route::get('/meetings/sent', [\App\Http\Controllers\MeetingController::class, 'sent'])->name('meetings.sent');
     Route::get('/meetings/requests', [\App\Http\Controllers\MeetingController::class, 'requests'])->name('meetings.requests');
     Route::post('/meetings/{meeting}/rsvp', [\App\Http\Controllers\MeetingController::class, 'rsvp'])->name('meetings.rsvp');
     Route::get('/meetings/minutes', [\App\Http\Controllers\MeetingController::class, 'minutesIndex'])->name('meetings.minutes.index');
@@ -7695,6 +7696,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/meetings/{meeting}/end', [\App\Http\Controllers\MeetingController::class, 'end'])->name('meetings.end');
     Route::get('/meetings/{meeting}/minutes', [\App\Http\Controllers\MeetingController::class, 'minutesShow'])->name('meetings.minutes.show');
     Route::post('/meetings/{meeting}/minutes/regenerate', [\App\Http\Controllers\MeetingController::class, 'regenerate'])->name('meetings.minutes.regenerate');
+    Route::delete('/meetings/{meeting}', [\App\Http\Controllers\MeetingController::class, 'destroy'])->name('meetings.destroy');
     Route::get('/meetings/{meeting}/recordings/{recording}', [\App\Http\Controllers\MeetingController::class, 'recordingFile'])->name('meetings.recording.file');
     // Task Manager Routes
     Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');

@@ -59,7 +59,15 @@
                                 <td class="text-nowrap">{{ $dur !== null ? floor($dur / 60).' min' : '—' }}</td>
                                 <td class="text-center">{{ $m->action_items_count }}</td>
                                 <td>@include('meetings._minutes-badge', ['status' => $m->minutes_status])</td>
-                                <td class="text-end"><a href="{{ route('meetings.minutes.show', $m) }}" class="btn btn-outline-primary btn-sm">Open</a></td>
+                                <td class="text-end text-nowrap">
+                                    <a href="{{ route('meetings.minutes.show', $m) }}" class="btn btn-outline-primary btn-sm">Open</a>
+                                    @if((int) $m->host_user_id === (int) auth()->id() || \App\Support\SuperAdminAccess::isTaskAdmin(auth()->user()))
+                                        <form method="POST" action="{{ route('meetings.destroy', $m) }}" class="d-inline" onsubmit="return confirm(@js('Delete "'.$m->title.'" permanently? Its recordings, transcript and minutes will be erased. Tasks already created from it are kept. This cannot be undone.'));">
+                                            @csrf @method('DELETE')
+                                            <button class="btn btn-outline-danger btn-sm" title="Delete meeting"><i class="ri-delete-bin-line"></i></button>
+                                        </form>
+                                    @endif
+                                </td>
                             </tr>
                         @empty
                             <tr><td colspan="8" class="text-center text-muted py-4">No ended meetings yet.</td></tr>

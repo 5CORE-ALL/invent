@@ -16,6 +16,13 @@
 @endsection
 
 @section('content')
+@php
+    $chipOf = function ($p) {
+        if ($p->isInRoom()) return ['In room', 'success'];
+        if ($p->first_joined_at) return ['Left', 'secondary'];
+        return match ($p->rsvp) { 'accepted' => ['Accepted', 'success'], 'declined' => ['Declined', 'danger'], default => ['Waiting', 'warning'] };
+    };
+@endphp
     <div class="container-fluid">
         <div class="row mb-2">
             <div class="col-12">
@@ -46,6 +53,29 @@
             creates follow-up tasks automatically &mdash; see them under <a href="{{ route('meetings.minutes.index') }}">Meeting Minutes</a>.
         </div>
 
+        @if($invites->isNotEmpty())
+            <div class="mt-section-title text-danger"><i class="ri-notification-3-fill me-1"></i>Meeting requests for you ({{ $invites->count() }})</div>
+            <div class="row g-3" id="mtInvites">
+                @foreach($invites as $inv)
+                    @php $im = $inv->meeting; @endphp
+                    <div class="col-md-6 col-xl-4">
+                        <div class="mt-card" style="border-color:#fca5a5; background:#fffafa">
+                            <h6>{{ $im->title }} @if($im->isLive())<span class="badge bg-success">Live now</span>@endif</h6>
+                            <div class="mt-meta mb-1">
+                                From <strong>{{ $im->host?->name ?? '—' }}</strong> &middot;
+                                {{ $im->scheduled_at ? $im->scheduled_at->format('D, d M Y · h:i A') : ($im->isLive() ? 'happening now' : 'time not set') }}
+                            </div>
+                            @if($im->agenda)<div class="small mb-2" style="white-space:pre-line"><span class="text-muted">Agenda:</span> {{ \Illuminate\Support\Str::limit($im->agenda, 220) }}</div>@endif
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button type="button" class="btn btn-success btn-sm" data-rsvp="accepted" data-url="{{ route('meetings.rsvp', $im) }}" data-room="{{ route('meetings.room', $im) }}" data-live="{{ $im->isLive() ? 1 : 0 }}"><i class="ri-check-line"></i> Accept</button>
+                                <button type="button" class="btn btn-outline-danger btn-sm" data-rsvp="declined" data-url="{{ route('meetings.rsvp', $im) }}" data-title="{{ $im->title }}"><i class="ri-close-line"></i> Decline</button>
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @endif
+
         <div class="mt-section-title">Live now</div>
         <div class="row g-3">
             @forelse($live as $m)
@@ -56,6 +86,14 @@
                             Host: {{ $m->host?->name ?? '—' }} &middot; started {{ $m->started_at?->diffForHumans() }}
                             &middot; <strong>{{ $m->in_room_count }}</strong> in room
                         </div>
+                        @if($m->participants->isNotEmpty())
+                            <div class="d-flex flex-wrap gap-1 mb-2">
+                                @foreach($m->participants->sortBy(fn ($p) => $p->user?->name) as $p)
+                                    @php [$label, $tone] = $chipOf($p); @endphp
+                                    <span class="badge bg-{{ $tone }} {{ $tone === 'warning' ? 'text-dark' : '' }}">{{ $p->user?->name ?? 'Unknown' }} &middot; {{ $label }}</span>
+                                @endforeach
+                            </div>
+                        @endif
                         <a href="{{ route('meetings.room', $m) }}" class="btn btn-success btn-sm"><i class="ri-login-box-line me-1"></i>Join</a>
                     </div>
                 </div>
@@ -82,9 +120,23 @@
                                 <span class="text-muted">{{ $m->pending_count }} waiting</span>
                             </div>
                         @endif
+                        @if((int) $m->host_user_id === (int) $me->id && $m->participants->isNotEmpty())
+                            <div class="d-flex flex-wrap gap-1 mb-2">
+                                @foreach($m->participants->sortBy(fn ($p) => $p->user?->name) as $p)
+                                    @php [$label, $tone] = $chipOf($p); @endphp
+                                    <span class="badge bg-{{ $tone }} {{ $tone === 'warning' ? 'text-dark' : '' }}" title="{{ $label }}">{{ $p->user?->name ?? 'Unknown' }} &middot; {{ $label }}</span>
+                                @endforeach
+                            </div>
+                        @endif
                         <a href="{{ route('meetings.room', $m) }}" class="btn btn-primary btn-sm">
                             {{ (int) $m->host_user_id === (int) $me->id ? 'Start' : 'Join' }}
                         </a>
+                        @if((int) $m->host_user_id === (int) $me->id)
+                            <form method="POST" action="{{ route('meetings.destroy', $m) }}" class="d-inline" onsubmit="return confirm(@js('Cancel and delete "'.$m->title.'"? Invited members will no longer see it. This cannot be undone.'));">
+                                @csrf @method('DELETE')
+                                <button class="btn btn-outline-danger btn-sm"><i class="ri-delete-bin-line me-1"></i>Delete</button>
+                            </form>
+                        @endif
                     </div>
                 </div>
             @empty
@@ -174,6 +226,21 @@
                 document.getElementById('mtWhen').required = later;
                 document.getElementById('mtModalTitle').textContent = later ? 'Schedule a meeting' : 'Start a meeting';
                 document.getElementById('mtSubmit').textContent = later ? 'Schedule' : 'Start meeting';
+            });
+            document.querySelectorAll('#mtInvites [data-rsvp]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var resp = btn.getAttribute('data-rsvp');
+                    if (resp === 'declined' && !confirm('Decline "' + btn.getAttribute('data-title') + '"? The host will see that you declined.')) return;
+                    var wrap = btn.parentNode; wrap.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+                    fetch(btn.getAttribute('data-url'), {
+                        method: 'POST', credentials: 'same-origin',
+                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ response: resp })
+                    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }).then(function (res) {
+                        if (!res.ok || !res.j.ok) { alert(res.j.message || 'Could not save your answer.'); wrap.querySelectorAll('button').forEach(function (b) { b.disabled = false; }); return; }
+                        if (resp === 'accepted' && res.j.live) { window.location.href = res.j.room_url; } else { window.location.reload(); }
+                    }).catch(function () { alert('Network problem. Please try again.'); wrap.querySelectorAll('button').forEach(function (b) { b.disabled = false; }); });
+                });
             });
             document.getElementById('mtInviteSearch').addEventListener('input', function () {
                 var q = this.value.trim().toLowerCase();

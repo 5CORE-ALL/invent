@@ -34,7 +34,7 @@ class MeetingController extends Controller
             ->orWhereHas('participants', fn ($p) => $p->where('user_id', $me->id));
 
         $live = Meeting::query()
-            ->with('host:id,name')
+            ->with(['host:id,name', 'participants' => fn ($q) => $q->where('is_invited', true)->with('user:id,name')])
             ->where('status', Meeting::STATUS_LIVE)
             ->withCount(['participants as in_room_count' => fn ($q) => $q
                 ->whereNull('left_at')
@@ -43,7 +43,7 @@ class MeetingController extends Controller
             ->get();
 
         $upcoming = Meeting::query()
-            ->with('host:id,name')
+            ->with(['host:id,name', 'participants' => fn ($q) => $q->where('is_invited', true)->with('user:id,name')])
             ->withCount([
                 'participants as accepted_count' => fn ($q) => $q->where('is_invited', true)->where('rsvp', 'accepted'),
                 'participants as declined_count' => fn ($q) => $q->where('is_invited', true)->where('rsvp', 'declined'),
@@ -67,7 +67,9 @@ class MeetingController extends Controller
 
         $users = User::query()->active()->orderBy('name')->get(['id', 'name', 'designation']);
 
-        return view('meetings.index', compact('live', 'upcoming', 'recent', 'users', 'me'));
+        $invites = $this->pendingInvites();
+
+        return view('meetings.index', compact('live', 'upcoming', 'recent', 'users', 'me', 'invites'));
     }
 
     public function store(Request $request)
@@ -172,6 +174,8 @@ class MeetingController extends Controller
                 'title' => $meeting->title,
                 'scheduled_at' => $meeting->scheduled_at?->format('D, d M Y · h:i A T'),
                 'invited' => $meeting->participants()->where('is_invited', true)->count(),
+                'invitees' => $meeting->participants()->where('is_invited', true)->with('user:id,name')->get()
+                    ->map(fn (MeetingParticipant $p) => (string) ($p->user?->name ?? 'Unknown'))->sort()->values(),
             ],
             'when' => $data['when'],
             'room_url' => route('meetings.room', $meeting),
@@ -179,10 +183,10 @@ class MeetingController extends Controller
         ]);
     }
 
-    /** Pending meeting requests addressed to the current user. */
-    public function requests(): JsonResponse
+    /** @return \Illuminate\Database\Eloquent\Collection<int, MeetingParticipant> */
+    private function pendingInvites()
     {
-        $rows = MeetingParticipant::query()
+        return MeetingParticipant::query()
             ->where('user_id', Auth::id())
             ->where('is_invited', true)
             ->where('rsvp', 'pending')
@@ -192,6 +196,12 @@ class MeetingController extends Controller
             ->orderByDesc('id')
             ->limit(20)
             ->get();
+    }
+
+    /** Pending meeting requests addressed to the current user. */
+    public function requests(): JsonResponse
+    {
+        $rows = $this->pendingInvites();
 
         return response()->json([
             'count' => $rows->count(),
@@ -206,6 +216,48 @@ class MeetingController extends Controller
                 'room_url' => route('meetings.room', $p->meeting_id),
             ])->values(),
         ]);
+    }
+
+    /** Meetings I requested that have not ended, with every invited member and their answer. */
+    public function sent(): JsonResponse
+    {
+        $rows = Meeting::query()
+            ->where('host_user_id', Auth::id())
+            ->whereIn('status', [Meeting::STATUS_SCHEDULED, Meeting::STATUS_LIVE])
+            ->with(['participants' => fn ($q) => $q->where('is_invited', true)->with('user:id,name')])
+            ->orderByRaw('scheduled_at is null')
+            ->orderBy('scheduled_at')
+            ->orderByDesc('id')
+            ->limit(20)
+            ->get();
+
+        return response()->json([
+            'meetings' => $rows->map(fn (Meeting $m) => [
+                'id' => $m->id,
+                'title' => $m->title,
+                'agenda' => $m->agenda,
+                'live' => $m->isLive(),
+                'scheduled_at' => $m->scheduled_at?->format('D, d M Y · h:i A T'),
+                'room_url' => route('meetings.room', $m),
+                'invitees' => $m->participants->map(fn (MeetingParticipant $p) => [
+                    'name' => (string) ($p->user?->name ?? 'Unknown'),
+                    'status' => $this->inviteeStatus($p),
+                ])->sortBy('name')->values(),
+            ])->values(),
+        ]);
+    }
+
+    /** in_room | left | accepted | declined | pending */
+    private function inviteeStatus(MeetingParticipant $p): string
+    {
+        if ($p->isInRoom()) {
+            return 'in_room';
+        }
+        if ($p->first_joined_at) {
+            return 'left';
+        }
+
+        return in_array($p->rsvp, ['accepted', 'declined'], true) ? $p->rsvp : 'pending';
     }
 
     public function rsvp(Request $request, Meeting $meeting): JsonResponse
@@ -521,6 +573,45 @@ class MeetingController extends Controller
         })->afterResponse();
 
         return back()->with('success', 'Generating minutes. This page refreshes automatically.');
+    }
+
+    /**
+     * Permanently delete a meeting with its recordings (files too), transcript, minutes and action
+     * items. Tasks already created from it are kept: people may be working on them.
+     */
+    public function destroy(Meeting $meeting)
+    {
+        abort_unless($this->canManage($meeting, Auth::user()), 403);
+
+        $inRoom = $meeting->participants()->whereNotNull('joined_at')->whereNull('left_at')
+            ->where('last_seen_at', '>=', now()->subSeconds(MeetingParticipant::STALE_AFTER_SECONDS))->exists();
+        if ($meeting->isLive() && $inRoom) {
+            return back()->with('error', 'Someone is still in this meeting. End the meeting first, then delete it.');
+        }
+        if ($meeting->minutes_status === Meeting::MINUTES_PROCESSING) {
+            return back()->with('error', 'The AI is writing the minutes right now. Try again in a few minutes.');
+        }
+
+        $disk = Storage::disk(config('services.meetings.disk', 'local'));
+        $id = $meeting->id;
+        $title = $meeting->title;
+
+        DB::transaction(function () use ($meeting, $disk) {
+            foreach ($meeting->recordings()->get(['id', 'path']) as $rec) {
+                if ($rec->path && $disk->exists($rec->path)) {
+                    $disk->delete($rec->path);
+                }
+            }
+            $meeting->recordings()->delete();
+            $meeting->actionItems()->delete();
+            $meeting->participants()->delete();
+            $meeting->delete();
+        });
+        $disk->deleteDirectory('meetings/'.$id);
+
+        \Log::info('Meeting deleted', ['meeting_id' => $id, 'title' => $title, 'by_user_id' => Auth::id()]);
+
+        return redirect()->route('meetings.minutes.index')->with('success', 'Meeting "'.$title.'" and its recordings were deleted.');
     }
 
     public function recordingFile(Meeting $meeting, MeetingRecording $recording)

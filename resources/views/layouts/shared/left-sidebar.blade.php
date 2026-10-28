@@ -37,6 +37,7 @@
                     class="side-nav-link {{ $tasksMenuOpen ? 'active' : '' }}">
                     <i class="ri-settings-3-line"></i>
                     <span>Tasks</span>
+                    <span class="badge bg-danger rounded-pill ms-1" data-mrq-badge style="display:none">0</span>
                     <span class="menu-arrow"></span>
                 </a>
                 <div class="collapse {{ $tasksMenuOpen ? 'show' : '' }}" id="actionManager">
@@ -69,6 +70,7 @@
                         <li>
                             <a href="{{ route('meetings.index') }}" class="{{ request()->routeIs('meetings.index') || request()->routeIs('meetings.room') ? 'active' : '' }}">
                                 <i class="ri-vidicon-line me-2"></i>Meeting Room
+                                <span class="badge bg-danger rounded-pill ms-1" data-mrq-badge style="display:none">0</span>
                             </a>
                         </li>
                         <li>

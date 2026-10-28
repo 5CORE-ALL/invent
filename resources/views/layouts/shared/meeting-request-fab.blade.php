@@ -64,6 +64,7 @@
             <div class="modal-body">
                 <div class="mrq-tabs" id="mrqTabs">
                     <button type="button" class="mrq-tab active" data-tab="new">Request a meeting</button>
+                    <button type="button" class="mrq-tab" data-tab="sent">Sent by you</button>
                     <button type="button" class="mrq-tab" data-tab="inbox">Requests for you <span class="badge bg-danger mrq-hidden" id="mrqTabBadge">0</span></button>
                 </div>
 
@@ -120,7 +121,14 @@
                 <div id="mrqStepDone" class="mrq-hidden text-center py-3">
                     <div class="mrq-success-icon"><i class="ri-checkbox-circle-fill"></i></div>
                     <h5 class="mt-2 mb-1" id="mrqDoneTitle">Meeting request sent</h5>
-                    <p class="text-muted mb-0" id="mrqDoneText"></p>
+                    <p class="text-muted mb-2" id="mrqDoneText"></p>
+                    <div id="mrqDoneInvitees" class="d-flex flex-wrap justify-content-center gap-1"></div>
+                    <div class="small text-muted mt-2">Track their answers under the <strong>Sent by you</strong> tab.</div>
+                </div>
+
+                {{-- Sent by you --}}
+                <div id="mrqSent" class="mrq-hidden">
+                    <div id="mrqSentList"><div class="text-muted">Loading…</div></div>
                 </div>
 
                 {{-- Inbox --}}
@@ -150,7 +158,8 @@
         var URLS = {
             members: @json(route('meetings.members')),
             request: @json(route('meetings.request')),
-            requests: @json(route('meetings.requests'))
+            requests: @json(route('meetings.requests')),
+            sent: @json(route('meetings.sent'))
         };
         var CSRF = @json(csrf_token());
         var $ = function (id) { return document.getElementById(id); };
@@ -224,13 +233,14 @@
             tab = t;
             document.querySelectorAll('#mrqTabs .mrq-tab').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === t); });
             var isNew = t === 'new';
-            hide('mrqInbox', isNew);
+            hide('mrqInbox', t !== 'inbox');
+            hide('mrqSent', t !== 'sent');
             if (isNew) { setStep(step); }
             else {
                 ['mrqStepForm', 'mrqStepReview', 'mrqStepDone'].forEach(function (id) { hide(id, true); });
                 ['mrqBtnCancel', 'mrqBtnReview', 'mrqBtnBack', 'mrqBtnConfirm', 'mrqBtnLobby', 'mrqBtnStart'].forEach(function (id) { hide(id, true); });
                 hide('mrqBtnClose', false);
-                loadInbox();
+                if (t === 'inbox') loadInbox(); else loadSent();
             }
         }
         document.querySelectorAll('#mrqTabs .mrq-tab').forEach(function (b) {
@@ -281,6 +291,8 @@
                     ? d.meeting.invited + ' member' + (d.meeting.invited === 1 ? ' has' : 's have') + ' been notified. Start the meeting and they can join when they accept.'
                     : '"' + d.meeting.title + '" is scheduled for ' + d.meeting.scheduled_at + '. ' + d.meeting.invited + ' member' + (d.meeting.invited === 1 ? ' has' : 's have') + ' been notified.';
                 $('mrqBtnStart').href = d.room_url; $('mrqBtnLobby').href = d.meetings_url;
+                var inv = $('mrqDoneInvitees'); inv.innerHTML = '';
+                (d.meeting.invitees || []).forEach(function (n) { var b = document.createElement('span'); b.className = 'badge bg-warning text-dark'; b.textContent = n + ' · waiting for reply'; inv.appendChild(b); });
                 setStep('done');
                 hide('mrqBtnStart', d.when !== 'now');
                 // reset form for next time
@@ -292,6 +304,37 @@
             });
         });
 
+        // ---------- sent by me: invited members + their answers ----------
+        var STATUS = {
+            in_room: ['In room', 'bg-success'], left: ['Left', 'bg-secondary'], accepted: ['Accepted', 'bg-success'],
+            declined: ['Declined', 'bg-danger'], pending: ['Waiting for reply', 'bg-warning text-dark']
+        };
+        function loadSent() {
+            var box = $('mrqSentList'); box.innerHTML = '<div class="text-muted">Loading…</div>';
+            call('GET', URLS.sent).then(function (res) {
+                var list = (res.data && res.data.meetings) || [];
+                if (!res.ok) { box.innerHTML = '<div class="text-danger">Could not load your meeting requests.</div>'; return; }
+                if (!list.length) { box.innerHTML = '<div class="text-muted py-3 text-center">You have no upcoming or live meetings. Use the <strong>Request a meeting</strong> tab to create one.</div>'; return; }
+                box.innerHTML = '';
+                list.forEach(function (m) {
+                    var div = document.createElement('div'); div.className = 'mrq-req';
+                    var counts = { accepted: 0, declined: 0, pending: 0 };
+                    m.invitees.forEach(function (i) { if (i.status === 'declined') counts.declined++; else if (i.status === 'pending') counts.pending++; else counts.accepted++; });
+                    var chips = m.invitees.map(function (i) {
+                        var st = STATUS[i.status] || STATUS.pending;
+                        return '<span class="badge ' + st[1] + ' me-1 mb-1" style="font-size:.78rem">' + esc(i.name) + ' &middot; ' + st[0] + '</span>';
+                    }).join('');
+                    div.innerHTML = '<h6>' + esc(m.title) + (m.live ? ' <span class="badge bg-success">Live now</span>' : '') + '</h6>'
+                        + '<div class="small text-muted mb-1">' + esc(m.scheduled_at || (m.live ? 'happening now' : 'Start now / no time set')) + '</div>'
+                        + (m.agenda ? '<div class="small mb-2" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(m.agenda) + '</div>' : '')
+                        + '<div class="small mb-1"><strong>' + counts.accepted + '</strong> accepted &middot; <strong>' + counts.declined + '</strong> declined &middot; <strong>' + counts.pending + '</strong> waiting</div>'
+                        + '<div class="mb-2">' + (chips || '<span class="text-muted small">No members invited.</span>') + '</div>'
+                        + '<a class="btn btn-sm ' + (m.live ? 'btn-success' : 'btn-primary') + '" href="' + esc(m.room_url) + '">' + (m.live ? 'Join meeting' : 'Start meeting') + '</a>';
+                    box.appendChild(div);
+                });
+            }).catch(function () { box.innerHTML = '<div class="text-danger">Could not load your meeting requests.</div>'; });
+        }
+
         // ---------- inbox (requests for me) ----------
         var seenKey = 'mrqSeenRequests';
         function seenIds() { try { return JSON.parse(localStorage.getItem(seenKey) || '[]'); } catch (e) { return []; } }
@@ -302,6 +345,8 @@
             b.textContent = n; b.style.display = n ? '' : 'none'; b.classList.remove('mrq-hidden');
             tb.textContent = n; tb.classList.toggle('mrq-hidden', !n);
             $('mrqFab').classList.toggle('has-pending', n > 0);
+            // same count on the sidebar ("Tasks" menu + "Meeting Room" item)
+            document.querySelectorAll('[data-mrq-badge]').forEach(function (el) { el.textContent = n; el.style.display = n ? '' : 'none'; });
         }
 
         var pollTimer = null;
@@ -320,7 +365,7 @@
                             + (fresh.length > 1 ? ' (+' + (fresh.length - 1) + ' more)' : '') + ':<br>' + esc(r.title);
                         t.style.display = '';
                         t.onclick = function () { t.style.display = 'none'; openModal('inbox'); };
-                        setTimeout(function () { t.style.display = 'none'; }, 14000);
+                        setTimeout(function () { t.style.display = 'none'; }, 30000);
                         rememberSeen(seen.concat(fresh.map(function (x) { return x.id; })));
                     }
                 }
@@ -400,8 +445,9 @@
         // ---------- background poll for incoming requests ----------
         function startPolling() {
             poll(true);
-            pollTimer = setInterval(function () { if (!document.hidden) poll(true); }, 60000);
+            pollTimer = setInterval(function () { if (!document.hidden) poll(true); }, 30000);
         }
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(true); });
         if (document.readyState === 'complete') startPolling(); else window.addEventListener('load', startPolling);
     })();
 </script>
