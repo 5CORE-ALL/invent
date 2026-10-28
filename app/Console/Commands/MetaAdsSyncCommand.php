@@ -23,7 +23,8 @@ class MetaAdsSyncCommand extends Command
                             {--ad-account= : Specific ad account Meta ID to sync}
                             {--from= : Start date for insights (YYYY-MM-DD)}
                             {--to= : End date for insights (YYYY-MM-DD)}
-                            {--insights-only : Only sync insights, skip entities}';
+                            {--insights-only : Only sync insights, skip entities}
+                            {--force : Queue even when a large backlog is waiting}';
 
     protected $description = 'Sync Meta Ads data (accounts, campaigns, adsets, ads, insights)';
 
@@ -35,6 +36,16 @@ class MetaAdsSyncCommand extends Command
         $dateStart = $this->option('from') ?? Carbon::yesterday()->format('Y-m-d');
         $dateEnd = $this->option('to') ?? Carbon::yesterday()->format('Y-m-d');
         $insightsOnly = $this->option('insights-only');
+
+        // The sync queues tens of thousands of jobs. When nobody is working the `default` queue they just pile up
+        // (1.1 million had by October 29), so stop here instead of queueing more.
+        $waiting = (int) \Illuminate\Support\Facades\DB::table('jobs')->where('queue', 'default')->limit(20001)->count();
+        if ($waiting > 20000 && ! $this->option('force')) {
+            $this->error("Meta Ads sync skipped: {$waiting}+ jobs are already waiting on the default queue. Check that a `default` queue worker is running, or clear the backlog, then run again (--force overrides).");
+            Log::warning('meta-ads:sync skipped, default queue backlog', ['waiting' => $waiting]);
+
+            return 1;
+        }
 
         $this->info('Starting Meta Ads sync...');
         $this->line("User ID: " . ($userId ?? 'All'));
