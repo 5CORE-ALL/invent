@@ -17,13 +17,9 @@ class AttendanceAiFlag extends Model
         'insufficient_hours' => 'Insufficient Work Hours',
         'ai_assessment' => 'AI Risk Assessment',
         'input_simulation' => 'Possible Input Simulation',
-        'static_screen' => 'Unchanging Screen While Active',
-        'suspicious_software' => 'Remote-Control / Auto-Input Software',
-        'totals_mismatch' => 'Reported Time Exceeds Heartbeats',
         'marathon_session' => 'Unbroken Marathon Session',
         'no_screenshots' => 'Screen Capture Missing',
         'multi_device' => 'Account Used From Several Machines',
-        'second_screen_media' => 'Entertainment on Second Screen',
     ];
 
     /**
@@ -32,13 +28,9 @@ class AttendanceAiFlag extends Model
      */
     public const FRAUD_TYPES = [
         'input_simulation',
-        'static_screen',
-        'suspicious_software',
-        'totals_mismatch',
         'marathon_session',
         'no_screenshots',
         'multi_device',
-        'second_screen_media',
     ];
 
     protected $fillable = [

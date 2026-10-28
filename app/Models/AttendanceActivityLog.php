@@ -22,15 +22,10 @@ class AttendanceActivityLog extends Model
         'attendance_device_id',
         'keystroke_count',
         'mouse_click_count',
-        'flagged_processes',
         'input_tracked',
-        'display_count',
-        'background_media',
-        'background_motion',
     ];
 
     protected $casts = [
-        'background_motion' => 'boolean',
         'input_tracked' => 'boolean',
         'recorded_at' => 'datetime',
         'is_active' => 'boolean',

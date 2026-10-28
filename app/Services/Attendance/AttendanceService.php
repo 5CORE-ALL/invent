@@ -276,7 +276,7 @@ class AttendanceService
     }
 
     /**
-     * @param  array{is_active?: bool, idle_seconds?: int, elapsed_seconds?: int, activity_state?: string|null, window_title?: string|null, page_url?: string|null, source?: string, app_name?: string|null, process_name?: string|null, device_id?: int|null, keystroke_count?: int, mouse_click_count?: int, input_tracked?: bool, flagged_processes?: array<int, string>, display_count?: int, background_media?: array<int, string>, background_motion?: bool}  $payload
+     * @param  array{is_active?: bool, idle_seconds?: int, elapsed_seconds?: int, activity_state?: string|null, window_title?: string|null, page_url?: string|null, source?: string, app_name?: string|null, process_name?: string|null, device_id?: int|null, keystroke_count?: int, mouse_click_count?: int, input_tracked?: bool}  $payload
      */
     public function recordHeartbeat(User $user, array $payload): array
     {
@@ -339,33 +339,7 @@ class AttendanceService
 
         $reportsTotals = array_key_exists('active_total_seconds', $payload) || array_key_exists('idle_total_seconds', $payload);
 
-        $flaggedProcesses = collect((array) ($payload['flagged_processes'] ?? []))
-            ->map(fn ($p) => mb_substr(trim((string) $p), 0, 80))
-            ->filter()
-            ->unique()
-            ->take(10)
-            ->implode(',');
-
-        // Second-screen signals (see AttendanceAiMisuseService::checkSecondScreenMedia).
-        $secondScreen = [];
-        if (self::secondScreenColumnsExist()) {
-            if (isset($payload['display_count'])) {
-                $secondScreen['display_count'] = max(1, min(16, (int) $payload['display_count']));
-            }
-            $titles = collect((array) ($payload['background_media'] ?? []))
-                ->map(fn ($t) => mb_substr(trim((string) $t), 0, 80))
-                ->filter()
-                ->unique()
-                ->take(5)
-                ->values()
-                ->all();
-            if ($titles) {
-                $secondScreen['background_media'] = json_encode($titles, JSON_UNESCAPED_UNICODE);
-                $secondScreen['background_motion'] = (bool) ($payload['background_motion'] ?? false);
-            }
-        }
-
-        DB::transaction(function () use ($session, $user, $payload, $isActive, $interval, $source, $activityState, $systemIdle, $reportsTotals, $flaggedProcesses, $secondScreen) {
+        DB::transaction(function () use ($session, $user, $payload, $isActive, $interval, $source, $activityState, $systemIdle, $reportsTotals) {
             AttendanceActivityLog::create(array_merge([
                 'attendance_session_id' => $session->id,
                 'user_id' => $user->id,
@@ -382,13 +356,9 @@ class AttendanceService
                 'keystroke_count' => max(0, (int) ($payload['keystroke_count'] ?? 0)),
                 'mouse_click_count' => max(0, (int) ($payload['mouse_click_count'] ?? 0)),
             ],
-                ($flaggedProcesses !== '' && self::flaggedProcessesColumnExists())
-                    ? ['flagged_processes' => mb_substr($flaggedProcesses, 0, 500)]
-                    : [],
                 self::inputTrackedColumnExists()
                     ? ['input_tracked' => (bool) ($payload['input_tracked'] ?? false)]
                     : [],
-                $secondScreen,
             ));
 
             $session->increment('heartbeat_count');
@@ -427,21 +397,9 @@ class AttendanceService
         return self::$logColumns[$column] ??= \Illuminate\Support\Facades\Schema::hasColumn('attendance_activity_logs', $column);
     }
 
-    public static function flaggedProcessesColumnExists(): bool
-    {
-        return self::logColumnExists('flagged_processes');
-    }
-
     public static function inputTrackedColumnExists(): bool
     {
         return self::logColumnExists('input_tracked');
-    }
-
-    public static function secondScreenColumnsExist(): bool
-    {
-        return self::logColumnExists('display_count')
-            && self::logColumnExists('background_media')
-            && self::logColumnExists('background_motion');
     }
 
     /**

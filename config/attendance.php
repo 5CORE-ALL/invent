@@ -151,54 +151,6 @@ return [
     'unproductive_apps' => ['steam', 'spotify', 'netflix', 'discord', 'epicgameslauncher'],
 
     /*
-    | Process-name fragments (lowercase) of remote-control tools and mouse/keyboard simulators.
-    | The desktop agent scans running processes for these and reports matches in its heartbeat,
-    | so this list can be changed on the server without shipping a new agent build.
-    | Note: IT support may legitimately use remote tools; matches raise a flag for review only.
-    */
-    'suspicious_process_patterns' => [
-        'todesk', 'sunloginclient', 'sunloginremote', 'anydesk', 'teamviewer', 'rustdesk', 'parsecd',
-        'mousejiggler', 'jiggler', 'movemouse', 'mousemover', 'caffeine', 'amphetamine', 'donotsleep',
-        'autohotkey', 'autoclicker', 'tinytask', 'ghostmouse', 'macrorecorder', 'mouseautomation',
-    ],
-
-    /*
-    | Second-screen entertainment detection. On machines with 2+ monitors the agent matches the
-    | visible window titles on ALL screens against `window_patterns` (lowercase fragments; the list
-    | is pushed to agents, so it can change without a new build) and reports only the matches.
-    | A flag is raised when such windows are open while the person is counted as working.
-    | Facebook / Meta are left out on purpose (the ads team uses Ads Manager). YouTube is included,
-    | so a legitimate research tab can be flagged: those alerts are for review and can be dismissed.
-    */
-    'second_screen' => [
-        'window_patterns' => [
-            // Video / streaming
-            'youtube', 'netflix', 'prime video', 'primevideo', 'hotstar', 'jiocinema', 'disney+', 'hulu',
-            'twitch', 'crunchyroll', 'vimeo', 'dailymotion', 'sony liv', 'sonyliv', 'zee5', 'mx player',
-            'bilibili', 'iqiyi', 'youku', 'tencent video', 'hbo max', 'peacock', 'movies & tv',
-            // Players and movie sites
-            'vlc media player', 'kmplayer', 'potplayer', 'mpv', 'full movie', 'watch online', 'moviebox',
-            // Social / short video
-            'instagram', 'tiktok', 'reddit', 'twitter', 'snapchat', 'pinterest',
-            // Games
-            'steam', 'epic games', 'league of legends', 'valorant',
-            // China team (Bilibili, iQIYI, Youku, Tencent Video, Douyin, Weibo, Xiaohongshu)
-            '哔哩哔哩', '爱奇艺', '优酷', '腾讯视频', '抖音', '微博', '小红书',
-        ],
-        // Time on a multi-monitor setup needed before the day can be judged at all.
-        'min_multi_screen_minutes' => (int) env('ATTENDANCE_SECOND_SCREEN_MIN_MULTI_MINUTES', 20),
-        // Flag when entertainment windows were present for at least this many minutes AND this share
-        // of the working time spent on a multi-monitor setup.
-        'min_minutes' => (int) env('ATTENDANCE_SECOND_SCREEN_MIN_MINUTES', 15),
-        'min_share_percent' => (float) env('ATTENDANCE_SECOND_SCREEN_MIN_SHARE', 15),
-        // Minutes of visibly changing content (video playing) that make it high severity.
-        'high_motion_minutes' => (int) env('ATTENDANCE_SECOND_SCREEN_HIGH_MOTION_MINUTES', 45),
-        // Below this many minutes of changing content the windows were probably just left open
-        // (low severity: shown on the employee page, no red triangle by default).
-        'low_motion_minutes' => (int) env('ATTENDANCE_SECOND_SCREEN_LOW_MOTION_MINUTES', 5),
-    ],
-
-    /*
     | Heuristics used by the daily misuse analysis to detect faked activity.
     | A session needs at least `min_hours` of heartbeats before it can be judged.
     */
@@ -215,11 +167,6 @@ return [
         'min_inputs_per_hour' => (float) env('ATTENDANCE_SIM_MIN_INPUTS_PER_HOUR', 30),
         // Same app + window title for this long while counted as working.
         'static_title_minutes' => (int) env('ATTENDANCE_SIM_STATIC_TITLE_MINUTES', 90),
-        // Screenshots that look identical (hash distance <= this many bits of 64) count as unchanged.
-        'static_hash_distance' => (int) env('ATTENDANCE_SIM_HASH_DISTANCE', 4),
-        'static_screen_minutes' => (int) env('ATTENDANCE_SIM_STATIC_SCREEN_MINUTES', 30),
-        // Agent-reported active time may exceed heartbeat-covered time by this factor before flagging.
-        'totals_tolerance' => (float) env('ATTENDANCE_SIM_TOTALS_TOLERANCE', 1.25),
     ],
 
 ];

@@ -215,7 +215,7 @@
                     </button>
                 </div>
                 @if(empty($fraudReasons))
-                    <p class="text-muted small mb-0">No open fraud alerts in the last {{ $lookback_days }} days. The checkup re-runs every hour and looks for fake activity (mouse jigglers, auto-clickers, remote control), unchanged screens, missing screen captures, endless sessions and shared accounts.</p>
+                    <p class="text-muted small mb-0">No open fraud alerts in the last {{ $lookback_days }} days. The checkup re-runs every hour and looks for fake activity (mouse jigglers, auto-clickers), missing screen captures, endless sessions and shared accounts.</p>
                 @else
                     <div class="fp-list">
                         @foreach($fraudReasons as $reason)

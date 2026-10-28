@@ -19,7 +19,6 @@ class AttendanceScreenshot extends Model
         'app_name',
         'file_size',
         'idle_seconds',
-        'phash',
     ];
 
     protected $casts = [

@@ -438,155 +438,6 @@ function restoreInputCounts(counts) {
     mouseClickCount += counts.mouse_click_count || 0;
 }
 
-// Remote-control tools and mouse/keyboard simulators are matched by name fragment. The list comes
-// from the server (config.suspicious_process_patterns) so it can change without a new agent build.
-let flaggedProcesses = [];
-let lastProcessScanAt = 0;
-const PROCESS_SCAN_INTERVAL_MS = 60 * 1000;
-
-async function scanFlaggedProcesses() {
-    const patterns = (config.suspicious_process_patterns || [])
-        .map((p) => String(p).toLowerCase().trim())
-        .filter(Boolean);
-    if (!patterns.length) {
-        flaggedProcesses = [];
-        return;
-    }
-    if (Date.now() - lastProcessScanAt < PROCESS_SCAN_INTERVAL_MS) return;
-    lastProcessScanAt = Date.now();
-
-    try {
-        let names = [];
-        if (process.platform === 'win32') {
-            const { stdout } = await execFileAsync('tasklist', ['/FO', 'CSV', '/NH'], { timeout: 8000, windowsHide: true });
-            names = String(stdout || '').split(/\r?\n/)
-                .map((line) => (line.match(/^"([^"]+)"/) || [])[1])
-                .filter(Boolean);
-        } else if (process.platform === 'darwin') {
-            const { stdout } = await execFileAsync('ps', ['-axco', 'comm'], { timeout: 8000 });
-            names = String(stdout || '').split('\n').slice(1);
-        } else {
-            return;
-        }
-
-        const found = new Set();
-        for (const raw of names) {
-            const name = String(raw).trim().toLowerCase().replace(/\.exe$/, '');
-            if (name && patterns.some((p) => name.includes(p))) found.add(name);
-        }
-        flaggedProcesses = Array.from(found).slice(0, 10);
-    } catch (e) {
-        // Scanning is best effort and must never affect time tracking.
-        console.error('process scan failed', e.message);
-    }
-}
-
-// ---------------------------------------------------------------------------------------------
-// Second-screen entertainment check.
-// The focused window only describes ONE monitor. Someone can keep a movie / social feed running
-// on a 2nd or 3rd screen while moving the mouse and switching windows on the main one, so the
-// work window looks busy. On machines with 2+ displays, the visible window TITLES across all
-// screens are matched against an entertainment list that comes from the server
-// (config.entertainment_window_patterns). Only titles that match are reported (never the
-// full window list), and a matched window's picture is compared between scans to tell video that
-// is actually playing from a page that is merely open.
-// ---------------------------------------------------------------------------------------------
-let secondScreen = { displayCount: 1, titles: [], motion: false };
-let lastSecondScreenScanAt = 0;
-const SECOND_SCREEN_SCAN_INTERVAL_MS = 30 * 1000;
-const windowSignatures = new Map();   // desktopCapturer window id -> coarse luminance grid
-
-function windowSignature(thumbnail) {
-    const { width, height } = thumbnail.getSize();
-    if (!width || !height) return null;
-    const bmp = thumbnail.toBitmap();
-    const cols = 16;
-    const rows = 9;
-    const sig = new Array(cols * rows);
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            const x = Math.min(width - 1, Math.floor(((c + 0.5) * width) / cols));
-            const y = Math.min(height - 1, Math.floor(((r + 0.5) * height) / rows));
-            const i = (y * width + x) * 4;
-            sig[r * cols + c] = (bmp[i] + bmp[i + 1] + bmp[i + 2]) / 3;
-        }
-    }
-    return sig;
-}
-
-function signatureChanged(a, b) {
-    if (!a || !b || a.length !== b.length) return false;
-    let diff = 0;
-    for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i]);
-    return diff / a.length > 4;   // average brightness shift per sample (0-255)
-}
-
-async function scanSecondScreen() {
-    const displayCount = screen.getAllDisplays().length;
-    secondScreen.displayCount = displayCount;
-
-    const patterns = (config.entertainment_window_patterns || [])
-        .map((p) => String(p).toLowerCase().trim())
-        .filter(Boolean);
-    if (displayCount < 2 || !patterns.length) {
-        secondScreen.titles = [];
-        secondScreen.motion = false;
-        windowSignatures.clear();
-        return;
-    }
-    if (Date.now() - lastSecondScreenScanAt < SECOND_SCREEN_SCAN_INTERVAL_MS) return;
-    lastSecondScreenScanAt = Date.now();
-
-    try {
-        const sources = await desktopCapturer.getSources({
-            types: ['window'],
-            thumbnailSize: { width: 64, height: 36 },
-            fetchWindowIcons: false,
-        });
-
-        const focused = String(lastLive?.title || '').trim().toLowerCase();
-        const seen = new Set();
-        const titles = [];
-        let motion = false;
-
-        for (const source of sources) {
-            const title = String(source.name || '').trim();
-            const lower = title.toLowerCase();
-            if (!title || !patterns.some((p) => lower.includes(p))) continue;
-            // The focused window is already judged by the normal app/title analysis.
-            if (lower === focused) continue;
-
-            seen.add(source.id);
-            if (!titles.includes(title) && titles.length < 5) titles.push(title.slice(0, 80));
-
-            if (source.thumbnail && !source.thumbnail.isEmpty()) {
-                const sig = windowSignature(source.thumbnail);
-                if (signatureChanged(windowSignatures.get(source.id), sig)) motion = true;
-                if (sig) windowSignatures.set(source.id, sig);
-            }
-        }
-
-        for (const id of Array.from(windowSignatures.keys())) {
-            if (!seen.has(id)) windowSignatures.delete(id);
-        }
-
-        secondScreen.titles = titles;
-        secondScreen.motion = motion;
-    } catch (e) {
-        // Best effort: window listing can be refused (e.g. no Screen Recording permission).
-        console.error('second screen scan failed', e.message);
-    }
-}
-
-function secondScreenPayload() {
-    const payload = { display_count: Math.min(16, Math.max(1, secondScreen.displayCount || 1)) };
-    if (secondScreen.titles.length) {
-        payload.background_media = secondScreen.titles;
-        payload.background_motion = !!secondScreen.motion;
-    }
-    return payload;
-}
-
 async function pollActiveWindow() {
     const result = await getActiveWindow();
     if (!applyWindowResult(result) && lastKnownWindow.process) {
@@ -1156,8 +1007,6 @@ async function sendHeartbeat(force = false) {
         let inputCounts = {};
         try {
             await pollActiveWindow();
-            await scanFlaggedProcesses();
-            await scanSecondScreen();
             const systemIdle = powerMonitor.getSystemIdleTime();
             const idleAt = config.idle_threshold_seconds || 30;
             const isWorking = activityState === 'working' && systemIdle < idleAt;
@@ -1165,8 +1014,6 @@ async function sendHeartbeat(force = false) {
 
             const { data } = await jsonApi(20000).post('/heartbeat', {
                 ...inputCounts,
-                ...secondScreenPayload(),
-                ...(flaggedProcesses.length ? { flagged_processes: flaggedProcesses } : {}),
                 is_active: isWorking,
                 activity_state: activityState,
                 idle_seconds: systemIdle,
