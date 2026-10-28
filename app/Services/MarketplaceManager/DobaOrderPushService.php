@@ -555,10 +555,21 @@ class DobaOrderPushService
         $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders.json';
 
         try {
-            $response = Http::withoutVerifying()->withHeaders([
-                'X-Shopify-Access-Token' => $config['token'],
-                'Content-Type' => 'application/json',
-            ])->timeout(60)->post($url, $payload);
+            // Shopify allows ~2 calls/s per store and every marketplace import shares that budget.
+            // A 429 means the order was NOT created, so waiting for Retry-After and posting again
+            // is safe (the create claim and duplicate search still guard against double orders).
+            $response = null;
+            for ($attempt = 1; $attempt <= 5; $attempt++) {
+                $response = Http::withoutVerifying()->withHeaders([
+                    'X-Shopify-Access-Token' => $config['token'],
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->post($url, $payload);
+                if ($response->status() !== 429) {
+                    break;
+                }
+                $wait = (float) ($response->header('Retry-After') ?: (2 * $attempt));
+                usleep((int) (max(2.0, min(15.0, $wait)) * 1000000) + random_int(0, 700000));
+            }
 
             $this->lastApiStatus = $response->status();
             if ($response->successful()) {

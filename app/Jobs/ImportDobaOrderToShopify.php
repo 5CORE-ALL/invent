@@ -17,11 +17,11 @@ class ImportDobaOrderToShopify implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    public int $tries = 5;
 
-    public int $timeout = 180;
+    public int $timeout = 240;
 
-    public array $backoff = [30, 60, 120];
+    public array $backoff = [30, 60, 120, 240];
 
     public function __construct(
         protected int $dobaOrderId
