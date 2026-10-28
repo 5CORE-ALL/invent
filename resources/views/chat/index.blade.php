@@ -129,6 +129,12 @@
         }
         .slack-item:hover .slack-item__pin,
         .slack-item.is-pinned .slack-item__pin { opacity: 1; color: #ff1744; }
+        .slack-item__edit {
+            border: 0; background: transparent; color: #7a62a0; padding: 0 2px; font-size: 14px; line-height: 1;
+            opacity: 0; flex-shrink: 0; cursor: pointer;
+        }
+        .slack-item:hover .slack-item__edit { opacity: 1; }
+        .slack-item__edit:hover { color: #5b2b8c; }
         .slack-item__hash { width: 14px; opacity: .7; }
         .slack-item img { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; background: #fff; }
         .slack-item img.slack-bot-logo { border-radius: 50%; }
@@ -560,6 +566,7 @@
                     </select>
                     <button type="button" id="slackPrefsBtn">Notify</button>
                     <button type="button" id="slackAddPeopleBtn" hidden>Add people</button>
+                    <button type="button" id="slackEditRoomBtn" hidden>Edit</button>
                     <button type="button" id="slackDeleteRoomBtn" class="is-danger" hidden>Delete</button>
                     @if ($canManageChannels)
                         <a href="{{ route('chat.health') }}" class="btn btn-sm btn-light">Health</a>
@@ -668,6 +675,29 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="slackEditChannelModal" tabindex="-1" aria-labelledby="slackEditChannelTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form class="modal-content" id="slackEditChannelForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="slackEditChannelTitle">Edit chat</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="slackEditChannelId">
+                    <label class="form-label" for="slackEditChannelName">Name</label>
+                    <input type="text" class="form-control mb-3" id="slackEditChannelName" name="name" maxlength="80" required>
+                    <label class="form-label" for="slackEditChannelTopic">Topic</label>
+                    <input type="text" class="form-control" id="slackEditChannelTopic" name="topic" maxlength="255">
+                    <div class="text-danger small mt-2" id="slackEditChannelErr" hidden></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -986,12 +1016,19 @@
             const dot = dmMessageDot(ch);
             const badge = ch.unread > 0 ? '<span class="slack-item__badge">' + ch.unread + '</span>' : '';
             const pinMark = ch.pinned ? '<i class="ri-pushpin-fill slack-pin-mark" title="Pinned"></i>' : '';
+            const editIcon = ch.can_edit ? '<span class="slack-item__edit" title="Edit"><i class="ri-edit-line"></i></span>' : '';
             const hoverTitle = chatHoverTitle(ch);
             if (hoverTitle) btn.title = hoverTitle;
-            btn.innerHTML = avatar + prefix + dot + pinMark + '<span class="slack-item__name">' + esc(chatLabel(ch)) + '</span>' + badge +
+            btn.innerHTML = avatar + prefix + dot + pinMark + '<span class="slack-item__name">' + esc(chatLabel(ch)) + '</span>' + badge + editIcon +
                 '<span class="slack-item__pin" title="' + (ch.pinned ? 'Remove pin' : 'Pin') + '"><i class="ri-pushpin-' + (ch.pinned ? 'fill' : 'line') + '"></i></span>';
             btn.addEventListener('click', function (e) {
                 if (e.target.closest('.slack-item__pin')) return;
+                if (e.target.closest('.slack-item__edit')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openEditChannel(ch.id);
+                    return;
+                }
                 openChannel(ch.id);
             });
             const pinBtn = btn.querySelector('.slack-item__pin');
@@ -1361,6 +1398,8 @@
         const delBtn = document.getElementById('slackDeleteRoomBtn');
         const canAdd = !!(src.can_manage_members || (ch && ch.can_manage_members));
         const canDel = !!(src.can_delete || (ch && ch.can_delete));
+        const editBtn = document.getElementById('slackEditRoomBtn');
+        if (editBtn) editBtn.hidden = archived || !(src.can_edit || (ch && ch.can_edit));
         if (addBtn) addBtn.hidden = archived || !canAdd;
         if (delBtn) {
             delBtn.hidden = archived || !canDel;
@@ -2040,6 +2079,40 @@
     document.getElementById('slackAddPeopleBtn').addEventListener('click', function () {
         const ch = channels.find(function (c) { return c.id === activeId; }) || {};
         openPeopleModal('add', ch.member_ids || []);
+    });
+    function openEditChannel(id) {
+        const ch = channels.find(function (c) { return c.id === id; });
+        if (!ch) return;
+        document.getElementById('slackEditChannelId').value = String(ch.id);
+        document.getElementById('slackEditChannelName').value = ch.name || '';
+        document.getElementById('slackEditChannelTopic').value = ch.topic || '';
+        const err = document.getElementById('slackEditChannelErr');
+        err.hidden = true;
+        window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackEditChannelModal')).show();
+    }
+    document.getElementById('slackEditRoomBtn').addEventListener('click', function () {
+        if (activeId) openEditChannel(activeId);
+    });
+    document.getElementById('slackEditChannelForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const id = Number(document.getElementById('slackEditChannelId').value || 0);
+        const err = document.getElementById('slackEditChannelErr');
+        err.hidden = true;
+        try {
+            const data = await api('/chat/channels/' + id + '/update', { method: 'POST', body: new FormData(e.target) });
+            const ch = channels.find(function (c) { return c.id === id; });
+            if (ch && data.channel) {
+                ch.name = data.channel.name;
+                ch.topic = data.channel.topic;
+                ch.can_edit = data.channel.can_edit;
+            }
+            window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackEditChannelModal')).hide();
+            renderNav();
+            if (ch && activeId === id) setHead(ch, data.channel || ch);
+        } catch (ex) {
+            err.textContent = ex.message || 'Could not save.';
+            err.hidden = false;
+        }
     });
     document.getElementById('slackDeleteRoomBtn').addEventListener('click', async function () {
         const ch = channels.find(function (c) { return c.id === activeId; });

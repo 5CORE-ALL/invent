@@ -526,6 +526,39 @@ class ChatController extends Controller
         return response()->json(['channel_id' => (int) $channel->id]);
     }
 
+    public function updateChannel(Request $request, int $channel): JsonResponse
+    {
+        $user = Auth::user();
+        abort_unless($user, 403);
+        $row = ChatChannel::query()->findOrFail($channel);
+        abort_unless(ChatWorkspace::canEditChannel($user, $row), 403, 'Only the creator or a director can edit this chat.');
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:80',
+            'topic' => 'nullable|string|max:255',
+        ]);
+
+        $name = trim($validated['name']);
+        if ($name === '') {
+            return response()->json(['message' => 'Enter a name.'], 422);
+        }
+
+        $oldName = (string) $row->name;
+        $row->name = $name;
+        $row->topic = isset($validated['topic']) ? trim((string) $validated['topic']) : $row->topic;
+        $row->save();
+
+        if ($oldName !== $name) {
+            ChatWorkspace::postSystemNotice($row, $user->name.' renamed this chat from '.$oldName.' to '.$name, 'renamed');
+        }
+        ChatAudit::record($user, 'channel.updated', 'chat_channel', (int) $row->id, (int) $row->id, [
+            'old_name' => $oldName,
+            'name' => $name,
+        ]);
+
+        return response()->json(['ok' => true, 'channel' => $this->channelPayload($row, $user)]);
+    }
+
     public function destroyChannel(int $channel): JsonResponse
     {
         $user = Auth::user();
@@ -1117,6 +1150,7 @@ class ChatController extends Controller
             'notify_pref' => $member->notify_pref ?? 'all',
             'can_manage_members' => ChatWorkspace::canManageMembers($user, $channel),
             'can_delete' => ChatWorkspace::canDeleteChannel($user, $channel),
+            'can_edit' => ChatWorkspace::canEditChannel($user, $channel),
             'archived' => (bool) $channel->is_archived,
             'pinned' => (bool) ($member && Schema::hasColumn('chat_channel_members', 'pinned_at') && $member->pinned_at),
         ];

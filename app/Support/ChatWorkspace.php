@@ -698,6 +698,7 @@ class ChatWorkspace
                 'last_seen_label' => $peerPresence['last_seen_label'] ?? null,
                 'can_manage_members' => self::canManageMembers($user, $channel),
                 'can_delete' => self::canDeleteChannel($user, $channel),
+                'can_edit' => self::canEditChannel($user, $channel),
                 'archived' => (bool) $channel->is_archived,
                 'pinned' => isset($pinnedLookup[(int) $channel->id]),
                 'task_id' => $channel->isTask() ? (int) $channel->task_id : null,
@@ -1431,7 +1432,32 @@ class ChatWorkspace
             return true;
         }
 
-        return (int) $channel->created_by === (int) $user->id;
+        return self::isCreatorOrDirector($user, $channel);
+    }
+
+    /**
+     * Edit and delete are limited to the person who created the chat and directors.
+     */
+    public static function isCreatorOrDirector(?User $user, ChatChannel $channel): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return (int) $channel->created_by === (int) $user->id || $user->isDirector();
+    }
+
+    /**
+     * Rename / change topic. Only real channels and groups; DMs, task chats and the
+     * bot inbox get their names from elsewhere.
+     */
+    public static function canEditChannel(?User $user, ChatChannel $channel): bool
+    {
+        if (! $user || $channel->is_archived || $channel->isBotInbox() || $channel->isDm() || $channel->isTask()) {
+            return false;
+        }
+
+        return self::isCreatorOrDirector($user, $channel);
     }
 
     public static function notifyMode(User $user): string
