@@ -6,6 +6,9 @@ use App\Models\AmazonAdsMissingLink;
 use App\Models\AmazonDatasheet;
 use App\Models\ShopifySku;
 use App\Services\AmazonAdsService;
+use App\Support\AmazonAdsCampaignSkuSync;
+use App\Support\AmazonAdsHlCampaignCreator;
+use App\Support\AmazonAdsSbAdEditor;
 use App\Support\Marketplace\AmazonAdsMissingLinks;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,6 +27,11 @@ class AmazonAdsMissingController extends Controller
 
     private const TYPES = ['PT', 'KW'];
 
+    /** Sponsored Brands (HL / Headline) campaign reports — HL links are auto-linked from here. */
+    private const SB_TABLE = 'amazon_sb_campaign_reports';
+
+    private const HL_PVA_CACHE_KEY = 'amz_hl_parent_vs_ads';
+
     private const SIDEBAR_COUNT_CACHE_KEY = 'amazon_ads_missing_sidebar_count';
 
     private const SIDEBAR_COUNTS_CACHE_KEY = 'amazon_ads_missing_sidebar_counts';
@@ -34,27 +42,27 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
-     * Missing PT + Missing KW for in-stock parents (same rules as the page badges).
+     * Missing PT + Missing KW + Missing HL for in-stock parents (same rules as the page badges).
      * Cached briefly for the left-sidebar badge.
      */
     public static function missingTotalCount(bool $computeIfMissing = false): int
     {
         $counts = self::missingCountsByType($computeIfMissing);
 
-        return (int) $counts['PT'] + (int) $counts['KW'];
+        return (int) $counts['PT'] + (int) $counts['KW'] + (int) ($counts['HL'] ?? 0);
     }
 
     /**
-     * @return array{PT: int, KW: int}
+     * @return array{PT: int, KW: int, HL: int}
      */
     public static function missingCountsByType(bool $computeIfMissing = true): array
     {
-        $empty = ['PT' => 0, 'KW' => 0];
+        $empty = ['PT' => 0, 'KW' => 0, 'HL' => 0];
 
         try {
             $cached = Cache::get(self::SIDEBAR_COUNTS_CACHE_KEY);
             if (is_array($cached) && isset($cached['PT'], $cached['KW'])) {
-                return ['PT' => (int) $cached['PT'], 'KW' => (int) $cached['KW']];
+                return ['PT' => (int) $cached['PT'], 'KW' => (int) $cached['KW'], 'HL' => (int) ($cached['HL'] ?? 0)];
             }
         } catch (\Throwable $e) {
             // File cache dirs may be missing mid-request after optimize:clear.
@@ -66,7 +74,7 @@ class AmazonAdsMissingController extends Controller
 
         try {
             $counts = (new static)->computeMissingCountsByType();
-            $total = (int) $counts['PT'] + (int) $counts['KW'];
+            $total = (int) $counts['PT'] + (int) $counts['KW'] + (int) $counts['HL'];
             try {
                 Cache::put(self::SIDEBAR_COUNTS_CACHE_KEY, $counts, now()->addMinutes(5));
                 Cache::put(self::SIDEBAR_COUNT_CACHE_KEY, $total, now()->addMinutes(5));
@@ -129,6 +137,7 @@ class AmazonAdsMissingController extends Controller
         // Campaigns that already exist on Amazon as "PARENT {parent} KW" / "PARENT {parent} PT" are linked
         // automatically, so nothing has to be added by hand.
         $this->autoLinkExistingCampaigns($parents);
+        $this->autoLinkHeadlineCampaigns($parents);
 
         // All links grouped by sku ("PARENT {parent}").
         $linksBySku = AmazonAdsMissingLink::orderBy('id')
@@ -158,6 +167,7 @@ class AmazonAdsMissingController extends Controller
                 'children' => is_array($meta['children'] ?? null) ? $meta['children'] : [],
                 'pt' => $this->linkListForType($links, 'PT', $statusMap),
                 'kw' => $this->linkListForType($links, 'KW', $statusMap),
+                'hl' => $this->linkListForType($links, 'HL', $statusMap),
             ];
         })->values();
 
@@ -252,6 +262,89 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
+     * Link existing Amazon Sponsored Brands (HL / Headline) campaigns to their parent by name:
+     * "PARENT {parent} HL" or "PARENT {parent} HEAD" -> HL. Source is the SB report table (same as the HL list on
+     * /amazon-ads/all). Only fills gaps and never throws.
+     *
+     * @param  array<string, string>  $parents  UPPER(parent) => parent
+     */
+    private function autoLinkHeadlineCampaigns(array $parents): void
+    {
+        try {
+            if ($parents === []
+                || ! Schema::hasTable('amazon_ads_missing_links')
+                || ! Schema::hasTable(self::SB_TABLE)
+                || ! Schema::hasColumn(self::SB_TABLE, 'campaignName')
+                || ! Schema::hasColumn(self::SB_TABLE, 'campaign_id')) {
+                return;
+            }
+
+            $campaigns = [];
+            $rows = DB::table(self::SB_TABLE)
+                ->selectRaw('campaignName AS campaign_name, MAX(campaign_id) AS campaign_id')
+                ->where('campaignName', 'like', 'PARENT %')
+                ->where(function ($q) {
+                    $q->where('campaignName', 'like', '% HL')
+                        ->orWhere('campaignName', 'like', '% HEAD')
+                        ->orWhere('campaignName', 'like', '% HL.')
+                        ->orWhere('campaignName', 'like', '% HEAD.');
+                })
+                ->groupBy('campaignName')
+                ->get();
+            foreach ($rows as $r) {
+                $name = trim((string) $r->campaign_name);
+                $key = $this->normalizeCampaignName($name);
+                if ($key === '') {
+                    continue;
+                }
+                $campaigns[$key] = [$name, preg_replace('/\D+/', '', (string) ($r->campaign_id ?? '')) ?: null];
+            }
+            if ($campaigns === []) {
+                return;
+            }
+
+            $hasHl = [];
+            foreach (AmazonAdsMissingLink::query()->where('type', 'HL')->get(['id', 'sku', 'campaign_id', 'campaign_name']) as $l) {
+                $hasHl[(string) $l->sku] = true;
+                if (trim((string) $l->campaign_id) === '') {
+                    $hit = $campaigns[$this->normalizeCampaignName((string) $l->campaign_name)] ?? null;
+                    if ($hit && $hit[1]) {
+                        AmazonAdsMissingLink::where('id', $l->id)->update(['campaign_id' => $hit[1]]);
+                    }
+                }
+            }
+
+            $statusMap = $this->campaignStatusMap();
+            $created = 0;
+            foreach ($parents as $parent) {
+                $sku = 'PARENT '.$parent;
+                if (isset($hasHl[$sku])) {
+                    continue;
+                }
+                foreach (['HL', 'HEAD'] as $suffix) {
+                    $hit = $campaigns[$this->normalizeCampaignName($sku.' '.$suffix)] ?? null;
+                    if (! $hit || ($statusMap[$this->normalizeCampaignName($hit[0])] ?? '') === 'ARCHIVED') {
+                        continue;
+                    }
+                    $attrs = $this->missingLinkCreateAttrs($hit[1], false);
+                    $attrs['user_id'] = null;
+                    AmazonAdsMissingLink::firstOrCreate(
+                        ['sku' => $sku, 'type' => 'HL', 'campaign_name' => $hit[0]],
+                        $attrs
+                    );
+                    $created++;
+                    break;
+                }
+            }
+            if ($created > 0) {
+                self::forgetMissingTotalCache();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon ads missing: HL auto-link failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * Distinct SP campaigns (same source as /amazon-ads/all SP reports) for the Campaign picker.
      */
     public function campaigns(): JsonResponse
@@ -278,13 +371,14 @@ class AmazonAdsMissingController extends Controller
     {
         $validated = $request->validate([
             'sku' => ['required', 'string', 'max:255'],
-            'type' => ['required', 'string', 'in:PT,KW'],
+            'type' => ['required', 'string', 'in:PT,KW,HL'],
             'campaign_name' => ['required', 'string', 'max:255'],
         ]);
 
         $campaignId = null;
-        if (Schema::hasTable(self::SP_TABLE) && Schema::hasColumn(self::SP_TABLE, 'campaignName')) {
-            $campaignId = DB::table(self::SP_TABLE)
+        $linkTable = $validated['type'] === 'HL' ? self::SB_TABLE : self::SP_TABLE;
+        if (Schema::hasTable($linkTable) && Schema::hasColumn($linkTable, 'campaignName')) {
+            $campaignId = DB::table($linkTable)
                 ->where('campaignName', $validated['campaign_name'])
                 ->max('campaign_id');
         }
@@ -529,6 +623,7 @@ class AmazonAdsMissingController extends Controller
             'targets_result' => $targetsResult,
             'pt' => $this->linksResponseForSku($sku)['pt'],
             'kw' => $this->linksResponseForSku($sku)['kw'],
+            'hl' => $this->linksResponseForSku($sku)['hl'],
         ]);
     }
 
@@ -639,7 +734,7 @@ class AmazonAdsMissingController extends Controller
      * @param  array<int, mixed>  $refs
      * @return array<string, array{id: string, name: string}>  key => campaign
      */
-    private function resolveKeywordCampaignRefs(array $refs): array
+    private function resolveKeywordCampaignRefs(array $refs, bool $sponsoredBrands = false): array
     {
         $out = [];
         foreach ($refs as $ref) {
@@ -650,11 +745,332 @@ class AmazonAdsMissingController extends Controller
             $name = trim((string) ($ref['campaign_name'] ?? ''));
             $id = preg_replace('/\D+/', '', (string) ($ref['campaign_id'] ?? '')) ?: '';
             if ($id === '' && $name !== '') {
-                $id = $this->campaignIdFromSpReports($name);
+                $id = $sponsoredBrands ? $this->campaignIdFromSbReports($name) : $this->campaignIdFromSpReports($name);
             }
             if ($key !== '' && $id !== '') {
                 $out[$key] = ['id' => $id, 'name' => $name];
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Sponsored Brands (HL) keywords + product targets of the given campaigns, normalised to the SP row shape
+     * (campaignId, state, keywordText, matchType, bid) plus _label / _type for the list modal.
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    private function hlEntitiesByCampaignIds(array $campaignIds): array
+    {
+        $svc = app(AmazonAdsService::class);
+        $out = [];
+        foreach ($svc->listSbKeywordsByCampaignIds($campaignIds) as $row) {
+            $row['state'] = strtoupper((string) ($row['state'] ?? ''));
+            $row['_label'] = (string) ($row['keywordText'] ?? '');
+            $row['_type'] = strtoupper((string) ($row['matchType'] ?? ''));
+            $out[] = $row;
+        }
+        try {
+            $targets = $svc->listSbTargetsByCampaignIds($campaignIds);
+        } catch (\Throwable $e) {
+            // Keyword-only HL campaigns are common; a target list failure must not hide the keyword count.
+            Log::info('Amazon HL target list failed', ['error' => $e->getMessage()]);
+            $targets = [];
+        }
+        foreach ($targets as $row) {
+            $expr = is_array($row['expressions'][0] ?? null) ? $row['expressions'][0] : (is_array($row['expression'][0] ?? null) ? $row['expression'][0] : []);
+            $type = strtoupper(str_replace('_', '', (string) ($expr['type'] ?? '')));
+            $value = (string) ($expr['value'] ?? '');
+            $row['state'] = strtoupper((string) ($row['state'] ?? ''));
+            if (str_contains($type, 'CATEGORY')) {
+                $row['_label'] = 'Category '.$value;
+                $row['_type'] = 'CATEGORY';
+            } else {
+                $row['_label'] = $value !== '' ? $value : ($type !== '' ? $type : '—');
+                $row['_type'] = 'ASIN';
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Create one PAUSED HL (Sponsored Brands) campaign for a parent, cloning the brand creative of an existing HL
+     * campaign, and link it. See AmazonAdsHlCampaignCreator.
+     */
+    public function hlCreate(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'parent' => ['required', 'string', 'max:255'],
+            'campaign_name' => ['required', 'string', 'max:128'],
+            'budget_amount' => ['nullable', 'numeric', 'min:1', 'max:100000'],
+            'headline' => ['nullable', 'string', 'max:50'],
+            'children' => ['required', 'array', 'min:1'],
+            'children.*.asin' => ['nullable', 'string', 'max:32'],
+            'keywords' => ['nullable', 'array', 'max:200'],
+            'keywords.*.text' => ['required', 'string', 'max:200'],
+            'keywords.*.match_type' => ['nullable', 'string', 'in:BROAD,PHRASE,EXACT'],
+            'keywords.*.bid' => ['nullable', 'numeric', 'min:0.1', 'max:1000'],
+        ]);
+
+        $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
+        $sku = 'PARENT '.$parent;
+        $name = trim($validated['campaign_name']);
+        $asins = array_values(array_filter(array_map(
+            static fn ($c) => AmazonAdsSbAdEditor::normalizeAsin($c['asin'] ?? ''),
+            $validated['children']
+        )));
+
+        $preferred = AmazonAdsMissingLink::query()
+            ->where('type', 'HL')
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->orderByDesc('id')
+            ->limit(10)
+            ->pluck('campaign_id')
+            ->all();
+
+        $keywords = [];
+        foreach ((array) ($validated['keywords'] ?? []) as $k) {
+            $keywords[] = [
+                'text' => (string) $k['text'],
+                'match_type' => (string) ($k['match_type'] ?? 'PHRASE'),
+                'bid' => (float) ($k['bid'] ?? 0.6),
+            ];
+        }
+
+        try {
+            $result = (new AmazonAdsHlCampaignCreator(app(AmazonAdsService::class)))->create(
+                $name,
+                (float) ($validated['budget_amount'] ?? 3),
+                $asins,
+                $keywords,
+                AmazonAdsHlCampaignCreator::templateCandidates($preferred),
+                $validated['headline'] ?? null
+            );
+        } catch (\Throwable $e) {
+            Log::error('Amazon HL create failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return response()->json(['ok' => false, 'message' => 'HL campaign create failed: '.$e->getMessage()], 500);
+        }
+
+        // Link as soon as the campaign exists on Amazon, even if a later step failed.
+        if ($result['campaign_id'] !== '') {
+            AmazonAdsMissingLink::firstOrCreate(
+                ['sku' => $sku, 'type' => 'HL', 'campaign_name' => $name],
+                $this->missingLinkCreateAttrs($result['campaign_id'], true)
+            );
+            self::forgetMissingTotalCache();
+            Cache::forget(self::HL_PVA_CACHE_KEY);
+        }
+
+        return response()->json(array_merge($this->linksResponseForSku($sku), [
+            'ok' => $result['ok'],
+            'message' => $result['message'],
+            'campaign_id' => $result['campaign_id'],
+            'campaign_name' => $name,
+            'sku' => $sku,
+        ]), $result['ok'] ? 200 : 422);
+    }
+
+    /**
+     * Add the selected child ASINs to the creative of an existing linked HL campaign.
+     */
+    public function hlUpdate(Request $request, AmazonAdsSbAdEditor $editor): JsonResponse
+    {
+        $validated = $request->validate([
+            'parent' => ['required', 'string', 'max:255'],
+            'campaign_id' => ['required', 'string', 'max:64'],
+            'children' => ['required', 'array', 'min:1'],
+            'children.*.asin' => ['nullable', 'string', 'max:32'],
+        ]);
+        $sku = 'PARENT '.preg_replace('/\s+/', ' ', trim($validated['parent']));
+        $asins = array_values(array_filter(array_map(
+            static fn ($c) => AmazonAdsSbAdEditor::normalizeAsin($c['asin'] ?? ''),
+            $validated['children']
+        )));
+
+        $result = $editor->add(preg_replace('/\D+/', '', $validated['campaign_id']) ?: '', [], $asins);
+        if (! empty($result['success'])) {
+            Cache::forget(self::HL_PVA_CACHE_KEY);
+        }
+
+        return response()->json(array_merge($this->linksResponseForSku($sku), [
+            'ok' => ! empty($result['success']),
+            'message' => (string) ($result['message'] ?? '') !== ''
+                ? (string) $result['message']
+                : (! empty($result['success']) ? 'HL campaign updated.' : 'Could not update the HL campaign.'),
+            'sku' => $sku,
+        ]), ! empty($result['success']) ? 200 : 422);
+    }
+
+    /**
+     * "Parent Vs Ads SKU HL": for each parent with a linked HL campaign, are the ASINs of its in-stock child SKUs
+     * on that campaign's creative? Reads amazon_ads_campaign_skus, first re-pulling the linked HL campaigns' live SB
+     * ads from Amazon (at most every 5 minutes; ?refresh=1 forces it). Keyed by UPPER(parent).
+     */
+    public function hlParentVsAds(Request $request): JsonResponse
+    {
+        try {
+            if ($request->boolean('refresh')) {
+                Cache::forget(self::HL_PVA_CACHE_KEY);
+            }
+            $map = Cache::remember(self::HL_PVA_CACHE_KEY, 300, fn () => $this->buildHlParentVsAds());
+        } catch (\Throwable $e) {
+            Log::warning('Amazon HL parent vs ads failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['ok' => false, 'message' => 'Could not compute Parent Vs Ads SKU HL.', 'data' => (object) []], 500);
+        }
+
+        return response()->json(['ok' => true, 'data' => (object) $map]);
+    }
+
+    /**
+     * @return array<string, array{hl: array<string, mixed>}>
+     */
+    private function buildHlParentVsAds(): array
+    {
+        if (! Schema::hasTable('product_master') || ! Schema::hasTable('amazon_ads_missing_links')) {
+            return [];
+        }
+
+        $rows = DB::table('product_master')
+            ->select('parent', 'sku', 'Values')
+            ->whereNull('deleted_at')
+            ->orderBy('parent')
+            ->orderBy('sku')
+            ->get();
+        $parents = [];
+        foreach ($rows as $r) {
+            $sku = trim((string) ($r->sku ?? ''));
+            if ($sku === '' || Str::startsWith(strtoupper($sku), 'PARENT') || $this->isDcProduct($r)) {
+                continue;
+            }
+            $parent = preg_replace('/\s+/', ' ', trim((string) ($r->parent ?? '')));
+            if ($parent !== '') {
+                $parents[strtoupper($parent)] = $parent;
+            }
+        }
+
+        $linksBySku = AmazonAdsMissingLink::query()->where('type', 'HL')->get()->groupBy(fn ($l) => (string) $l->sku);
+        $campaignIds = [];
+        foreach ($linksBySku as $links) {
+            foreach ($links as $l) {
+                $cid = preg_replace('/\D+/', '', (string) ($l->campaign_id ?? '')) ?: '';
+                if ($cid !== '') {
+                    $campaignIds[$cid] = true;
+                }
+            }
+        }
+        $campaignIds = array_keys($campaignIds);
+        if ($campaignIds === []) {
+            return [];
+        }
+
+        // Re-pull the live SB ads of the linked HL campaigns so the check does not wait for the daily sync.
+        if (Schema::hasTable('amazon_ads_campaign_skus')) {
+            try {
+                $svc = app(AmazonAdsService::class);
+                foreach (array_chunk($campaignIds, 40) as $chunk) {
+                    $live = $svc->fetchAllSbAds(['ENABLED', 'PAUSED'], $chunk);
+                    if (! empty($live['success'])) {
+                        AmazonAdsCampaignSkuSync::persistSbAds($svc->resolvedProfileId() ?: 'default', (array) ($live['ads'] ?? []));
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::info('Amazon HL ad re-pull failed; using the stored SB ads', ['error' => $e->getMessage()]);
+            }
+        }
+
+        $listedByCampaign = [];
+        if (Schema::hasTable('amazon_ads_campaign_skus')) {
+            $q = DB::table('amazon_ads_campaign_skus')
+                ->whereIn('campaign_id', $campaignIds)
+                ->where('ad_id', 'like', AmazonAdsCampaignSkuSync::SB_AD_PREFIX.'%')
+                ->whereNotNull('asin')
+                ->where('asin', '!=', '')
+                ->where(function ($w) {
+                    $w->whereNull('state')->orWhereRaw('UPPER(TRIM(state)) != ?', ['ARCHIVED']);
+                })
+                ->get(['campaign_id', 'asin']);
+            foreach ($q as $r) {
+                $listedByCampaign[(string) $r->campaign_id][strtoupper(trim((string) $r->asin))] = true;
+            }
+        }
+
+        $childrenByParent = $this->childrenMetaByParent($rows, $parents);
+        $out = [];
+        foreach ($parents as $pKey => $parent) {
+            $links = $linksBySku->get('PARENT '.$parent);
+            if (! $links || $links->isEmpty()) {
+                continue;
+            }
+            $listed = [];
+            $hasId = false;
+            foreach ($links as $l) {
+                $cid = preg_replace('/\D+/', '', (string) ($l->campaign_id ?? '')) ?: '';
+                if ($cid === '') {
+                    continue;
+                }
+                $hasId = true;
+                foreach (array_keys($listedByCampaign[$cid] ?? []) as $asin) {
+                    $listed[$asin] = true;
+                }
+            }
+            if (! $hasId) {
+                continue;
+            }
+
+            $allChildAsins = [];
+            $required = [];
+            foreach (($childrenByParent[$pKey]['children'] ?? []) as $c) {
+                $asin = strtoupper(trim((string) ($c['asin'] ?? '')));
+                if ($asin === '') {
+                    continue;
+                }
+                $allChildAsins[$asin] = true;
+                if ((float) ($c['inv'] ?? 0) > 0) {
+                    $required[$asin] = (string) ($c['target_sku'] ?? $asin);
+                }
+            }
+            if ($required === []) {
+                continue;
+            }
+
+            $missing = [];
+            $added = [];
+            foreach ($required as $asin => $childSku) {
+                if (isset($listed[$asin])) {
+                    $added[] = $childSku;
+                } else {
+                    $missing[] = $childSku;
+                }
+            }
+            $extra = [];
+            foreach (array_keys($listed) as $asin) {
+                if (! isset($allChildAsins[$asin])) {
+                    $extra[] = $asin;
+                }
+            }
+
+            $status = $missing !== [] ? 'missing' : ($extra !== [] ? 'extra' : 'ok');
+            $out[$pKey] = ['hl' => [
+                'ad_status' => $status,
+                'ad_label' => count($added).'/'.count($required),
+                'missing' => count($missing),
+                'extra' => count($extra),
+                'archived_extra' => 0,
+                'over' => 0,
+                'missing_skus' => $missing,
+                'over_skus' => [],
+                'extra_skus' => $extra,
+                'archived_extra_skus' => [],
+                'added_campaigns' => $links->pluck('campaign_name')->filter()->values()->all(),
+                'added_skus' => $added,
+            ]];
         }
 
         return $out;
@@ -703,11 +1119,11 @@ class AmazonAdsMissingController extends Controller
             'campaigns.*.campaign_id' => ['nullable', 'string', 'max:64'],
             'campaigns.*.campaign_name' => ['nullable', 'string', 'max:255'],
             'refresh' => ['nullable', 'boolean'],
-            'kind' => ['nullable', 'string', 'in:kw,pt'],
+            'kind' => ['nullable', 'string', 'in:kw,pt,hl'],
         ]);
 
-        $kind = ($validated['kind'] ?? 'kw') === 'pt' ? 'pt' : 'kw';
-        $refs = $this->resolveKeywordCampaignRefs($validated['campaigns']);
+        $kind = in_array(($validated['kind'] ?? 'kw'), ['pt', 'hl'], true) ? $validated['kind'] : 'kw';
+        $refs = $this->resolveKeywordCampaignRefs($validated['campaigns'], $kind === 'hl');
         $force = ! empty($validated['refresh']);
         $counts = [];
         $unresolved = [];
@@ -731,9 +1147,13 @@ class AmazonAdsMissingController extends Controller
         $status = 200;
         if ($toFetch !== []) {
             try {
-                $rows = $kind === 'pt'
-                    ? app(AmazonAdsService::class)->listTargetsByCampaignIdsBulk(array_keys($toFetch))
-                    : app(AmazonAdsService::class)->listKeywordsByCampaignIdsBulk(array_keys($toFetch));
+                if ($kind === 'hl') {
+                    $rows = $this->hlEntitiesByCampaignIds(array_keys($toFetch));
+                } else {
+                    $rows = $kind === 'pt'
+                        ? app(AmazonAdsService::class)->listTargetsByCampaignIdsBulk(array_keys($toFetch))
+                        : app(AmazonAdsService::class)->listKeywordsByCampaignIdsBulk(array_keys($toFetch));
+                }
                 $tally = [];
                 foreach (array_keys($toFetch) as $id) {
                     $tally[$id] = ['total' => 0, 'enabled' => 0, 'paused' => 0];
@@ -763,7 +1183,7 @@ class AmazonAdsMissingController extends Controller
                     && $e->getResponse()->getStatusCode() === 429) ? 429 : 502;
                 $error = $status === 429
                     ? 'Amazon is rate-limiting keyword requests right now. Try again in a minute.'
-                    : 'Amazon '.($kind === 'pt' ? 'target' : 'keyword').' count failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e);
+                    : 'Amazon '.($kind === 'pt' ? 'target' : ($kind === 'hl' ? 'HL keyword / target' : 'keyword')).' count failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e);
             }
         }
 
@@ -785,11 +1205,11 @@ class AmazonAdsMissingController extends Controller
             'campaigns.*.key' => ['required', 'string', 'max:300'],
             'campaigns.*.campaign_id' => ['nullable', 'string', 'max:64'],
             'campaigns.*.campaign_name' => ['nullable', 'string', 'max:255'],
-            'kind' => ['nullable', 'string', 'in:kw,pt'],
+            'kind' => ['nullable', 'string', 'in:kw,pt,hl'],
         ]);
 
-        $kind = ($validated['kind'] ?? 'kw') === 'pt' ? 'pt' : 'kw';
-        $refs = $this->resolveKeywordCampaignRefs($validated['campaigns']);
+        $kind = in_array(($validated['kind'] ?? 'kw'), ['pt', 'hl'], true) ? $validated['kind'] : 'kw';
+        $refs = $this->resolveKeywordCampaignRefs($validated['campaigns'], $kind === 'hl');
         if ($refs === []) {
             return response()->json([
                 'ok' => false,
@@ -805,9 +1225,13 @@ class AmazonAdsMissingController extends Controller
         }
 
         try {
-            $rows = $kind === 'pt'
-                ? app(AmazonAdsService::class)->listTargetsByCampaignIdsBulk(array_keys($names))
-                : app(AmazonAdsService::class)->listKeywordsByCampaignIdsBulk(array_keys($names));
+            if ($kind === 'hl') {
+                $rows = $this->hlEntitiesByCampaignIds(array_keys($names));
+            } else {
+                $rows = $kind === 'pt'
+                    ? app(AmazonAdsService::class)->listTargetsByCampaignIdsBulk(array_keys($names))
+                    : app(AmazonAdsService::class)->listKeywordsByCampaignIdsBulk(array_keys($names));
+            }
         } catch (\Throwable $e) {
             Log::warning('Amazon keyword list failed', ['error' => $e->getMessage()]);
             $throttled = $e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse()
@@ -817,14 +1241,17 @@ class AmazonAdsMissingController extends Controller
                 'ok' => false,
                 'message' => $throttled
                     ? 'Amazon is rate-limiting keyword requests right now. Try again in a minute.'
-                    : 'Amazon '.($kind === 'pt' ? 'target' : 'keyword').' list failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e),
+                    : 'Amazon '.($kind === 'pt' ? 'target' : ($kind === 'hl' ? 'HL keyword / target' : 'keyword')).' list failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e),
             ], $throttled ? 429 : 502);
         }
 
         $keywords = [];
         foreach ($rows as $row) {
             $cid = (string) ($row['campaignId'] ?? '');
-            if ($kind === 'pt') {
+            if ($kind === 'hl') {
+                $label = (string) ($row['_label'] ?? '');
+                $typeLabel = (string) ($row['_type'] ?? '');
+            } elseif ($kind === 'pt') {
                 [$label, $typeLabel] = $this->describeTargetExpression($row);
             } else {
                 $label = (string) ($row['keywordText'] ?? '');
@@ -1953,25 +2380,26 @@ PROMPT;
             'campaign_name' => $campaignName,
             'pt' => $links['pt'],
             'kw' => $links['kw'],
+            'hl' => $links['hl'],
         ]);
     }
 
     /**
-     * Count Missing PT + Missing KW across in-stock parent rows (inventory > 0).
+     * Count Missing PT + Missing KW + Missing HL across in-stock parent rows (inventory > 0).
      */
     private function computeMissingTotal(): int
     {
         $counts = $this->computeMissingCountsByType();
 
-        return (int) $counts['PT'] + (int) $counts['KW'];
+        return (int) $counts['PT'] + (int) $counts['KW'] + (int) $counts['HL'];
     }
 
     /**
-     * @return array{PT: int, KW: int}
+     * @return array{PT: int, KW: int, HL: int}
      */
     private function computeMissingCountsByType(): array
     {
-        $counts = ['PT' => 0, 'KW' => 0];
+        $counts = ['PT' => 0, 'KW' => 0, 'HL' => 0];
         if (! Schema::hasTable('product_master')) {
             return $counts;
         }
@@ -2016,6 +2444,9 @@ PROMPT;
             }
             if (! in_array('KW', $types, true)) {
                 $counts['KW']++;
+            }
+            if (! in_array('HL', $types, true)) {
+                $counts['HL']++;
             }
         }
 
@@ -2475,6 +2906,24 @@ PROMPT;
         }
 
         return array_keys($candidates);
+    }
+
+    private function campaignIdFromSbReports(string $campaignName): string
+    {
+        $campaignName = trim($campaignName);
+        if ($campaignName === '' || ! Schema::hasTable(self::SB_TABLE) || ! Schema::hasColumn(self::SB_TABLE, 'campaignName')) {
+            return '';
+        }
+
+        $id = DB::table(self::SB_TABLE)
+            ->where('campaignName', $campaignName)
+            ->where(function ($q) {
+                $q->whereNull('campaignStatus')
+                    ->orWhere('campaignStatus', '!=', 'ARCHIVED');
+            })
+            ->max('campaign_id');
+
+        return preg_replace('/\D+/', '', trim((string) $id)) ?: '';
     }
 
     private function campaignIdFromSpReports(string $campaignName): string

@@ -3979,6 +3979,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/missing/keyword-counts', [\App\Http\Controllers\AmazonAdsMissingController::class, 'keywordCounts'])->name('amazon.ads.missing.keyword-counts');
     Route::post('/amazon-ads/missing/keyword-list', [\App\Http\Controllers\AmazonAdsMissingController::class, 'keywordList'])->name('amazon.ads.missing.keyword-list');
     Route::post('/amazon-ads/missing/delete', [\App\Http\Controllers\AmazonAdsMissingController::class, 'delete'])->name('amazon.ads.missing.delete');
+    Route::post('/amazon-ads/missing/hl-create', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlCreate'])->name('amazon.ads.missing.hl-create');
+    Route::post('/amazon-ads/missing/hl-update', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlUpdate'])->name('amazon.ads.missing.hl-update');
+    Route::get('/amazon-ads/missing/hl-parent-vs-ads', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlParentVsAds'])->name('amazon.ads.missing.hl-parent-vs-ads');
     Route::post('/amazon-ads/missing/ai-negatives', [\App\Http\Controllers\AmazonAdsMissingController::class, 'aiNegativeKeywords'])->name('amazon.ads.missing.ai-negatives');
     Route::post('/amazon-ads/missing/push-negatives', [\App\Http\Controllers\AmazonAdsMissingController::class, 'pushNegativeKeywords'])->name('amazon.ads.missing.push-negatives');
     Route::post('/amazon-ads/missing/ai-positives', [\App\Http\Controllers\AmazonAdsMissingController::class, 'aiPositiveKeywords'])->name('amazon.ads.missing.ai-positives');

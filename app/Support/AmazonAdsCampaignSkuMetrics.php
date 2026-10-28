@@ -1318,6 +1318,21 @@ final class AmazonAdsCampaignSkuMetrics
             }
         }
         $lookupSkus = array_values(array_unique($lookupSkus));
+        // $sheetByCompact above only holds the campaign keys (e.g. "PARENT DRUM MIC E9"). A PARENT row
+        // takes price / L30 / GPFT from its child SKUs, so their datasheet rows must be loaded too.
+        $childSheetSkus = [];
+        foreach ($childSkusByFamily as $kids) {
+            foreach ($kids as $sku) {
+                $childSheetSkus[] = $sku;
+            }
+        }
+        if ($childSheetSkus !== []) {
+            foreach (self::datasheetByCompactSku(array_values(array_unique($childSheetSkus))) as $ck => $row) {
+                if (! isset($sheetByCompact[$ck])) {
+                    $sheetByCompact[$ck] = $row;
+                }
+            }
+        }
         $shopifyByPm = SchemaMemo::hasTable('shopify_skus')
             ? ShopifySku::mapByProductSkus($lookupSkus)
             : collect();

@@ -1162,6 +1162,52 @@ class AmazonAdsService
     }
 
     /**
+     * Create Sponsored Brands campaigns (v4).
+     *
+     * @param  list<array<string, mixed>>  $campaigns
+     * @return array<string, mixed>
+     */
+    public function createSbCampaigns(array $campaigns): array
+    {
+        return $this->post('/sb/v4/campaigns', [
+            'campaigns' => array_values($campaigns),
+        ], [
+            'Content-Type' => 'application/vnd.sbcampaignresource.v4+json',
+            'Accept' => 'application/vnd.sbcampaignresource.v4+json',
+        ]);
+    }
+
+    /**
+     * Create Sponsored Brands ad groups (v4).
+     *
+     * @param  list<array<string, mixed>>  $adGroups
+     * @return array<string, mixed>
+     */
+    public function createSbAdGroups(array $adGroups): array
+    {
+        return $this->post('/sb/v4/adGroups', [
+            'adGroups' => array_values($adGroups),
+        ], [
+            'Content-Type' => 'application/vnd.sbadgroupresource.v4+json',
+            'Accept' => 'application/vnd.sbadgroupresource.v4+json',
+        ]);
+    }
+
+    /**
+     * Create Sponsored Brands keywords (v3.2 list body).
+     *
+     * @param  list<array<string, mixed>>  $keywords  campaignId, adGroupId, keywordText, matchType, bid, state
+     * @return array<string, mixed>
+     */
+    public function createSbKeywords(array $keywords): array
+    {
+        return $this->post('/sb/keywords', array_values($keywords), [
+            'Content-Type' => 'application/vnd.sbkeyword.v3.2+json',
+            'Accept' => 'application/vnd.sbkeyword.v3.2+json',
+        ]);
+    }
+
+    /**
      * Update Sponsored Brands ads (v4) — state ENABLED / PAUSED.
      *
      * @param  list<array<string, mixed>>  $ads

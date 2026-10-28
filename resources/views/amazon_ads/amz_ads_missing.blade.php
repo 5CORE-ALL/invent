@@ -40,7 +40,8 @@
             background-color: #1971c2;
         }
         .amz-ads-missing .amz-missing-badge--pt,
-        .amz-ads-missing .amz-missing-badge--kw {
+        .amz-ads-missing .amz-missing-badge--kw,
+        .amz-ads-missing .amz-missing-badge--hl {
             background-color: #dc2626;
         }
         .amz-ads-missing .amz-missing-badge--missing {
@@ -231,8 +232,8 @@
                             <span class="amz-missing-badge-label">Parent</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzParentValue">0</span>
                         </div>
-                        <div class="amz-missing-badge amz-missing-badge--missing" id="amzMissingWrap" title="Missing: Missing PT + Missing KW (in-stock rows in the current view).">
-                            <span class="amz-missing-badge-label">Missing</span>
+                        <div class="amz-missing-badge amz-missing-badge--missing" id="amzMissingWrap" title="Missing All: Missing KW + Missing PT + Missing HL (in-stock rows in the current view).">
+                            <span class="amz-missing-badge-label">Missing All</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingValue">0</span>
                         </div>
                         <div class="amz-missing-badge amz-missing-badge--kw" id="amzMissingKwWrap" role="button" tabindex="0" aria-pressed="false" title="Missing KW: in-stock rows (inventory > 0) with no linked KW campaign. Click to show only those rows; click again to clear.">
@@ -243,10 +244,27 @@
                             <span class="amz-missing-badge-label">Missing PT</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingPtValue">0</span>
                         </div>
+                        <div class="amz-missing-badge amz-missing-badge--hl" id="amzMissingHlWrap" role="button" tabindex="0" aria-pressed="false" title="Missing HL: in-stock rows (inventory > 0) with no linked HL (Headline / Sponsored Brands) campaign. Click to show only those rows; click again to clear.">
+                            <span class="amz-missing-badge-label">Missing HL</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzMissingHlValue">0</span>
+                        </div>
                         <span class="small text-muted ms-2" id="amzKwCountStatus"></span>
                         <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" id="amzKwCountReloadBtn" title="Load keyword / target counts from Amazon for rows that don't have one yet">
                             <i class="fa fa-sync me-1"></i> Counts
                         </button>
+                        <div class="dropdown">
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="amzColumnsBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Show / hide table columns. Your choice is saved in this browser.">
+                                <i class="fa fa-columns me-1"></i> Columns
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-end p-2" id="amzColumnsMenu" style="min-width: 240px; max-height: 70vh; overflow-y: auto;">
+                                <div class="d-flex gap-1 mb-2">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm flex-fill" id="amzColsShowAll">Show all</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm flex-fill" id="amzColsHideAll">Hide all</button>
+                                </div>
+                                <div id="amzColumnsList"></div>
+                                <div class="text-muted small mt-2">Saved automatically for this browser.</div>
+                            </div>
+                        </div>
                         <button type="button" class="btn btn-success btn-sm" id="amzMissingExportBtn" title="Export the current (filtered) view to CSV">
                             <i class="fa fa-download me-1"></i> Export
                         </button>
@@ -259,6 +277,85 @@
 @endsection
 
 @section('modal')
+    <div class="modal fade" id="amzHlModal" tabindex="-1" aria-labelledby="amzHlModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amzHlModalLabel">Create / Update Amz HL Campaign</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 small mb-3">
+                        <strong>CT</strong> creates <strong>one PAUSED</strong> Sponsored Brands (HL) campaign for the parent
+                        (e.g. <code>PARENT PMX HL</code>). Brand name, logo, headline and landing page are copied from an existing HL campaign of this account.
+                        <strong>UP</strong> adds the selected child ASINs to the creative of an HL campaign already linked to this parent.
+                    </div>
+                    <input type="hidden" id="amzHlParent">
+                    <div id="amzHlModeBox" class="border rounded p-2 mb-2 small d-none">
+                        <div class="d-flex flex-wrap align-items-center gap-3">
+                            <label class="mb-0"><input type="radio" class="form-check-input me-1" name="amzHlMode" value="new" checked>Create new campaign (CT)</label>
+                            <label class="mb-0"><input type="radio" class="form-check-input me-1" name="amzHlMode" value="update">Update existing campaign (UP)</label>
+                            <select class="form-select form-select-sm w-auto d-none" id="amzHlUpdateCampaign"></select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Parent</label>
+                            <input type="text" class="form-control form-control-sm" id="amzHlParentDisplay" readonly>
+                        </div>
+                        <div class="col-md-8 amz-hl-new-only">
+                            <label class="form-label small mb-1">Campaign name</label>
+                            <input type="text" class="form-control form-control-sm" id="amzHlCampaignName" maxlength="128" placeholder="PARENT PMX HL">
+                        </div>
+                        <div class="col-md-4 amz-hl-new-only">
+                            <label class="form-label small mb-1">Daily budget ($)</label>
+                            <input type="number" class="form-control form-control-sm" id="amzHlBudget" min="1" step="0.01" value="3">
+                        </div>
+                        <div class="col-md-8 amz-hl-new-only">
+                            <label class="form-label small mb-1">Headline <span class="text-muted">(optional - leave empty to keep the template's)</span></label>
+                            <input type="text" class="form-control form-control-sm" id="amzHlHeadline" maxlength="50">
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center justify-content-between mb-1">
+                        <label class="form-label small mb-0 fw-semibold">Child SKUs on the HL creative <span class="text-muted fw-normal" id="amzHlChildCount"></span></label>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-outline-secondary" id="amzHlSelectAll">Select all</button>
+                            <button type="button" class="btn btn-outline-secondary" id="amzHlSelectNone">Select none</button>
+                        </div>
+                    </div>
+                    <div class="table-responsive border rounded" style="max-height: 280px;">
+                        <table class="table table-sm table-hover mb-0 align-middle">
+                            <thead class="table-light sticky-top">
+                                <tr><th style="width:36px;"></th><th>Seller SKU</th><th>ASIN</th><th style="width:60px;">Inv</th></tr>
+                            </thead>
+                            <tbody id="amzHlChildrenBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="amz-hl-new-only mt-3">
+                        <label class="form-label small mb-1 fw-semibold">Keywords <span class="text-muted fw-normal">(optional, one per line; added to the campaign as enabled keywords)</span></label>
+                        <textarea class="form-control form-control-sm" id="amzHlKeywords" rows="4" placeholder="keyword one&#10;keyword two"></textarea>
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-4">
+                                <select class="form-select form-select-sm" id="amzHlMatch">
+                                    <option value="PHRASE" selected>Phrase</option>
+                                    <option value="BROAD">Broad</option>
+                                    <option value="EXACT">Exact</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <input type="number" class="form-control form-control-sm" id="amzHlBid" min="0.1" step="0.01" value="0.60" title="Bid ($)">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-danger py-2 small mt-3 mb-0 d-none" id="amzHlError"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="amzHlSubmitBtn"><i class="fa fa-plus me-1"></i> Create campaign</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <div class="modal fade" id="amzCreateCampaignModal" tabindex="-1" aria-labelledby="amzCreateCampaignModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
@@ -838,17 +935,18 @@
             // KW K Count / PT Count columns: key (campaign id, or "n:<name>" when only the name is linked) => {total, enabled, paused}
             var cntState = {
                 kw: { map: {}, loading: false, field: 'kw' },
-                pt: { map: {}, loading: false, field: 'pt' }
+                pt: { map: {}, loading: false, field: 'pt' },
+                hl: { map: {}, loading: false, field: 'hl' }
             };
             // Counts survive a page reload: kept in localStorage for 30 minutes (same as the server-side cache).
             var CNT_STORE_KEY = 'amzMissingCounts.v1';
             var CNT_TTL_MS = 30 * 60 * 1000;
-            var cntTs = { kw: {}, pt: {} };
+            var cntTs = { kw: {}, pt: {}, hl: {} };
             function cntHydrate() {
                 try {
                     var raw = JSON.parse(window.localStorage.getItem(CNT_STORE_KEY) || '{}');
                     var now = Date.now();
-                    ['kw', 'pt'].forEach(function (kind) {
+                    ['kw', 'pt', 'hl'].forEach(function (kind) {
                         var src = raw[kind] || {};
                         Object.keys(src).forEach(function (k) {
                             var e = src[k];
@@ -1021,9 +1119,10 @@
             function chipsFormatter(type) {
                 return function (cell) {
                     var d = cell.getData();
-                    var list = (type === 'PT' ? d.pt : d.kw) || [];
+                    var list = (type === 'PT' ? d.pt : (type === 'HL' ? d.hl : d.kw)) || [];
                     var chips = list.map(function (c) {
-                        var canArchive = !!(c && (c.campaign_id || c.campaign_name));
+                        // HL (Sponsored Brands) campaigns can be linked / unlinked here; archiving stays in Amazon Ads.
+                        var canArchive = type !== 'HL' && !!(c && (c.campaign_id || c.campaign_name));
                         var chipTitle = c.page_created
                             ? (c.campaign_name + ' — ' + createdTooltip(c))
                             : c.campaign_name;
@@ -1112,6 +1211,33 @@
                 if (amzPvaMap === null) { return '<span class="amz-pva-na">…</span>'; }
                 var entry = amzPvaMap[amzPvaNorm(parent)];
                 return amzPvaCellHtml(type, entry ? entry[type] : null);
+            }
+
+            // ---- Parent Vs Ads SKU HL: loaded from Amazon (linked HL campaigns' live SB ads) and kept fresh automatically ----
+            var amzHlPvaUrl = @json(route('amazon.ads.missing.hl-parent-vs-ads'));
+            var amzHlPvaMap = null;     // UPPER(parent) -> {hl: {...}}
+            var amzHlPvaLoading = false;
+            var amzHlPvaTable = null;
+            function amzHlPvaLoad(force) {
+                if (amzHlPvaLoading) { return; }
+                amzHlPvaLoading = true;
+                fetch(amzHlPvaUrl + (force ? '?refresh=1' : ''), {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin'
+                }).then(function (res) { return res.json(); }).then(function (j) {
+                    amzHlPvaMap = (j && j.data && typeof j.data === 'object') ? j.data : {};
+                }).catch(function () {
+                    if (amzHlPvaMap === null) { amzHlPvaMap = {}; }
+                }).then(function () {
+                    amzHlPvaLoading = false;
+                    if (amzHlPvaTable) { amzHlPvaTable.getRows().forEach(function (r) { try { r.reformat(); } catch (e) {} }); }
+                });
+            }
+            function amzHlPvaCell(parent) {
+                if (!parent) { return '<span class="amz-pva-na">--</span>'; }
+                if (amzHlPvaMap === null) { return '<span class="amz-pva-na">…</span>'; }
+                var entry = amzHlPvaMap[amzPvaNorm(parent)];
+                return amzPvaCellHtml('hl', entry ? entry.hl : null);
             }
 
             function postForm(url, payload) {
@@ -2033,16 +2159,121 @@
                             headerTooltip: 'The Amazon Ads variation check: every child SKU of this parent that needs ads is in the parent\'s PT campaign (2/2 = all present). Hover a value for the SKU lists.',
                             hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                             formatter: function (cell) { return amzPvaCell(cell.getData().parent, 'pt'); }
+                        },
+                        {
+                            title: 'CT/UP HL', field: '_create_hl', width: 100,
+                            headerTooltip: 'CT = Create a new HL (Sponsored Brands) campaign, PAUSED, with the brand logo / headline copied from an existing HL campaign. UP = Add the in-stock child ASINs to an existing linked HL campaign.',
+                            hozAlign: 'center', headerHozAlign: 'center',
+                            headerSort: false,
+                            formatter: function (cell) {
+                                var d = cell.getData();
+                                var hasHl = Array.isArray(d.hl) && d.hl.length > 0;
+                                var title = hasHl
+                                    ? 'HL already linked — click to create another HL campaign (CT) or add child ASINs to the existing one (UP)'
+                                    : 'CT: create Amz HL (Sponsored Brands) campaign for this parent';
+                                return '<button type="button" class="amz-create-btn" data-sku="' + esc(d.sku || '') + '" data-type="HL" title="' + esc(title) + '">'
+                                    + '<i class="fa fa-plus"></i></button>';
+                            }
+                        },
+                        countColumnDef('hl', 'HL Count', 'Keywords + product targets (enabled + paused) in the linked HL campaign(s), counted through the Amazon Ads API. Click to see them.'),
+                        {
+                            title: 'Campaign HL', field: 'hl', widthGrow: 2,
+                            headerTooltip: 'HL = Headline (Sponsored Brands) campaign named "PARENT {parent} HL" or "PARENT {parent} HEAD" on Amazon; linked automatically.',
+                            hozAlign: 'center', headerHozAlign: 'center',
+                            headerSort: true, sorter: linkCountSorter,
+                            headerFilter: 'list',
+                            headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
+                            headerFilterFunc: missingHeaderFilter,
+                            formatter: chipsFormatter('HL'),
+                            accessorDownload: linkNamesAccessor
+                        },
+                        {
+                            title: 'Parent Vs Ads SKU HL', field: '_pva_hl', width: 150,
+                            headerTooltip: 'Every in-stock child SKU of this parent has its ASIN on the parent\'s HL campaign creative (2/2 = all present). Refreshed from Amazon automatically. Hover a value for the SKU lists.',
+                            hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
+                            formatter: function (cell) { return amzHlPvaCell(cell.getData().parent); }
                         }
                     ]
                 });
 
                 table.on('tableBuilt', function () {
                     table.setFilter(onlyParentsFilter);
+                    // Parent Vs Ads SKU HL: load now, then re-check against Amazon every 5 minutes while the page is open.
+                    amzHlPvaTable = table;
+                    amzHlPvaLoad(false);
+                    setInterval(function () { if (!document.hidden) { amzHlPvaLoad(true); } }, 5 * 60 * 1000);
                     // Parent Vs Ads SKU KW / PT (Amazon Ads variation check), loaded once and painted into the cells.
                     amzPvaLoad(false, function () {
                         table.getRows().forEach(function (r) { try { r.reformat(); } catch (e) {} });
                     });
+                });
+
+                // ---- Columns: show / hide, saved in this browser (localStorage) ----
+                var COLS_STORE_KEY = 'amzMissingColumns.v1';
+                var COLS_LOCKED = { parent: true };   // the Parent column always stays visible
+                function colsLoadSaved() {
+                    try {
+                        var v = JSON.parse(window.localStorage.getItem(COLS_STORE_KEY) || '{}');
+                        return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+                    } catch (err) { return {}; }
+                }
+                function colsSave() {
+                    var map = {};
+                    table.getColumns().forEach(function (col) {
+                        var f = col.getField();
+                        if (!f || COLS_LOCKED[f]) { return; }
+                        map[f] = col.isVisible();
+                    });
+                    try { window.localStorage.setItem(COLS_STORE_KEY, JSON.stringify(map)); } catch (err) { /* private mode / quota */ }
+                }
+                function colsApplySaved() {
+                    var saved = colsLoadSaved();
+                    table.getColumns().forEach(function (col) {
+                        var f = col.getField();
+                        if (!f || COLS_LOCKED[f] || !Object.prototype.hasOwnProperty.call(saved, f)) { return; }
+                        if (saved[f]) { col.show(); } else { col.hide(); }
+                    });
+                }
+                function colsRenderMenu() {
+                    var list = document.getElementById('amzColumnsList');
+                    if (!list) { return; }
+                    list.innerHTML = table.getColumns().filter(function (col) {
+                        var f = col.getField();
+                        return f && !COLS_LOCKED[f];
+                    }).map(function (col) {
+                        var f = col.getField();
+                        var title = String(col.getDefinition().title || f);
+                        return '<label class="d-flex align-items-center gap-2 py-1 px-1 mb-0 small" style="cursor:pointer;">'
+                            + '<input type="checkbox" class="form-check-input mt-0 amz-col-toggle" data-field="' + esc(f) + '"' + (col.isVisible() ? ' checked' : '') + '>'
+                            + '<span>' + esc(title) + '</span></label>';
+                    }).join('');
+                }
+                function colsSetAll(visible) {
+                    table.getColumns().forEach(function (col) {
+                        var f = col.getField();
+                        if (!f || COLS_LOCKED[f]) { return; }
+                        if (visible) { col.show(); } else { col.hide(); }
+                    });
+                    colsSave();
+                    colsRenderMenu();
+                }
+                var colsList = document.getElementById('amzColumnsList');
+                if (colsList) {
+                    colsList.addEventListener('change', function (e) {
+                        var cb = e.target && e.target.classList && e.target.classList.contains('amz-col-toggle') ? e.target : null;
+                        if (!cb) { return; }
+                        var col = table.getColumn(cb.getAttribute('data-field'));
+                        if (!col) { return; }
+                        if (cb.checked) { col.show(); } else { col.hide(); }
+                        colsSave();
+                    });
+                }
+                document.getElementById('amzColsShowAll').addEventListener('click', function () { colsSetAll(true); });
+                document.getElementById('amzColsHideAll').addEventListener('click', function () { colsSetAll(false); });
+                table.on('tableBuilt', function () {
+                    colsApplySaved();
+                    colsRenderMenu();
+                    kwCountsReformat();
                 });
 
                 // Export the current (filtered) view to CSV.
@@ -2069,7 +2300,7 @@
                 var kwLastData = null;
                 function amzLoadCounts(kind, refsOverride, onDone) {
                     var st = cntState[kind];
-                    var label = kind === 'pt' ? 'target' : 'keyword';
+                    var label = kind === 'pt' ? 'target' : (kind === 'hl' ? 'HL keyword / target' : 'keyword');
                     if (st.loading) { if (onDone) { onDone(); } return; }
                     var all = {};
                     if (refsOverride) {
@@ -2123,23 +2354,24 @@
                     }
                     next();
                 }
-                // Keywords first, then targets (one after the other: Amazon throttles parallel calls).
+                // Keywords first, then targets, then HL (one after the other: Amazon throttles parallel calls).
                 function amzLoadAllCounts(data) {
                     kwLastData = Array.isArray(data) ? data : null;
                     amzLoadCounts('kw', null, function (err) {
-                        if (!err) { amzLoadCounts('pt', null, null); }
+                        if (!err) { amzLoadCounts('pt', null, function (err2) { if (!err2) { amzLoadCounts('hl', null, null); } }); }
                     });
                 }
                 var kwCountReloadBtn = document.getElementById('amzKwCountReloadBtn');
                 if (kwCountReloadBtn) { kwCountReloadBtn.addEventListener('click', amzLoadAllCounts); }
                 table.on('dataLoaded', function (data) { amzLoadAllCounts(data); });
                 // Show the counts remembered from before the reload as soon as the rows exist.
-                table.on('renderComplete', function () { if (!cntState.kw.loading && !cntState.pt.loading) { kwCountsReformat(); } });
+                table.on('renderComplete', function () { if (!cntState.kw.loading && !cntState.pt.loading && !cntState.hl.loading) { kwCountsReformat(); } });
 
                 // ---- Keyword list modal (click a KW K Count) ----
                 var kwListState = { kind: 'kw', rows: [], campaigns: [], refs: [], parent: '' };
-                function kwListNoun(plural) { return kwListState.kind === 'pt' ? (plural ? 'targets' : 'target') : (plural ? 'keywords' : 'keyword'); }
+                function kwListNoun(plural) { return kwListState.kind === 'pt' ? (plural ? 'targets' : 'target') : (kwListState.kind === 'hl' ? (plural ? 'keywords / targets' : 'keyword / target') : (plural ? 'keywords' : 'keyword')); }
                 function kwListTypeLabel(t) {
+                    if (kwListState.kind === 'hl' && (t === 'ASIN' || t === 'CATEGORY')) { return t === 'ASIN' ? 'ASIN' : 'Category'; }
                     if (kwListState.kind === 'pt') { return t === 'AUTO' ? 'Auto group' : (t === 'ASIN' ? 'ASIN' : (t === 'CATEGORY' ? 'Category' : (t || '—'))); }
                     return t ? t.charAt(0) + t.slice(1).toLowerCase() : '—';
                 }
@@ -2219,16 +2451,18 @@
                     });
                 }
                 function kwListOpen(d, kind) {
-                    kind = kind === 'pt' ? 'pt' : 'kw';
+                    kind = kind === 'pt' ? 'pt' : (kind === 'hl' ? 'hl' : 'kw');
                     var refs = kwRowRefs(d, kind);
                     if (!refs.length) { return; }
                     kwListState = { kind: kind, rows: [], campaigns: [], refs: refs, parent: d.parent || '' };
-                    document.getElementById('amzKwListModalLabel').textContent = (kind === 'pt' ? 'Targets - ' : 'Keywords - ') + (d.parent || d.sku || '');
-                    document.getElementById('amzKwListThKeyword').textContent = kind === 'pt' ? 'Target' : 'Keyword';
-                    document.getElementById('amzKwListThMatch').textContent = kind === 'pt' ? 'Type' : 'Match';
-                    document.getElementById('amzKwListSearch').placeholder = kind === 'pt' ? 'Search targets / ASINs' : 'Search keywords';
+                    document.getElementById('amzKwListModalLabel').textContent = (kind === 'pt' ? 'Targets - ' : (kind === 'hl' ? 'HL keywords / targets - ' : 'Keywords - ')) + (d.parent || d.sku || '');
+                    document.getElementById('amzKwListThKeyword').textContent = kind === 'pt' ? 'Target' : (kind === 'hl' ? 'Keyword / Target' : 'Keyword');
+                    document.getElementById('amzKwListThMatch').textContent = kind === 'pt' ? 'Type' : (kind === 'hl' ? 'Match / Type' : 'Match');
+                    document.getElementById('amzKwListSearch').placeholder = kind === 'pt' ? 'Search targets / ASINs' : (kind === 'hl' ? 'Search keywords / targets' : 'Search keywords');
                     document.getElementById('amzKwListMatch').innerHTML = kind === 'pt'
                         ? '<option value="">All types</option><option value="ASIN">ASIN</option><option value="AUTO">Auto group</option><option value="CATEGORY">Category</option>'
+                        : kind === 'hl'
+                        ? '<option value="">All types</option><option value="BROAD">Broad</option><option value="PHRASE">Phrase</option><option value="EXACT">Exact</option><option value="ASIN">ASIN</option><option value="CATEGORY">Category</option>'
                         : '<option value="">All match types</option><option value="BROAD">Broad</option><option value="PHRASE">Phrase</option><option value="EXACT">Exact</option>';
                     ['amzKwListMatch', 'amzKwListState'].forEach(function (id) { document.getElementById(id).value = ''; });
                     document.getElementById('amzKwListSearch').value = '';
@@ -2245,7 +2479,7 @@
                         e.preventDefault();
                         var row = table.getRow(a.getAttribute('data-sku'));
                         if (row) { kwListOpen(row.getData(), a.getAttribute('data-kind')); }
-                        if (!cntState.kw.loading && !cntState.pt.loading) { amzLoadAllCounts(); }
+                        if (!cntState.kw.loading && !cntState.pt.loading && !cntState.hl.loading) { amzLoadAllCounts(); }
                     });
                 }
                 ['amzKwListCampaign', 'amzKwListMatch', 'amzKwListState'].forEach(function (id) {
@@ -2255,7 +2489,7 @@
                 document.getElementById('amzKwListRefreshBtn').addEventListener('click', kwListLoad);
                 document.getElementById('amzKwListCsvBtn').addEventListener('click', function () {
                     var rows = kwListFiltered();
-                    var csv = [kwListState.kind === 'pt' ? 'Campaign,Target,Type,Bid,State' : 'Campaign,Keyword,Match type,Bid,State'].concat(rows.map(function (r) {
+                    var csv = [kwListState.kind === 'pt' ? 'Campaign,Target,Type,Bid,State' : kwListState.kind === 'hl' ? 'Campaign,Keyword / Target,Match / Type,Bid,State' : 'Campaign,Keyword,Match type,Bid,State'].concat(rows.map(function (r) {
                         return [r.campaign_name, r.keyword, r.match_type, r.bid == null ? '' : r.bid, r.state].map(function (v) {
                             return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
                         }).join(',');
@@ -2271,24 +2505,166 @@
                     URL.revokeObjectURL(url);
                 });
 
+                // ---- CT/UP HL: create a PAUSED HL (Sponsored Brands) campaign, or add child ASINs to a linked one ----
+                var hlCreateUrl = @json(route('amazon.ads.missing.hl-create'));
+                var hlUpdateUrl = @json(route('amazon.ads.missing.hl-update'));
+                function hlModalInstance() {
+                    var el = document.getElementById('amzHlModal');
+                    return el && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(el) : null;
+                }
+                function hlMode() {
+                    var r = document.querySelector('input[name="amzHlMode"]:checked');
+                    var box = document.getElementById('amzHlModeBox');
+                    return (r && r.value === 'update' && box && !box.classList.contains('d-none')) ? 'update' : 'new';
+                }
+                function hlSubmitHtml() {
+                    return hlMode() === 'update'
+                        ? '<i class="fa fa-save me-1"></i> Update campaign'
+                        : '<i class="fa fa-plus me-1"></i> Create campaign';
+                }
+                function hlApplyMode() {
+                    var upd = hlMode() === 'update';
+                    document.querySelectorAll('.amz-hl-new-only').forEach(function (el) { el.classList.toggle('d-none', upd); });
+                    var sel = document.getElementById('amzHlUpdateCampaign'); if (sel) { sel.classList.toggle('d-none', !upd); }
+                    document.getElementById('amzHlSubmitBtn').innerHTML = hlSubmitHtml();
+                }
+                function hlSelectedChildren() {
+                    var rows = [];
+                    document.querySelectorAll('#amzHlChildrenBody tr').forEach(function (tr) {
+                        var cb = tr.querySelector('.amz-hl-child-check');
+                        if (!cb || !cb.checked || cb.disabled) { return; }
+                        rows.push({
+                            target_sku: (tr.querySelector('.amz-hl-child-sku') || {}).textContent || '',
+                            asin: ((tr.querySelector('.amz-hl-child-asin') || {}).textContent || '').replace('— missing ASIN', '').trim()
+                        });
+                    });
+                    return rows;
+                }
+                function hlShowError(msg) {
+                    var el = document.getElementById('amzHlError');
+                    el.textContent = msg || '';
+                    el.classList.toggle('d-none', !msg);
+                }
+                function openHlModal(d) {
+                    d = d || {};
+                    document.getElementById('amzHlParent').value = d.parent || '';
+                    document.getElementById('amzHlParentDisplay').value = d.parent || '';
+                    document.getElementById('amzHlCampaignName').value = (d.sku || ('PARENT ' + (d.parent || ''))) + ' HL';
+                    document.getElementById('amzHlBudget').value = '3';
+                    document.getElementById('amzHlHeadline').value = '';
+                    document.getElementById('amzHlKeywords').value = '';
+                    hlShowError('');
+                    var children = Array.isArray(d.children) ? d.children : [];
+                    document.getElementById('amzHlChildrenBody').innerHTML = children.map(function (c, idx) {
+                        var asin = c.asin || '';
+                        var inv = (c.inv == null ? 0 : Number(c.inv)) || 0;
+                        var disabled = !asin;
+                        var checked = !disabled && inv > 0 ? ' checked' : (!disabled && children.length === 1 ? ' checked' : '');
+                        return '<tr class="' + (disabled ? 'table-secondary' : '') + '">'
+                            + '<td><input type="checkbox" class="form-check-input amz-hl-child-check" data-idx="' + idx + '"' + (disabled ? ' disabled' : '') + checked + '></td>'
+                            + '<td class="amz-hl-child-sku">' + esc(c.target_sku || '') + '</td>'
+                            + '<td class="amz-hl-child-asin ' + (asin ? '' : 'text-danger') + '">' + esc(asin || '— missing ASIN') + '</td>'
+                            + '<td class="text-end">' + inv.toLocaleString('en-US') + '</td></tr>';
+                    }).join('');
+                    document.getElementById('amzHlChildCount').textContent = '(' + children.length + ')';
+                    var linked = (Array.isArray(d.hl) ? d.hl : []).filter(function (c) { return c && c.campaign_id; });
+                    document.getElementById('amzHlUpdateCampaign').innerHTML = linked.map(function (c) {
+                        return '<option value="' + esc(c.campaign_id) + '">' + esc(c.campaign_name || c.campaign_id) + '</option>';
+                    }).join('');
+                    document.getElementById('amzHlModeBox').classList.toggle('d-none', !linked.length);
+                    var rn = document.querySelector('input[name="amzHlMode"][value="new"]'); if (rn) { rn.checked = true; }
+                    hlApplyMode();
+                    var m = hlModalInstance();
+                    if (m) { m.show(); }
+                }
+                document.querySelectorAll('input[name="amzHlMode"]').forEach(function (r) { r.addEventListener('change', hlApplyMode); });
+                document.getElementById('amzHlSelectAll').addEventListener('click', function () {
+                    document.querySelectorAll('#amzHlChildrenBody .amz-hl-child-check').forEach(function (cb) { if (!cb.disabled) { cb.checked = true; } });
+                });
+                document.getElementById('amzHlSelectNone').addEventListener('click', function () {
+                    document.querySelectorAll('#amzHlChildrenBody .amz-hl-child-check').forEach(function (cb) { cb.checked = false; });
+                });
+                document.getElementById('amzHlSubmitBtn').addEventListener('click', function () {
+                    var btn = document.getElementById('amzHlSubmitBtn');
+                    var parent = document.getElementById('amzHlParent').value;
+                    var children = hlSelectedChildren();
+                    hlShowError('');
+                    if (!parent) { hlShowError('Parent is required.'); return; }
+                    if (!children.length) { hlShowError('Select at least one child SKU with a valid ASIN.'); return; }
+                    var updating = hlMode() === 'update';
+                    var payload;
+                    var url;
+                    if (updating) {
+                        url = hlUpdateUrl;
+                        payload = { parent: parent, campaign_id: (document.getElementById('amzHlUpdateCampaign') || {}).value || '', children: children };
+                        if (!payload.campaign_id) { hlShowError('Pick the campaign to update.'); return; }
+                    } else {
+                        url = hlCreateUrl;
+                        var match = document.getElementById('amzHlMatch').value || 'PHRASE';
+                        var bid = parseFloat(document.getElementById('amzHlBid').value) || 0.60;
+                        var kws = String(document.getElementById('amzHlKeywords').value || '').split(/\r?\n/).map(function (t) { return t.replace(/\s+/g, ' ').trim(); })
+                            .filter(function (t, i, a) { return t !== '' && a.indexOf(t) === i; })
+                            .map(function (t) { return { text: t, match_type: match, bid: bid }; });
+                        payload = {
+                            parent: parent,
+                            campaign_name: document.getElementById('amzHlCampaignName').value,
+                            budget_amount: parseFloat(document.getElementById('amzHlBudget').value) || 3,
+                            headline: document.getElementById('amzHlHeadline').value,
+                            children: children,
+                            keywords: kws
+                        };
+                        if (!(payload.campaign_name || '').trim()) { hlShowError('Campaign name is required.'); return; }
+                    }
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> ' + (updating ? 'Updating…' : 'Creating…');
+                    postForm(url, payload).then(function (out) {
+                        btn.disabled = false;
+                        btn.innerHTML = hlSubmitHtml();
+                        var b = out.body || {};
+                        // The campaign may exist (and be linked) even when a later step failed: always refresh the row.
+                        if (b.sku && b.hl) {
+                            var r = table.getRow(b.sku);
+                            if (r) { r.update({ pt: b.pt || [], kw: b.kw || [], hl: b.hl || [] }); }
+                            updateMissingBadges();
+                            amzHlPvaLoad(true);
+                            amzLoadCounts('hl', null, null);
+                        }
+                        if (out.ok && b.ok) {
+                            var mm = hlModalInstance();
+                            if (mm) { mm.hide(); }
+                            window.alert(b.message || (updating ? 'HL campaign updated.' : 'HL campaign created.'));
+                        } else {
+                            hlShowError(b.message || ('Failed (HTTP ' + out.status + ').'));
+                        }
+                    }).catch(function () {
+                        btn.disabled = false;
+                        btn.innerHTML = hlSubmitHtml();
+                        hlShowError('Network error.');
+                    });
+                });
+
                 // Count blank PT / KW cells across the current (filtered) view.
                 function updateMissingBadges(rowsData) {
                     var rows = rowsData || table.getData('active');
                     var pt = 0;
                     var kw = 0;
+                    var hl = 0;
                     rows.forEach(function (r) {
                         // Skip parents with no inventory — they shouldn't inflate the missing count.
                         if (!r || (Number(r.inventory) || 0) <= 0) { return; }
                         if (!r.pt || !r.pt.length) { pt++; }
                         if (!r.kw || !r.kw.length) { kw++; }
+                        if (!r.hl || !r.hl.length) { hl++; }
                     });
-                    var total = pt + kw;
+                    var total = pt + kw + hl;
                     var ptEl = document.getElementById('amzMissingPtValue');
                     var kwEl = document.getElementById('amzMissingKwValue');
                     var missingEl = document.getElementById('amzMissingValue');
                     var missingWrap = document.getElementById('amzMissingWrap');
                     if (ptEl) { ptEl.textContent = Number(pt).toLocaleString('en-US'); }
                     if (kwEl) { kwEl.textContent = Number(kw).toLocaleString('en-US'); }
+                    var hlEl = document.getElementById('amzMissingHlValue');
+                    if (hlEl) { hlEl.textContent = Number(hl).toLocaleString('en-US'); }
                     if (missingEl) { missingEl.textContent = Number(total).toLocaleString('en-US'); }
                     if (missingWrap) { missingWrap.classList.toggle('is-alert', total > 0); }
                 }
@@ -2308,15 +2684,20 @@
                     }
                 }
 
+                var MISSING_TYPES = ['kw', 'pt', 'hl'];
+                var MISSING_WRAP_IDS = { kw: 'amzMissingKwWrap', pt: 'amzMissingPtWrap', hl: 'amzMissingHlWrap' };
+                function otherMissingTypes(type) {
+                    return MISSING_TYPES.filter(function (t) { return t !== type; });
+                }
+
                 function isMissingTypeBadgeFilterOn(type) {
-                    var other = type === 'kw' ? 'pt' : 'kw';
                     return headerFilterValue(type) === 'missing'
                         && headerFilterValue('inventory') === 'in'
-                        && headerFilterValue(other) !== 'missing';
+                        && otherMissingTypes(type).every(function (o) { return headerFilterValue(o) !== 'missing'; });
                 }
 
                 function syncMissingTypeBadgeActive(type) {
-                    var wrap = document.getElementById(type === 'kw' ? 'amzMissingKwWrap' : 'amzMissingPtWrap');
+                    var wrap = document.getElementById(MISSING_WRAP_IDS[type]);
                     if (!wrap) { return; }
                     var on = isMissingTypeBadgeFilterOn(type);
                     wrap.classList.toggle('is-active', on);
@@ -2324,18 +2705,16 @@
                 }
 
                 function syncMissingColumnBadgeActive() {
-                    syncMissingTypeBadgeActive('kw');
-                    syncMissingTypeBadgeActive('pt');
+                    MISSING_TYPES.forEach(syncMissingTypeBadgeActive);
                 }
 
                 function toggleMissingTypeFilter(type) {
-                    var other = type === 'kw' ? 'pt' : 'kw';
                     badgePanel.classList.add('d-none');
                     if (isMissingTypeBadgeFilterOn(type)) {
                         table.setHeaderFilterValue(type, '');
                         table.setHeaderFilterValue('inventory', '');
                     } else {
-                        table.setHeaderFilterValue(other, '');
+                        otherMissingTypes(type).forEach(function (o) { table.setHeaderFilterValue(o, ''); });
                         table.setHeaderFilterValue('inventory', 'in');
                         table.setHeaderFilterValue(type, 'missing');
                     }
@@ -2399,14 +2778,15 @@
                 bindBadge('amzParentWrap', 'Parents', function () {
                     return parentNamesFrom(table.getData(), function (r) { return r.is_parent; });
                 });
-                bindBadge('amzMissingWrap', 'Missing', function () {
+                bindBadge('amzMissingWrap', 'Missing All', function () {
                     return parentNamesFrom(table.getData('active'), function (r) {
                         if (!r || (Number(r.inventory) || 0) <= 0) { return false; }
-                        return (!r.pt || !r.pt.length) || (!r.kw || !r.kw.length);
+                        return (!r.pt || !r.pt.length) || (!r.kw || !r.kw.length) || (!r.hl || !r.hl.length);
                     });
                 });
                 bindMissingColumnBadge('amzMissingKwWrap', 'kw');
                 bindMissingColumnBadge('amzMissingPtWrap', 'pt');
+                bindMissingColumnBadge('amzMissingHlWrap', 'hl');
 
                 document.addEventListener('click', function (e) {
                     if (badgePanel.classList.contains('d-none')) { return; }
@@ -2478,7 +2858,7 @@
                     postForm(linkUrl, { sku: sku, type: type, campaign_name: name }).then(function (out) {
                         var r = table.getRow(sku);
                         if (out.ok && out.body && r) {
-                            r.update({ pt: out.body.pt, kw: out.body.kw });
+                            r.update({ pt: out.body.pt, kw: out.body.kw, hl: out.body.hl || [] });
                             updateMissingBadges();
                         } else if (!out.ok) {
                             window.alert('Failed to link campaign.');
@@ -2534,7 +2914,9 @@
                                 try { createRow = table.getRow(rowEl); } catch (err2) { createRow = null; }
                             }
                         }
-                        if (createRow) {
+                        if (createRow && createType === 'HL') {
+                            openHlModal(createRow.getData());
+                        } else if (createRow) {
                             openCreateModal(createRow.getData(), createType);
                         } else {
                             window.alert('Could not load row data for Create.');
@@ -2558,7 +2940,7 @@
                             if (out.ok && out.body) {
                                 var r = table.getRow(sku2);
                                 if (r) {
-                                    r.update({ pt: out.body.pt, kw: out.body.kw });
+                                    r.update({ pt: out.body.pt, kw: out.body.kw, hl: out.body.hl || [] });
                                 }
                                 updateMissingBadges();
                             }
@@ -2592,7 +2974,7 @@
                             if (out.ok && out.body && out.body.ok) {
                                 var rDel = table.getRow(delSku);
                                 if (rDel) {
-                                    rDel.update({ pt: out.body.pt || [], kw: out.body.kw || [] });
+                                    rDel.update({ pt: out.body.pt || [], kw: out.body.kw || [], hl: out.body.hl || [] });
                                 }
                                 updateMissingBadges();
                                 window.alert(out.body.message || 'Campaign archived.');
@@ -3378,7 +3760,7 @@
                             var sku = out.body.sku || ('PARENT ' + payload.parent);
                             var r = table.getRow(sku);
                             if (r) {
-                                r.update({ pt: out.body.pt || [], kw: out.body.kw || [] });
+                                r.update({ pt: out.body.pt || [], kw: out.body.kw || [], hl: out.body.hl || [] });
                             }
                             if (out.body.campaign_id) {
                                 lastCreatedCampaignId = String(out.body.campaign_id);

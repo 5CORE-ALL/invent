@@ -17,6 +17,9 @@ class AmazonAdsMissingLinks
 {
     public const SP_TABLE = 'amazon_sp_campaign_reports';
 
+    /** Sponsored Brands (HL / Headline) campaign reports. */
+    public const SB_TABLE = 'amazon_sb_campaign_reports';
+
     public static function skuForParent(string $parent): string
     {
         $parent = preg_replace('/\s+/', ' ', trim($parent));
@@ -41,7 +44,7 @@ class AmazonAdsMissingLinks
 
     /**
      * @param  list<string>  $parents
-     * @return array<string, array{kw: array<int, array<string, mixed>>, pt: array<int, array<string, mixed>>}>
+     * @return array<string, array{kw: array<int, array<string, mixed>>, pt: array<int, array<string, mixed>>, hl: array<int, array<string, mixed>>}>
      */
     public static function listsByParent(array $parents): array
     {
@@ -59,6 +62,7 @@ class AmazonAdsMissingLinks
             $out[$parent] = [
                 'kw' => self::linkListForType($links, 'KW', $statusMap),
                 'pt' => self::linkListForType($links, 'PT', $statusMap),
+                'hl' => self::linkListForType($links, 'HL', $statusMap),
             ];
         }
 
@@ -66,7 +70,7 @@ class AmazonAdsMissingLinks
     }
 
     /**
-     * @return array{ok: bool, sku: string, pt: array, kw: array}
+     * @return array{ok: bool, sku: string, pt: array, kw: array, hl: array}
      */
     public static function listsResponseForSku(string $sku): array
     {
@@ -80,6 +84,7 @@ class AmazonAdsMissingLinks
             'sku' => $sku,
             'pt' => self::linkListForType($links, 'PT', $statusMap),
             'kw' => self::linkListForType($links, 'KW', $statusMap),
+            'hl' => self::linkListForType($links, 'HL', $statusMap),
         ];
     }
 
@@ -189,13 +194,22 @@ class AmazonAdsMissingLinks
      */
     public static function campaignStatusMap(): array
     {
-        if (! Schema::hasTable(self::SP_TABLE)
-            || ! Schema::hasColumn(self::SP_TABLE, 'campaignName')
-            || ! Schema::hasColumn(self::SP_TABLE, 'campaignStatus')) {
+        // SP wins on a name clash; SB (HL) names fill the rest.
+        return self::statusMapForTable(self::SP_TABLE) + self::statusMapForTable(self::SB_TABLE);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function statusMapForTable(string $table): array
+    {
+        if (! Schema::hasTable($table)
+            || ! Schema::hasColumn($table, 'campaignName')
+            || ! Schema::hasColumn($table, 'campaignStatus')) {
             return [];
         }
 
-        $latestIds = DB::table(self::SP_TABLE)
+        $latestIds = DB::table($table)
             ->whereNotNull('campaignName')
             ->where('campaignName', '!=', '')
             ->selectRaw('MAX(id) AS max_id')
@@ -210,7 +224,7 @@ class AmazonAdsMissingLinks
         }
 
         $map = [];
-        DB::table(self::SP_TABLE)
+        DB::table($table)
             ->whereIn('id', $latestIds)
             ->get(['campaignName', 'campaignStatus'])
             ->each(function ($row) use (&$map) {

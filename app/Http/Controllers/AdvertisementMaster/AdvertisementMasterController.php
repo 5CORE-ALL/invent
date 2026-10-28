@@ -3681,13 +3681,14 @@ class AdvertisementMasterController extends Controller
         try {
             $amazonMissing = AmazonAdsMissingController::missingCountsByType();
         } catch (\Throwable $e) {
-            $amazonMissing = ['PT' => 0, 'KW' => 0];
+            $amazonMissing = ['PT' => 0, 'KW' => 0, 'HL' => 0];
         }
         $amazonMissingPt = (int) ($amazonMissing['PT'] ?? 0);
         $amazonMissingKw = (int) ($amazonMissing['KW'] ?? 0);
+        $amazonMissingHl = (int) ($amazonMissing['HL'] ?? 0);
         $put(
             ['amazon'],
-            $amazonMissingPt + $amazonMissingKw,
+            $amazonMissingPt + $amazonMissingKw + $amazonMissingHl,
             $amazonMissingHref
         );
         $put(
