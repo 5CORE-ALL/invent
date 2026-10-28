@@ -574,6 +574,91 @@ class TemuAdsController extends Controller
     }
 
     /**
+     * What the + / Create queue will actually use for each goods ID, worked out from our data (not fixed defaults):
+     * - ROAS: the Ads Rules slab Target ROAS for the parent's L7 sold (Temu 1 orders); default only when no slab applies.
+     * - Budget: the minimum Temu asked for in the goods' last "daily budget must be between X and Y" reject; default otherwise.
+     */
+    public function createPlan(Request $request, TemuSoldRoasRuleService $rules)
+    {
+        $request->validate([
+            'goods_ids' => 'required|array|min:1|max:3000',
+            'goods_ids.*' => 'string|max:64',
+            'default_budget' => 'nullable|numeric|min:1|max:10000',
+            'default_roas' => 'nullable|numeric|min:0.1|max:12',
+        ]);
+
+        $defaultBudget = (float) $request->input('default_budget', 10);
+        $defaultRoas = (float) $request->input('default_roas', 4);
+        $ids = collect($request->input('goods_ids', []))
+            ->map(fn ($id) => trim((string) $id))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $slabs = $rules->slabs();
+        $parents = $rules->parents();
+
+        $rejects = [];
+        if ($this->reportHasColumn('ad_create_reject')) {
+            foreach (array_chunk($ids, 1000) as $chunk) {
+                TemuAdsApiReport::query()
+                    ->whereIn('goods_id', $chunk)
+                    ->whereNotNull('ad_create_reject')
+                    ->where('ad_create_reject', '!=', '')
+                    ->orderByDesc('fetched_at')
+                    ->orderByDesc('id')
+                    ->get(['goods_id', 'ad_create_reject'])
+                    ->each(function ($r) use (&$rejects): void {
+                        $gid = (string) $r->goods_id;
+                        if (! isset($rejects[$gid])) {
+                            $rejects[$gid] = (string) $r->ad_create_reject;
+                        }
+                    });
+            }
+        }
+
+        $plan = [];
+        foreach ($ids as $gid) {
+            $roas = $defaultRoas;
+            $roasNote = 'default ROAS (no Ads Rules slab for this goods)';
+            $soldL7 = null;
+            if (isset($parents[$gid])) {
+                $soldL7 = (int) $parents[$gid]['sold_l7'];
+                $i = TemuSoldRoasRuleService::slabIndexFor($soldL7, $slabs);
+                $slabRoas = $i === null ? null : $slabs[$i]['target_roas'];
+                if ($i !== null && $slabRoas !== null && (float) $slabRoas > 0) {
+                    $roas = min(TemuSoldRoasRuleService::MAX_ROAS, max(0.1, round((float) $slabRoas, 2)));
+                    $roasNote = 'Ads Rules slab '.TemuSoldRoasRuleService::slabLabel($slabs[$i]).' (L7 sold '.$soldL7.')';
+                } else {
+                    $roasNote = 'default ROAS (Ads Rules slab has no Target ROAS; L7 sold '.$soldL7.')';
+                }
+            }
+
+            $budget = $defaultBudget;
+            $budgetNote = 'default budget';
+            $msg = $rejects[$gid] ?? '';
+            if ($msg !== '' && preg_match('/daily\s+budget[^0-9]*between\s*\$?\s*([\d,]+(?:\.\d+)?)\s*and/i', $msg, $m)) {
+                $min = (float) str_replace(',', '', $m[1]);
+                if ($min >= 1 && $min <= 10000 && $min > $defaultBudget) {
+                    $budget = $min;
+                    $budgetNote = 'minimum Temu asked for in the alert';
+                }
+            }
+
+            $plan[$gid] = [
+                'budget' => $budget,
+                'roas' => $roas,
+                'budget_note' => $budgetNote,
+                'roas_note' => $roasNote,
+                'sold_l7' => $soldL7,
+            ];
+        }
+
+        return response()->json(['success' => true, 'plan' => $plan]);
+    }
+
+    /**
      * Suggested ROAS from Temu (temu.searchrec.ad.roas.pred).
      */
     public function predictRoas(Request $request, TemuApiService $temuApi)

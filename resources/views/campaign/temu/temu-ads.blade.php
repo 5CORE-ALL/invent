@@ -3263,6 +3263,55 @@
                 hideAdsHoverTip();
             });
 
+            // Budget / ROAS the + queue will really use per goods, from our data (Ads Rules slab, Temu budget alert).
+            async function fetchCreatePlan(ids, defaults) {
+                let fromServer = {};
+                try {
+                    const res = await fetch(@json(route('temu.ads.create-plan')), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        },
+                        body: JSON.stringify({ goods_ids: ids, default_budget: defaults.budget, default_roas: defaults.roas }),
+                    });
+                    const data = await res.json();
+                    if (data && data.plan) fromServer = data.plan;
+                } catch (err) { /* fall back to defaults below */ }
+                const plan = {};
+                ids.forEach(function (gid) {
+                    const p = fromServer[gid];
+                    if (p && isFinite(Number(p.budget)) && isFinite(Number(p.roas))) {
+                        plan[gid] = {
+                            budget: Number(p.budget), roas: Number(p.roas),
+                            budget_note: String(p.budget_note || ''), roas_note: String(p.roas_note || ''),
+                        };
+                    } else {
+                        plan[gid] = {
+                            budget: createBudgetForGoods(gid, defaults.budget), roas: defaults.roas,
+                            budget_note: 'default budget', roas_note: 'default ROAS (plan unavailable)',
+                        };
+                    }
+                });
+                return plan;
+            }
+
+            function groupCreatePlan(ids, plan) {
+                const map = {};
+                const out = [];
+                ids.forEach(function (gid) {
+                    const p = plan[gid];
+                    const key = [p.budget, p.roas, p.budget_note, p.roas_note].join('|');
+                    if (!map[key]) {
+                        map[key] = { count: 0, budget: p.budget, roas: p.roas, budget_note: p.budget_note, roas_note: p.roas_note };
+                        out.push(map[key]);
+                    }
+                    map[key].count++;
+                });
+                return out;
+            }
+
             async function runBulkCreateQueue(explicitIds) {
                 const usingExplicit = Array.isArray(explicitIds);
                 const usingSelection = !usingExplicit && hasRowSelection();
@@ -3278,29 +3327,24 @@
                     return;
                 }
                 const defaults = createAdDefaults();
-                const budgetByGoods = {};
-                let budgetOverrides = 0;
-                ids.forEach(function (gid) {
-                    const b = createBudgetForGoods(gid, defaults.budget);
-                    budgetByGoods[gid] = b;
-                    if (b !== defaults.budget) budgetOverrides++;
-                });
-                const budgetLine = budgetOverrides > 0
-                    ? (ids.length === 1
-                        ? 'Daily budget: $' + budgetByGoods[ids[0]] + ' (minimum Temu asked for in the alert)'
-                        : 'Daily budget: $' + defaults.budget + ' (' + budgetOverrides + ' goods use the minimum Temu asked for in their alert)')
-                    : 'Daily budget: $' + defaults.budget;
+                status.style.display = 'block';
+                status.innerHTML = '<div class="alert alert-info py-2 mb-0"><i class="fas fa-spinner fa-spin me-1"></i> Working out budget and ROAS from your data…</div>';
+                const plan = await fetchCreatePlan(ids, defaults);
+                hideFetchStatus();
+                const planGroups = groupCreatePlan(ids, plan);
+                const planSummary = planGroups.map(function (g) {
+                    return g.count + ' × $' + g.budget + ' / ROAS ' + g.roas;
+                }).join(', ');
                 const confirmLead = usingExplicit && ids.length === 1
                     ? 'Create a Temu ad for this goods ID?'
                     : (usingSelection
                         ? 'Create Temu ads for the ' + ids.length + ' selected goods?'
                         : 'Create Temu ads for all ' + ids.length + ' required goods?');
-                if (!confirm(
-                    confirmLead + '\n' +
-                    budgetLine + '\n' +
-                    'Target ROAS: ' + defaults.roas + '\n' +
-                    '(Same as Create ads Rule)'
-                )) {
+                const planLines = planGroups.map(function (g) {
+                    return (ids.length === 1 ? '' : g.count + ' goods: ')
+                        + 'Daily budget $' + g.budget + ' (' + g.budget_note + '), Target ROAS ' + g.roas + ' (' + g.roas_note + ')';
+                });
+                if (!confirm(confirmLead + '\n' + planLines.join('\n'))) {
                     return;
                 }
                 if (badge) badge.style.pointerEvents = 'none';
@@ -3315,7 +3359,7 @@
                     const chunk = ids.slice(i, i + chunkSize);
                     status.innerHTML = '<div class="alert alert-info py-2 mb-0"><i class="fas fa-spinner fa-spin me-1"></i> Creating ads ' +
                         Math.min(i + chunk.length, ids.length) + '/' + ids.length +
-                        ' (budget $' + defaults.budget + ', ROAS ' + defaults.roas + ')…</div>';
+                        ' (' + planSummary + ')…</div>';
                     try {
                         const res = await fetch(@json(route('temu.ads.create-bulk')), {
                             method: 'POST',
@@ -3328,12 +3372,12 @@
                                 goods_ids: chunk,
                                 budget: defaults.budget,
                                 budget_by_goods: chunk.reduce(function (map, gid) {
-                                    map[gid] = budgetByGoods[gid];
+                                    map[gid] = plan[gid].budget;
                                     return map;
                                 }, {}),
                                 roas: defaults.roas,
                                 roas_by_goods: chunk.reduce(function (map, gid) {
-                                    map[gid] = createRoasForGoods(gid, defaults.roas);
+                                    map[gid] = plan[gid].roas;
                                     return map;
                                 }, {}),
                             }),
@@ -3359,7 +3403,7 @@
                     }
                 }
                 let cls = failed === 0 ? 'alert-success' : (created > 0 ? 'alert-warning' : 'alert-danger');
-                let msg = 'Created ' + created + '/' + ids.length + ' ads (budget $' + defaults.budget + ', ROAS ' + defaults.roas + ')';
+                let msg = 'Created ' + created + '/' + ids.length + ' ads (' + planSummary + ')';
                 if (failed > 0) msg += '. Failed ' + failed;
                 if (rejectedN > 0) msg += '. ' + rejectedN + ' listing reject(s)';
                 const full = failNotes.join('\n\n');
