@@ -2076,7 +2076,7 @@
                     columns: [
                         {
                             title: 'Parent', field: 'parent', headerFilter: 'input', headerFilterPlaceholder: 'Search Parent...',
-                            cssClass: 'text-primary', widthGrow: 1, tooltip: true,
+                            cssClass: 'text-primary', widthGrow: 1, minWidth: 280, frozen: true, tooltip: true,
                             hozAlign: 'center', headerHozAlign: 'center',
                             formatter: function (cell) {
                                 var v = cell.getValue() || '';
@@ -2113,7 +2113,7 @@
                         },
                         countColumnDef('kw', 'KW K Count', 'Keywords (enabled + paused) in the linked KW campaign(s), counted through the Amazon Ads API. Click to see them.'),
                         {
-                            title: 'Campaign KW', field: 'kw', widthGrow: 2,
+                            title: 'Campaign KW', field: 'kw', widthGrow: 2, minWidth: 340,
                             hozAlign: 'center', headerHozAlign: 'center',
                             headerSort: true, sorter: linkCountSorter,
                             headerFilter: 'list',
@@ -2145,7 +2145,7 @@
                         },
                         countColumnDef('pt', 'PT Count', 'Targets (auto groups + ASIN / category targets, enabled + paused) in the linked PT campaign(s), counted through the Amazon Ads API. Click to see them.'),
                         {
-                            title: 'Campaign PT', field: 'pt', widthGrow: 2,
+                            title: 'Campaign PT', field: 'pt', widthGrow: 2, minWidth: 340,
                             hozAlign: 'center', headerHozAlign: 'center',
                             headerSort: true, sorter: linkCountSorter,
                             headerFilter: 'list',
@@ -2177,7 +2177,7 @@
                         },
                         countColumnDef('hl', 'HL Count', 'Keywords + product targets (enabled + paused) in the linked HL campaign(s), counted through the Amazon Ads API. Click to see them.'),
                         {
-                            title: 'Campaign HL', field: 'hl', widthGrow: 2,
+                            title: 'Campaign HL', field: 'hl', widthGrow: 2, minWidth: 340,
                             headerTooltip: 'HL = Headline (Sponsored Brands) campaign named "PARENT {parent} HL" or "PARENT {parent} HEAD" on Amazon; linked automatically.',
                             hozAlign: 'center', headerHozAlign: 'center',
                             headerSort: true, sorter: linkCountSorter,
