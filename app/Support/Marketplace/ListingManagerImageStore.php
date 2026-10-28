@@ -44,6 +44,9 @@ class ListingManagerImageStore
     {
         $out = [];
         $sources = [];
+        // Downloading every picture one by one used to outlast the request. Past the budget the
+        // remaining pictures keep their original URL (they are fetched again at publish time).
+        $deadline = microtime(true) + 20;
         foreach ($urls as $url) {
             $url = trim((string) $url);
             if ($url === '') {
@@ -52,7 +55,7 @@ class ListingManagerImageStore
             if (preg_match('#^https?://#i', $url) && ! self::isStored($url)) {
                 $sources[] = $url;
             }
-            $local = self::localize($url);
+            $local = self::localize($url, $deadline);
             if ($local !== '' && ! in_array($local, $out, true)) {
                 $out[] = $local;
             }
@@ -64,7 +67,7 @@ class ListingManagerImageStore
         return $out;
     }
 
-    public static function localize(string $url): string
+    public static function localize(string $url, ?float $deadline = null): string
     {
         $url = trim($url);
         if ($url === '') {
@@ -83,6 +86,15 @@ class ListingManagerImageStore
             return self::displayUrl($existing);
         }
 
+        $timeout = 25;
+        if ($deadline !== null) {
+            $left = $deadline - microtime(true);
+            if ($left < 2) {
+                return $url;
+            }
+            $timeout = (int) max(3, min(10, floor($left)));
+        }
+
         try {
             $headers = [
                 'User-Agent' => 'Mozilla/5.0 (compatible; 5CoreListingManager/1.0)',
@@ -90,12 +102,15 @@ class ListingManagerImageStore
             ];
             $response = null;
             try {
-                $response = Http::timeout(25)->withHeaders($headers)->get($url);
+                $response = Http::timeout($timeout)->withHeaders($headers)->get($url);
             } catch (\Throwable) {
                 $response = null;
             }
-            if ($response === null || ! $response->successful()) {
-                $response = Http::timeout(25)->withoutVerifying()->withHeaders($headers)->get($url);
+            if (($response === null || ! $response->successful()) && ($deadline === null || microtime(true) < $deadline - 2)) {
+                $response = Http::timeout($timeout)->withoutVerifying()->withHeaders($headers)->get($url);
+            }
+            if ($response === null) {
+                return $url;
             }
             if (! $response->successful()) {
                 Log::warning('ListingManager image store HTTP '.$response->status(), ['url' => $url]);

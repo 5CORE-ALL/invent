@@ -1887,6 +1887,14 @@
     let policyDefaults = {};
     let descMode = 'code'; // code|preview|rich
 
+    function ajaxErr(xhr, fallback) {
+        const m = xhr && xhr.responseJSON && xhr.responseJSON.message;
+        if (m) return m;
+        if (xhr && xhr.statusText === 'timeout') return fallback + ' (timed out: the server took too long, try again)';
+        if (xhr && xhr.status) return fallback + ' (HTTP ' + xhr.status + ')';
+        return fallback + ' (no response from server)';
+    }
+
     function toast(message, type) {
         const wrap = document.getElementById('lm-toast-wrap');
         if (!wrap) return;
@@ -5919,7 +5927,7 @@
             $.ajax({
                 url: "{{ url('/listing-manager/drafts') }}/" + id + '/load-images',
                 method: 'POST',
-                timeout: 35000,
+                timeout: 90000,
                 success: function (res) {
                     const imgs = sanitizeEditorImages(res.images || []);
                     if (!imgs.length) {
@@ -5939,7 +5947,7 @@
                     toast(res.message || ('Loaded ' + imgs.length + ' image(s).'), 'success');
                 },
                 error: function (xhr) {
-                    toast(xhr.responseJSON?.message || 'Could not load images from Image Master.', 'error');
+                    toast(ajaxErr(xhr, 'Could not load images from Image Master.'), 'error');
                 },
                 complete: function () {
                     $btn.data('loading', false).prop('disabled', false).html('Load Images From Image Master');
@@ -5975,7 +5983,7 @@
                     }
                     toast(res.message || 'Fetched from Shopify.', 'success');
                 },
-                error: xhr => toast(xhr.responseJSON?.message || 'Could not fetch from Shopify.', 'error'),
+                error: xhr => toast(ajaxErr(xhr, 'Could not fetch from Shopify.'), 'error'),
                 complete: function () {
                     $btn.data('loading', false).prop('disabled', false).html(idleHtml);
                 }
@@ -6011,7 +6019,7 @@
                 url: "{{ url('/listing-manager/drafts') }}/" + id + '/load-description',
                 method: 'POST',
                 data: { source },
-                timeout: 35000,
+                timeout: 90000,
                 success: function (res) {
                     if (!res.success) {
                         toast(res.message || 'Load failed.', 'error');
@@ -6024,7 +6032,7 @@
                     refreshEditorUi(currentDraft);
                     toast(res.message || 'Description loaded.', 'success');
                 },
-                error: xhr => toast(xhr.responseJSON?.message || 'Could not load description.', 'error'),
+                error: xhr => toast(ajaxErr(xhr, 'Could not load description.'), 'error'),
                 complete: function () {
                     $btn.data('loading', false).prop('disabled', false).html(idleHtml);
                 }
