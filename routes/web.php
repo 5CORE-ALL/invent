@@ -3641,6 +3641,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/chat/sync', 'sync')->name('chat.sync');
         Route::post('/chat/presence', 'presence')->name('chat.presence');
         Route::get('/chat/unread', 'unread')->name('chat.unread');
+        Route::get('/chat/bot/{user}', 'botTranscript')->whereNumber('user')->name('chat.bot-transcript');
         Route::get('/chat/files/{message}', 'file')->whereNumber('message')->name('chat.file');
         Route::get('/chat/channels/{channel}/messages', 'messages')->whereNumber('channel')->name('chat.messages');
         Route::post('/chat/channels/{channel}/messages', 'storeMessage')->whereNumber('channel')->name('chat.messages.store');

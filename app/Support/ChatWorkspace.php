@@ -775,6 +775,34 @@ class ChatWorkspace
     }
 
     /**
+     * Number of live (not archived) chats this user is in that still have visible
+     * messages. Drives the yellow count on the topbar chat icon.
+     */
+    public static function activeChatCount(?User $user): int
+    {
+        if (! $user || ! self::tablesReady()) {
+            return 0;
+        }
+
+        $cacheKey = 'chat_active_total_'.$user->id;
+
+        return (int) Cache::remember($cacheKey, now()->addSeconds(3), function () use ($user) {
+            $query = ChatMessage::query()
+                ->join('chat_channel_members as m', function ($join) use ($user) {
+                    $join->on('m.channel_id', '=', 'chat_messages.channel_id')
+                        ->where('m.user_id', '=', $user->id);
+                })
+                ->join('chat_channels as c', function ($join) {
+                    $join->on('c.id', '=', 'chat_messages.channel_id')
+                        ->where('c.is_archived', '=', 0);
+                });
+            self::excludeArchived($query, $user);
+
+            return (int) $query->distinct()->count('chat_messages.channel_id');
+        });
+    }
+
+    /**
      * Direct-message dots from the chat sidebar, counted per user.
      *
      * Red is a DM with unread messages (red dot). Yellow is a DM that still
@@ -875,6 +903,7 @@ class ChatWorkspace
     public static function forgetUnreadCache(int $userId): void
     {
         Cache::forget('chat_unread_total_'.$userId);
+        Cache::forget('chat_active_total_'.$userId);
         Cache::forget('chat_inbox_'.$userId);
     }
 

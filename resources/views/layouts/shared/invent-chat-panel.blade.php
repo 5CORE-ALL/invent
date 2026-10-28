@@ -329,7 +329,7 @@
                 openChannel(Number(btn.dataset.channel));
             });
         });
-        updateTopbar(channels.reduce(function (n, ch) { return n + (ch.unread || 0); }, 0));
+        updateTopbar(channels.filter(function (ch) { return ch.has_messages || (ch.unread || 0) > 0; }).length);
     }
 
     function updateTopbar(n) {
@@ -485,7 +485,7 @@
     });
 
     document.addEventListener('click', function (e) {
-        const openBtn = e.target.closest('#chatTopbarBtn, .js-invent-chat-open');
+        const openBtn = e.target.closest('.js-invent-chat-open');
         if (!openBtn) return;
         e.preventDefault();
         open();

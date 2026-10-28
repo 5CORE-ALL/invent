@@ -336,6 +336,19 @@
             color: #94a3b8 !important;
             font-weight: 600;
         }
+        .task-summary-bot-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: #ede9fe;
+            color: #6d28d9;
+            font-size: 1rem;
+            text-decoration: none;
+        }
+        .task-summary-bot-link:hover { background: #7e57c2; color: #fff; }
         .task-summary-chat-dot {
             display: inline-block;
             width: 10px;
@@ -1231,6 +1244,7 @@
 @section('content')
     @php
         $tsIsPresident = strtolower(trim((string) (auth()->user()->email ?? ''))) === 'president@5core.com';
+        $tsShowBotCol = (bool) (auth()->user() && auth()->user()->isDirector());
         $taskDashboardStats = $taskDashboardStats ?? [
             'total_tasks' => 0,
             'assigned_members' => 0,
@@ -1529,6 +1543,11 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Attendance — last 30 days hours from the in-app logger (Shobha and Mariya use Team Logger) as a % of 200" role="button" tabindex="0">
                                         ATT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
+                                    @if ($tsShowBotCol)
+                                    <th scope="col" title="Chatbot — open this member's 5 Core Bot chat (directors only, new tab)">
+                                        <i class="ri-robot-2-line" aria-hidden="true"></i>
+                                    </th>
+                                    @endif
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="chat_red" data-sort-type="number" title="Red dot — direct chats with unread messages" role="button" tabindex="0" aria-label="Red dot">
                                         <span class="task-summary-chat-dot is-red" aria-hidden="true"></span>
                                     </th>
@@ -1891,6 +1910,18 @@
                                             title="{{ $attHoursDisplay }}/{{ $attTarget }}">
                                             {{ $attPct }}%
                                         </td>
+                                        @if ($tsShowBotCol)
+                                        <td class="task-summary-col-bot text-center">
+                                            @if ((int) ($row['user_id'] ?? 0) > 0)
+                                                <a href="{{ route('chat.bot-transcript', (int) $row['user_id']) }}"
+                                                   target="_blank"
+                                                   rel="noopener noreferrer"
+                                                   class="task-summary-bot-link"
+                                                   title="Open {{ e($row['team_member']) }}'s 5 Core Bot chat"
+                                                   aria-label="Open 5 Core Bot chat for {{ e($row['team_member']) }}"><i class="ri-robot-2-line" aria-hidden="true"></i></a>
+                                            @endif
+                                        </td>
+                                        @endif
                                         @php
                                             $chatRed = (int) ($row['chat_red'] ?? 0);
                                             $chatYellow = (int) ($row['chat_yellow'] ?? 0);
@@ -2123,7 +2154,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="34" class="text-center text-muted py-4">
+                                        <td colspan="{{ $tsShowBotCol ? 35 : 34 }}" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -2134,7 +2165,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="34" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="{{ $tsShowBotCol ? 35 : 34 }}" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>

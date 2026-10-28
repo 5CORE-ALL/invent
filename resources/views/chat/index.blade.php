@@ -16,8 +16,8 @@
         .slack-nav {
             width: 260px;
             flex-shrink: 0;
-            background: #3f0e40;
-            color: #cfc3cf;
+            background: #e6dcf7;
+            color: #4a3068;
             display: flex;
             flex-direction: column;
         }
@@ -29,33 +29,33 @@
             display: inline-flex; align-items: center; justify-content: center;
             border-radius: 6px; padding: 0; flex-shrink: 0; cursor: pointer;
         }
-        .slack-iconbtn:hover { background: rgba(255,255,255,.14); }
+        .slack-iconbtn:hover { background: rgba(91,43,140,.12); }
         .slack-menu-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.45); z-index: 40; }
         .slack-menu {
             position: absolute; top: 0; left: 0; bottom: 0; width: min(280px, 85%);
-            background: #2b0a2c; color: #e6dbe6; z-index: 41;
-            display: flex; flex-direction: column; box-shadow: 4px 0 18px rgba(0,0,0,.35);
+            background: #f1eafb; color: #3b2457; z-index: 41;
+            display: flex; flex-direction: column; box-shadow: 4px 0 18px rgba(80,40,130,.25);
         }
         .slack-menu[hidden], .slack-menu-backdrop[hidden] { display: none; }
         .slack-menu__head {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 14px 16px 12px; font-weight: 800; font-size: 17px; color: #fff;
-            border-bottom: 1px solid rgba(255,255,255,.08);
+            padding: 14px 16px 12px; font-weight: 800; font-size: 17px; color: #3b2457;
+            border-bottom: 1px solid rgba(91,43,140,.15);
         }
         .slack-menu__body { flex: 1; overflow: auto; padding: 8px 0 16px; }
         .slack-menu__sec {
             padding: 12px 16px 4px; font-size: 11px; font-weight: 800;
-            letter-spacing: .05em; text-transform: uppercase; color: #ab9bab;
+            letter-spacing: .05em; text-transform: uppercase; color: #7a62a0;
         }
         .slack-menu__body a {
-            display: block; padding: 8px 16px; color: #e6dbe6; text-decoration: none; font-size: 14px;
+            display: block; padding: 8px 16px; color: #3b2457; text-decoration: none; font-size: 14px;
         }
-        .slack-menu__body a:hover { background: rgba(0,0,0,.25); color: #fff; }
+        .slack-menu__body a:hover { background: rgba(91,43,140,.12); color: #3b2457; }
         .slack-nav__ws {
             padding: 14px 16px 12px;
-            border-bottom: 1px solid rgba(255,255,255,.08);
+            border-bottom: 1px solid rgba(91,43,140,.15);
             font-weight: 800;
-            color: #fff;
+            color: #3b2457;
             font-size: 17px;
         }
         .slack-nav__search {
@@ -65,12 +65,12 @@
             width: 100%;
             border: 0;
             border-radius: 6px;
-            background: rgba(0,0,0,.25);
-            color: #fff;
+            background: rgba(255,255,255,.75);
+            color: #3b2457;
             padding: 7px 10px;
             font-size: 13px;
         }
-        .slack-nav__search input::placeholder { color: #b9a8b9; }
+        .slack-nav__search input::placeholder { color: #8f7bb0; }
         .slack-nav__scroll { flex: 1; overflow: auto; padding: 10px 0 16px; }
         .slack-sec {
             padding: 12px 16px 4px;
@@ -78,7 +78,7 @@
             font-weight: 800;
             letter-spacing: .05em;
             text-transform: uppercase;
-            color: #ab9bab;
+            color: #7a62a0;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -86,7 +86,7 @@
         .slack-sec button {
             border: 0;
             background: transparent;
-            color: #cfc3cf;
+            color: #4a3068;
             font-size: 16px;
             line-height: 1;
             padding: 0;
@@ -98,9 +98,9 @@
             text-transform: uppercase;
             line-height: 1.2;
         }
-        .slack-sec .slack-archived-btn.is-on { color: #fff; }
+        .slack-sec .slack-archived-btn.is-on { color: #3b2457; }
         .slack-item.is-archived { opacity: .8; }
-        .slack-archived-empty { padding: 2px 16px 8px; color: #ab9bab; font-size: 12px; }
+        .slack-archived-empty { padding: 2px 16px 8px; color: #7a62a0; font-size: 12px; }
         .slack-item {
             display: flex;
             align-items: center;
@@ -108,14 +108,14 @@
             width: 100%;
             border: 0;
             background: transparent;
-            color: #cfc3cf;
+            color: #4a3068;
             text-align: left;
             padding: 5px 16px;
             font-size: 14px;
         }
-        .slack-item:hover { background: rgba(0,0,0,.18); color: #fff; }
-        .slack-item.is-active { background: #1164a3; color: #fff; }
-        .slack-item.is-unread { font-weight: 800; color: #fff; }
+        .slack-item:hover { background: rgba(91,43,140,.12); color: #3b2457; }
+        .slack-item.is-active { background: #7e57c2; color: #fff; }
+        .slack-item.is-unread { font-weight: 800; color: #2a1647; }
         .slack-item.is-pinned .slack-item__name,
         .slack-item.is-pinned .slack-item__hash,
         .slack-item.is-pinned .slack-pin-mark { color: #ff1744; font-weight: 800; }
@@ -124,7 +124,7 @@
         .slack-item.is-pinned.is-active .slack-pin-mark { color: #ff8a80; }
         .slack-pin-mark { font-size: 14px; line-height: 1; flex-shrink: 0; }
         .slack-item__pin {
-            border: 0; background: transparent; color: #ab9bab; padding: 0 2px; font-size: 14px; line-height: 1;
+            border: 0; background: transparent; color: #7a62a0; padding: 0 2px; font-size: 14px; line-height: 1;
             opacity: 0; flex-shrink: 0;
         }
         .slack-item:hover .slack-item__pin,
@@ -281,9 +281,9 @@
         }
         .slack-pick button:hover { background: #f8f8f8; }
         .slack-pick img { width: 22px; height: 22px; border-radius: 4px; }
-        .slack-status { font-size: 11px; padding: 4px 16px 8px; color: #ab9bab; }
-        .slack-status.is-off { color: #ffb3b3; }
-        .slack-status.is-wait { color: #f2c744; }
+        .slack-status { font-size: 11px; padding: 4px 16px 8px; color: #7a62a0; }
+        .slack-status.is-off { color: #d32f2f; }
+        .slack-status.is-wait { color: #b7791f; }
         .slack-head__tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
         .slack-head__tools button, .slack-head__tools select {
             border: 1px solid #ddd; background: #fff; border-radius: 6px; font-size: 12px; padding: 3px 8px;
@@ -371,6 +371,20 @@
         .slack-mention-pick button { display: block; width: 100%; border: 0; background: #fff; text-align: left; padding: 6px 10px; }
         .slack-mention-pick button:hover { background: #f8f8f8; }
         .slack-back { display: none; border: 0; background: transparent; font-weight: 800; margin-right: 8px; }
+        .slack-arch-badge {
+            display: flex; align-items: center; gap: 6px; margin: 8px 12px 0; padding: 6px 10px;
+            border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 800;
+            text-decoration: none; border: 1px solid #fde68a; width: fit-content;
+        }
+        .slack-arch-badge:hover { background: #fde68a; color: #78350f; }
+        .slack-arch-badge__count {
+            min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #b45309; color: #fff;
+            font-size: 10px; line-height: 18px; text-align: center;
+        }
+        .slack-arch-row { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; text-align: left; padding: 8px 4px; border-bottom: 1px solid #eee; }
+        .slack-arch-row:hover { background: #f8f6fc; }
+        .slack-arch-row img { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; }
+        .slack-arch-row__type { margin-left: auto; font-size: 11px; color: #7a62a0; text-transform: uppercase; font-weight: 700; }
         .slack-install { display: none; margin: 8px 12px; width: calc(100% - 24px); border: 0; border-radius: 6px; background: #1164a3; color: #fff; font-weight: 700; padding: 8px; }
         .slack-install.is-on { display: block; }
         .slack-progress { display: none; height: 3px; background: #e8e8e8; margin: 0 16px 8px; }
@@ -473,6 +487,10 @@
                 </div>
             </nav>
             <button type="button" class="slack-install" id="slackInstallBtn">Install 5Core Chat</button>
+            <a href="{{ route('chat.index', ['archived' => 1]) }}" target="_blank" rel="noopener" class="slack-arch-badge" id="slackArchBadge" title="Open archived chats in a new tab">
+                <i class="ri-archive-line" aria-hidden="true"></i> Archived Chat
+                <span class="slack-arch-badge__count" id="slackArchCount">0</span>
+            </a>
             <div class="slack-status" id="slackConn">Connected</div>
             <div class="slack-nav__search">
                 <input type="search" id="slackSearch" placeholder="Find people or start a DM" autocomplete="off">
@@ -646,6 +664,20 @@
         </div>
     </div>
 
+    <div class="modal fade" id="slackArchChatsModal" tabindex="-1" aria-labelledby="slackArchChatsTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="slackArchChatsTitle">Archived Chats</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="slackArchChatsList">
+                    <div class="text-muted">Loading…</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="slackRecycleModal" tabindex="-1" aria-labelledby="slackRecycleTitle" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
@@ -779,6 +811,7 @@
     const canAnnounce = {{ !empty($canAnnounce) ? 'true' : 'false' }};
     const startChannel = Number(new URLSearchParams(location.search).get('channel') || 0);
     const startMessage = Number(new URLSearchParams(location.search).get('message') || 0);
+    const openArchivedModal = new URLSearchParams(location.search).get('archived') === '1';
     const OUTBOX_KEY = 'invent_chat_outbox';
     const DRAFT_KEY = 'invent_chat_draft_';
     const tabBus = ('BroadcastChannel' in window) ? new BroadcastChannel('invent-chat') : null;
@@ -950,7 +983,7 @@
             });
             lists[bucket(ch)].appendChild(btn);
         });
-        updateTopbar(channels.reduce(function (n, ch) { return n + (ch.unread || 0); }, 0));
+        updateTopbar();
         fillForwardTargets();
         renderArchived();
     }
@@ -1006,10 +1039,13 @@
         }
     }
 
-    function updateTopbar(n) {
+    function updateTopbar() {
         const btn = document.getElementById('chatTopbarBtn');
         if (!btn) return;
+        // Yellow count = live (not archived) chats that still have messages.
+        const n = channels.filter(function (ch) { return ch.has_messages || (ch.unread || 0) > 0; }).length;
         btn.classList.toggle('has-unread', n > 0);
+        btn.dataset.chatUnread = String(n);
         const el = btn.querySelector('.topbar-chat-btn__count');
         if (el) el.textContent = n > 99 ? '99+' : String(n);
     }
@@ -2437,10 +2473,54 @@
         navigator.sendBeacon && navigator.sendBeacon('/chat/presence', new Blob([JSON.stringify({ typing_channel_id: 0 })], { type: 'application/json' }));
     });
 
+    function paintArchivedModal() {
+        const box = document.getElementById('slackArchChatsList');
+        if (!box) return;
+        if (!archivedChannels.length) {
+            box.innerHTML = '<div class="text-muted">No archived chats</div>';
+            return;
+        }
+        box.innerHTML = '';
+        archivedChannels.forEach(function (ch) {
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'slack-arch-row';
+            const prefix = (ch.type === 'public' || ch.type === 'private') ? '# ' : '';
+            const avatar = ch.avatar ? '<img src="' + esc(ch.avatar) + '" alt="">' : '<i class="ri-archive-line"></i>';
+            row.innerHTML = avatar + '<span>' + esc(prefix + ch.name) + '</span><span class="slack-arch-row__type">' + esc(ch.type || '') + '</span>';
+            row.addEventListener('click', function () {
+                window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackArchChatsModal')).hide();
+                showArchived = true;
+                renderArchived();
+                openChannel(ch.id);
+            });
+            box.appendChild(row);
+        });
+    }
+    async function loadArchivedBadge(openModal) {
+        try {
+            const archived = await api('/chat/archived');
+            archivedChannels = archived.channels || [];
+            const cnt = document.getElementById('slackArchCount');
+            if (cnt) cnt.textContent = String(archivedChannels.length);
+            if (openModal) {
+                paintArchivedModal();
+                window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackArchChatsModal')).show();
+            }
+        } catch (e) {
+            if (openModal) {
+                const box = document.getElementById('slackArchChatsList');
+                if (box) box.innerHTML = '<div class="text-danger">' + esc(e.message || 'Could not load archived chats.') + '</div>';
+                window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackArchChatsModal')).show();
+            }
+        }
+    }
+
     api('/chat/inbox').then(async function (data) {
         channels = data.channels || [];
         directory = data.directory || [];
         renderNav();
+        loadArchivedBadge(openArchivedModal);
         if (startChannel && !channels.find(function (c) { return c.id === startChannel; })) {
             try {
                 const archived = await api('/chat/archived');

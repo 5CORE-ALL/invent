@@ -89,6 +89,47 @@ class ChatController extends Controller
         ]);
     }
 
+    /**
+     * Directors only: read-only transcript of another user's 5 Core Bot chat.
+     * Opened from the Task Summary page. Does not mark anything as read.
+     */
+    public function botTranscript(int $userId): View
+    {
+        $viewer = Auth::user();
+        abort_unless($viewer && $viewer->isDirector(), 403);
+
+        $target = User::query()->findOrFail($userId);
+        $messages = [];
+
+        if (ChatWorkspace::tablesReady()) {
+            $channel = ChatChannel::query()
+                ->where('type', ChatChannel::TYPE_BOT)
+                ->where('slug', 'invent-bot-'.$target->id)
+                ->first();
+            if ($channel) {
+                $rows = ChatMessage::query()
+                    ->with($this->messageRelations())
+                    ->where('channel_id', $channel->id)
+                    ->orderByDesc('id')
+                    ->limit(300)
+                    ->get()
+                    ->reverse()
+                    ->values();
+                $tz = TaskBusinessTime::tz();
+                foreach ($rows as $row) {
+                    $payload = ChatWorkspace::serializeMessage($row);
+                    $payload['created_full'] = optional($row->created_at)->timezone($tz)->format('M j, g:i A');
+                    $messages[] = $payload;
+                }
+            }
+        }
+
+        return view('chat.bot-transcript', [
+            'target' => $target,
+            'messages' => $messages,
+        ]);
+    }
+
     public function unread(): JsonResponse
     {
         $user = Auth::user();
@@ -96,6 +137,7 @@ class ChatController extends Controller
 
         return response()->json([
             'unread' => ChatWorkspace::unreadTotal($user),
+            'chats' => ChatWorkspace::activeChatCount($user),
         ]);
     }
 
