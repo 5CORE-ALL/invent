@@ -1147,10 +1147,18 @@
                         steps.push(ebayRuleStep('skip', '2 · CVR overlay',
                             'CVR ' + cvrTxt + (trend ? ' (' + trend + ' arrow)' : '') + ' is inside the thresholds, so no adjustment'));
                     }
-                    if (meta.ageAdj) {
+                    if (typeof EBAY_AGE_ADJ_ON !== 'undefined' && EBAY_AGE_ADJ_ON) {
                         const ageDays = (typeof ebayRowAgeDays === 'function') ? ebayRowAgeDays(d) : null;
-                        steps.push(ebayRuleStep('ok', '2b · Ageing rule',
-                            'Age ' + (ageDays === null ? '?' : Math.round(ageDays)) + ' days is in an age band → <b>' + (meta.ageAdj > 0 ? '+' : '') + meta.ageAdj + '</b> to Target SNROI'));
+                        if (meta.ageAdj) {
+                            const ai = (typeof ebayAgeAdjSlabIdx === 'function') ? ebayAgeAdjSlabIdx(ageDays, ebayAgeAdj) : -1;
+                            const ab = (ai >= 0 && typeof ebayAgeAdjBand === 'function') ? ebayAgeAdjBand(ebayAgeAdj[ai]) : null;
+                            steps.push(ebayRuleStep('ok', '2b · Ageing rule',
+                                'Age <b>' + (ageDays === null ? '?' : Math.round(ageDays)) + '</b> days' + (ab ? (' → slab ' + ab.min + '–' + ab.max) : '') + ' → <b>' + (meta.ageAdj > 0 ? '+' : '') + meta.ageAdj + '</b> to Target SNROI'));
+                        } else {
+                            steps.push(ebayRuleStep('skip', '2b · Ageing rule',
+                                ageDays === null ? 'No age for this SKU. Not applied.'
+                                    : ('Age ' + Math.round(ageDays) + ' days is in no Ageing band (or its band adds 0). No adjustment.')));
+                        }
                     }
                     const diffPct = (typeof ebayStdPrcDiffPct === 'function') ? ebayStdPrcDiffPct(d) : null;
                     if (meta.diffAdj) {
