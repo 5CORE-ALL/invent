@@ -45,11 +45,16 @@ class AttendanceLiveController extends Controller
             'user_id' => (int) $row['user_id'],
             'name' => $row['name'],
             'email' => $row['email'],
+            'avatar_url' => $row['avatar_url'] ?? asset('images/users/avatar-2.jpg'),
             'live_status' => $row['live_status'] ?? 'absent',
             'live_label' => $row['live_label'] ?? 'Absent',
             'poster' => $row['last_image_thumb'] ?? null,
             'start_url' => route('attendance.live.start', $row['user_id']),
-        ])->values();
+        ])
+            // People who are not clocked in ("absent") go to the bottom; everyone else keeps name order.
+            ->sort(fn (array $a, array $b) => [$a['live_status'] === 'absent' ? 1 : 0, mb_strtolower($a['name'])]
+                <=> [$b['live_status'] === 'absent' ? 1 : 0, mb_strtolower($b['name'])])
+            ->values();
 
         return view('attendance.team-video', [
             'title' => 'Team Monitor Video',

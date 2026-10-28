@@ -113,20 +113,27 @@ class AttendanceSummaryService
             'employees_worked' => 0,
         ];
 
+        // "WT Current": work time for the current month so far, independent of the Range filter.
+        $monthFrom = $now->copy()->startOfMonth()->toDateString();
+        $monthTo = $now->toDateString();
+
         foreach ($employees as $employee) {
             $stats = $this->timelineService->employeePeriodStats($employee, $from, $to, $timezone);
             $manualSeconds = (int) ($manualByUser->get($employee->id)?->manual_seconds ?? 0);
 
             $active = (int) $stats['active_seconds'];
             $idle = (int) $stats['idle_seconds'];
-            $break = (int) $stats['break_seconds'];
             $worked = $active + $idle;
             $workTime = max(0, $worked - $idle + $manualSeconds);
 
-            $activeMinPct = ($active + $idle) > 0 ? (int) round(($active / ($active + $idle)) * 100) : 0;
-            $activeSecPct = ($active + $idle + $break) > 0
-                ? (int) round(($active / ($active + $idle + $break)) * 100)
-                : 0;
+            // Current month work time = Login time (active + idle) - Idle. Reuses $stats when the
+            // Range filter is already "this month".
+            $monthStats = ($from === $monthFrom && $to === $monthTo)
+                ? $stats
+                : $this->timelineService->employeePeriodStats($employee, $monthFrom, $monthTo, $timezone);
+            $monthIdle = (int) $monthStats['idle_seconds'];
+            $monthLogin = (int) $monthStats['active_seconds'] + $monthIdle;
+            $wtCurrent = max(0, $monthLogin - $monthIdle);
 
             $input = $inputByUser->get($employee->id);
             $clickCount = (int) ($input?->clicks_total ?? 0);
@@ -190,14 +197,16 @@ class AttendanceSummaryService
                 'manual_clock' => $this->formatClock($manualSeconds),
                 'meeting_seconds' => 0,
                 'meeting_clock' => $this->formatClock(0),
-                'active_min_pct' => $activeMinPct,
-                'active_sec_pct' => $activeSecPct,
+                // (Clicks + Keystrokes) ÷ 60, shown with a % sign. Not capped.
+                'input_pct' => (int) round(($clickCount + $keyCount) / 60),
                 'click_count' => $clickCount,
                 'key_count' => $keyCount,
                 'input_tracked' => $inputTracked,
                 'input_has_activity' => $inputBeats > 0,
                 'idle_seconds' => $idle,
                 'idle_clock' => $this->formatClock($idle),
+                'wt_current_seconds' => $wtCurrent,
+                'wt_current_clock' => $this->formatClock($wtCurrent),
                 'work_time_seconds' => $workTime,
                 'work_time_clock' => $this->formatClock($workTime),
                 'including_idle_seconds' => $workTime,

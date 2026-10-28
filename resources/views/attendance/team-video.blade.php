@@ -39,7 +39,10 @@
             position: relative; min-width: 0; min-height: 0; overflow: hidden;
             background: #020617; border: 1px solid #1f2937; border-radius: 10px;
         }
-        .tmv-tile.is-min { display: none; }
+        .tmv-tile.is-min, .tmv-tile.is-off { display: none; }
+        .tmv-pager { display: inline-flex; align-items: center; gap: .3rem; }
+        .tmv-pager[hidden] { display: none; }
+        .tmv-pager span { font-size: .75rem; color: #94a3b8; min-width: 3.2rem; text-align: center; font-variant-numeric: tabular-nums; }
         .tmv-tile img {
             width: 100%; height: 100%; object-fit: contain; display: block; background: #020617;
         }
@@ -70,6 +73,11 @@
             position: absolute; left: 0; right: 0; bottom: 0; display: flex;
             align-items: center; justify-content: space-between; gap: .5rem;
             padding: .45rem .55rem; background: linear-gradient(transparent, rgba(0,0,0,.78));
+        }
+        .tmv-person { display: flex; align-items: center; gap: .45rem; min-width: 0; }
+        .tmv-tile img.tmv-avatar {
+            width: 30px; height: 30px; flex: 0 0 auto; border-radius: 50%; object-fit: cover;
+            border: 1px solid rgba(255,255,255,.45); background: #1e293b;
         }
         .tmv-who { min-width: 0; }
         .tmv-name { font-size: .78rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -167,6 +175,18 @@
                     @endforeach
                 </select>
             </form>
+            <select id="tmvGridSize" aria-label="Screens per page" title="Screens shown at once">
+                <option value="1">Grid: 1</option>
+                <option value="4">Grid: 4</option>
+                <option value="9">Grid: 9</option>
+                <option value="12">Grid: 12</option>
+                <option value="all" selected>Grid: All</option>
+            </select>
+            <span class="tmv-pager" id="tmvPager" hidden>
+                <button type="button" id="tmvPrev" title="Previous page">‹</button>
+                <span id="tmvPageLabel"></span>
+                <button type="button" id="tmvNext" title="Next page">›</button>
+            </span>
             <button type="button" id="btnPlayAll">Play all</button>
             <button type="button" id="btnPauseAll">Pause all</button>
             <a href="{{ $summary_url }}">← Team Monitoring</a>
@@ -184,11 +204,15 @@
                     <p>Connecting…</p>
                 </div>
                 <div class="tmv-overlay">
-                    <div class="tmv-who">
-                        <div class="tmv-name">
-                            <span class="tmv-dot {{ $tile['live_status'] }}"></span>{{ $tile['name'] }}
+                    <div class="tmv-person">
+                        <img class="tmv-avatar" src="{{ $tile['avatar_url'] }}" alt="" loading="lazy"
+                             onerror="this.onerror=null;this.src='{{ asset('images/users/avatar-2.jpg') }}';">
+                        <div class="tmv-who">
+                            <div class="tmv-name">
+                                <span class="tmv-dot {{ $tile['live_status'] }}"></span>{{ $tile['name'] }}
+                            </div>
+                            <div class="tmv-meta">{{ $tile['live_label'] }}</div>
                         </div>
-                        <div class="tmv-meta">{{ $tile['live_label'] }}</div>
                     </div>
                     <div class="tmv-controls">
                         <button type="button" class="js-play" title="Play">
@@ -262,17 +286,56 @@
             return best;
         }
 
+        // ---- Grid size / paging ---------------------------------------------------------------
+        // "All" (default) shows every tile; 1 / 4 / 9 / 12 show that many at a time with Prev / Next.
+        // Tiles on other pages are paused (no video traffic) and resume when their page is shown.
+        const FIXED_GRIDS = { 1: [1, 1], 4: [2, 2], 9: [3, 3], 12: [4, 3] };
+        const gridSizeEl = document.getElementById('tmvGridSize');
+        const pagerEl = document.getElementById('tmvPager');
+        const pageLabelEl = document.getElementById('tmvPageLabel');
+        let gridSize = 'all';
+        let page = 0;
+        let pageCount = 1;
+        let started = false;
+
+        function setOffPage(t, off) {
+            if (t.offPage === off) return;
+            t.offPage = off;
+            t.el.classList.toggle('is-off', off);
+            if (off) {
+                if (t.playing || t.retryTimer) t.pause();
+            } else if (started) {
+                t.play();
+            }
+        }
+
+        function applyPaging() {
+            const eligible = tiles.filter(t => !t.minimized);
+            const size = gridSize === 'all' ? Math.max(1, eligible.length) : Number(gridSize);
+            pageCount = Math.max(1, Math.ceil(eligible.length / size));
+            page = Math.min(Math.max(0, page), pageCount - 1);
+            const startAt = page * size;
+            eligible.forEach((t, i) => setOffPage(t, !(i >= startAt && i < startAt + size)));
+            tiles.filter(t => t.minimized).forEach(t => { t.offPage = false; t.el.classList.remove('is-off'); });
+            pagerEl.hidden = pageCount <= 1;
+            pageLabelEl.textContent = (page + 1) + ' / ' + pageCount;
+        }
+
         function layout() {
-            const visible = tiles.filter(t => !t.minimized);
+            applyPaging();
+            const visible = tiles.filter(t => !t.minimized && !t.offPage);
             const n = visible.length;
+            const minimizedCount = tiles.filter(t => t.minimized).length;
             empty.classList.toggle('is-on', n === 0);
             grid.style.display = n === 0 ? 'none' : 'grid';
             const rect = grid.getBoundingClientRect();
-            const fit = bestGrid(n, Math.max(1, rect.width), Math.max(1, rect.height));
+            const fixed = gridSize !== 'all' ? FIXED_GRIDS[gridSize] : null;
+            const fit = fixed ? { cols: fixed[0], rows: fixed[1] } : bestGrid(n, Math.max(1, rect.width), Math.max(1, rect.height));
             grid.style.setProperty('--cols', String(fit.cols));
             grid.style.setProperty('--rows', String(fit.rows));
-            const playing = tiles.filter(t => t.playing && !t.minimized).length;
-            countEl.textContent = playing + ' live · ' + n + ' on screen · ' + (tiles.length - n) + ' minimized';
+            const playing = tiles.filter(t => t.playing && !t.minimized && !t.offPage).length;
+            countEl.textContent = playing + ' live · ' + n + ' on screen · ' + minimizedCount + ' minimized'
+                + (pageCount > 1 ? ' · page ' + (page + 1) + '/' + pageCount : '');
             renderDock();
         }
 
@@ -309,6 +372,7 @@
                 urls: null,
                 playing: false,
                 minimized: false,
+                offPage: false,
                 runId: 0,
                 retryTimer: null,
                 posterUrl: null,
@@ -340,9 +404,15 @@
                 });
                 if (!r.ok) {
                     let message = 'Could not start live view';
-                    try { message = (await r.json()).message || message; } catch (_) {}
+                    let offDuty = false;
+                    try {
+                        const j = await r.json();
+                        message = j.message || message;
+                        offDuty = !!j.off_duty;
+                    } catch (_) {}
                     const err = new Error(message);
                     err.status = r.status;
+                    err.offDuty = offDuty;
                     throw err;
                 }
                 const data = await r.json();
@@ -465,7 +535,7 @@
             }
 
             async function loop(runId) {
-                while (tile.playing && !tile.minimized && runId === tile.runId) {
+                while (tile.playing && !tile.minimized && !tile.offPage && runId === tile.runId) {
                     const t0 = performance.now();
                     if (!tile.urls) {
                         try {
@@ -498,7 +568,7 @@
                 clearTimeout(tile.retryTimer);
                 tile.retryTimer = setTimeout(function () {
                     tile.retryTimer = null;
-                    if (!tile.minimized) play();
+                    if (!tile.minimized && !tile.offPage) play();
                 }, ms);
             }
 
@@ -508,13 +578,14 @@
                 playBtn.classList.remove('is-on');
                 showWait((err && err.message) || 'Could not start live view', 'is-error');
                 meta.textContent = 'Not live';
-                // Off duty / transient failure: keep checking so video starts by itself later.
-                scheduleRetry(15000);
+                // Not clocked in / on a break: check only once a minute. Other transient failures
+                // keep the faster 15s retry so video starts by itself soon after.
+                scheduleRetry(err && err.offDuty ? 60000 : 15000);
                 layout();
             }
 
             async function play() {
-                if (tile.playing) return;
+                if (tile.playing || tile.offPage) return;
                 clearTimeout(tile.retryTimer);
                 tile.retryTimer = null;
                 tile.playing = true;
@@ -699,7 +770,21 @@
         });
 
         document.getElementById('btnPlayAll').addEventListener('click', function () {
-            tiles.filter(t => !t.minimized).forEach((t, i) => setTimeout(() => t.play(), i * 120));
+            tiles.filter(t => !t.minimized && !t.offPage).forEach((t, i) => setTimeout(() => t.play(), i * 120));
+        });
+
+        gridSizeEl.addEventListener('change', function () {
+            gridSize = this.value;
+            page = 0;
+            layout();
+        });
+        document.getElementById('tmvPrev').addEventListener('click', function () {
+            page -= 1;
+            layout();
+        });
+        document.getElementById('tmvNext').addEventListener('click', function () {
+            page += 1;
+            layout();
         });
         document.getElementById('btnPauseAll').addEventListener('click', function () {
             tiles.forEach(t => t.pause());
@@ -710,7 +795,8 @@
         window.addEventListener('beforeunload', function () { tiles.forEach(t => t.shutdown()); });
 
         layout();
-        tiles.forEach((t, i) => setTimeout(() => t.play(), 200 + i * 140));
+        started = true;
+        tiles.filter(t => !t.offPage).forEach((t, i) => setTimeout(() => t.play(), 200 + i * 140));
     })();
     </script>
 </body>
