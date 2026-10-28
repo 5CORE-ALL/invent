@@ -4324,7 +4324,14 @@
                     table.getRows().forEach(function (r) { try { r.reformat(); } catch (e) {} });
                 });
             });
+            var amzBgtGridPaintTimer = null;
             table.on('dataLoaded', function () {
+                // The grid has just reported its campaign count: repaint the budget badge and rule counts against it.
+                if (amzBgtGridPaintTimer) clearTimeout(amzBgtGridPaintTimer);
+                amzBgtGridPaintTimer = setTimeout(function () {
+                    amzBgtGridPaintTimer = null;
+                    if (typeof amzBgtPaintSum === 'function') amzBgtPaintSum();
+                }, 300);
                 amzRefreshUiSoon();
                 if (typeof amzAutoPushPullOn === 'function' && amzAutoPushPullOn()) amzAutoPushChangedSbgt();
             });
@@ -6577,7 +6584,9 @@
             // A short count (34 of 227) once got stored as "full" and then showed a tiny SUGG DAILY BGT everywhere.
             function amzBgtCoversAllCampaigns(n) {
                 var total = (typeof amzDistinctCampaignCount === 'number' && isFinite(amzDistinctCampaignCount)) ? amzDistinctCampaignCount : null;
-                if (total === null || total <= 0) return true;
+                // Until the grid has reported its campaign count there is nothing to compare with, so a stored count is not trusted yet.
+                if (total === null) return false;
+                if (total <= 0) return true;
                 return Number(n) >= Math.floor(total * 0.98);
             }
             // Saved by the nightly job ('ENABLED') or by this page for the same filter key.
