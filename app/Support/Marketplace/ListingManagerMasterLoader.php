@@ -438,7 +438,7 @@ class ListingManagerMasterLoader
      */
     private static function images(string $sku): array
     {
-        $images = ListingManagerAmazonHydrator::imageMasterUrls($sku);
+        $images = ListingManagerAmazonHydrator::imageMasterCurrentUrls($sku);
         if ($images === []) {
             return [
                 'success' => false,

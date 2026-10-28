@@ -661,7 +661,7 @@
                 const itemId = String(item.eBay_item_id || '').trim();
                 // Automated: NRL from B2B store; Listed from b5c_b2b_products listing
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
-                const listed = itemId ? 'Listed' : 'Pending';
+                const listed = item.page_created ? 'Created' : (itemId ? 'Listed' : 'Pending');
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',

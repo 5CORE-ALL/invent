@@ -484,15 +484,8 @@ class ChannelListingRegistry
             return ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0, 'MissingL' => 0];
         }
 
-        $skus = ListingCountsEngine::countUniverseSkus($requirePositiveInv);
-        $dataView = $cfg['dataView'] ?? null;
-        $nrValues = ($dataView && class_exists($dataView))
-            ? ListingCountsEngine::loadNrValues($dataView, $skus)
-            : collect();
-        $nrValues = self::overlayListingStatusNr($nrValues, $cfg['status'] ?? null, $skus);
-        $listedMap = self::loadListedIds($cfg, $skus);
-
-        return ListingCountsEngine::counts($nrValues, $listedMap, $requirePositiveInv);
+        // Counted from the very rows the listing page shows, so the two can never disagree.
+        return AutomatedListingPage::counts($key, $requirePositiveInv);
     }
 
     /**

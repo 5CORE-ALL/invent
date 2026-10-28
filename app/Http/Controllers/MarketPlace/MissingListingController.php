@@ -66,6 +66,8 @@ class MissingListingController extends Controller
                     $cached['data'] = $this->appendFbMarketplaceRow($cached['data']);
                     $cached['data'] = $this->overlayCsvListedCounts($cached['data']);
                     $cached['total_missing_l'] = $this->sumMissingL($cached['data']);
+                    // The sidebar badge reads this same figure.
+                    ListingChannelCounts::storeTotalMissingL((int) $cached['total_missing_l']);
                 } catch (\Throwable $e) {
                     Log::warning('Missing Listing overlayListingModes failed: '.$e->getMessage());
                 }
@@ -371,7 +373,17 @@ class MissingListingController extends Controller
         $cpSkuCount = (int) ($cpMasterCounts['SKU'] ?? 0);
         $cpZeroInv = (int) ($cpMasterCounts['ZeroInv'] ?? 0);
 
-        $data = $this->loadMasterRows()->map(function ($master) use ($hasLogo, $hasSellerLink, $cpSkuCount, $cpZeroInv) {
+        $previousByChannel = [];
+        try {
+            $previousPayload = Cache::get(self::PAGE_CACHE_KEY);
+            foreach ((is_array($previousPayload) ? ($previousPayload['data'] ?? []) : []) as $prevRow) {
+                $previousByChannel[ListingChannelCounts::normalize((string) ($prevRow['channel'] ?? ''))] = $prevRow;
+            }
+        } catch (\Throwable $e) {
+            $previousByChannel = [];
+        }
+
+        $data = $this->loadMasterRows()->map(function ($master) use ($hasLogo, $hasSellerLink, $cpSkuCount, $cpZeroInv, $previousByChannel) {
             $channel = (string) $master->channel;
             $dataSource = ListingChannelCounts::dataSource($channel);
 
@@ -407,10 +419,19 @@ class MissingListingController extends Controller
             }
 
             try {
-                $listingCounts = ListingChannelCounts::forChannel($channel, true);
+                $listingCounts = ListingChannelCounts::forChannel($channel, true, true, true);
             } catch (\Throwable $e) {
                 Log::warning('Missing Listing counts failed for '.$channel.': '.$e->getMessage());
-                $listingCounts = ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0];
+                // Keep the last good numbers instead of caching zeros for days.
+                $prev = $previousByChannel[ListingChannelCounts::normalize($channel)] ?? null;
+                $listingCounts = is_array($prev) && ($prev['req'] ?? null) !== null
+                    ? [
+                        'REQ' => (int) $prev['req'],
+                        'NRL' => (int) ($prev['nrl'] ?? 0),
+                        'Listed' => (int) ($prev['listed'] ?? 0),
+                        'Pending' => (int) ($prev['missing_listing'] ?? 0),
+                    ]
+                    : ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0];
             }
 
             return [

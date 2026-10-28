@@ -257,10 +257,8 @@
     }
 
     // Listing Catalogue scores — cached / badge snapshots only (never live-scan on /home).
-    $lcMissingL = (int) ($amm['missing_l'] ?? 0);
-    if ($lcMissingL <= 0) {
-        $lcMissingL = \App\Support\Marketplace\ListingChannelCounts::totalMissingL(true);
-    }
+    // Same total as the Missing Listing page and the sidebar badge.
+    $lcMissingL = \App\Support\Marketplace\ListingChannelCounts::totalMissingL(true);
     $lcNmap = (int) ($amm['nmap'] ?? 0);
     if ($lcNmap <= 0) {
         $lcNmap = \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::nmapCountForSidebar();

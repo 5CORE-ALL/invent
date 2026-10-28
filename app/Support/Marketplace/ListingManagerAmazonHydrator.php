@@ -1345,6 +1345,41 @@ class ListingManagerAmazonHydrator
     }
 
     /**
+     * The images that are in Image Master for this SKU right now, in the order saved there
+     * (Product Master image1 … image20, the same list the Image Master window shows).
+     * Falls back to the wider collection only when nothing was saved in Image Master yet.
+     * This is what "Load Images From Image Master" must use: the wider collection also mixes in
+     * old uploads, the parent's photos and the Shopify gallery, which is how unrelated or stale
+     * photos ended up in a draft.
+     *
+     * @return list<string>
+     */
+    public static function imageMasterCurrentUrls(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $pm = self::productMaster($sku);
+        $out = [];
+        $push = function ($url) use (&$out): void {
+            $url = self::publicImageUrl($url);
+            if ($url !== '' && ! in_array($url, $out, true)) {
+                $out[] = $url;
+            }
+        };
+        for ($i = 1; $i <= 20; $i++) {
+            $push($pm['image'.$i] ?? null);
+        }
+        if ($out !== []) {
+            return $out;
+        }
+
+        return self::collectImages(null, [], $pm, $sku);
+    }
+
+    /**
      * Public Image Master URLs for listing-page publish (SKU, then parent).
      * Prefers Shopify CDN copies so marketplaces can fetch the photos.
      *

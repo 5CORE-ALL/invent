@@ -973,6 +973,9 @@
                             <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-desc-btn" data-desc-source="description_master">
                                 <i class="fas fa-book me-1"></i>Load from Description Master
                             </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-desc-btn" data-desc-source="aplus" title="Load the A+ content stored in Description Master (fetched from Shopify if not stored yet)">
+                                <i class="fas fa-star me-1"></i>Fetch A+
+                            </button>
                             <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-desc-btn" data-desc-source="shopify">
                                 <i class="fab fa-shopify me-1"></i>Load from Shopify
                             </button>

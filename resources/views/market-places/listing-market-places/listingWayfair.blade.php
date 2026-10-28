@@ -745,7 +745,7 @@
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
                 const itemId = String(item.eBay_item_id || '').trim();
-                const listed = itemId ? 'Listed' : 'Pending';
+                const listed = item.page_created ? 'Created' : (itemId ? 'Listed' : 'Pending');
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',

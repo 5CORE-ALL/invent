@@ -2238,6 +2238,16 @@ class ListingManagerController extends Controller
         } elseif (in_array($source, ['description_master', 'master', 'description-master'], true)) {
             $html = ListingManagerAmazonHydrator::descriptionMaster($sku);
             $label = 'Description Master';
+        } elseif (in_array($source, ['aplus', 'a+', 'a_plus'], true)) {
+            $source = 'aplus';
+            $label = 'A+ Content';
+            $html = $this->resolveAplusContent($sku);
+            if ($html === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No A+ content stored or fetchable for this SKU. Open Description Master → A+ Content to fetch or write it.',
+                ], 422);
+            }
         } else {
             $html = ListingManagerAmazonHydrator::shopifyDescription($sku);
             $label = 'Shopify';
@@ -2280,6 +2290,47 @@ class ListingManagerController extends Controller
             'images' => [],
             'draft' => $this->serializeDraft($draft->fresh()->load('channel:id,channel,logo'), true),
         ]);
+    }
+
+    /**
+     * A+ HTML for a SKU: stored Shopify A+ (Description Master → A+ Content), fetched once from Shopify
+     * when missing, then the stored Amazon A+ as a last resort.
+     */
+    private function resolveAplusContent(string $sku): string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return '';
+        }
+        try {
+            $product = \App\Models\ProductMaster::query()->where('sku', $sku)->first();
+            if (! $product) {
+                return '';
+            }
+            if (\App\Services\Support\ShopifyAplusContentSync::isSchemaReady()) {
+                if (! \App\Services\Support\ShopifyAplusContentSync::hasContent($product)) {
+                    try {
+                        $res = app(\App\Services\Support\ShopifyAplusContentSync::class)->fetchAndStore($product, false);
+                        if (isset($res['product']) && $res['product'] instanceof \App\Models\ProductMaster) {
+                            $product = $res['product'];
+                        }
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning('ListingManager: A+ fetch failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+                    }
+                }
+                $html = trim((string) ($product->shopify_aplus_content ?? ''));
+                if ($html !== '') {
+                    return $html;
+                }
+            }
+            $amazon = trim((string) ($product->amazon_aplus_content ?? ''));
+
+            return $amazon;
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('ListingManager: resolveAplusContent failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return '';
+        }
     }
 
     public function searchCategories(Request $request)
@@ -2560,7 +2611,7 @@ class ListingManagerController extends Controller
 
         // If draft still has no usable images, pull Image Master only
         if ($images === []) {
-            $images = ListingManagerAmazonHydrator::imageMasterUrls((string) $draft->seller_sku);
+            $images = ListingManagerAmazonHydrator::imageMasterCurrentUrls((string) $draft->seller_sku);
         }
         $images = ListingManagerImageStore::localizeMany($images, (string) $draft->seller_sku);
 
@@ -2612,7 +2663,7 @@ class ListingManagerController extends Controller
         $draft = ListingManagerChannelDraft::query()->with('channel:id,channel,logo')->findOrFail($id);
         $sku = trim((string) $draft->seller_sku);
         $family = ListingManagerEditorProfile::family(ListingChannelCounts::normalize((string) ($draft->channel->channel ?? '')));
-        $source = ListingManagerAmazonHydrator::imageMasterUrls($sku);
+        $source = ListingManagerAmazonHydrator::imageMasterCurrentUrls($sku);
         if ($family === 'tiktok') {
             $source = array_slice($source, 0, 9);
         }
@@ -3715,7 +3766,7 @@ class ListingManagerController extends Controller
         $needsImages = $images === [] && trim((string) ($details['image_url'] ?? '')) === '';
 
         if ($needsImages) {
-            $fetched = ListingManagerAmazonHydrator::imageMasterUrls((string) $draft->seller_sku);
+            $fetched = ListingManagerAmazonHydrator::imageMasterCurrentUrls((string) $draft->seller_sku);
             if ($family === 'tiktok') {
                 $fetched = array_slice($fetched, 0, 9);
             }
