@@ -168,6 +168,7 @@
         .amz-pva-skus--over { color: #9a3412; background: #ffedd5; border: 1px solid #fdba74; }
         .amz-pva-skus--extra { color: #1e3a8a; background: #dbeafe; border: 1px solid #93c5fd; }
         .amz-pva-skus--archived { color: #374151; background: #e5e7eb; border: 1px solid #9ca3af; }
+        .amz-pva-skus--skipped { color: #6b7280; background: #f3f4f6; border: 1px dashed #d1d5db; }
         .amz-ads-missing .link-add-btn {
             border: 1px solid #adb5bd;
             background: #fff;
@@ -1184,6 +1185,7 @@
                 if (amzPvaList(f, 'over_skus').length) { parts.push('Over: ' + amzPvaList(f, 'over_skus').join(', ')); }
                 if (amzPvaList(f, 'extra_skus').length) { parts.push('Extra: ' + amzPvaList(f, 'extra_skus').join(', ')); }
                 if (amzPvaList(f, 'archived_extra_skus').length) { parts.push('Archived: ' + amzPvaList(f, 'archived_extra_skus').join(', ')); }
+                if (amzPvaList(f, 'skipped_skus').length) { parts.push('Not required (Coming / NRL / INV ≤ 1, not counted in x/y): ' + amzPvaList(f, 'skipped_skus').join(', ')); }
                 return type.toUpperCase() + (parts.length ? ' — ' + parts.join(' | ') : ' siblings OK');
             }
             function amzPvaCellHtml(type, f) {
@@ -1203,6 +1205,7 @@
                 if (amzPvaList(f, 'over_skus').length) { lines += '<span class="amz-pva-skus amz-pva-skus--over">Over: ' + amzPvaEsc(amzPvaList(f, 'over_skus').join(', ')) + '</span>'; }
                 if (amzPvaList(f, 'extra_skus').length) { lines += '<span class="amz-pva-skus amz-pva-skus--extra">Extra: ' + amzPvaEsc(amzPvaList(f, 'extra_skus').join(', ')) + '</span>'; }
                 if (amzPvaList(f, 'archived_extra_skus').length) { lines += '<span class="amz-pva-skus amz-pva-skus--archived">Archived: ' + amzPvaEsc(amzPvaList(f, 'archived_extra_skus').join(', ')) + '</span>'; }
+                if (amzPvaList(f, 'skipped_skus').length) { lines += '<span class="amz-pva-skus amz-pva-skus--skipped">Not required: ' + amzPvaEsc(amzPvaList(f, 'skipped_skus').join(', ')) + '</span>'; }
                 return '<span class="amz-pva-wrap" title="' + amzPvaEsc(amzPvaHover(type, f)) + '"><span class="' + cls + '">' + main + '</span>' + lines + '</span>';
             }
             // Cell content for a parent + type ('kw' | 'pt'); shows "…" until the summary has loaded.

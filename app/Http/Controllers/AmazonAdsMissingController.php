@@ -1026,16 +1026,26 @@ class AmazonAdsMissingController extends Controller
 
             $allChildAsins = [];
             $required = [];
+            $skipped = [];
             foreach (($childrenByParent[$pKey]['children'] ?? []) as $c) {
                 $asin = strtoupper(trim((string) ($c['asin'] ?? '')));
+                $childSku = (string) ($c['target_sku'] ?? $asin);
+                $inv = (float) ($c['inv'] ?? 0);
                 if ($asin === '') {
+                    $skipped[] = $childSku.' (no ASIN)';
+
                     continue;
                 }
                 $allChildAsins[$asin] = true;
-                if ((float) ($c['inv'] ?? 0) > 0) {
-                    $required[$asin] = (string) ($c['target_sku'] ?? $asin);
+                // Same rule as Parent Vs Ads SKU KW / PT: a child with INV ≤ 1 does not need an ad,
+                // unless it is already on the HL creative (then it counts).
+                if ($inv > 1 || isset($listed[$asin])) {
+                    $required[$asin] = $childSku;
+                } else {
+                    $skipped[] = $childSku.' (INV '.rtrim(rtrim(number_format($inv, 2, '.', ''), '0'), '.').')';
                 }
             }
+            sort($skipped, SORT_NATURAL | SORT_FLAG_CASE);
             if ($required === []) {
                 continue;
             }
@@ -1070,6 +1080,7 @@ class AmazonAdsMissingController extends Controller
                 'archived_extra_skus' => [],
                 'added_campaigns' => $links->pluck('campaign_name')->filter()->values()->all(),
                 'added_skus' => $added,
+                'skipped_skus' => $skipped,
             ]];
         }
 

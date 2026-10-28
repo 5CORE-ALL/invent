@@ -324,7 +324,7 @@ class AmzVariationVerifyController extends Controller
             $payload = $this->data(request())->getData(true);
             $keys = [
                 'ad_status', 'ad_label', 'missing', 'extra', 'archived_extra', 'over',
-                'missing_skus', 'over_skus', 'extra_skus', 'archived_extra_skus', 'added_campaigns', 'added_skus',
+                'missing_skus', 'over_skus', 'extra_skus', 'archived_extra_skus', 'added_campaigns', 'added_skus', 'skipped_skus',
             ];
             $map = [];
             foreach ((array) ($payload['data'] ?? []) as $row) {
@@ -1365,12 +1365,37 @@ class AmzVariationVerifyController extends Controller
                 'extra_campaigns' => [],
                 'added_skus' => [],
                 'added_campaigns' => [],
+                'skipped_skus' => [],
             ];
         }
 
-        $requiredChildren = array_values(array_filter($children, fn ($c) => empty($c['skip_ads_required']) && empty($c['is_coming']) && empty($c['is_nrl']) && empty($c['is_low_inv'])));
+        // A child needs an ad unless it is Coming / NRL / INV ≤ 1. A low-INV child that is ALREADY in the campaign still
+        // counts (it is a SKU of the parent that has an ad), so 2 SKUs with both on the campaign show 2/2, not 1/1.
+        $requiredChildren = array_values(array_filter($children, function ($c) use ($prefix) {
+            if (! empty($c['is_coming']) || ! empty($c['is_nrl'])) {
+                return false;
+            }
+            if (empty($c['skip_ads_required']) && empty($c['is_low_inv'])) {
+                return true;
+            }
+
+            return ! empty($c['is_low_inv']) && ! empty($c[$prefix . 'existing']);
+        }));
         $required = count($requiredChildren);
         $existing = count(array_filter($requiredChildren, fn ($c) => ! empty($c[$prefix . 'existing'])));
+
+        // Child SKUs that do not need an ad (Coming / NRL / INV ≤ 1) are not part of "x/y"; list them so the
+        // denominator is explainable (a parent with 2 SKUs can show 1/1 when one SKU is not required).
+        $skippedSkus = [];
+        foreach ($children as $c) {
+            $skuName = trim((string) ($c['sku'] ?? ''));
+            if ($skuName === '' || in_array($c, $requiredChildren, true)) {
+                continue;
+            }
+            $reason = ! empty($c['is_coming']) ? 'Coming' : (! empty($c['is_nrl']) ? 'NRL' : 'INV '.rtrim(rtrim(number_format((float) ($c['inv'] ?? 0), 2, '.', ''), '0'), '.'));
+            $skippedSkus[] = $skuName.' ('.$reason.')';
+        }
+        sort($skippedSkus, SORT_NATURAL | SORT_FLAG_CASE);
 
         $missingSkus = [];
         $overSkus = [];
@@ -1497,6 +1522,7 @@ class AmzVariationVerifyController extends Controller
             'extra_campaigns' => array_values($extraCampaigns),
             'added_skus' => $addedSkus,
             'added_campaigns' => $addedCampaignList,
+            'skipped_skus' => $skippedSkus,
         ];
     }
 
