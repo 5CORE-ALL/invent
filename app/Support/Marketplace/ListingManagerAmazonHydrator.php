@@ -283,8 +283,16 @@ class ListingManagerAmazonHydrator
         ]));
 
         $bullets = $hydrated['bullets'] ?? [];
+        $description = $hydrated['description'] ?: ($existingDetails['description'] ?? '');
+        if (str_contains($key, 'newegg')) {
+            // Newegg only: a draft keeps its own description if one was already saved,
+            // otherwise it starts with the standard 5 Core replacement text.
+            $description = trim((string) ($existingDetails['description'] ?? '')) !== ''
+                ? (string) $existingDetails['description']
+                : self::NEWEGG_DEFAULT_DESCRIPTION;
+        }
         $merged = array_merge($existingDetails, [
-            'description' => $hydrated['description'] ?: ($existingDetails['description'] ?? ''),
+            'description' => $description,
             'condition' => $defaultCondition,
             'brand' => $brand,
             'manufacturer' => $manufacturer,
@@ -689,6 +697,14 @@ class ListingManagerAmazonHydrator
      * @param  array<string, mixed>  $pm
      * @param  list<mixed>  $fallbacks
      */
+    /** Description every new Newegg draft starts with (Newegg only). */
+    public const NEWEGG_DEFAULT_DESCRIPTION = 'EASY REPLACEMENT – At 5 Core, we aim to make your shopping experience simple and hassle-free. If your product arrives damaged, defective, or with an issue covered by our replacement policy, our support team is here to help. Contact us with your order details and a description of the issue, and we’ll guide you through the replacement process in accordance with our applicable policy and terms.';
+
+    public static function isNeweggChannel(?string $channelName): bool
+    {
+        return str_contains(ListingChannelCounts::normalize((string) $channelName), 'newegg');
+    }
+
     public static function isFaireChannel(?string $channelName): bool
     {
         $key = ListingChannelCounts::normalize((string) $channelName);
