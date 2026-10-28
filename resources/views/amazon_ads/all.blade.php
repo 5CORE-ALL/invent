@@ -1325,6 +1325,7 @@
                                 ['p_bid', 'AVG BID', 'L7 avg bid = 7-day spend ÷ clicks (avg CPC).', null],
                                 ['p_cvr', 'CVR%', 'L7 CVR% = 7-day sold ÷ clicks.', null],
                                 ['p_acos', 'ACOS%', 'Projected ACOS% = projected spend ÷ projected ads sales.', null],
+                                ['p_tacos', 'TACOS%', 'Projected TACOS% = projected spend ÷ projected sales.', null],
                                 ['p_clicks', 'CLICKS', 'Projected clicks = L7 clicks ÷ 7 × 30.', null],
                                 ['p_sold', 'SOLD', 'Projected sold = L7 sold ÷ 7 × 30.', null],
                                 ['p_sales', 'SALES', 'Projected ads sales = L7 ads sales ÷ 7 × 30.', null],
@@ -4009,7 +4010,7 @@
                     // Projected volume tiles = L7 ÷ 7 × 30 (same formula as the existing projected spend / sales).
                     var proj = function (v) { return v === null ? null : v / 7 * 30; };
                     var pv = {
-                        bgt: p.bgt, util: p.util, bid: p.bid, cvr: p.cvr, acos: p.acos,
+                        bgt: p.bgt, util: p.util, bid: p.bid, cvr: p.cvr, acos: p.acos, tacos: p.tacos,
                         clicks: proj(p.clicks), sold: proj(p.sold),
                         sales: amzNum(json.projectedSales), spend: amzNum(json.projectedSpend),
                         bgt_total: p.bgt === null ? null : p.bgt * 30

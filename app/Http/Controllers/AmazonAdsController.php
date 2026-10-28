@@ -5636,6 +5636,7 @@ class AmazonAdsController extends Controller
             }
         }
         $keys[] = 'y_tacos';
+        $keys[] = 'p_tacos';
         $keys[] = 'l30_bgt_total';
         $keys[] = 'p_bgt_total';
         foreach (['u1', 'u7'] as $u) {
