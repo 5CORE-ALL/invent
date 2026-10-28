@@ -368,10 +368,9 @@ class NewTemuoneSuggestedPriceStore
      */
     public static function priceFromExactSgroi(float $lp, float $ship, float $sgroi, float $adsPercent = 0.0, ?float $margin = null): float
     {
-        // Same inversion as /temu3-decrease: S R = S PRC × 0.88, S Profit = S R × margin − ship − LP (no ads on this page).
-        unset($adsPercent);
+        // S R = S PRC × 0.88, S Profit = S R × margin − ship − LP, SNROI = (S Profit − S PRC × Ads%) ÷ LP (same as Amazon).
         $margin = ($margin !== null && $margin > 0) ? $margin : TemuShopifySalesService::temuMarginDecimal();
-        $raw = TemuShopifySalesService::newTemuoneSpriceFromTarget($lp, $ship, $sgroi, $margin);
+        $raw = TemuShopifySalesService::newTemuoneSpriceFromTarget($lp, $ship, $sgroi, $margin, $adsPercent);
         if (! is_finite($raw) || $raw < 0.01) {
             return 0.0;
         }

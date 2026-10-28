@@ -486,7 +486,7 @@ class TemuShopifySalesService
      * Temu 1 / Temu 3 back-solve: S PRC whose SNROI (S R = S PRC × 0.88; S Profit = S R × margin − ship − LP) equals the target.
      * Nearest cent to the closed-form price, so the page lands on the target (70 → 70, not 63).
      */
-    public static function newTemuoneSpriceFromTarget(float $lp, float $ship, float $targetPct, float $margin): float
+    public static function newTemuoneSpriceFromTarget(float $lp, float $ship, float $targetPct, float $margin, float $adsPercent = 0.0): float
     {
         if (! ($lp > 0) || ! is_finite($lp) || ! is_finite($targetPct) || ! ($margin > 0)) {
             return 0.0;
@@ -494,7 +494,14 @@ class TemuShopifySalesService
         if (! is_finite($ship)) {
             $ship = 0.0;
         }
-        $denom = self::S_RECOVERY_RATE * $margin;
+        if (! is_finite($adsPercent) || $adsPercent < 0) {
+            $adsPercent = 0.0;
+        }
+        // SNROI = (S Profit − S PRC × Ads%) ÷ LP, so the ads share lowers what each S PRC dollar keeps.
+        $denom = (self::S_RECOVERY_RATE * $margin) - ($adsPercent / 100);
+        if (! ($denom > 0)) {
+            return 0.0;
+        }
         $seed = ($lp * (1 + $targetPct / 100) + $ship) / $denom;
         if (! ($seed > 0) || ! is_finite($seed)) {
             return 0.0;
@@ -508,6 +515,7 @@ class TemuShopifySalesService
             if ($roi === null) {
                 continue;
             }
+            $roi -= ($price * $adsPercent / 100) / $lp * 100;
             $err = abs($roi - $targetPct);
             if ($err < $bestErr - 0.0001) {
                 $bestErr = $err;

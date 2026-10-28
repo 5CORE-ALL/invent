@@ -379,8 +379,8 @@ class NewTemuoneController extends Controller
             $suggestedStore = new NewTemuoneSuggestedPriceStore();
             $suggestedStore->loadForSkus($skus);
             $percentage = TemuShopifySalesService::temuMarginDecimal();
-            // Same as /temu3-decrease: no ads on this page (Ads% = 0), so SNROI = SGROI and SNPFT = SGPRFT.
-            $adsPercent = 0.0;
+            // Channel Ads% (the header badge, same as /channel-master): SNPFT = SGPRFT − Ads%, SNROI nets S PRC × Ads% off S Profit.
+            $adsPercent = (float) ($this->temuChannelAdsSummary()['percent'] ?? 0);
 
             $temuLmpByNormalizedSku = [];
             if ($this->hasTable('temu_lmp')) {

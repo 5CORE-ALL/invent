@@ -851,7 +851,7 @@
         return Math.round((Number(n) || 0) * 100) / 100;
     }
     const chPromoSnroiPriceCache = {};
-    /** Live SNROI at a candidate S PRC. Same math as the SNROI column (S Profit ÷ LP; no ads on this page). */
+    /** Live SNROI at a candidate S PRC. Same math as the SNROI column ((S Profit − S PRC × Ads%) ÷ LP). */
     function chPromoTemuSnroiAt(d, price, lp) {
         const parts = temuSpriceCalcParts(d, price);
         if (!parts || parts.sgroi == null || !isFinite(parts.sgroi)) return null;
@@ -1450,14 +1450,15 @@
         return temuSroiPercent(row);
     }
 
-    // Same as /temu3-decrease: no ads on this page (Ads% = 0), so the net columns match the gross ones:
-    // SNROI = SGROI and SNPFT = SGPRFT. The Ads badge in the header is display only.
+    // Channel-level Ads% (the header Ads badge, same as /channel-master), applied like Amazon:
+    // SNPFT% = SGPRFT% − Ads%, SNROI = (S Profit − S PRC × Ads%) ÷ LP, NPFT$ = Gpft − (Temu Price × Ads%).
     const TEMU_ADS_PERCENT = {{ (float) ($temuAds['percent'] ?? 0) }};
 
     function temuAdsPercentForNet() {
-        return 0;
+        const n = parseFloat(TEMU_ADS_PERCENT);
+        return (Number.isFinite(n) && n > 0) ? n : 0;
     }
-    // The SNROI Cap (Std prc vs dil) judges the same Ads% the SNROI column uses (none here).
+    // The SNROI Cap (Std prc vs dil) judges the same Ads% the SNROI column uses.
     window.CH_PROMO_ADS_FN = function() { return temuAdsPercentForNet(); };
 
     /** SNPFT$ = S Profit − (S PRC × Ads%). */
@@ -1468,7 +1469,7 @@
         return spft - ((sprice > 0 ? sprice : 0) * (temuAdsPercentForNet() / 100));
     }
 
-    /** SNPFT = S Profit ÷ S PRC (no ads here, so it equals SGPRFT%). */
+    /** SNPFT% = (S Profit − S PRC × Ads%) ÷ S PRC = SGPRFT% − Ads%. */
     function temuSnpftPercent(row) {
         const sprice = temuRowSpriceValue(row);
         const snpft = temuSnpftDollars(row, sprice);
@@ -1481,6 +1482,30 @@
         const lp = parseFloat(row && row.lp) || 0;
         if (snpft == null || !(lp > 0)) return null;
         return (snpft / lp) * 100;
+    }
+
+    /** NPFT$ = Gpft − (Temu Price × Ads%). Ads% is the header Ads badge (L30 ad spend ÷ L30 sales). */
+    function temuNpftDollars(row) {
+        const gpft = temuPftDollars95(row);
+        if (gpft == null) return null;
+        const tPrice = parseFloat(row && row.t_price) || 0;
+        return gpft - (tPrice * (temuAdsPercentForNet() / 100));
+    }
+
+    /** NPFT% = NPFT$ ÷ Temu Price. */
+    function temuNpftPercent(row) {
+        const npft = temuNpftDollars(row);
+        const tPrice = parseFloat(row && row.t_price) || 0;
+        if (npft == null || !(tPrice > 0)) return null;
+        return (npft / tPrice) * 100;
+    }
+
+    /** NROI% = NPFT$ ÷ LP. */
+    function temuNroiPercent(row) {
+        const npft = temuNpftDollars(row);
+        const lp = parseFloat(row && row.lp) || 0;
+        if (npft == null || !(lp > 0)) return null;
+        return (npft / lp) * 100;
     }
 
     /**
@@ -3109,8 +3134,8 @@
             return 'basics';
         }
         if (
-            /^(_push|cvr_percent|cvr_30|cvr_45|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_recovery|stemu_price|s_profit|temu_price_12|disc_amt|price_after_disc|ship_disc|promo_base_prc|lp|temu_ship|gpft_dollar|pm_discount|age_discount|dil_discount|lmp_discount|moq_m_discount|buss_discount|pricing_discount|roi_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|profit_percent|roi_percent|sgprft_percent|sgroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
-            /\b(cvr|cpn|price|prc|gpft|gprft|groi|lmp|sprc\s*dil|s\s*prc|s\s*profit|s\s*r\s*prc|sgprft|sgroi|snpft|snroi)\b/i.test(tl)
+            /^(_push|cvr_percent|cvr_30|cvr_45|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_recovery|stemu_price|s_profit|temu_price_12|disc_amt|price_after_disc|ship_disc|promo_base_prc|lp|temu_ship|gpft_dollar|pm_discount|age_discount|dil_discount|lmp_discount|moq_m_discount|buss_discount|pricing_discount|roi_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|profit_percent|roi_percent|npft_percent|nroi_percent|sgprft_percent|sgroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /\b(cvr|cpn|price|prc|gpft|gprft|groi|npft|nroi|lmp|sprc\s*dil|s\s*prc|s\s*profit|s\s*r\s*prc|sgprft|sgroi|snpft|snroi)\b/i.test(tl)
         ) {
             return 'pricing';
         }
@@ -3796,6 +3821,38 @@
                     }
                 },
                 {
+                    title: 'NPFT%',
+                    field: 'npft_percent',
+                    hozAlign: 'center',
+                    width: 80,
+                    sorter: temuComputedSorter(temuNpftPercent),
+                    headerTooltip: 'NPFT% = NPFT$ ÷ Temu Price. NPFT$ = Gpft − (Temu Price × Ads%). Ads% is the header Ads badge. Gpft = (Price After Discount × 0.95) − Temu Ship − LP',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const value = temuNpftPercent(row);
+                        if (value == null) return '<span style="color: #6c757d;">—</span>';
+                        const tip = 'NPFT $' + temuNpftDollars(row).toFixed(2) + ' (Gpft $' + temuPftDollars95(row).toFixed(2)
+                            + ' − Ads ' + temuAdsPercentForNet().toFixed(1) + '% of Temu Price) ÷ Temu Price $'
+                            + (parseFloat(row.t_price) || 0).toFixed(2);
+                        return temuPercentCell(value, 'pft', tip);
+                    }
+                },
+                {
+                    title: 'NROI%',
+                    field: 'nroi_percent',
+                    hozAlign: 'center',
+                    width: 80,
+                    sorter: temuComputedSorter(temuNroiPercent),
+                    headerTooltip: 'NROI% = NPFT$ ÷ LP. NPFT$ = Gpft − (Temu Price × Ads%). Ads% is the header Ads badge.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const value = temuNroiPercent(row);
+                        if (value == null) return '<span style="color: #6c757d;">—</span>';
+                        const tip = 'NPFT $' + temuNpftDollars(row).toFixed(2) + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2);
+                        return temuPercentCell(value, 'roi', tip);
+                    }
+                },
+                {
                     title: 'LMP',
                     field: 'lmp_raw',
                     hozAlign: 'center',
@@ -3977,7 +4034,7 @@
                     hozAlign: 'center',
                     width: 70,
                     sorter: temuComputedSorter(temuSgroiPercent),
-                    headerTooltip: 'SGROI% = S Profit ÷ LP. S Profit = S Recovery × margin − LP − Temu Ship. Same number as SNROI%.',
+                    headerTooltip: 'SGROI% = S Profit ÷ LP. S Profit = S Recovery × margin − LP − Temu Ship. Gross (before Ads%). SNROI% = this minus the ads on S PRC.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const v = temuSgroiPercent(row);
@@ -3992,12 +4049,12 @@
                     hozAlign: 'center',
                     width: 70,
                     sorter: temuComputedSorter(temuSnroiPercent),
-                    headerTooltip: 'SNROI% = live SNPFT ÷ LP at S PRC. With Sprc Dil ON it matches the Dil + CVR + Age + Diff Target SNROI (lower only when LMP or Std Prc caps S PRC). With Std prc vs dil ON it follows that rule\'s price.',
+                    headerTooltip: 'SNROI% = live SNPFT$ ÷ LP at S PRC. SNPFT$ = S Profit − (S PRC × Ads%), Ads% = the header Ads badge. With Sprc Dil ON it matches the Dil + CVR + Age + Diff Target SNROI (lower only when LMP or Std Prc caps S PRC). With Std prc vs dil ON it follows that rule\'s price.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const v = temuSnroiPercent(row);
                         if (v == null) return '';
-                        const tip = 'SNPFT $' + (temuSnpftDollars(row) || 0).toFixed(2) + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2);
+                        const tip = 'SNPFT $' + (temuSnpftDollars(row) || 0).toFixed(2) + ' (S Profit − Ads ' + temuAdsPercentForNet().toFixed(1) + '% of S PRC) ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2);
                         return temuPercentCell(v, 'roi', tip);
                     }
                 },
@@ -4022,12 +4079,12 @@
                     hozAlign: 'center',
                     width: 70,
                     sorter: temuComputedSorter(temuSnpftPercent),
-                    headerTooltip: 'SNPFT = SGPRFT%. This page has no ads, so both are S Profit ÷ S PRC.',
+                    headerTooltip: 'SNPFT% = (S Profit − S PRC × Ads%) ÷ S PRC = SGPRFT% − Ads%. Ads% is the header Ads badge, same as Amazon.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const v = temuSnpftPercent(row);
                         if (v == null) return '';
-                        const tip = 'S Profit $' + (temuSnpftDollars(row) || 0).toFixed(2) + ' ÷ S PRC $' + temuRowSpriceValue(row).toFixed(2);
+                        const tip = 'SNPFT $' + (temuSnpftDollars(row) || 0).toFixed(2) + ' (S Profit − Ads ' + temuAdsPercentForNet().toFixed(1) + '% of S PRC) ÷ S PRC $' + temuRowSpriceValue(row).toFixed(2);
                         return temuPercentCell(v, 'pft', tip);
                     }
                 },
