@@ -1053,7 +1053,6 @@
         @media (max-width: 720px) {
             #amazonAdsBgtRulesModal .amz-bgt-col { flex-basis: 100%; max-width: 100%; min-width: 0; }
         }
-        /* One row of cards, left to right; the row scrolls sideways when the cards do not fit. */
         #amazonAdsBgtRulesModal .amz-bgt-cols {
             flex-wrap: nowrap;
             /* Every card is as tall as the tallest one; each shows its whole table, no inner scrollbar. */

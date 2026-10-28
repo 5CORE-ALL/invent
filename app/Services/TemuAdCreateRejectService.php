@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Persist Temu listing-create rejects and open a one-time Task Manager task.
+ * Persist Temu listing-create rejects and open a one-time (per goods ID, ever) Task Manager task.
  */
 class TemuAdCreateRejectService
 {
@@ -87,9 +87,10 @@ class TemuAdCreateRejectService
         $title = self::TITLE_PREFIX.trim($sku);
         $marker = 'temu1_ad_reject_'.$goodsId;
 
-        $existing = Task::query()
+        // One-time only: if a task was EVER created for this goods ID (any status,
+        // including Done/Archived/deleted), never create another one.
+        $existing = Task::withTrashed()
             ->where('link8', $marker)
-            ->whereNotIn('status', ['Done', 'Archived'])
             ->first();
         if ($existing) {
             return [
