@@ -206,6 +206,10 @@ return [
         'min_hours' => (float) env('ATTENDANCE_SIM_MIN_HOURS', 2),
         // Share of heartbeats that were idle below which a long session looks implausible for a human.
         'min_idle_share_percent' => (float) env('ATTENDANCE_SIM_MIN_IDLE_PERCENT', 2),
+        // ...AND the longest stretch without any input must also stay at or below this many seconds.
+        // Low idle share alone is normal (most employees never reach the 120s idle threshold); a
+        // jiggler that nudges the mouse about once a minute caps the OS idle reading near 60s.
+        'max_os_idle_ceiling_seconds' => (int) env('ATTENDANCE_SIM_MAX_IDLE_CEILING', 65),
         // Keystrokes + clicks per "working" hour below which a long session looks like no real work
         // (only judged where the agent's input hook was verified working).
         'min_inputs_per_hour' => (float) env('ATTENDANCE_SIM_MIN_INPUTS_PER_HOUR', 30),

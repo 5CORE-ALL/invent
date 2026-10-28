@@ -293,10 +293,46 @@ class AttendanceAiMisuseService
      */
     private function checkFraud(User $user, string $date): array
     {
-        return array_merge(
+        $flags = array_merge(
             $this->checkFakedActivity($user, $date),
             $this->checkCaptureAndSessionIntegrity($user, $date),
         );
+
+        $this->clearOutdatedFlags($user, $date, $flags);
+
+        return $flags;
+    }
+
+    /**
+     * Rules whose result depends only on stored heartbeat / session rows, so a re-check is a reliable
+     * "does this still apply?". (Screenshot-hash and process checks are left out on purpose: their
+     * evidence can age out, and that must never silently clear an alert.)
+     */
+    private const SELF_CLEARING_TYPES = ['input_simulation', 'no_screenshots', 'marathon_session', 'totals_mismatch'];
+
+    /**
+     * An alert nobody has looked at yet is withdrawn when a fresh check of the same day no longer
+     * raises it (e.g. the rule was tightened, or a manual entry is now recognised). Alerts a person
+     * already reviewed or dismissed are never touched.
+     *
+     * @param  AttendanceAiFlag[]  $raised  flags this run raised or refreshed
+     */
+    private function clearOutdatedFlags(User $user, string $date, array $raised): void
+    {
+        $keep = array_map(fn (AttendanceAiFlag $f) => $f->id, $raised);
+
+        AttendanceAiFlag::query()
+            ->where('user_id', $user->id)
+            ->whereDate('flag_date', $date)
+            ->whereIn('flag_type', self::SELF_CLEARING_TYPES)
+            ->where('source', 'rules')
+            ->where('status', 'open')
+            ->when($keep !== [], fn ($q) => $q->whereNotIn('id', $keep))
+            ->update([
+                'status' => 'dismissed',
+                'reviewed_at' => now(),
+                'review_notes' => 'Auto-cleared: a re-check of this day no longer raises this alert.',
+            ]);
     }
 
     /**
@@ -340,7 +376,11 @@ class AttendanceAiMisuseService
                 ]);
             }
 
-            if (config('attendance.screenshots_enabled', true)) {
+            // Only sessions the desktop agent actually tracked can be expected to have screenshots.
+            // A manual time adjustment (clock_source = manual, no heartbeats) never will.
+            $trackedByAgent = $session->clock_source !== 'manual' && (int) $session->heartbeat_count > 0;
+
+            if ($trackedByAgent && config('attendance.screenshots_enabled', true)) {
                 $expected = intdiv((int) $session->total_active_seconds, $shotInterval);
                 if ($expected >= 20) {
                     $actual = AttendanceScreenshot::query()->where('attendance_session_id', $session->id)->count();
@@ -537,7 +577,12 @@ class AttendanceAiMisuseService
 
         $idleShare = round(100 * $logs->where('activity_state', 'idle')->count() / $logs->count(), 2);
         $maxOsIdle = (int) $logs->max('idle_seconds');
-        $lowIdle = $idleShare < (float) ($cfg['min_idle_share_percent'] ?? 2);
+        // "Never marked idle" alone proves nothing: most honest people never reach the idle threshold
+        // either (checked on live data: 13 of 18 employees on one day). What a person does and an input
+        // simulator does not is pause for a minute or more at some point in a multi-hour session, so
+        // the longest OS-idle reading must also stay under a short ceiling.
+        $ceiling = (int) ($cfg['max_os_idle_ceiling_seconds'] ?? 65);
+        $lowIdle = $idleShare < (float) ($cfg['min_idle_share_percent'] ?? 2) && $maxOsIdle <= $ceiling;
 
         // Longest unbroken stretch on the same app + window while counted as working.
         $run = 0;
@@ -577,7 +622,7 @@ class AttendanceAiMisuseService
 
         $signals = [];
         if ($lowIdle) {
-            $signals[] = "only {$idleShare}% of ".round($hours, 1).'h of heartbeats were idle (OS idle never reached the idle threshold)';
+            $signals[] = "only {$idleShare}% of ".round($hours, 1)."h of heartbeats were idle and the longest pause without input was {$maxOsIdle}s (a person normally pauses for more than a minute at some point)";
         }
         if ($noRealInput) {
             $signals[] = "{$keystrokes} keystrokes and {$clicks} clicks in ".round($trackedHours, 1)."h of 'working' time ({$inputsPerHour} inputs/hour)";
