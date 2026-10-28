@@ -1552,19 +1552,38 @@ class TemuAdsController extends Controller
             }
         }
 
+        // Missing SKUs: show Shopify variant id (SID) and Inv next to each, so they can be listed straight away.
+        $missingSkus = [];
+        foreach ($masterByParent as $skus) {
+            foreach ($skus as $norm => $sku) {
+                if (! isset($listed[$norm])) {
+                    $missingSkus[] = $sku;
+                }
+            }
+        }
+        $shopifyByNorm = $missingSkus !== []
+            ? ShopifySku::buildShopifySkuLookupByNormalizedSku(array_values(array_unique($missingSkus)), false)
+            : [];
+
         $summary = [];
         foreach ($masterByParent as $key => $skus) {
             $missing = [];
             foreach ($skus as $norm => $sku) {
-                if (! isset($listed[$norm])) {
-                    $missing[] = $sku;
+                if (isset($listed[$norm])) {
+                    continue;
                 }
+                $shopify = $shopifyByNorm[$norm] ?? null;
+                $missing[] = [
+                    'sku' => $sku,
+                    'sid' => $shopify ? trim((string) ($shopify->variant_id ?? '')) : '',
+                    'inv' => $shopify ? (int) ($shopify->inv ?? 0) : 0,
+                ];
             }
-            natcasesort($missing);
+            usort($missing, fn (array $a, array $b) => strnatcasecmp($a['sku'], $b['sku']));
             $summary[$key] = [
                 'listed' => count($skus) - count($missing),
                 'total' => count($skus),
-                'missing' => array_values($missing),
+                'missing' => $missing,
             ];
         }
 

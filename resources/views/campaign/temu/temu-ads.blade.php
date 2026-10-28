@@ -2046,10 +2046,13 @@
                             const total = parseInt(d.sku_parent_total, 10) || 0;
                             const missing = Array.isArray(d.sku_parent_missing) ? d.sku_parent_missing : [];
                             const ok = missing.length === 0;
-                            const shown = missing.slice(0, 60);
+                            const shown = missing.slice(0, 60).map(function (m) {
+                                if (typeof m === 'string') return m;
+                                return String(m.sku || '') + '  |  SID: ' + (m.sid ? m.sid : '-') + '  |  Inv: ' + (parseInt(m.inv, 10) || 0);
+                            });
                             const tip = ok
                                 ? 'All ' + total + ' SKUs of this parent are listed on Temu'
-                                : 'Missing on Temu (' + missing.length + '):\n' + shown.join('\n')
+                                : 'Missing on Temu (' + missing.length + '):  SKU  |  SID  |  Inv\n' + shown.join('\n')
                                     + (missing.length > shown.length ? '\n+' + (missing.length - shown.length) + ' more' : '');
                             return '<span title="' + escapeAttr(tip) + '" style="display:inline-block;padding:1px 8px;border-radius:10px;font-weight:700;cursor:help;'
                                 + (ok ? 'background:#dcfce7;color:#15803d;' : 'background:#fee2e2;color:#b91c1c;') + '">'
