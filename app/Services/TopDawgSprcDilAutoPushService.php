@@ -422,6 +422,11 @@ class TopDawgSprcDilAutoPushService
         }
         $target = AmazonDilGroiRule::adjustGroiForCvrArrow((float) $rule['groi'], (float) ($row['cvr'] ?? 0), 0.0, $ctx['cvr_adj'] ?? null);
         $target = max(0.0, round($target, 2));
+        // Ageing Rule: the SKU's age band points, after the CVR overlay and before the Diff rule (same as the page).
+        $target = max(0.0, round($target + AmazonDilGroiRule::ageAdjPoints(
+            is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
+            is_array($ctx['age_adj'] ?? null) ? $ctx['age_adj'] : null
+        ), 2));
         $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
         $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
 
@@ -463,6 +468,7 @@ class TopDawgSprcDilAutoPushService
             'rules' => $rules,
             'cvr_adj' => $unpacked['cvr_adj'] ?? null,
             'diff_adj' => $unpacked['diff_adj'] ?? null,
+            'age_adj' => $unpacked['age_adj'] ?? null,
         ];
     }
 

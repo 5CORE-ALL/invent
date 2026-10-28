@@ -276,6 +276,12 @@ class ShopifyB2bSprcDilAutoPushService
             }
         }
         $afterCvr = max(0.0, round($slabTarget + $cvrAdj, 2));
+        // Ageing Rule: the SKU's age band points, after the CVR overlay and before the Diff rule (same as the page).
+        $ageAdj = AmazonDilGroiRule::ageAdjPoints(
+            is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
+            is_array($ctx['age_adj'] ?? null) ? $ctx['age_adj'] : null
+        );
+        $afterCvr = max(0.0, round($afterCvr + $ageAdj, 2));
 
         // Diff judged against the rule price without the boost, so it does not depend on the live Price (no flip-flop).
         // A listed SKU (live Price > 0) and a Std Prc are still required, same as the page.
@@ -297,6 +303,7 @@ class ShopifyB2bSprcDilAutoPushService
         return [
             'slab' => $slabTarget,
             'cvr_adj' => $cvrAdj,
+            'age_adj' => $ageAdj,
             'diff_adj' => $diffAdj,
             'target' => $target,
             'price' => ($price !== null && $price >= 0.01) ? $price : null,
@@ -331,6 +338,7 @@ class ShopifyB2bSprcDilAutoPushService
             'cvr_adj' => $unpacked['cvr_adj'],
             'lmp_cap' => $unpacked['lmp_cap'],
             'diff_adj' => $unpacked['diff_adj'],
+            'age_adj' => $unpacked['age_adj'] ?? null,
         ];
     }
 
@@ -367,6 +375,18 @@ class ShopifyB2bSprcDilAutoPushService
         $want = null;
         if ($onlySkus !== null && $onlySkus !== []) {
             $want = array_flip(array_map(static fn ($s) => strtoupper(trim((string) $s)), $onlySkus));
+        }
+
+        // Ageing Rule: the Shopify push clock (same source as the Age Disc column).
+        $ageCtl = app(\App\Http\Controllers\ProductMaster\InvDaysController::class);
+        $agePushBySku = [];
+        $ageLastSaleBySku = [];
+        try {
+            $ageSources = $ageCtl->ageDaySources();
+            $agePushBySku = $ageSources['push'] ?? [];
+            $ageLastSaleBySku = $ageSources['last_sale'] ?? [];
+        } catch (Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('[ShopifyB2bSprcDilAutoPush] age days lookup failed', ['error' => $e->getMessage()]);
         }
 
         $pageRows = app(\App\Http\Controllers\MarketPlace\Shopifyb2bController::class)->getViewShopifyB2bTabularData();
@@ -406,6 +426,7 @@ class ShopifyB2bSprcDilAutoPushService
                 'b2b_l30' => (float) ($r['B2B L30'] ?? 0),
                 'lp' => (float) ($r['LP_productmaster'] ?? 0),
                 'lmp' => (float) ($r['lmp_price'] ?? 0),
+                'age_days' => $ageCtl->ageDays($sku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),
                 'sprice' => (float) ($r['SPRICE'] ?? 0),
             ];

@@ -332,6 +332,7 @@
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'vinted'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'vinted'])
+    @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'generic', 'temuRuleLiveLabel' => 'Price'])
     const COLUMN_VIS_KEY = "vinted_tabulator_column_visibility";
     let table = null;
     let allTableData = [];
@@ -992,7 +993,7 @@
                 },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
-                    title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', editable: false,
+                    title: 'SPRICE', field: 'SPRICE', cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); }, cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); }, hozAlign: 'center', editable: false,
                     sorter: 'number', width: 80,
                     headerTooltip: "Not editable. S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ V Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {

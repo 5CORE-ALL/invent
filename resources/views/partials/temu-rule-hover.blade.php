@@ -87,8 +87,8 @@
                 stepNo++;
             }
             const diffAdj = ebayDilGroiDiffAdj(d);
-            const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : 0;
-            const price = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : 0;
+            const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : ((typeof ebayDiffDefaultStd === 'function') ? ebayDiffDefaultStd(d) : 0);
+            const price = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : ((typeof ebayDiffDefaultLive === 'function') ? ebayDiffDefaultLive(d) : 0);
             const diffPct = (std > 0 && price > 0) ? ((std - price) / price) * 100 : null;
             if (diffAdj) {
                 steps.push(temuRuleStep('ok', stepNo + ' · Diff rule',
@@ -452,20 +452,33 @@
                     steps.push(temuRuleStep('ok', '1 · Dil slab',
                         'Dil ' + dil.toFixed(1) + '% (OV L30 ÷ Shopify INV) → ' + temuRuleEsc(meta.label || '') + ' → Target GROI <b>' + meta.slabGroi + '%</b>'
                         + (sold <= 0 ? ' (MC L30 = 0 uses the minimum Target GROI)' : '')));
+                    // Ageing Rule (Sprc Dil modal, Ageing table): the SKU's age band points, after the CVR overlay, before the Diff rule.
+                    if (typeof EBAY_AGE_ADJ_ON !== 'undefined' && EBAY_AGE_ADJ_ON) {
+                        const ageDays = (typeof ebayRowAgeDays === 'function') ? ebayRowAgeDays(d) : null;
+                        const ageAdj = Number(meta.ageAdj) || 0;
+                        const ageIdx = (typeof ebayAgeAdjSlabIdx === 'function' && typeof ebayAgeAdj !== 'undefined') ? ebayAgeAdjSlabIdx(ageDays, ebayAgeAdj) : -1;
+                        const ageBand = (ageIdx >= 0 && typeof ebayAgeAdjBand === 'function') ? ebayAgeAdjBand(ebayAgeAdj[ageIdx]) : null;
+                        const ageLabel = ageBand ? (ageBand.min + '–' + ageBand.max) : '';
+                        steps.push(ageAdj
+                            ? temuRuleStep('ok', '2 · Ageing rule', 'Age <b>' + Math.round(ageDays) + '</b> days → slab ' + ageLabel + ' → <b>' + (ageAdj > 0 ? '+' : '') + ageAdj + '</b> to Target GROI')
+                            : temuRuleStep('skip', '2 · Ageing rule', ageDays === null ? 'No age for this SKU. Not applied.'
+                                : ('Age ' + Math.round(ageDays) + ' days: ' + (ageLabel ? 'slab ' + ageLabel + ' adds 0.' : 'no Ageing slab matches.'))));
+                    }
+                    const ageOn = (typeof EBAY_AGE_ADJ_ON !== 'undefined' && EBAY_AGE_ADJ_ON) ? 1 : 0;
                     const diffAdj = Number(meta.diffAdj) || 0;
                     const stdD = parseFloat(d.STANDARD_PRICE) || 0;
                     const mc = parseFloat(d['MC Price']) || 0;
                     const diffPct = (stdD > 0 && mc > 0) ? ((stdD - mc) / mc) * 100 : null;
                     steps.push(diffAdj
-                        ? temuRuleStep('ok', '2 · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% (Std Prc ' + temuRuleMoney(stdD) + ' vs MC Price ' + temuRuleMoney(mc) + ') is above '
+                        ? temuRuleStep('ok', (2 + ageOn) + ' · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% (Std Prc ' + temuRuleMoney(stdD) + ' vs MC Price ' + temuRuleMoney(mc) + ') is above '
                             + temuRuleDiffCfg().gt_pct + '% → <b>' + temuRuleDiffPts(diffAdj) + '</b> to Target GROI')
-                        : temuRuleStep('skip', '2 · Diff rule', diffPct === null ? 'Needs both Std Prc and MC Price. Not applied.'
+                        : temuRuleStep('skip', (2 + ageOn) + ' · Diff rule', diffPct === null ? 'Needs both Std Prc and MC Price. Not applied.'
                             : ('Diff ' + diffPct.toFixed(1) + '% is not above ' + temuRuleDiffCfg().gt_pct + '%. No ' + temuRuleDiffPts(temuRuleDiffCfg().points))));
-                    steps.push(temuRuleStep('info', '3 · Target GROI', 'Final target <b>' + meta.groi + '%</b>'));
+                    steps.push(temuRuleStep('info', (3 + ageOn) + ' · Target GROI', 'Final target <b>' + meta.groi + '%</b>'));
                     price = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || 0;
-                    steps.push(temuRuleStep('ok', '4 · Price from target',
+                    steps.push(temuRuleStep('ok', (4 + ageOn) + ' · Price from target',
                         '(LP ' + temuRuleMoney(lp) + ' × (1 + ' + meta.groi + '%) + Ship ' + temuRuleMoney(ship) + ') ÷ ' + margin.toFixed(2) + ' = <b>' + temuRuleMoney(price) + '</b>'));
-                    n = 5;
+                    n = 5 + ageOn;
                 }
                 // LMP cap: LMP × (1 − x%) by the SKU's Dil band, only when SNROI at LMP is 20% or more.
                 const pct = temuRuleBandPct(d);
@@ -593,19 +606,32 @@
                     steps.push(temuRuleStep('ok', '1 · Dil slab',
                         'Dil ' + dil.toFixed(1) + '% (OV L30 ÷ Shopify INV) → ' + temuRuleEsc(meta.label || '') + ' → Target SNROI <b>' + meta.slabGroi + '%</b>'
                         + (sold <= 0 ? ' (PP L30 = 0 uses the minimum Target)' : '')));
+                    // Ageing Rule (Sprc Dil modal, Ageing table): the SKU's age band points, after the slab and before the Diff rule.
+                    const ageOn = (typeof EBAY_AGE_ADJ_ON !== 'undefined' && EBAY_AGE_ADJ_ON) ? 1 : 0;
+                    if (ageOn) {
+                        const ageDays = (typeof ebayRowAgeDays === 'function') ? ebayRowAgeDays(d) : null;
+                        const ageAdj = Number(meta.ageAdj) || 0;
+                        const ageIdx = (typeof ebayAgeAdjSlabIdx === 'function' && typeof ebayAgeAdj !== 'undefined') ? ebayAgeAdjSlabIdx(ageDays, ebayAgeAdj) : -1;
+                        const ageBand = (ageIdx >= 0 && typeof ebayAgeAdjBand === 'function') ? ebayAgeAdjBand(ebayAgeAdj[ageIdx]) : null;
+                        const ageLabel = ageBand ? (ageBand.min + '–' + ageBand.max) : '';
+                        steps.push(ageAdj
+                            ? temuRuleStep('ok', '2 · Ageing rule', 'Age <b>' + Math.round(ageDays) + '</b> days → slab ' + ageLabel + ' → <b>' + (ageAdj > 0 ? '+' : '') + ageAdj + '</b> to the Target')
+                            : temuRuleStep('skip', '2 · Ageing rule', ageDays === null ? 'No age for this SKU. Not applied.'
+                                : ('Age ' + Math.round(ageDays) + ' days: ' + (ageLabel ? 'slab ' + ageLabel + ' adds 0.' : 'no Ageing slab matches.'))));
+                    }
                     const diffAdj = Number(meta.diffAdj) || 0;
                     const pp = parseFloat(d['PP Price']) || 0;
                     const diffPct = (std > 0 && pp > 0) ? ((std - pp) / pp) * 100 : null;
                     steps.push(diffAdj
-                        ? temuRuleStep('ok', '2 · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% (Std Prc ' + temuRuleMoney(std) + ' vs PP Price ' + temuRuleMoney(pp) + ') is above '
+                        ? temuRuleStep('ok', (2 + ageOn) + ' · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% (Std Prc ' + temuRuleMoney(std) + ' vs PP Price ' + temuRuleMoney(pp) + ') is above '
                             + temuRuleDiffCfg().gt_pct + '% → <b>' + temuRuleDiffPts(diffAdj) + '</b> to the Target')
-                        : temuRuleStep('skip', '2 · Diff rule', diffPct === null ? 'Needs both Std Prc and PP Price. Not applied.'
+                        : temuRuleStep('skip', (2 + ageOn) + ' · Diff rule', diffPct === null ? 'Needs both Std Prc and PP Price. Not applied.'
                             : ('Diff ' + diffPct.toFixed(1) + '% is not above ' + temuRuleDiffCfg().gt_pct + '%. No ' + temuRuleDiffPts(temuRuleDiffCfg().points))));
-                    steps.push(temuRuleStep('info', '3 · Target SNROI', 'Final target <b>' + meta.groi + '%</b> (Purchasing Power has no Ads%, so SNROI = SGROI)'));
+                    steps.push(temuRuleStep('info', (3 + ageOn) + ' · Target SNROI', 'Final target <b>' + meta.groi + '%</b> (Purchasing Power has no Ads%, so SNROI = SGROI)'));
                     price = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || 0;
-                    steps.push(temuRuleStep('ok', '4 · Price from target',
+                    steps.push(temuRuleStep('ok', (4 + ageOn) + ' · Price from target',
                         '(LP ' + temuRuleMoney(lp) + ' × (1 + ' + meta.groi + '%) + Ship BB ' + temuRuleMoney(ship) + ') ÷ ' + margin.toFixed(2) + ' = <b>' + temuRuleMoney(price) + '</b>'));
-                    n = 5;
+                    n = 5 + ageOn;
                 }
                 steps.push(temuRuleStep('skip', n + ' · LMP', 'Purchasing Power has no LMP, so no LMP cap applies.'));
                 n++;
@@ -961,6 +987,44 @@
                 });
             }
         };
+@elseif($temuRuleHoverKind === 'generic')
+        /** S PRC on a page with no card of its own (Walmart, Vinted, Instagram, Alibaba, Mercari Pickup, FB Marketplace, Doba Pickup): the shared Sprc Dil chain. */
+        function temuRuleExplainSprice(d) {
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+                const cp = (typeof window.ebayClearancePriceForRow === 'function') ? (Number(window.ebayClearancePriceForRow(d)) || 0) : 0;
+                return { title: 'S PRC — Clearance', sub: (d['(Child) sku'] || d.sku || ''), steps: [temuRuleStep('info', 'Clearance',
+                    'This SKU is on the Inv days clearance list (YES). Only the Clearance Target NROI% (last row of the Sprc Dil modal) applies'
+                    + (cp > 0 ? ' = <b>$' + cp.toFixed(2) + '</b>' : '') + '. No slab, Diff, LMP or Std rule is applied.')], notes: [], finalNote: '' };
+            }
+            const steps = [];
+            const notes = [];
+            const dilOn = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+            const std = (typeof ebayDiffDefaultStd === 'function') ? ebayDiffDefaultStd(d) : (parseFloat(d.STANDARD_PRICE) || 0);
+            const shown = parseFloat(d.SPRICE != null ? d.SPRICE : d.sprice) || 0;
+            let final = shown;
+            if (dilOn) {
+                const target = temuRuleDilTargetSteps(d, steps);
+                const meta = (target !== null && typeof ebayDilGroiMetaForRow === 'function') ? ebayDilGroiMetaForRow(d) : null;
+                if (meta && meta.rawSprc > 0) {
+                    steps.push(temuRuleStep('ok', 'Price from target',
+                        'S PRC is the price that lands SNROI on the Target SNROI = <b>' + temuRuleMoney(meta.rawSprc) + '</b>'
+                        + (meta.sprc > 0 && Math.abs(meta.sprc - meta.rawSprc) > 0.005 ? ' (<b>' + temuRuleMoney(meta.sprc) + '</b> after the page caps)' : '') + '.'));
+                    if (!(final > 0)) final = Number(meta.sprc) || 0;
+                    if (std > 0 && meta.rawSprc > std + 0.0001) notes.push('The rule price ' + temuRuleMoney(meta.rawSprc) + ' is above Std Prc ' + temuRuleMoney(std) + ', so Std Prc is the maximum where the page caps at Std.');
+                }
+            } else {
+                const base = (typeof window.chStdPriceForRow === 'function') ? (Number(window.chStdPriceForRow(d)) || 0) : 0;
+                steps.push(temuRuleStep('info', 'Std prc vs dil (switch ON)',
+                    'Std Prc ' + temuRuleMoney(std) + ' less the Age, Dil, B Disc, 0 Sold, CVR and Review discounts = <b>' + temuRuleMoney(base) + '</b>.'));
+                if (!(final > 0)) final = base;
+            }
+            return {
+                title: 'S PRC ' + temuRuleMoney(final),
+                sub: (d['(Child) sku'] || d.sku || d.SKU || '') + ' · ' + (dilOn ? 'Sprc Dil rule' : 'Std prc vs dil rule'),
+                steps: steps, notes: notes, finalNote: ''
+            };
+        }
+        window.temuRuleExplainers = { sprice: temuRuleExplainSprice };
 @endif
 
         function temuRuleTipRender(model) {

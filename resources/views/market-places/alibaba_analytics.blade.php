@@ -318,6 +318,7 @@
         window.CH_PROMO_ADS_FN = function() { return 0; };
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'alibaba'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'alibaba'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'generic', 'temuRuleLiveLabel' => 'Price'])
         document.body.style.zoom = "90%";
 
         const AB_MARGIN = {{ (float) ($marginPercent ?? 95) }} / 100;
@@ -1002,7 +1003,7 @@
                             }
                         },
                         {
-                            title: 'S PRC', field: 'SPRICE', hozAlign: 'center', width: 78, sorter: abDisplayedSorter('SPRICE'),
+                            title: 'S PRC', field: 'SPRICE', cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); }, cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); }, hozAlign: 'center', width: 78, sorter: abDisplayedSorter('SPRICE'),
                             headerTooltip: 'Not editable. The ON switch fills this column. Sprc Dil: the Dil slab Target SNROI, Std Prc is the maximum, no Ship. Std prc vs dil: Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), then the Ship column is reduced from it (S PRC = calc − Ship) and the SNROI cap judges that price. Std Prc is the maximum, no LMP. Turning one ON turns the other OFF. Clearance SKUs get no S PRC. Saved by the server job (every 10 min, on Save Rule and right after a switch), which is what is pushed to Alibaba. Blue triangle = S PRC ≠ the live Alibaba Price.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();

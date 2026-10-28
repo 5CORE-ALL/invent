@@ -441,6 +441,7 @@
     <script>
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'mercari_woship'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'mercari_woship'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'generic', 'temuRuleLiveLabel' => 'Price'])
         let table;
         let allTableData = [];
 
@@ -716,7 +717,7 @@
                     },
                     {
                         title: "S PRC",
-                        field: "SPRICE",
+                        field: "SPRICE", cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); }, cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         hozAlign: "center",
                         width: 92,
                         sorter: function(a, b, aRow, bRow) {

@@ -654,6 +654,7 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba_withoutship'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'doba_withoutship'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'generic', 'temuRuleLiveLabel' => 'Price'])
         function dwsDisplayedSprice(data) {
             if (!data || isDobaWithoutshipParentRow(data)) return 0;
             if (typeof window.chStdPriceForRow === 'function') {
@@ -2104,7 +2105,7 @@
                     },
                     {
                         title: "SPRICE",
-                        field: "sprice",
+                        field: "sprice", cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); }, cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         width: 92,
                         sorter: "number",
                         visible: true,

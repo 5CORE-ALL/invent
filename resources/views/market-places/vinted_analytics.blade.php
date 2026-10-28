@@ -375,6 +375,7 @@
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'vinted'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'vinted'])
+    @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'generic', 'temuRuleLiveLabel' => 'Price'])
 
     const DP_MARGIN = {{ (float) ($marginPercent ?? 95) }} / 100;
     let table = null;
@@ -1017,7 +1018,7 @@
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "SPRICE",
-                    field: "SPRICE",
+                    field: "SPRICE", cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); }, cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                     sorter: "number",
                     hozAlign: "center",
                     width: 88,

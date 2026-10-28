@@ -377,6 +377,10 @@ class AlibabaSprcDilAutoPushService
             );
         }
 
+        // Diff rule (same as eBay 1 / Faire): Diff = (Std Prc − Price) / Price above the saved % adds the saved points to the Target.
+        $diffPct = \App\Support\EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
+        $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
+
         $raw = round(($lp * (1 + $target / 100)) / $margin, 2);
         if (! is_finite($raw) || $raw < 0.01) {
             return null;
@@ -409,7 +413,7 @@ class AlibabaSprcDilAutoPushService
             ? AmazonDilGroiRule::defaultsForChannel(self::CHANNEL)
             : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
 
-        return ['rules' => $rules, 'age_adj' => $unpacked['age_adj'] ?? null];
+        return ['rules' => $rules, 'age_adj' => $unpacked['age_adj'] ?? null, 'diff_adj' => $unpacked['diff_adj'] ?? null];
     }
 
     /**

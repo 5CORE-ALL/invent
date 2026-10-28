@@ -481,6 +481,11 @@ class PurchasingPowerSprcDilAutoPushService
             // pushing the boosted price lowers the Diff, the boost drops, the price falls, the Diff rises again, and the
             // saved S PRC flip-flops against the page. A listed SKU (live Price > 0) and a Std Prc are still required.
             $target = max(0.0, round($target, 2));
+            // Ageing Rule: the SKU's age band points, after the slab and before the Diff rule (same as the page).
+            $target = max(0.0, round($target + AmazonDilGroiRule::ageAdjPoints(
+                is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
+                is_array($ctx['age_adj'] ?? null) ? $ctx['age_adj'] : null
+            ), 2));
             if ($std > 0 && round((float) ($row['price'] ?? 0), 2) > 0) {
                 $base = AmazonDilGroiRule::suggestedPrice($lp, $ship, $target, 0.0, $margin);
                 if ($base !== null && $base > 0) {
@@ -529,7 +534,7 @@ class PurchasingPowerSprcDilAutoPushService
             ? AmazonDilGroiRule::defaultsForChannel('purchasing_power')
             : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
 
-        return ['rules' => $rules, 'diff_adj' => $unpacked['diff_adj']];
+        return ['rules' => $rules, 'diff_adj' => $unpacked['diff_adj'], 'age_adj' => $unpacked['age_adj'] ?? null];
     }
 
     /**

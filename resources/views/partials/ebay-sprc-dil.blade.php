@@ -40,12 +40,12 @@
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'vinted', 'instagram', 'depop', 'alibaba'], true);
     // eBay rules that Temu now shares: Diff +10 to the Target, and the LMP cap % by Dil band.
-    $ebaySprcDilDiffAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'depop', 'purchasing_power', 'wayfair', 'reverb', 'topdawg', 'doba', 'aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'pls', 'shein', 'bestbuy', 'newegg'], true);
+    $ebaySprcDilDiffAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'alibaba', 'doba_withoutship', 'walmart', 'vinted', 'instagram', 'mercari_woship', 'fb_marketplace', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'depop', 'purchasing_power', 'wayfair', 'reverb', 'topdawg', 'doba', 'aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'pls', 'shein', 'bestbuy', 'newegg'], true);
     // Pages with no LMP data (Depop, Purchasing Power, Wayfair) get no LMP cap rule (TopDawg too). Reverb has LMP, so it gets the full LMP cap table.
     $ebaySprcDilLmpCapOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'reverb', 'aliexpress', 'tiktok', 'tiktok2', 'mercari_wship', 'shein', 'bestbuy'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'newtemuone', 'newtemutwo', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     // Ageing Rule (same block as /amazon-tabulator-view): the SKU's age in days adds points to the Target NROI. eBay 1, 2, 3, AliExpress, Alibaba, Faire, TikTok 1 / 2, PLS, Shein, Best Buy, Newegg, Macys, New Temu One, New Temu Two, Temu 3, Doba and Reverb.
-    $ebaySprcDilAgeAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'faire', 'tiktok', 'tiktok2', 'pls', 'shein', 'bestbuy', 'newegg', 'macys', 'temu', 'newtemutwo', 'temu3', 'doba', 'reverb'], true);
+    $ebaySprcDilAgeAdjOn = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'aliexpress', 'alibaba', 'faire', 'tiktok', 'tiktok2', 'pls', 'shein', 'bestbuy', 'newegg', 'macys', 'temu', 'newtemutwo', 'temu3', 'doba', 'doba_withoutship', 'reverb', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'wayfair', 'topdawg', 'walmart', 'depop', 'vinted', 'instagram', 'mercari_wship', 'mercari_woship', 'fb_marketplace'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
@@ -1536,11 +1536,26 @@
                 $(this).find('.ebay-age-adj-count').text(counts[i] || 0);
             });
         }
+        /** Default Diff inputs for a page that sets no window.ebayDiffStdPrice / ebayDiffLivePrice: the first positive price column the grid row has. */
+        function ebayDiffDefaultStd(d) {
+            const n = parseFloat(d && (d.STANDARD_PRICE != null && d.STANDARD_PRICE !== '' ? d.STANDARD_PRICE : d.standard_price));
+            return isFinite(n) ? n : 0;
+        }
+        function ebayDiffDefaultLive(d) {
+            const keys = (typeof EBAY_DIL_GROI_CHANNEL !== 'undefined' && EBAY_DIL_GROI_CHANNEL === 'doba_withoutship')
+                ? ['self_pick_price']
+                : ['eBay Price', 'price', 'Price', 'V Price'];
+            for (let i = 0; i < keys.length; i++) {
+                const n = parseFloat(d && d[keys[i]]);
+                if (isFinite(n) && n > 0) return n;
+            }
+            return 0;
+        }
         function ebayDilGroiDiffAdj(d) {
             if (!EBAY_DIFF_ADJ_ON || !d) return 0;
             // eBay reads STANDARD_PRICE and eBay Price. A page that prices another way (Temu) sets window.ebayDiffStdPrice(d) / ebayDiffLivePrice(d).
-            const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : (parseFloat(d.STANDARD_PRICE) || 0);
-            const price = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : (parseFloat(d['eBay Price']) || 0);
+            const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : ebayDiffDefaultStd(d);
+            const price = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : ebayDiffDefaultLive(d);
             if (!(std > 0) || !(price > 0)) return 0;
             return (((std - price) / price) * 100 > ebayDiffAdj.gt_pct) ? ebayDiffAdj.points : 0;
         }
@@ -1552,8 +1567,8 @@
          */
         function ebayDilGroiStableDiffAdj(afterCvr, d, plain) {
             if (!EBAY_DIFF_ADJ_ON || !d) return plain;
-            const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : (parseFloat(d.STANDARD_PRICE) || 0);
-            const live = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : (parseFloat(d['eBay Price']) || 0);
+            const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : ebayDiffDefaultStd(d);
+            const live = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : ebayDiffDefaultLive(d);
             if (!(std > 0) || !(ebayDgRound2(live) > 0)) return plain;
             const base = ebaySpriceFromGroi(d, afterCvr);
             if (!(base > 0)) return plain;

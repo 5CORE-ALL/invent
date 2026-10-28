@@ -279,9 +279,15 @@ class ShopifyB2cSprcDilAutoPushService
         }
         // Floor at 0 after the CVR overlay, then add the Diff points (same order as the page).
         $afterCvr = max(0.0, round($slabTarget + $cvrAdj, 2));
+        // Ageing Rule: the SKU's age band points, after the CVR overlay and before the Diff rule (same as the page).
+        $ageAdj = AmazonDilGroiRule::ageAdjPoints(
+            is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
+            is_array($ctx['age_adj'] ?? null) ? $ctx['age_adj'] : null
+        );
+        $afterAge = max(0.0, round($afterCvr + $ageAdj, 2));
         $diffPct = EbayRuleSprice::stdPriceDiffPct((float) ($row['standard_price'] ?? 0), (float) ($row['price'] ?? 0));
         $diffAdj = AmazonDilGroiRule::diffAdjPoints($diffPct, is_array($ctx['diff_adj'] ?? null) ? $ctx['diff_adj'] : null);
-        $target = max(0.0, round($afterCvr + $diffAdj, 2));
+        $target = max(0.0, round($afterAge + $diffAdj, 2));
         $price = AmazonDilGroiRule::suggestedPrice(
             (float) ($row['lp'] ?? 0),
             (float) ($row['ship'] ?? 0),
@@ -293,6 +299,7 @@ class ShopifyB2cSprcDilAutoPushService
         return [
             'slab' => $slabTarget,
             'cvr_adj' => $cvrAdj,
+            'age_adj' => $ageAdj,
             'diff_adj' => $diffAdj,
             'target' => $target,
             'price' => ($price !== null && $price >= 0.01) ? $price : null,
@@ -364,6 +371,7 @@ class ShopifyB2cSprcDilAutoPushService
             'cvr_adj' => $unpacked['cvr_adj'],
             'lmp_cap' => $unpacked['lmp_cap'],
             'diff_adj' => $unpacked['diff_adj'],
+            'age_adj' => $unpacked['age_adj'] ?? null,
         ];
     }
 

@@ -100,7 +100,7 @@ class DilRuleSpriceApplyService
     public const CLEARANCE_NROI_CHANNELS = ['wayfair', 'temu3'];
 
     /** Channels whose Sprc Dil modal has the Ageing Rule (age band points on the Target NROI). */
-    public const AGE_ADJ_CHANNELS = ['newegg', 'temu', 'temu3', 'doba'];
+    public const AGE_ADJ_CHANNELS = ['newegg', 'temu', 'temu3', 'doba', 'wayfair', 'walmart', 'fb_marketplace'];
 
     private bool $applyStdPrcVsDil = false;
 
@@ -378,8 +378,8 @@ class DilRuleSpriceApplyService
                 TemuShopifySalesService::computeFullTemuPrice((float) ($row['live'] ?? 0))
             );
             $groi += AmazonDilGroiRule::diffAdjPoints($diffPct, $this->diffAdj);
-        } elseif (in_array($this->channel, ['wayfair', 'doba'], true)) {
-            // Wayfair / Doba: same Diff rule against the channel price (the page's Std Diff column). Floor the target at 0 like the page.
+        } elseif (in_array($this->channel, ['wayfair', 'doba', 'walmart', 'fb_marketplace'], true)) {
+            // Wayfair / Doba / Walmart / FB Marketplace: same Diff rule against the channel price (the page's Std Diff column). Floor the target at 0 like the page.
             $diffPct = EbayRuleSprice::stdPriceDiffPct(
                 (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0),
                 (float) ($row['live'] ?? 0)

@@ -307,6 +307,7 @@
         const FB_MP_COL_SKIP = ['_select', '_parent_expand', 'missing_l'];
         let fbMpColumnVisibilityMap = {};
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'fb_marketplace'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'generic', 'temuRuleLiveLabel' => 'Price'])
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
         let blueTriangleFilterActive = false;
@@ -728,7 +729,7 @@
                     },
                     {
                         title: "S PRC",
-                        field: "SPRICE",
+                        field: "SPRICE", cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); }, cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         hozAlign: "center",
                         width: 92,
                         sorter: function(a, b, aRow, bRow) {

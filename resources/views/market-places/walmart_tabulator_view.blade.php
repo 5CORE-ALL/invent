@@ -364,6 +364,7 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'walmart'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'walmart'])
+        @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'generic', 'temuRuleLiveLabel' => 'Price'])
         function walmartRowSpriceForAlert(data) {
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;
@@ -889,7 +890,7 @@
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: "S PRC",
-                        field: "SPRICE",
+                        field: "SPRICE", cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); }, cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
                         sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         editable: false,
