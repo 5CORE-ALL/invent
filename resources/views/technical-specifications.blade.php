@@ -1500,7 +1500,15 @@
                 scored.sort(function (a, b) {
                     return (b.here - a.here) || (b.fill - a.fill) || (b.required - a.required) || (a.index - b.index);
                 });
-                return new Set(scored.slice(0, SPEC_LIMIT).map(function (s) { return s.name; }));
+                // A field the grid flags with a red triangle (an eBay required field of the opened SKU(s))
+                // is always in the form, even when that pushes it past the limit. The limit only trims the rest.
+                const keep = new Set(names.filter(function (name) {
+                    return rows.some(function (row) { return rowRequiresAspect(row, name); });
+                }));
+                scored.forEach(function (s) {
+                    if (keep.size < SPEC_LIMIT) keep.add(s.name);
+                });
+                return keep;
             }
 
             // `preserved` keeps what was typed (and not yet saved) when the form is redrawn.
