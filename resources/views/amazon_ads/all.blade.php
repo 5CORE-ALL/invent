@@ -6540,8 +6540,30 @@
             function amzBgtHasSavedCounts() {
                 return !!(amzBgtSaved && amzBgtSaved.columns && Object.keys(amzBgtSaved.columns).length);
             }
+            // The stored counts and sum describe ONE filter set: the page default (active, all sources, no search).
+            // A narrower view (a search, a status or Lbgt filter, one source) must never read them or write over them.
+            function amzBgtIsDefaultView() {
+                try {
+                    if (String(activeRawSourceKey || 'all_reports') !== 'all_reports') return false;
+                    if (String(amzSearchQueryVal() || '').trim() !== '') return false;
+                    var p = amzFilterPayload();
+                    if (p.filter_campaign_status !== 'ENABLED') return false;
+                    var keys = ['filter_u7', 'filter_u2', 'filter_u1', 'filter_targets', 'filter_inv', 'filter_acos', 'filter_ads_cvr', 'filter_acos_gpft', 'filter_bgt_sync', 'filter_bid_sync'];
+                    for (var i = 0; i < keys.length; i++) {
+                        if (String(p[keys[i]] || '') !== '') return false;
+                    }
+                    if (p.date_from && p.date_to && p.date_from !== p.date_to) return false;
+                    return true;
+                } catch (e) { return false; }
+            }
+            // Saved by the nightly job ('ENABLED') or by this page for the same filter key.
+            function amzBgtSavedMatchesView() {
+                if (!amzBgtSaved || !amzBgtIsDefaultView()) return false;
+                var f = String(amzBgtSaved.filter || '');
+                return f === 'ENABLED' || f === amzBgtFilterKey();
+            }
             function amzBgtStoredColumn(key, bands) {
-                var saved = amzBgtSaved && amzBgtSaved.columns ? amzBgtSaved.columns[key] : null;
+                var saved = amzBgtSaved && amzBgtSaved.columns && amzBgtSavedMatchesView() ? amzBgtSaved.columns[key] : null;
                 if (!saved || !Array.isArray(saved.counts) || !saved.counts.length) return null;
                 if (bands && saved.counts.length !== bands.length) return null;
                 // Counts saved with their slab ranges are only valid for those exact ranges.
@@ -6564,6 +6586,8 @@
             }
             function amzBgtScheduleSaveCounts() {
                 if (!amzBgtStaged.dirty || !bgtCountsSaveUrl) return;
+                // Counts for a filtered view would overwrite the page-wide totals for everyone.
+                if (!amzBgtIsDefaultView()) { amzBgtStaged.dirty = false; amzBgtStaged.sum = null; amzBgtStaged.columns = {}; return; }
                 if (amzBgtSaveCountsTimer) clearTimeout(amzBgtSaveCountsTimer);
                 amzBgtSaveCountsTimer = setTimeout(function () {
                     amzBgtSaveCountsTimer = null;
@@ -6973,7 +6997,7 @@
                 var campaigns = 0;
                 var sbgtTotal = 0;
                 var sumRows = amzBgtCountRows();
-                var savedSum = amzBgtSaved && amzBgtSaved.sum ? amzBgtSaved.sum : null;
+                var savedSum = amzBgtSaved && amzBgtSaved.sum && amzBgtSavedMatchesView() ? amzBgtSaved.sum : null;
                 // Full stored sum is exact while the rules are unchanged. Prefer it over a page-only count.
                 if ((!sumRows || sumRows._partial) && savedSum && !amzBgtSumIsStale() && amzBgtApplySavedSum(savedSum)) return;
                 if (!sumRows) {
