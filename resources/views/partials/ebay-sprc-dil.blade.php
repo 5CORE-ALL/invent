@@ -4,7 +4,8 @@
   A slab edit on this page writes only this channel's store.
   Clearance is a last row: count of INV > 0 SKUs marked Clearance Yes on Inv Days, plus that page's Target NROI%.
   Each channel stores clearance_nroi on its own {channel}_dil_vs_groi row.
-  Master page /master-dil-rules is the only save that writes every site.
+  Save Only writes this page's row. Save All writes this page + every page of the same rule model (App\Support\DilRuleModels).
+  Master page /master-dil-rules writes the slabs of every site.
   Dil = OV L30 ÷ Shopify INV, per SKU, same as the Dil column.
   Every INV > 0 SKU uses the Dil-matching slab, including when channel L30 = 0.
   Dil is OV L30 ÷ INV. A 0–0 slab (where the page has one) applies when Dil = 0.
@@ -37,6 +38,8 @@
 @php
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
+    // Pages that share this page's rule model (same Dil blocks). Save All writes to all of them; Save Only to this page.
+    $ebaySprcDilModel = \App\Support\DilRuleModels::modelFor($ebaySprcDilChannel);
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'vinted', 'instagram', 'depop', 'alibaba'], true);
     // eBay rules that Temu now shares: Diff +10 to the Target, and the LMP cap % by Dil band.
@@ -831,10 +834,21 @@
                     </div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
+                    @if($ebaySprcDilModel)
+                    <span class="small text-muted me-auto" id="ebay-dil-groi-model-note">
+                        Rule model: <strong>{{ $ebaySprcDilModel['label'] }}</strong> · {{ count($ebaySprcDilModel['channels']) }} pages
+                    </span>
+                    @endif
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="ebay-dil-groi-save-btn"
-                        title="Saves these Dil slabs only. Does not write S PRC or queue a price push.">
-                        <i class="fas fa-save me-1"></i> Save rules
+                        title="Save Only: saves these Dil rules on THIS page only. No other page changes. Does not write S PRC or queue a price push.">
+                        <i class="fas fa-save me-1"></i> Save Only
                     </button>
+                    @if($ebaySprcDilModel)
+                    <button type="button" class="btn btn-sm btn-primary" id="ebay-dil-groi-save-all-btn"
+                        title="Save All: saves these Dil rules on this page AND every page of the same rule model ({{ implode(', ', $ebaySprcDilModel['channels']) }}). Each page keeps its own Clearance NROI%.">
+                        <i class="fas fa-layer-group me-1"></i> Save All ({{ count($ebaySprcDilModel['channels']) }} pages)
+                    </button>
+                    @endif
                 </div>
             </div>
         </div>
@@ -844,6 +858,7 @@
 @if($ebaySprcDilPart === 'script' || $ebaySprcDilPart === 'all')
         @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'script', 'spriceRuleChannel' => $ebaySprcDilChannel])
         const EBAY_DIL_GROI_CHANNEL = @json($ebaySprcDilChannel);
+        const EBAY_DIL_MODEL = @json($ebaySprcDilModel);
         const EBAY_DIL_GROI_ZERO_SOLD_MIN = @json($ebaySprcDilZeroSoldUsesMinGroi);
         const EBAY_DIL_GROI_CVR_ADJ = @json(!empty($ebaySprcDilCvrGroiAdj));
         const EBAY_DIL_GROI_CLAMP_NEAREST = @json(!empty($ebaySprcDilClampToNearest));
@@ -3379,7 +3394,8 @@
             ebayDgRulesDirty = false;
             return n;
         }
-        function postEbayDilGroiRules() {
+        /** saveAll = true → /dil-groi/save-all (every page of this rule model); default → this page only. */
+        function postEbayDilGroiRules(saveAll) {
             const rules = readEbayDilGroiRulesFromModal();
             const cvrAdj = ebayCvrGroiAdjNow();
             ebayCvrGroiAdj = cvrAdj;
@@ -3391,7 +3407,7 @@
                 try { ebayDgAutosaveXhr.abort(); } catch (e) { /* ignore */ }
             }
             ebayDgAutosaveXhr = $.ajax({
-                url: ebayDgRulesUrl(),
+                url: ebayDgRulesUrl() + (saveAll === true ? '/save-all' : ''),
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': ebayDgCsrf(),
@@ -3450,19 +3466,23 @@
             ebayDgAutosaveTimer = null;
             return postEbayDilGroiRules();
         }
-        function saveEbayDilGroiRules() {
+        function saveEbayDilGroiRules(saveAll) {
             if (ebayDgAutosaveTimer) {
                 clearTimeout(ebayDgAutosaveTimer);
                 ebayDgAutosaveTimer = null;
             }
-            return postEbayDilGroiRules().then(async function(res) {
+            return postEbayDilGroiRules(saveAll === true).then(async function(res) {
                 if (res && Array.isArray(res.rules)) {
                     const saved = ebayNormalizeDilGroiList(res.rules);
                     if (saved.length) ebayDilGroiRules = saved;
                     renderEbayDilGroiModalTable();
                 }
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
-                $('#ebay-dil-groi-status').text('Saved. Rules only — S PRC was not changed.');
+                $('#ebay-dil-groi-status').text(
+                    saveAll === true && res && Array.isArray(res.channels)
+                        ? ('Saved on ' + res.channels.length + ' pages (' + res.channels.join(', ') + '). Rules only — S PRC was not changed here.')
+                        : 'Saved on this page only. Rules only — S PRC was not changed.'
+                );
                 return res;
             });
         }
@@ -3493,7 +3513,7 @@
                 const html = $btn.html();
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
                 try {
-                    await saveEbayDilGroiRules();
+                    await saveEbayDilGroiRules(false);
                     const applied = await ebayDgApplyAfterRulesSaved();
                     if (applied > 0) {
                         $('#ebay-dil-groi-status').text('Saved. S PRC updated on ' + applied + ' SKU(s) from the targets (not pushed).');
@@ -3508,6 +3528,31 @@
                     ));
                 } finally {
                     $btn.prop('disabled', false).html(html);
+                }
+            });
+            $('#ebay-dil-groi-save-all-btn').off('click.ebaydg').on('click.ebaydg', async function(e) {
+                e.preventDefault();
+                if (!EBAY_DIL_MODEL || !Array.isArray(EBAY_DIL_MODEL.channels)) return;
+                if (!window.confirm('Save All: copy these Dil rules to ' + EBAY_DIL_MODEL.channels.length + ' pages of the "' + EBAY_DIL_MODEL.label + '" model?\n\n'
+                    + EBAY_DIL_MODEL.channels.join(', ') + '\n\nEach page keeps its own Clearance NROI%. Pages of other models are not changed.\nUse Save Only to change this page alone.')) {
+                    return;
+                }
+                const $btn = $(this);
+                const html = $btn.html();
+                $('#ebay-dil-groi-save-btn').prop('disabled', true);
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving all…');
+                try {
+                    const res = await saveEbayDilGroiRules(true);
+                    await ebayDgApplyAfterRulesSaved();
+                    ebayDgToast('success', 'Dil rules saved on ' + (res && res.channels ? res.channels.length : 'all') + ' pages of the shared model');
+                } catch (xhr) {
+                    ebayDgToast('error', 'Save All failed: ' + (
+                        (xhr && xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                        || (xhr && xhr.status ? ('HTTP ' + xhr.status) : 'error')
+                    ));
+                } finally {
+                    $btn.prop('disabled', false).html(html);
+                    $('#ebay-dil-groi-save-btn').prop('disabled', false);
                 }
             });
             $(document).off('input.ebayClearanceNroi change.ebayClearanceNroi', '#ebay-dg-clearance-block .ebay-dg-clearance-groi')

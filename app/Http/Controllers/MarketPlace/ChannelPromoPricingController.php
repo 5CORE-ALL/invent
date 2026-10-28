@@ -1929,6 +1929,9 @@ class ChannelPromoPricingController extends Controller
         ]);
     }
 
+    /**
+     * Save Only: this page's Dil rules, nothing else. No other page's row is read or written.
+     */
     public function saveDilGroiRules(Request $request, string $channel): JsonResponse
     {
         $channel = $this->normalizeRulesChannel($channel);
@@ -1936,14 +1939,101 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
+        [$config, $error] = $this->resolveDilSaveConfig($request, $channel);
+        if ($error !== null) {
+            return $error;
+        }
 
+        $this->writeDilRow($channel, $config);
+        $this->dispatchDilRuleReapply($channel);
+
+        return response()->json([
+            'success' => true,
+            'mode' => 'only',
+            'channel' => $channel,
+            'target_metric' => $this->dilTargetMetric($channel),
+            'rules' => $config['rules'],
+            'cvr_adj' => $config['cvr_adj'],
+            'lmp_cap' => $config['lmp_cap'],
+            'diff_adj' => $config['diff_adj'],
+            'age_adj' => $config['age_adj'],
+            'clearance_nroi' => $config['visibility']['clearance_nroi'] ?? null,
+        ]);
+    }
+
+    /**
+     * Save All: save this page exactly like Save Only, then write the same Dil configuration (slabs + the CVR / Age /
+     * Diff / LMP blocks the model owns) to every other page of the same rule model (App\Support\DilRuleModels).
+     * Pages of other models are never touched. A page's own Clearance NROI% is page-specific and is kept.
+     */
+    public function saveDilGroiRulesAll(Request $request, string $channel): JsonResponse
+    {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+        $model = \App\Support\DilRuleModels::modelFor($channel);
+        if ($model === null) {
+            return response()->json(['success' => false, 'message' => 'This page is not part of a shared rule model. Use Save Only.'], 422);
+        }
+
+        [$config, $error] = $this->resolveDilSaveConfig($request, $channel);
+        if ($error !== null) {
+            return $error;
+        }
+
+        $source = \App\Support\DilRuleModels::canonical($channel);
+        $written = [];
+        \Illuminate\Support\Facades\DB::transaction(function () use ($model, $source, $channel, $config, &$written): void {
+            // This page first, written exactly as Save Only writes it.
+            $this->writeDilRow($channel, $config);
+            $written[] = $channel;
+            foreach ($model['channels'] as $other) {
+                if ($other === $source || $other === $channel) {
+                    continue;
+                }
+                $row = ChannelTabulatorColumnSetting::query()->where('channel_name', $other.'_dil_vs_groi')->first();
+                $stored = is_array($row?->visibility) ? $row->visibility : null;
+                $visibility = \App\Support\DilRuleModels::applyTo($other, $config, $stored);
+                $this->writeDilRow($other, ['visibility' => $visibility, 'rules' => $visibility['rules']]);
+                $written[] = $other;
+            }
+        });
+        foreach ($written as $page) {
+            $this->dispatchDilRuleReapply($page);
+        }
+
+        return response()->json([
+            'success' => true,
+            'mode' => 'all',
+            'channel' => $channel,
+            'model' => $model['id'],
+            'model_label' => $model['label'],
+            'channels' => $written,
+            'target_metric' => $this->dilTargetMetric($channel),
+            'rules' => $config['rules'],
+            'cvr_adj' => $config['cvr_adj'],
+            'lmp_cap' => $config['lmp_cap'],
+            'diff_adj' => $config['diff_adj'],
+            'age_adj' => $config['age_adj'],
+            'clearance_nroi' => $config['visibility']['clearance_nroi'] ?? null,
+        ]);
+    }
+
+    /**
+     * Read the Dil rules out of a save request (slabs + blocks). A block the request leaves out keeps the page's saved one.
+     *
+     * @return array{0:?array<string,mixed>,1:?JsonResponse} [config, error response]
+     */
+    private function resolveDilSaveConfig(Request $request, string $channel): array
+    {
         $incoming = $request->input('rules');
         if (! is_array($incoming) && is_string($request->input('rules'))) {
             $decoded = json_decode((string) $request->input('rules'), true);
             $incoming = is_array($decoded) ? $decoded : null;
         }
         if (! is_array($incoming)) {
-            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
+            return [null, response()->json(['success' => false, 'message' => 'rules array required'], 422)];
         }
 
         $rules = AmazonDilGroiRule::normalizeList($incoming);
@@ -1951,7 +2041,7 @@ class ChannelPromoPricingController extends Controller
             $rules = AmazonDilGroiRule::ensureZeroToZero($rules);
         }
         if ($rules === []) {
-            return response()->json(['success' => false, 'message' => 'At least one Dil slab is required'], 422);
+            return [null, response()->json(['success' => false, 'message' => 'At least one Dil slab is required'], 422)];
         }
 
         $existingRow = ChannelTabulatorColumnSetting::query()
@@ -2006,14 +2096,33 @@ class ChannelPromoPricingController extends Controller
             $visibility['clearance_nroi'] = $existing['clearance_nroi'];
         }
 
+        return [[
+            'visibility' => $visibility,
+            'rules' => $rules,
+            'cvr_adj' => $cvrAdj,
+            'lmp_cap' => $lmpCap,
+            'diff_adj' => $diffAdj,
+            'age_adj' => $ageAdj,
+        ], null];
+    }
+
+    /**
+     * @param  array{visibility:array<string,mixed>,rules:list<array<string,mixed>>}  $config
+     */
+    private function writeDilRow(string $channel, array $config): void
+    {
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => $channel.'_dil_vs_groi'],
             [
-                'visibility' => $visibility,
-                'column_order' => array_column($rules, 'key'),
+                'visibility' => $config['visibility'],
+                'column_order' => array_column($config['rules'], 'key'),
             ]
         );
+    }
 
+    /** After a page's Dil rules changed: re-save its S PRC from them (no push, no waiting). */
+    private function dispatchDilRuleReapply(string $channel): void
+    {
         if ($channel === 'macys' || $channel === 'macy') {
             \App\Support\MacysRuleSpriceApply::dispatchAfterResponse();
         }
@@ -2085,18 +2194,6 @@ class ChannelPromoPricingController extends Controller
         if (\App\Support\ShopifyB2cRuleSpriceApply::handles($channel)) {
             \App\Support\ShopifyB2cRuleSpriceApply::dispatch($channel);
         }
-
-        return response()->json([
-            'success' => true,
-            'channel' => $channel,
-            'target_metric' => $this->dilTargetMetric($channel),
-            'rules' => $rules,
-            'cvr_adj' => $cvrAdj,
-            'lmp_cap' => $lmpCap,
-            'diff_adj' => $diffAdj,
-            'age_adj' => $ageAdj,
-            'clearance_nroi' => $visibility['clearance_nroi'] ?? null,
-        ]);
     }
 
     /**
