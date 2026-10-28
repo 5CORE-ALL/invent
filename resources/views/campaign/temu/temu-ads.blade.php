@@ -129,6 +129,40 @@
             display: inline-block;
             vertical-align: middle;
         }
+        /* Compact single-row filter bar: everything on one line, no scroll; items shrink (ellipsis) on narrow screens. */
+        .temu-ads-filter-row {
+            gap: 4px;
+            flex: 1 1 100%;
+            min-width: 0;
+        }
+        .temu-ads-filter-row > * {
+            flex: 0 1 auto;
+            min-width: 0;
+        }
+        .temu-ads-filter-row .form-select,
+        .temu-ads-filter-row .form-control,
+        .temu-ads-filter-row .btn {
+            font-size: 11.5px;
+            height: 26px;
+            padding-top: 2px;
+            padding-bottom: 2px;
+            white-space: nowrap;
+        }
+        .temu-ads-filter-row .form-select {
+            padding-left: 6px;
+            padding-right: 20px;
+            background-position: right 5px center;
+            background-size: 9px 9px;
+            text-overflow: ellipsis;
+        }
+        .temu-ads-filter-row .form-control,
+        .temu-ads-filter-row .btn {
+            padding-left: 6px;
+            padding-right: 6px;
+        }
+        .temu-ads-filter-row .form-control { width: 100px !important; }
+        .temu-ads-filter-row #period-range-label { font-size: 10px; white-space: nowrap; }
+        .temu-ads-filter-row .dropdown .btn { padding-left: 8px; padding-right: 8px; }
         #raw-json-pre {
             max-height: 70vh;
             overflow: auto;
@@ -501,7 +535,7 @@
                     </div>
 
                     <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-2">
-                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <div class="d-flex flex-nowrap align-items-center temu-ads-filter-row">
                             <select id="period-filter" class="form-select form-select-sm pricing-filter-item" style="width: auto;">
                                 <option value="" data-label="All Periods">All Periods</option>
                                 <option value="L7" data-label="L7">L7</option>
