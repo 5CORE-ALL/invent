@@ -262,6 +262,7 @@
     .es-pill.red { color: #dc2626; font-weight: 600; }
     .es-pill.blue-text { color: #2563eb; font-weight: 700; }
     .es-pct { min-width: 90px; }
+    .es-input-col { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
     .es-pct .bar { height: 4px; border-radius: 999px; background: #e2e8f0; overflow: hidden; margin-top: .2rem; }
     .es-pct .bar > span { display: block; height: 100%; border-radius: 999px; }
     .es-live-toggles {
@@ -512,8 +513,10 @@
                                 <th class="es-sort" data-sort="span" data-type="num" style="width:12%">Activity Span</th>
                                 <th class="es-sort" data-sort="worked" data-type="num" style="width:11%">Total Time</th>
                                 <th class="es-sort" data-sort="manual" data-type="num" style="width:10%">Manual</th>
-                                <th class="es-sort" data-sort="activeMin" data-type="num" style="width:10%">% Active Minutes</th>
-                                <th class="es-sort" data-sort="activeSec" data-type="num" style="width:10%">% Active Seconds</th>
+                                <th class="es-sort" data-sort="activeMin" data-type="num" style="width:10%" title="Active ÷ (Active + Idle) for {{ $from }} → {{ $to }}">% Active Minutes</th>
+                                <th class="es-sort" data-sort="activeSec" data-type="num" style="width:10%" title="Active ÷ (Active + Idle + Break) for {{ $from }} → {{ $to }}">% Active Seconds</th>
+                                <th class="es-sort es-input-col" data-sort="clicks" data-type="num" style="width:6%" title="Mouse clicks for {{ $from }} → {{ $to }}">Clicks</th>
+                                <th class="es-sort es-input-col" data-sort="keys" data-type="num" style="width:6%" title="Keystrokes for {{ $from }} → {{ $to }}">Keys</th>
                                 <th class="es-sort es-th-idle" data-sort="idle" data-type="num" style="width:9%">Idle</th>
                                 <th class="es-sort" data-sort="including" data-type="num" style="width:9%">Work Time</th>
                             </tr>
@@ -532,6 +535,8 @@
                                 data-manual="{{ (int) ($row['manual_seconds'] ?? 0) }}"
                                 data-active-min="{{ (int) ($row['active_min_pct'] ?? 0) }}"
                                 data-active-sec="{{ (int) ($row['active_sec_pct'] ?? 0) }}"
+                                data-clicks="{{ !empty($row['input_tracked']) ? (int) ($row['click_count'] ?? 0) : -1 }}"
+                                data-keys="{{ !empty($row['input_tracked']) ? (int) ($row['key_count'] ?? 0) : -1 }}"
                                 data-idle="{{ (int) ($row['idle_seconds'] ?? 0) }}"
                                 data-including="{{ (int) ($row['work_time_seconds'] ?? $row['including_idle_seconds'] ?? 0) }}"
                                 data-live="{{ (int) ($row['live_sort'] ?? 3) }}"
@@ -628,13 +633,20 @@
                                     <div>{{ $row['active_sec_pct'] }}%</div>
                                     <div class="bar"><span style="width:{{ $row['active_sec_pct'] }}%;background:{{ $row['active_sec_pct'] >= 70 ? '#22c55e' : '#f97316' }}"></span></div>
                                 </td>
+                                @if(!empty($row['input_tracked']))
+                                <td class="es-input-col">{{ number_format((int) ($row['click_count'] ?? 0)) }}</td>
+                                <td class="es-input-col">{{ number_format((int) ($row['key_count'] ?? 0)) }}</td>
+                                @else
+                                <td class="es-input-col text-muted" title="Input tracking not available for this period">—</td>
+                                <td class="es-input-col text-muted" title="Input tracking not available for this period">—</td>
+                                @endif
                                 <td><span class="es-pill red">{{ $row['idle_clock'] }}</span></td>
                                 <td><span class="es-pill blue-text">{{ $row['work_time_clock'] ?? $row['including_idle_clock'] }}</span></td>
                             </tr>
                             @endforeach
                             @if(count($rows) === 0)
                             <tr class="es-empty-row">
-                                <td colspan="14" class="text-center text-muted py-4">No employees match the current filters.</td>
+                                <td colspan="16" class="text-center text-muted py-4">No employees match the current filters.</td>
                             </tr>
                             @endif
                         </tbody>
@@ -1063,16 +1075,25 @@
             '" aria-label="Open Task Summary for ' + escapeAttr(name) + '">TS</a>';
     }
 
+    function inputCells(row) {
+        if (!row.input_tracked) {
+            const t = 'Input tracking not available for this period';
+            return '<td class="es-input-col text-muted" title="' + t + '">—</td><td class="es-input-col text-muted" title="' + t + '">—</td>';
+        }
+        const fmt = n => Number(n || 0).toLocaleString();
+        return '<td class="es-input-col">' + fmt(row.click_count) + '</td><td class="es-input-col">' + fmt(row.key_count) + '</td>';
+    }
+
     function renderRows(rows) {
         const body = document.getElementById('summaryBody');
         if (!body) return;
         const selectedId = String(executiveSelect?.value || 0);
         if (!rows.length) {
-            body.innerHTML = '<tr class="es-empty-row"><td colspan="14" class="text-center text-muted py-4">No employees match the current filters.</td></tr>';
+            body.innerHTML = '<tr class="es-empty-row"><td colspan="16" class="text-center text-muted py-4">No employees match the current filters.</td></tr>';
             return;
         }
         body.innerHTML = rows.map(row => `
-            <tr class="es-selectable${selectedId !== '0' && String(row.user_id) === selectedId ? ' es-selected' : ''}" data-user-id="${row.user_id || ''}" data-name="${(row.name || '').toLowerCase()}" data-display-name="${escapeAttr(row.name || '')}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}" data-span="${row.activity_start_minutes ?? -1}" data-worked="${row.worked_seconds || 0}" data-meeting="${row.meeting_seconds || 0}" data-manual="${row.manual_seconds || 0}" data-active-min="${row.active_min_pct || 0}" data-active-sec="${row.active_sec_pct || 0}" data-idle="${row.idle_seconds || 0}" data-including="${row.work_time_seconds ?? row.including_idle_seconds ?? 0}" data-live="${row.live_sort ?? 3}" data-live-status="${escapeAttr(row.live_status || 'absent')}" data-last-image="${row.last_image_sort || 0}">
+            <tr class="es-selectable${selectedId !== '0' && String(row.user_id) === selectedId ? ' es-selected' : ''}" data-user-id="${row.user_id || ''}" data-name="${(row.name || '').toLowerCase()}" data-display-name="${escapeAttr(row.name || '')}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}" data-span="${row.activity_start_minutes ?? -1}" data-worked="${row.worked_seconds || 0}" data-meeting="${row.meeting_seconds || 0}" data-manual="${row.manual_seconds || 0}" data-active-min="${row.active_min_pct || 0}" data-active-sec="${row.active_sec_pct || 0}" data-clicks="${row.input_tracked ? (row.click_count || 0) : -1}" data-keys="${row.input_tracked ? (row.key_count || 0) : -1}" data-idle="${row.idle_seconds || 0}" data-including="${row.work_time_seconds ?? row.including_idle_seconds ?? 0}" data-live="${row.live_sort ?? 3}" data-live-status="${escapeAttr(row.live_status || 'absent')}" data-last-image="${row.last_image_sort || 0}">
                 <td class="es-avatar-col">${avatarCell(row)}</td>
                 <td>
                     <div class="es-name">${row.name}${fraudTriangle(row)}</div>
@@ -1090,6 +1111,7 @@
                 <td>${row.manual_clock}</td>
                 <td class="es-pct"><div>${row.active_min_pct}%</div><div class="bar"><span style="width:${row.active_min_pct}%;background:#22c55e"></span></div></td>
                 <td class="es-pct"><div>${row.active_sec_pct}%</div><div class="bar"><span style="width:${row.active_sec_pct}%;background:${barColor(row.active_sec_pct)}"></span></div></td>
+                ${inputCells(row)}
                 <td><span class="es-pill red">${row.idle_clock}</span></td>
                 <td><span class="es-pill blue-text">${row.work_time_clock || row.including_idle_clock}</span></td>
             </tr>

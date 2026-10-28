@@ -87,6 +87,19 @@ class AttendanceSummaryService
 
         $fraudAlerts = AttendanceFraudAlerts::forUsers($userIds);
 
+        // Keyboard / click totals for the same period as the table. `tracked_beats` counts heartbeats
+        // where the agent's input hook was verified working, so "0" can be told apart from "not tracked".
+        $inputByUser = $userIds === []
+            ? collect()
+            : AttendanceActivityLog::query()
+                ->selectRaw('user_id, SUM(keystroke_count) as keys_total, SUM(mouse_click_count) as clicks_total, SUM(CASE WHEN input_tracked = 1 THEN 1 ELSE 0 END) as tracked_beats')
+                ->whereIn('user_id', $userIds)
+                ->where('recorded_at', '>=', $fromBound)
+                ->where('recorded_at', '<=', $toBound)
+                ->groupBy('user_id')
+                ->get()
+                ->keyBy('user_id');
+
         $rows = [];
         $totals = [
             'worked_seconds' => 0,
@@ -111,6 +124,11 @@ class AttendanceSummaryService
             $activeSecPct = ($active + $idle + $break) > 0
                 ? (int) round(($active / ($active + $idle + $break)) * 100)
                 : 0;
+
+            $input = $inputByUser->get($employee->id);
+            $inputTracked = (int) ($input?->tracked_beats ?? 0) > 0;
+            $clickCount = (int) ($input?->clicks_total ?? 0);
+            $keyCount = (int) ($input?->keys_total ?? 0);
 
             $userSessions = $sessionsByUser->get($employee->id, collect());
             $activitySpan = $this->activitySpan($userSessions, $fromAt, $toAt, $now, $timezone);
@@ -168,6 +186,9 @@ class AttendanceSummaryService
                 'meeting_clock' => $this->formatClock(0),
                 'active_min_pct' => $activeMinPct,
                 'active_sec_pct' => $activeSecPct,
+                'click_count' => $clickCount,
+                'key_count' => $keyCount,
+                'input_tracked' => $inputTracked,
                 'idle_seconds' => $idle,
                 'idle_clock' => $this->formatClock($idle),
                 'work_time_seconds' => $workTime,
@@ -416,6 +437,8 @@ class AttendanceSummaryService
             'Manual',
             'Active Minutes %',
             'Active Seconds %',
+            'Mouse Clicks',
+            'Keystrokes',
             'Idle',
             'Work Time',
             'Period From',
@@ -430,6 +453,8 @@ class AttendanceSummaryService
                 $row['manual_clock'],
                 $row['active_min_pct'].'%',
                 $row['active_sec_pct'].'%',
+                ! empty($row['input_tracked']) ? $row['click_count'] : '',
+                ! empty($row['input_tracked']) ? $row['key_count'] : '',
                 $row['idle_clock'],
                 $row['work_time_clock'] ?? $row['including_idle_clock'],
                 $from,
