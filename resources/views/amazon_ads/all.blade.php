@@ -6524,6 +6524,7 @@
             var amzBgtAwaitingRecount = false;
             function amzBgtMarkRulesSaved() {
                 amzBgtDraftEdited = false;
+                amzBgtSumCacheClear();
                 amzBgtAwaitingRecount = true;
             }
             function amzBgtSumIsStale() {
@@ -6580,6 +6581,31 @@
                     return true;
                 } catch (e) { return false; }
             }
+            // The full-campaign sum is kept for this browser tab (per filter set, 10 minutes) so a reload or a filter
+            // toggle does not download every campaign again. Only the small sum is kept, never the rows.
+            var AMZ_BGT_SUM_CACHE_KEY = 'amzBgtSumCache.v1';
+            var AMZ_BGT_SUM_CACHE_MS = 10 * 60 * 1000;
+            function amzBgtSumCacheRead() {
+                try {
+                    var raw = JSON.parse(sessionStorage.getItem(AMZ_BGT_SUM_CACHE_KEY) || '{}');
+                    var hit = raw && raw[amzBgtFilterKey()];
+                    if (hit && hit.sum && Date.now() - Number(hit.ts || 0) < AMZ_BGT_SUM_CACHE_MS) return hit.sum;
+                } catch (e) {}
+                return null;
+            }
+            function amzBgtSumCacheWrite(sum) {
+                try {
+                    var raw = {};
+                    try { raw = JSON.parse(sessionStorage.getItem(AMZ_BGT_SUM_CACHE_KEY) || '{}') || {}; } catch (e0) { raw = {}; }
+                    var keys = Object.keys(raw);
+                    if (keys.length > 6) delete raw[keys[0]];
+                    raw[amzBgtFilterKey()] = { ts: Date.now(), sum: sum };
+                    sessionStorage.setItem(AMZ_BGT_SUM_CACHE_KEY, JSON.stringify(raw));
+                } catch (e) {}
+            }
+            function amzBgtSumCacheClear() {
+                try { sessionStorage.removeItem(AMZ_BGT_SUM_CACHE_KEY); } catch (e) {}
+            }
             // A count only describes the whole view when it covers (nearly) every campaign the server reports for these filters.
             // A short count (34 of 227) once got stored as "full" and then showed a tiny SUGG DAILY BGT everywhere.
             function amzBgtCoversAllCampaigns(n) {
@@ -6587,7 +6613,7 @@
                 // Until the grid has reported its campaign count there is nothing to compare with, so a stored count is not trusted yet.
                 if (total === null) return false;
                 if (total <= 0) return true;
-                return Number(n) >= Math.floor(total * 0.98);
+                return Number(n) >= Math.floor(total * 0.9);
             }
             // Saved by the nightly job ('ENABLED') or by this page for the same filter key.
             function amzBgtSavedMatchesView() {
@@ -7042,6 +7068,11 @@
                     return;
                 }
                 var sumPartial = !!sumRows._partial;
+                // Same filters were counted a moment ago in this tab: reuse that instead of downloading every campaign again.
+                if (sumPartial && !amzBgtSumIsStale()) {
+                    var cachedSum = amzBgtSumCacheRead();
+                    if (cachedSum && amzBgtCoversAllCampaigns(cachedSum.campaigns) && amzBgtApplySavedSum(cachedSum)) return;
+                }
                 // No usable stored sum (for example one saved before GPFT existed). The grid holds one page only,
                 // so load every campaign. It repaints this panel when it lands and stores the new full sum.
                 if (sumPartial && !amzBgtUniverse.failed) amzBgtEnsureUniverseSoon();
@@ -7153,6 +7184,7 @@
                     })
                 };
                 if (!sumPartial && !amzBgtDraftEdited && amzBgtCoversAllCampaigns(campaigns)) {
+                    amzBgtSumCacheWrite(amzBgtStaged.sum);
                     // A sum built from unsaved draft amounts is never stored; it would show wrong totals after a reload.
                     amzBgtStaged.dirty = true;
                     amzBgtScheduleSaveCounts();
