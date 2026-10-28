@@ -658,7 +658,7 @@ class NeweggListingPublishService
             }
         }
 
-        return $title;
+        return ListingManagerAmazonHydrator::NEWEGG_DEFAULT_DESCRIPTION;
     }
 
     /**

@@ -3575,9 +3575,10 @@ class ListingManagerController extends Controller
         $desc = trim((string) ($details['description'] ?? ''));
 
         // Pull Shopify main-store HTML when description is missing or still plain Amazon text
+        $isNewegg = ListingManagerAmazonHydrator::isNeweggChannel($channelName);
         $needsMainStoreDesc = $force
             || $desc === ''
-            || (! str_contains($desc, '<img') && ! str_contains($desc, 'shopify') && mb_strlen(strip_tags($desc)) < 2500);
+            || (! $isNewegg && ! str_contains($desc, '<img') && ! str_contains($desc, 'shopify') && mb_strlen(strip_tags($desc)) < 2500);
 
         $hydrated = ListingManagerAmazonHydrator::hydrate((string) $draft->seller_sku, $needsMainStoreDesc, $channelName);
 
@@ -3613,7 +3614,10 @@ class ListingManagerController extends Controller
 
         // Always prefer main-store description when we fetched it
         if ($needsDesc && trim((string) ($hydrated['description'] ?? '')) !== '') {
-            $merged['description'] = $hydrated['description'];
+            // Newegg drafts keep the standard 5 Core replacement description (set in detailsFromHydration).
+            if (! ListingManagerAmazonHydrator::isNeweggChannel($channelName)) {
+                $merged['description'] = $hydrated['description'];
+            }
             if (! empty($hydrated['images'])) {
                 $merged['images'] = $hydrated['images'];
                 $merged['image_url'] = $hydrated['images'][0];
