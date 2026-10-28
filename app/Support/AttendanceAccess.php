@@ -114,6 +114,19 @@ class AttendanceAccess
         return in_array($user->role, ['admin', 'superadmin', 'manager'], true);
     }
 
+    /**
+     * Team Monitoring summary page (/attendance/summary): President, Software 5, HR and Tech Support only.
+     */
+    public static function canViewSummary(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        return self::emailMatches((string) $user->email, config('attendance.summary_emails', []));
+    }
+
     public static function canAdmin(?User $user = null): bool
     {
         $user ??= auth()->user();

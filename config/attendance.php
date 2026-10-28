@@ -19,6 +19,17 @@ return [
     ],
 
     /*
+    | Emails that can open Team Monitoring (/attendance/summary). Always enforced,
+    | independent of restrictions_enabled.
+    */
+    'summary_emails' => [
+        'president@5core.com',
+        'software5@5core.com',
+        'hr@5core.com',
+        'tech-support@5core.com',
+    ],
+
+    /*
     | Emails that can manage policies and review AI flags.
     */
     'admin_emails' => [

@@ -24,7 +24,7 @@ class AttendanceSummaryController extends Controller
 
     public function index(Request $request)
     {
-        abort_unless(AttendanceAccess::canMonitor(), 403);
+        abort_unless(AttendanceAccess::canViewSummary(), 403);
 
         $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
         $dayReset = $request->input('day_reset', AttendanceTimelineService::defaultDayReset($timezone));
@@ -52,7 +52,7 @@ class AttendanceSummaryController extends Controller
 
     public function data(Request $request): JsonResponse
     {
-        abort_unless(AttendanceAccess::canMonitor(), 403);
+        abort_unless(AttendanceAccess::canViewSummary(), 403);
 
         $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
 
@@ -61,7 +61,7 @@ class AttendanceSummaryController extends Controller
 
     public function export(Request $request): StreamedResponse
     {
-        abort_unless(AttendanceAccess::canMonitor(), 403);
+        abort_unless(AttendanceAccess::canViewSummary(), 403);
 
         $timezone = $request->input('timezone', AttendanceTimelineService::defaultTimezone());
         $payload = $this->buildSummary($request, $timezone);
