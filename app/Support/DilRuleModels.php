@@ -25,7 +25,7 @@ final class DilRuleModels
         'cvr_age_diff_lmp' => [
             'label' => 'Dil + CVR + Age + Diff + LMP cap',
             'blocks' => ['cvr_adj', 'age_adj', 'diff_adj', 'lmp_cap'],
-            'channels' => ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemutwo', 'temu3', 'shopify_b2c', 'shopify_b2b', 'reverb', 'shein', 'tiktok', 'tiktok2'],
+            'channels' => ['amazon', 'ebay1', 'ebay2', 'ebay3', 'temu', 'newtemutwo', 'temu3', 'shopify_b2c', 'shopify_b2b', 'reverb', 'shein', 'tiktok', 'tiktok2'],
         ],
         'cvr_age_diff' => [
             'label' => 'Dil + CVR + Age + Diff',

@@ -1074,10 +1074,22 @@
                     </div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
+                    @php($amzDilModel = \App\Support\DilRuleModels::modelFor('amazon'))
+                    @if($amzDilModel)
+                    <span class="small text-muted me-auto">
+                        Rule model: <strong>{{ $amzDilModel['label'] }}</strong> · {{ count($amzDilModel['channels']) }} pages
+                    </span>
+                    @endif
                     <button type="button" class="btn btn-sm btn-primary" id="amz-dil-groi-save-btn"
-                        title="Save Dil → Target NROI% slabs via API and apply S PRC on matching SKUs.">
-                        <i class="fas fa-save me-1"></i> Save and Apply
+                        title="Save Only: saves these Dil → Target NROI% rules on THIS page only (Amazon) and applies S PRC on matching SKUs. No other page changes.">
+                        <i class="fas fa-save me-1"></i> Save Only
                     </button>
+                    @if($amzDilModel)
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="amz-dil-groi-save-all-btn"
+                        title="Save All: saves these Dil rules on Amazon AND every page of the same rule model ({{ implode(', ', $amzDilModel['channels']) }}), then applies S PRC here. Each page keeps its own Clearance NROI%.">
+                        <i class="fas fa-layer-group me-1"></i> Save All ({{ count($amzDilModel['channels']) }} pages)
+                    </button>
+                    @endif
                 </div>
             </div>
         </div>
@@ -2751,7 +2763,8 @@
                 $('#amz-dil-groi-status').text('Could not load saved rules from API (' + reason + ') — using defaults.');
             }
         }
-        function saveAmzDilGroiRules() {
+        /** saveAll = true → /dil-groi/save-all (every page of this rule model); default → Amazon only. */
+        function saveAmzDilGroiRules(saveAll) {
             const rules = readAmzDilGroiRulesFromModal();
             const cvrAdj = amzCvrGroiAdjNow();
             amzCvrGroiAdj = cvrAdj;
@@ -2761,7 +2774,7 @@
             amzDiffAdj = diffAdj;
             const ageAdj = amzAgeAdjPayload();
             return $.ajax({
-                url: '/channel-promo-pricing/amazon/dil-groi',
+                url: '/channel-promo-pricing/amazon/dil-groi' + (saveAll === true ? '/save-all' : ''),
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': amzPefCsrf(),
@@ -2785,7 +2798,11 @@
                 if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
                 amzAfterDilGroiRulesChanged();
-                $('#amz-dil-groi-status').text('Saved via API and applied. S PRC written from Sprc Dil.');
+                $('#amz-dil-groi-status').text(
+                    saveAll === true && res && Array.isArray(res.channels)
+                        ? ('Saved on ' + res.channels.length + ' pages (' + res.channels.join(', ') + '). S PRC written here from Sprc Dil.')
+                        : 'Saved on this page only and applied. S PRC written from Sprc Dil.'
+                );
                 return res;
             });
         }
@@ -5448,13 +5465,38 @@
                 if (typeof window.bgSpriceCloseModal === 'function') window.bgSpriceCloseModal('amzDilGroiModal');
                 const amzDgEndGuard = (typeof window.bgSpriceBegin === 'function') ? window.bgSpriceBegin() : function() {};
                 try {
-                    await saveAmzDilGroiRules();
-                    amzPefToast('success', 'Sprc Dil saved. S PRC is being written in the background — you can close this page.');
+                    await saveAmzDilGroiRules(false);
+                    amzPefToast('success', 'Sprc Dil saved on this page only. S PRC is being written in the background — you can close this page.');
                 } catch (xhr) {
                     amzPefToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
                 } finally {
                     amzDgEndGuard();
                     $btn.prop('disabled', false).html(html);
+                }
+            });
+            $('#amz-dil-groi-save-all-btn').off('click.amzpef').on('click.amzpef', async function(e) {
+                e.preventDefault();
+                const model = @json(\App\Support\DilRuleModels::modelFor('amazon'));
+                if (!model || !Array.isArray(model.channels)) return;
+                if (!window.confirm('Save All: copy these Dil rules to ' + model.channels.length + ' pages of the "' + model.label + '" model?\n\n'
+                    + model.channels.join(', ') + '\n\nEach page keeps its own Clearance NROI%. Pages of other models are not changed.\nUse Save Only to change Amazon alone.')) {
+                    return;
+                }
+                const $btn = $(this);
+                const html = $btn.html();
+                $('#amz-dil-groi-save-btn').prop('disabled', true);
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving all…');
+                if (typeof window.bgSpriceCloseModal === 'function') window.bgSpriceCloseModal('amzDilGroiModal');
+                const amzDgEndGuard = (typeof window.bgSpriceBegin === 'function') ? window.bgSpriceBegin() : function() {};
+                try {
+                    const res = await saveAmzDilGroiRules(true);
+                    amzPefToast('success', 'Dil rules saved on ' + (res && res.channels ? res.channels.length : 'all') + ' pages. S PRC is being written here in the background.');
+                } catch (xhr) {
+                    amzPefToast('error', 'Save All failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                } finally {
+                    amzDgEndGuard();
+                    $btn.prop('disabled', false).html(html);
+                    $('#amz-dil-groi-save-btn').prop('disabled', false);
                 }
             });
             $(document).off('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi')

@@ -37,9 +37,23 @@ class DilRuleModelsMatchPartialTest extends TestCase
     {
         foreach (DilRuleModels::MODELS as $id => $model) {
             foreach ($model['channels'] as $channel) {
+                if ($channel === 'amazon') {
+                    continue; // own partial, checked below
+                }
                 $this->assertEqualsCanonicalizing($model['blocks'], $this->blocksOf($channel), "{$channel} is in model {$id} but its modal has other blocks");
             }
         }
+    }
+
+    public function test_amazon_modal_has_the_blocks_of_its_model(): void
+    {
+        $html = view('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'modals'])->render();
+        foreach (['cvr_adj' => 'amz-cvr-groi', 'age_adj' => 'amz-age-adj', 'diff_adj' => 'amz-diff-adj', 'lmp_cap' => 'amz-lmp-cap'] as $block => $marker) {
+            $this->assertStringContainsString($marker, $html, "Amazon modal lost the {$block} block");
+        }
+        $this->assertEqualsCanonicalizing(DilRuleModels::modelFor('amazon')['blocks'], ['cvr_adj', 'age_adj', 'diff_adj', 'lmp_cap']);
+        $this->assertStringContainsString('amz-dil-groi-save-all-btn', $html);
+        $this->assertStringContainsString('amz-dil-groi-save-btn', $html);
     }
 
     public function test_every_page_that_includes_the_modal_is_in_exactly_one_model(): void

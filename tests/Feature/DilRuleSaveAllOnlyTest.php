@@ -147,7 +147,7 @@ class DilRuleSaveAllOnlyTest extends TestCase
         }
         $this->assertNull($this->dilRow('purchasing_power'));
 
-        $bad = $this->savePage('saveDilGroiRulesAll', 'amazon');
+        $bad = $this->savePage('saveDilGroiRulesAll', 'pef');
         $this->assertSame(422, $bad['status']);
     }
 }
