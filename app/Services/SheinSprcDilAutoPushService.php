@@ -72,6 +72,19 @@ class SheinSprcDilAutoPushService
         int $errorCooldownMinutes = 120,
         int $maxPushes = 0
     ): array {
+        // No saved rules = no price. A missing rule row falls back to built-in defaults, so wiping the rules would
+        // otherwise re-price and push every SKU. Until the rules are entered on /shein-pricing, nothing is saved or pushed.
+        if (! $this->hasSavedRules()) {
+            $this->log($logger, 'Shein has no saved rules (Std prc vs dil / Sprc Dil): nothing saved or pushed. Enter the rules on /shein-pricing.');
+
+            return [
+                'dry_run' => $dryRun,
+                'skip_push' => $skipPush,
+                'stats' => ['candidates' => 0, 'applied' => 0, 'pushed' => 0, 'skipped_unchanged' => 0, 'price_repaired' => 0,
+                    'skipped' => 0, 'push_failed' => 0, 'errors' => []],
+            ];
+        }
+
         StdPrcVsDilPricer::flush();
         $pricer = StdPrcVsDilPricer::forChannel(self::CHANNEL);
         $adsFrac = $this->channelAdsFrac();
@@ -447,6 +460,30 @@ class SheinSprcDilAutoPushService
             'ship' => $ship,
             'lmp' => round($lmp, 2),
         ];
+    }
+
+    /**
+     * True when the rule the page switch has selected has been saved for Shein: the Std prc vs dil rules, or the
+     * Sprc Dil slabs.
+     */
+    public function hasSavedRules(): bool
+    {
+        try {
+            $name = SpriceActiveRule::usesStdPrc(self::CHANNEL) ? self::CHANNEL.'_std_prc_vs_dil' : self::CHANNEL.'_dil_vs_groi';
+            $row = ChannelTabulatorColumnSetting::query()->where('channel_name', $name)->first();
+            $vis = is_array($row?->visibility) ? $row->visibility : [];
+            if ($vis === []) {
+                return false;
+            }
+            if ($name === self::CHANNEL.'_dil_vs_groi') {
+                return AmazonDilGroiRule::unpackStored($vis)['rules'] !== [];
+            }
+
+            return true;
+        } catch (Throwable $e) {
+            // Cannot tell: do not push on a guess.
+            return false;
+        }
     }
 
     /**
