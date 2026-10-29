@@ -37,6 +37,8 @@ class DiagnoseAlibabaInventory extends Command
         $this->line('  quantity percent   : '.($settings['inventory']['quantity_calc_percent'] ?? 100));
         $this->line('  quantity offset    : '.($settings['inventory']['quantity_offset'] ?? 0));
         $this->line('  max quantity       : '.($settings['inventory']['max_quantity'] ?? '-'));
+        $autoLink = MarketplaceSyncSettings::canAutoLinkBySku('alibaba');
+        $this->line('  auto-link by SKU   : '.($autoLink ? 'ON (hourly link-map refresh runs)' : 'OFF  <-- the hourly alibaba:sync-link-map is skipped, so deleted/changed Alibaba product ids stay in the link map'));
 
         $this->line('');
         $this->line('== 2. Alibaba credentials');

@@ -119,3 +119,4 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
 </script>
+@include('partials.listing-refresh-button')

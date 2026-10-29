@@ -57,13 +57,22 @@ class ListingEbayTwoController extends Controller
         $nrValues = ListingCountsEngine::loadNrValues(EbayTwoDataView::class, $skus);
 
         // Missing Listing / Listed — same rule as ebay2-tabulator-view Missing L (ebay_2_metrics.item_id)
+        // Ended / deleted / missing listings (listing_status from the eBay portal pull) are not listed.
         $ebayMetrics = \App\Support\Marketplace\ListingCountsEngine::listedIdsFromColumn(
+            Ebay2Metric::class,
+            $skus,
+            'item_id',
+            false,
+            \App\Support\Marketplace\ChannelListingRegistry::EBAY_NOT_LIVE_STATUSES
+        );
+        // SKUs eBay no longer lists: a saved buyer/seller link must not bring them back as Listed.
+        $ebayEverStored = \App\Support\Marketplace\ListingCountsEngine::listedIdsFromColumn(
             Ebay2Metric::class,
             $skus,
             'item_id'
         );
 
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $ebayMetrics) {
+        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $ebayMetrics, $ebayEverStored) {
             $childSku = (string) $item->sku;
             $skuLower = strtolower(trim($childSku));
 
@@ -90,7 +99,9 @@ class ListingEbayTwoController extends Controller
 
             // Listed / Not Listed from ebay_2_metrics.item_id, then the saved buyer/seller link.
             $itemId = \App\Support\Marketplace\ListingCountsEngine::listingIdFromMap($ebayMetrics, $childSku);
-            if ($itemId === '') {
+            $endedOnEbay = $itemId === ''
+                && \App\Support\Marketplace\ListingCountsEngine::listingIdFromMap($ebayEverStored, $childSku) !== '';
+            if ($itemId === '' && ! $endedOnEbay) {
                 $itemId = \App\Support\Marketplace\ListingCountsEngine::listingIdFromLinks(
                     $item->buyer_link,
                     $item->seller_link
