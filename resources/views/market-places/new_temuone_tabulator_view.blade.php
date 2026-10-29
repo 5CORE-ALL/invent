@@ -2528,7 +2528,7 @@
     }
     /**
      * S Base Prc and Promo Base Prc are both shown but differ: the base we want on Temu is not the base Temu shows.
-     * Both cells turn blue (see ntoPaintBaseMismatch).
+     * Both cells show a blue triangle (see ntoPaintBaseMismatch).
      */
     function ntoBaseMismatch(d) {
         if (!d || d.is_parent_summary) return false;
@@ -2537,16 +2537,16 @@
         if (!(sBase > 0) || !(promo > 0)) return false;
         return !ntoMoneyEq(sBase, promo);
     }
-    /** Blue triangle inside a blue base cell: blue on a small white chip so it stays visible on the blue background. */
-    const NTO_BASE_MISMATCH_TRI = '<span style="display:inline-flex;align-items:center;background:#fff;border-radius:3px;padding:0 3px;margin-left:4px;">'
-        + '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;"></i></span>';
-    /** Paints (or clears) the blue alert on the cell element itself, so it survives sorting and redraws. */
+    /** Blue triangle shown next to the price in both base cells when S Base Prc and Promo Base Prc differ. */
+    const NTO_BASE_MISMATCH_TRI = '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:11px;margin-left:4px;"></i>';
+    /** Returns whether this row is a mismatch and clears any cell fill (the alert is the blue triangle, not a background). */
     function ntoPaintBaseMismatch(cell, d) {
         const el = cell && cell.getElement ? cell.getElement() : null;
         if (!el) return false;
         const bad = ntoBaseMismatch(d);
-        el.style.backgroundColor = bad ? '#0d6efd' : '';
-        el.style.color = bad ? '#fff' : '';
+        // Reset any earlier fill: the alert is the blue triangle only, the cell background stays plain.
+        el.style.backgroundColor = '';
+        el.style.color = '';
         return bad;
     }
     function ntoRowPushState(d) {
