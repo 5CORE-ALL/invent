@@ -71,6 +71,16 @@
             border: 1px solid #dee2e6;
         }
 
+        .cb-img-upload {
+            border: 0;
+            background: transparent;
+            color: #2563eb;
+            padding: 0 2px;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+        }
+
         .issue-img-thumb {
             max-height: 36px;
             max-width: 54px;
@@ -467,9 +477,13 @@
 
             const fmtIssueImg = function (cell) {
                 const u = String(cell.getValue() || '').trim();
-                if (!u) return '—';
+                const slot = cell.getField() === 'image_2_url' ? 'image_2' : 'image_1';
+                const btn = '<button type="button" class="cb-img-upload" data-slot="' + slot + '" title="' +
+                    (u ? 'Replace image' : 'Upload image') + '"><i class="bi ' +
+                    (u ? 'bi-arrow-repeat' : 'bi-cloud-arrow-up-fill') + '"></i></button>';
+                if (!u) return btn;
                 return '<a href="' + escAttr(u) + '" target="_blank" rel="noopener"><img src="' + escAttr(u) +
-                    '" class="issue-img-thumb" loading="lazy" alt=""></a>';
+                    '" class="issue-img-thumb" loading="lazy" alt=""></a>' + btn;
             };
 
             const fmtLink = function (cell) {
@@ -541,8 +555,8 @@
                         { title: 'Action', field: 'action_1', width: 120, formatter: fmtAction },
                         { title: 'Tracking', field: 'tracking_number', width: 80, formatter: fmtTracking, hozAlign: 'center' },
                         { title: 'Track R', field: 'replacement_tracking', width: 80, formatter: fmtTracking, hozAlign: 'center' },
-                        { title: 'Img 1', field: 'image_1_url', width: 60, formatter: fmtIssueImg, headerSort: false, hozAlign: 'center' },
-                        { title: 'Img 2', field: 'image_2_url', width: 60, formatter: fmtIssueImg, headerSort: false, hozAlign: 'center' },
+                        { title: 'Img 1', field: 'image_1_url', width: 80, formatter: fmtIssueImg, headerSort: false, hozAlign: 'center' },
+                        { title: 'Img 2', field: 'image_2_url', width: 80, formatter: fmtIssueImg, headerSort: false, hozAlign: 'center' },
                         { title: 'Link', field: 'issue_link', width: 50, formatter: fmtLink, headerSort: false, hozAlign: 'center' },
                         { title: 'Root Cause Found', field: 'issue', width: 60, formatter: fmtRootCause, hozAlign: 'center' },
                         { title: 'Instructions CTN', field: '_ctn', width: 60, formatter: fmtCtn, headerSort: false, hozAlign: 'center' },
@@ -570,6 +584,12 @@
                         }
                         return;
                     }
+                    const upBtn = e.target.closest('.cb-img-upload');
+                    if (upBtn) {
+                        e.preventDefault();
+                        uploadImageForRow(cell.getRow().getData(), upBtn.getAttribute('data-slot'));
+                        return;
+                    }
                     if (cell.getField() !== '_actions') return;
                     const target = e.target.closest('button');
                     if (!target) return;
@@ -590,6 +610,30 @@
 
                 wireUi();
             });
+
+            // Pick an image and save it onto an existing row (slot = image_1 | image_2).
+            function uploadImageForRow(rowData, slot) {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/jpeg,image/png,image/gif,image/webp';
+                input.addEventListener('change', async function () {
+                    const file = input.files && input.files[0];
+                    if (!file) return;
+                    if (file.size > 10 * 1024 * 1024) {
+                        alert('Image must be 10 MB or smaller.');
+                        return;
+                    }
+                    try {
+                        const payload = Object.assign({}, rowData);
+                        payload['_' + slot] = file;
+                        await persistRow(payload);
+                        refreshAll();
+                    } catch (err) {
+                        alert(err.message || 'Image upload failed.');
+                    }
+                });
+                input.click();
+            }
 
             function buildColumnsMenu() {
                 const menu = document.getElementById('cb-columns-menu');
