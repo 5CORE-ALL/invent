@@ -120,7 +120,7 @@ final class ListingExistingParents
             return [];
         }
 
-        $all = Cache::remember('lp_existing_parents_v1:'.$key, 300, static fn () => self::buildAll($channel));
+        $all = Cache::remember('lp_existing_parents_v2:'.$key, 300, static fn () => self::buildAll($channel));
 
         $q = strtolower(trim($query));
         $prefer = strtolower(trim($preferParent));
@@ -233,8 +233,56 @@ final class ListingExistingParents
             ];
         }
 
+        if (self::isEbay($channel)) {
+            $out = self::mergeLiveEbayParents($channel, $out);
+        }
+
         usort($out, static fn ($a, $b) => $b['sku_count'] <=> $a['sku_count']);
 
         return $out;
+    }
+
+    /**
+     * Add the variation / "PARENT ..." listings eBay itself reports as live, including the ones
+     * whose SKUs are not saved in our metrics table yet.
+     *
+     * @param  list<array{id: string, title: string, parent: string, skus: list<string>, sku_count: int}>  $rows
+     * @return list<array{id: string, title: string, parent: string, skus: list<string>, sku_count: int}>
+     */
+    private static function mergeLiveEbayParents(string $channel, array $rows): array
+    {
+        $key = ListingChannelCounts::normalize($channel);
+        $store = match (true) {
+            in_array($key, ['ebay2', 'ebaytwo'], true) => 2,
+            in_array($key, ['ebay3', 'ebaythree'], true) => 3,
+            default => 1,
+        };
+
+        try {
+            $live = app(\App\Services\MarketplaceManager\EbayPortalListingStatusSync::class)->activeParentListings($store);
+        } catch (\Throwable) {
+            return $rows;
+        }
+
+        $byId = [];
+        foreach ($rows as $i => $row) {
+            $byId[$row['id']] = $i;
+        }
+        foreach ($live as $item) {
+            if (isset($byId[$item['id']])) {
+                $i = $byId[$item['id']];
+                $rows[$i]['title'] = $item['title'] !== '' ? $item['title'] : $rows[$i]['title'];
+                if ($item['parent'] !== '') {
+                    $rows[$i]['parent'] = $item['parent'];
+                }
+                $rows[$i]['skus'] = array_values(array_unique(array_merge($rows[$i]['skus'], $item['skus'])));
+                $rows[$i]['sku_count'] = max($rows[$i]['sku_count'], $item['sku_count'], count($rows[$i]['skus']));
+
+                continue;
+            }
+            $rows[] = $item;
+        }
+
+        return $rows;
     }
 }
