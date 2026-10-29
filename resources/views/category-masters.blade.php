@@ -24,10 +24,12 @@
         padding-bottom: 2px;
     }
     .cm-toolbar .cm-search { width: 180px; flex: 0 0 180px; }
-    .cm-toolbar .cm-category-search { width: 220px; flex: 0 0 220px; }
+    .cm-toolbar .cm-category-search { width: 200px; flex: 0 0 200px; }
     .cm-toolbar .cm-select { width: 130px; flex: 0 0 130px; }
-    .cm-toolbar .cm-scope { width: 150px; flex: 0 0 150px; }
-    .cm-toolbar .cm-shopify-cat { width: 260px; flex: 0 0 260px; }
+    .cm-toolbar .cm-shopify-cat { width: 330px; flex: 0 0 330px; }
+    .cm-toolbar .cm-chan { display: inline-flex; align-items: center; gap: 4px; }
+    .cm-toolbar .cm-chan-name { font-weight: 700; font-size: 0.8rem; color: #1a3d7c; background: #eef3fb; }
+    .cm-toolbar .cm-blank-count { min-width: 28px; font-size: 0.75rem; }
     #cm-table.tabulator { width: 100%; }
     #cm-table .tabulator-header {
         background: linear-gradient(180deg, #eef3fb 0%, #e3ebf8 100%);
@@ -179,20 +181,39 @@
                         <option value="parent">Parent</option>
                         <option value="sku">SKU</option>
                     </select>
-                    <select id="cmShopifyCat" class="form-select form-select-sm cm-shopify-cat" aria-label="Filter by Category">
-                        <option value="">All Category</option>
-                    </select>
-                    <div class="input-group input-group-sm cm-category-search">
-                        <span class="input-group-text"><i class="fas fa-search"></i></span>
-                        <input type="text" id="cmCategorySearch" class="form-control" placeholder="Category" aria-label="Search Category">
+                    <div class="cm-chan">
+                        <div class="input-group input-group-sm cm-shopify-cat">
+                            <span class="input-group-text cm-chan-name">Shopify</span>
+                            <select id="cmShopifyCat" class="form-select form-select-sm" aria-label="Filter by Shopify Category">
+                                <option value="">All Category</option>
+                            </select>
+                        </div>
+                        <span class="badge bg-danger cm-blank-count" data-field="category_shopify" title="Rows with a blank Shopify category">0</span>
                     </div>
-                    <select id="cmCategoryScope" class="form-select form-select-sm cm-scope" aria-label="Category column">
-                        <option value="all">All categories</option>
-                        <option value="category_shopify">Category</option>
-                        <option value="category_ebay">Category eBay</option>
-                        <option value="category_amz">Category Amz</option>
-                        <option value="category_temu">Category Temu</option>
-                    </select>
+                    <div class="cm-chan">
+                        <div class="input-group input-group-sm cm-category-search">
+                            <span class="input-group-text cm-chan-name">eBay</span>
+                            <input type="text" id="cmSearchEbay" class="form-control cm-channel-search" data-field="category_ebay" list="cmListEbay" placeholder="Category" aria-label="Search eBay Category" autocomplete="off">
+                            <datalist id="cmListEbay"></datalist>
+                        </div>
+                        <span class="badge bg-danger cm-blank-count" data-field="category_ebay" title="Rows with a blank eBay category">0</span>
+                    </div>
+                    <div class="cm-chan">
+                        <div class="input-group input-group-sm cm-category-search">
+                            <span class="input-group-text cm-chan-name">Amz</span>
+                            <input type="text" id="cmSearchAmz" class="form-control cm-channel-search" data-field="category_amz" list="cmListAmz" placeholder="Category" aria-label="Search Amazon Category" autocomplete="off">
+                            <datalist id="cmListAmz"></datalist>
+                        </div>
+                        <span class="badge bg-danger cm-blank-count" data-field="category_amz" title="Rows with a blank Amazon category">0</span>
+                    </div>
+                    <div class="cm-chan">
+                        <div class="input-group input-group-sm cm-category-search">
+                            <span class="input-group-text cm-chan-name">Temu</span>
+                            <input type="text" id="cmSearchTemu" class="form-control cm-channel-search" data-field="category_temu" list="cmListTemu" placeholder="Category" aria-label="Search Temu Category" autocomplete="off">
+                            <datalist id="cmListTemu"></datalist>
+                        </div>
+                        <span class="badge bg-danger cm-blank-count" data-field="category_temu" title="Rows with a blank Temu category">0</span>
+                    </div>
                     <button type="button" class="badge border-0 px-2 py-1 text-nowrap" id="cmClear" title="Clear search and filters">Clear</button>
                 </div>
                 <div id="cm-table"></div>
@@ -234,9 +255,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const CATEGORY_FIELDS = ['category_ebay', 'category_amz', 'category_temu'];
     // Read-only: filled once from Shopify, never edited, pulled or pushed here.
     const SHOPIFY_FIELD = 'category_shopify';
-    const SEARCH_FIELDS = CATEGORY_FIELDS.concat([SHOPIFY_FIELD]);
     const FILL_CHUNK = 20;
     const BLANK_CATEGORY = '__blank__';
+    // Typed or picked in a channel box to find rows that have no category there.
+    const BLANK_LABEL = '(Blank)';
     const CHANNELS = {
         ebay: { label: 'eBay', field: 'category_ebay' },
         amz: { label: 'Amazon', field: 'category_amz' },
@@ -288,8 +310,6 @@ document.addEventListener('DOMContentLoaded', function () {
         const parentQ = (el('cmParentSearch').value || '').trim().toLowerCase();
         const skuQ = (el('cmSkuSearch').value || '').trim().toLowerCase();
         const type = el('cmRowType').value;
-        const categoryQ = (el('cmCategorySearch').value || '').trim().toLowerCase();
-        const scope = el('cmCategoryScope').value;
 
         if (type === 'parent' && !data.is_parent) return false;
         if (type === 'sku' && data.is_parent) return false;
@@ -298,26 +318,79 @@ document.addEventListener('DOMContentLoaded', function () {
         const shopifyCat = el('cmShopifyCat').value;
         if (shopifyCat === BLANK_CATEGORY) {
             if (cleanValue(data[SHOPIFY_FIELD]) !== '') return false;
-        } else if (shopifyCat !== '' && cleanValue(data[SHOPIFY_FIELD]) !== shopifyCat) {
+        } else if (shopifyCat !== '' && cleanValue(data[SHOPIFY_FIELD]).toLowerCase() !== shopifyCat.toLowerCase()) {
             return false;
         }
-        if (categoryQ) {
-            const fields = scope === 'all' ? SEARCH_FIELDS : [scope];
-            const hit = fields.some(function (f) {
-                return String(data[f] || '').toLowerCase().includes(categoryQ);
-            });
-            if (!hit) return false;
+        // Each channel has its own search box; every filled box must match its own column.
+        const boxes = channelSearchBoxes();
+        for (let i = 0; i < boxes.length; i++) {
+            const q = (boxes[i].value || '').trim().toLowerCase();
+            if (!q) continue;
+            const value = cleanValue(data[boxes[i].dataset.field]).toLowerCase();
+            if (q === BLANK_LABEL.toLowerCase()) {
+                if (value !== '') return false;
+            } else if (!value.includes(q)) {
+                return false;
+            }
         }
         return true;
+    }
+
+    // Red count beside each category box: rows whose category is blank.
+    function updateBlankCounts() {
+        if (!table) return;
+        const counts = {};
+        document.querySelectorAll('.cm-blank-count').forEach(function (badge) { counts[badge.dataset.field] = 0; });
+        table.getData().forEach(function (row) {
+            Object.keys(counts).forEach(function (field) {
+                if (cleanValue(row[field]) === '') counts[field]++;
+            });
+        });
+        document.querySelectorAll('.cm-blank-count').forEach(function (badge) {
+            badge.textContent = (counts[badge.dataset.field] || 0).toLocaleString();
+        });
+    }
+
+    function channelSearchBoxes() {
+        return Array.from(document.querySelectorAll('.cm-channel-search'));
+    }
+
+    // Distinct values of one column, ignoring case and spacing, sorted A to Z.
+    function uniqueCategories(field) {
+        const seen = new Map();
+        table.getData().forEach(function (row) {
+            const value = cleanValue(row[field]);
+            if (!value) return;
+            const key = value.toLowerCase();
+            if (!seen.has(key)) seen.set(key, value);
+        });
+        return Array.from(seen.values()).sort(function (a, b) {
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
+    }
+
+    // The suggestion list of a channel box is rebuilt from the current rows each time it gets focus.
+    function fillChannelList(input) {
+        if (!table) return;
+        const list = el(input.getAttribute('list'));
+        if (!list) return;
+        list.innerHTML = '';
+        const blank = document.createElement('option');
+        blank.value = BLANK_LABEL;
+        list.appendChild(blank);
+        uniqueCategories(input.dataset.field).forEach(function (name) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            list.appendChild(opt);
+        });
     }
 
     function filtersActive() {
         return (el('cmParentSearch').value || '').trim() !== ''
             || (el('cmSkuSearch').value || '').trim() !== ''
-            || (el('cmCategorySearch').value || '').trim() !== ''
+            || channelSearchBoxes().some(function (box) { return (box.value || '').trim() !== ''; })
             || el('cmRowType').value !== 'all'
-            || el('cmShopifyCat').value !== ''
-            || el('cmCategoryScope').value !== 'all';
+            || el('cmShopifyCat').value !== '';
     }
 
     function paintClearBadge() {
@@ -585,23 +658,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let filling = false;
 
-    // Dropdown of the distinct values in the Category column, with how many SKU rows use each.
+    // Dropdown of the unique values in the Category column: each category once, no repeats.
     function refreshCategoryOptions() {
         if (!table) return;
         const select = el('cmShopifyCat');
         const keep = select.value;
-        const counts = new Map();
-        let blank = 0;
-        table.getData().forEach(function (row) {
-            if (row.is_parent) return;
-            const value = cleanValue(row[SHOPIFY_FIELD]);
-            if (!value) { blank++; return; }
-            counts.set(value, (counts.get(value) || 0) + 1);
-        });
-
-        const names = Array.from(counts.keys()).sort(function (a, b) {
-            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-        });
+        const names = uniqueCategories(SHOPIFY_FIELD);
+        updateBlankCounts();
 
         select.innerHTML = '';
         const add = function (value, label) {
@@ -611,8 +674,8 @@ document.addEventListener('DOMContentLoaded', function () {
             select.appendChild(opt);
         };
         add('', 'All Category (' + names.length + ')');
-        names.forEach(function (name) { add(name, name + ' (' + counts.get(name) + ')'); });
-        if (blank) add(BLANK_CATEGORY, '(Blank) (' + blank + ')');
+        add(BLANK_CATEGORY, BLANK_LABEL);
+        names.forEach(function (name) { add(name, name); });
 
         // Keep the chosen value if it is still there; otherwise fall back to all.
         const stillThere = Array.from(select.options).some(function (o) { return o.value === keep; });
@@ -753,6 +816,9 @@ document.addEventListener('DOMContentLoaded', function () {
         buildColumnMenu();
         table.redraw(true);
     });
+
+    // Pull, Save and edits change the categories: keep the blank counts true.
+    table.on('dataChanged', updateBlankCounts);
 
     table.on('dataLoaded', function () {
         updateCount();
@@ -1188,17 +1254,19 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     el('cmParentSearch').addEventListener('input', onSearchInput);
     el('cmSkuSearch').addEventListener('input', onSearchInput);
-    el('cmCategorySearch').addEventListener('input', onSearchInput);
+    channelSearchBoxes().forEach(function (box) {
+        box.addEventListener('input', onSearchInput);
+        box.addEventListener('change', applyFilters);
+        box.addEventListener('focus', function () { fillChannelList(box); });
+    });
     el('cmRowType').addEventListener('change', applyFilters);
-    el('cmCategoryScope').addEventListener('change', applyFilters);
     el('cmShopifyCat').addEventListener('change', applyFilters);
     el('cmClear').addEventListener('click', function () {
         el('cmParentSearch').value = '';
         el('cmSkuSearch').value = '';
-        el('cmCategorySearch').value = '';
+        channelSearchBoxes().forEach(function (box) { box.value = ''; });
         el('cmShopifyCat').value = '';
         el('cmRowType').value = 'all';
-        el('cmCategoryScope').value = 'all';
         applyFilters();
     });
     paintClearBadge();
