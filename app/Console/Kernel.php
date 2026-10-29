@@ -1410,9 +1410,10 @@ class Kernel extends ConsoleKernel
         // Headless "Push on reload" for /alibaba-analytics (same as amazon:push-blue-prices): blue-triangle SKUs
         // (INV > 0, Alibaba Price ≠ S PRC) are pushed with the page closed, so a rule or SNROI Cap change goes live within
         // minutes. The S PRC saved by the job above is already calc − Ship (the same price the page pushes), so the formula
-        // is unchanged. Alibaba reviews price changes: a pushed price is held 6 h, then --max-pushes keeps a run short.
-        // --respect-switch: the page Push on reload switch decides; when it is OFF this job does nothing.
-        $schedule->command('alibaba:push-blue-prices --respect-switch')
+        // is unchanged. Alibaba reviews price changes: a pushed price is held 6 h before the same price is sent again.
+        // Always on, like amazon:push-blue-prices: it does not depend on /alibaba-analytics being open or on the page
+        // switch. Every 10 min, 24/7 on purpose (no $ist()). --max-pushes 150 clears a backlog in a few runs.
+        $schedule->command('alibaba:push-blue-prices --max-pushes=150')
             ->cron('7-59/10 * * * *')
             ->name('alibaba-push-blue-prices')
             ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
@@ -1421,10 +1422,11 @@ class Kernel extends ConsoleKernel
 
         // Push and pull together (same as amazon:pull-pushed-prices): every pushed SKU is read back right after the
         // push; Alibaba reviews price changes, so this re-reads the pushed SKUs until the Price column matches.
+        // Every minute, same as amazon:pull-pushed-prices (only SKUs still waiting are read, so a quiet minute is cheap).
         $schedule->command('alibaba:pull-pushed-prices')
-            ->everyFiveMinutes()
+            ->everyMinute()
             ->name('alibaba-pull-pushed-prices')
-            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_MINUTE)
             ->runInBackground()
             ->appendOutputTo($log);
 
