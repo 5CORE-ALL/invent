@@ -64,8 +64,12 @@ class DiagnoseDobaOrders extends Command
         $newestShopify = DobaDailyData::query()->whereNotNull('shopify_order_id')->where('shopify_order_id', '!=', '')->max('order_time');
         $this->line('  newest order that reached Shopify: '.($newestShopify ?: '-'));
 
+        $this->line('  newest 8 rows in our table:');
+        $this->newestRows();
+
         $this->line('');
         $this->line('== 4. Queue');
+        $this->workers();
         try {
             $queue = \App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueFor('doba');
             $pending = DB::table('jobs')->where('queue', $queue)->count();
@@ -114,48 +118,102 @@ class DiagnoseDobaOrders extends Command
         }
         openssl_sign($content, $signature, $key, OPENSSL_ALGO_SHA256);
 
-        try {
-            $response = Http::withoutVerifying()->timeout(40)->withHeaders([
-                'appKey' => $appKey,
-                'signType' => 'rsa2',
-                'timestamp' => $timestamp,
-                'sign' => base64_encode($signature),
-                'Content-Type' => 'application/json',
-            ])->post('https://openapi.doba.com/api/seller/queryOrderDetail', [
-                'pageNo' => 1,
-                'pageSize' => 20,
-                'beginTime' => now()->subDays($days)->format('Y-m-d\TH:i:sP'),
-                'endTime' => now()->format('Y-m-d\TH:i:sP'),
-            ]);
-        } catch (\Throwable $e) {
-            $this->error('  HTTP exception: '.$e->getMessage());
-
-            return;
+        // Doba answers oldest -> newest, so walk every page of the window and look at the NEWEST rows.
+        $all = [];
+        $pageSize = 40;
+        for ($page = 1; $page <= 10; $page++) {
+            $timestamp = (int) round(microtime(true) * 1000);
+            $content = "appKey={$appKey}&signType=rsa2&timestamp={$timestamp}";
+            openssl_sign($content, $signature, $key, OPENSSL_ALGO_SHA256);
+            try {
+                $response = Http::withoutVerifying()->timeout(40)->withHeaders([
+                    'appKey' => $appKey,
+                    'signType' => 'rsa2',
+                    'timestamp' => $timestamp,
+                    'sign' => base64_encode($signature),
+                    'Content-Type' => 'application/json',
+                ])->post('https://openapi.doba.com/api/seller/queryOrderDetail', [
+                    'pageNo' => $page,
+                    'pageSize' => $pageSize,
+                    'beginTime' => now()->subDays($days)->format('Y-m-d\TH:i:sP'),
+                    'endTime' => now()->format('Y-m-d\TH:i:sP'),
+                ]);
+            } catch (\Throwable $e) {
+                $this->error("  page {$page}: HTTP exception: ".$e->getMessage());
+                break;
+            }
+            $json = $response->json();
+            if (! is_array($json)) {
+                $this->line("  page {$page}: HTTP ".$response->status().' body: '.mb_substr((string) $response->body(), 0, 300));
+                break;
+            }
+            $bd = $json['businessData'] ?? null;
+            $status = is_array($bd) ? ($bd['businessStatus'] ?? $bd[0]['businessStatus'] ?? null) : null;
+            $msg = is_array($bd) ? ($bd['businessMessage'] ?? $bd[0]['businessMessage'] ?? null) : null;
+            $data = is_array($bd) ? ($bd[0]['data'] ?? $bd['data'] ?? []) : [];
+            $data = is_array($data) ? $data : [];
+            $this->line("  page {$page}: HTTP ".$response->status().' code='.($json['responseCode'] ?? 'n/a').' status='.($status ?? 'n/a').' '.($msg ?? '').' rows='.count($data));
+            $all = array_merge($all, $data);
+            if (count($data) < $pageSize) {
+                break;
+            }
+            usleep(600000);
         }
 
-        $this->line('  HTTP '.$response->status());
-        $json = $response->json();
-        if (! is_array($json)) {
-            $this->line('  body: '.mb_substr((string) $response->body(), 0, 400));
-
-            return;
-        }
-        $this->line('  responseCode: '.($json['responseCode'] ?? 'n/a').'  message: '.($json['responseMessage'] ?? ''));
-        $bd = $json['businessData'] ?? null;
-        $status = is_array($bd) ? ($bd['businessStatus'] ?? $bd[0]['businessStatus'] ?? null) : null;
-        $msg = is_array($bd) ? ($bd['businessMessage'] ?? $bd[0]['businessMessage'] ?? null) : null;
-        $this->line('  businessStatus: '.($status ?? 'n/a').'  '.($msg ?? ''));
-        $data = is_array($bd) ? ($bd[0]['data'] ?? $bd['data'] ?? []) : [];
-        $this->line('  orders returned for the last '.$days.' day(s) (page 1): '.count((array) $data));
-        $known = 0;
-        foreach (array_slice((array) $data, 0, 20) as $order) {
+        $this->line('  total orders Doba returned for the last '.$days.' day(s): '.count($all));
+        $missing = 0;
+        foreach (array_slice($all, -14) as $order) {
             $no = (string) ($order['ordBusiId'] ?? $order['orderNo'] ?? '');
-            $inDb = $no !== '' && DobaDailyData::query()->where('order_no', $no)->exists();
-            $known += $inDb ? 1 : 0;
-            $this->line(sprintf('    %-22s %-20s %-18s %s', $no, (string) ($order['ordTime'] ?? $order['orderTime'] ?? ''), (string) ($order['ordStatus'] ?? $order['orderStatus'] ?? ''), $inDb ? 'in app' : 'MISSING from app'));
+            $row = $no !== '' ? DobaDailyData::query()->where('order_no', $no)->first() : null;
+            $missing += $row ? 0 : 1;
+            $this->line(sprintf(
+                '    %-22s %-20s %-14s %s',
+                $no,
+                (string) ($order['ordTime'] ?? $order['orderTime'] ?? ''),
+                (string) ($order['ordStatus'] ?? $order['orderStatus'] ?? ''),
+                $row ? 'in app, import='.($row->import_status ?: '(none)').', shopify='.($row->shopify_order_id ?: '-') : 'MISSING from app'
+            ));
         }
-        if ($data !== [] && $known < count((array) $data)) {
-            $this->warn('  Doba has orders our table does not -> the fetch is not storing them.');
+        if ($missing > 0) {
+            $this->warn("  {$missing} of the newest orders are missing from our table -> the fetch is not storing them.");
+        }
+    }
+
+    private function newestRows(): void
+    {
+        $rows = DobaDailyData::query()->orderByDesc('order_time')->limit(8)->get();
+        foreach ($rows as $r) {
+            $this->line(sprintf(
+                '  %-22s %-20s %-14s import=%-14s shopify=%s created=%s',
+                $r->order_no,
+                $r->order_time,
+                $r->order_status,
+                $r->import_status ?: '(none)',
+                $r->shopify_order_id ?: '-',
+                $r->created_at
+            ));
+        }
+    }
+
+    private function workers(): void
+    {
+        if (! function_exists('shell_exec')) {
+            $this->line('  shell_exec disabled');
+
+            return;
+        }
+        $out = (string) @shell_exec('ps aux 2>/dev/null | grep -E "queue:work|queue:listen|horizon|schedule:(run|work)" | grep -v grep');
+        $lines = array_filter(array_map('trim', explode("\n", $out)));
+        $this->line('  queue/scheduler processes: '.count($lines));
+        $hasDoba = false;
+        foreach ($lines as $l) {
+            if (stripos($l, 'mm-doba') !== false || stripos($l, 'mm-') !== false) {
+                $hasDoba = $hasDoba || stripos($l, 'mm-doba') !== false;
+            }
+            $this->line('    '.mb_substr(preg_replace('/\s+/', ' ', $l), 0, 200));
+        }
+        if (! $hasDoba) {
+            $this->warn('  no worker command line mentions mm-doba (fine only if a catch-all worker/horizon handles that queue)');
         }
     }
 
@@ -178,10 +236,18 @@ class DiagnoseDobaOrders extends Command
         $text = (string) stream_get_contents($fh);
         fclose($fh);
         $hits = [];
+        $runs = [];
         foreach (explode("\n", $text) as $line) {
             if (stripos($line, 'doba') !== false && preg_match('/\.(ERROR|WARNING|CRITICAL)/', $line)) {
                 $hits[] = mb_substr($line, 0, 320);
             }
+            if (stripos($line, 'SyncMarketplaceOrdersJob') !== false && stripos($line, '"marketplace":"doba"') !== false) {
+                $runs[] = mb_substr($line, 0, 200);
+            }
+        }
+        $this->line('  last Doba sync job runs: '.($runs === [] ? 'NONE in the last 6 MB of log (job is not running)' : ''));
+        foreach (array_slice($runs, -6) as $line) {
+            $this->line('    '.$line);
         }
         $hits = array_slice($hits, -12);
         if ($hits === []) {
