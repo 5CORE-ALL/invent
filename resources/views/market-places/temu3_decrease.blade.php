@@ -1309,6 +1309,14 @@
             : (parseFloat(rowData && (rowData.sprice != null ? rowData.sprice : rowData.SPRICE)) || 0);
         return temu3SBaseFromSpriceValue(sprice);
     }
+    /** SBase vs Std % = (Std Prc − S Base Prc) / Std Prc × 100 (how much lower S Base Prc is than Std Prc). null when either is missing or on a parent row. */
+    function temu3SBaseVsStdPct(d) {
+        if (!d || d.is_parent) return null;
+        const std = parseFloat(d.STANDARD_PRICE) || 0;
+        const sbase = temu2SBasePrcFromRow(d);
+        if (!(std > 0) || sbase == null || !(sbase > 0)) return null;
+        return ((std - sbase) / std) * 100;
+    }
     /** S Profit = S Recovery × margin − LP − Temu Ship */
     function temu2SProfit(rowData, sprice) {
         const recovery = temu2SRecovery(temu2RowSpriceValue(rowData, sprice));
@@ -4398,6 +4406,26 @@
                     }
                 },
                 {
+                    title: "SBase vs Std %",
+                    field: "sbase_vs_std_pct",
+                    hozAlign: "center",
+                    minWidth: 80,
+                    sorter: temuSortBy(function(d) { const v = temu3SBaseVsStdPct(d); return v === null ? 0 : v; }),
+                    download: true,
+                    downloadTitle: "SBase vs Std %",
+                    accessorDownload: function(value, data) {
+                        const v = temu3SBaseVsStdPct(data);
+                        return v === null ? '' : +v.toFixed(1);
+                    },
+                    headerTooltip: "SBase vs Std % = (Std Prc − S Base Prc) / Std Prc × 100. How much lower the S Base Prc is than the Std Prc (negative = S Base Prc is above Std Prc).",
+                    formatter: function(cell) {
+                        const v = temu3SBaseVsStdPct(cell.getRow().getData());
+                        if (v === null) return '';
+                        const color = v < 0 ? '#dc3545' : '#198754';
+                        return '<span style="color:' + color + ';font-weight:600;">' + v.toFixed(1) + '%</span>';
+                    }
+                },
+                {
                     title: "S Profit",
                     field: "s_profit",
                     hozAlign: "center",
@@ -5419,7 +5447,7 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|gpft_dollar|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|SPRC_DIL|s_recovery|stemu_price|sgroi_percent|sgprft_percent|spft_percent|snpft_percent|sroi_percent|snroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc|_push)$/i.test(f) ||
+                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|gpft_dollar|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|SPRC_DIL|s_recovery|stemu_price|sbase_vs_std_pct|sgroi_percent|sgprft_percent|spft_percent|snpft_percent|sroi_percent|snroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc|_push)$/i.test(f) ||
                 /\b(cvr|price|prc|gpft|gprft|npft|sgroi|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|recovery|prmt|cpn|dsc|appr|push\s*prc|queue)\b/i.test(tl)
             ) {
                 return 'pricing';
@@ -5865,6 +5893,7 @@
                     temu2ApplyingColumnOrder = true;
                     try { table.moveColumn('s_recovery', 's_profit', false); } catch (e) {}
                     try { table.moveColumn('stemu_price', 's_profit', false); } catch (e) {}
+                    try { table.moveColumn('sbase_vs_std_pct', 's_profit', false); } catch (e) {}
                     temu2ApplyingColumnOrder = false;
                     buildColumnDropdown();
                     enforceAlwaysHiddenColumns();
