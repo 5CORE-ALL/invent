@@ -2505,6 +2505,26 @@
     function ntoMoneyEq(a, b) {
         return Math.round((Number(a) || 0) * 100) === Math.round((Number(b) || 0) * 100);
     }
+    /**
+     * S Base Prc and Promo Base Prc are both shown but differ: the base we want on Temu is not the base Temu shows.
+     * Both cells turn blue (see ntoPaintBaseMismatch).
+     */
+    function ntoBaseMismatch(d) {
+        if (!d || d.is_parent_summary) return false;
+        const sBase = ntoRowSBasePrc(d);
+        const promo = ntoRowPromoBasePrc(d);
+        if (!(sBase > 0) || !(promo > 0)) return false;
+        return !ntoMoneyEq(sBase, promo);
+    }
+    /** Paints (or clears) the blue alert on the cell element itself, so it survives sorting and redraws. */
+    function ntoPaintBaseMismatch(cell, d) {
+        const el = cell && cell.getElement ? cell.getElement() : null;
+        if (!el) return false;
+        const bad = ntoBaseMismatch(d);
+        el.style.backgroundColor = bad ? '#0d6efd' : '';
+        el.style.color = bad ? '#fff' : '';
+        return bad;
+    }
     function ntoRowPushState(d) {
         if (!d || d.is_parent_summary) return '';
         const queued = String(d.nto_push_status || '');
@@ -4004,13 +4024,16 @@
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const v = ntoRowPromoBasePrc(row);
-                        if (v == null) return '<span style="color: #6c757d;">—</span>';
+                        if (v == null) { ntoPaintBaseMismatch(cell, row); return '<span style="color: #6c757d;">—</span>'; }
                         let tip = ntoPromoBaseIsServer(row)
                             ? 'Base price on Temu now: $' + v.toFixed(2)
                             : 'Not pulled from Temu yet. Worked out from Price $' + (parseFloat(row.t_price) || 0).toFixed(2) + ' (× 0.88, − $2.99 if under $30) = $' + v.toFixed(2);
                         const pushed = parseFloat(row.nto_pushed_base);
                         if (pushed > 0 && !ntoMoneyEq(pushed, v)) {
                             tip += '\nPushed $' + pushed.toFixed(2) + ' is waiting for Temu to apply it.';
+                        }
+                        if (ntoPaintBaseMismatch(cell, row)) {
+                            tip += '\nBlue: S Base Prc $' + ntoRowSBasePrc(row).toFixed(2) + ' does not match Promo Base Prc $' + v.toFixed(2) + '.';
                         }
                         return '<span style="font-weight: 600;" title="' + tip.replace(/"/g, '&quot;') + '">$' + v.toFixed(2) + '</span>';
                     }
@@ -4242,9 +4265,13 @@
                     },
                     headerTooltip: 'S Base Prc = S R prc. When S R prc is under $30, S Base Prc = S R prc − $2.99. This is the base that gets pushed.',
                     formatter: function(cell) {
-                        const n = ntoRowSBasePrc(cell.getRow().getData() || {});
+                        const row = cell.getRow().getData() || {};
+                        const n = ntoRowSBasePrc(row);
+                        const bad = ntoPaintBaseMismatch(cell, row);
                         if (n == null) return '';
-                        return '$' + n.toFixed(2);
+                        if (!bad) return '$' + n.toFixed(2);
+                        const promo = ntoRowPromoBasePrc(row);
+                        return '<span style="font-weight: 600;" title="S Base Prc $' + n.toFixed(2) + ' does not match Promo Base Prc $' + promo.toFixed(2) + '">$' + n.toFixed(2) + '</span>';
                     }
                 },
                 {

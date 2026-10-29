@@ -21,6 +21,10 @@
             padding: 1px 4px;
         }
 
+        #temu1-raw-table .t1r-api-col.tabulator-cell {
+            background: #f6fbff;
+        }
+
         .t1r-null {
             color: #adb5bd;
         }
@@ -84,6 +88,9 @@
                         <input type="search" id="t1r-search" class="form-control" placeholder="Search all columns...">
                     </div>
 
+                    <button type="button" class="btn btn-sm btn-outline-primary d-none" id="t1r-refresh-api" title="Call the Temu API again (slow) instead of using the cached pull">
+                        <i class="fa fa-cloud-arrow-down"></i> Refresh from API
+                    </button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="t1r-reload" title="Reload">
                         <i class="fa fa-rotate"></i> Reload
                     </button>
@@ -134,7 +141,7 @@
             const SOURCES = @json($sources);
 
             let table = null;
-            let source = Object.keys(SOURCES).find(k => SOURCES[k].exists) || 'products';
+            let source = Object.keys(SOURCES).find(k => SOURCES[k].exists) || 'orders';
             let searchTimer = null;
 
             function esc(v) {
@@ -148,43 +155,53 @@
             }
 
             function buildColumn(col) {
+                const isApi = col.kind === 'api';
                 const def = {
                     title: col.name,
                     field: col.name,
-                    headerSort: !col.heavy,
-                    headerTooltip: col.name + ' (' + col.type + ')',
+                    headerSort: col.sortable,
+                    headerTooltip: col.name + (isApi ? ' (API field)' : ' (' + col.type + ')'),
                     minWidth: 70,
                 };
 
-                if (!col.heavy) {
+                if (col.sortable) {
                     def.headerFilter = 'input';
                     def.headerFilterPlaceholder = 'filter';
                 }
 
-                if (col.name === 'id') {
+                if (col.name === 'id' && !isApi) {
                     def.frozen = true;
                     def.width = 70;
                 }
 
+                if (isApi) {
+                    def.cssClass = 't1r-api-col';
+                }
+
                 if (col.long) {
-                    def.width = col.heavy ? 260 : 220;
+                    def.width = col.heavy || isApi ? 260 : 220;
                     def.formatter = function(cell) {
                         const v = cell.getValue();
                         if (v === null || v === undefined) return '<span class="t1r-null">—</span>';
-                        const len = cell.getRow().getData()[col.name + '__len'] || 0;
-                        const more = len > String(v).length;
-                        let html = '<span class="t1r-long">' + esc(String(v).replace(/\s+/g, ' ')) + (more ? '…' : '') + '</span>';
-                        if (more || col.heavy) {
+                        const str = String(v);
+                        // Stored text columns send a preview + __len; API fields carry the full value.
+                        const len = isApi ? str.length : (cell.getRow().getData()[col.name + '__len'] || 0);
+                        const more = len > str.length || (isApi && str.length > 160);
+                        const shown = isApi ? str.slice(0, 160) : str;
+                        let html = '<span class="t1r-long">' + esc(shown.replace(/\s+/g, ' ')) + (more ? '…' : '') + '</span>';
+                        if (more || (col.heavy && !isApi)) {
                             html += '<span class="t1r-view" data-t1r-view="1">View (' + Number(len).toLocaleString() + ')</span>';
                         }
                         return html;
                     };
                     def.cellClick = function(e, cell) {
-                        if (e.target.closest('[data-t1r-view]')) {
+                        if (!e.target.closest('[data-t1r-view]')) return;
+                        if (isApi) {
+                            showValue(col.name, cell.getValue());
+                        } else {
                             openCell(cell.getRow().getData().id, col.name);
                         }
                     };
-                    def.download = true;
                 } else {
                     def.formatter = function(cell) {
                         const v = cell.getValue();
@@ -194,6 +211,17 @@
                 }
 
                 return def;
+            }
+
+            function showValue(title, value) {
+                let text = value === null || value === undefined ? '' : String(value);
+                try {
+                    const first = text.trim().charAt(0);
+                    if (first === '{' || first === '[') text = JSON.stringify(JSON.parse(text), null, 2);
+                } catch (e) {}
+                document.getElementById('t1r-cell-title').textContent = title;
+                document.getElementById('t1r-cell-body').textContent = text === '' ? '(empty)' : text;
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('t1r-cell-modal')).show();
             }
 
             function openCell(id, column) {
@@ -214,22 +242,28 @@
                     });
             }
 
-            function setMeta() {
+            function setMeta(extra) {
                 const s = SOURCES[source];
-                document.getElementById('t1r-meta').textContent = s ? (s.table + ' — ' + s.api) : '';
+                document.getElementById('t1r-meta').textContent = s ?
+                    ((s.table ? s.table + ' — ' : '') + s.api + (extra ? ' · ' + extra : '')) : '';
             }
 
-            function load() {
+            function load(refresh) {
                 setMeta();
                 if (table) {
                     table.destroy();
                     table = null;
                 }
-                document.getElementById('t1r-total').textContent = 'Loading...';
+                const live = !!(SOURCES[source] && SOURCES[source].live);
+                document.getElementById('t1r-refresh-api').classList.toggle('d-none', !live);
+                document.getElementById('t1r-total').textContent = live ? 'Calling Temu API…' : 'Loading...';
+                let pendingRefresh = !!refresh;
 
                 $.getJSON(URLS.columns, {
-                    source: source
+                    source: source,
+                    refresh: pendingRefresh ? 1 : 0
                 }).done(res => {
+                    if (res.fetched_at) setMeta('pulled ' + res.fetched_at);
                     const columns = res.columns.map(buildColumn);
 
                     table = new Tabulator('#temu1-raw-table', {
@@ -245,6 +279,7 @@
                                 'X-Requested-With': 'XMLHttpRequest'
                             }
                         },
+                        nestedFieldSeparator: false, // field names are dotted API paths, not nested objects
                         pagination: true,
                         paginationMode: 'remote',
                         filterMode: 'remote',
@@ -258,8 +293,8 @@
                         placeholder: 'No rows',
                         ajaxResponse: function(url, params, response) {
                             document.getElementById('t1r-total').textContent =
-                                Number(response.total || 0).toLocaleString() + ' rows';
-                            response.last_row = response.total;
+                                Number(response.total || 0).toLocaleString() + ' rows · ' + columns.length + ' columns';
+                            if (response.fetched_at) setMeta('pulled ' + response.fetched_at);
                             return response;
                         },
                         ajaxError: function(err) {
@@ -268,8 +303,9 @@
                         },
                     });
                 }).fail(xhr => {
+                    const msg = xhr.responseJSON && xhr.responseJSON.message;
                     document.getElementById('t1r-total').textContent =
-                        xhr.status === 404 ? 'Table not available on this environment' : 'Failed to load columns';
+                        msg ? msg : (xhr.status === 404 ? 'Table not available on this environment' : 'Failed to load columns');
                 });
             }
 
@@ -292,6 +328,7 @@
             });
 
             document.getElementById('t1r-reload').addEventListener('click', () => table && table.setData());
+            document.getElementById('t1r-refresh-api').addEventListener('click', () => load(true));
             document.getElementById('t1r-clear-filters').addEventListener('click', () => {
                 document.getElementById('t1r-search').value = '';
                 table && table.clearHeaderFilter();
