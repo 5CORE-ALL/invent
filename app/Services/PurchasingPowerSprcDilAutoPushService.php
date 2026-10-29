@@ -453,19 +453,16 @@ class PurchasingPowerSprcDilAutoPushService
         }
         $rules = $ctx['rules'];
         $dil = (float) ($row['dil'] ?? 0);
-        $sold = (float) ($row['pp_l30'] ?? 0);
         $std = round((float) ($row['standard_price'] ?? 0), 2);
         $amz = round((float) ($row['amz'] ?? 0), 2);
         $lp = (float) ($row['lp'] ?? 0);
         $ship = (float) ($row['ship'] ?? 0);
 
+        // Every INV > 0 SKU uses the Dil-matching slab, including when PP L30 = 0 (Dil = 0 uses the 0–0 slab). That is what
+        // the page does and what its Sprc Dil button says. This used to price a 0-sold SKU at the lowest slab Target, so the
+        // server price sat below the page price for every 0-sold SKU and the blue alert never cleared.
         $rule = AmazonDilGroiRule::match($dil, $rules);
-        $target = null;
-        if ($sold <= 0) {
-            $target = AmazonDilGroiRule::minTarget($rules);
-        } elseif ($rule !== null) {
-            $target = (float) $rule['groi'];
-        }
+        $target = $rule !== null ? (float) $rule['groi'] : null;
 
         if ($target === null) {
             // Out of every slab and the SKU sells: Std Prc is the rule price.
