@@ -73,6 +73,19 @@ class AlibabaSprcDilAutoPushService
         int $errorCooldownMinutes = 120,
         int $maxPushes = 0
     ): array {
+        // No saved rules = no price. A missing rule row used to fall back to built-in defaults, so wiping the rules would
+        // have re-priced and pushed every SKU. Until the rules are entered on /alibaba-analytics, nothing is saved or pushed.
+        if (! $this->hasSavedRules()) {
+            $this->log($logger, 'Alibaba has no saved rules (Std prc vs dil / Sprc Dil): nothing saved or pushed. Enter the rules on /alibaba-analytics.');
+
+            return [
+                'dry_run' => $dryRun,
+                'skip_push' => $skipPush,
+                'stats' => ['candidates' => 0, 'applied' => 0, 'pushed' => 0, 'skipped_unchanged' => 0, 'price_repaired' => 0,
+                    'skipped' => 0, 'push_failed' => 0, 'errors' => []],
+            ];
+        }
+
         $pricer = StdPrcVsDilPricer::forChannel(self::CHANNEL);
         $adsFrac = $this->channelAdsFrac();
         // The page switch decides the S PRC rule, same as Amazon: Std prc vs dil, or the Sprc Dil modal (Dil slab Target SNROI,
@@ -399,6 +412,30 @@ class AlibabaSprcDilAutoPushService
             'margin' => $margin,
             'lp' => $lp,
         ];
+    }
+
+    /**
+     * True when the rule the page switch has selected has been saved for Alibaba: the Std prc vs dil rules, or the
+     * Sprc Dil slabs. Alibaba never borrows another channel's rules.
+     */
+    public function hasSavedRules(): bool
+    {
+        try {
+            $name = SpriceActiveRule::usesStdPrc(self::CHANNEL) ? self::CHANNEL.'_std_prc_vs_dil' : self::CHANNEL.'_dil_vs_groi';
+            $row = ChannelTabulatorColumnSetting::query()->where('channel_name', $name)->first();
+            $vis = is_array($row?->visibility) ? $row->visibility : [];
+            if ($vis === []) {
+                return false;
+            }
+            if ($name === self::CHANNEL.'_dil_vs_groi') {
+                return AmazonDilGroiRule::unpackStored($vis)['rules'] !== [];
+            }
+
+            return true;
+        } catch (Throwable $e) {
+            // Cannot tell: do not push on a guess.
+            return false;
+        }
     }
 
     /**
