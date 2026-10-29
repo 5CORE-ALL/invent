@@ -85,6 +85,7 @@ class DiagnoseAlibabaInventory extends Command
         }
         if ($probeSku !== '') {
             $this->showQuantities($probeSku);
+            $this->showClassification($probeSku);
         }
         foreach (array_slice($mismatch, 0, 8) as $sku) {
             $map = Schema::hasTable('product_stock_mappings')
@@ -145,6 +146,46 @@ class DiagnoseAlibabaInventory extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function showClassification(string $sku): void
+    {
+        $this->line("  how the sync classifies {$sku}:");
+        try {
+            $svc = app(MarketplaceListingQtyMatchService::class);
+            Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'alibaba');
+            $c = $svc->classify('alibaba');
+            $norm = strtoupper(\App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku);
+            $bucket = 'none';
+            foreach (['matched', 'mismatch', 'linked_mismatch', 'zero'] as $b) {
+                foreach ($c[$b] ?? [] as $s) {
+                    if (strtoupper(trim((string) $s)) === strtoupper(trim($sku)) || strtoupper(\App\Models\ShopifySku::normalizeSkuForShopifyLookup((string) $s) ?: (string) $s) === $norm) {
+                        $bucket = $b;
+                        break 2;
+                    }
+                }
+            }
+            $this->line(sprintf(
+                '    classify() totals            : matched %d / mismatch %d / linked_mismatch %d / zero %d',
+                count($c['matched'] ?? []), count($c['mismatch'] ?? []), count($c['linked_mismatch'] ?? []), count($c['zero'] ?? [])
+            ));
+            $this->line("    this SKU is in bucket        : {$bucket}");
+            $shopify = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus([$sku]);
+            $shopifyQty = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::qtyFromMap($shopify, $sku);
+            $catalog = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus([$sku]);
+            $this->line('    catalog Shopify qty          : '.var_export(\App\Services\MarketplaceManager\MarketplaceListingStockResolver::qtyFromMap($catalog, $sku), true));
+            $mp = app(\App\Services\MarketplaceManager\MarketplaceMismatchInventoryPass::class)->stockMap('alibaba', [$sku]);
+            $mpQty = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::qtyFromMap($mp, $sku);
+            $this->line('    sync-side Alibaba qty        : '.var_export($mpQty, true));
+            if ($shopifyQty !== null) {
+                $within = \App\Services\MarketplaceManager\MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyQty, $mpQty, 'alibaba');
+                $this->line('    within tolerance (no push)   : '.($within ? 'YES' : 'no  -> should be pushed'));
+            }
+            $active = $svc->activeMismatchSkus('alibaba', false);
+            $this->line('    in activeMismatchSkus()      : '.(in_array($sku, $active, true) ? 'yes' : 'NO'));
+        } catch (\Throwable $e) {
+            $this->warn('    classification check failed: '.$e->getMessage());
+        }
     }
 
     private function showQuantities(string $sku): void
