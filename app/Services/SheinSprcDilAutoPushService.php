@@ -150,14 +150,9 @@ class SheinSprcDilAutoPushService
                             continue;
                         }
                         if ($this->isUnchanged($row, $computed)) {
-                            if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), self::REVIEW_HOLD_MINUTES)
-                                || $this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
-                                // This exact price was pushed and Shein is still reviewing it: the Price column keeps
-                                // the live price, so the same price is not pushed again until the hold ends.
-                                $stats['skipped_unchanged']++;
-                                continue;
-                            }
-                            // Pull the live Price first. Shein may already be right and only the Price column stale.
+                            // Pull the live Price first, also while the push is "in review". Shein applies the price
+                            // quickly but the Price column is only refreshed by the daily product sync, so without this
+                            // read the SKU stayed blue for hours although Shein already showed the pushed S PRC.
                             if (! $dryRun && $canPush) {
                                 $pull = $this->pullLive((string) $row['sku'], $sprice);
                                 if ($sleepMs > 0) {
@@ -169,6 +164,13 @@ class SheinSprcDilAutoPushService
                                     $this->saveSprice($row, $computed, 'pushed');
                                     continue;
                                 }
+                            }
+                            if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), self::REVIEW_HOLD_MINUTES)
+                                || $this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
+                                // This exact price was pushed and Shein does not show it yet: the same price is not
+                                // pushed again until the hold ends.
+                                $stats['skipped_unchanged']++;
+                                continue;
                             }
                         }
                     } elseif (! $pushAll && $this->isUnchanged($row, $computed)) {
