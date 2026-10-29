@@ -2283,21 +2283,24 @@
      *  - the push is blocked by the negative-SNROI guard.
      * Failed rows stay in so they retry.
      */
-    function temuNeedsBluePush(row) {
-        if (!temuHasBlueTriangle(row)) return false;
+    function temuBluePushReason(row) {
+        if (!temuHasBlueTriangle(row)) return '';
         if (typeof ntoRowPushState === 'function') {
             const st = ntoRowPushState(row);
-            if (st === 'pushed' || st === 'pushing') return false;
+            if (st === 'pushed' || st === 'pushing') return 'pushed';
         }
         if (typeof ntoRowPushPrice === 'function') {
             const pushPrc = ntoRowPushPrice(row);
             if (pushPrc > 0) {
                 const liveBase = parseFloat(row && row.base_price) || 0;
-                if (liveBase > 0 && Math.round(pushPrc * 100) === Math.round(liveBase * 100)) return false;
-                if (ntoRowNegSnroiBlocked(row, pushPrc)) return false;
+                if (liveBase > 0 && Math.round(pushPrc * 100) === Math.round(liveBase * 100)) return 'same';
+                if (ntoRowNegSnroiBlocked(row, pushPrc)) return 'neg';
             }
         }
-        return true;
+        return 'push';
+    }
+    function temuNeedsBluePush(row) {
+        return temuBluePushReason(row) === 'push';
     }
     window.temuHasBlueTriangle = temuHasBlueTriangle;
     window.temuNeedsBluePush = temuNeedsBluePush;
@@ -3054,6 +3057,7 @@
         let gpftBase = 0;
         let gpftLp = 0;
         let blueTriangle = 0;
+        const blueBreakdown = { push: 0, pushed: 0, neg: 0, same: 0 };
 
         rows.forEach(function(row) {
             rowsCount++;
@@ -3073,7 +3077,11 @@
                 gpftLp += lp;
             }
 
-            if (temuHasBlueTriangle(row)) blueTriangle++;
+            const blueWhy = temuBluePushReason(row);
+            if (blueWhy) {
+                blueTriangle++;
+                blueBreakdown[blueWhy] = (blueBreakdown[blueWhy] || 0) + 1;
+            }
         });
 
         totalViews = ntoViewsForBadge(rows);
@@ -3091,6 +3099,13 @@
         $('#newtemuone-blue-triangle-badge').html(
             '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangle.toLocaleString()
         );
+        $('#newtemuone-blue-triangle-badge').attr('title',
+            'Blue triangle: S Base Prc ≠ Promo Base Prc. Click to filter.'
+            + '\n' + blueTriangle.toLocaleString() + ' SKUs: '
+            + blueBreakdown.push.toLocaleString() + ' will be pushed, '
+            + blueBreakdown.pushed.toLocaleString() + ' already pushed (waiting for Temu to apply), '
+            + blueBreakdown.neg.toLocaleString() + ' blocked by negative SNROI, '
+            + blueBreakdown.same.toLocaleString() + ' already at Temu\'s base.');
         if (blueTriangle > 0 && typeof window.ntoPushLeftoverBlues === 'function') {
             clearTimeout(window._ntoLeftoverTimer);
             window._ntoLeftoverTimer = setTimeout(window.ntoPushLeftoverBlues, 2000);
