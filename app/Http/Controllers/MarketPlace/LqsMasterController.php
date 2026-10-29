@@ -721,20 +721,48 @@ class LqsMasterController extends Controller
             // Jungle Scout is listing_quality_score, shown as a whole number.
             $jsLatestByAsin = [];
             $jsLatestBySku = [];
+            // A newer row without a score must not hide an older row that has one,
+            // so a row with a numeric LQS always beats a row without (newest wins
+            // within the same group).
+            $jsHasLqs = function ($row): bool {
+                if (! is_array($row->data)) {
+                    return false;
+                }
+                $entries = array_is_list($row->data) ? $row->data : [$row->data];
+                foreach ($entries as $entry) {
+                    if (is_array($entry)
+                        && is_numeric($entry['listing_quality_score'] ?? null)
+                        && (string) $entry['listing_quality_score'] !== '') {
+                        return true;
+                    }
+                }
+
+                return false;
+            };
+            $jsPick = function (array &$bucket, string $key, $row, bool $rowHasLqs) {
+                if (! isset($bucket[$key]) || $rowHasLqs || ! $bucket[$key]['has']) {
+                    $bucket[$key] = ['row' => $row, 'has' => $rowHasLqs];
+                }
+            };
+            $jsAsinBucket = [];
+            $jsSkuBucket = [];
             foreach (JungleScoutProductData::query()->orderBy('updated_at')->get() as $jsRow) {
+                $rowHasLqs = $jsHasLqs($jsRow);
                 foreach ([
                     $normalizeSku($jsRow->sku),
                     AmazonDatasheet::normalizeSkuForLookup($jsRow->sku),
                 ] as $jsSkuKey) {
                     if ($jsSkuKey !== '') {
-                        $jsLatestBySku[$jsSkuKey] = $jsRow;
+                        $jsPick($jsSkuBucket, $jsSkuKey, $jsRow, $rowHasLqs);
                     }
                 }
                 $jsAsin = strtoupper(trim((string) ($jsRow->asin ?? '')));
                 if ($jsAsin !== '') {
-                    $jsLatestByAsin[$jsAsin] = $jsRow;
+                    $jsPick($jsAsinBucket, $jsAsin, $jsRow, $rowHasLqs);
                 }
             }
+            $jsLatestByAsin = array_map(fn ($b) => $b['row'], $jsAsinBucket);
+            $jsLatestBySku = array_map(fn ($b) => $b['row'], $jsSkuBucket);
 
             [$reviewsByAsin, $reviewsBySku] = $this->amazonReviewIndexes();
 
@@ -768,10 +796,16 @@ class LqsMasterController extends Controller
                 $reviews = null;
                 $lqs     = null;
 
-                $jsRow = ($asin !== '' ? ($jsLatestByAsin[$asin] ?? null) : null)
-                    ?? $jsLatestBySku[$normalizedSku]
-                    ?? $jsLatestBySku[$amazonCompact]
-                    ?? null;
+                // When the SKU has an ASIN, only that ASIN's Jungle Scout data counts.
+                // Falling back to SKU matching would show another (old/variant)
+                // ASIN's score. SKU matching is only for SKUs with no ASIN.
+                if ($asin !== '') {
+                    $jsRow = $jsLatestByAsin[$asin] ?? null;
+                } else {
+                    $jsRow = $jsLatestBySku[$normalizedSku]
+                        ?? $jsLatestBySku[$amazonCompact]
+                        ?? null;
+                }
                 $jsEntry = $this->jungleScoutEntryForAsin(is_object($jsRow) ? $jsRow->data : null, $asin);
                 if (is_array($jsEntry)) {
                     if (! empty($jsEntry['rating']) && is_numeric($jsEntry['rating']) && (float) $jsEntry['rating'] > 0) {
@@ -897,6 +931,10 @@ class LqsMasterController extends Controller
             $entryAsin = strtoupper(str_replace('us/', '', trim((string) ($entry['id'] ?? $entry['asin'] ?? ''))));
             if ($asin !== '' && $entryAsin === $asin) {
                 return $entry;
+            }
+            // An entry that names a different ASIN is never a valid fallback.
+            if ($asin !== '' && $entryAsin !== '') {
+                continue;
             }
             $fallback ??= $entry;
         }
