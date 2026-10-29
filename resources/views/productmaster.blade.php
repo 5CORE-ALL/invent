@@ -23,7 +23,7 @@
             top: 0;
             background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
             color: white;
-            z-index: 10;
+            z-index: 15;
             padding: 15px 18px;
             font-weight: 600;
             border-bottom: none;
@@ -493,14 +493,19 @@
             height: 16px;
             cursor: pointer;
             pointer-events: auto !important;
-            z-index: 10;
+            z-index: 1;
             position: relative;
         }
         
         .checkbox-cell {
             pointer-events: auto !important;
-            z-index: 10;
+            z-index: 1;
             position: relative;
+        }
+
+        /* Keep body-row checkboxes from painting over the sticky header while scrolling */
+        #row-callback-datatable thead th.checkbox-column {
+            z-index: 25;
         }
 
         .field-operation {
