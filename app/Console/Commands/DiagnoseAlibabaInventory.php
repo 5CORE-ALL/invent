@@ -22,6 +22,7 @@ class DiagnoseAlibabaInventory extends Command
 {
     protected $signature = 'alibaba:diagnose-inventory
         {--sku= : SKU to probe on Alibaba (default: first Inv SKU Mismatch row)}
+        {--title= : Find SKUs by part of the product title (e.g. "Megaphone 30W") and probe the first match}
         {--push= : Really push this one SKU from Shopify to Alibaba and print the exact result}';
 
     protected $description = 'Check whether Alibaba inventory is syncing from Shopify (read-only unless --push=SKU)';
@@ -61,7 +62,30 @@ class DiagnoseAlibabaInventory extends Command
         }
         $this->line('  Inv SKU Mismatch SKUs        : '.count($mismatch));
 
-        $probeSku = trim((string) $this->option('sku')) ?: (string) ($mismatch[0] ?? '');
+        $probeSku = trim((string) $this->option('sku'));
+        $title = trim((string) $this->option('title'));
+        if ($probeSku === '' && $title !== '' && Schema::hasTable('shopify_skus')) {
+            $found = DB::table('shopify_skus')
+                ->where(function ($q) use ($title) {
+                    $q->where('product_title', 'like', '%'.$title.'%')->orWhere('variant_title', 'like', '%'.$title.'%');
+                })
+                ->whereNotNull('sku')->where('sku', '!=', '')
+                ->orderBy('sku')->limit(15)->get(['sku', 'product_title', 'variant_title']);
+            $this->line('  SKUs matching title "'.$title.'": '.$found->count());
+            foreach ($found as $f) {
+                $linkedRow = Schema::hasTable('alibaba_metrics') ? AlibabaMetric::query()->where('sku', $f->sku)->whereNotNull('product_id')->first() : null;
+                $this->line(sprintf('    %-28s %-10s %s', $f->sku, $linkedRow ? 'linked' : 'NOT linked', mb_substr(trim($f->product_title.' '.$f->variant_title), 0, 60)));
+                if ($probeSku === '' && $linkedRow) {
+                    $probeSku = (string) $f->sku;
+                }
+            }
+        }
+        if ($probeSku === '') {
+            $probeSku = (string) ($mismatch[0] ?? '');
+        }
+        if ($probeSku !== '') {
+            $this->showQuantities($probeSku);
+        }
         foreach (array_slice($mismatch, 0, 8) as $sku) {
             $map = Schema::hasTable('product_stock_mappings')
                 ? DB::table('product_stock_mappings')->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first(['inventory_shopify', 'inventory_alibaba'])
@@ -121,6 +145,22 @@ class DiagnoseAlibabaInventory extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function showQuantities(string $sku): void
+    {
+        $upper = strtoupper(trim($sku));
+        $this->line("  quantities for {$sku}:");
+        $shopify = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus([$sku]);
+        $this->line('    live Shopify qty              : '.var_export(\App\Services\MarketplaceManager\MarketplaceListingStockResolver::qtyFromMap($shopify, $sku), true));
+        if (Schema::hasTable('product_stock_mappings')) {
+            $m = DB::table('product_stock_mappings')->whereRaw('UPPER(TRIM(sku)) = ?', [$upper])->first(['inventory_shopify', 'inventory_alibaba']);
+            $this->line('    product_stock_mappings        : shopify '.($m->inventory_shopify ?? '?').' / alibaba '.($m->inventory_alibaba ?? '?'));
+        }
+        if (Schema::hasTable('alibaba_pricing_prices') && Schema::hasColumn('alibaba_pricing_prices', 'ab_stock')) {
+            $p = DB::table('alibaba_pricing_prices')->whereRaw('UPPER(TRIM(sku)) = ?', [$upper])->first(['ab_stock', 'updated_at']);
+            $this->line('    alibaba_pricing_prices.ab_stock: '.($p ? var_export($p->ab_stock, true).' (updated '.$p->updated_at.')' : 'no row').'   <-- this is what the listings page shows as Alibaba Qty');
+        }
     }
 
     private function probe(AlibabaApiService $api, string $sku): void
