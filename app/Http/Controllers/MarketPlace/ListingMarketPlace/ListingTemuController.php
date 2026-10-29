@@ -72,6 +72,12 @@ class ListingTemuController extends Controller
             $row->sku_id = $skuId !== '' ? $skuId : null;
         }
 
+        try {
+            $rows = \App\Support\Marketplace\TemuSkuVsParent::attach($rows);
+        } catch (\Throwable $e) {
+            // SKU VS Parent is informational; never break the page
+        }
+
         return response()->json([
             'status' => 200,
             'data' => $rows,
