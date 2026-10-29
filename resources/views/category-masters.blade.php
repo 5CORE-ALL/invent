@@ -50,6 +50,14 @@
         text-align: center !important;
     }
     #cm-table .tabulator-tableholder { overflow: auto !important; }
+    #cm-table .tabulator-row .tabulator-cell.cm-wrap-cell {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: normal;
+        text-overflow: clip;
+        line-height: 1.35;
+    }
+    #cm-table .tabulator-row .tabulator-cell.cm-wrap-cell > span { display: block; width: 100%; white-space: normal; }
     #cm-table .tabulator-row.cm-parent-row { background: #f1f5fb; font-weight: 700; }
     #cm-table .tabulator-row.cm-parent-row.tabulator-row-even { background: #e8eef8; }
     #cm-table .cm-cell {
@@ -91,6 +99,9 @@
         font-weight: 700;
     }
     #cmClear.cm-clear--on { background: #dc2626; color: #fff; }
+    .cm-col-menu { min-width: 220px; max-height: 320px; overflow-y: auto; }
+    .cm-col-menu .cm-col-item { display: flex; align-items: center; gap: 8px; padding: 4px 16px; margin: 0; cursor: pointer; font-size: 0.85rem; white-space: nowrap; }
+    .cm-col-menu .cm-col-item:hover { background: #f1f5fb; }
 </style>
 @endsection
 
@@ -102,6 +113,18 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="cm-toolbar">
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-sm btn-outline-info" type="button" id="cmColumnsBtn"
+                                data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                                title="Show / hide columns" aria-label="Show / hide columns">
+                            <i class="fas fa-columns"></i>
+                        </button>
+                        <div class="dropdown-menu cm-col-menu" id="cmColumnsMenu" aria-labelledby="cmColumnsBtn">
+                            <button type="button" class="dropdown-item fw-semibold" id="cmShowAllCols">Show All Columns</button>
+                            <div class="dropdown-divider"></div>
+                            <div id="cmColumnsList"></div>
+                        </div>
+                    </div>
                     <button type="button" class="btn btn-sm btn-primary text-nowrap" id="cmEdit" title="Edit the categories of every row at once">
                         <i class="fas fa-pen me-1"></i>Edit
                     </button>
@@ -313,6 +336,7 @@ document.addEventListener('DOMContentLoaded', function () {
             widthGrow: 1,
             hozAlign: 'center',
             headerHozAlign: 'center',
+            cssClass: 'cm-wrap-cell',
             ...textSort(),
             formatter: function (cell) {
                 const data = cell.getRow().getData();
@@ -470,6 +494,80 @@ document.addEventListener('DOMContentLoaded', function () {
             actionColumn('Pull', 'pull'),
             actionColumn('Push', 'push'),
         ],
+    });
+
+    // ---- Column visibility ----------------------------------------------
+
+    const COL_VIS_KEY = 'category_masters_column_visibility_v1';
+
+    function readColVis() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(COL_VIS_KEY) || '{}');
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function writeColVis() {
+        const map = {};
+        table.getColumns().forEach(function (col) {
+            const field = col.getField();
+            if (field) map[field] = col.isVisible();
+        });
+        try { localStorage.setItem(COL_VIS_KEY, JSON.stringify(map)); } catch (e) {}
+    }
+
+    function colLabel(col) {
+        const title = String(col.getDefinition().title || '').trim();
+        if (title) return title;
+        return col.getField() === '_select' ? 'Select' : String(col.getField() || '');
+    }
+
+    function buildColumnMenu() {
+        const list = el('cmColumnsList');
+        list.innerHTML = '';
+        table.getColumns().forEach(function (col) {
+            const field = col.getField();
+            if (!field) return;
+            const label = document.createElement('label');
+            label.className = 'cm-col-item';
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.className = 'form-check-input m-0';
+            box.dataset.field = field;
+            box.checked = col.isVisible();
+            label.appendChild(box);
+            label.appendChild(document.createTextNode(colLabel(col)));
+            list.appendChild(label);
+        });
+    }
+
+    table.on('tableBuilt', function () {
+        const saved = readColVis();
+        table.getColumns().forEach(function (col) {
+            const field = col.getField();
+            if (field && saved[field] === false) col.hide();
+        });
+        buildColumnMenu();
+    });
+
+    el('cmColumnsList').addEventListener('change', function (e) {
+        const box = e.target.closest('input[data-field]');
+        if (!box) return;
+        const col = table.getColumn(box.dataset.field);
+        if (!col) return;
+        if (box.checked) col.show();
+        else col.hide();
+        writeColVis();
+        table.redraw(true);
+    });
+
+    el('cmShowAllCols').addEventListener('click', function () {
+        table.getColumns().forEach(function (col) { col.show(); });
+        writeColVis();
+        buildColumnMenu();
+        table.redraw(true);
     });
 
     table.on('dataLoaded', updateCount);
