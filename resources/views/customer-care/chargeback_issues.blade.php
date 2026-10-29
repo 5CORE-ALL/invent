@@ -63,6 +63,14 @@
             text-align: right;
         }
 
+        .cb-image-preview img {
+            max-height: 70px;
+            max-width: 120px;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+
         .issue-img-thumb {
             max-height: 36px;
             max-width: 54px;
@@ -278,16 +286,41 @@
                 const id = rowData.id;
                 const isUpdate = !!id;
                 const url = isUpdate ? (URLS.updateBase + '/' + id) : URLS.store;
+                // Multipart so the optional images can travel with the fields.
+                // Laravel reads PUT through POST + _method; null values are omitted.
+                const payload = buildPayload(rowData);
+                const fd = new FormData();
+                if (isUpdate) fd.append('_method', 'PUT');
+                Object.keys(payload).forEach(function (key) {
+                    const v = payload[key];
+                    if (key === 'department' && Array.isArray(v)) {
+                        v.forEach(function (d) { fd.append('department[]', d); });
+                        return;
+                    }
+                    if (v === undefined || v === null || typeof v === 'object') return;
+                    fd.append(key, String(v));
+                });
+                if (rowData._image_1) fd.append('image_1', rowData._image_1);
+                if (rowData._image_2) fd.append('image_2', rowData._image_2);
                 const res = await fetch(url, {
-                    method: isUpdate ? 'PUT' : 'POST',
-                    headers: jsonHeaders,
-                    body: JSON.stringify(buildPayload(rowData)),
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': CSRF,
+                    },
+                    body: fd,
                 });
                 if (!res.ok) {
                     let msg = 'Save failed (' + res.status + ').';
                     try {
                         const err = await res.json();
                         if (err && err.message) msg = err.message;
+                        if (err && err.errors && typeof err.errors === 'object') {
+                            const firstKey = Object.keys(err.errors)[0];
+                            const firstErr = firstKey ? err.errors[firstKey]?.[0] : null;
+                            if (firstErr) msg = firstErr;
+                        }
                     } catch (e) { /* ignore */ }
                     throw new Error(msg);
                 }
@@ -716,7 +749,13 @@
                 if (!container || !first) return;
                 caseBlocks().slice(1).forEach(function (block) { block.remove(); });
                 first.querySelectorAll('[data-field]').forEach(function (el) { el.value = ''; });
+                clearImageInputs(first);
                 renumberChargebackCases();
+            }
+
+            function clearImageInputs(block) {
+                block.querySelectorAll('.cb-image-input').forEach(function (el) { el.value = ''; });
+                block.querySelectorAll('.cb-image-preview').forEach(function (el) { el.innerHTML = ''; });
             }
 
             function addChargebackCase() {
@@ -726,6 +765,7 @@
                 const clone = first.cloneNode(true);
                 clone.querySelectorAll('[id]').forEach(function (el) { el.removeAttribute('id'); });
                 clone.querySelectorAll('[data-field]').forEach(function (el) { el.value = ''; });
+                clearImageInputs(clone);
                 const removeBtn = clone.querySelector('.cb-remove-case');
                 if (removeBtn) removeBtn.classList.remove('d-none');
                 container.appendChild(clone);
@@ -740,7 +780,20 @@
                     const el = block.querySelector('[data-field="' + f + '"]');
                     data[f] = el ? el.value : null;
                 });
+                ['image_1', 'image_2'].forEach(function (name) {
+                    const input = block.querySelector('.cb-image-input[data-image="' + name + '"]');
+                    data['_' + name] = input && input.files && input.files[0] ? input.files[0] : null;
+                });
                 return data;
+            }
+
+            function renderImagePreview(block, name, url) {
+                const box = block.querySelector('.cb-image-preview[data-preview="' + name + '"]');
+                if (!box) return;
+                box.innerHTML = url
+                    ? '<a href="' + escAttr(url) + '" target="_blank" rel="noopener"><img src="' + escAttr(url) +
+                        '" alt="Current image"></a><div class="text-muted">Current image. Choose a file to replace it.</div>'
+                    : '';
             }
 
             function collectChargebackCases() {
@@ -774,6 +827,10 @@
                         const el = first ? first.querySelector('[data-field="' + f + '"]') : document.getElementById('cb-' + f);
                         if (el) el.value = data[f] === null || data[f] === undefined ? '' : data[f];
                     });
+                    if (first) {
+                        renderImagePreview(first, 'image_1', data.image_1_url || null);
+                        renderImagePreview(first, 'image_2', data.image_2_url || null);
+                    }
                 }
                 modal.show();
             }
@@ -1081,6 +1138,17 @@
                             <div class="col-12">
                                 <label class="form-label">Close Note</label>
                                 <input type="text" class="form-control" id="cb-close_note" name="close_note" data-field="close_note">
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">Image 1</label>
+                                <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="form-control cb-image-input" data-image="image_1">
+                                <div class="cb-image-preview mt-1 small" data-preview="image_1"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Image 2</label>
+                                <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="form-control cb-image-input" data-image="image_2">
+                                <div class="cb-image-preview mt-1 small" data-preview="image_2"></div>
                             </div>
                                 </div>
                             </div>
