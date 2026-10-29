@@ -1520,19 +1520,41 @@
     }
 
     /**
-     * Price side, same chain as the S side: R prc = Temu Price × 0.88, Profit = R prc × margin − Temu Ship − LP.
-     * (S side: S R prc = S PRC × 0.88, S Profit = S R prc × margin − LP − Ship.) null on parent rows or without a Price.
+     * What Temu pays the seller for the base price it holds now: the exact inverse of S Base Prc.
+     * S side: S R prc = S PRC × 0.88, S Base Prc = S R prc − $2.99 when S R prc < $30 (else S R prc).
+     * So a base that matches S Base Prc has the same recovery as the S side (base + $2.99 under $27.01).
+     * Running this on Temu Price × 0.88 instead left out the $2.99 and made GPFT / GROI / NPFT / NROI
+     * differ from SGPFT / SGROI / SNPFT / SNROI even when the two bases were identical.
+     */
+    function ntoRecoveryFromBase(base) {
+        const b = parseFloat(base);
+        if (!isFinite(b) || b <= 0) return null;
+        const sR = Math.round((b + 2.99) * 100) / 100;
+        return sR < 30 ? sR : b;
+    }
+
+    /**
+     * Price side, same chain as the S side: recovery of the live Temu base (Promo Base Prc), see ntoRecoveryFromBase.
+     * Profit = recovery × margin − Temu Ship − LP. null on parent rows or without a base / Price.
      */
     function temuPriceRecovery(row) {
         if (!row || row.is_parent_summary) return null;
         const sku = (typeof ntoRowSku === 'function') ? ntoRowSku(row) : String(row.sku || '');
         if (sku && sku.toUpperCase().indexOf('PARENT') === 0) return null;
-        const tPrice = parseFloat(row.t_price) || 0;
-        if (!(tPrice > 0)) return null;
-        return tPrice * 0.88;
+        return ntoRecoveryFromBase(ntoRowPromoBasePrc(row));
     }
 
-    /** Gpft$ = Price R prc × margin − Temu Ship − LP. The profit behind GPFT$ / GROI% / GPRFT% / NPFT% / NROI%. */
+    /**
+     * The Price the Gpft / Npft percentages and the Ads cut are taken on: the S PRC that gives this base
+     * (recovery ÷ 0.88), the same way S Profit is taken on S PRC. Falls back to Temu Price.
+     */
+    function temuPriceBasis(row) {
+        const recovery = temuPriceRecovery(row);
+        if (recovery > 0) return recovery / 0.88;
+        return parseFloat(row && row.t_price) || 0;
+    }
+
+    /** Gpft$ = recovery of the live Temu base × margin − Temu Ship − LP. The profit behind GPFT$ / GROI% / GPRFT% / NPFT% / NROI%. */
     function temuPriceProfit(row) {
         const recovery = temuPriceRecovery(row);
         if (recovery == null) return null;
@@ -1570,12 +1592,12 @@
         return (recovery * temuRowMargin(row)) - lp - ship;
     }
 
-    /** GPRFT% = Gpft ÷ Temu Price. */
+    /** GPRFT% = Gpft ÷ Price basis (the S PRC equivalent of the live base, like SGPRFT% ÷ S PRC). */
     function temuGpftPercent(row) {
         const gpft = temuPriceProfit(row);
-        const tPrice = parseFloat(row && row.t_price) || 0;
-        if (gpft == null || !(tPrice > 0)) return null;
-        return (gpft / tPrice) * 100;
+        const basis = temuPriceBasis(row);
+        if (gpft == null || !(basis > 0)) return null;
+        return (gpft / basis) * 100;
     }
 
     /** GROI% = Pft$ ÷ LP. */
@@ -1645,16 +1667,15 @@
     function temuNpftDollars(row) {
         const gpft = temuPriceProfit(row);
         if (gpft == null) return null;
-        const tPrice = parseFloat(row && row.t_price) || 0;
-        return gpft - (tPrice * (temuAdsPercentForNet() / 100));
+        return gpft - (temuPriceBasis(row) * (temuAdsPercentForNet() / 100));
     }
 
-    /** NPFT% = NPFT$ ÷ Temu Price. */
+    /** NPFT% = NPFT$ ÷ Price basis. */
     function temuNpftPercent(row) {
         const npft = temuNpftDollars(row);
-        const tPrice = parseFloat(row && row.t_price) || 0;
-        if (npft == null || !(tPrice > 0)) return null;
-        return (npft / tPrice) * 100;
+        const basis = temuPriceBasis(row);
+        if (npft == null || !(basis > 0)) return null;
+        return (npft / basis) * 100;
     }
 
     /** NROI% = NPFT$ ÷ LP. */
@@ -4057,7 +4078,7 @@
                     hozAlign: 'center',
                     width: 80,
                     sorter: temuComputedSorter(temuGpftDollars),
-                    headerTooltip: 'GPFT$ = (Price × 0.88) × margin − LP − Temu Ship. Same chain as S Profit, run on Price instead of S PRC.',
+                    headerTooltip: 'GPFT$ = recovery of the live Temu base × margin − LP − Temu Ship (recovery = base + $2.99 when under $27.01, the exact inverse of S Base Prc). Same chain as S Profit, so equal S Base Prc and Promo Base Prc give equal GPFT$ and SPFT$.',
                     formatter: function(cell) {
                         const n = temuGpftDollars(cell.getRow().getData() || {});
                         if (n == null) return '';
@@ -4071,7 +4092,7 @@
                     hozAlign: 'center',
                     width: 80,
                     sorter: temuComputedSorter(temuGroiPercent),
-                    headerTooltip: 'GROI% = Gpft / LP. Gpft = (Price × 0.88 R prc) × margin − Temu Ship − LP, same as S Profit on S PRC',
+                    headerTooltip: 'GROI% = Gpft / LP. Gpft = recovery of the live Temu base (base + $2.99 under $27.01) × margin − Temu Ship − LP, same chain as S Profit on S PRC',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const value = temuGroiPercent(row);
@@ -4086,12 +4107,12 @@
                     hozAlign: 'center',
                     width: 80,
                     sorter: temuComputedSorter(temuGpftPercent),
-                    headerTooltip: 'GPRFT% = Gpft / Temu Price. Gpft = (Price × 0.88 R prc) × margin − Temu Ship − LP, same as S Profit on S PRC',
+                    headerTooltip: 'GPRFT% = Gpft / Price (S PRC equivalent of the live base). Gpft = recovery of the live Temu base (base + $2.99 under $27.01) × margin − Temu Ship − LP, same chain as S Profit on S PRC',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const value = temuGpftPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const tip = 'Gpft $' + temuPriceProfit(row).toFixed(2) + ' ÷ Temu Price $' + (parseFloat(row.t_price) || 0).toFixed(2);
+                        const tip = 'Gpft $' + temuPriceProfit(row).toFixed(2) + ' ÷ Price $' + temuPriceBasis(row).toFixed(2);
                         return temuPercentCell(value, 'pft', tip);
                     }
                 },
@@ -4101,14 +4122,14 @@
                     hozAlign: 'center',
                     width: 80,
                     sorter: temuComputedSorter(temuNpftPercent),
-                    headerTooltip: 'NPFT% = NPFT$ ÷ Temu Price. NPFT$ = Gpft − (Temu Price × Ads%). Ads% is the header Ads badge. Gpft = (Price × 0.88 R prc) × margin − Temu Ship − LP, same as S Profit on S PRC',
+                    headerTooltip: 'NPFT% = NPFT$ ÷ Price. NPFT$ = Gpft − (Price × Ads%), Price = S PRC equivalent of the live base. Ads% is the header Ads badge. Gpft = recovery of the live Temu base (base + $2.99 under $27.01) × margin − Temu Ship − LP, same chain as S Profit on S PRC',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const value = temuNpftPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
                         const tip = 'NPFT $' + temuNpftDollars(row).toFixed(2) + ' (Gpft $' + temuPriceProfit(row).toFixed(2)
-                            + ' − Ads ' + temuAdsPercentForNet().toFixed(1) + '% of Temu Price) ÷ Temu Price $'
-                            + (parseFloat(row.t_price) || 0).toFixed(2);
+                            + ' − Ads ' + temuAdsPercentForNet().toFixed(1) + '% of Price) ÷ Price $'
+                            + temuPriceBasis(row).toFixed(2);
                         return temuPercentCell(value, 'pft', tip);
                     }
                 },

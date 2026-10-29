@@ -576,9 +576,18 @@ class NewTemuoneController extends Controller
                 // GPFT / GROI on the listing R Price (marketplace Temu margin).
                 // SPFT / SGROI use the same 0.95 take-home as Sprc Dil. Dil + CVR
                 // set SNROI; SGROI is live SPFT ÷ LP at that S PRC.
-                $gpftDollars = TemuShopifySalesService::computeGroiProfit($rPrice, $percentage, $lp, $temuShip);
-                $gpftPercent = ($rPrice > 0 && $tPrice > 0) ? round(($gpftDollars / $tPrice) * 100, 2) : 0.0;
-                $groiPercent = ($rPrice > 0 && $lp > 0) ? round(($gpftDollars / $lp) * 100, 2) : 0.0;
+                // Price side = what Temu pays for the live base, the exact inverse of S Base Prc (S R Prc − $2.99 under $30),
+                // so equal bases give equal GPFT/GROI/NPFT/NROI and SGPFT/SGROI/SNPFT/SNROI. Percentages and the Ads cut
+                // are taken on the S PRC equivalent of that base (recovery ÷ 0.88), like the S side is taken on S PRC.
+                $gpftRecovery = 0.0;
+                if ($basePrice > 0) {
+                    $withShip = round($basePrice + TemuShopifySalesService::NTO_SBASE_DEDUCT, 2);
+                    $gpftRecovery = $withShip < TemuShopifySalesService::NTO_SBASE_SR_THRESHOLD ? $withShip : $basePrice;
+                }
+                $priceBasis = $gpftRecovery > 0 ? $gpftRecovery / TemuShopifySalesService::S_RECOVERY_RATE : 0.0;
+                $gpftDollars = TemuShopifySalesService::computeGroiProfit($gpftRecovery, $percentage, $lp, $temuShip);
+                $gpftPercent = ($gpftRecovery > 0 && $priceBasis > 0) ? round(($gpftDollars / $priceBasis) * 100, 2) : 0.0;
+                $groiPercent = ($gpftRecovery > 0 && $lp > 0) ? round(($gpftDollars / $lp) * 100, 2) : 0.0;
                 $spftDollars = ($sRPrice > 0)
                     ? ($sRPrice * $percentage) - $temuShip - $lp
                     : 0.0;
@@ -587,9 +596,9 @@ class NewTemuoneController extends Controller
                 $sgroiPercent = $suggested['sgroi'];
 
                 // NPFT = Gpft − (T Price × Ads%); SNPFT = SPFT − (S PRC × Ads%).
-                $npftDollars = $gpftDollars - ($tPrice * ($adsPercent / 100));
-                $npftPercent = ($rPrice > 0 && $tPrice > 0) ? round(($npftDollars / $tPrice) * 100, 2) : 0.0;
-                $nroiPercent = ($rPrice > 0 && $lp > 0) ? round(($npftDollars / $lp) * 100, 2) : 0.0;
+                $npftDollars = $gpftDollars - ($priceBasis * ($adsPercent / 100));
+                $npftPercent = ($gpftRecovery > 0 && $priceBasis > 0) ? round(($npftDollars / $priceBasis) * 100, 2) : 0.0;
+                $nroiPercent = ($gpftRecovery > 0 && $lp > 0) ? round(($npftDollars / $lp) * 100, 2) : 0.0;
                 $snpftDollars = $spftDollars - ($sprice * ($adsPercent / 100));
                 $snpftPercent = ($sRPrice > 0 && $sprice > 0) ? round(($snpftDollars / $sprice) * 100, 2) : 0.0;
                 $snroiPercent = ($sRPrice > 0 && $lp > 0) ? round(($snpftDollars / $lp) * 100, 2) : 0.0;
