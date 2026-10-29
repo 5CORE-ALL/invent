@@ -90,6 +90,54 @@
             overflow: auto;
         }
 
+        #vm-tabulator .tabulator-row.vm-parent-row .tabulator-cell {
+            background-color: #fff7e6;
+            font-weight: 600;
+        }
+
+        #vm-tabulator .tabulator-row.vm-parent-row .tabulator-cell.vm-editable {
+            background-color: #fff1d6;
+        }
+
+        #vm-tabulator .tabulator-row.tabulator-selected .tabulator-cell {
+            background-color: #dbeafe !important;
+        }
+
+        #vm-tabulator .vm-edit-btn {
+            border: 0;
+            background: transparent;
+            color: #2563eb;
+            padding: 2px 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        #vm-tabulator .vm-edit-btn:hover {
+            color: #1e40af;
+        }
+
+        .vm-bulk-field {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .vm-bulk-field .form-check-input {
+            margin-top: 8px;
+            flex-shrink: 0;
+        }
+
+        .vm-bulk-field .vm-bulk-body {
+            flex: 1;
+        }
+
+        .vm-bulk-field label.vm-bulk-label {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
         .vm-toolbar {
             display: flex;
             align-items: center;
@@ -112,6 +160,11 @@
             <div class="card shadow-sm">
                 <div class="card-body py-2">
                     <div class="vm-toolbar">
+                        <select id="vm-type-filter" class="form-select form-select-sm" style="width:auto;" title="Show parent rows, SKU rows, or both">
+                            <option value="all">All</option>
+                            <option value="parent">Parent</option>
+                            <option value="sku">SKU</option>
+                        </select>
                         <button type="button" class="btn btn-sm btn-primary" id="vm-upload-btn">
                             <i class="bi bi-upload me-1"></i>Upload
                         </button>
@@ -135,6 +188,63 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="vm-edit-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="vm-edit-title">Edit</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3" id="vm-edit-hint"></p>
+                    <div class="vm-bulk-field">
+                        <input class="form-check-input vm-apply" type="checkbox" data-field="variation_type" title="Apply this field">
+                        <div class="vm-bulk-body">
+                            <label class="vm-bulk-label">Variation Type</label>
+                            <input type="text" class="form-control form-control-sm vm-bulk-input" data-field="variation_type" maxlength="120" placeholder="Color, Size…">
+                        </div>
+                    </div>
+                    <div class="vm-bulk-field">
+                        <input class="form-check-input vm-apply" type="checkbox" data-field="variation_name" title="Apply this field">
+                        <div class="vm-bulk-body">
+                            <label class="vm-bulk-label">Variation Name</label>
+                            <input type="text" class="form-control form-control-sm vm-bulk-input" data-field="variation_name" maxlength="500" placeholder="Black, Blue…">
+                        </div>
+                    </div>
+                    <div class="vm-bulk-field">
+                        <input class="form-check-input vm-apply" type="checkbox" data-field="title" title="Apply this field">
+                        <div class="vm-bulk-body">
+                            <label class="vm-bulk-label">Title</label>
+                            <textarea class="form-control form-control-sm vm-bulk-input" data-field="title" rows="2" maxlength="500"></textarea>
+                        </div>
+                    </div>
+                    <div class="vm-bulk-field">
+                        <input class="form-check-input vm-apply" type="checkbox" data-field="description" title="Apply this field">
+                        <div class="vm-bulk-body">
+                            <label class="vm-bulk-label">Description</label>
+                            <textarea class="form-control form-control-sm vm-bulk-input" data-field="description" rows="5" maxlength="20000"></textarea>
+                        </div>
+                    </div>
+                    @for ($b = 1; $b <= 5; $b++)
+                        <div class="vm-bulk-field">
+                            <input class="form-check-input vm-apply" type="checkbox" data-field="bullet_{{ $b }}" title="Apply this field">
+                            <div class="vm-bulk-body">
+                                <label class="vm-bulk-label">Bullet {{ $b }}</label>
+                                <input type="text" class="form-control form-control-sm vm-bulk-input" data-field="bullet_{{ $b }}" maxlength="1000">
+                            </div>
+                        </div>
+                    @endfor
+                    <p class="small text-muted mb-0">Only ticked fields are changed on the selected rows. Leave a ticked field empty to clear it. Title, Description and Bullets are shared by every child of a parent, so they update that whole parent.</p>
+                </div>
+                <div class="modal-footer py-2">
+                    <span class="small me-auto" id="vm-edit-status"></span>
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="vm-edit-save">Apply to selected</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -145,6 +255,7 @@
             const saveUrl = @json(route('variation.master.save'));
             const importUrl = @json(route('variation.master.import'));
             const updateUrl = @json(route('variation.master.update.from.sku'));
+            const bulkUrl = @json(route('variation.master.bulk.update'));
             const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             const statusEl = document.getElementById('vm-status');
 
@@ -197,13 +308,28 @@
                 index: 'id',
                 layout: 'fitColumns',
                 height: '100%',
-                placeholder: 'No child SKUs on CP master',
+                placeholder: 'No rows on CP master',
+                rowFormatter: function (row) {
+                    const data = row.getData();
+                    row.getElement().classList.toggle('vm-parent-row', data.row_type === 'parent');
+                },
                 columnDefaults: {
                     hozAlign: 'center',
                     headerHozAlign: 'center',
                     vertAlign: 'middle'
                 },
                 columns: [
+                    {
+                        formatter: 'rowSelection',
+                        titleFormatter: 'rowSelection',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 44,
+                        minWidth: 44,
+                        resizable: false,
+                        cssClass: 'vm-check'
+                    },
                     {
                         title: 'Parent SKU',
                         field: 'parent',
@@ -214,10 +340,10 @@
                         formatter: skuFormatter
                     },
                     {
-                        title: 'Child SKU',
+                        title: 'SKU',
                         field: 'sku',
                         headerFilter: 'input',
-                        headerFilterPlaceholder: 'Child SKU',
+                        headerFilterPlaceholder: 'SKU',
                         minWidth: 160,
                         cssClass: 'vm-sku',
                         formatter: skuFormatter
@@ -272,11 +398,137 @@
                     bulletColumn(2),
                     bulletColumn(3),
                     bulletColumn(4),
-                    bulletColumn(5)
+                    bulletColumn(5),
+                    {
+                        title: 'Edit',
+                        field: 'vm_edit',
+                        headerSort: false,
+                        width: 64,
+                        minWidth: 64,
+                        resizable: false,
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        formatter: function () {
+                            return '<button type="button" class="vm-edit-btn" title="Edit selected rows"><i class="bi bi-pencil-fill"></i></button>';
+                        },
+                        cellClick: function (_e, cell) {
+                            openEditModal(cell.getRow());
+                        }
+                    }
                 ]
             });
 
+            // Top filter: All rows, Parent rows only, or SKU (child) rows only.
+            document.getElementById('vm-type-filter')?.addEventListener('change', function () {
+                const type = this.value;
+                table.deselectRow();
+                if (type === 'parent' || type === 'sku') {
+                    table.setFilter('row_type', '=', type);
+                } else {
+                    table.clearFilter();
+                }
+            });
+
+            const editModalEl = document.getElementById('vm-edit-modal');
+            const editStatusEl = document.getElementById('vm-edit-status');
+            let editRows = [];
+
+            function openEditModal(clickedRow) {
+                let rows = table.getSelectedRows();
+                if (!rows.length) {
+                    // Nothing ticked: edit just the row whose pen was clicked.
+                    rows = clickedRow ? [clickedRow] : [];
+                }
+                if (!rows.length) {
+                    setStatus('Select at least one row first.', false);
+                    return;
+                }
+                editRows = rows;
+                const parents = {};
+                rows.forEach(function (r) {
+                    parents[parentKeyOf(r.getData())] = true;
+                });
+                const parentCount = Object.keys(parents).length;
+                document.getElementById('vm-edit-title').textContent = 'Edit ' + rows.length + ' selected SKU' + (rows.length === 1 ? '' : 's');
+                document.getElementById('vm-edit-hint').textContent = rows.length + ' SKU' + (rows.length === 1 ? '' : 's') + ' across ' + parentCount + ' parent' + (parentCount === 1 ? '' : 's') + ' will be changed.';
+                editModalEl.querySelectorAll('.vm-bulk-input').forEach(function (input) {
+                    input.value = '';
+                });
+                editModalEl.querySelectorAll('.vm-apply').forEach(function (box) {
+                    box.checked = false;
+                });
+                editStatusEl.textContent = '';
+                bootstrap.Modal.getOrCreateInstance(editModalEl).show();
+            }
+
+            // Typing in a field ticks its "apply" box automatically.
+            editModalEl.addEventListener('input', function (event) {
+                const input = event.target.closest('.vm-bulk-input');
+                if (!input) return;
+                const box = editModalEl.querySelector('.vm-apply[data-field="' + input.dataset.field + '"]');
+                if (box) box.checked = true;
+            });
+
+            document.getElementById('vm-edit-save')?.addEventListener('click', function () {
+                const btn = this;
+                if (btn.disabled) return;
+                const payload = { ids: editRows.map(function (r) { return r.getData().id; }) };
+                let fieldCount = 0;
+                editModalEl.querySelectorAll('.vm-apply').forEach(function (box) {
+                    if (!box.checked) return;
+                    const input = editModalEl.querySelector('.vm-bulk-input[data-field="' + box.dataset.field + '"]');
+                    payload[box.dataset.field] = input ? input.value : '';
+                    fieldCount++;
+                });
+                if (!fieldCount) {
+                    editStatusEl.className = 'small me-auto text-danger';
+                    editStatusEl.textContent = 'Tick at least one field to apply.';
+                    return;
+                }
+                btn.disabled = true;
+                editStatusEl.className = 'small me-auto text-muted';
+                editStatusEl.textContent = 'Saving…';
+                fetch(bulkUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrf
+                    },
+                    body: JSON.stringify(payload)
+                }).then(function (res) {
+                    return res.json().then(function (json) {
+                        return { ok: res.ok, json: json };
+                    }).catch(function () {
+                        return { ok: false, json: null };
+                    });
+                }).then(function (result) {
+                    const json = result.json || {};
+                    if (!result.ok || json.success === false) {
+                        throw new Error(json.message || 'Bulk update failed.');
+                    }
+                    bootstrap.Modal.getOrCreateInstance(editModalEl).hide();
+                    setStatus(json.message || 'Updated.', true);
+                    table.deselectRow();
+                    table.replaceData();
+                }).catch(function (err) {
+                    editStatusEl.className = 'small me-auto text-danger';
+                    editStatusEl.textContent = err && err.message ? err.message : 'Bulk update failed.';
+                }).finally(function () {
+                    btn.disabled = false;
+                });
+            });
+
             const bulletFields = ['bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5'];
+
+            function parentKeyOf(row) {
+                return String(row.parent_key || row.parent || '').trim().toUpperCase();
+            }
+
+            function sameParent(a, b) {
+                const key = parentKeyOf(a);
+                return key !== '' && key === parentKeyOf(b);
+            }
 
             function listingSnapshot(row) {
                 const snapshot = {
@@ -321,7 +573,7 @@
                     if (listingFields.indexOf(field) !== -1) {
                         table.getRows().forEach(function (other) {
                             const data = other.getData();
-                            if (String(data.parent || '') === String(row.parent || '') && data.id !== row.id) {
+                            if (sameParent(data, row) && data.id !== row.id) {
                                 other.update(listingSnapshot(row));
                             }
                         });
