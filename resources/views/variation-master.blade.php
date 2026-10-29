@@ -83,6 +83,16 @@
             vertical-align: top;
         }
 
+        #vm-tabulator .tabulator-cell.vm-wrap {
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            text-overflow: clip;
+            text-align: left;
+            vertical-align: top;
+            line-height: 1.35;
+        }
+
         #vm-tabulator .vm-multiline {
             white-space: pre-wrap;
             text-align: left;
@@ -292,7 +302,7 @@
                     headerFilter: 'input',
                     headerFilterPlaceholder: 'Bullet ' + number,
                     minWidth: 160,
-                    cssClass: 'vm-editable',
+                    cssClass: 'vm-editable vm-wrap',
                     formatter: function (cell) {
                         const value = String(cell.getValue() || '').trim();
                         return value ? escapeHtml(value) : '';
