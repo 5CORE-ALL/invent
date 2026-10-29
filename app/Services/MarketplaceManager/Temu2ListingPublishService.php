@@ -404,7 +404,12 @@ class Temu2ListingPublishService
             if ($remote !== null) {
                 $life = $this->remoteGoodsLifecycle($remote['goodsId']);
                 if (in_array($life, ['deleted', 'draft', 'unknown'], true)) {
-                    if (in_array($life, ['deleted', 'draft'], true) && $this->restoreDeletedGoods($remote['goodsId'])) {
+                    if ($life === 'deleted') {
+                        // Temu 1 / Temu 2 rule: a deleted listing is gone for good. Never restore it or
+                        // attach to its goods - drop the dead goods_id and publish as a brand-new listing.
+                        $this->clearLocalGoodsLink($row['sku']);
+                    }
+                    if ($life === 'draft' && $this->restoreDeletedGoods($remote['goodsId'])) {
                         $this->api->persistNewListing($row['sku'], $remote['goodsId'], $remote['skuId'] !== '' ? $remote['skuId'] : null);
                         $this->persistExtraListingFields($row['sku'], $row['price'], $row['qty']);
                         $this->markLocalListingStatus($row['sku'], 'active');
@@ -3865,6 +3870,55 @@ class Temu2ListingPublishService
         $dup = $this->remoteSkuDuplicate($sn);
 
         return $dup !== null;
+    }
+
+    /**
+     * Remove the stored goods_id (and saved buyer / seller links carrying it) of a SKU whose Temu listing
+     * was deleted, so it can no longer count as Listed and the next publish creates a new listing.
+     */
+    private function clearLocalGoodsLink(string $sku): void
+    {
+        try {
+            $keys = $this->skuLookupKeys($sku);
+            if ($keys === [] || ! Schema::hasTable($this->metricsTable()) || ! Schema::hasColumn($this->metricsTable(), 'goods_id')) {
+                return;
+            }
+            $oldIds = $this->metricClass()::query()->whereIn('sku', $keys)->whereNotNull('goods_id')->pluck('goods_id')
+                ->map(fn ($g) => (string) $g)->filter()->unique()->values()->all();
+            $this->metricClass()::query()->whereIn('sku', $keys)->update(['goods_id' => null]);
+
+            if ($oldIds !== []) {
+                $cfg = \App\Support\Marketplace\ChannelListingRegistry::get($this->shopLabel() === 'Temu 2' ? 'temu2' : 'temu') ?? [];
+                $stale = array_flip($oldIds);
+                foreach (['status', 'dataView'] as $key) {
+                    $class = $cfg[$key] ?? null;
+                    if (! is_string($class) || ! class_exists($class)) {
+                        continue;
+                    }
+                    foreach ($class::query()->whereIn('sku', $keys)->get() as $model) {
+                        $raw = $model->value;
+                        $data = is_array($raw) ? $raw : json_decode((string) $raw, true);
+                        if (! is_array($data)) {
+                            continue;
+                        }
+                        $changed = false;
+                        foreach (['buyer_link', 'seller_link'] as $field) {
+                            $link = (string) ($data[$field] ?? '');
+                            if ($link !== '' && preg_match_all('/\d{9,}/', $link, $m) && array_intersect_key($stale, array_flip($m[0])) !== []) {
+                                unset($data[$field]);
+                                $changed = true;
+                            }
+                        }
+                        if ($changed) {
+                            $model->value = is_array($raw) ? $data : json_encode($data);
+                            $model->save();
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Temu clearLocalGoodsLink failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
     }
 
     private function markLocalListingStatus(string $sku, string $status): void

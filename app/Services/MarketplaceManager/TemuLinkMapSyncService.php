@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class TemuLinkMapSyncService
 {
+    use ReconcilesTemuStaleGoods;
     private const CACHE_KEY = 'temu_link_map_sync';
 
     public function __construct(
@@ -225,76 +226,14 @@ class TemuLinkMapSyncService
         ];
     }
 
-    /**
-     * A SKU only counts as Listed (not Missing L) while its goods_id is a goods Temu still lists in
-     * Seller Center. goods.list.retrieve never reports deleted / removed goods as live, but the goods
-     * step above only ever ADDS goods_id values, so those SKUs stayed "Listed" forever.
-     *
-     * Safety: nothing changes when the live list could not be read completely, looks too small, or
-     * would remove more than half of the stored goods (unless $force). Every cleared SKU/goods_id pair
-     * is written to storage/app/temu_cache/temu_cleared_goods_ids_*.json so it can be restored.
-     *
-     * @return array{ok: bool, live: int, stale_skus: int, cleared: int, note: string, sample: list<array{sku: string, goods_id: string}>}
-     */
-    public function reconcileStaleGoodsIds(bool $dryRun = false, bool $force = false): array
+    protected function reconcileMetricClass(): string
     {
-        $result = ['ok' => false, 'live' => 0, 'stale_skus' => 0, 'cleared' => 0, 'note' => '', 'sample' => []];
+        return TemuMetric::class;
+    }
 
-        $live = $this->temuApi->fetchLiveGoodsIds();
-        if (! is_array($live) || $live === []) {
-            $result['note'] = 'Temu goods list could not be read completely - no link was removed.';
-
-            return $result;
-        }
-        $liveSet = [];
-        foreach (array_keys($live) as $goodsId) {
-            $liveSet[(string) $goodsId] = true;
-        }
-        $result['live'] = count($liveSet);
-
-        $rows = TemuMetric::query()
-            ->whereNotNull('goods_id')
-            ->where('goods_id', '!=', '')
-            ->get(['id', 'sku', 'goods_id']);
-        $storedGoods = $rows->pluck('goods_id')->map(fn ($g) => (string) $g)->unique();
-        $stale = $rows->filter(fn ($r) => ! isset($liveSet[(string) $r->goods_id]))->values();
-        $staleGoods = $stale->pluck('goods_id')->map(fn ($g) => (string) $g)->unique();
-
-        $result['ok'] = true;
-        $result['stale_skus'] = $stale->count();
-        $result['sample'] = $stale->take(40)->map(fn ($r) => ['sku' => (string) $r->sku, 'goods_id' => (string) $r->goods_id])->all();
-
-        if ($stale->isEmpty()) {
-            return $result;
-        }
-        if (! $force && ($result['live'] < 20 || $staleGoods->count() > max(25, (int) floor($storedGoods->count() / 2)))) {
-            $result['ok'] = false;
-            $result['note'] = "Temu's live list ({$result['live']} goods) disagrees with {$staleGoods->count()} of {$storedGoods->count()} stored goods - nothing removed (run temu:reconcile-goods --force to override).";
-
-            return $result;
-        }
-        if ($dryRun) {
-            return $result;
-        }
-
-        try {
-            \Illuminate\Support\Facades\Storage::disk('local')->put(
-                'temu_cache/temu_cleared_goods_ids_'.now()->format('Ymd_His').'.json',
-                json_encode($stale->map(fn ($r) => ['id' => $r->id, 'sku' => $r->sku, 'goods_id' => (string) $r->goods_id])->all(), JSON_UNESCAPED_UNICODE)
-            );
-        } catch (\Throwable $e) {
-            $result['ok'] = false;
-            $result['note'] = 'Could not write the restore file - nothing removed: '.$e->getMessage();
-
-            return $result;
-        }
-
-        foreach ($stale->pluck('id')->chunk(500) as $ids) {
-            $result['cleared'] += TemuMetric::query()->whereIn('id', $ids->all())->update(['goods_id' => null]);
-        }
-        Log::info('TemuLinkMapSyncService: cleared stale goods_id', ['rows' => $result['cleared'], 'goods' => $staleGoods->count()]);
-
-        return $result;
+    protected function reconcileChannelKey(): string
+    {
+        return 'temu';
     }
 
     public function getProgress(): array
