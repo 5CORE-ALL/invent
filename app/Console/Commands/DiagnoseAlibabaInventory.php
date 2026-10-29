@@ -137,6 +137,10 @@ class DiagnoseAlibabaInventory extends Command
         $this->line('== 6. Recent Alibaba inventory lines in the log');
         $this->tailLog();
 
+        $this->line('');
+        $this->line('== 6b. Automatic triggers (per-SKU push when Shopify qty changes)');
+        $this->automaticTriggers();
+
         $pushSku = trim((string) $this->option('push'));
         if ($pushSku !== '') {
             $this->line('');
@@ -238,6 +242,47 @@ class DiagnoseAlibabaInventory extends Command
             $this->warn('  Alibaba has no such product (deleted or id changed). Run Sync Alibaba link map.');
         } else {
             $this->line('  product exists on Alibaba (fields: '.implode(', ', array_slice($keys, 0, 8)).')');
+        }
+    }
+
+    private function automaticTriggers(): void
+    {
+        $lastPoll = Cache::get(\App\Services\MarketplaceManager\ShopifyInventoryChangePoller::LAST_RUN_CACHE_KEY);
+        $this->line('  5-min Shopify change poll, last run : '.($lastPoll ?: 'never recorded  <-- scheduler or mm:poll-shopify-inventory-changes not running'));
+        $mins = \App\Services\MarketplaceManager\ShopifyInventoryChangePoller::minutesSinceLastWebhook();
+        $this->line('  last Shopify inventory webhook      : '.($mins === null ? 'none recorded' : $mins.' min ago'));
+        $this->line('  alibaba in per-SKU push channels    : '.(in_array('alibaba', \App\Console\Commands\PushMissingMappingInventory::CHANNELS, true) ? 'yes' : 'NO'));
+
+        $files = glob(storage_path('logs/laravel*.log')) ?: [];
+        if ($files === []) {
+            return;
+        }
+        usort($files, fn ($a, $b) => filemtime($b) <=> filemtime($a));
+        $size = filesize($files[0]);
+        $fh = fopen($files[0], 'rb');
+        if (! $fh) {
+            return;
+        }
+        fseek($fh, max(0, $size - 16 * 1024 * 1024));
+        $text = (string) stream_get_contents($fh);
+        fclose($fh);
+
+        $hits = [];
+        foreach (explode("\n", $text) as $line) {
+            $isAlibaba = stripos($line, '"marketplace":"alibaba"') !== false || stripos($line, '"channel":"alibaba"') !== false;
+            if ($isAlibaba && (str_contains($line, 'PushLinkedSkuInventoryFromShopify: done') || str_contains($line, 'MarketplaceMismatchInventoryPass: pushing'))) {
+                $hits[] = mb_substr($line, 0, 300);
+            }
+        }
+        $hits = array_slice($hits, -6);
+        if ($hits === []) {
+            $this->line('  no Alibaba push runs logged in the last 16 MB of '.basename($files[0]));
+
+            return;
+        }
+        $this->line('  latest Alibaba push runs:');
+        foreach ($hits as $line) {
+            $this->line('    '.$line);
         }
     }
 
