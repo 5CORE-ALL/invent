@@ -414,19 +414,28 @@
             line-height: 1;
         }
 
+        /* Missing L badge and Publish button are the same size. */
+        .listing-auto-badge--not-listed,
         .temu-publish-btn {
+            box-sizing: border-box;
+            width: 104px;
+            height: 30px;
+            padding: 0 8px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            font-size: 13px;
+            line-height: 1;
+            white-space: nowrap;
+        }
+
+        .temu-publish-btn {
             gap: 4px;
-            padding: 3px 10px;
             border: 0;
             border-radius: 6px;
             background: #0d6efd;
             color: #fff;
-            font-size: 12px;
             font-weight: 700;
-            line-height: 1.3;
             cursor: pointer;
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
@@ -817,6 +826,47 @@
                 return (a.is_parent ? 1 : 0) - (b.is_parent ? 1 : 0);
             });
 
+            // Goods ID mismatch: when the SKUs of one variation (parent) carry different goods IDs,
+            // every Goods ID of that variation is marked red.
+            const groupIds = {};
+            const groupKey = r => String(r.parent || '').replace(/^PARENT\s+/i, '').trim().toLowerCase();
+            const effectiveGoodsId = r => String(r.goods_id || r.temu_goods_id || '').trim();
+            mapped.forEach(r => {
+                const key = groupKey(r);
+                const id = effectiveGoodsId(r);
+                if (!key || !id) return;
+                (groupIds[key] = groupIds[key] || new Set()).add(id);
+            });
+            mapped.forEach(r => {
+                const set = groupIds[groupKey(r)];
+                r.goods_id_mismatch = !!(set && set.size > 1);
+            });
+
+            // Parent row status: summarised from its SKUs, e.g. "Active · 1 of 4 inactive" (as Seller Center shows).
+            const statusGroups = {};
+            mapped.forEach(r => {
+                if (r.is_parent) return;
+                const key = groupKey(r);
+                if (!key) return;
+                const g = statusGroups[key] = statusGroups[key] || { total: 0, counts: {} };
+                g.total++;
+                const s = String(r.temu_status || '');
+                if (s) g.counts[s] = (g.counts[s] || 0) + 1;
+            });
+            mapped.forEach(r => {
+                if (!r.is_parent) return;
+                const g = statusGroups[groupKey(r)];
+                if (!g) return;
+                const inactive = g.counts['Inactive'] || 0;
+                if (!r.temu_status) {
+                    if (g.counts['Active']) r.temu_status = 'Active';
+                    else if (inactive) r.temu_status = 'Inactive';
+                }
+                if (inactive && r.temu_status !== 'Inactive') {
+                    r.temu_status_note = inactive + ' of ' + g.total + ' inactive';
+                }
+            });
+
             return mapped;
         }
 
@@ -995,11 +1045,32 @@
             return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no Temu goods_id">Missing L</span>`;
         }
 
+        // Publish button: only for SKUs with no live Temu 1 listing (Missing L). Parent rows get none.
+        function formatPublishToTemu(cell) {
+            const data = cell.getRow().getData();
+            if (data.is_parent) return '';
+
+            const goodsId = String(data.goods_id || data.listing_id || data.eBay_item_id || '').trim();
+            if (goodsId) {
+                return '<span class="text-muted" title="Already listed on Temu">—</span>';
+            }
+
+            const sku = String(data.sku || '').trim();
+            if (!sku) return '';
+
+            return `<button type="button" class="temu-publish-btn" data-sku="${escapeHtml(sku)}" title="Review variations for ${escapeHtml(sku)} then publish to Temu as a new listing">
+                <i class="fas fa-cloud-upload-alt"></i> Publish
+            </button>`;
+        }
+
         // fallback = the ID Seller Center holds for this SKU when our own link is missing (e.g. an Incomplete goods).
-        function formatTemuId(value, fallback) {
+        function formatTemuId(value, fallback, mismatch) {
             const id = String(value || '').trim();
-            if (id) return '<span style="font-family:monospace;font-size:12px;">' + escapeHtml(id) + '</span>';
             const fb = String(fallback || '').trim();
+            if (mismatch && (id || fb)) {
+                return '<span style="font-family:monospace;font-size:12px;font-weight:700;color:#dc2626;" title="Goods ID mismatch: the SKUs of this variation are on different Temu goods">' + escapeHtml(id || fb) + '</span>';
+            }
+            if (id) return '<span style="font-family:monospace;font-size:12px;">' + escapeHtml(id) + '</span>';
             if (fb) {
                 return '<span style="font-family:monospace;font-size:12px;color:#b45309;" title="Found in Temu Seller Center, not linked as a live listing">' + escapeHtml(fb) + '</span>';
             }
@@ -1011,7 +1082,8 @@
             const status = String(d.temu_status || '').trim();
             if (!status) {
                 if (!d.temu_status_checked) return '<span class="text-muted" title="Click Refresh listings to read the status from Temu">—</span>';
-                return '<span class="text-muted" title="This SKU was not found in Temu Seller Center">Not on Temu</span>';
+                if (d.is_parent) return '<span class="text-muted">—</span>';
+                return '<span class="text-muted" title="No status for this SKU yet. Click Refresh listings to read it from Temu.">Not on Temu</span>';
             }
             const colors = {
                 'Active': 'background:#dcfce7;color:#15803d;',
@@ -1022,7 +1094,9 @@
             };
             const style = colors[status] || 'background:#f1f5f9;color:#475569;';
             const raw = d.temu_status_raw ? ' (' + d.temu_status_raw + ')' : '';
-            return '<span title="' + escapeHtml('Status in Temu Seller Center' + raw) + '" style="display:inline-block;padding:1px 8px;border-radius:10px;font-weight:700;' + style + '">' + escapeHtml(status) + '</span>';
+            const note = d.temu_status_note ? ' · ' + d.temu_status_note : '';
+            const source = d.temu_status_source ? ' - source: ' + d.temu_status_source : '';
+            return '<span title="' + escapeHtml('Status in Temu' + raw + source) + '" style="display:inline-block;padding:1px 8px;border-radius:10px;font-weight:700;white-space:nowrap;' + style + '">' + escapeHtml(status + note) + '</span>';
         }
 
         $(document).ready(function () {
@@ -1207,7 +1281,7 @@
                         headerSort: false,
                         minWidth: 130,
                         headerTooltip: 'Temu goods ID (imported from the Temu API)',
-                        formatter: function (cell) { const d = cell.getRow().getData(); return formatTemuId(d.goods_id, d.temu_goods_id); }
+                        formatter: function (cell) { const d = cell.getRow().getData(); return formatTemuId(d.goods_id, d.temu_goods_id, d.goods_id_mismatch); }
                     },
                     {
                         title: 'SKU ID',
@@ -1225,7 +1299,7 @@
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         headerSort: false,
-                        width: 120,
+                        width: 170,
                         headerTooltip: 'Status of this SKU in Temu Seller Center: Active, Inactive, Incomplete, Draft or Deleted',
                         formatter: formatTemuStatus
                     },
@@ -1238,6 +1312,16 @@
                         width: 130,
                         headerTooltip: 'Automatic from temu_metrics.goods_id (Missing L when REQ and no goods_id)',
                         formatter: formatListed
+                    },
+                    {
+                        title: 'Publish to Temu',
+                        field: 'publish_to_temu',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 150,
+                        headerTooltip: 'Publish this SKU to Temu 1 as a new listing',
+                        formatter: formatPublishToTemu
                     }
                 ]
             });

@@ -367,23 +367,52 @@ class TemuGoodsStatusSync
     public static function attach(Collection $rows): Collection
     {
         $data = self::read();
+
+        // Per-SKU active / inactive as Temu reported it on the last SKU sync (temu_metrics.listing_status).
+        // Seller Center shows "1 of them inactive" per SKU, which the goods-level status cannot express, and it
+        // is also what the column falls back to before the first full status read.
+        $local = [];
+        try {
+            \App\Models\TemuMetric::query()
+                ->whereNotNull('sku')->where('sku', '!=', '')
+                ->whereNotNull('listing_status')->where('listing_status', '!=', '')
+                ->get(['sku', 'listing_status'])
+                ->each(function ($m) use (&$local) {
+                    $local[self::key((string) $m->sku)] = strtolower(trim((string) $m->listing_status));
+                });
+        } catch (\Throwable $e) {
+            // column may not exist on old installs
+        }
+
         foreach ($rows as $row) {
-            $row->temu_status_checked = $data !== null;
+            $key = self::key((string) ($row->sku ?? ''));
+            $row->temu_status_checked = $data !== null || $local !== [];
             $row->temu_status = null;
             $row->temu_status_raw = null;
+            $row->temu_status_source = null;
             $row->temu_goods_id = null;
             $row->temu_sku_id = null;
-            if ($data === null) {
-                continue;
+
+            $hit = $data['skus'][$key] ?? null;
+            if (is_array($hit)) {
+                $row->temu_status = $hit['status'] ?? null;
+                $row->temu_status_source = 'Seller Center';
+                $row->temu_status_raw = ! empty($hit['raw']) ? json_encode($hit['raw'], JSON_UNESCAPED_UNICODE) : null;
+                $row->temu_goods_id = $hit['goods_id'] ?? null;
+                $row->temu_sku_id = ($hit['sku_id'] ?? '') !== '' ? $hit['sku_id'] : null;
             }
-            $hit = $data['skus'][self::key((string) ($row->sku ?? ''))] ?? null;
-            if (! is_array($hit)) {
-                continue;
+
+            $localStatus = $local[$key] ?? '';
+            if ($localStatus === 'inactive' && $row->temu_status === 'Active') {
+                // active goods, but this SKU is switched off ("1 of them inactive" in Seller Center)
+                $row->temu_status = 'Inactive';
+                $row->temu_status_source = 'SKU status';
+            } elseif ($data === null && ! $row->temu_status && trim((string) ($row->goods_id ?? '')) !== ''
+                && in_array($localStatus, ['active', 'inactive'], true)) {
+                // no full status read yet: show the last SKU sync until "Refresh listings" is run
+                $row->temu_status = ucfirst($localStatus);
+                $row->temu_status_source = 'last SKU sync';
             }
-            $row->temu_status = $hit['status'] ?? null;
-            $row->temu_status_raw = ! empty($hit['raw']) ? json_encode($hit['raw'], JSON_UNESCAPED_UNICODE) : null;
-            $row->temu_goods_id = $hit['goods_id'] ?? null;
-            $row->temu_sku_id = ($hit['sku_id'] ?? '') !== '' ? $hit['sku_id'] : null;
         }
 
         return $rows;
