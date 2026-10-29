@@ -103,6 +103,172 @@ class VariationMasterController extends Controller
         ]);
     }
 
+    /**
+     * "Update" button: fill each parent's Title, Description and Bullet 1–5 from its own SKUs
+     * (the Title / Description / Bullet text already on each SKU in CP master).
+     * Text already typed in Variation Master is kept; only blank fields are filled.
+     */
+    public function updateFromSku(): JsonResponse
+    {
+        $products = ProductMaster::query()
+            ->select([
+                'id', 'parent', 'sku',
+                'title150', 'title100', 'title80', 'title75', 'title60',
+                'product_description', 'description_1500', 'description_1000', 'description_800', 'description_600',
+                'bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5',
+            ])
+            ->orderBy('parent')
+            ->orderBy('sku')
+            ->get();
+
+        $families = [];
+        foreach ($products as $product) {
+            $sku = $this->normalizeDisplay($product->sku);
+            if ($sku === '' || ListingManagerFamily::isParentSku($sku)) {
+                continue;
+            }
+            $parent = ListingManagerFamily::normalizeParentKey($this->normalizeDisplay($product->parent));
+            if ($parent === '') {
+                continue;
+            }
+            $families[$parent][] = $product;
+        }
+
+        $updatedParents = 0;
+        $filledFields = 0;
+        $unchanged = 0;
+        $noParentRow = 0;
+        $noSkuText = 0;
+
+        foreach ($families as $parent => $children) {
+            $row = VariationListingContent::parentProduct((string) $parent);
+            if (! $row) {
+                $noParentRow++;
+
+                continue;
+            }
+            $current = $this->listingText(is_array($row->Values) ? $row->Values : []);
+
+            $title = null;
+            if ($current['title'] === '') {
+                foreach ($children as $child) {
+                    $found = $this->skuTitle($child);
+                    if ($found !== '') {
+                        $title = $found;
+                        break;
+                    }
+                }
+            }
+
+            $description = null;
+            if ($current['description'] === '') {
+                foreach ($children as $child) {
+                    $found = $this->skuDescription($child);
+                    if ($found !== '') {
+                        $description = $found;
+                        break;
+                    }
+                }
+            }
+
+            $bullets = null;
+            $currentSlots = [
+                $current['bullet_1'], $current['bullet_2'], $current['bullet_3'], $current['bullet_4'], $current['bullet_5'],
+            ];
+            if (in_array('', $currentSlots, true)) {
+                foreach ($children as $child) {
+                    $slots = $this->skuBulletSlots($child);
+                    if (array_filter($slots, static fn ($s) => $s !== '') === []) {
+                        continue;
+                    }
+                    $merged = $currentSlots;
+                    foreach ($merged as $i => $existing) {
+                        if ($existing === '') {
+                            $merged[$i] = $slots[$i];
+                        }
+                    }
+                    if ($merged !== $currentSlots) {
+                        $bullets = $this->joinBullets($merged);
+                    }
+                    break;
+                }
+            }
+
+            if ($title === null && $description === null && $bullets === null) {
+                if ($current['title'] !== '' && $current['description'] !== '' && ! in_array('', $currentSlots, true)) {
+                    $unchanged++;
+                } else {
+                    $noSkuText++;
+                }
+
+                continue;
+            }
+
+            $error = $this->writeListingText((string) $parent, $title, $description, $bullets);
+            if ($error !== null) {
+                $noParentRow++;
+
+                continue;
+            }
+            $updatedParents++;
+            $filledFields += ($title !== null ? 1 : 0) + ($description !== null ? 1 : 0)
+                + ($bullets !== null ? count(array_filter($this->bulletSlots($bullets), static fn ($s) => $s !== '')) - count(array_filter($currentSlots, static fn ($s) => $s !== '')) : 0);
+        }
+
+        $message = "Filled {$filledFields} field(s) on {$updatedParents} parent(s) from their SKUs."
+            ." Already complete {$unchanged}. No SKU text found {$noSkuText}.";
+        if ($noParentRow > 0) {
+            $message .= " No PARENT row on CP master {$noParentRow}.";
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'updated' => $updatedParents,
+            'fields' => $filledFields,
+            'unchanged' => $unchanged,
+            'no_sku_text' => $noSkuText,
+            'no_parent_row' => $noParentRow,
+        ]);
+    }
+
+    private function skuTitle(ProductMaster $product): string
+    {
+        foreach (['title150', 'title100', 'title80', 'title75', 'title60'] as $field) {
+            $value = $this->normalizeDisplay($product->{$field} ?? null);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function skuDescription(ProductMaster $product): string
+    {
+        foreach (['product_description', 'description_1500', 'description_1000', 'description_800', 'description_600'] as $field) {
+            $value = $this->keepLines($product->{$field} ?? null);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function skuBulletSlots(ProductMaster $product): array
+    {
+        $slots = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $slots[] = $this->normalizeDisplay($product->{'bullet'.$i} ?? null);
+        }
+
+        return $slots;
+    }
+
     public function download(Request $request): StreamedResponse
     {
         $format = strtolower(trim((string) $request->query('format', 'xlsx')));
