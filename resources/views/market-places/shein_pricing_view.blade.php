@@ -821,14 +821,21 @@
                 if (table && typeof table.getRows === 'function') walk(table.getRows());
             } catch (e) { /* ignore */ }
         }
-        function sheinApplyPushPatchToSku(sku, patch) {
+        function sheinApplyPushPatchToSku(sku, patch, opts) {
             const want = sheinNormSku(sku);
             if (!want || !patch) return;
+            const live = !!(opts && opts.live);
             const price = parseFloat(patch.price != null ? patch.price : patch.SPRICE_PUSHED_VALUE);
             const full = Object.assign({}, patch);
-            // Shein reviews a price change: the Sp. Price column keeps the live price until a pull / sync reads the new one.
-            delete full.special_offer;
-            delete full.price;
+            // Shein reviews a price change: the Sp. Price column keeps the live price until a live read-back (opts.live)
+            // brings the new one. A push result alone never moves it.
+            if (live && price > 0) {
+                full.special_offer = price;
+                full.price = price;
+            } else {
+                delete full.special_offer;
+                delete full.price;
+            }
             if (full.SPRICE_STATUS === 'pushed' && price > 0) {
                 if (full.SPRICE_PUSHED_VALUE == null) full.SPRICE_PUSHED_VALUE = price;
             }

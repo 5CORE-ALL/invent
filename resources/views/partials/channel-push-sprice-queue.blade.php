@@ -94,7 +94,8 @@
                 });
                 return patch;
             }
-            const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship|topdawg|alibaba)$/.test(CH_PUSH_SPRICE_CHANNEL);
+            const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship|topdawg|alibaba|shein)$/.test(CH_PUSH_SPRICE_CHANNEL);
+            const CH_PUSH_SPRICE_IS_SHEIN = CH_PUSH_SPRICE_CHANNEL === 'shein';
             const CH_PUSH_SPRICE_IS_TIKTOK = /^(tiktok|tiktok2)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_MACYS = /^(macys|macy)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_BESTBUY = CH_PUSH_SPRICE_CHANNEL === 'bestbuy';
@@ -477,8 +478,11 @@
                     } else {
                         return false;
                     }
-                    chPushStripPriceKeys(patch);
-                    if (CH_PUSH_SPRICE_UNDER_REVIEW) priceChanged = false;
+                    // On Shein a live read-back (t.live_pull) is the one thing allowed to move the Price column; a push result must not.
+                    if (!(t.live_pull && CH_PUSH_SPRICE_IS_SHEIN)) {
+                        chPushStripPriceKeys(patch);
+                        if (CH_PUSH_SPRICE_UNDER_REVIEW) priceChanged = false;
+                    }
                     const keys = Object.keys(patch);
                     if (!keys.length) return null;
                     Object.assign(d, patch);
@@ -499,7 +503,7 @@
                                 window.aeApplyPushPatchToSku(t.sku, result.patch);
                             }
                             if (CH_PUSH_SPRICE_CHANNEL === 'shein' && typeof window.sheinApplyPushPatchToSku === 'function') {
-                                window.sheinApplyPushPatchToSku(t.sku, result.patch);
+                                window.sheinApplyPushPatchToSku(t.sku, result.patch, { live: !!t.live_pull });
                             }
                             if (CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c' && result.kind === 'price'
                                 && typeof global.shopifyB2cApplyLivePriceToRow === 'function') {
@@ -575,7 +579,7 @@
                         stale.push(r.sku);
                         if (!CH_PUSH_SPRICE_IS_TIKTOK) return;
                     }
-                    tasks.push({ sku: r.sku, status: 'ok', ebay_price: live, price: live, price_pulling: false });
+                    tasks.push({ sku: r.sku, status: 'ok', ebay_price: live, price: live, price_pulling: false, live_pull: true });
                 });
                 if (tasks.length) {
                     applyChannelPushSpriceTasks(tasks);
@@ -627,7 +631,11 @@
                 clearTimeout(chPushSpricePullAfterPush._t);
                 const n = skus.length;
                 const expectedBySku = chPushSpriceExpectedBySku(skus);
-                const retryMs = [0, 2000, 4000];
+                // Shein reviews a price change, so the live price keeps the old value for minutes: keep re-reading
+                // (about 10 min) until it shows the pushed price instead of giving up after 6 seconds.
+                const retryMs = CH_PUSH_SPRICE_IS_SHEIN
+                    ? [0, 20000, 60000, 60000, 120000, 120000, 180000, 180000]
+                    : [0, 2000, 4000];
                 function finishPulling(list) {
                     (list || []).forEach(function(sku) {
                         const row = typeof chPushSpriceFindRowBySku === 'function'
