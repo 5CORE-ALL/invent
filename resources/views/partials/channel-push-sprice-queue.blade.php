@@ -1543,6 +1543,9 @@
                 if (!tbl && !extra.length) return;
                 const jobs = [];
                 const seen = new Set();
+                // Blue SKUs that are not queued, so the bar can say why the badge count is higher than the queue.
+                const waitingPushed = [];
+                let sentThisLoad = 0;
                 function consider(row, d) {
                     if (!chPushSpriceIsChild(d)) return;
                     if (chPushSpriceRowBlocked(d)) return;
@@ -1558,9 +1561,16 @@
                     // TopDawg (and other review-queue channels) accept a push with
                     // 200 "submitted for review" while live Price stays old. Do not
                     // re-queue the same S PRC or reload keeps sending 21/30 forever.
-                    if (chPushSpriceAlreadyPushedToSaved(d, saved)) return;
+                    if (chPushSpriceAlreadyPushedToSaved(d, saved)) {
+                        // Blue badge still counts it: the marketplace has the push but its live Price is not read back yet.
+                        waitingPushed.push(sku);
+                        return;
+                    }
                     // Already sent at this S PRC this page load (the job is still working through it).
-                    if (chPushSpriceWasSent(sku, saved)) return;
+                    if (chPushSpriceWasSent(sku, saved)) {
+                        sentThisLoad++;
+                        return;
+                    }
                     jobs.push({ sku: sku, price: saved, row: row, data: d });
                 }
                 if (tbl) chPushSpriceWalkRows(tbl, consider);
@@ -1593,13 +1603,27 @@
                         chPushSpriceScheduleLeftover(2000);
                         return;
                     }
+                    // Nothing new to queue, but blue SKUs remain: they were already pushed at this S PRC and the
+                    // marketplace live Price (the Price column) has not caught up. Read the live Price back instead of
+                    // leaving them blue until the next daily sync, at most once per SKU set every 10 minutes.
+                    if (waitingPushed.length && CH_PUSH_SPRICE_CAN_PULL && !chPushClientBusy()) {
+                        const pullKey = waitingPushed.slice().sort().join('|');
+                        const last = window._chPushSpriceWaitingPull || { key: '', at: 0 };
+                        if (last.key !== pullKey || Date.now() - last.at > 10 * 60 * 1000) {
+                            window._chPushSpriceWaitingPull = { key: pullKey, at: Date.now() };
+                            chPushSpricePullAfterPush(waitingPushed.slice(0, 60));
+                        }
+                    }
                     if (!opts.silent) {
+                        const why = [];
+                        if (waitingPushed.length) why.push(waitingPushed.length + ' pushed, waiting for the marketplace Price');
+                        if (sentThisLoad) why.push(sentThisLoad + ' sent, still processing');
                         setChannelPushSpriceProgress({
                             active: false,
                             done: 0,
                             total: 0,
                             pct: 0,
-                            msg: 'No S PRC to push',
+                            msg: why.length ? ('No new S PRC to push · ' + why.join(' · ')) : 'No S PRC to push',
                         });
                     }
                     return;

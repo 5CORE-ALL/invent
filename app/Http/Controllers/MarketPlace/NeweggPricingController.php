@@ -412,6 +412,8 @@ class NeweggPricingController extends Controller
                 'sroi'               => $sroi,
                 'push_status'        => $pushStatus,
                 'SPRICE_STATUS'      => $pushStatus,
+                // Why Newegg rejected the last push (shown on the red X).
+                'SPRICE_ERROR'       => isset($dvValue['SPRICE_ERROR']) ? (string) $dvValue['SPRICE_ERROR'] : null,
                 '_margin'            => $factor,
                 'nr'                 => $nr,
                 'buyer_link'         => $buyerLink,

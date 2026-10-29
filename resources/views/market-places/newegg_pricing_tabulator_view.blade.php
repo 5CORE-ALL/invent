@@ -1931,7 +1931,8 @@
                             } else if (!matched && (status === 'error' || status === 'failed')) {
                                 icon = '<i class="fa-solid fa-x"></i>';
                                 color = '#dc3545';
-                                tip = 'Last push failed — click to retry $' + price.toFixed(2);
+                                tip = 'Last push failed — click to retry $' + price.toFixed(2)
+                                    + (d.SPRICE_ERROR ? ('\nNewegg: ' + d.SPRICE_ERROR) : '');
                             } else if (matched) {
                                 icon = '<i class="fa-solid fa-check-double"></i>';
                                 color = '#28a745';
