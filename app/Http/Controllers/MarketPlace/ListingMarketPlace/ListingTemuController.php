@@ -7,6 +7,7 @@ namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 use App\Http\Controllers\Controller;
 use App\Support\Marketplace\AutomatedListingPage;
 use App\Support\Marketplace\ChannelListingRegistry;
+use App\Support\Marketplace\ListingCountsEngine;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuListingStatus;
@@ -42,9 +43,38 @@ class ListingTemuController extends Controller
 
     public function getViewListingTemuData(Request $request)
     {
+        $rows = AutomatedListingPage::rows('temu');
+
+        // Temu 1 only: SKU ID imported from the Temu API (temu_metrics.sku_id) for the SKU ID column.
+        $skuIds = [];
+        try {
+            \App\Models\TemuMetric::query()
+                ->whereNotNull('sku')->where('sku', '!=', '')
+                ->whereNotNull('sku_id')->where('sku_id', '!=', '')
+                ->get(['sku', 'sku_id'])
+                ->each(function ($metric) use (&$skuIds) {
+                    $sku = trim((string) $metric->sku);
+                    $id = trim((string) $metric->sku_id);
+                    if ($sku === '' || ! preg_match('/^\d+$/', $id)) {
+                        return;
+                    }
+                    foreach (array_merge([strtolower($sku)], ListingCountsEngine::skuIndexKeys($sku)) as $key) {
+                        if ($key !== '' && ! isset($skuIds[$key])) {
+                            $skuIds[$key] = $id;
+                        }
+                    }
+                });
+        } catch (\Throwable $e) {
+            // the SKU ID column is informational; never break the page
+        }
+        foreach ($rows as $row) {
+            $skuId = ListingCountsEngine::listingIdFromMap($skuIds, (string) ($row->sku ?? ''));
+            $row->sku_id = $skuId !== '' ? $skuId : null;
+        }
+
         return response()->json([
             'status' => 200,
-            'data' => AutomatedListingPage::rows('temu'),
+            'data' => $rows,
         ]);
     }
 

@@ -294,68 +294,6 @@
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
-        #temu-listing-toolbar .toolbar-actions {
-            display: flex;
-            flex: 0 0 auto;
-            align-items: center;
-            gap: 4px;
-            margin-left: 0;
-        }
-
-        #temu-listing-toolbar .temu-bulk-publish-btn {
-            height: 30px;
-            padding: 0 10px;
-            border-radius: 5px;
-            font-size: 11px;
-            font-weight: 700;
-            white-space: nowrap;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        #temu-listing-toolbar .temu-bulk-publish-btn:disabled {
-            opacity: 0.65;
-            cursor: wait;
-        }
-
-        #temu-listing-toolbar .listing-io-btn {
-            border-radius: 5px;
-            font-weight: 600;
-            font-size: 14px;
-            width: 32px;
-            height: 30px;
-            padding: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            line-height: 1;
-        }
-
-        #temu-listing-toolbar .listing-io-btn::after {
-            display: none;
-        }
-
-        #temu-listing-toolbar .listing-io-menu {
-            min-width: 42px;
-            padding: 4px;
-        }
-
-        #temu-listing-toolbar .listing-io-menu .dropdown-item {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 34px;
-            height: 32px;
-            padding: 0;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-
-        #temu-listing-toolbar .listing-io-menu .dropdown-item:hover {
-            background: #f1f5f9;
-        }
-
         /* ========== STAT BADGES ========== */
         .listing-stat-badge {
             display: inline-flex;
@@ -700,61 +638,11 @@
                                 <option value="all">INV: All</option>
                                 <option value="inv-only" selected>INV Only</option>
                             </select>
-                            <select id="nr-req-filter" class="form-select form-select-sm filter-select" aria-label="NRL/REQ">
-                                <option value="all" selected>NRL/REQ</option>
-                                <option value="REQ">REQ</option>
-                                <option value="NR">NRL</option>
-                            </select>
-                            <select id="link-filter" class="form-select form-select-sm filter-select" aria-label="Buyer Link">
-                                <option value="all" selected>Buyer Link</option>
-                                <option value="with-link">With Link</option>
-                                <option value="without-link">Without Link</option>
-                            </select>
                             <select id="listed-filter" class="form-select form-select-sm filter-select" aria-label="Listed">
                                 <option value="all" selected>Listed</option>
                                 <option value="Listed">Listed Only</option>
                                 <option value="Pending">Missing L</option>
                             </select>
-                            <button type="button"
-                                class="btn btn-sm btn-primary temu-bulk-publish-btn"
-                                id="bulk-publish-btn"
-                                title="Publish selected SKUs as parent variations">
-                                <i class="fas fa-cloud-upload-alt"></i> Publish selected
-                            </button>
-                            <div class="toolbar-actions">
-                                <button type="button"
-                                    class="btn btn-sm btn-primary listing-io-btn"
-                                    id="import-btn"
-                                    title="Import">
-                                    <i class="fas fa-file-import"></i>
-                                </button>
-                                <button type="button"
-                                    class="btn btn-sm btn-primary listing-io-btn"
-                                    id="export-btn"
-                                    title="Export visible / filtered rows">
-                                    <i class="fas fa-file-export"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-dialog-centered">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Import Editable Fields</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <a href="{{ asset('sample_excel/sample_listing_file.csv') }}" download class="btn btn-outline-secondary mb-3">📄 Download Sample File</a>
-                                    <input type="file" id="importFile" name="file" accept=".csv,.txt" class="form-control" />
-                                    <small class="text-muted">Only CSV or TXT files are supported</small>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-primary" id="confirmImportBtn">Import</button>
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                </div>
-                            </div>
                         </div>
                     </div>
 
@@ -914,6 +802,7 @@
                     nr_req: nrReq,
                     listed: listed,
                     goods_id: goodsId || null,
+                    sku_id: String(item.sku_id || '').trim() || null,
                     eBay_item_id: goodsId || null,
                     buyer_link: item.buyer_link || '',
                     seller_link: item.seller_link || '',
@@ -938,7 +827,8 @@
                     return;
                 }
 
-                const rows = temuListingTable.getData('active') || [];
+                // All loaded rows, independent of the filters (INV Only, Parent/SKU, ...).
+                const rows = (allListingData && allListingData.length) ? allListingData : (temuListingTable.getData() || []);
                 const metrics = {
                     invTotal: 0,
                     reqTotal: 0,
@@ -948,8 +838,9 @@
                     pendingTotal: 0
                 };
 
+                // Badges count every loaded row: parent rows and zero-INV SKUs included.
                 rows.forEach(item => {
-                    if (parseFloat(item.INV) > 0 && !isParentSku(item.sku)) {
+                    {
                         metrics.invTotal += parseFloat(item.INV) || 0;
 
                         if (item.nr_req === 'REQ') {
@@ -999,25 +890,16 @@
 
             const dataType = $('#row-data-type').val();
             const invFilter = $('#inv-filter').val();
-            const nrReqFilter = $('#nr-req-filter').val();
-            const linkFilter = $('#link-filter').val();
             const listedFilter = $('#listed-filter').val();
 
-            // The SKU (child) filters: INV, NRL/REQ, Buyer Link, Listed / Missing L.
+            // The SKU (child) filters: INV, Listed / Missing L.
             const childPasses = function (data) {
                 if (invFilter === 'inv-only' && !(parseFloat(data.INV) > 0)) return false;
-                if (nrReqFilter !== 'all' && data.nr_req !== nrReqFilter) return false;
-
-                const hasItemLink = !!String(data.eBay_item_id || '').trim();
-                if (linkFilter === 'with-link' && !hasItemLink) return false;
-                if (linkFilter === 'without-link' && hasItemLink) return false;
-
                 if (listedFilter !== 'all' && data.listed !== listedFilter) return false;
 
                 return true;
             };
-            const childFiltersActive = invFilter === 'inv-only' || nrReqFilter !== 'all'
-                || linkFilter !== 'all' || listedFilter !== 'all';
+            const childFiltersActive = invFilter === 'inv-only' || listedFilter !== 'all';
 
             // A parent row is a header for its SKUs: it has no INV / NRL / link / listed state of its
             // own, so it is shown whenever at least one of its SKUs passes the filters above.
@@ -1122,6 +1004,12 @@
                 </span>`;
             }
             return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no Temu goods_id">Missing L</span>`;
+        }
+
+        function formatTemuId(value) {
+            const id = String(value || '').trim();
+            if (!id) return '<span class="text-muted">—</span>';
+            return '<span style="font-family:monospace;font-size:12px;">' + escapeHtml(id) + '</span>';
         }
 
         function formatPublishToTemu(cell) {
@@ -1294,6 +1182,26 @@
                         formatter: formatSellerLink
                     },
                     {
+                        title: 'Goods ID',
+                        field: 'listing_id',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        minWidth: 130,
+                        headerTooltip: 'Temu goods ID (imported from the Temu API)',
+                        formatter: function (cell) { return formatTemuId(cell.getRow().getData().goods_id); }
+                    },
+                    {
+                        title: 'SKU ID',
+                        field: 'sku_id',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        minWidth: 130,
+                        headerTooltip: 'Temu SKU ID (imported from the Temu API)',
+                        formatter: function (cell) { return formatTemuId(cell.getRow().getData().sku_id); }
+                    },
+                    {
                         title: 'Missing L',
                         field: 'listed',
                         hozAlign: 'center',
@@ -1328,7 +1236,7 @@
                 showNotification('danger', 'Failed to load data. Please try again.');
             });
 
-            $('#row-data-type, #inv-filter, #nr-req-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
+            $('#row-data-type, #inv-filter, #listed-filter').on('change', applyListingFilters);
 
             // Missing L badge → filter table to unlisted REQ SKUs (toggle)
             let missingLFilterActive = false;
@@ -1341,14 +1249,11 @@
                 const $badge = $('#missing-l-badge');
                 if (missingLFilterActive) {
                     $('#row-data-type').val('all');
-                    $('#inv-filter').val('inv-only');
-                    $('#nr-req-filter').val('REQ');
-                    $('#link-filter').val('all');
+                    $('#inv-filter').val('all');
                     $('#listed-filter').val('Pending');
                     $badge.addClass('is-active');
                 } else {
                     $('#listed-filter').val('all');
-                    $('#nr-req-filter').val('all');
                     $badge.removeClass('is-active');
                 }
                 applyListingFilters();
@@ -1362,12 +1267,11 @@
                     applyMissingLBadgeFilter();
                 }
             });
-            $('#listed-filter, #nr-req-filter, #inv-filter, #row-data-type').on('change.missingLBadge', function () {
+            $('#listed-filter, #inv-filter, #row-data-type').on('change.missingLBadge', function () {
                 if (!missingLFilterActive) return;
                 const stillMissing =
                     $('#listed-filter').val() === 'Pending' &&
-                    $('#nr-req-filter').val() === 'REQ' &&
-                    $('#inv-filter').val() === 'inv-only' &&
+                    $('#inv-filter').val() === 'all' &&
                     $('#row-data-type').val() !== 'parent';
                 if (!stillMissing) {
                     missingLFilterActive = false;
@@ -1814,18 +1718,6 @@
                 openPublishPreview([sku]);
             });
 
-            $('#bulk-publish-btn').on('click', function () {
-                if (!temuListingTable) return;
-                const selected = (temuListingTable.getSelectedData() || [])
-                    .map(function (row) { return String(row.sku || '').trim(); })
-                    .filter(function (sku) { return sku && !isParentSku(sku); });
-                if (!selected.length) {
-                    showNotification('danger', 'Select one or more SKUs first.');
-                    return;
-                }
-                openPublishPreview(selected);
-            });
-
             $('#temu-publish-confirm').on('click', function () {
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
@@ -1876,55 +1768,6 @@
                 next();
             });
 
-            $('#import-btn').on('click', function () {
-                showBsModal('importModal');
-            });
-
-            $(document).on('click', '#confirmImportBtn', function () {
-                const file = $('#importFile')[0].files[0];
-                if (!file) {
-                    alert('Please select a file to import.');
-                    return;
-                }
-
-                const formData = new FormData();
-                formData.append('file', file);
-
-                showLoader();
-                $.ajax({
-                    url: "{{ route('listing_temu.import') }}",
-                    type: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                    success: function (response) {
-                        hideBsModal('importModal');
-                        $('#importFile').val('');
-                        let message = 'File imported successfully!';
-                        if (response.success) {
-                            message = response.success;
-                            if (response.processed !== undefined) {
-                                message += ` (Processed: ${response.processed}`;
-                                if (response.skipped !== undefined) message += `, Skipped: ${response.skipped}`;
-                                if (response.errors !== undefined && response.errors > 0) message += `, Errors: ${response.errors}`;
-                                message += ')';
-                            }
-                        }
-                        showNotification('success', message);
-                        temuListingTable.setData('/listing_temu/view-data');
-                    },
-                    error: function (xhr) {
-                        hideLoader();
-                        let errorMessage = 'Import failed';
-                        if (xhr.responseJSON && xhr.responseJSON.error) {
-                            errorMessage = xhr.responseJSON.error;
-                        }
-                        showNotification('danger', errorMessage);
-                    }
-                });
-            });
-
         });
     </script>
 
@@ -1935,10 +1778,11 @@
             exportName: 'temu_listing',
             channel: 'temu',
             channelLabel: "Temu",
+            ownPublishColumn: true,
             previewUrl: '/listing_temu/save-status',
             publishUrl: '/listing_temu/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261030-onepublish"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261030-onepublish2"></script>
 @include('partials.listing-sku-search')
 @endsection
