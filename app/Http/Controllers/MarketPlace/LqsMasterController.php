@@ -732,7 +732,9 @@ class LqsMasterController extends Controller
                 foreach ($entries as $entry) {
                     if (is_array($entry)
                         && is_numeric($entry['listing_quality_score'] ?? null)
-                        && (string) $entry['listing_quality_score'] !== '') {
+                        && (string) $entry['listing_quality_score'] !== ''
+                        && (float) $entry['listing_quality_score'] >= 0
+                        && (float) $entry['listing_quality_score'] <= 10) {
                         return true;
                     }
                 }
@@ -815,7 +817,10 @@ class LqsMasterController extends Controller
                             : null;
                     }
                     $rawLqs = $jsEntry['listing_quality_score'] ?? null;
-                    if (is_numeric($rawLqs) && (string) $rawLqs !== '') {
+                    // Jungle Scout LQS is 0–10. Anything outside that range is bad
+                    // data (e.g. 54, 66, 71) and must not be shown or averaged.
+                    if (is_numeric($rawLqs) && (string) $rawLqs !== ''
+                        && (float) $rawLqs >= 0 && (float) $rawLqs <= 10) {
                         $lqs = (int) round((float) $rawLqs);
                     }
                 }
