@@ -19,7 +19,13 @@ class RefreshListingChannelJob implements ShouldQueue
 
     public int $timeout = 3300;
 
-    public function __construct(public string $slug, public bool $manual = true) {}
+    /** Dedicated queue (worker kept alive by queue:watchdog) so a click never waits behind long price-rule jobs. */
+    public const QUEUE = 'listing-refresh';
+
+    public function __construct(public string $slug, public bool $manual = true)
+    {
+        $this->onQueue(self::QUEUE);
+    }
 
     public function handle(ListingChannelRefresher $refresher): void
     {

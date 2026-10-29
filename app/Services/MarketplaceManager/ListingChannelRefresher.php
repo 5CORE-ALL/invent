@@ -124,7 +124,9 @@ class ListingChannelRefresher
         try {
             $failed = 0;
             foreach (self::plan()[$slug] ?? [] as $step) {
+                $stepStart = microtime(true);
                 [$ok, $message] = $this->runStep($step, $manual);
+                $message .= ' ('.round(microtime(true) - $stepStart).'s)';
                 $status['steps'][] = ['label' => $step['label'], 'ok' => $ok, 'message' => $message];
                 $status['message'] = 'Done: '.$step['label'];
                 if (! $ok) {

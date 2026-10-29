@@ -92,6 +92,11 @@ return [
             'timeout' => 900,
             'max_time' => 7200,
         ],
+        // "Refresh listings" button on the /listing-<marketplace> pages (RefreshListingChannelJob)
+        'listing-refresh' => [
+            'timeout' => 3300,
+            'max_time' => 7200,
+        ],
         'social-media' => [
             'timeout' => 900,
             'max_time' => 7200,
