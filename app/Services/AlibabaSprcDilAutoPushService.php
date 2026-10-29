@@ -157,7 +157,9 @@ class AlibabaSprcDilAutoPushService
                             $this->log($logger, "Reached max pushes ({$maxPushes}) — rest next run");
                             break;
                         }
-                        if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $errorCooldownMinutes)) {
+                        if (! empty($row['push_error_at'])
+                            && $this->withinCooldown((string) $row['push_error_at'], \App\Support\AlibabaPushError::retryMinutes((string) $row['sku'], $errorCooldownMinutes))) {
+                            // Dead product / missing category: once a day. Throttled / under review: within 20 min.
                             // Alibaba rejected the last push — retry after the cooldown, not every run.
                             $stats['skipped']++;
                             continue;

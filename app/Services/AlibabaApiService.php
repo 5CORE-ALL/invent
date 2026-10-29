@@ -2068,6 +2068,16 @@ class AlibabaApiService extends AliExpressApiService
         $product = is_array($info['data'] ?? null) ? $info['data'] : [];
         $catId = $product['categoryId'] ?? $product['category_id'] ?? $product['catId'] ?? null;
         if ($catId === null || $catId === '') {
+            // Alibaba answers a deleted / offline / re-created listing with an empty product (code + request id only).
+            // That is not a transient failure: the stored product id is dead until the listing is synced or relisted.
+            $hasBody = isset($product['subject']) || isset($product['productSku']) || isset($product['product_sku']);
+            if (! $hasBody) {
+                return [
+                    'success' => false,
+                    'message' => 'Alibaba has no product for id '.$productId.' (listing deleted, offline or re-created). Price not pushed; fix or relist the product on Alibaba.',
+                ];
+            }
+
             return ['success' => false, 'message' => 'Alibaba category id is missing for this listing.'];
         }
 

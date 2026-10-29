@@ -253,6 +253,8 @@ class AlibabaAnalyticsController extends Controller
                 if ($hit !== null) {
                     $child['PUSH_PRC_ERROR'] = $hit['message'];
                     $child['PUSH_PRC_ERROR_AT'] = $hit['at'];
+                    // Dead product id / no category: retrying cannot fix it, so the page does not count it as a blue triangle.
+                    $child['PUSH_PRC_BLOCKED'] = \App\Support\AlibabaPushError::isPermanentMessage($hit['message']);
                 }
             }
             unset($child);

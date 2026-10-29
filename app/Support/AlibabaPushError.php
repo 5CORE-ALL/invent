@@ -81,6 +81,65 @@ class AlibabaPushError
         return $out;
     }
 
+    /**
+     * A failure that retrying every few minutes cannot fix (dead product id, no category, SKU not on the listing).
+     * The job retries these once a day, and the page does not count them as a blue triangle.
+     */
+    public static function isPermanentMessage(string $message): bool
+    {
+        foreach ([
+            'Alibaba has no product for id',
+            'No Alibaba product id',
+            'Alibaba product id is missing',
+            'category id is missing',
+            'was not found on the Alibaba listing',
+            'Alibaba SKU id is missing',
+            'SKU prices could not be read',
+        ] as $needle) {
+            if (stripos($message, $needle) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Throttling and "under review" clear on their own, so they are retried sooner than other errors. */
+    public static function isTransientMessage(string $message): bool
+    {
+        foreach (['throttled', 'PUB_BIZCHECK_PRODUCT_IN_AUDITING', 'under review', 'Too Many Requests'] as $needle) {
+            if (stripos($message, $needle) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Minutes to wait before the job retries this SKU after a failed push. */
+    public static function retryMinutes(string $sku, int $default): int
+    {
+        $hit = self::many([$sku])[strtoupper(trim($sku))] ?? null;
+        if ($hit === null) {
+            return $default;
+        }
+        if (self::isPermanentMessage($hit['message'])) {
+            return max($default, 1440);
+        }
+        if (self::isTransientMessage($hit['message'])) {
+            return min($default, 20);
+        }
+
+        return $default;
+    }
+
+    public static function isPermanent(string $sku): bool
+    {
+        $hit = self::many([$sku])[strtoupper(trim($sku))] ?? null;
+
+        return $hit !== null && self::isPermanentMessage($hit['message']);
+    }
+
     public static function friendly(string $message): string
     {
         $message = trim($message);

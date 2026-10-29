@@ -402,6 +402,8 @@
             const sku = String(data.sku || '').trim().toUpperCase();
             if (!sku || sku.indexOf('PARENT') === 0) return false;
             if (!(parseFloat(data.INV) > 0)) return false;
+            // The listing cannot be pushed to (dead product id, no category): the red X on Push Prc says why.
+            if (data.PUSH_PRC_BLOCKED) return false;
             // Blue = the price that gets pushed (S PRC, Ship already taken off) differs from the live Alibaba Price.
             const push = abPushPrice(data);
             const price = parseFloat(data.price) || 0;
