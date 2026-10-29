@@ -7,6 +7,7 @@ use App\Models\CategoryMaster;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\CategoryMasters\CategoryChannelSyncService;
+use App\Services\CategoryMasters\ShopifyCategoryFetcher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -46,6 +47,7 @@ class CategoryMastersController extends Controller
 
             $rows = [];
             $childInvByParent = [];
+            $childShopifyByParent = [];
             foreach ($products as $product) {
                 $sku = trim((string) $product->sku);
                 if ($sku === '') {
@@ -76,13 +78,29 @@ class CategoryMastersController extends Controller
                     'category_amz_id' => (string) ($category->category_amz_id ?? ''),
                     'category_temu' => (string) ($category->category_temu ?? ''),
                     'category_temu_id' => (string) ($category->category_temu_id ?? ''),
+                    'category_shopify' => (string) ($category->category_shopify ?? ''),
+                    'category_shopify_id' => (string) ($category->category_shopify_id ?? ''),
+                    'shopify_synced' => $category && $category->category_shopify_synced_at !== null,
                 ];
+
+                $shopifyName = trim((string) ($category->category_shopify ?? ''));
+                if (! $isParent && $parent !== '' && $shopifyName !== '' && ! isset($childShopifyByParent[$parent])) {
+                    $childShopifyByParent[$parent] = [
+                        'name' => $shopifyName,
+                        'id' => (string) ($category->category_shopify_id ?? ''),
+                    ];
+                }
             }
 
             // A parent row has no stock of its own: show the total of its SKUs.
+            // It has no Shopify variant either, so it shows its first SKU's Shopify category.
             foreach ($rows as &$row) {
                 if ($row['is_parent']) {
                     $row['inv'] = $childInvByParent[$row['parent']] ?? 0;
+                    $fromChild = $childShopifyByParent[$row['parent']] ?? null;
+                    $row['category_shopify'] = $fromChild['name'] ?? '';
+                    $row['category_shopify_id'] = $fromChild['id'] ?? '';
+                    $row['shopify_synced'] = true;
                 }
             }
             unset($row);
@@ -266,6 +284,79 @@ class CategoryMastersController extends Controller
             'status' => 200,
             'updated' => $saved,
         ]);
+    }
+
+    /**
+     * One-time autofill of the Shopify category. Each SKU is looked up once; a SKU that already
+     * carries a lookup time is never asked for again. Parent rows have no variant, so they are skipped.
+     */
+    public function shopifyFill(Request $request, ShopifyCategoryFetcher $fetcher)
+    {
+        $data = $request->validate([
+            'skus' => 'required|array|min:1|max:25',
+            'skus.*' => 'required|string|max:191',
+        ]);
+
+        if (! Schema::hasTable('category_masters') || ! Schema::hasColumn('category_masters', 'category_shopify_synced_at')) {
+            return response()->json(['message' => 'Run the migrations first: the Shopify category column is missing.'], 500);
+        }
+
+        @set_time_limit(120);
+        $products = ProductMaster::query()->whereIn('sku', $data['skus'])->get(['sku', 'parent'])
+            ->keyBy(fn ($row) => $this->skuKey((string) $row->sku));
+        $done = CategoryMaster::query()->whereIn('sku', $data['skus'])
+            ->whereNotNull('category_shopify_synced_at')
+            ->get(['sku'])
+            ->keyBy(fn ($row) => $this->skuKey((string) $row->sku));
+
+        $todo = [];
+        foreach (array_values(array_unique($data['skus'])) as $sku) {
+            $product = $products->get($this->skuKey($sku));
+            if (! $product || $this->isParentSku((string) $product->sku) || $done->has($this->skuKey($sku))) {
+                continue;
+            }
+            $todo[] = (string) $product->sku;
+        }
+
+        if ($todo === []) {
+            return response()->json(['status' => 200, 'results' => []]);
+        }
+
+        $fetched = $fetcher->fetch($todo);
+        if (! $fetched['ok']) {
+            return response()->json(['status' => 502, 'message' => $fetched['message'], 'results' => []], 502);
+        }
+
+        $now = now();
+        $results = [];
+        foreach ($todo as $sku) {
+            $hit = $fetched['found'][$sku] ?? null;
+            $product = $products->get($this->skuKey($sku));
+            $parent = trim((string) ($product->parent ?? ''));
+            try {
+                CategoryMaster::query()->updateOrCreate(
+                    ['sku' => $sku],
+                    [
+                        'parent' => $parent !== '' ? $parent : null,
+                        'category_shopify' => ($hit['category'] ?? '') !== '' ? $hit['category'] : null,
+                        'category_shopify_id' => ($hit['id'] ?? '') !== '' ? $hit['id'] : null,
+                        'category_shopify_synced_at' => $now,
+                    ]
+                );
+            } catch (\Throwable $e) {
+                Log::error('Category Masters Shopify fill failed: '.$e->getMessage(), ['sku' => $sku]);
+
+                continue;
+            }
+            $results[] = [
+                'sku' => $sku,
+                'found' => $hit !== null,
+                'category' => $hit['category'] ?? '',
+                'category_id' => $hit['id'] ?? '',
+            ];
+        }
+
+        return response()->json(['status' => 200, 'results' => $results]);
     }
 
     /**

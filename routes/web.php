@@ -4614,6 +4614,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/category-masters', [\App\Http\Controllers\ProductMaster\CategoryMastersController::class, 'index'])->name('category.masters');
     Route::get('/category-masters/data', [\App\Http\Controllers\ProductMaster\CategoryMastersController::class, 'getData'])->name('category.masters.data');
     Route::post('/category-masters/save-bulk', [\App\Http\Controllers\ProductMaster\CategoryMastersController::class, 'saveBulk'])->name('category.masters.save.bulk');
+    Route::post('/category-masters/shopify-fill', [\App\Http\Controllers\ProductMaster\CategoryMastersController::class, 'shopifyFill'])->name('category.masters.shopify.fill');
     Route::post('/category-masters/pull', [\App\Http\Controllers\ProductMaster\CategoryMastersController::class, 'pull'])->name('category.masters.pull');
     Route::post('/category-masters/push', [\App\Http\Controllers\ProductMaster\CategoryMastersController::class, 'push'])->name('category.masters.push');
     Route::get('/masters-barcode', [MastersBarcodeController::class, 'index'])->name('masters.barcode');

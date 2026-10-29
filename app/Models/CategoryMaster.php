@@ -28,6 +28,13 @@ class CategoryMaster extends Model
         'category_amz_id',
         'category_temu',
         'category_temu_id',
+        'category_shopify',
+        'category_shopify_id',
+        'category_shopify_synced_at',
         'updated_by',
+    ];
+
+    protected $casts = [
+        'category_shopify_synced_at' => 'datetime',
     ];
 }
