@@ -9389,9 +9389,14 @@ class CvrMasterController extends Controller
         foreach ($toPush as $item) {
             $res = $results[$item['sku']] ?? ['success' => false, 'message' => 'No result from Purchasing Power batch push'];
             $ok = ! empty($res['success']);
-            $this->savePricePushStatus($item['sku'], 'ppower', $ok ? 'pushed' : 'error', $item['price']);
+            $retryable = ! $ok && ! empty($res['retryable']);
+            if (! $retryable) {
+                // A rate-limited SKU was not judged at all: no "error" stamp (that would park it for the error cooldown).
+                $this->savePricePushStatus($item['sku'], 'ppower', $ok ? 'pushed' : 'error', $item['price']);
+            }
             $out[$item['sku']] = [
                 'success' => $ok,
+                'retryable' => $retryable,
                 'price' => $item['price'],
                 'message' => (string) ($res['message'] ?? ''),
             ];
@@ -9431,7 +9436,9 @@ class CvrMasterController extends Controller
                     'result' => $result,
                 ]);
             }
-            $this->savePricePushStatus($sku, 'ppower', 'error', $price);
+            if (empty($result['retryable'])) {
+                $this->savePricePushStatus($sku, 'ppower', 'error', $price);
+            }
             return response()->json([
                 'success' => false,
                 'message' => $result['message'] ?? 'Failed to push price to Purchasing Power',

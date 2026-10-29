@@ -738,7 +738,10 @@ class PurchasingPowerSprcDilAutoPushService
         $stats['errors'][] = $sku.': '.$err;
         $this->log($logger, 'Push failed '.$sku.': '.$err);
         Log::error('Purchasing Power Sprc Dil push failed', ['sku' => $sku, 'price' => $price, 'error' => $err]);
-        $this->savePushMeta($sku, 'error', null);
+        if (empty($result['retryable'])) {
+            // MCM rate limit (HTTP 429) says nothing about the SKU: no error stamp, so the next run retries at once.
+            $this->savePushMeta($sku, 'error', null);
+        }
     }
 
     protected function apiConfigured(): bool

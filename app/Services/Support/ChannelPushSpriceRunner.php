@@ -458,6 +458,9 @@ class ChannelPushSpriceRunner
 
     private const PP_BATCH_SIZE = 25;
 
+    /** A SKU the MCM rate limit keeps deferring is reported as failed after this many attempts. */
+    private const PP_MAX_RATE_LIMIT_ATTEMPTS = 4;
+
     /**
      * Push up to PP_BATCH_SIZE pending Purchasing Power tasks in one MCM import. Returns true when it finished at least
      * one task. Tasks it does not take (bad SKU/price, negative SNROI, fewer than 2 waiting) stay pending for the
@@ -536,16 +539,29 @@ class ChannelPushSpriceRunner
                 } catch (\Throwable $e) {
                     $logger->warning('S PRC batch confirmAfterPush failed', ['sku' => $p['sku'], 'error' => $e->getMessage()]);
                 }
+            } elseif (! empty($res['retryable'])) {
+                // MCM rate limit (HTTP 429): the SKU was not judged. Re-queued below, not counted as failed.
+                $logger->warning('S PRC batch push deferred — MCM rate limit', ['channel' => $this->channel, 'sku' => $p['sku']]);
             } else {
                 $logger->error('S PRC background push failed', ['channel' => $this->channel, 'sku' => $p['sku'], 'error' => $error]);
                 $this->markListingEndedIfNeeded($p['sku'], $error);
             }
-            $outcome[$i] = ['sku' => $p['sku'], 'ok' => $ok, 'error' => $error, 'live' => $live];
+            $outcome[$i] = ['sku' => $p['sku'], 'ok' => $ok, 'error' => $error, 'live' => $live, 'retry' => ! $ok && ! empty($res['retryable'])];
         }
 
-        $store->update(function (array $state) use ($outcome) {
+        $requeued = [];
+        $store->update(function (array $state) use ($outcome, &$requeued) {
+            $requeued = [];
             foreach ($outcome as $i => $o) {
                 if (! isset($state['tasks'][$i]) || ! is_array($state['tasks'][$i])) {
+                    continue;
+                }
+                if ($o['retry'] && ((int) ($state['tasks'][$i]['attempts'] ?? 1)) < self::PP_MAX_RATE_LIMIT_ATTEMPTS) {
+                    $state['tasks'][$i]['status'] = 'pending';
+                    $state['tasks'][$i]['error'] = null;
+                    $state['tasks'][$i]['message'] = 'rate limited — retrying';
+                    $requeued[$o['sku']] = true;
+
                     continue;
                 }
                 if ($o['ok']) {
@@ -574,7 +590,15 @@ class ChannelPushSpriceRunner
             return $state;
         });
         foreach ($outcome as $o) {
+            if (isset($requeued[$o['sku']])) {
+                continue; // re-queued, summarised below
+            }
             $store->appendMessage(($o['ok'] ? 'OK ' : 'Fail ').$o['sku'].($o['error'] ? (': '.$o['error']) : ''), $o['ok']);
+        }
+        if ($requeued !== []) {
+            $store->appendMessage('MCM rate limit — '.count($requeued).' SKU(s) re-queued, retrying shortly', false);
+            // Give the MCM rate-limit window time to clear before the next batch.
+            sleep(20);
         }
 
         return true;

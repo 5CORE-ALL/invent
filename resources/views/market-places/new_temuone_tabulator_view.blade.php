@@ -223,6 +223,14 @@
             height: 14px;
         }
         #column-dropdown-menu .col-vis-item > label:hover { background: #e9ecef; }
+        .nto-parent-toggle {
+            display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; margin-right: 4px;
+            border: 1px solid #93c5fd; border-radius: 10px; background: #eff6ff; color: #1d4ed8;
+            font-size: 11px; font-weight: 700; line-height: 1.4; cursor: pointer;
+        }
+        .nto-parent-toggle:hover { background: #dbeafe; }
+        .nto-parent-toggle svg { transition: transform .15s; }
+        .nto-parent-toggle.is-open svg { transform: rotate(90deg); }
         .nto-parent-row,
         .nto-parent-row .tabulator-cell,
         .nto-parent-row.tabulator-row-even,
@@ -976,9 +984,155 @@
         return (m[key] = fn());
     }
 
+    // PARENT rows show the same calculated columns as a SKU row. Price inputs are the average of the parent's SKUs,
+    // sold / INV are the parent's own sums, and every calculation (Dil rules, discounts, S PRC, profit, ROI...) runs
+    // through the same SKU formulas on that one parent "aggregate row".
+    let ntoParentAggCache = new Map();
+    // PARENT arrow: in the default (unfiltered) All view the SKUs of a parent stay folded until its arrow is clicked.
+    const ntoExpandedParents = new Set();
+    const ntoParentChildCount = new Map();
+    let ntoCollapseActive = false;
+    function ntoParentKey(d) { return String((d && (d.Parent || d.parent)) || '').trim(); }
+    function ntoHeaderFilterActive() {
+        try {
+            return (table.getHeaderFilters() || []).some(function(h) { return h && String(h.value == null ? '' : h.value).trim() !== ''; });
+        } catch (e) { return false; }
+    }
+    /** Rows the badges / exports work on: every SKU while the arrow-fold is hiding some of them. */
+    function ntoActiveDataRows() {
+        return ntoCollapseActive ? (table.getData() || []) : (table.getData('active') || []);
+    }
+    const ntoParentFirstChild = new Map();
+    const NTO_PARENT_AVG_FIELDS = [
+        't_price', 'temu_price', 'base_price', 'r_price', 'STANDARD_PRICE', 'lp', 'LP_productmaster',
+        'temu_ship', 'Ship_productmaster', 'lmp_raw', 'lmp', 'a_price', 'e_price', 'e2_price'
+    ];
+    const NTO_PARENT_CALC_FIELDS = new Set([
+        'STANDARD_PRICE', 'std_prc_diff', 't_price', 'temu_price_12', 'disc_amt', 'price_after_disc', 'ship_disc',
+        'promo_base_prc', 'temu_ship', 'gpft_dollar', 'roi_percent', 'profit_percent', 'npft_percent', 'nroi_percent',
+        'lmp_raw', 'SPRC_DIL', 'sprice', 's_recovery', 'stemu_price', 's_profit', 'sgroi_percent', 'snroi_percent',
+        'sgprft_percent', 'snpft_percent', 'lp'
+    ]);
+    function ntoIsParentCalcField(field) {
+        const f = String(field || '');
+        return NTO_PARENT_CALC_FIELDS.has(f) || /^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f);
+    }
+    /** Average the price inputs of each parent's SKUs onto the parent row (raw values only, no rules). */
+    function ntoPrepareParentRows(rows) {
+        const kidsByParent = {};
+        rows.forEach(function(r) {
+            if (!r || r.is_parent_summary) return;
+            const p = String(r.Parent || r.parent || '').trim();
+            if (!p) return;
+            (kidsByParent[p] = kidsByParent[p] || []).push(r);
+        });
+        ntoParentFirstChild.clear();
+        ntoParentChildCount.clear();
+        rows.forEach(function(r) {
+            if (!r || !r.is_parent_summary) return;
+            const p = String(r.Parent || r.parent || '').trim();
+            const kids = kidsByParent[p] || [];
+            if (!kids.length) return;
+            ntoParentFirstChild.set(p, kids[0]);
+            ntoParentChildCount.set(p, kids.length);
+            NTO_PARENT_AVG_FIELDS.forEach(function(f) {
+                let sum = 0, n = 0;
+                kids.forEach(function(k) {
+                    const v = parseFloat(k[f]);
+                    if (isFinite(v) && v > 0) { sum += v; n++; }
+                });
+                if (n > 0) r[f] = +(sum / n).toFixed(2);
+            });
+            const pct = kids.map(function(k) { return parseFloat(k.percentage); }).find(function(v) { return isFinite(v) && v > 0; });
+            if (pct != null) r.percentage = pct;
+        });
+    }
+    /** The SKU-like row every parent calculation runs on (cached until the next render / data change). */
+    function ntoParentAgg(d) {
+        if (!d || !d.is_parent_summary) return d;
+        const p = String(d.Parent || d.parent || '').trim();
+        if (ntoParentAggCache.has(p)) return ntoParentAggCache.get(p);
+        const first = ntoParentFirstChild.get(p) || {};
+        const agg = Object.assign({}, first, d);
+        agg.is_parent_summary = false;
+        agg._nto_agg = true;
+        agg.sku = 'AGG ' + p;
+        agg['(Child) sku'] = 'AGG ' + p;
+        agg.SKU = agg.sku;
+        // Prices are worked out live from the averaged inputs, never from a saved SKU price.
+        agg.sprice = null;
+        agg.SPRICE = null;
+        agg.sprc_dil = null;
+        agg.has_custom_sprice = false;
+        agg.nto_use_saved = false;
+        agg.lmp_entries = [];
+        ntoParentAggCache.set(p, agg);
+        return agg;
+    }
+    function ntoParentCellProxy(cell, agg) {
+        const row = cell.getRow();
+        const rowProxy = {
+            getData: function() { return agg; },
+            getElement: function() { return row.getElement(); },
+            getCell: function(f) { return row.getCell(f); },
+            getTable: function() { return row.getTable(); },
+            update: function() { return Promise.resolve(); }
+        };
+        return {
+            getValue: function() { return agg[cell.getField()]; },
+            getField: function() { return cell.getField(); },
+            getElement: function() { return cell.getElement(); },
+            getRow: function() { return rowProxy; },
+            getColumn: function() { return cell.getColumn(); },
+            getData: function() { return agg; },
+            getTable: function() { return cell.getTable(); }
+        };
+    }
+    function ntoParentRowProxy(row, agg) {
+        return {
+            getData: function() { return agg; },
+            getElement: function() { return row.getElement(); },
+            getCell: function(f) { return row.getCell(f); },
+            getTable: function() { return row.getTable(); }
+        };
+    }
+    /** Parent rows render / sort these columns from the aggregate row; SKU rows are untouched. */
+    function ntoWrapParentCalcColumns(cols) {
+        return cols.map(function(col) {
+            if (!col || !ntoIsParentCalcField(col.field)) return col;
+            const out = Object.assign({}, col);
+            if (typeof col.formatter === 'function') {
+                out.formatter = function(cell, fp, onRendered) {
+                    const d = cell.getRow().getData() || {};
+                    if (!d.is_parent_summary) return col.formatter.call(this, cell, fp, onRendered);
+                    return col.formatter.call(this, ntoParentCellProxy(cell, ntoParentAgg(d)), fp, onRendered);
+                };
+            }
+            if (typeof col.sorter === 'function') {
+                out.sorter = function(a, b, aRow, bRow, column, dir, params) {
+                    const da = (aRow && aRow.getData && aRow.getData()) || {};
+                    const db = (bRow && bRow.getData && bRow.getData()) || {};
+                    const ra = da.is_parent_summary ? ntoParentRowProxy(aRow, ntoParentAgg(da)) : aRow;
+                    const rb = db.is_parent_summary ? ntoParentRowProxy(bRow, ntoParentAgg(db)) : bRow;
+                    return col.sorter.call(this, a, b, ra, rb, column, dir, params);
+                };
+            }
+            if (typeof col.cellMouseEnter === 'function') {
+                const enter = col.cellMouseEnter;
+                out.cellMouseEnter = function(e, cell) {
+                    const d = cell.getRow().getData() || {};
+                    if (d.is_parent_summary) return; // rule hover tips are per SKU
+                    return enter.call(this, e, cell);
+                };
+            }
+            return out;
+        });
+    }
+
     function temuClearCapMemo() {
         temuCapMemo.clear();
         ntoDerivedMemo = new WeakMap();
+        ntoParentAggCache = new Map();
     }
 
     /** Memoized entry point. Callers passing an ad-hoc row must use temuSpriceCapCompute. */
@@ -2773,7 +2927,7 @@
     /** Badge row — all totals follow the filters currently applied to the table. */
     function ntoSummaryRows() {
         if (!table || typeof table.getData !== 'function') return [];
-        const active = table.getData('active');
+        const active = ntoActiveDataRows();
         if (Array.isArray(active) && active.length) {
             // Parent summary rows repeat their children's totals, so badges use the SKU rows
             // (only the Parent view, which has no SKU rows, counts the parent rows themselves).
@@ -2932,7 +3086,7 @@
                 return;
             }
             let rows = [];
-            try { rows = (table.getData('active') || []).filter(function(r) { return !(r && r.is_parent_summary); }); } catch (e) { rows = []; }
+            try { rows = ntoActiveDataRows().filter(function(r) { return !(r && r.is_parent_summary); }); } catch (e) { rows = []; }
             let count = 0;
             rows.forEach(function(row) {
                 if (temuHasLmpAlert(row)) count++;
@@ -2973,6 +3127,7 @@
         } finally {
             if (blocked) table.restoreRedraw();
         }
+        ntoSyncParentArrows();
         updateSummary();
     }
 
@@ -3103,6 +3258,41 @@
         if (lmpAlertFilterActive) {
             table.addFilter(function(data) { return temuHasLmpAlert(data); });
         }
+
+        // PARENT arrow fold: only in the plain All view (no filter / search active), so a filtered or searched SKU is never hidden.
+        ntoCollapseActive = (viewTypeFilter === 'all') && !(table.getFilters() || []).length;
+        if (ntoCollapseActive) {
+            table.addFilter(function(data) {
+                if (!data || data.is_parent_summary) return true;
+                const p = ntoParentKey(data);
+                if (!p || !ntoParentChildCount.has(p)) return true;
+                if (ntoHeaderFilterActive()) return true;
+                return ntoExpandedParents.has(p);
+            });
+        }
+    }
+
+    function ntoToggleParent(cell) {
+        const d = (cell && cell.getRow().getData()) || {};
+        const p = ntoParentKey(d);
+        if (!p || !ntoCollapseActive) return;
+        if (ntoExpandedParents.has(p)) ntoExpandedParents.delete(p); else ntoExpandedParents.add(p);
+        if (typeof table.refreshFilter === 'function') table.refreshFilter(); else applyFilters();
+        ntoSyncParentArrows();
+        updateSummary();
+    }
+
+    /** Arrows follow the fold state (also after filters change or a page is drawn). */
+    function ntoSyncParentArrows() {
+        document.querySelectorAll('#new-temuone-table .nto-parent-toggle').forEach(function(btn) {
+            const pk = btn.getAttribute('data-parent') || '';
+            const n = ntoParentChildCount.get(pk) || 0;
+            const open = !ntoCollapseActive || ntoExpandedParents.has(pk);
+            btn.classList.toggle('is-open', open);
+            btn.title = ntoCollapseActive
+                ? (open ? 'Hide' : 'Show') + ' the ' + n + ' SKUs of this parent'
+                : n + ' SKUs (clear filters to fold)';
+        });
     }
 
     // Same hide/show + persist as /temu1-data, stored under this page's channel.
@@ -3303,7 +3493,7 @@
             const def = col.getDefinition();
             return String(def.title || def.field).replace(/<[^>]*>/g, '').trim();
         });
-        const rows = table.getData('active') || [];
+        const rows = ntoActiveDataRows();
         const lines = [headers.map(temuCsvEscape).join(',')];
         rows.forEach(function(row) {
             lines.push(cols.map(function(col) {
@@ -3367,7 +3557,7 @@
         const parentCmp = temuSkuCollator.compare(parentA, parentB);
         if (parentCmp !== 0) return parentCmp;
         const sumA = !!(a && a.is_parent_summary), sumB = !!(b && b.is_parent_summary);
-        if (sumA !== sumB) return sumA ? -1 : 1;
+        if (sumA !== sumB) return sumA ? 1 : -1; // SKUs on top, the PARENT summary below them
         const skuA = String((a && (a['(Child) sku'] || a.sku)) || '');
         const skuB = String((b && (b['(Child) sku'] || b.sku)) || '');
         return temuSkuCollator.compare(skuA, skuB);
@@ -3408,10 +3598,11 @@
                     if (!r) return;
                     if (r.Parent && !r.parent) r.parent = r.Parent;
                 });
+                ntoPrepareParentRows(rows);
                 rows.sort(temuListingSkuSequence);
                 return rows;
             },
-            columns: [
+            columns: ntoWrapParentCalcColumns([
                 {
                     title: '',
                     field: '_select',
@@ -3469,11 +3660,29 @@
                     sorter: function(a, b, aRow, bRow) {
                         return temuListingSkuSequence(aRow.getData(), bRow.getData());
                     },
+                    cellClick: function(e, cell) {
+                        if (e.target.closest && e.target.closest('.nto-parent-toggle')) {
+                            e.stopPropagation();
+                            ntoToggleParent(cell);
+                        }
+                    },
                     formatter: function(cell) {
                         const sku = cell.getValue() || '';
                         if (!sku) return '';
                         const esc = String(sku).replace(/"/g, '&quot;');
-                        return '<span>' + String(sku).replace(/</g, '&lt;') + '</span>'
+                        const rowData = cell.getRow().getData() || {};
+                        let arrow = '';
+                        if (rowData.is_parent_summary) {
+                            const pk = ntoParentKey(rowData);
+                            const n = ntoParentChildCount.get(pk) || 0;
+                            if (n > 0) {
+                                const open = !ntoCollapseActive || ntoExpandedParents.has(pk);
+                                arrow = '<button type="button" data-parent="' + pk.replace(/"/g, '&quot;') + '" class="nto-parent-toggle' + (open ? ' is-open' : '') + '" title="'
+                                    + (ntoCollapseActive ? (open ? 'Hide' : 'Show') + ' the ' + n + ' SKUs of this parent' : n + ' SKUs (clear filters to fold)')
+                                    + '"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M5.5 2.5 11 8l-5.5 5.5-1.4-1.4L8.2 8 4.1 3.9z"/></svg><span>' + n + '</span></button> ';
+                            }
+                        }
+                        return arrow + '<span>' + String(sku).replace(/</g, '&lt;') + '</span>'
                             + ' <button type="button" class="btn btn-sm ms-1 copy-sku-btn" data-sku="' + esc
                             + '" title="Copy SKU" style="border:none;background:none;color:#87CEEB;padding:2px 6px;">'
                             + '<i class="fa fa-copy"></i></button>';
@@ -3892,6 +4101,8 @@
                         const display = displayVal != null
                             ? (displayVal % 1 === 0 ? displayVal.toLocaleString() : displayVal.toFixed(2))
                             : '-';
+                        // PARENT rows: average LMP only, the entries / edit modal belong to a SKU.
+                        if (row._nto_agg) return displayVal != null ? '<span class="lmp-display">' + display + '</span>' : '<span style="color: #999;">-</span>';
                         const sku = String(row.sku || row['(Child) sku'] || '').replace(/"/g, '&quot;');
                         const count = Array.isArray(row.lmp_entries) ? row.lmp_entries.length : 0;
                         const title = count > 0
@@ -4127,7 +4338,7 @@
                         return '<span style="font-weight: 600;">$' + v.toFixed(2) + '</span>';
                     }
                 },
-            ]
+            ])
         });
 
         table.on('tableBuilt', function() {
@@ -4165,6 +4376,7 @@
         // Every render starts from a clean memo, so a Sprc Dil slab edit (which redraws
         // the table) can never be served a stale cap.
         table.on('renderStarted', temuClearCapMemo);
+        table.on('renderComplete', ntoSyncParentArrows);
         table.on('dataChanged', temuClearCapMemo);
 
         // Authoritative badge refresh: fires after Tabulator finishes filtering.

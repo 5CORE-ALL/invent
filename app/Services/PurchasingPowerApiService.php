@@ -489,8 +489,13 @@ class PurchasingPowerApiService extends BestBuyApiService
             $sku,
             $listed->sku ?? null
         );
-        $offerSku = $this->resolveLiveMcmOfferSkuExact($lookupSku, $apiKey, $baseUrl);
+        $lookup = $this->lookupLiveMcmOfferSku($lookupSku, $apiKey, $baseUrl);
+        $offerSku = $lookup['offer'];
         if ($offerSku === null) {
+            if ($lookup['transient']) {
+                return $this->retryableLookupFailure($lookupSku);
+            }
+
             return [
                 'success' => false,
                 'message' => "SKU is not listed on Purchasing Power MCM: {$lookupSku}",
@@ -638,6 +643,7 @@ class PurchasingPowerApiService extends BestBuyApiService
         $results = [];
         /** @var array<string, array{sku: string, price: float}> $ready offer SKU => item */
         $ready = [];
+        $mcmThrottled = false;
 
         $apiKey = (string) ($this->miraklMcmApiKey() ?? '');
         $baseUrl = rtrim((string) config('services.purchasingpower.mcm_base_url', ''), '/');
@@ -659,9 +665,16 @@ class PurchasingPowerApiService extends BestBuyApiService
 
                 continue;
             }
+            if ($mcmThrottled) {
+                // MCM kept answering 429 after the waits: do not make every remaining SKU wait the same minutes.
+                $results[$sku] = $this->retryableLookupFailure($sku);
+
+                continue;
+            }
             [$offerSku, $fail] = $this->resolveBatchOfferSku($sku, $apiKey, $baseUrl);
             if ($offerSku === null) {
                 $results[$sku] = $fail;
+                $mcmThrottled = ! empty($fail['retryable']);
 
                 continue;
             }
@@ -759,8 +772,13 @@ class PurchasingPowerApiService extends BestBuyApiService
         }
         $listed = \App\Http\Controllers\MarketPlace\PurchasingPowerController::findProductBySku($sku);
         $lookupSku = \App\Http\Controllers\MarketPlace\PurchasingPowerController::offerLookupSku($sku, $listed->sku ?? null);
-        $offerSku = $this->resolveLiveMcmOfferSkuExact($lookupSku, $apiKey, $baseUrl);
+        $lookup = $this->lookupLiveMcmOfferSku($lookupSku, $apiKey, $baseUrl);
+        $offerSku = $lookup['offer'];
         if ($offerSku === null) {
+            if ($lookup['transient']) {
+                return [null, $this->retryableLookupFailure($lookupSku)];
+            }
+
             return [null, [
                 'success' => false,
                 'message' => "SKU is not listed on Purchasing Power MCM: {$lookupSku}",
@@ -789,9 +807,37 @@ class PurchasingPowerApiService extends BestBuyApiService
      */
     protected function resolveLiveMcmOfferSkuExact(string $sku, string $apiKey, string $baseUrl): ?string
     {
+        return $this->lookupLiveMcmOfferSku($sku, $apiKey, $baseUrl)['offer'];
+    }
+
+    /** Microtime of the last OF21 lookup, so back-to-back lookups (a batch of SKUs) stay under the MCM rate limit. */
+    protected static float $lastOf21LookupAt = 0.0;
+
+    /** Result for a SKU whose OF21 lookup was rate-limited / failed transiently: not a verdict on the SKU, retry later. */
+    protected function retryableLookupFailure(string $sku): array
+    {
+        return [
+            'success' => false,
+            'retryable' => true,
+            'message' => "Purchasing Power MCM is rate-limiting requests (HTTP 429) — could not check {$sku}, will retry",
+            'status_code' => 429,
+        ];
+    }
+
+    /**
+     * OF21 lookup for this shop SKU that tells "not listed" apart from "MCM said try again later".
+     *
+     * Mirakl answers HTTP 429 (Retry-After: 60) once ~20 lookups arrive in a burst. That used to be read as
+     * "SKU is not listed", so a 25-SKU batch pushed ~22 and failed the rest. Now: pace lookups, and on 429 / 5xx /
+     * network errors wait and retry (CLI / background runner only — a web request must not hang for a minute).
+     *
+     * @return array{offer: ?string, transient: bool}
+     */
+    protected function lookupLiveMcmOfferSku(string $sku, string $apiKey, string $baseUrl): array
+    {
         $sku = trim($sku);
         if ($sku === '') {
-            return null;
+            return ['offer' => null, 'transient' => false];
         }
 
         $params = [
@@ -803,41 +849,78 @@ class PurchasingPowerApiService extends BestBuyApiService
             $params['shop_id'] = (int) $shopId;
         }
 
-        try {
-            $response = Http::withoutVerifying()
-                ->withHeaders([
-                    'Authorization' => $apiKey,
-                    'Accept' => 'application/json',
-                ])
-                ->timeout(12)
-                ->get($baseUrl.'/api/offers', $params);
-        } catch (\Throwable $e) {
-            Log::warning('Purchasing Power OF21 exact lookup failed', [
-                'sku' => $sku,
-                'error' => $e->getMessage(),
-            ]);
+        $background = app()->runningInConsole();
+        $maxAttempts = $background ? 4 : 1;
+        $backoff = [20, 40, 60];
 
-            return null;
-        }
-
-        if (! $response->successful()) {
-            return null;
-        }
-
-        foreach ($response->json('offers') ?? [] as $offer) {
-            if (! is_array($offer)) {
-                continue;
-            }
-            $shopSku = trim((string) ($offer['shop_sku'] ?? ''));
-            $productSku = trim((string) ($offer['product_sku'] ?? ''));
-            foreach ([$shopSku, $productSku] as $value) {
-                if ($value !== '' && strcasecmp($value, $sku) === 0) {
-                    return $shopSku !== '' ? $shopSku : $value;
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            if ($background) {
+                $gap = 0.6 - (microtime(true) - self::$lastOf21LookupAt);
+                if ($gap > 0) {
+                    usleep((int) ($gap * 1000000));
                 }
             }
+
+            $response = null;
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => $apiKey,
+                        'Accept' => 'application/json',
+                    ])
+                    ->timeout(12)
+                    ->get($baseUrl.'/api/offers', $params);
+            } catch (\Throwable $e) {
+                Log::warning('Purchasing Power OF21 exact lookup failed', [
+                    'sku' => $sku,
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage(),
+                ]);
+            } finally {
+                self::$lastOf21LookupAt = microtime(true);
+            }
+
+            $transient = $response === null || $response->status() === 429 || $response->status() >= 500;
+            if ($transient) {
+                $status = $response?->status();
+                Log::warning('Purchasing Power OF21 lookup throttled / unavailable', [
+                    'sku' => $sku,
+                    'status' => $status,
+                    'attempt' => $attempt,
+                ]);
+                if ($attempt < $maxAttempts) {
+                    $wait = $backoff[$attempt - 1] ?? 60;
+                    $retryAfter = $response ? (int) $response->header('Retry-After') : 0;
+                    if ($retryAfter > 0) {
+                        $wait = min($wait, $retryAfter);
+                    }
+                    sleep(max(1, $wait));
+                }
+
+                continue;
+            }
+
+            if (! $response->successful()) {
+                return ['offer' => null, 'transient' => false];
+            }
+
+            foreach ($response->json('offers') ?? [] as $offer) {
+                if (! is_array($offer)) {
+                    continue;
+                }
+                $shopSku = trim((string) ($offer['shop_sku'] ?? ''));
+                $productSku = trim((string) ($offer['product_sku'] ?? ''));
+                foreach ([$shopSku, $productSku] as $value) {
+                    if ($value !== '' && strcasecmp($value, $sku) === 0) {
+                        return ['offer' => $shopSku !== '' ? $shopSku : $value, 'transient' => false];
+                    }
+                }
+            }
+
+            return ['offer' => null, 'transient' => false];
         }
 
-        return null;
+        return ['offer' => null, 'transient' => true];
     }
 
     protected function waitForPricingImport(string $importId, string $apiKey, string $baseUrl, int $maxPolls = 10): array
