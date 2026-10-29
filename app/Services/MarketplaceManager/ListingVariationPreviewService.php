@@ -209,6 +209,15 @@ class ListingVariationPreviewService
 
         try {
         $channel = strtolower(trim($channel));
+        // Rule for every marketplace, single or variation: each SKU must have its own Image Master photos.
+        $noImages = ListingManagerAmazonHydrator::skusWithoutImageMaster($skus);
+        if ($noImages !== []) {
+            return [
+                'success' => false,
+                'message' => 'Not published — no images in Image Master for: '.implode(', ', $noImages)
+                    .'. Add the photos in Image Master, then publish again.',
+            ];
+        }
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
             return $this->temu2->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
         }
@@ -452,8 +461,8 @@ class ListingVariationPreviewService
                 return ['status' => 'skipped_no_description', 'reason' => VariationListingContent::descriptionGapMessage()];
             }
         }
-        if (ListingManagerAmazonHydrator::imageMasterUploadSources($sku, (string) ($product->parent ?? '')) === []) {
-            return ['status' => 'skipped_no_image', 'reason' => 'No images on Image Master'];
+        if (! ListingManagerAmazonHydrator::hasImageMasterImages($sku)) {
+            return ['status' => 'skipped_no_image', 'reason' => 'No images in Image Master for this SKU'];
         }
 
         return ['status' => 'will_publish', 'reason' => ''];

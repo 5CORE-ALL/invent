@@ -1216,7 +1216,7 @@ class Temu2ListingPublishService
         if ($this->resolveDescription($product, $sku) === '') {
             return ['status' => 'skipped_no_description', 'reason' => \App\Support\Marketplace\VariationListingContent::descriptionGapMessage()];
         }
-        if ($this->resolveSourceImages($product, $sku) === []) {
+        if (! ListingManagerAmazonHydrator::hasImageMasterImages($sku) || $this->resolveSourceImages($product, $sku) === []) {
             return ['status' => 'skipped_no_image', 'reason' => 'Images missing in Image Master'];
         }
         if (! $this->hasDimWt($product, $sku)) {
