@@ -2537,6 +2537,9 @@
         if (!(sBase > 0) || !(promo > 0)) return false;
         return !ntoMoneyEq(sBase, promo);
     }
+    /** Blue triangle inside a blue base cell: blue on a small white chip so it stays visible on the blue background. */
+    const NTO_BASE_MISMATCH_TRI = '<span style="display:inline-flex;align-items:center;background:#fff;border-radius:3px;padding:0 3px;margin-left:4px;">'
+        + '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;"></i></span>';
     /** Paints (or clears) the blue alert on the cell element itself, so it survives sorting and redraws. */
     function ntoPaintBaseMismatch(cell, d) {
         const el = cell && cell.getElement ? cell.getElement() : null;
@@ -3995,27 +3998,6 @@
                     }
                 },
                 {
-                    title: 'Price After Discount',
-                    field: 'price_after_disc',
-                    hozAlign: 'center',
-                    width: 80,
-                    sorter: function(a, b, aRow, bRow) {
-                        const x = ntoRowPriceAfterDisc(aRow.getData() || {});
-                        const y = ntoRowPriceAfterDisc(bRow.getData() || {});
-                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
-                    },
-                    headerTooltip: 'Price After Discount = Std Price − 12% $ − Disc $.',
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData() || {};
-                        const p = ntoRowPriceAfterDisc(row);
-                        if (p == null) return '<span style="color: #6c757d;">—</span>';
-                        const std = temuParseMoney(row.STANDARD_PRICE != null ? row.STANDARD_PRICE : row.standard_price);
-                        const tip = 'Std $' + std.toFixed(2) + ' − 12% $' + ntoRowTwelvePct(row).toFixed(2)
-                            + ' − Disc $' + ntoRowDiscAmt(row).toFixed(2) + ' = $' + p.toFixed(2);
-                        return '<span style="font-weight: 600;" title="' + tip + '">$' + p.toFixed(2) + '</span>';
-                    }
-                },
-                {
                     title: 'Ship Disc',
                     field: 'ship_disc',
                     hozAlign: 'center',
@@ -4053,10 +4035,12 @@
                         if (pushed > 0 && !ntoMoneyEq(pushed, v)) {
                             tip += '\nPushed $' + pushed.toFixed(2) + ' is waiting for Temu to apply it.';
                         }
-                        if (ntoPaintBaseMismatch(cell, row)) {
+                        const mismatch = ntoPaintBaseMismatch(cell, row);
+                        if (mismatch) {
                             tip += '\nBlue: S Base Prc $' + ntoRowSBasePrc(row).toFixed(2) + ' does not match Promo Base Prc $' + v.toFixed(2) + '.';
                         }
-                        return '<span style="font-weight: 600;" title="' + tip.replace(/"/g, '&quot;') + '">$' + v.toFixed(2) + '</span>';
+                        return '<span style="font-weight: 600;white-space:nowrap;" title="' + tip.replace(/"/g, '&quot;') + '">$' + v.toFixed(2) + '</span>'
+                            + (mismatch ? NTO_BASE_MISMATCH_TRI : '');
                     }
                 },
                 {
@@ -4292,7 +4276,8 @@
                         if (n == null) return '';
                         if (!bad) return '$' + n.toFixed(2);
                         const promo = ntoRowPromoBasePrc(row);
-                        return '<span style="font-weight: 600;" title="S Base Prc $' + n.toFixed(2) + ' does not match Promo Base Prc $' + promo.toFixed(2) + '">$' + n.toFixed(2) + '</span>';
+                        return '<span style="font-weight: 600;white-space:nowrap;" title="S Base Prc $' + n.toFixed(2) + ' does not match Promo Base Prc $' + promo.toFixed(2) + '">$' + n.toFixed(2) + '</span>'
+                            + NTO_BASE_MISMATCH_TRI;
                     }
                 },
                 {
