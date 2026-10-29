@@ -27,6 +27,7 @@
     .cm-toolbar .cm-category-search { width: 220px; flex: 0 0 220px; }
     .cm-toolbar .cm-select { width: 130px; flex: 0 0 130px; }
     .cm-toolbar .cm-scope { width: 150px; flex: 0 0 150px; }
+    .cm-toolbar .cm-shopify-cat { width: 260px; flex: 0 0 260px; }
     #cm-table.tabulator { width: 100%; }
     #cm-table .tabulator-header {
         background: linear-gradient(180deg, #eef3fb 0%, #e3ebf8 100%);
@@ -58,6 +59,21 @@
         line-height: 1.35;
     }
     #cm-table .tabulator-row .tabulator-cell.cm-wrap-cell > span { display: block; width: 100%; white-space: normal; }
+    #cm-table .cm-cat-name { display: block; }
+    #cm-table .cm-code-line { display: block; margin-top: 2px; font-size: 0.8rem; font-weight: 600; }
+    #cm-table .cm-code { font-family: monospace; color: #1a3d7c; }
+    #cm-table .cm-copy {
+        border: 0;
+        background: transparent;
+        padding: 0 4px;
+        margin-left: 4px;
+        color: #6b7280;
+        cursor: pointer;
+        font-size: 0.8rem;
+        line-height: 1;
+    }
+    #cm-table .cm-copy:hover { color: #1a3d7c; }
+    #cm-table .cm-copy.cm-copied { color: #16a34a; }
     #cm-table .tabulator-row.cm-parent-row { background: #f1f5fb; font-weight: 700; }
     #cm-table .tabulator-row.cm-parent-row.tabulator-row-even { background: #e8eef8; }
     #cm-table .cm-cell {
@@ -163,12 +179,16 @@
                         <option value="parent">Parent</option>
                         <option value="sku">SKU</option>
                     </select>
+                    <select id="cmShopifyCat" class="form-select form-select-sm cm-shopify-cat" aria-label="Filter by Category">
+                        <option value="">All Category</option>
+                    </select>
                     <div class="input-group input-group-sm cm-category-search">
                         <span class="input-group-text"><i class="fas fa-search"></i></span>
                         <input type="text" id="cmCategorySearch" class="form-control" placeholder="Category" aria-label="Search Category">
                     </div>
                     <select id="cmCategoryScope" class="form-select form-select-sm cm-scope" aria-label="Category column">
                         <option value="all">All categories</option>
+                        <option value="category_shopify">Category</option>
                         <option value="category_ebay">Category eBay</option>
                         <option value="category_amz">Category Amz</option>
                         <option value="category_temu">Category Temu</option>
@@ -210,7 +230,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const saveUrl = @json(route('category.masters.save.bulk'));
     const pullUrl = @json(route('category.masters.pull'));
     const pushUrl = @json(route('category.masters.push'));
+    const shopifyFillUrl = @json(route('category.masters.shopify.fill'));
     const CATEGORY_FIELDS = ['category_ebay', 'category_amz', 'category_temu'];
+    // Read-only: filled once from Shopify, never edited, pulled or pushed here.
+    const SHOPIFY_FIELD = 'category_shopify';
+    const SEARCH_FIELDS = CATEGORY_FIELDS.concat([SHOPIFY_FIELD]);
+    const FILL_CHUNK = 20;
+    const BLANK_CATEGORY = '__blank__';
     const CHANNELS = {
         ebay: { label: 'eBay', field: 'category_ebay' },
         amz: { label: 'Amazon', field: 'category_amz' },
@@ -269,8 +295,14 @@ document.addEventListener('DOMContentLoaded', function () {
         if (type === 'sku' && data.is_parent) return false;
         if (parentQ && !String(data.parent || '').toLowerCase().includes(parentQ)) return false;
         if (skuQ && !String(data.sku || '').toLowerCase().includes(skuQ)) return false;
+        const shopifyCat = el('cmShopifyCat').value;
+        if (shopifyCat === BLANK_CATEGORY) {
+            if (cleanValue(data[SHOPIFY_FIELD]) !== '') return false;
+        } else if (shopifyCat !== '' && cleanValue(data[SHOPIFY_FIELD]) !== shopifyCat) {
+            return false;
+        }
         if (categoryQ) {
-            const fields = scope === 'all' ? CATEGORY_FIELDS : [scope];
+            const fields = scope === 'all' ? SEARCH_FIELDS : [scope];
             const hit = fields.some(function (f) {
                 return String(data[f] || '').toLowerCase().includes(categoryQ);
             });
@@ -284,6 +316,7 @@ document.addEventListener('DOMContentLoaded', function () {
             || (el('cmSkuSearch').value || '').trim() !== ''
             || (el('cmCategorySearch').value || '').trim() !== ''
             || el('cmRowType').value !== 'all'
+            || el('cmShopifyCat').value !== ''
             || el('cmCategoryScope').value !== 'all';
     }
 
@@ -328,7 +361,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function categoryColumn(title, field) {
+    function categoryColumn(title, field, readOnly) {
         return {
             title: title,
             field: field,
@@ -341,14 +374,25 @@ document.addEventListener('DOMContentLoaded', function () {
             formatter: function (cell) {
                 const data = cell.getRow().getData();
                 const value = cleanValue(data[field]);
-                if (editMode) {
+                if (editMode && !readOnly) {
                     const cls = 'form-control form-control-sm cm-input' + (data.is_parent ? ' cm-input--parent' : '');
                     const tip = data.is_parent ? ' title="Changing this also updates every SKU of this parent"' : '';
                     return `<div class="cm-cell"><input type="text" class="${cls}" data-id="${escapeHtml(data.id)}" data-field="${field}" value="${escapeHtml(value)}" maxlength="255" placeholder="Category" autocomplete="off"${tip}></div>`;
                 }
-                if (!value) return '<span class="text-muted">—</span>';
+                if (!value) {
+                    if (readOnly && data.is_parent === false && data.shopify_synced === false) {
+                        return '<span class="text-muted small">Loading…</span>';
+                    }
+                    return '<span class="text-muted">—</span>';
+                }
                 const idText = cleanValue(data[field + '_id']);
-                return `<span title="${escapeHtml(idText ? value + ' (ID ' + idText + ')' : value)}">${escapeHtml(value)}</span>`;
+                const copyBtn = function (text, what) {
+                    return `<button type="button" class="cm-copy" data-copy="${escapeHtml(text)}" title="Copy ${what}" aria-label="Copy ${what}"><i class="far fa-copy"></i></button>`;
+                };
+                const codeLine = idText
+                    ? `<span class="cm-code-line"><span class="text-muted">Code:</span> <span class="cm-code">${escapeHtml(idText)}</span>${copyBtn(idText, 'code')}</span>`
+                    : '';
+                return `<span class="cm-cat-wrap" title="${escapeHtml(idText ? value + ' (ID ' + idText + ')' : value)}"><span class="cm-cat-name">${escapeHtml(value)}${copyBtn(value, 'category')}</span>${codeLine}</span>`;
             },
         };
     }
@@ -488,6 +532,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 headerSortStartingDir: 'desc',
                 formatter: function (cell) { return fmtNum(cell.getValue()); },
             },
+            categoryColumn('Category', SHOPIFY_FIELD, true),
             categoryColumn('Category eBay', 'category_ebay'),
             categoryColumn('Category Amz', 'category_amz'),
             categoryColumn('Category Temu', 'category_temu'),
@@ -495,6 +540,145 @@ document.addEventListener('DOMContentLoaded', function () {
             actionColumn('Push', 'push'),
         ],
     });
+
+    // ---- Copy category / code ---------------------------------------------
+
+    function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function (resolve, reject) {
+            const area = document.createElement('textarea');
+            area.value = text;
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(area);
+            if (ok) resolve(); else reject(new Error('copy failed'));
+        });
+    }
+
+    el('cm-table').addEventListener('click', function (e) {
+        const btn = e.target.closest('.cm-copy');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const text = btn.dataset.copy || '';
+        if (!text) return;
+        copyText(text).then(function () {
+            const icon = btn.querySelector('i');
+            btn.classList.add('cm-copied');
+            if (icon) icon.className = 'fas fa-check';
+            setTimeout(function () {
+                btn.classList.remove('cm-copied');
+                if (icon) icon.className = 'far fa-copy';
+            }, 1200);
+        }).catch(function () {
+            setHint('Copy failed. Select the text and press Ctrl+C.');
+        });
+    });
+
+    // ---- One-time Shopify category autofill -------------------------------
+
+    let filling = false;
+
+    // Dropdown of the distinct values in the Category column, with how many SKU rows use each.
+    function refreshCategoryOptions() {
+        if (!table) return;
+        const select = el('cmShopifyCat');
+        const keep = select.value;
+        const counts = new Map();
+        let blank = 0;
+        table.getData().forEach(function (row) {
+            if (row.is_parent) return;
+            const value = cleanValue(row[SHOPIFY_FIELD]);
+            if (!value) { blank++; return; }
+            counts.set(value, (counts.get(value) || 0) + 1);
+        });
+
+        const names = Array.from(counts.keys()).sort(function (a, b) {
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
+        select.innerHTML = '';
+        const add = function (value, label) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = label;
+            select.appendChild(opt);
+        };
+        add('', 'All Category (' + names.length + ')');
+        names.forEach(function (name) { add(name, name + ' (' + counts.get(name) + ')'); });
+        if (blank) add(BLANK_CATEGORY, '(Blank) (' + blank + ')');
+
+        // Keep the chosen value if it is still there; otherwise fall back to all.
+        const stillThere = Array.from(select.options).some(function (o) { return o.value === keep; });
+        select.value = stillThere ? keep : '';
+        // Rows filled after the filter was set must join or leave the shown rows.
+        if (select.value !== '' || (!stillThere && keep !== '')) applyFilters();
+    }
+
+    // A parent row shows the Shopify category of its first SKU.
+    function syncParentShopifyCategory() {
+        const firstByParent = new Map();
+        table.getData().forEach(function (row) {
+            if (row.is_parent || !row.parent || !row[SHOPIFY_FIELD] || firstByParent.has(row.parent)) return;
+            firstByParent.set(row.parent, row);
+        });
+        const patches = [];
+        table.getData().forEach(function (row) {
+            if (!row.is_parent || row[SHOPIFY_FIELD]) return;
+            const child = firstByParent.get(row.parent);
+            if (!child) return;
+            patches.push({ id: row.id, category_shopify: child.category_shopify, category_shopify_id: child.category_shopify_id });
+        });
+        if (patches.length) table.updateData(patches);
+    }
+
+    async function fillShopifyCategories() {
+        if (filling || !table) return;
+        const pending = table.getData().filter(function (row) {
+            return !row.is_parent && row.shopify_synced === false;
+        });
+        if (!pending.length) return;
+
+        filling = true;
+        let done = 0;
+        try {
+            for (let i = 0; i < pending.length; i += FILL_CHUNK) {
+                const slice = pending.slice(i, i + FILL_CHUNK);
+                setHint('Filling Shopify category… ' + done + '/' + pending.length);
+                const body = await postJson(shopifyFillUrl, { skus: slice.map(function (r) { return r.sku; }) });
+                const byId = new Map();
+                (body.results || []).forEach(function (r) {
+                    const id = idBySku.get(r.sku);
+                    if (id !== undefined) byId.set(id, r);
+                });
+                const patches = slice.map(function (r) {
+                    const hit = byId.get(r.id);
+                    return {
+                        id: r.id,
+                        category_shopify: hit ? hit.category : '',
+                        category_shopify_id: hit ? hit.category_id : '',
+                        shopify_synced: true,
+                    };
+                });
+                table.updateData(patches);
+                done += slice.length;
+                refreshCategoryOptions();
+            }
+            syncParentShopifyCategory();
+            refreshCategoryOptions();
+            setHint('Shopify category filled for ' + pending.length + ' SKU(s).');
+        } catch (e) {
+            setHint('Shopify category fill stopped: ' + (e && e.message ? e.message : 'request failed') + ' It will continue on the next refresh.');
+        } finally {
+            filling = false;
+        }
+    }
 
     // ---- Column visibility ----------------------------------------------
 
@@ -570,7 +754,14 @@ document.addEventListener('DOMContentLoaded', function () {
         table.redraw(true);
     });
 
-    table.on('dataLoaded', updateCount);
+    table.on('dataLoaded', function () {
+        updateCount();
+        // Wait one tick so the rows are in the table before they are read back.
+        setTimeout(function () {
+            refreshCategoryOptions();
+            fillShopifyCategories();
+        }, 0);
+    });
     table.on('dataFiltered', function () {
         updateCount();
         syncSelectionUi();
@@ -1000,10 +1191,12 @@ document.addEventListener('DOMContentLoaded', function () {
     el('cmCategorySearch').addEventListener('input', onSearchInput);
     el('cmRowType').addEventListener('change', applyFilters);
     el('cmCategoryScope').addEventListener('change', applyFilters);
+    el('cmShopifyCat').addEventListener('change', applyFilters);
     el('cmClear').addEventListener('click', function () {
         el('cmParentSearch').value = '';
         el('cmSkuSearch').value = '';
         el('cmCategorySearch').value = '';
+        el('cmShopifyCat').value = '';
         el('cmRowType').value = 'all';
         el('cmCategoryScope').value = 'all';
         applyFilters();
