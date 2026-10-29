@@ -1001,28 +1001,6 @@
             return '<span style="font-family:monospace;font-size:12px;">' + escapeHtml(id) + '</span>';
         }
 
-        function formatPublishToTemu(cell) {
-            const data = cell.getRow().getData();
-            if (data.is_parent) return '';
-
-            const goodsId = String(data.goods_id || data.listing_id || data.eBay_item_id || '').trim();
-            if (goodsId) {
-                return '<span class="text-muted" title="Already listed on Temu">—</span>';
-            }
-
-            const nrReq = String(data.nr_req || 'REQ');
-            if (nrReq === 'NR' || nrReq === 'NRL') {
-                return '<span class="text-muted" title="NRL SKUs are not published">—</span>';
-            }
-
-            const sku = String(data.sku || '').trim();
-            if (!sku) return '';
-
-            return `<button type="button" class="temu-publish-btn" data-sku="${escapeHtml(sku)}" title="Review variations for ${escapeHtml(sku)} then publish to Temu">
-                <i class="fas fa-cloud-upload-alt"></i> Publish
-            </button>`;
-        }
-
         $(document).ready(function () {
             showLoader();
 
@@ -1226,16 +1204,6 @@
                         width: 130,
                         headerTooltip: 'Automatic from temu_metrics.goods_id (Missing L when REQ and no goods_id)',
                         formatter: formatListed
-                    },
-                    {
-                        title: 'Publish to Temu',
-                        field: 'publish_to_temu',
-                        hozAlign: 'center',
-                        headerHozAlign: 'center',
-                        headerSort: false,
-                        width: 150,
-                        headerTooltip: 'Review parent variations, then publish Missing L SKUs to Temu',
-                        formatter: formatPublishToTemu
                     }
                 ]
             });
