@@ -459,7 +459,7 @@
         <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
             <label class="nto-reload-push-switch{{ !empty($newtemuonePageReloadPushEnabled) ? '' : ' is-off' }}"
                 id="nto-reload-push-wrap"
-                title="When ON, this page queues S Base Prc for blue-triangle SKUs (S PRC ≠ Temu Price) on load and when you flip the switch. When OFF, this page does not auto-queue (manual Push and the background job still work). Progress shows in the bar.">
+                title="When ON, this page queues S Base Prc for blue-triangle SKUs (S Base Prc ≠ Promo Base Prc) on load and when you flip the switch. When OFF, this page does not auto-queue (manual Push and the background job still work). Progress shows in the bar.">
                 <span class="nto-reload-push-text">
                     Auto push
                     <span class="nto-reload-push-state" id="nto-reload-push-label">{{ !empty($newtemuonePageReloadPushEnabled) ? 'On' : 'Off' }}</span>
@@ -654,7 +654,7 @@
                     ])
                     <span class="badge fs-6 p-2" id="newtemuone-blue-triangle-badge"
                         style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                        title="Blue triangle: S PRC ≠ T Price. Click to filter."><i class="fas fa-exclamation-triangle"></i> 0</span>
+                        title="Blue triangle: S Base Prc ≠ Promo Base Prc. Click to filter."><i class="fas fa-exclamation-triangle"></i> 0</span>
                     @include('partials.channel-clearance-badge', ['chClrPart' => 'badge', 'chClrBadgeId' => 'newtemuone-clearance-badge'])
                 </div>
             </div>
@@ -2265,14 +2265,15 @@
         return (isFinite(r) && r > 0) ? r : 0;
     }
 
-    /** Blue triangle: same test the S PRC cell paints — S PRC ≠ T Price. */
+    /**
+     * Blue triangle: the base we push (S Base Prc) is not the base Temu holds (Promo Base Prc). Same test as the blue
+     * triangles in the two base cells, the S PRC cell and the newtemuone:push-blue-prices job (S Base ≠ live Temu base).
+     * Comparing S PRC with Price flagged SKUs whose bases already matched, because S PRC → base rounds to the cent
+     * and Price → S PRC cannot be exact for every S PRC.
+     */
     function temuHasBlueTriangle(row) {
         if (!row || row.is_parent_summary) return false;
-        const sprice = typeof temuSpriceCellModel === 'function'
-            ? (temuSpriceCellModel(row).value || 0)
-            : temuDisplayedSprice(row);
-        const live = temuLiveListingPrice(row);
-        if (!(sprice > 0 && live > 0 && Math.round(sprice * 100) !== Math.round(live * 100))) return false;
+        if (!ntoBaseMismatch(row)) return false;
         // Same as Amazon: once S Base Prc is pushed (or being pushed), the SKU leaves the blue badge and the
         // queue even though the live T Price is only refreshed later. Failed rows stay blue so they retry.
         if (typeof ntoRowPushState === 'function') {
@@ -2887,7 +2888,7 @@
                 .done(function() {
                     showToast(
                         on
-                            ? 'Push on reload on — blue-triangle SKUs will queue S Base Prc (S PRC ≠ Temu Price).'
+                            ? 'Push on reload on — blue-triangle SKUs will queue S Base Prc (S Base Prc ≠ Promo Base Prc).'
                             : 'Push on reload off — nothing auto-pushes.',
                         'success'
                     );
@@ -4213,7 +4214,7 @@
                     width: 88,
                     headerSort: true,
                     sorter: temuComputedSorter(function(d) { return temuDisplayedSprice(d); }),
-                    headerTooltip: 'S PRC follows the ON switch. Sprc Dil ON: the price that lands SNROI on the Dil slab\'s Target SNROI (plus CVR / Age / Diff points), then LMP − x%, and never above Std Prc. Std prc vs dil ON: Std minus Age, Dil, CVR and Review discounts, then LMP. Red triangle = LMP. Blue triangle = S PRC ≠ Price.',
+                    headerTooltip: 'S PRC follows the ON switch. Sprc Dil ON: the price that lands SNROI on the Dil slab\'s Target SNROI (plus CVR / Age / Diff points), then LMP − x%, and never above Std Prc. Std prc vs dil ON: Std minus Age, Dil, CVR and Review discounts, then LMP. Red triangle = LMP. Blue triangle = S Base Prc ≠ Promo Base Prc.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary) return '';
@@ -4235,9 +4236,9 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
                                 + Number(lmp || 0).toFixed(2) + '"></i>'
                             : '';
-                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
-                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                        const blueTri = ntoBaseMismatch(rowData)
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S Base Prc $'
+                                + Number(ntoRowSBasePrc(rowData)).toFixed(2) + ' ≠ Promo Base Prc $' + Number(ntoRowPromoBasePrc(rowData)).toFixed(2) + '"></i>'
                             : '';
                         const clrMark = (window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '';
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + clrMark + redTri + blueTri + (stdM.html || '') + '</span>';
