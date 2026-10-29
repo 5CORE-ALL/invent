@@ -11,6 +11,8 @@
         #im-master-table thead th { position:sticky; top:0; vertical-align:middle!important; background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%)!important; color:#fff; z-index:10; padding:6px 8px; font-size:10px; font-weight:600; text-transform:uppercase; }
         #im-master-table tbody td { padding:8px 10px; vertical-align:middle!important; border-bottom:1px solid #edf2f9; font-size:11px; }
         .im-thumb { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0; background:#f8fafc; }
+        .im-img-count { display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:22px; padding:0 7px; border-radius:999px; font-size:11px; font-weight:700; background:#eef2ff; color:#3730a3; }
+        .im-img-count.zero { background:#f1f5f9; color:#94a3b8; font-weight:600; }
         .marketplaces-cell { vertical-align:middle!important; }
         .bp-mp-inline { display:flex; flex-wrap:wrap; align-items:flex-end; gap:6px; justify-content:flex-start; min-width:120px; }
         .bp-mp-th-title { font-weight:600; letter-spacing:0.2px; }
@@ -118,6 +120,7 @@
                                         <input type="checkbox" class="form-check-input" id="selectAllRowsIm" title="Select all visible rows" aria-label="Select all visible rows">
                                     </th>
                                     <th>SKU <input type="text" id="skuSearchIm" class="form-control form-control-sm mt-1" placeholder="Search"></th>
+                                    <th style="width:72px;text-align:center;" title="Saved Product Master images for this SKU">Images</th>
                                     <th>Product Name</th>
                                     <th title="Hover a row's History to see the last image push">History</th>
                                     <th>Preview</th>
@@ -691,7 +694,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (q) rows = rows.filter(r => String(r.SKU||'').toLowerCase().includes(q));
         visibleFilteredRows = rows;
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No products</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">No products</td></tr>';
             updateSelectedCount();
             syncSelectAllCheckbox();
             return;
@@ -701,9 +704,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const checked = selectedSkus.has(sku) ? 'checked' : '';
             const thumb = r.preview_thumb || r.main_image || r.image1 || r.image_path || '';
             const thumbImg = thumb ? `<img class="im-thumb" src="${esc(imgSrc(thumb))}" alt="">` : '<span class="text-muted">—</span>';
+            const imgCount = pmImageUrls(r).length;
+            const imgCountHtml = `<span class="im-img-count${imgCount ? '' : ' zero'}" title="${imgCount} saved image${imgCount === 1 ? '' : 's'}">${imgCount}</span>`;
             return `<tr data-sku="${esc(sku)}">
                 <td class="text-center"><input type="checkbox" class="form-check-input row-select-im" data-sku="${esc(sku)}" ${checked} aria-label="Select ${esc(sku)}"></td>
                 <td>${esc(sku)}</td>
+                <td class="text-center">${imgCountHtml}</td>
                 <td>${esc(r.Parent||sku)}</td>
                 <td>${historyCellHtml(sku, r.push_history)}</td>
                 <td>${thumbImg}</td>

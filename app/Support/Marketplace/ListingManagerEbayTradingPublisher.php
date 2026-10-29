@@ -731,11 +731,14 @@ class ListingManagerEbayTradingPublisher
         if ($epsHosted) {
             foreach ($newVariations as $i => $row) {
                 $hosted = [];
-                foreach (array_slice(array_values(array_unique($row['images'] ?? [])), 0, 6) as $url) {
+                foreach (array_slice(array_values(array_unique($row['images'] ?? [])), 0, 12) as $url) {
                     $eps = self::uploadPictureToEps($ctx, (string) $url);
                     if ($eps !== null) {
                         $hosted[] = $eps;
                     }
+                }
+                if ($hosted === []) {
+                    return ['success' => false, 'message' => 'Could not copy the Image Master photos of '.$row['sku'].' to eBay, so nothing was added. Try again.'];
                 }
                 $newVariations[$i]['images'] = $hosted;
             }
@@ -764,7 +767,12 @@ class ListingManagerEbayTradingPublisher
             }
 
             $newSets = array_values(array_filter($newVariations, static fn ($row) => ! empty($row['images'])));
-            if ($existingPictureSets !== [] && $pictureAspect !== '') {
+            // The new variations' photos must always be sent, even when the live listing had no
+            // variation pictures yet (then the variation aspect itself carries the pictures).
+            if ($pictureAspect === '') {
+                $pictureAspect = $aspect;
+            }
+            if (($existingPictureSets !== [] || $newSets !== []) && $pictureAspect !== '') {
                 $pictures = $block->addChild('Pictures');
                 $pictures->addChild('VariationSpecificName', $esc($pictureAspect));
                 foreach ($existingPictureSets as $existing) {

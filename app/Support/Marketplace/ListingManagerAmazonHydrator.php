@@ -1096,23 +1096,11 @@ class ListingManagerAmazonHydrator
             }
         };
 
+        // Image Master only: its saved slots (image1 … image20) and image_master_json.
+        // The CP Master main image / Values JSON are NOT Image Master photos, so they never count.
         $pm = self::productMaster($sku);
-        foreach (['main_image', 'image_url', 'main_image_brand', 'image_path'] as $key) {
-            $push($pm[$key] ?? null);
-        }
         for ($i = 1; $i <= 20; $i++) {
             $push($pm['image'.$i] ?? null);
-        }
-
-        $values = $pm['Values'] ?? $pm['values'] ?? [];
-        if (is_string($values)) {
-            $decoded = json_decode($values, true);
-            $values = is_array($decoded) ? $decoded : [];
-        }
-        if (is_array($values)) {
-            foreach (['image_path', 'main_image', 'cdn_url'] as $key) {
-                $push($values[$key] ?? null);
-            }
         }
 
         foreach (self::imageMasterFromMetrics($sku) as $url) {
@@ -1120,6 +1108,62 @@ class ListingManagerAmazonHydrator
         }
 
         return $urls;
+    }
+
+    /**
+     * Rule for every marketplace, single or variation listing: a SKU can only be published when
+     * Image Master holds photos for that very SKU (never the parent's, CP Master's or Shopify's).
+     */
+    public static function hasImageMasterImages(string $sku): bool
+    {
+        $sku = trim($sku);
+
+        return $sku !== '' && self::childImageMasterUrls($sku) !== [];
+    }
+
+    /**
+     * Diagnostic: where a SKU's Image Master photos are found and what a publish would send.
+     *
+     * @return array{sku: string, product_images: int, product_master_slots: int, metrics: int, image_master_urls: list<string>, publish_urls: list<string>}
+     */
+    public static function imageMasterReport(string $sku): array
+    {
+        $sku = trim($sku);
+        $pm = self::productMaster($sku);
+        $slots = 0;
+        for ($i = 1; $i <= 20; $i++) {
+            if (self::publicImageUrl($pm['image'.$i] ?? null) !== '') {
+                $slots++;
+            }
+        }
+
+        return [
+            'sku' => $sku,
+            'product_images' => count(self::urlsFromImageRows(self::productImageRows($sku))),
+            'product_master_slots' => $slots,
+            'metrics' => count(self::imageMasterFromMetrics($sku)),
+            'image_master_urls' => self::childImageMasterUrls($sku),
+            'publish_urls' => self::variationSkuImageUrls($sku, 12),
+        ];
+    }
+
+    /**
+     * SKUs (of the given list) that have no Image Master photos.
+     *
+     * @param  list<string>  $skus
+     * @return list<string>
+     */
+    public static function skusWithoutImageMaster(array $skus): array
+    {
+        $missing = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '' && stripos($sku, 'PARENT') === false && ! self::hasImageMasterImages($sku)) {
+                $missing[] = $sku;
+            }
+        }
+
+        return array_values(array_unique($missing));
     }
 
     /**
@@ -1387,44 +1431,9 @@ class ListingManagerAmazonHydrator
      */
     public static function publishImageUrls(string $sku, ?string $parentSku = null, int $limit = 9): array
     {
-        if (VariationListingContent::active()) {
-            return self::variationSkuImageUrls($sku, $limit);
-        }
-
-        $urls = self::imageMasterUrls($sku);
-        $parentSku = trim((string) $parentSku);
-        if ($parentSku !== '' && strcasecmp($parentSku, $sku) !== 0) {
-            foreach (self::imageMasterUrls($parentSku) as $url) {
-                if (! in_array($url, $urls, true)) {
-                    $urls[] = $url;
-                }
-            }
-        }
-
-        $published = ListingManagerImageStore::publishUrls($urls, $urls);
-        $out = [];
-        foreach ($published as $url) {
-            $url = trim((string) $url);
-            if ($url === '') {
-                continue;
-            }
-            if (str_starts_with($url, '//')) {
-                $url = 'https:'.$url;
-            }
-            if (! preg_match('#^https?://#i', $url) && str_starts_with($url, '/')) {
-                $base = rtrim((string) config('app.url'), '/');
-                $url = $base !== '' ? $base.$url : $url;
-            }
-            if (! preg_match('#^https?://#i', $url) || in_array($url, $out, true)) {
-                continue;
-            }
-            $out[] = $url;
-            if (count($out) >= $limit) {
-                break;
-            }
-        }
-
-        return $out;
+        // Single and variation listings alike: this SKU's own Image Master photos only.
+        // No parent, CP Master or Shopify substitute photos.
+        return self::variationSkuImageUrls($sku, $limit);
     }
 
     /**
@@ -1468,13 +1477,8 @@ class ListingManagerAmazonHydrator
             return $out;
         }
 
-        $skus = [];
-        foreach ([$sku, $parentSku] as $candidate) {
-            $candidate = trim((string) $candidate);
-            if ($candidate !== '' && ! in_array($candidate, $skus, true)) {
-                $skus[] = $candidate;
-            }
-        }
+        // This SKU only: the parent's photos are not a substitute for a child that has none.
+        $skus = [trim((string) $sku)];
 
         $out = [];
         $seen = [];

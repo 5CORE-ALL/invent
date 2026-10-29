@@ -709,6 +709,86 @@ class EbayPortalListingStatusSync
         ];
     }
 
+    /**
+     * Live (Active) parent listings of an eBay store straight from eBay: variation listings and
+     * "PARENT ..." listings, whether or not their SKUs are saved in our metrics table.
+     * Used by the Publish variation window to search / select an existing parent.
+     *
+     * @return list<array{id: string, title: string, parent: string, skus: list<string>, sku_count: int}>
+     */
+    public function activeParentListings(int $store): array
+    {
+        $store = in_array($store, [1, 2, 3], true) ? $store : 1;
+        $token = $this->accessToken($store);
+        if (! $token) {
+            return [];
+        }
+
+        $out = [];
+        $page = 1;
+        $totalPages = 1;
+        do {
+            try {
+                $xmlBody = '<?xml version="1.0" encoding="utf-8"?>'
+                    .'<GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+                    .$this->myEbayListXml('Active', $page)
+                    .'</GetMyeBaySellingRequest>';
+                $response = Http::timeout(60)
+                    ->withHeaders([
+                        'X-EBAY-API-SITEID' => '0',
+                        'X-EBAY-API-COMPATIBILITY-LEVEL' => '967',
+                        'X-EBAY-API-CALL-NAME' => 'GetMyeBaySelling',
+                        'X-EBAY-API-IAF-TOKEN' => $token,
+                    ])
+                    ->withBody($xmlBody, 'text/xml')
+                    ->post('https://api.ebay.com/ws/api.dll');
+                if (! $response->successful()) {
+                    break;
+                }
+                $xml = simplexml_load_string($response->body());
+                if ($xml === false || strtoupper(trim((string) ($xml->Ack ?? ''))) === 'FAILURE') {
+                    break;
+                }
+                $list = $xml->ActiveList ?? null;
+                if ($page === 1 && $list && isset($list->PaginationResult->TotalNumberOfPages)) {
+                    $totalPages = max(1, (int) $list->PaginationResult->TotalNumberOfPages);
+                }
+                if ($list && isset($list->ItemArray->Item)) {
+                    foreach ($list->ItemArray->Item as $item) {
+                        $itemId = trim((string) ($item->ItemID ?? ''));
+                        $label = trim((string) ($item->SKU ?? ''));
+                        $children = [];
+                        if (isset($item->Variations->Variation)) {
+                            foreach ($item->Variations->Variation as $variation) {
+                                $sku = trim((string) ($variation->SKU ?? ''));
+                                if ($sku !== '') {
+                                    $children[] = $sku;
+                                }
+                            }
+                        }
+                        $isParent = isset($item->Variations->Variation) || stripos($label, 'PARENT') !== false;
+                        if ($itemId === '' || ! $isParent) {
+                            continue;
+                        }
+                        $out[] = [
+                            'id' => $itemId,
+                            'title' => preg_replace('/[^\x20-\x7E]/', '', trim((string) ($item->Title ?? ''))) ?? '',
+                            'parent' => $label,
+                            'skus' => array_values(array_unique($children)),
+                            'sku_count' => count($children),
+                        ];
+                    }
+                }
+                $page++;
+            } catch (\Throwable $e) {
+                Log::warning('EbayPortalListingStatusSync: parent listings failed', ['error' => $e->getMessage()]);
+                break;
+            }
+        } while ($page <= $totalPages);
+
+        return $out;
+    }
+
     protected function myEbayListXml(string $listType, int $pageNumber): string
     {
         $page = (int) $pageNumber;

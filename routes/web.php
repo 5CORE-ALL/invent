@@ -5437,6 +5437,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::post('/listing-common/publish-preview', [ListingPublishCommonController::class, 'preview'])->name('listing.common.publish.preview');
     Route::post('/listing-common/publish', [ListingPublishCommonController::class, 'publish'])->name('listing.common.publish');
+    Route::get('/listing-common/existing-parents', [ListingPublishCommonController::class, 'existingParents'])->name('listing.common.existing-parents');
     Route::post('/listing-publish-preview', [ListingPublishCommonController::class, 'preview']);
     Route::post('/listing-publish', [ListingPublishCommonController::class, 'publish']);
 
