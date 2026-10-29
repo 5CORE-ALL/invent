@@ -1044,7 +1044,9 @@ class DilRuleSpriceApplyService
             'views' => null,
             'group' => 'sku',
             'exclude_ship' => false,
-            'zero_sold_min_groi' => true,
+            // Off: every INV > 0 SKU uses the Dil-matching slab, including 0 sold (same as the page). The page no longer
+            // prices 0-sold SKUs at the lowest slab, so a server doing it left its price below the page's (blue alerts stuck).
+            'zero_sold_min_groi' => false,
             'match_or_nearest' => false,
             'cvr_adj' => false,
             'cvr_adj_requires_views' => false,
@@ -1061,6 +1063,8 @@ class DilRuleSpriceApplyService
                 'amz_floor' => true,
             ],
             'temu' => [
+                // Temu keeps its own 0-sold rule (lowest slab Target); its page prices 0-sold SKUs separately.
+                'zero_sold_min_groi' => true,
                 'metric' => TemuMetric::class,
                 'view' => TemuDataView::class,
                 'price' => 'base_price',

@@ -38,7 +38,7 @@ class MacysRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(37.5, $out['sprice'], 0.01);
     }
 
-    public function test_out_of_box_zero_sold_uses_min_groi_then_amazon_floor(): void
+    public function test_zero_sold_dil_zero_uses_the_zero_slab_then_amazon_floor(): void
     {
         $out = $this->compute([
             'inv' => 41,
@@ -48,6 +48,7 @@ class MacysRuleSpriceApplyServiceTest extends TestCase
             'ship' => 0,
             'amz' => 39.60,
         ], [
+            AmazonDilGroiRule::make(0, 0, 30),
             AmazonDilGroiRule::make(0.1, 5, 40),
             AmazonDilGroiRule::make(5, 10, 70),
         ]);
@@ -56,7 +57,7 @@ class MacysRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(39.60, $out['sprice'], 0.001);
     }
 
-    public function test_zero_sold_uses_min_groi_even_when_dil_matches_a_slab(): void
+    public function test_zero_sold_uses_the_dil_matching_slab_not_the_min_groi(): void
     {
         $out = $this->compute([
             'inv' => 10,
@@ -71,10 +72,11 @@ class MacysRuleSpriceApplyServiceTest extends TestCase
         ]);
 
         $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(17.50, $out['sprice'], 0.01);
+        // Dil 3 -> 50% slab: (10 x 1.5) / 0.80 = 18.75
+        $this->assertEqualsWithDelta(18.75, $out['sprice'], 0.01);
     }
 
-    public function test_zero_sold_keeps_min_groi_when_at_or_above_amazon(): void
+    public function test_zero_sold_uses_the_dil_matching_slab_when_at_or_above_amazon(): void
     {
         $out = $this->compute([
             'inv' => 10,
@@ -89,7 +91,8 @@ class MacysRuleSpriceApplyServiceTest extends TestCase
         ]);
 
         $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(35.00, $out['sprice'], 0.01);
+        // Dil 8 -> 70% slab: (20 x 1.7) / 0.80 = 42.50
+        $this->assertEqualsWithDelta(42.50, $out['sprice'], 0.01);
     }
 
     public function test_out_of_box_with_sales_uses_std_then_amazon_floor(): void

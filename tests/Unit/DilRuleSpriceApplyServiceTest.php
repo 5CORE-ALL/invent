@@ -26,7 +26,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(50.0, $out['groi'], 0.01);
     }
 
-    public function test_zero_sold_uses_min_target_groi(): void
+    public function test_zero_sold_still_uses_the_dil_matching_slab(): void
     {
         $rules = [
             AmazonDilGroiRule::make(0.1, 5.0, 80),
@@ -35,7 +35,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $out = DilRuleSpriceApplyService::for('newegg')->computeTarget(
             [
                 'inv' => 8,
-                'dil' => 0,
+                'dil' => 3,
                 'ov_l30' => 0,
                 'cvr' => 8,
                 'lp' => 20,
@@ -48,9 +48,9 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         );
 
         $this->assertNotNull($out);
-        // min slab GROI is 40, not the 0.1–5 / 80 slab: (20*1.4)/0.80 = 35.00
-        $this->assertEqualsWithDelta(35.00, $out['sprice'], 0.01);
-        $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
+        // 0 sold changes nothing: Dil 3 sits in the 0.1–5 / 80 slab, not the lowest slab: (20*1.8)/0.80 = 45.00
+        $this->assertEqualsWithDelta(45.00, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(80.0, $out['groi'], 0.01);
     }
 
     public function test_temu2_zero_dil_uses_first_slab_not_min_skip(): void

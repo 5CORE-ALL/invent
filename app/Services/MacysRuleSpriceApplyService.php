@@ -194,15 +194,11 @@ class MacysRuleSpriceApplyService
         }
 
         $dil = (float) ($row['dil'] ?? 0);
-        $sold = (float) ($row['mc_l30'] ?? 0);
         $amz = round((float) ($row['amz'] ?? 0), 2);
+        // Every INV > 0 SKU uses the Dil-matching slab, including when Macys L30 = 0 (Dil = 0 uses the 0–0 slab), the same
+        // as the page. Pricing a 0-sold SKU at the lowest slab left the server price below the page's, so blue alerts stuck.
         $rule = AmazonDilGroiRule::match($dil, $dilRules);
-        $groi = null;
-        if ($sold <= 0) {
-            $groi = AmazonDilGroiRule::minTarget($dilRules);
-        } elseif ($rule !== null) {
-            $groi = (float) $rule['groi'];
-        }
+        $groi = $rule !== null ? (float) $rule['groi'] : null;
         if ($groi === null) {
             $std = round((float) ($row['std'] ?? 0), 2);
             if (! ($std > 0)) {

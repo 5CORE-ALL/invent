@@ -236,9 +236,10 @@ class PurchasingPowerSprcDilAutoPushServiceTest extends TestCase
         }
     }
 
-    public function test_sprc_dil_pp_l30_zero_uses_the_minimum_target(): void
+    public function test_sprc_dil_pp_l30_zero_still_uses_the_dil_matching_slab(): void
     {
-        // PP L30 = 0 -> minimum Target 40%: (20 x 1.4 + 0) / 0.80 = 35.00 (Std 40 is within the Diff threshold: no Diff).
+        // PP L30 = 0 changes nothing, same as the page: Dil 20% -> Target 60%: (20 x 1.6 + 0) / 0.80 = 40.00
+        // (Std 40 is within the Diff threshold: no Diff). It must NOT drop to the lowest slab Target.
         $out = $this->service()->computeTarget(
             $this->row(['pp_l30' => 0, 'margin' => 0.80, 'price' => 100, 'standard_price' => 40]),
             null,
@@ -246,7 +247,15 @@ class PurchasingPowerSprcDilAutoPushServiceTest extends TestCase
         );
 
         $this->assertNotNull($out);
-        $this->assertSame(35.0, $out['sprice']);
+        $this->assertSame(40.0, $out['sprice']);
+
+        // Dil = 0 uses the 0-0 slab (Target 40%): (20 x 1.4) / 0.80 = 35.00
+        $zeroDil = $this->service()->computeTarget(
+            $this->row(['pp_l30' => 0, 'dil' => 0, 'margin' => 0.80, 'price' => 100, 'standard_price' => 40]),
+            null,
+            $this->dilCtx()
+        );
+        $this->assertSame(35.0, $zeroDil['sprice']);
     }
 
     public function test_sprc_dil_has_no_std_maximum_only_the_amz_floor(): void
