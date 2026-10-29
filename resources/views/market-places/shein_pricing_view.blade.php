@@ -930,6 +930,8 @@
         }
         function sheinHasBlueTriangle(data) {
             if (!data || data.is_parent) return false;
+            // Not on Shein (no skuCode): nothing to push, so it is Missing, never blue.
+            if (data.is_missing_shein === true || String(data.missing || '').toUpperCase() === 'M') return false;
             const inv = parseFloat(data.INV != null && data.INV !== '' ? data.INV : data.inv);
             if (!(inv > 0)) return false;
             const sprice = sheinRowSpriceForAlert(data);

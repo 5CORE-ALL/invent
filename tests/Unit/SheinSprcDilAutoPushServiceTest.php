@@ -172,7 +172,8 @@ class SheinSprcDilAutoPushServiceTest extends TestCase
     /** @return array<string, mixed> */
     private function dilRow(array $over = []): array
     {
-        return $this->row(array_merge(['price' => 100, 'views' => 0, 'cvr' => 8], $over));
+        // Std 50 is only 8% above the 46.25 rule price, so the Diff rule stays quiet unless a test raises Std.
+        return $this->row(array_merge(['price' => 100, 'views' => 0, 'cvr' => 8, 'standard_price' => 50], $over));
     }
 
     private function dilTarget(array $row): ?array
@@ -185,18 +186,30 @@ class SheinSprcDilAutoPushServiceTest extends TestCase
         $out = $this->dilTarget($this->dilRow());
 
         $this->assertNotNull($out);
-        // Target 60%: (20 x 1.6 + 5) / 0.80 = 46.25. Std 100 is far above.
+        // Target 60%: (20 x 1.6 + 5) / 0.80 = 46.25. Std 50 is above it.
         $this->assertEqualsWithDelta(46.25, $out['sprice'], 0.001);
         $this->assertFalse($out['lmp_capped']);
     }
 
-    public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
+    public function test_sprc_dil_diff_adds_points_when_std_is_above_the_rule_price_by_more_than_the_threshold(): void
     {
-        // Std 100 vs Sp. Price 70 -> Diff 42.9% (> 20): Target 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
-        $out = $this->dilTarget($this->dilRow(['price' => 70]));
+        // Rule price without the Diff points is 46.25; Std 100 is 116% above it (> 20): Target 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
+        $out = $this->dilTarget($this->dilRow(['standard_price' => 100, 'price' => 70]));
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(48.75, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_diff_does_not_flip_flop_with_the_live_price(): void
+    {
+        // The Diff is judged against the rule price, not the live Price: the same S PRC before and after its own push.
+        $before = $this->dilTarget($this->dilRow(['standard_price' => 100, 'price' => 31.28]));
+        $after = $this->dilTarget($this->dilRow(['standard_price' => 100, 'price' => 48.75]));
+
+        $this->assertNotNull($before);
+        $this->assertNotNull($after);
+        $this->assertEqualsWithDelta($before['sprice'], $after['sprice'], 0.001);
+        $this->assertEqualsWithDelta(48.75, $after['sprice'], 0.001);
     }
 
     public function test_sprc_dil_cvr_overlay_only_applies_with_views(): void

@@ -436,8 +436,19 @@ class SheinSprcDilAutoPushService
                 $ctx['age_adj']
             );
         }
-        $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
-        $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
+        // Diff rule: judged against the rule price WITHOUT the Diff points, not the live Shein Price (same as Amazon and
+        // Purchasing Power, and the page). Read against the live Price, the boosted price is pushed -> Diff drops under
+        // the threshold -> the boost is removed -> the lower price is pushed -> Diff rises -> the boost is back, so the SKU
+        // alternated between two prices every 10-minute run. A listed SKU (live Price > 0) and a Std Prc are still required.
+        if ($std > 0 && round((float) ($row['price'] ?? 0), 2) > 0) {
+            $diffBase = AmazonDilGroiRule::suggestedPrice($lp, $ship, $target, 0.0, $margin);
+            if ($diffBase !== null && $diffBase > 0) {
+                $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints(
+                    EbayRuleSprice::stdPriceDiffPct($std, $diffBase),
+                    $ctx['diff_adj'] ?? null
+                ), 2));
+            }
+        }
 
         $raw = round(($lp * (1 + $target / 100) + $ship) / $margin, 2);
         if (! is_finite($raw) || $raw < 0.01) {
