@@ -212,7 +212,7 @@
                             <i class="fa fa-download"></i> Template
                         </a>
                         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'vinted'])
-                        @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'vinted'])
+                        @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'vinted', 'channelShipHide' => true])
 
                         <div class="dropdown d-inline-block">
                             <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -301,7 +301,7 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'vinted'])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'vinted', 'channelShipHide' => true])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'vinted'])
 
     <div class="modal fade" id="vnOpSpriceModal" tabindex="-1" aria-hidden="true">

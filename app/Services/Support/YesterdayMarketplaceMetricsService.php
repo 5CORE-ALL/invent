@@ -88,11 +88,16 @@ class YesterdayMarketplaceMetricsService
             ->values();
 
         $viewsByChannel = [];
+        $estimatedViewKeys = [];
         try {
             $viewsSvc = app(YesterdayViewsService::class);
             $viewsByChannel = $this->windowDays >= 7
                 ? $viewsSvc->viewsByChannelL7()
                 : $viewsSvc->viewsByChannel($date);
+            if ($this->windowDays < 7) {
+                // L7 ÷ 7 / L30 ÷ 30 averages: shown, but not a real one-day figure.
+                $estimatedViewKeys = array_flip($viewsSvc->estimatedViewChannelKeys());
+            }
         } catch (\Throwable $e) {
             Log::warning('Yesterday views lookup failed: '.$e->getMessage());
         }
@@ -110,6 +115,12 @@ class YesterdayMarketplaceMetricsService
             $m['views_as_of'] = null;
             $m['views_estimate'] = false;
             $m['views_unscaled'] = false;
+            if ($m['views'] !== null) {
+                $viewsLookup = in_array($this->key($name), ['shopifyb2c', 'shopify'], true) ? 'shopify' : $this->key($name);
+                if (isset($estimatedViewKeys[$viewsLookup])) {
+                    $m['views_estimate'] = true;
+                }
+            }
             if ($m['views'] === null && $this->windowDays < 7 && $this->key($name) === 'reverb') {
                 try {
                     $viewsSvcR = app(YesterdayViewsService::class);

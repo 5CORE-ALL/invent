@@ -3699,7 +3699,7 @@
                             const isEst = !!row['Y Views Est'];
                             const asOfTitle = asOf
                                 ? ` title="Amazon traffic settles ~3 days late. Latest settled day: ${asOf}"`
-                                : (isEst ? ' title="Estimate: Reverb has no one-day views, so this is L30 views ÷ 30 (daily average)."' : '');
+                                : (isEst ? ' title="Estimate: no real one-day views for this channel, so this is a daily average (L7 ÷ 7 or L30 ÷ 30). Not used for Y CVR."' : '');
                             const asOfMark = (asOf || isEst) ? '<sup style="color:#6c757d;">' + (isEst ? '~' : '*') + '</sup>' : '';
                             return `<span style="font-weight:600;color:${color};"${asOfTitle}>${value.toLocaleString('en-US')}${asOfMark}</span>${ammHistoryDot(channel, 'y_views')}`;
                         },
@@ -9468,9 +9468,17 @@
             });
 
             function applyYViewsBadge(rows) {
-                let sum = 0;
+                let sum = 0, settled = 0, approx = 0, approxCount = 0;
                 (rows || []).forEach(function(row) {
-                    sum += parseNumber(row.views || 0) || 0;
+                    const v = parseNumber(row.views || 0) || 0;
+                    sum += v;
+                    // Estimates (daily averages) and "as of" days are not real one-day views.
+                    if (row.views_estimate || row.views_as_of) {
+                        approx += v;
+                        approxCount++;
+                    } else {
+                        settled += v;
+                    }
                 });
                 const val = Math.round(sum);
                 const $el = $('#total-y-views');
@@ -9478,9 +9486,15 @@
                 let text = String(val);
                 if (Math.abs(val) >= 1000000) text = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
                 else if (Math.abs(val) >= 1000) text = Math.round(val / 1000) + 'K';
+                if (approxCount > 0) text += '~';
                 $el.text(text);
-                $el.closest('.badge').attr('title',
-                    'Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30). ' + val.toLocaleString('en-US'));
+                let viewsTitle = 'Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30). ' + val.toLocaleString('en-US');
+                if (approxCount > 0) {
+                    viewsTitle += ' — includes ' + approxCount + ' channel(s) with estimated / older-day views (' +
+                        Math.round(approx).toLocaleString('en-US') + '); real one-day views: ' +
+                        Math.round(settled).toLocaleString('en-US') + '. Y CVR uses only the real one-day views.';
+                }
+                $el.closest('.badge').attr('title', viewsTitle);
                 yViewsExact = val;
                 if (l30DailyViews != null) {
                     pinSummaryDot('y_views', l30DailyViews, val,

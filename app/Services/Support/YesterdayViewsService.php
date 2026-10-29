@@ -42,6 +42,22 @@ class YesterdayViewsService
     }
 
     /**
+     * Channel keys whose value from the last viewsByChannel() call is an average / estimate
+     * (L7 ÷ 7, L30 ÷ 30, or sheet clicks ÷ 30) rather than a real one-day figure.
+     *
+     * @var array<string, true>
+     */
+    private array $estimatedKeys = [];
+
+    /**
+     * @return list<string> channel keys with estimated (not real one-day) views
+     */
+    public function estimatedViewChannelKeys(): array
+    {
+        return array_keys($this->estimatedKeys);
+    }
+
+    /**
      * Reverb has no one-day views source, so the Y Views cell shows its L30 impressions
      * ÷ 30 as a clearly marked daily average (never saved to history, never used for CVR).
      * Raw impressions: the metrics service applies the same ÷1000 scale the page uses.
@@ -144,6 +160,7 @@ class YesterdayViewsService
     private function collectViewsByChannel(?string $date = null): array
     {
         $date = $date ?: Carbon::yesterday(self::TZ)->toDateString();
+        $this->estimatedKeys = [];
         $map = $this->sumStoredMarketplaceL1();
 
         // Amazon only has a real value for a day once SP-API traffic has settled (see
@@ -158,12 +175,15 @@ class YesterdayViewsService
                 $stored = (int) $row->views;
                 if ($stored > 0) {
                     $map[$key] = $stored;
+                    // A dated, saved value is a real one-day figure.
+                    unset($this->estimatedKeys[$key]);
                 }
             }
         }
 
         foreach (['shopify' => fn () => $this->shopifyViews($date), 'ebay' => fn () => $this->ebayViews('ebay_sku_daily_data', $date), 'ebay2' => fn () => $this->ebayViews('ebay2_sku_daily_data', $date)] as $channel => $fn) {
-            if (($map[$channel] ?? 0) > 0) {
+            // An L7 ÷ 7 / L30 ÷ 30 average must not block the real one-day figure.
+            if (($map[$channel] ?? 0) > 0 && ! isset($this->estimatedKeys[$channel])) {
                 continue;
             }
             try {
@@ -177,6 +197,7 @@ class YesterdayViewsService
             }
             $this->store($channel, $date, $views, $channel === 'shopify' ? 'shopifyql' : 'sku_daily_delta');
             $map[$channel] = $views;
+            unset($this->estimatedKeys[$channel]);
         }
 
         return $map;
@@ -250,9 +271,11 @@ class YesterdayViewsService
             if (Schema::hasColumn($table, $l1Col)) {
                 $l1 = (int) DB::table($table)->sum($l1Col);
             }
+            $estimated = false;
             if ($l1 <= 0 && Schema::hasColumn($table, $l7Col)) {
                 $l7 = (int) DB::table($table)->sum($l7Col);
                 $l1 = (int) round($l7 / 7);
+                $estimated = $l1 > 0;
             }
             if ($l1 <= 0) {
                 foreach (['product_clicks_l30', 'product_clicks', 'views'] as $l30Col) {
@@ -262,28 +285,36 @@ class YesterdayViewsService
                     $l30 = (int) DB::table($table)->sum($l30Col);
                     if ($l30 > 0) {
                         $l1 = (int) round($l30 / 30);
+                        $estimated = true;
                         break;
                     }
                 }
             }
             if ($l1 > 0) {
                 $map[$channel] = $l1;
+                if ($estimated) {
+                    $this->estimatedKeys[$channel] = true;
+                }
             }
         }
 
         // Temu / Temu 2 L30 pages use sheet product_clicks, not the thinner metrics L30.
+        // Sheet clicks ÷ 30 is only an average, so it fills a gap or improves another estimate
+        // but never replaces a real L1 figure.
         if (Schema::hasTable('temu_view_data') && Schema::hasColumn('temu_view_data', 'product_clicks')) {
             $clicks = (int) DB::table('temu_view_data')->sum('product_clicks');
             $est = (int) round($clicks / 30);
-            if ($est > ($map['temu'] ?? 0)) {
+            if ($est > ($map['temu'] ?? 0) && (! isset($map['temu']) || isset($this->estimatedKeys['temu']))) {
                 $map['temu'] = $est;
+                $this->estimatedKeys['temu'] = true;
             }
         }
         if (Schema::hasTable('temu2_view_data') && Schema::hasColumn('temu2_view_data', 'product_clicks')) {
             $clicks = (int) DB::table('temu2_view_data')->sum('product_clicks');
             $est = (int) round($clicks / 30);
-            if ($est > ($map['temu2'] ?? 0)) {
+            if ($est > ($map['temu2'] ?? 0) && (! isset($map['temu2']) || isset($this->estimatedKeys['temu2']))) {
                 $map['temu2'] = $est;
+                $this->estimatedKeys['temu2'] = true;
             }
         }
 

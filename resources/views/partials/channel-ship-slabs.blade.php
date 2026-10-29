@@ -66,14 +66,14 @@
         }
 @endif
 
-@if($channelShipPart === 'buttons' || $channelShipPart === 'all')
+@if(($channelShipPart === 'buttons' || $channelShipPart === 'all') && empty($channelShipHide))
                     <button type="button" class="btn btn-sm" id="ch-ship-slab-btn"
                         title="Shipping cost by weight slab. OV L30, channel L30, and total INV, with ship dollars.">
                         <i class="fas fa-truck"></i> Ship
                     </button>
 @endif
 
-@if($channelShipPart === 'modals' || $channelShipPart === 'all')
+@if(($channelShipPart === 'modals' || $channelShipPart === 'all') && empty($channelShipHide))
     <div class="modal fade" id="chShipSlabModal" tabindex="-1" aria-labelledby="chShipSlabModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
