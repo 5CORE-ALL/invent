@@ -652,12 +652,18 @@ class SheinController extends Controller
 
             // ── 5a. API page views from shein_metrics (FetchSheinData / shein:sync)
             $viewsBySku = [];
+            // SKUs that have a Shein skuCode (shein_metrics, filled by the Shein sync). A price row without one is a leftover
+            // of a SKU that is no longer on Shein (renamed / delisted): it cannot be pushed, so it is "missing", not blue.
+            $sheinCodeBySku = [];
             if (Schema::hasTable('shein_metrics') && Schema::hasColumn('shein_metrics', 'views')) {
-                foreach (SheinMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'views']) as $metric) {
+                foreach (SheinMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'views', 'shein_sku_code']) as $metric) {
                     $nk = $normalizeSku($metric->sku);
                     $views = (int) ($metric->views ?? 0);
                     if ($nk === '') {
                         continue;
+                    }
+                    if (trim((string) ($metric->shein_sku_code ?? '')) !== '') {
+                        $sheinCodeBySku[$nk] = true;
                     }
                     if (! isset($viewsBySku[$nk]) || $views >= (int) ($viewsBySku[$nk] ?? 0)) {
                         $viewsBySku[$nk] = $views;
@@ -817,7 +823,8 @@ class SheinController extends Controller
                 $sroi   = ($sprice > 0 && $lp > 0) ? round((($sprice * $margin - $lp - $ship) / $lp) * 100, 2) : 0;
 
                 $displaySku = $productMaster?->sku ?? ($priceRow->sku ?? $normalizedSku);
-                $isMissingShein = ! $priceRow || $spOffer <= 0;
+                $isMissingShein = ! $priceRow || $spOffer <= 0
+                    || ($sheinCodeBySku !== [] && ! isset($sheinCodeBySku[$normalizedSku]));
 
                 if ($isMissingShein) {
                     $mapValue = '';
