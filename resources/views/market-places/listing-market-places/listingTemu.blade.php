@@ -395,6 +395,7 @@
         .listing-auto-badge--listed { background-color: #28a745; }
         .listing-auto-badge--nrl,
         .listing-auto-badge--not-listed { background-color: #dc3545; }
+        .listing-auto-badge--incomplete { background-color: #f59e0b; color: #1c1917; }
 
         .listing-listed-tick {
             display: inline-flex;
@@ -416,6 +417,8 @@
 
         /* Missing L badge and Publish button are the same size. */
         .listing-auto-badge--not-listed,
+        .listing-auto-badge--incomplete,
+        .temu-complete-btn,
         .temu-publish-btn {
             box-sizing: border-box;
             width: 104px;
@@ -427,6 +430,21 @@
             font-size: 13px;
             line-height: 1;
             white-space: nowrap;
+        }
+
+        .temu-complete-btn {
+            gap: 4px;
+            border-radius: 6px;
+            background: #f59e0b;
+            color: #1c1917;
+            font-weight: 700;
+            text-decoration: none;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+        }
+
+        .temu-complete-btn:hover {
+            background: #d97706;
+            color: #1c1917;
         }
 
         .temu-publish-btn {
@@ -801,7 +819,9 @@
                 const goodsId = String(item.goods_id || item.listing_id || item.eBay_item_id || '').trim();
                 // Automated: NRL from TemuDataView; Listed from temu_metrics.goods_id (API)
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
-                const listed = goodsId ? 'Listed' : 'Pending';
+                // A goods that is Incomplete in Seller Center is not Missing L: it exists and has to be finished there.
+                const listed = goodsId ? 'Listed'
+                    : (String(item.temu_status || '') === 'Incomplete' ? 'Incomplete' : 'Pending');
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',
@@ -1042,6 +1062,9 @@
                     <i class="fas fa-check"></i>
                 </span>`;
             }
+            if (data.listed === 'Incomplete') {
+                return `<span class="listing-auto-badge listing-auto-badge--incomplete" title="Goods ${escapeHtml(data.temu_goods_id || '')} is Incomplete in Temu Seller Center - finish it there">Incomplete</span>`;
+            }
             return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no Temu goods_id">Missing L</span>`;
         }
 
@@ -1057,6 +1080,14 @@
 
             const sku = String(data.sku || '').trim();
             if (!sku) return '';
+
+            // Incomplete goods already exists in Seller Center: publishing again would not complete it, finish it there.
+            if (data.listed === 'Incomplete' && data.temu_goods_id) {
+                const url = 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id=' + encodeURIComponent(data.temu_goods_id);
+                return `<a class="temu-complete-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Goods ${escapeHtml(data.temu_goods_id)} is Incomplete on Temu - finish it in Seller Center">
+                    <i class="fas fa-external-link-alt"></i> Complete
+                </a>`;
+            }
 
             return `<button type="button" class="temu-publish-btn" data-sku="${escapeHtml(sku)}" title="Review variations for ${escapeHtml(sku)} then publish to Temu as a new listing">
                 <i class="fas fa-cloud-upload-alt"></i> Publish
