@@ -2574,8 +2574,10 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Must sit inside the IST business window ($ist only fires 09:00–20:00 IST). It was 04:40,
+        // so it never ran and lqs_shopify_seo_scores stayed stale.
         $ist($schedule->command('lqs:sync-shopify-seo')
-            ->dailyAt('04:40')
+            ->dailyAt('10:40')
             ->timezone('Asia/Kolkata')
             ->name('lqs-shopify-yoast-seo')
             ->withoutOverlapping(180)
