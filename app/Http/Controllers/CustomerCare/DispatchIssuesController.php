@@ -2055,6 +2055,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
         }
 
         $validated = $this->validatePayload($request);
+        $this->validateIssueAttachments($request);
         $newDepts  = CustomerCareDepartments::normalizeStringList($validated['department']);
         if (count($newDepts) === 0) {
             return response()->json([

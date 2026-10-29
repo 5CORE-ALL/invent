@@ -787,12 +787,13 @@
                 return data;
             }
 
-            function renderImagePreview(block, name, url) {
+            function renderImagePreview(block, name, url, isNew) {
                 const box = block.querySelector('.cb-image-preview[data-preview="' + name + '"]');
                 if (!box) return;
                 box.innerHTML = url
                     ? '<a href="' + escAttr(url) + '" target="_blank" rel="noopener"><img src="' + escAttr(url) +
-                        '" alt="Current image"></a><div class="text-muted">Current image. Choose a file to replace it.</div>'
+                        '" alt="Image"></a><div class="text-muted">' +
+                        (isNew ? 'New image, saved when you click Save.' : 'Current image. Choose a file to replace it.') + '</div>'
                     : '';
             }
 
@@ -842,6 +843,19 @@
                 document.getElementById('cb-add').addEventListener('click', function () { openModal(null); });
                 document.getElementById('cb-refresh').addEventListener('click', refreshAll);
                 document.getElementById('cb-add-case').addEventListener('click', addChargebackCase);
+                document.getElementById('cb-cases-container').addEventListener('change', function (ev) {
+                    const input = ev.target.closest('.cb-image-input');
+                    if (!input) return;
+                    const block = input.closest('.cb-case-block');
+                    const file = input.files && input.files[0];
+                    if (file && file.size > 10 * 1024 * 1024) {
+                        alert('Image must be 10 MB or smaller.');
+                        input.value = '';
+                        renderImagePreview(block, input.getAttribute('data-image'), null);
+                        return;
+                    }
+                    renderImagePreview(block, input.getAttribute('data-image'), file ? URL.createObjectURL(file) : null, true);
+                });
                 document.getElementById('cb-cases-container').addEventListener('click', function (ev) {
                     const btn = ev.target.closest('.cb-remove-case');
                     if (!btn) return;
