@@ -268,7 +268,7 @@ final class MarketplaceMismatchInventoryPass
             'ebay3' => 'ebay_3_metrics',
             'reverb' => 'reverb_metric',
             'aliexpress' => 'aliexpress_metric',
-            'alibaba' => 'alibaba_metric',
+            'alibaba' => 'alibaba_metrics',
             'faire' => 'faire_metric',
             'amazon' => 'amazon_listing_statuses',
             'tiktok' => 'tiktok_products',
