@@ -403,6 +403,14 @@ class Temu2ListingPublishService
             $remote = $this->remoteSkuDuplicate($row['sku']);
             if ($remote !== null) {
                 $life = $this->remoteGoodsLifecycle($remote['goodsId']);
+                if ($life === 'incomplete' && $this->shopLabel() === 'Temu') {
+                    // Temu 1: the SKU sits in an Incomplete goods. Linking it would mark it Listed while it is not
+                    // live, and publishing cannot complete it - it has to be finished in Seller Center.
+                    return [
+                        'success' => false,
+                        'message' => $row['sku'].' is Incomplete on Temu (goods '.$remote['goodsId'].'). Finish it in Seller Center; publishing again does not change it.',
+                    ];
+                }
                 if (in_array($life, ['deleted', 'draft', 'unknown'], true)) {
                     if ($life === 'deleted') {
                         // Temu 1 / Temu 2 rule: a deleted listing is gone for good. Never restore it or
@@ -1189,6 +1197,17 @@ class Temu2ListingPublishService
         $localStatus = $this->localListingStatus($sku);
         if ($this->localGoodsId($sku) !== '' && ! in_array($localStatus, ['deleted', 'recycle', 'removed', 'draft'], true)) {
             return ['status' => 'skipped_listed', 'reason' => 'Already listed'];
+        }
+        if ($this->shopLabel() === 'Temu') {
+            // Temu 1 only: a SKU inside an Incomplete goods is finished in Seller Center, not published again.
+            try {
+                $hit = \App\Services\MarketplaceManager\TemuGoodsStatusSync::read()['skus'][\App\Services\MarketplaceManager\TemuGoodsStatusSync::key($sku)] ?? null;
+                if (is_array($hit) && ($hit['status'] ?? '') === 'Incomplete') {
+                    return ['status' => 'skipped_incomplete', 'reason' => 'Incomplete on Temu (goods '.($hit['goods_id'] ?? '').') - finish it in Seller Center'];
+                }
+            } catch (\Throwable $e) {
+                // status cache is optional
+            }
         }
         $price = $this->resolvePrice($sku);
         if ($price === null || $price <= 0) {
