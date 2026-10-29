@@ -641,7 +641,7 @@ class VariationMasterController extends Controller
                 'bullet_4' => $listing['bullet_4'],
                 'bullet_5' => $listing['bullet_5'],
             ];
-            $sortKeys[] = [strtoupper($key), 0, strtoupper($this->normalizeDisplay($product->sku))];
+            $sortKeys[] = [strtoupper($key), 2, strtoupper($this->normalizeDisplay($product->sku))];
         }
 
         foreach ($children as $product) {
@@ -667,7 +667,7 @@ class VariationMasterController extends Controller
             $sortKeys[] = [strtoupper($parent), 1, strtoupper($this->normalizeDisplay($product->sku))];
         }
 
-        // Each parent row sits directly above its own child SKUs.
+        // Each parent row sits directly below its own child SKUs.
         $order = array_keys($rows);
         usort($order, static fn (int $a, int $b): int => $sortKeys[$a] <=> $sortKeys[$b]);
 
