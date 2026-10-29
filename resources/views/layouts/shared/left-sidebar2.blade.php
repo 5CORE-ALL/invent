@@ -1364,7 +1364,7 @@
 
                                         @if (isset($permissions['listing_temu']) && in_array('view', $permissions['listing_temu']))
                                             <li>
-                                                <a href="{{ route('listing.temu') }}">Listing Temu</a>
+                                                <a href="{{ route('listing.temu') }}">Listing Temu 1</a>
                                             </li>
                                         @endif
 

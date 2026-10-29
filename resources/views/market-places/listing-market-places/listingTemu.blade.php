@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Listing Temu', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Listing Temu 1', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
@@ -612,7 +612,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Listing Temu', 'sub_title' => 'Temu'])
+    @include('layouts.shared/page-title', ['page_title' => 'Listing Temu 1', 'sub_title' => 'Temu 1'])
 
     <div class="row">
         <div class="col-12">
@@ -813,8 +813,8 @@
             mapped.sort((a, b) => {
                 const parentCmp = String(a.parent || '').localeCompare(String(b.parent || ''), undefined, { sensitivity: 'base' });
                 if (parentCmp !== 0) return parentCmp;
-                // Parent row first, its SKUs underneath.
-                return (a.is_parent ? 0 : 1) - (b.is_parent ? 0 : 1);
+                // SKUs of a variation first, its parent row below them.
+                return (a.is_parent ? 1 : 0) - (b.is_parent ? 1 : 0);
             });
 
             return mapped;
@@ -926,17 +926,6 @@
             });
 
             calculateTotals();
-        }
-
-        function formatNrReq(cell) {
-            const data = cell.getRow().getData();
-            if (data.is_parent) return '';
-
-            const value = data.nr_req || 'REQ';
-            if (value === 'NR') {
-                return `<span class="listing-auto-badge listing-auto-badge--nrl" title="From channel DataView NRL">NRL</span>`;
-            }
-            return `<span class="listing-auto-badge listing-auto-badge--req" title="From channel DataView NRL">REQ</span>`;
         }
 
         function showBsModal(id) {
@@ -1083,6 +1072,43 @@
                         }
                     },
                     {
+                        title: 'SKU VS Parent',
+                        field: 'sku_vs_parent',
+                        width: 92,
+                        minWidth: 80,
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerWordWrap: true,
+                        headerTooltip: 'SKUs of this parent listed on Temu vs the SKUs under the parent in our Product Master (CP master). Hover a value to see the missing SKUs.',
+                        sorter: function (a, b, aRow, bRow) {
+                            function missingCount(row) {
+                                const d = (row && row.getData()) || {};
+                                if (d.sku_parent_total == null) return -1;
+                                return (parseInt(d.sku_parent_total, 10) || 0) - (parseInt(d.sku_parent_listed, 10) || 0);
+                            }
+                            return missingCount(aRow) - missingCount(bRow);
+                        },
+                        formatter: function (cell) {
+                            const d = cell.getRow().getData() || {};
+                            if (d.sku_parent_total == null) return '';
+                            const listed = parseInt(d.sku_parent_listed, 10) || 0;
+                            const total = parseInt(d.sku_parent_total, 10) || 0;
+                            const missing = Array.isArray(d.sku_parent_missing) ? d.sku_parent_missing : [];
+                            const ok = missing.length === 0;
+                            const shown = missing.slice(0, 60).map(function (m) {
+                                if (typeof m === 'string') return m;
+                                return String(m.sku || '') + '  |  SID: ' + (m.sid ? m.sid : '-') + '  |  Inv: ' + (parseInt(m.inv, 10) || 0);
+                            });
+                            const tip = ok
+                                ? 'All ' + total + ' SKUs of this parent are listed on Temu'
+                                : 'Missing on Temu (' + missing.length + '):  SKU  |  SID  |  Inv\n' + shown.join('\n')
+                                    + (missing.length > shown.length ? '\n+' + (missing.length - shown.length) + ' more' : '');
+                            return '<span title="' + escapeHtml(tip) + '" style="display:inline-block;padding:1px 8px;border-radius:10px;font-weight:700;cursor:help;'
+                                + (ok ? 'background:#dcfce7;color:#15803d;' : 'background:#fee2e2;color:#b91c1c;') + '">'
+                                + listed + ' / ' + total + '</span>';
+                        }
+                    },
+                    {
                         title: 'Parent',
                         field: 'parent',
                         hozAlign: 'left',
@@ -1148,16 +1174,6 @@
 
                         }
 
-                    },
-                    {
-                        title: 'NRL/REQ',
-                        field: 'nr_req',
-                        hozAlign: 'center',
-                        headerHozAlign: 'center',
-                        headerSort: false,
-                        width: 110,
-                        headerTooltip: 'Automatic from channel DataView NRL',
-                        formatter: formatNrReq
                     },
                     {
                         title: 'Buyer Link',
