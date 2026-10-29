@@ -175,23 +175,36 @@ class TemuLinkMapSyncService
             }
         }
 
-        // Missing L must follow the marketplace: drop goods_id values Temu no longer lists.
+        // Read what Temu 1 holds right now (status per goods + which goods carries which SKU), refresh the
+        // cached goods / SKU-name lists from it, then REPLACE the stored goods_id / sku_id of every SKU with
+        // that - old goods IDs of SKUs that were relisted, merged into another goods or deleted do not survive.
         $reconcile = ['ok' => false, 'cleared' => 0, 'note' => ''];
+        $statusNote = '';
+        $rebuilt = false;
         try {
-            $reconcile = $this->reconcileStaleGoodsIds();
+            $sync = app(TemuGoodsStatusSync::class);
+            $status = $sync->refresh();
+            if ($status['ok']) {
+                $statusNote = ' Temu status read for '.$status['goods'].' goods.';
+                $rebuild = $sync->rebuildLinks();
+                $rebuilt = $rebuild['ok'];
+                $statusNote .= $rebuild['ok']
+                    ? " Goods IDs rebuilt from Temu: {$rebuild['relinked']} changed, {$rebuild['added']} added, {$rebuild['cleared']} removed."
+                    : ' '.$rebuild['note'];
+            } else {
+                $statusNote = ' '.$status['note'];
+            }
         } catch (\Throwable $e) {
-            Log::warning('TemuLinkMapSyncService: reconcile failed', ['error' => $e->getMessage()]);
+            Log::warning('TemuLinkMapSyncService: goods status / rebuild failed', ['error' => $e->getMessage()]);
         }
 
-        // Status Seller Center shows per goods (Active / Inactive / Incomplete / Draft / Deleted) for the page's Temu Status column.
-        $statusNote = '';
-        try {
-            $status = app(TemuGoodsStatusSync::class)->refresh();
-            $statusNote = $status['ok']
-                ? ' Temu status read for '.$status['goods'].' goods.'
-                : ' '.$status['note'];
-        } catch (\Throwable $e) {
-            Log::warning('TemuLinkMapSyncService: goods status failed', ['error' => $e->getMessage()]);
+        // Fallback when the rebuild could not run: at least drop goods_id values Temu no longer lists.
+        if (! $rebuilt) {
+            try {
+                $reconcile = $this->reconcileStaleGoodsIds();
+            } catch (\Throwable $e) {
+                Log::warning('TemuLinkMapSyncService: reconcile failed', ['error' => $e->getMessage()]);
+            }
         }
 
         $linked = TemuMetric::query()
@@ -215,8 +228,7 @@ class TemuLinkMapSyncService
         $message = "Refreshed Temu link map — {$linked} linked SKU(s) (sku + goods_id)."
             .(($reconcile['cleared'] ?? 0) > 0 ? " Removed {$reconcile['cleared']} stale link(s) Temu no longer lists." : '')
             .(($reconcile['note'] ?? '') !== '' ? ' '.$reconcile['note'] : '')
-            .$statusNote;
-        $this->updateProgress([
+            .$statusNote;        $this->updateProgress([
             'running' => false,
             'page' => 1,
             'total_page' => 1,

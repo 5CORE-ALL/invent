@@ -91,9 +91,13 @@ class TemuGoodsStatusSync
                 if ($key === '') {
                     continue;
                 }
-                $rank = self::RANK[$info['status']] ?? 2;
-                if (isset($skus[$key]) && $skus[$key]['rank'] >= $rank) {
-                    continue;
+                $rank = self::RANK[$info['status']] ?? 5; // unknown labels count as live-ish
+                if (isset($skus[$key])) {
+                    $cur = $skus[$key];
+                    // Better status wins; same status -> the newer (higher) goods ID.
+                    if ($cur['rank'] > $rank || ($cur['rank'] === $rank && (float) $cur['goods_id'] >= (float) $gid)) {
+                        continue;
+                    }
                 }
                 $skus[$key] = ['goods_id' => (string) $gid, 'sku_id' => (string) $skuId, 'status' => $info['status'], 'raw' => $info['raw'], 'rank' => $rank];
             }
@@ -102,6 +106,11 @@ class TemuGoodsStatusSync
         $counts = [];
         foreach ($goods as $info) {
             $counts[$info['status']] = ($counts[$info['status']] ?? 0) + 1;
+        }
+        try {
+            $this->syncLegacyCaches($goods);
+        } catch (\Throwable $e) {
+            Log::warning('TemuGoodsStatusSync: cache refresh failed', ['error' => $e->getMessage()]);
         }
         foreach ($goods as $gid => $info) {
             unset($goods[$gid]['skus']);
@@ -122,6 +131,215 @@ class TemuGoodsStatusSync
         $out['counts'] = $counts;
 
         return $out;
+    }
+
+    /** A goods in these states is not a published listing: its SKUs stay unlinked (Missing L). */
+    public static function linkable(string $status): bool
+    {
+        return ! in_array($status, ['Deleted', 'Draft', 'Incomplete'], true);
+    }
+
+    /**
+     * Replace the stored goods_id / sku_id of EVERY Temu 1 SKU with what Temu holds now (from the status read
+     * above). A SKU that was listed on its own and later merged into another goods gets the new goods ID, a SKU
+     * whose goods is deleted / draft / incomplete / gone loses its goods_id, and the saved buyer / seller links
+     * that still carry the old ID are removed so they cannot bring the SKU back as Listed.
+     *
+     * Safety: refuses when Temu returned fewer than 20 live goods or when it would remove more than 80% of the
+     * stored goods IDs (unless $force). Every changed row is written to storage/app/temu_cache/.
+     *
+     * @return array{ok: bool, live_goods: int, changed: int, relinked: int, added: int, cleared: int, links_cleared: int, note: string, sample: list<array<string, string>>}
+     */
+    public function rebuildLinks(bool $dryRun = false, bool $force = false): array
+    {
+        $r = ['ok' => false, 'live_goods' => 0, 'changed' => 0, 'relinked' => 0, 'added' => 0, 'cleared' => 0, 'links_cleared' => 0, 'note' => '', 'sample' => []];
+
+        $data = self::read();
+        if ($data === null) {
+            $r['note'] = 'No Temu status data yet - run temu:goods-status first.';
+
+            return $r;
+        }
+
+        $map = [];
+        $liveGoods = [];
+        foreach ((array) $data['skus'] as $key => $hit) {
+            if (self::linkable((string) ($hit['status'] ?? ''))) {
+                $map[$key] = $hit;
+                $liveGoods[(string) $hit['goods_id']] = true;
+            }
+        }
+        $r['live_goods'] = count($liveGoods);
+
+        $rows = \App\Models\TemuMetric::query()
+            ->whereNotNull('sku')->where('sku', '!=', '')
+            ->get(['id', 'sku', 'goods_id', 'sku_id']);
+        $stored = $rows->filter(fn ($m) => trim((string) $m->goods_id) !== '')->count();
+
+        $changes = [];
+        foreach ($rows as $m) {
+            $hit = $map[self::key((string) $m->sku)] ?? null;
+            $oldGid = trim((string) $m->goods_id);
+            $newGid = $hit ? (string) $hit['goods_id'] : '';
+            $oldSku = trim((string) $m->sku_id);
+            $newSku = ($hit && ($hit['sku_id'] ?? '') !== '') ? (string) $hit['sku_id'] : $oldSku;
+            if ($oldGid === $newGid && $oldSku === $newSku) {
+                continue;
+            }
+            $changes[] = [
+                'id' => $m->id, 'sku' => (string) $m->sku,
+                'old_goods_id' => $oldGid, 'new_goods_id' => $newGid,
+                'old_sku_id' => $oldSku, 'new_sku_id' => $newSku,
+            ];
+            if ($oldGid !== '' && $newGid === '') {
+                $r['cleared']++;
+            } elseif ($oldGid !== '' && $oldGid !== $newGid) {
+                $r['relinked']++;
+            } elseif ($oldGid === '' && $newGid !== '') {
+                $r['added']++;
+            }
+        }
+        $r['changed'] = count($changes);
+        $r['sample'] = array_map(fn ($c) => [
+            'sku' => $c['sku'], 'old' => $c['old_goods_id'], 'new' => $c['new_goods_id'],
+        ], array_slice($changes, 0, 40));
+
+        if (! $force && ($r['live_goods'] < 20 || $r['cleared'] > max(25, (int) floor($stored * 0.8)))) {
+            $r['note'] = "Temu returned {$r['live_goods']} live goods and would remove {$r['cleared']} of {$stored} stored goods IDs - nothing changed (use --force to override).";
+
+            return $r;
+        }
+
+        $oldBySku = [];
+        foreach ($changes as $c) {
+            if ($c['old_goods_id'] !== '' && $c['old_goods_id'] !== $c['new_goods_id']) {
+                $oldBySku[self::key($c['sku'])] = $c['old_goods_id'];
+            }
+        }
+
+        $r['ok'] = true;
+        if ($dryRun) {
+            $r['links_cleared'] = $this->clearLinks($oldBySku, true);
+
+            return $r;
+        }
+
+        if ($changes !== []) {
+            try {
+                Storage::disk('local')->put('temu_cache/temu_links_rebuild_'.now()->format('Ymd_His').'.json', json_encode($changes, JSON_UNESCAPED_UNICODE));
+            } catch (\Throwable $e) {
+                $r['ok'] = false;
+                $r['note'] = 'Could not write the restore file - nothing changed: '.$e->getMessage();
+
+                return $r;
+            }
+            foreach ($changes as $c) {
+                \App\Models\TemuMetric::query()->whereKey($c['id'])->update([
+                    'goods_id' => $c['new_goods_id'] !== '' ? $c['new_goods_id'] : null,
+                    'sku_id' => $c['new_sku_id'] !== '' ? $c['new_sku_id'] : null,
+                ]);
+            }
+        }
+        $r['links_cleared'] = $this->clearLinks($oldBySku, false);
+        Log::info('TemuGoodsStatusSync: links rebuilt from Temu', array_diff_key($r, ['sample' => 1]));
+
+        return $r;
+    }
+
+    /**
+     * Remove the saved buyer / seller link of a SKU when it still carries that SKU's OLD goods ID.
+     *
+     * @param  array<string, string>  $oldBySkuKey  self::key(sku) => old goods_id
+     */
+    private function clearLinks(array $oldBySkuKey, bool $dryRun): int
+    {
+        if ($oldBySkuKey === []) {
+            return 0;
+        }
+        $cfg = \App\Support\Marketplace\ChannelListingRegistry::get('temu') ?? [];
+        $count = 0;
+        foreach (['status', 'dataView'] as $which) {
+            $class = $cfg[$which] ?? null;
+            if (! is_string($class) || ! class_exists($class)) {
+                continue;
+            }
+            $table = (new $class)->getTable();
+            if (! \Illuminate\Support\Facades\Schema::hasTable($table) || ! \Illuminate\Support\Facades\Schema::hasColumn($table, 'value')) {
+                continue;
+            }
+            $class::query()->whereNotNull('value')->orderBy('id')->chunkById(500, function ($rows) use ($oldBySkuKey, $dryRun, &$count) {
+                foreach ($rows as $row) {
+                    $old = $oldBySkuKey[self::key((string) $row->sku)] ?? null;
+                    if ($old === null) {
+                        continue;
+                    }
+                    $raw = $row->value;
+                    $value = is_array($raw) ? $raw : json_decode((string) $raw, true);
+                    if (! is_array($value)) {
+                        continue;
+                    }
+                    $changed = false;
+                    foreach (['buyer_link', 'seller_link'] as $field) {
+                        if (! empty($value[$field]) && str_contains((string) $value[$field], $old)) {
+                            unset($value[$field]);
+                            $changed = true;
+                        }
+                    }
+                    if ($changed) {
+                        $count++;
+                        if (! $dryRun) {
+                            $row->value = is_array($raw) ? $value : json_encode($value);
+                            $row->save();
+                        }
+                    }
+                }
+            });
+        }
+
+        return $count;
+    }
+
+    /**
+     * The older caches the Temu Ads page and SKU VS Parent read (live goods list, SKU names per goods) are
+     * replaced by / pruned to what Temu holds now, so deleted goods cannot linger in them.
+     *
+     * @param  array<string, array<string, mixed>>  $goods
+     */
+    private function syncLegacyCaches(array $goods): void
+    {
+        $live = [];
+        foreach ($goods as $gid => $info) {
+            if (($info['status'] ?? '') !== 'Deleted') {
+                $live[(string) $gid] = $info['status'];
+            }
+        }
+        if (count($live) < 20) {
+            return;
+        }
+        \App\Console\Commands\SyncTemuGoodsSkuNames::putLiveGoods($live);
+
+        $names = \App\Console\Commands\SyncTemuGoodsSkuNames::getSkuNames();
+        $names = is_array($names) ? $names : [];
+        foreach (array_keys($names) as $gid) {
+            if (! isset($live[(string) $gid])) {
+                unset($names[$gid]);
+            }
+        }
+        foreach ($live as $gid => $status) {
+            if (isset($names[$gid]) || empty($goods[$gid]['skus'])) {
+                continue;
+            }
+            $skus = [];
+            foreach ($goods[$gid]['skus'] as $skuSn => $skuId) {
+                if ((string) $skuId !== '') {
+                    $skus[(string) $skuId] = (string) $skuSn;
+                }
+            }
+            if ($skus !== []) {
+                $names[$gid] = ['out_goods_sn' => '', 'skus' => $skus];
+            }
+        }
+        \App\Console\Commands\SyncTemuGoodsSkuNames::putSkuNames($names);
     }
 
     /** @return array<string, mixed>|null */
