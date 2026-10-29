@@ -702,13 +702,18 @@ class EbayListingPublishService
                 $problems[] = $sku.': this listing already has a "'.$value.'" variation (change the variation name in Product Master)';
                 continue;
             }
+            $images = ListingManagerAmazonHydrator::publishImageUrls($sku, $parent, 12);
+            if ($images === []) {
+                $problems[] = $sku.': no photos in Image Master';
+                continue;
+            }
             $taken[strtolower(trim($value))] = true;
             $rows[] = [
                 'sku' => $sku,
                 'price' => $price,
                 'quantity' => $this->resolveQuantity($sku, $hydrated),
                 'variation_label' => $value,
-                'images' => ListingManagerAmazonHydrator::publishImageUrls($sku, $parent, 12),
+                'images' => $images,
             ];
         }
         if ($rows === []) {
