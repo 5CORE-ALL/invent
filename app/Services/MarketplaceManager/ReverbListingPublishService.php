@@ -294,11 +294,6 @@ class ReverbListingPublishService
             if (trim((string) ($listedMap[strtolower($sku)] ?? '')) !== '') {
                 continue;
             }
-            $status = $statusRows[strtolower($sku)] ?? [];
-            $nr = strtoupper(trim((string) ($status['rl_nrl'] ?? $status['NRL'] ?? $status['nr_req'] ?? '')));
-            if (in_array($nr, ['NR', 'NRL'], true)) {
-                continue;
-            }
             $product = $products->get(strtolower($sku)) ?: $this->findProduct($sku);
             if (! $product || $this->productImages($product, $sku) === []) {
                 continue;

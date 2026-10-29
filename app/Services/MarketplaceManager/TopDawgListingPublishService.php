@@ -305,9 +305,6 @@ class TopDawgListingPublishService
             if ($listedId !== '' && $this->isLiveOnTopDawg($sku, $listedId)) {
                 continue;
             }
-            if (! $fromListingManager && ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
-                continue;
-            }
             $product = $products->get(strtolower($sku)) ?: $this->findProduct($sku);
             if (! $product || $this->productImages($product, $sku) === []) {
                 continue;
@@ -357,10 +354,6 @@ class TopDawgListingPublishService
             $listedId = trim((string) ($listedMap[strtolower($sku)] ?? ''));
             if ($listedId !== '' && $this->isLiveOnTopDawg($sku, $listedId)) {
                 $reasons[] = $sku.': already listed on TopDawg';
-                continue;
-            }
-            if (ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
-                $reasons[] = $sku.': NRL';
                 continue;
             }
             $reasons[] = $sku.': already listed or NRL';

@@ -923,9 +923,6 @@ class WayfairListingPublishService
             if (trim((string) ($listedMap[$norm] ?? $listedMap[$this->normalizeSkuKey($sku)] ?? '')) !== '') {
                 continue;
             }
-            if (ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
-                continue;
-            }
             $product = $products->get($this->normalizeSkuKey($sku));
             if (! $product || $this->productImages($product, $sku) === []) {
                 continue;

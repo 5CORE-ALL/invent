@@ -1181,9 +1181,6 @@ class Temu2ListingPublishService
         if ($this->isParentMasterSku($sku)) {
             return ['status' => 'skipped_parent', 'reason' => 'Parent row'];
         }
-        if ($this->nrReqForSku($sku) === 'NR') {
-            return ['status' => 'skipped_nrl', 'reason' => 'NRL'];
-        }
         $localStatus = $this->localListingStatus($sku);
         if ($this->localGoodsId($sku) !== '' && ! in_array($localStatus, ['deleted', 'recycle', 'removed', 'draft'], true)) {
             return ['status' => 'skipped_listed', 'reason' => 'Already listed'];
