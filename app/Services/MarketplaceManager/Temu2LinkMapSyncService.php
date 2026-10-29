@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Schema;
  */
 class Temu2LinkMapSyncService
 {
+    use ReconcilesTemuStaleGoods;
+
     private const CACHE_KEY = 'temu2_link_map_sync';
 
     public function __construct(
@@ -172,6 +174,14 @@ class Temu2LinkMapSyncService
             }
         }
 
+        // Missing L must follow the marketplace: drop goods_id values Temu 2 no longer lists.
+        $reconcile = ['ok' => false, 'cleared' => 0, 'note' => ''];
+        try {
+            $reconcile = $this->reconcileStaleGoodsIds();
+        } catch (\Throwable $e) {
+            Log::warning('Temu2LinkMapSyncService: reconcile failed', ['error' => $e->getMessage()]);
+        }
+
         $linked = Temu2Metric::query()
             ->whereNotNull('sku')
             ->whereNotNull('goods_id')
@@ -190,7 +200,9 @@ class Temu2LinkMapSyncService
             ->get()
             ->each(fn (Temu2Metric $row) => $row->touch());
 
-        $message = "Refreshed Temu 2 link map — {$linked} linked SKU(s) (sku + goods_id).";
+        $message = "Refreshed Temu 2 link map — {$linked} linked SKU(s) (sku + goods_id)."
+            .(($reconcile['cleared'] ?? 0) > 0 ? " Removed {$reconcile['cleared']} stale link(s) Temu 2 no longer lists." : '')
+            .(($reconcile['note'] ?? '') !== '' ? ' '.$reconcile['note'] : '');
         $this->updateProgress([
             'running' => false,
             'page' => 1,
@@ -211,6 +223,16 @@ class Temu2LinkMapSyncService
             'total_upserted' => $linked,
             'done' => true,
         ];
+    }
+
+    protected function reconcileMetricClass(): string
+    {
+        return Temu2Metric::class;
+    }
+
+    protected function reconcileChannelKey(): string
+    {
+        return 'temu2';
     }
 
     public function getProgress(): array

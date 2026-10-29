@@ -451,6 +451,11 @@ class FetchTemuMetrics extends Command
 
                 foreach ($goodsList as $good) {
                     $goodsId = $good['goodsId'] ?? null;
+                    // Deleted / removed goods are gone from Seller Center: never link a SKU to them again,
+                    // otherwise a deleted listing keeps its SKU out of Missing L and a relist is blocked.
+                    if (\App\Services\TemuApiService::isRemovedGoodsStatus($good['goodsStatus'] ?? ($good['status'] ?? ($good['statusName'] ?? null)))) {
+                        continue;
+                    }
                     foreach ($good['skuInfoList'] ?? [] as $sku) {
                         $skuSn = $sku['skuSn'] ?? null;
                         
