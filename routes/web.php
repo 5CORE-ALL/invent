@@ -5723,8 +5723,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Catategory routes
     Route::get('/category.list', [CategoryController::class, 'categoryList'])->name('category.list');
-    Route::get('/category-master', [CategoryController::class, 'categoryMaster'])->name('category.master');
-    Route::get('/category-master-data-view', [CategoryController::class, 'getCategoryMasterData'])->name('category.master.data');
     Route::get('/id-master', [CategoryController::class, 'idMaster'])->name('id.master');
     Route::get('/id-master-data-view', [CategoryController::class, 'getIdMasterData'])->name('id.master.data');
     Route::get('/dim-wt-master', [CategoryController::class, 'dimWtMaster'])->name('dim.wt.master');

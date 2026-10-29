@@ -2884,9 +2884,6 @@
                             <a href="{{ route('barcode.image') }}" target="_blank" rel="noopener">Barcode Image</a>
                         </li>
                         <li>
-                            <a href="{{ route('category.master') }}">PM Category Master</a>
-                        </li>
-                        <li>
                             <a href="{{ route('category.masters') }}">PM Category Masters</a>
                         </li>
                         <li>
