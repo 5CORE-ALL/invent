@@ -2273,17 +2273,22 @@
      */
     function temuHasBlueTriangle(row) {
         if (!row || row.is_parent_summary) return false;
-        if (!ntoBaseMismatch(row)) return false;
-        // Same as Amazon: once S Base Prc is pushed (or being pushed), the SKU leaves the blue badge and the
-        // queue even though the live T Price is only refreshed later. Failed rows stay blue so they retry.
+        return ntoBaseMismatch(row);
+    }
+
+    /**
+     * A blue-triangle SKU the push can still act on. The badge / filter count every blue triangle; the Auto push queue
+     * leaves out the ones that must not be sent again:
+     *  - S Base Prc is already pushed (or being pushed): Temu only shows the new base a few days later;
+     *  - the push is blocked by the negative-SNROI guard.
+     * Failed rows stay in so they retry.
+     */
+    function temuNeedsBluePush(row) {
+        if (!temuHasBlueTriangle(row)) return false;
         if (typeof ntoRowPushState === 'function') {
             const st = ntoRowPushState(row);
             if (st === 'pushed' || st === 'pushing') return false;
         }
-        // Nothing the push can do for these two, so they must not sit in the badge / queue forever
-        // (the server job skips them on every run, and a page reload used to bring them all back):
-        //  - the price the push sends is already Temu's live base price;
-        //  - the push is blocked by the negative-SNROI guard.
         if (typeof ntoRowPushPrice === 'function') {
             const pushPrc = ntoRowPushPrice(row);
             if (pushPrc > 0) {
@@ -2295,6 +2300,7 @@
         return true;
     }
     window.temuHasBlueTriangle = temuHasBlueTriangle;
+    window.temuNeedsBluePush = temuNeedsBluePush;
 
     // New Temu One pushes every SKU, negative SNROI included (NegativeSnroiPushGuard is off for it).
     const NTO_IGNORE_NEG_SNROI = false;
@@ -2687,7 +2693,7 @@
             const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
             const key = sku.toUpperCase();
             if (!sku || seen[key] || key.indexOf('PARENT') === 0) return;
-            if (!temuHasBlueTriangle(d)) return;
+            if (!temuNeedsBluePush(d)) return;
             const base = ntoRowPushPrice(d);
             if (!(base > 0)) return;
             if (window._ntoNegSkip && window._ntoNegSkip[key + '|' + (+base).toFixed(2)]) return;
