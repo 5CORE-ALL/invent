@@ -121,6 +121,9 @@
                         <a class="btn btn-sm btn-outline-success" href="{{ route('variation.master.download', ['format' => 'csv']) }}">
                             <i class="bi bi-filetype-csv me-1"></i>Download CSV
                         </a>
+                        <button type="button" class="btn btn-sm btn-warning" id="vm-update-btn" title="Fill empty Title, Description and Bullet 1–5 from each parent's own SKUs">
+                            <i class="bi bi-arrow-repeat me-1"></i>Update
+                        </button>
                         <input type="file" id="vm-upload-file" class="d-none" accept=".xlsx,.xls,.csv">
                         <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Title, Description, and Bullet 1–5 are shared by every child of that parent and are used when a variation listing is published.</span>
                         <span class="small ms-auto" id="vm-status"></span>
@@ -141,6 +144,7 @@
             const dataUrl = @json(route('variation.master.data'));
             const saveUrl = @json(route('variation.master.save'));
             const importUrl = @json(route('variation.master.import'));
+            const updateUrl = @json(route('variation.master.update.from.sku'));
             const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             const statusEl = document.getElementById('vm-status');
 
@@ -326,6 +330,32 @@
                 }).catch(function (err) {
                     cell.restoreOldValue();
                     setStatus(err && err.message ? err.message : 'Could not save ' + (row.sku || ''), false);
+                });
+            });
+
+            document.getElementById('vm-update-btn')?.addEventListener('click', function () {
+                const btn = this;
+                if (btn.disabled) return;
+                btn.disabled = true;
+                setStatus('Updating from SKUs…', true);
+                fetch(updateUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrf
+                    }
+                }).then(function (res) {
+                    return res.json().then(function (json) {
+                        return { ok: res.ok, json: json };
+                    });
+                }).then(function (result) {
+                    const message = (result.json && result.json.message) || (result.ok ? 'Updated.' : 'Update failed.');
+                    setStatus(message, result.ok && result.json && result.json.success !== false);
+                    if (result.ok) table.replaceData();
+                }).catch(function () {
+                    setStatus('Update failed.', false);
+                }).finally(function () {
+                    btn.disabled = false;
                 });
             });
 
