@@ -120,7 +120,7 @@ final class MarketplaceMismatchInventoryPass
         if ($remaining > 0) {
             $message .= ' '.$remaining.' mismatch SKU(s) left for the next run.';
         }
-        if ($detail !== '' && ($updated === 0 || ! empty($result['rate_limited']))) {
+        if ($detail !== '' && ($updated === 0 || $failed > 0 || ! empty($result['rate_limited']))) {
             $message .= ' '.$detail;
         }
 
