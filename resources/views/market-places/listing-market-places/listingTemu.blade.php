@@ -691,10 +691,10 @@
                                 <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
                             </div>
 
-                            <select id="row-data-type" class="form-select form-select-sm filter-select" aria-label="Data Type">
-                                <option value="all" selected>Data Type</option>
-                                <option value="sku">SKU (Child)</option>
+                            <select id="row-data-type" class="form-select form-select-sm filter-select" aria-label="Show" title="Show parent rows, SKU rows, or both">
+                                <option value="all" selected>All</option>
                                 <option value="parent">Parent</option>
+                                <option value="sku">SKU</option>
                             </select>
                             <select id="inv-filter" class="form-select form-select-sm filter-select" aria-label="INV">
                                 <option value="all">INV: All</option>
@@ -924,7 +924,8 @@
             mapped.sort((a, b) => {
                 const parentCmp = String(a.parent || '').localeCompare(String(b.parent || ''), undefined, { sensitivity: 'base' });
                 if (parentCmp !== 0) return parentCmp;
-                return (a.is_parent ? 1 : 0) - (b.is_parent ? 1 : 0);
+                // Parent row first, its SKUs underneath.
+                return (a.is_parent ? 0 : 1) - (b.is_parent ? 0 : 1);
             });
 
             return mapped;
@@ -1002,14 +1003,9 @@
             const linkFilter = $('#link-filter').val();
             const listedFilter = $('#listed-filter').val();
 
-            temuListingTable.setFilter(function (data) {
-                if (dataType === 'parent' && !data.is_parent) return false;
-                if (dataType === 'sku' && data.is_parent) return false;
-
-                if (invFilter === 'inv-only') {
-                    if (!data.is_parent && !(parseFloat(data.INV) > 0)) return false;
-                }
-
+            // The SKU (child) filters: INV, NRL/REQ, Buyer Link, Listed / Missing L.
+            const childPasses = function (data) {
+                if (invFilter === 'inv-only' && !(parseFloat(data.INV) > 0)) return false;
                 if (nrReqFilter !== 'all' && data.nr_req !== nrReqFilter) return false;
 
                 const hasItemLink = !!String(data.eBay_item_id || '').trim();
@@ -1019,6 +1015,32 @@
                 if (listedFilter !== 'all' && data.listed !== listedFilter) return false;
 
                 return true;
+            };
+            const childFiltersActive = invFilter === 'inv-only' || nrReqFilter !== 'all'
+                || linkFilter !== 'all' || listedFilter !== 'all';
+
+            // A parent row is a header for its SKUs: it has no INV / NRL / link / listed state of its
+            // own, so it is shown whenever at least one of its SKUs passes the filters above.
+            const parentKey = function (data) {
+                return String(data.parent || '').trim().toLowerCase();
+            };
+            const parentsWithMatch = {};
+            if (dataType !== 'sku' && childFiltersActive) {
+                (allListingData || []).forEach(function (row) {
+                    if (!row.is_parent && childPasses(row)) {
+                        parentsWithMatch[parentKey(row)] = true;
+                    }
+                });
+            }
+
+            temuListingTable.setFilter(function (data) {
+                if (data.is_parent) {
+                    if (dataType === 'sku') return false;
+                    return !childFiltersActive || parentsWithMatch[parentKey(data)] === true;
+                }
+                if (dataType === 'parent') return false;
+
+                return childPasses(data);
             });
 
             calculateTotals();
@@ -1318,7 +1340,7 @@
                 }
                 const $badge = $('#missing-l-badge');
                 if (missingLFilterActive) {
-                    $('#row-data-type').val('sku');
+                    $('#row-data-type').val('all');
                     $('#inv-filter').val('inv-only');
                     $('#nr-req-filter').val('REQ');
                     $('#link-filter').val('all');
@@ -1346,7 +1368,7 @@
                     $('#listed-filter').val() === 'Pending' &&
                     $('#nr-req-filter').val() === 'REQ' &&
                     $('#inv-filter').val() === 'inv-only' &&
-                    $('#row-data-type').val() === 'sku';
+                    $('#row-data-type').val() !== 'parent';
                 if (!stillMissing) {
                     missingLFilterActive = false;
                     $('#missing-l-badge').removeClass('is-active');
@@ -1584,7 +1606,8 @@
                     const children = normalizePreviewChildren(group.children);
                     const selectedCount = children.filter(childShouldCheck).length;
                     html += `<div class="temu-publish-group" data-group-index="${gi}" data-parent="${escapeHtml(parent)}">`;
-                    html += `<div class="temu-publish-group-head">${escapeHtml(parent)} · ${selectedCount} selected for ${single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation'}</div>`;
+                    html += `<div class="temu-publish-group-head"><span class="listing-publish-group-title">${escapeHtml(parent)} · ${selectedCount} selected for ${single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation'}</span><button type="button" class="listing-publish-group-close" title="Remove this parent from this publish" aria-label="Remove ${escapeHtml(parent)}">&times;</button></div>`;
+                    if (!single && window.ListingParentCategory) html += window.ListingParentCategory.block(parent, group.suggested_category);
                     if (!single && window.ListingParentPicker) { html += window.ListingParentPicker.block(group, gi, { channel: 'temu', label: 'Temu', attachSupported: false, required: false }); }
                     html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th><th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
                     children.forEach(function (child) {
@@ -1625,7 +1648,7 @@
                         $role.removeClass('is-picked').addClass('is-suggested').text('Suggested sibling');
                     }
                 }
-                $group.find('.temu-publish-group-head').text(
+                $group.find('.listing-publish-group-title').text(
                     parent + ' · ' + selectedCount + ' selected for ' +
                     (single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation')
                 );
@@ -1647,7 +1670,8 @@
                         let sendParent = parent;
                         if (pick && pick.attach === 'new' && pick.newParent) sendParent = pick.newParent;
                         else if (pick && pick.attach === 'existing' && pick.existingParent) sendParent = pick.existingParent;
-                        groups.push({ parent: sendParent, skus: skus });
+                        const cat = window.ListingParentCategory ? window.ListingParentCategory.read(this) : {};
+                        groups.push({ parent: sendParent, skus: skus, category_id: cat.category_id || '', category_name: cat.category_name || '', category_uuid: cat.category_uuid || '' });
                     }
                 });
                 if (selectedPublishMode() !== 'single') return groups;
@@ -1748,7 +1772,8 @@
                 return 'Publish to Temu failed.';
             }
 
-            function publishGroup(skus, parent) {
+            function publishGroup(skus, parent, category) {
+                category = category || {};
                 return $.ajax({
                     url: "{{ url('/listing_temu/save-status') }}",
                     type: 'POST',
@@ -1760,7 +1785,10 @@
                         publish: 1,
                         channel: 'temu',
                         mode: selectedPublishMode(),
-                        parent: parent || ''
+                        parent: parent || '',
+                        category_id: category.category_id || '',
+                        category_name: category.category_name || '',
+                        category_uuid: category.category_uuid || ''
                     }),
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
                     timeout: 180000
@@ -1832,7 +1860,7 @@
                     const group = groups[index];
                     index += 1;
                     $('#temu-publish-progress').text('Publishing ' + group.parent + ' (' + index + '/' + groups.length + ')…');
-                    publishGroup(group.skus, group.parent).done(function (response) {
+                    publishGroup(group.skus, group.parent, group).done(function (response) {
                         const goodsId = String((response && response.goods_id) || '').trim();
                         const listedSkus = (response && response.skus) || group.skus;
                         if (goodsId) {

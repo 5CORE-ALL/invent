@@ -1077,7 +1077,9 @@
         if (note) {
             note.textContent = single
                 ? 'Each checked SKU becomes its own marketplace listing. Suggested siblings are hidden in this mode.'
-                : 'One marketplace listing per group. Only the SKUs you check are included — suggested siblings stay off until you check them.';
+                : (perParentCategoryMode()
+                    ? 'One listing per parent. Choose a category on each parent. Use × to remove a parent from this publish; the others stay.'
+                    : 'One marketplace listing per group. Only the SKUs you check are included — suggested siblings stay off until you check them.');
         }
         if (btn && !btn.disabled) {
             btn.innerHTML = single
@@ -1249,10 +1251,206 @@
         return { category_id: id.replace(/\D+/g, ''), category_name: name, category_uuid: '' };
     }
 
+    function channelKey() {
+        return String(cfg().channel || '').toLowerCase().replace(/[\s_-]/g, '');
+    }
+
+    // Marketplaces whose publish window can choose a category. Others keep the close button only.
+    function channelHasCategory() {
+        const c = channelKey();
+        if (isEbayChannel() || isTiktokChannel() || isSheinChannel() || isWayfairChannel()
+            || isReverbChannel() || isNeweggChannel() || isAliexpressChannel() || isAlibabaChannel()) {
+            return true;
+        }
+        if (c === 'amazon' || c === 'amazonfba' || c === 'amz' || c === 'amzfbm' || c === 'faire') return true;
+        if (c === 'temu' || c === 'temu1' || c === 'temu2' || c === 'temutwo' || c === 'temu3' || c === 'temuthree') return true;
+        if (c === 'macys' || c === 'macy' || c === 'bestbuy' || c === 'bestbuyusa' || c === 'purchasingpower') return true;
+        if (c === 'topdawg' || c === 'topdawginc') return true;
+        return false;
+    }
+
+    // Variation mode: each parent is its own listing, so it gets its own category.
+    function perParentCategoryMode() {
+        if (selectedPublishMode() === 'single') return false;
+        return channelHasCategory();
+    }
+
+    function ensureParentCatStyle() {
+        if (document.getElementById('lp-parent-cat-style')) return;
+        const st = document.createElement('style');
+        st.id = 'lp-parent-cat-style';
+        st.textContent =
+            'body.lp-per-parent-cat .lp-shared-cat{display:none !important;}' +
+            '.listing-publish-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}' +
+            '.listing-publish-group-title{min-width:0;}' +
+            '.listing-publish-group-close{border:0;background:transparent;color:#64748b;width:28px;height:28px;border-radius:6px;font-size:20px;line-height:1;cursor:pointer;flex:0 0 auto;padding:0;}' +
+            '.listing-publish-group-close:hover{background:#fee2e2;color:#b91c1c;}' +
+            '.lp-parent-cat{padding:8px 12px 10px;border-bottom:1px solid #e2e8f0;background:#fff;}' +
+            '.lp-parent-cat[hidden]{display:none !important;}' +
+            '.lp-parent-cat label{display:block;font-weight:700;font-size:12px;margin-bottom:4px;}' +
+            '.lp-parent-cat-path{font-weight:700;font-size:12px;color:#0f172a;margin:0 0 4px;line-height:1.35;}' +
+            '.lp-parent-cat small{display:block;color:#64748b;margin-top:4px;}' +
+            'body.lp-per-parent-cat .listing-publish-group,.temu-publish-group,.temu2-publish-group,.temu3-publish-group{overflow:visible;}' +
+            '.temu-publish-group-head,.temu2-publish-group-head,.temu3-publish-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}';
+        document.head.appendChild(st);
+    }
+
+    function groupCountLabel(count, single) {
+        return single
+            ? ' selected for single listing' + (count === 1 ? '' : 's')
+            : ' selected for this variation';
+    }
+
+    function parentCategoryBlock(parent, suggested) {
+        const cat = suggested || {};
+        const id = String(cat.id || '').trim();
+        const path = String(cat.path || '').trim();
+        const name = String(cat.name || '').trim();
+        if (isAlibabaChannel()) {
+            const numeric = id.replace(/\D+/g, '');
+            return '<div class="lp-parent-cat lp-parent-cat-id" data-parent="' + escapeHtml(parent) + '"' +
+                ' data-cat-id="' + escapeHtml(numeric) + '" data-cat-uuid="" data-cat-name="">' +
+                '<label>Category id for ' + escapeHtml(parent) + '</label>' +
+                '<input type="text" class="form-control form-control-sm lp-parent-cat-input" inputmode="numeric" value="' + escapeHtml(numeric) + '" placeholder="Alibaba category id" autocomplete="off">' +
+                '<small>Used only for this parent. Leave blank to copy the category from a listed sibling.</small>' +
+                '</div>';
+        }
+        const leaf = (path || name).split(/[>\/|]/).pop().trim();
+        const shown = path || name;
+        const uuid = isReverbChannel() ? id : '';
+        return '<div class="lp-parent-cat" data-parent="' + escapeHtml(parent) + '"' +
+            ' data-cat-id="' + escapeHtml(isReverbChannel() ? '' : id) + '"' +
+            ' data-cat-uuid="' + escapeHtml(uuid) + '"' +
+            ' data-cat-name="' + escapeHtml(shown) + '">' +
+            '<label>Category for ' + escapeHtml(parent) + '</label>' +
+            '<div class="lp-parent-cat-path">' + (shown
+                ? escapeHtml(shown)
+                : 'No category matched yet. Search and pick one for this parent.') + '</div>' +
+            '<div class="listing-publish-cat-wrap">' +
+            '<input type="text" class="form-control form-control-sm lp-parent-cat-input" value="' + escapeHtml(leaf || shown) + '" placeholder="Search a category…" autocomplete="off">' +
+            '<div class="lp-parent-cat-results listing-publish-cat-results"></div>' +
+            '</div>' +
+            '<small>Used only for this parent. Adding to an existing listing keeps that listing’s category.</small>' +
+            '</div>';
+    }
+
+    let parentCatTimer = null;
+
+    function parentCategorySearch(block, query) {
+        const results = block && block.querySelector('.lp-parent-cat-results');
+        if (!results) return;
+        query = String(query || '').trim();
+        if (query.length < 2) {
+            results.classList.remove('is-open');
+            results.innerHTML = '';
+            return;
+        }
+        results.classList.add('is-open');
+        results.innerHTML = '<div class="listing-publish-cat-empty">Searching…</div>';
+        if (block._lpCatXhr && block._lpCatXhr.abort) block._lpCatXhr.abort();
+        block._lpCatXhr = $.ajax({
+            url: cfg().categorySearchUrl || '/listing-manager/ebay/categories',
+            type: 'GET',
+            data: { q: query, channel: isReverbChannel() ? 'reverb' : (cfg().channel || ''), title: query },
+            dataType: 'json',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            success: function (res) {
+                const rows = (res && res.categories) || [];
+                if (!rows.length) {
+                    results.innerHTML = '<div class="listing-publish-cat-empty">' + escapeHtml((res && res.message) || 'No categories matched.') + '</div>';
+                    return;
+                }
+                results.innerHTML = rows.map(function (row) {
+                    return '<button type="button" class="listing-publish-cat-item lp-parent-cat-item" data-id="' + escapeHtml(row.id || '') +
+                        '" data-path="' + escapeHtml(row.path || '') + '">' + escapeHtml(row.path || row.id || '') + '</button>';
+                }).join('');
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                results.innerHTML = '<div class="listing-publish-cat-empty">' + escapeHtml(ajaxError(xhr) || 'Category search failed.') + '</div>';
+            }
+        });
+    }
+
+    function applyParentCategoryPick(block, id, path) {
+        if (!block) return;
+        const cleanId = String(id || '').trim();
+        const cleanPath = String(path || '').trim();
+        if (isReverbChannel()) {
+            block.setAttribute('data-cat-id', '');
+            block.setAttribute('data-cat-uuid', cleanId);
+        } else {
+            block.setAttribute('data-cat-id', cleanId);
+            block.setAttribute('data-cat-uuid', '');
+        }
+        block.setAttribute('data-cat-name', cleanPath);
+        const input = block.querySelector('.lp-parent-cat-input');
+        if (input) input.value = cleanPath;
+        const pathEl = block.querySelector('.lp-parent-cat-path');
+        if (pathEl) pathEl.textContent = cleanPath || 'Category selected.';
+        const results = block.querySelector('.lp-parent-cat-results');
+        if (results) {
+            results.classList.remove('is-open');
+            results.innerHTML = '';
+        }
+        const btn = document.getElementById('listing-publish-confirm');
+        if (btn) $(btn).data('specificsChecked', false);
+    }
+
+    function syncParentCategoryVisibility(groupEl) {
+        const cat = groupEl && groupEl.querySelector('.lp-parent-cat');
+        if (!cat) return;
+        const pick = window.ListingParentPicker ? window.ListingParentPicker.read(groupEl) : null;
+        cat.hidden = !!(pick && pick.supported && pick.attach === 'existing');
+    }
+
+    function mapParentCategory(raw) {
+        raw = raw || {};
+        const id = String(raw.category_id || '').trim();
+        const name = String(raw.category_name || '').trim();
+        const uuid = String(raw.category_uuid || '').trim();
+        if (!id && !name && !uuid) return null;
+        if (isReverbChannel()) return { category_id: '', category_name: name, category_uuid: uuid || id };
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || uuid)) {
+            return { category_id: '', category_name: name, category_uuid: id || uuid };
+        }
+        if (isAlibabaChannel()) return { category_id: id.replace(/\D+/g, ''), category_name: '', category_uuid: '' };
+        if (/^\d+$/.test(id)) {
+            const c = channelKey();
+            const codeAsName = c === 'macys' || c === 'macy' || c === 'bestbuy' || c === 'bestbuyusa' || c === 'purchasingpower';
+            return { category_id: id, category_name: codeAsName ? id : name, category_uuid: '' };
+        }
+        return { category_id: '', category_name: id || name, category_uuid: '' };
+    }
+
+    function perParentCategoryFromGroup(group) {
+        if (!perParentCategoryMode() || !group) return null;
+        return mapParentCategory(group);
+    }
+
+    function readParentCategoryEl(groupEl) {
+        const catEl = groupEl && groupEl.querySelector ? groupEl.querySelector('.lp-parent-cat') : null;
+        if (!catEl || catEl.hidden) return { category_id: '', category_name: '', category_uuid: '' };
+        const typed = catEl.querySelector('.lp-parent-cat-input');
+        return mapParentCategory({
+            category_id: String(catEl.getAttribute('data-cat-id') || '').trim(),
+            category_uuid: String(catEl.getAttribute('data-cat-uuid') || '').trim(),
+            category_name: String((typed && typed.value) || catEl.getAttribute('data-cat-name') || '').trim()
+        }) || { category_id: '', category_name: '', category_uuid: '' };
+    }
+
+    function specificsOwnerKey(parent, skus) {
+        if (selectedPublishMode() === 'single' && skus && skus.length === 1) return String(skus[0]);
+        if (perParentCategoryMode()) return String(parent || '');
+        return '';
+    }
+
     function renderGroups(groups) {
         lastPreviewGroups = groups || [];
         ensureSkuCatStyle();
+        ensureParentCatStyle();
         document.body.classList.toggle('lp-per-sku-cat', perSkuCategoryMode());
+        document.body.classList.toggle('lp-per-parent-cat', perParentCategoryMode());
         const box = document.getElementById('listing-publish-groups');
         const confirm = document.getElementById('listing-publish-confirm');
         if (!box) return;
@@ -1263,6 +1461,7 @@
         }
         const single = selectedPublishMode() === 'single';
         const perSku = perSkuCategoryMode();
+        const perParent = perParentCategoryMode();
         let html = '';
         let canPublish = false;
         groups.forEach(function (group, gi) {
@@ -1270,10 +1469,11 @@
             const children = group.children || [];
             const selectedCount = children.filter(childShouldCheck).length;
             html += '<div class="listing-publish-group" data-group-index="' + gi + '" data-parent="' + escapeHtml(parent) + '">';
-            html += '<div class="listing-publish-group-head">' + escapeHtml(parent) + ' · ' + selectedCount +
-                (single
-                    ? ' selected for single listing' + (selectedCount === 1 ? '' : 's')
-                    : ' selected for this variation') + '</div>';
+            html += '<div class="listing-publish-group-head">' +
+                '<span class="listing-publish-group-title">' + escapeHtml(parent) + ' · ' + selectedCount + groupCountLabel(selectedCount, single) + '</span>' +
+                '<button type="button" class="listing-publish-group-close" title="Remove this parent from this publish" aria-label="Remove ' + escapeHtml(parent) + '">&times;</button>' +
+                '</div>';
+            if (perParent) html += parentCategoryBlock(parent, group.suggested_category);
             html += attachBlock(group, gi, single);
             html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th>';
             if (!single) html += '<th>Variation Type</th><th>Variation Name</th>';
@@ -1303,6 +1503,7 @@
             html += '</tbody></table></div>';
         });
         box.innerHTML = html;
+        box.querySelectorAll('.listing-publish-group').forEach(syncParentCategoryVisibility);
         if (confirm) confirm.disabled = !canPublish;
         const progress = document.getElementById('listing-publish-progress');
         if (progress) progress.textContent = '';
@@ -1371,6 +1572,13 @@
                     } else if (pick.attach === 'existing' && !pick.supported && pick.existingParent) {
                         entry.hint = pick.existingParent;
                     }
+                }
+                const catEl = el.querySelector('.lp-parent-cat');
+                if (catEl && !catEl.hidden) {
+                    entry.category_id = String(catEl.getAttribute('data-cat-id') || '').trim();
+                    entry.category_uuid = String(catEl.getAttribute('data-cat-uuid') || '').trim();
+                    const typed = catEl.querySelector('.lp-parent-cat-input');
+                    entry.category_name = String((typed && typed.value) || catEl.getAttribute('data-cat-name') || '').trim();
                 }
                 groups.push(entry);
             }
@@ -1478,15 +1686,17 @@
                 const suggestedMap = (response && response.suggested_categories) || {};
                 Object.keys(suggestedMap).forEach(function (k) { skuCats[k] = suggestedMap[k]; });
                 renderGroups((response && response.groups) || []);
-                if (isReverbChannel()) applySuggestedCategory(response && response.suggested_category);
+                if (!perParentCategoryMode()) {
+                    if (isReverbChannel()) applySuggestedCategory(response && response.suggested_category);
+                    if (isWayfairChannel()) applySuggestedWayfairCategory(response && response.suggested_category);
+                    if (isEbayChannel()) applySuggestedEbayCategory(response && response.suggested_category);
+                    if (isTiktokChannel()) applySuggestedTiktokCategory(response && response.suggested_category);
+                    if (isSheinChannel()) applySuggestedSheinCategory(response && response.suggested_category);
+                }
                 if (isAliexpressChannel()) {
                     applySuggestedAliexpressCategory(response && response.suggested_category);
                     applySuggestedAliexpressPackage(response && response.suggested_package);
                 }
-                if (isWayfairChannel()) applySuggestedWayfairCategory(response && response.suggested_category);
-                if (isEbayChannel()) applySuggestedEbayCategory(response && response.suggested_category);
-                if (isTiktokChannel()) applySuggestedTiktokCategory(response && response.suggested_category);
-                if (isSheinChannel()) applySuggestedSheinCategory(response && response.suggested_category);
             },
             error: function (xhr) {
                 hideModal();
@@ -1576,7 +1786,8 @@
             const hint = m.suggested ? 'e.g. ' + m.suggested : 'Enter ' + name;
             const skuAttr = skuKey ? ' data-sku="' + escapeHtml(skuKey) + '"' : '';
             if (skuKey && skuKey !== lastSku) {
-                html += '<div class="small fw-semibold mt-2 mb-1" style="color:#0d6efd;">SKU ' + escapeHtml(skuKey) + '</div>';
+                const who = selectedPublishMode() === 'single' ? 'SKU ' : 'Parent ';
+                html += '<div class="small fw-semibold mt-2 mb-1" style="color:#0d6efd;">' + who + escapeHtml(skuKey) + '</div>';
             }
             lastSku = skuKey;
             html += '<div class="mb-2"><label class="form-label small mb-1" for="' + id + '">' + escapeHtml(name) + ' <span class="text-danger">*</span></label>';
@@ -1607,10 +1818,9 @@
 
     function checkEbaySpecifics(groups) {
         const c = cfg();
-        const perSku = selectedPublishMode() === 'single';
-        const skuKeyOf = function (group) { return perSku && group.skus.length === 1 ? String(group.skus[0]) : ''; };
+        const skuKeyOf = function (group) { return specificsOwnerKey(group.parent, group.skus); };
         const requests = groups.map(function (group) {
-            const own = perSkuCategoryFor(group.skus);
+            const own = perSkuCategoryFor(group.skus) || perParentCategoryFromGroup(group);
             const specifics = collectEbaySpecifics(skuKeyOf(group));
             return $.ajax({
                 url: actionUrl(),
@@ -1682,6 +1892,15 @@
     function publishPayload(skus, parent, group) {
         const c = cfg();
         const payload = publishPayloadBase(skus, parent, c);
+        if (perParentCategoryMode()) {
+            const ownParent = perParentCategoryFromGroup(group) || { category_id: '', category_name: '', category_uuid: '' };
+            payload.category_id = ownParent.category_id;
+            payload.category_name = ownParent.category_name;
+            payload.category_uuid = ownParent.category_uuid;
+        }
+        if (isEbayChannel() && perParentCategoryMode()) {
+            payload.item_specifics = collectEbaySpecifics(String(parent || ''));
+        }
         if (group && selectedPublishMode() !== 'single') {
             if (group.attach && group.attachSupported) {
                 payload.attach = group.attach;
@@ -1835,16 +2054,83 @@
                         $role.removeClass('is-picked').addClass('is-suggested').text('Suggested sibling');
                     }
                 }
-                $group.find('.listing-publish-group-head').text(
-                    parent + ' · ' + selectedCount +
-                    (single ? ' selected for single listing' + (selectedCount === 1 ? '' : 's') : ' selected for this variation')
+                $group.find('.listing-publish-group-title').text(
+                    parent + ' · ' + selectedCount + groupCountLabel(selectedCount, single)
                 );
                 refreshConfirmState();
+            });
+
+        $(document).off('click.listingPageTools', '.listing-publish-group-close')
+            .on('click.listingPageTools', '.listing-publish-group-close', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const group = this.closest('.listing-publish-group, .temu-publish-group, .temu2-publish-group, .temu3-publish-group');
+                if (!group) return;
+                const box = group.parentElement;
+                group.remove();
+                resetEbaySpecifics();
+                const confirmBtn = document.getElementById('listing-publish-confirm');
+                if (confirmBtn) $(confirmBtn).data('specificsChecked', false);
+                if (box && !box.querySelector('.listing-publish-group, .temu-publish-group, .temu2-publish-group, .temu3-publish-group')) {
+                    box.innerHTML = '<p class="text-muted mb-0">No parents left in this publish. The rows on the page are unchanged.</p>';
+                }
+                const modal = box && box.closest ? box.closest('.modal') : null;
+                const modalConfirm = modal && modal.querySelector('[id$="publish-confirm"]');
+                if (modalConfirm && box) {
+                    const still = box.querySelector('input[type="checkbox"]:checked:not(:disabled)');
+                    modalConfirm.disabled = !still;
+                }
+                refreshConfirmState();
+            });
+
+        $(document).off('input.listingPageTools', '.lp-parent-cat-input')
+            .on('input.listingPageTools', '.lp-parent-cat-input', function () {
+                const block = this.closest('.lp-parent-cat');
+                if (!block) return;
+                const q = String(this.value || '').trim();
+                if (block.classList.contains('lp-parent-cat-id')) {
+                    block.setAttribute('data-cat-id', q.replace(/\D+/g, ''));
+                    block.setAttribute('data-cat-uuid', '');
+                    return;
+                }
+                block.setAttribute('data-cat-id', '');
+                block.setAttribute('data-cat-uuid', '');
+                const pathEl = block.querySelector('.lp-parent-cat-path');
+                if (pathEl) {
+                    pathEl.textContent = q ? 'Searching for “' + q + '”…' : 'Search and pick a category for this parent.';
+                }
+                const confirmBtn = document.getElementById('listing-publish-confirm');
+                if (confirmBtn) $(confirmBtn).data('specificsChecked', false);
+                clearTimeout(parentCatTimer);
+                parentCatTimer = setTimeout(function () { parentCategorySearch(block, q); }, 280);
+            });
+
+        $(document).off('focus.listingPageTools', '.lp-parent-cat-input')
+            .on('focus.listingPageTools', '.lp-parent-cat-input', function () {
+                const block = this.closest('.lp-parent-cat');
+                if (block && block.classList.contains('lp-parent-cat-id')) return;
+                document.querySelectorAll('.lp-parent-cat-results').forEach(function (el) {
+                    if (!block || el === block.querySelector('.lp-parent-cat-results')) return;
+                    el.classList.remove('is-open');
+                    el.innerHTML = '';
+                });
+                const q = String(this.value || '').trim();
+                if (block && q.length >= 2) parentCategorySearch(block, q);
+            });
+
+        $(document).off('click.listingPageTools', '.lp-parent-cat-item')
+            .on('click.listingPageTools', '.lp-parent-cat-item', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                applyParentCategoryPick(this.closest('.lp-parent-cat'), this.getAttribute('data-id'), this.getAttribute('data-path'));
             });
 
         // The parent picker (listing-parent-picker.js) fires this when its choice changes.
         $(document).off('lp-parent:changed.listingPageTools')
             .on('lp-parent:changed.listingPageTools', function () {
+                document.querySelectorAll('#listing-publish-groups .listing-publish-group').forEach(syncParentCategoryVisibility);
+                const confirmBtn = document.getElementById('listing-publish-confirm');
+                if (confirmBtn) $(confirmBtn).data('specificsChecked', false);
                 refreshConfirmState();
             });
 
@@ -1862,7 +2148,13 @@
                 if (weightEl) weightEl.focus();
                 return;
             }
-            if (isNeweggChannel() && !selectedCategoryId()) {
+            if (isNeweggChannel() && perParentCategoryMode()) {
+                const missingCat = groups.filter(function (g) { return !String(g.category_id || '').replace(/\D+/g, ''); });
+                if (missingCat.length) {
+                    notify('danger', 'Pick a Newegg subcategory for: ' + missingCat.map(function (g) { return g.parent; }).join(', ') + '.');
+                    return;
+                }
+            } else if (isNeweggChannel() && !selectedCategoryId()) {
                 notify('danger', 'Type a Newegg subcategory and pick one from the list.');
                 const catEl = document.getElementById('listing-publish-newegg-category-name');
                 if (catEl) catEl.focus();
@@ -1980,7 +2272,8 @@
                     || this.classList.contains('listing-publish-tiktok-cat-item')
                     || this.classList.contains('listing-publish-shein-cat-item')
                     || this.classList.contains('listing-publish-wayfair-cat-item')
-                    || this.classList.contains('listing-publish-newegg-cat-item')) {
+                    || this.classList.contains('listing-publish-newegg-cat-item')
+                    || this.classList.contains('lp-parent-cat-item')) {
                     return;
                 }
                 e.preventDefault();
@@ -1997,6 +2290,10 @@
                 hideSheinCategoryResults();
                 hideWayfairClassResults();
                 hideNeweggCategoryResults();
+                document.querySelectorAll('.lp-parent-cat-results').forEach(function (el) {
+                    el.classList.remove('is-open');
+                    el.innerHTML = '';
+                });
             });
     }
 
@@ -2214,6 +2511,12 @@
                 pickNeweggCategory($(this).attr('data-id'), $(this).attr('data-path'));
             });
     }
+
+    ensureParentCatStyle();
+    window.ListingParentCategory = {
+        block: parentCategoryBlock,
+        read: readParentCategoryEl
+    };
 
     $(function () {
         bindReverbCategorySearch();

@@ -25,7 +25,7 @@
                                             </span>
                                         </label>
                                     </div>
-                                    <div id="listing-publish-wayfair-category" class="listing-publish-category" @if(($publishChannel ?? '') !== 'wayfair') hidden @endif>
+                                    <div id="listing-publish-wayfair-category" class="listing-publish-category lp-shared-cat" @if(($publishChannel ?? '') !== 'wayfair') hidden @endif>
                                         <label>Suggested Wayfair class</label>
                                         <div id="listing-publish-wayfair-category-path" class="listing-publish-category-path">Matching from a listed sibling or title…</div>
                                         <input type="hidden" id="listing-publish-wayfair-class-id" value="">
@@ -37,19 +37,21 @@
                                         <small>Type to search Wayfair classes. Click one from the list. If you leave this blank, we copy the class from a listed sibling or match the title.</small>
                                     </div>
                                     <div id="listing-publish-aliexpress-category" class="listing-publish-category" hidden>
+                                        <div class="lp-shared-cat">
                                         <label>Suggested AliExpress category</label>
                                         <div id="listing-publish-aliexpress-category-path" class="listing-publish-category-path">Matching from the product type…</div>
                                         <input type="hidden" id="listing-publish-category-id" value="">
                                         <label for="listing-publish-category-name">Or type a category name</label>
                                         <input type="text" id="listing-publish-category-name" class="form-control form-control-sm" placeholder="e.g. Guitar Capos" autocomplete="off">
                                         <small>Use the category name, like other marketplaces. You do not need a category ID.</small>
+                                        </div>
                                         <div id="listing-publish-aliexpress-weight" class="listing-publish-weight-row">
                                             <label for="listing-publish-weight-lb">Package weight (lb)</label>
                                             <input type="number" id="listing-publish-weight-lb" class="form-control form-control-sm" placeholder="e.g. 3.35" min="0.01" step="0.01">
                                             <small id="listing-publish-weight-note">Looking up Dim/Wt Master (lb). We convert this for AliExpress.</small>
                                         </div>
                                     </div>
-                                    <div id="listing-publish-ebay-category" class="listing-publish-category" @if(!in_array($publishChannel ?? '', ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'], true)) hidden @endif>
+                                    <div id="listing-publish-ebay-category" class="listing-publish-category lp-shared-cat" @if(!in_array($publishChannel ?? '', ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'], true)) hidden @endif>
                                         <label>Suggested eBay category</label>
                                         <div id="listing-publish-ebay-category-path" class="listing-publish-category-path">Matching from a listed sibling or title…</div>
                                         <input type="hidden" id="listing-publish-ebay-category-id" value="">
@@ -61,6 +63,7 @@
                                         <small>Type to search eBay categories. If you leave this blank, we copy the category from a listed sibling or match the title.</small>
                                     </div>
                                     <div id="listing-publish-tiktok-category" class="listing-publish-category" @if(!in_array($publishChannel ?? '', ['tiktok', 'tiktokshop', 'tiktok1', 'tiktok2', 'tiktokshop2', 'tiktoktwo'], true)) hidden @endif>
+                                        <div class="lp-shared-cat">
                                         <label>Suggested TikTok category</label>
                                         <div id="listing-publish-tiktok-category-path" class="listing-publish-category-path">Matching from a listed sibling or title…</div>
                                         <input type="hidden" id="listing-publish-tiktok-category-id" value="">
@@ -69,11 +72,13 @@
                                             <input type="text" id="listing-publish-tiktok-category-name" class="form-control form-control-sm" placeholder="e.g. Guitar Speakers" autocomplete="off">
                                             <div id="listing-publish-tiktok-category-results" class="listing-publish-cat-results"></div>
                                         </div>
+                                        </div>
                                         <label for="listing-publish-tiktok-weight-lb">Package weight (lb)</label>
                                         <input type="number" id="listing-publish-tiktok-weight-lb" class="form-control form-control-sm" placeholder="e.g. 3.35" min="0.01" step="0.01">
                                         <small>Type to search TikTok categories. Weight comes from Dim/Wt Master when present; otherwise type it.</small>
                                     </div>
                                     <div id="listing-publish-shein-category" class="listing-publish-category" @if(($publishChannel ?? '') !== 'shein') hidden @endif>
+                                        <div class="lp-shared-cat">
                                         <label>Suggested Shein category</label>
                                         <div id="listing-publish-shein-category-path" class="listing-publish-category-path">Matching from a listed sibling or title…</div>
                                         <input type="hidden" id="listing-publish-shein-category-id" value="">
@@ -82,11 +87,12 @@
                                             <input type="text" id="listing-publish-shein-category-name" class="form-control form-control-sm" placeholder="e.g. Guitar Speakers" autocomplete="off">
                                             <div id="listing-publish-shein-category-results" class="listing-publish-cat-results"></div>
                                         </div>
+                                        </div>
                                         <label for="listing-publish-shein-weight-lb">Package weight (lb)</label>
                                         <input type="number" id="listing-publish-shein-weight-lb" class="form-control form-control-sm" placeholder="e.g. 3.35" min="0.01" step="0.01">
                                         <small>Type to search Shein leaf categories. Weight comes from Dim/Wt Master when present; otherwise type it.</small>
                                     </div>
-                                    <div id="listing-publish-reverb-category" class="listing-publish-category" hidden>
+                                    <div id="listing-publish-reverb-category" class="listing-publish-category lp-shared-cat" hidden>
                                         <label>Suggested Reverb category</label>
                                         <div id="listing-publish-reverb-category-path" class="listing-publish-category-path">Matching from the product type…</div>
                                         <input type="hidden" id="listing-publish-category-uuid" value="">
@@ -97,7 +103,7 @@
                                         </div>
                                         <small>Type to search Reverb categories. Click one from the list to use it.</small>
                                     </div>
-                                    <div id="listing-publish-newegg-category" class="listing-publish-category" @if(!in_array($publishChannel ?? '', ['newegg', 'neweggb2c', 'neweggb2b'], true)) hidden @endif>
+                                    <div id="listing-publish-newegg-category" class="listing-publish-category lp-shared-cat" @if(!in_array($publishChannel ?? '', ['newegg', 'neweggb2c', 'neweggb2b'], true)) hidden @endif>
                                         <label>Newegg subcategory</label>
                                         <div id="listing-publish-newegg-category-path" class="listing-publish-category-path">Loading Newegg subcategories…</div>
                                         <input type="hidden" id="listing-publish-newegg-category-id" value="">
@@ -108,7 +114,7 @@
                                         </div>
                                         <small>Every enabled subcategory comes from the Newegg API. Type to narrow the list, then click one.</small>
                                     </div>
-                                    <div id="listing-publish-alibaba-category" class="listing-publish-category" @if(($publishChannel ?? '') !== 'alibaba') hidden @endif>
+                                    <div id="listing-publish-alibaba-category" class="listing-publish-category lp-shared-cat" @if(($publishChannel ?? '') !== 'alibaba') hidden @endif>
                                         <label for="listing-publish-alibaba-category-id">Alibaba category id</label>
                                         <input type="text" id="listing-publish-alibaba-category-id" class="form-control form-control-sm" placeholder="Only if this parent has no listed Alibaba SKU" inputmode="numeric" autocomplete="off">
                                         <small>Leave this blank when another SKU in the same parent is already on Alibaba. We copy that product’s category. Std Prc from LMP Overall is the price.</small>

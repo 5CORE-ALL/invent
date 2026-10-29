@@ -37,13 +37,34 @@
         document.head.appendChild(st);
     }
 
-    function optionHtml(p, fallbackParent) {
+    function optionHtml(p, fallbackParent, selected) {
         var parent = String(p.parent || fallbackParent || '').trim();
         var title = String(p.title || '').trim();
         var count = Number(p.sku_count || (p.skus || []).length || 0);
         var text = 'Parent ' + (parent || '—') + ' · ID ' + p.id + ' · ' + count + ' variation(s)' + (title ? ' · ' + title : '');
         var tip = (title ? title + '\n' : '') + 'SKUs: ' + (p.skus || []).join(', ');
-        return '<option value="' + esc(p.id) + '" data-parent-name="' + esc(parent) + '" title="' + esc(tip) + '">' + esc(text) + '</option>';
+        return '<option value="' + esc(p.id) + '" data-parent-name="' + esc(parent) + '" title="' + esc(tip) + '"' + (selected ? ' selected' : '') + '>' + esc(text) + '</option>';
+    }
+
+    // A list box can paint the only row as highlighted while its value is still empty.
+    // Treat that row — or the row whose parent name matches this group — as the choice.
+    function ensureSelected($select, parentName) {
+        if (!$select || !$select.length) return;
+        if (String($select.val() || '').trim() !== '') return;
+        var $opts = $select.find('option');
+        if (!$opts.length) return;
+        if ($opts.length === 1) {
+            $select.prop('selectedIndex', 0);
+            return;
+        }
+        var want = String(parentName || '').trim().toLowerCase();
+        if (!want) return;
+        $opts.each(function () {
+            if (String($(this).attr('data-parent-name') || '').trim().toLowerCase() === want) {
+                $select.val(this.value);
+                return false;
+            }
+        });
     }
 
     /**
@@ -60,7 +81,12 @@
         var required = !!opts.required;
         var name = 'lp-parent-' + gi;
         var options = '';
-        existing.forEach(function (p) { options += optionHtml(p, parentName); });
+        var only = existing.length === 1;
+        existing.forEach(function (p) {
+            var parent = String(p.parent || parentName || '').trim().toLowerCase();
+            var match = parent !== '' && parent === parentName.toLowerCase();
+            options += optionHtml(p, parentName, only || match);
+        });
 
         return '<div class="lp-parent" data-channel="' + esc(opts.channel || '') + '" data-group-parent="' + esc(parentName) + '"' +
             ' data-attach-supported="' + (opts.attachSupported ? '1' : '0') + '" data-required="' + (required ? '1' : '0') + '">' +
@@ -87,8 +113,10 @@
         var attach = String($box.find('.lp-parent-radio:checked').val() || '');
         var supported = $box.attr('data-attach-supported') === '1';
         var required = $box.attr('data-required') === '1';
-        var $opt = $box.find('.lp-parent-select option:selected');
-        var existingId = String($box.find('.lp-parent-select').val() || '').trim();
+        var $select = $box.find('.lp-parent-select');
+        if (attach === 'existing') ensureSelected($select, $box.attr('data-group-parent'));
+        var $opt = $select.find('option:selected');
+        var existingId = String($select.val() || '').trim();
         var existingParent = String($opt.attr('data-parent-name') || '').trim();
         var newParent = String($box.find('.lp-parent-name').val() || '').trim();
         var ready = attach === 'new' ? newParent !== ''
@@ -122,6 +150,7 @@
             parents.forEach(function (p) { html += optionHtml(p, ''); });
             $select.html(html);
             if (keep && $select.find('option[value="' + keep.replace(/"/g, '') + '"]').length) $select.val(keep);
+            else ensureSelected($select, $box.attr('data-group-parent'));
             $note.text(parents.length
                 ? parents.length + ' parent listing(s) found' + (parents.length >= 60 ? ' (showing the first 60 — type to narrow)' : '') + '.'
                 : 'No parent listing matches' + (q ? ' “' + q + '”' : '') + '. Use "Create a new parent listing" to start one.');
@@ -138,6 +167,7 @@
             $box.find('.lp-existing').prop('hidden', !existing);
             $box.find('.lp-new').prop('hidden', existing);
             if (existing && !$box.find('.lp-parent-select option').length) search($box, '');
+            else if (existing) ensureSelected($box.find('.lp-parent-select'), $box.attr('data-group-parent'));
             $(document).trigger('lp-parent:changed');
         })
         .on('input.lpParent', '.lp-parent-search', function () {
@@ -147,7 +177,7 @@
             clearTimeout(timers[id]);
             timers[id] = setTimeout(function () { search($box, q); }, 300);
         })
-        .on('change.lpParent', '.lp-parent-select', function () {
+        .on('change.lpParent click.lpParent', '.lp-parent-select', function () {
             $(document).trigger('lp-parent:changed');
         })
         .on('input.lpParent', '.lp-parent-name', function () {
