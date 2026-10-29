@@ -394,9 +394,6 @@ class NeweggListingPublishService
             if (! $fromListingManager && $listedId !== '' && $this->isLiveOnNewegg($sku, $listedId)) {
                 continue;
             }
-            if (! $fromListingManager && ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
-                continue;
-            }
             $product = $products->get(strtolower($sku)) ?: $this->findProduct($sku);
             if (! $product || (! $fromListingManager && $this->productImages($product, $sku) === [])) {
                 continue;
@@ -450,10 +447,6 @@ class NeweggListingPublishService
             $listedId = trim((string) ($listedMap[strtolower($sku)] ?? ''));
             if ($listedId !== '' && $this->isLiveOnNewegg($sku, $listedId)) {
                 $reasons[] = $sku.': already listed on Newegg';
-                continue;
-            }
-            if (ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
-                $reasons[] = $sku.': NRL';
                 continue;
             }
             $reasons[] = $sku.': already listed or NRL';

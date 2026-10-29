@@ -202,10 +202,6 @@
         if (listed === 'Listed' || goodsId) {
             return '<span class="text-muted" title="Already listed">—</span>';
         }
-        const nrReq = String(data.nr_req || 'REQ');
-        if (nrReq === 'NR' || nrReq === 'NRL') {
-            return '<span class="text-muted" title="NRL SKUs are not published">—</span>';
-        }
         const sku = String(data.sku || '').trim();
         if (!sku) return '';
         const label = escapeHtml(cfg().channelLabel || 'marketplace');

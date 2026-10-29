@@ -35,7 +35,13 @@ class EbayTwoListingCounts
             );
         }
 
-        $listedIds = ListingCountsEngine::listedIdsFromColumn(Ebay2Metric::class, $skus, 'item_id');
+        $listedIds = ListingCountsEngine::listedIdsFromColumn(
+            Ebay2Metric::class,
+            $skus,
+            'item_id',
+            false,
+            ChannelListingRegistry::EBAY_NOT_LIVE_STATUSES
+        );
 
         $reqCount = 0;
         $nrlCount = 0;

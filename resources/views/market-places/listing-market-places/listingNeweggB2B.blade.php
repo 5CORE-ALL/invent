@@ -1140,7 +1140,7 @@
     @if($listingPageToolsJs)
         <script>{!! $listingPageToolsJs !!}</script>
     @else
-        <script src="{{ asset('js/listing-page-tools.js') }}?v=20261028-attach"></script>
+        <script src="{{ asset('js/listing-page-tools.js') }}?v=20261029-nrl"></script>
     @endif
 @include('partials.listing-sku-search')
 @endsection

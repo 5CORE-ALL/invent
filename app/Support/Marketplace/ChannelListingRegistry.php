@@ -45,6 +45,12 @@ use App\Models\TopDawgProduct;
 class ChannelListingRegistry
 {
     /**
+     * eBay listing_status values (from the seller-portal Active / Unsold pull) that are not a live listing.
+     * An ended, deleted or missing eBay listing is Missing L again even while its old item_id is stored.
+     */
+    public const EBAY_NOT_LIVE_STATUSES = ['inactive', 'ended', 'unsold', 'completed', 'sold', 'missing', 'not_listed'];
+
+    /**
      * @return array<string, array<string, mixed>>
      */
     public static function all(): array
@@ -59,7 +65,7 @@ class ChannelListingRegistry
                     'type' => 'column',
                     'model' => EbayMetric::class,
                     'column' => 'item_id',
-                    'hide_statuses' => ['inactive', 'ended', 'unsold', 'completed', 'sold', 'missing', 'not_listed'],
+                    'hide_statuses' => self::EBAY_NOT_LIVE_STATUSES,
                 ],
                 'id_field' => 'eBay_item_id',
                 'buyer_tpl' => 'https://www.ebay.com/itm/{id}',
@@ -68,7 +74,7 @@ class ChannelListingRegistry
             'ebaytwo' => [
                 'dataView' => \App\Models\EbayTwoDataView::class,
                 'status' => \App\Models\EbayTwoListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => Ebay2Metric::class, 'column' => 'item_id'],
+                'listed' => ['type' => 'column', 'model' => Ebay2Metric::class, 'column' => 'item_id', 'hide_statuses' => self::EBAY_NOT_LIVE_STATUSES],
                 'id_field' => 'eBay_item_id',
                 'buyer_tpl' => 'https://www.ebay.com/itm/{id}',
                 'seller_tpl' => 'https://www.ebay.com/sh/lst/active?keyword={id}&action=search',
@@ -76,7 +82,7 @@ class ChannelListingRegistry
             'ebaythree' => [
                 'dataView' => \App\Models\EbayThreeDataView::class,
                 'status' => \App\Models\EbayThreeListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => Ebay3Metric::class, 'column' => 'item_id'],
+                'listed' => ['type' => 'column', 'model' => Ebay3Metric::class, 'column' => 'item_id', 'hide_statuses' => self::EBAY_NOT_LIVE_STATUSES],
                 'id_field' => 'eBay_item_id',
                 'buyer_tpl' => 'https://www.ebay.com/itm/{id}',
                 'seller_tpl' => 'https://www.ebay.com/sh/lst/active?keyword={id}&action=search',

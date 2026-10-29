@@ -5087,6 +5087,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-cvr-disc-slab-history', [OverallAmazonController::class, 'getCvrDiscSlabHistory'])->name('amazon.cvr-disc-slab.history');
     Route::get('/amazon-dil-groi-slab-history', [OverallAmazonController::class, 'getDilGroiSlabHistory'])->name('amazon.dil-groi-slab.history');
 
+    // "Refresh listings" button on every /listing-<marketplace> page
+    Route::post('/listing-refresh/{channel}', [\App\Http\Controllers\ListingRefreshController::class, 'start'])->name('listing.refresh.start');
+    Route::get('/listing-refresh/{channel}/status', [\App\Http\Controllers\ListingRefreshController::class, 'status'])->name('listing.refresh.status');
+
     // ebay 2
     Route::get('/listing-ebaytwo', [ListingEbayTwoController::class, 'listingEbayTwo'])->name('listing.ebayTwo');
     Route::get('/listing_ebaytwo/view-data', [ListingEbayTwoController::class, 'getViewListingEbayTwoData']);

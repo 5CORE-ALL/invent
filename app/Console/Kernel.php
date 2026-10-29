@@ -452,6 +452,28 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // eBay 2 / eBay 3: same Active / Unsold pull. Deleted or ended listings are marked
+        // INACTIVE / MISSING so they show on Missing L (ebay_2_metrics keeps the old item_id).
+        foreach ([2 => 50, 3 => 55] as $ebayStore => $ebayMinute) {
+            $schedule->command('ebay:fetch-listing-status --store='.$ebayStore)
+                ->cron($ebayMinute.' */3 * * *')
+                ->timezone('Asia/Kolkata')
+                ->name('ebay'.$ebayStore.'-fetch-listing-status')
+                ->withoutOverlapping(60)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
+        // Once a day: refresh listing data for every marketplace (same job as the
+        // "Refresh listings" button on each listing page).
+        $schedule->command('listing:refresh all')
+            ->dailyAt('04:20')
+            ->timezone('Asia/Kolkata')
+            ->name('listing-refresh-all-marketplaces')
+            ->withoutOverlapping(360)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         
         $ist($schedule->command('app:fetch-ebay-table-data')
             ->dailyAt('19:25')

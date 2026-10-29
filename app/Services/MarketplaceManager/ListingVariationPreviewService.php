@@ -437,12 +437,7 @@ class ListingVariationPreviewService
         if ($listedId !== '') {
             return ['status' => 'skipped_listed', 'reason' => 'Already listed'];
         }
-        $nrReq = ListingCountsEngine::nrReqFromDataView(
-            $nrValues->get(strtoupper($sku))
-        );
-        if ($nrReq === 'NR') {
-            return ['status' => 'skipped_nrl', 'reason' => 'NRL'];
-        }
+        // NRL SKUs are publishable too: every Missing L listing may be added to a group.
         if ($this->isAmazonChannel($channel)) {
             return $this->classifyAmazonChild($sku, $product);
         }

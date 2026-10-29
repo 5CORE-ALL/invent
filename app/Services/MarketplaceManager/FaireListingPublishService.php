@@ -255,9 +255,6 @@ class FaireListingPublishService
             if (trim((string) ($listedMap[strtolower($sku)] ?? '')) !== '') {
                 continue;
             }
-            if (ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku))) === 'NR') {
-                continue;
-            }
             $product = $products->get(strtolower($sku));
             if (! $product || $this->productImages($product, $sku) === []) {
                 continue;

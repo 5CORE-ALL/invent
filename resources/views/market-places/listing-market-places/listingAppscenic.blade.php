@@ -1090,6 +1090,6 @@
             publishUrl: '/listing_appscenic/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261028-attach"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261029-nrl"></script>
 @include('partials.listing-sku-search')
 @endsection

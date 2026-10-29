@@ -68,7 +68,10 @@ class EbayPortalListingStatusSync
         ]);
 
         $unsoldExtracted = $unsold['ok'] && ($unsold['total'] === 0 || $unsold['sku_count'] > 0);
-        if ($store === 1 && $unsoldExtracted && $active['ok']) {
+        // Every store: a SKU that neither Active nor Unsold returns is gone from eBay (deleted),
+        // so it is MISSING and shows on Missing L. Only when both pulls read every page, so a
+        // half-read list never marks live listings missing.
+        if ($unsoldExtracted && $active['ok'] && ! empty($active['complete']) && ! empty($unsold['complete'])) {
             $existing = $model::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
@@ -152,6 +155,19 @@ class EbayPortalListingStatusSync
                     }
                     if ($hasItemId && ! empty($data['item_id'])) {
                         $payload['item_id'] = $data['item_id'];
+                    }
+
+                    // No ACTIVE listing exists for this SKU (rememberListing keeps Active over Unsold),
+                    // so every row of it is ended or gone. Updating only the first row left a second
+                    // item_id row for the same SKU still counting as Listed.
+                    if (in_array($data['status'] ?? '', ['INACTIVE', 'MISSING'], true)) {
+                        $statusOnly = ['listing_status' => $payload['listing_status']];
+                        if ($hasReason) {
+                            $statusOnly['inactive_reason'] = $payload['inactive_reason'];
+                        }
+                        $model::query()
+                            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                            ->update($statusOnly);
                     }
 
                     if ($hasItemId && ! empty($data['item_id'])) {
@@ -596,7 +612,7 @@ class EbayPortalListingStatusSync
     }
 
     /**
-     * @return array{ok: bool, items: list<array{sku: string, title: ?string, item_id: ?string, ebay_link: ?string}>, total: int, sku_count: int}
+     * @return array{ok: bool, complete: bool, items: list<array{sku: string, title: ?string, item_id: ?string, ebay_link: ?string}>, total: int, sku_count: int}
      */
     protected function fetchListingsByStatus(string $accessToken, string $listType): array
     {
@@ -685,6 +701,8 @@ class EbayPortalListingStatusSync
 
         return [
             'ok' => $ok,
+            // True only when every page was read (a break on an error leaves pageNumber <= totalPages).
+            'complete' => $ok && $pageNumber > $totalPages,
             'items' => $allItems,
             'total' => $totalEntries,
             'sku_count' => count($allItems),
