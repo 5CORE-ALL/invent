@@ -104,6 +104,116 @@ class VariationMasterController extends Controller
     }
 
     /**
+     * Bulk edit: apply only the supplied fields to every selected row.
+     * Variation Type / Variation Name are saved per child SKU; Title, Description and Bullets are
+     * shared by a parent, so they are written once per distinct parent among the selected rows.
+     */
+    public function bulkUpdate(Request $request): JsonResponse
+    {
+        $request->validate([
+            'ids' => 'required|array|min:1|max:5000',
+            'ids.*' => 'integer',
+            'variation_type' => 'nullable|string|max:120',
+            'variation_name' => 'nullable|string|max:500',
+            'title' => 'nullable|string|max:500',
+            'description' => 'nullable|string|max:20000',
+            'bullet_1' => 'nullable|string|max:1000',
+            'bullet_2' => 'nullable|string|max:1000',
+            'bullet_3' => 'nullable|string|max:1000',
+            'bullet_4' => 'nullable|string|max:1000',
+            'bullet_5' => 'nullable|string|max:1000',
+        ]);
+
+        $products = ProductMaster::query()->whereIn('id', array_map('intval', $request->input('ids', [])))->get();
+        if ($products->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'No selected SKUs were found on CP master.'], 404);
+        }
+
+        $childChanged = $request->exists('variation_type') || $request->exists('variation_name');
+        $listingChanged = $request->exists('title') || $request->exists('description') || $this->requestHasBullet($request);
+        if (! $childChanged && ! $listingChanged) {
+            return response()->json(['success' => false, 'message' => 'Tick at least one field to apply.'], 422);
+        }
+
+        $childUpdated = 0;
+        $parentsUpdated = 0;
+        $errors = [];
+
+        DB::transaction(function () use ($request, $products, $childChanged, $listingChanged, &$childUpdated, &$parentsUpdated, &$errors) {
+            if ($childChanged) {
+                foreach ($products as $product) {
+                    $values = is_array($product->Values) ? $product->Values : [];
+                    if ($request->exists('variation_type')) {
+                        $values['variation_type'] = $this->normalizeDisplay($request->input('variation_type'));
+                    }
+                    if ($request->exists('variation_name')) {
+                        $values['variation_name'] = $this->normalizeDisplay($request->input('variation_name'));
+                    }
+                    $product->Values = $values;
+                    $product->save();
+                    $childUpdated++;
+                }
+            }
+
+            if ($listingChanged) {
+                $parents = [];
+                foreach ($products as $product) {
+                    $parent = VariationListingContent::parentKeyFor($product);
+                    if ($parent !== '') {
+                        $parents[$parent] = true;
+                    }
+                }
+
+                foreach (array_keys($parents) as $parent) {
+                    $bullets = null;
+                    if ($this->requestHasBullet($request)) {
+                        $parentRow = VariationListingContent::parentProduct($parent);
+                        $current = $this->listingText(is_array($parentRow?->Values) ? $parentRow->Values : []);
+                        $slots = [];
+                        for ($i = 1; $i <= 5; $i++) {
+                            $slots[] = $request->exists('bullet_'.$i)
+                                ? $this->normalizeDisplay($request->input('bullet_'.$i))
+                                : $current['bullet_'.$i];
+                        }
+                        $bullets = $this->joinBullets($slots);
+                    }
+
+                    $error = $this->writeListingText(
+                        $parent,
+                        $request->exists('title') ? $this->normalizeDisplay($request->input('title')) : null,
+                        $request->exists('description') ? $this->keepLines($request->input('description')) : null,
+                        $bullets
+                    );
+                    if ($error !== null) {
+                        $errors[] = $error;
+                    } else {
+                        $parentsUpdated++;
+                    }
+                }
+            }
+        });
+
+        $parts = [];
+        if ($childChanged) {
+            $parts[] = $childUpdated.' SKU'.($childUpdated === 1 ? '' : 's').' updated';
+        }
+        if ($listingChanged) {
+            $parts[] = $parentsUpdated.' parent'.($parentsUpdated === 1 ? '' : 's').' updated';
+        }
+        $message = implode(', ', $parts).'.';
+        if ($errors !== []) {
+            $message .= ' Skipped: '.implode(' ', array_slice(array_unique($errors), 0, 3));
+        }
+
+        return response()->json([
+            'success' => $childUpdated > 0 || $parentsUpdated > 0,
+            'message' => $message,
+            'sku_updated' => $childUpdated,
+            'parents_updated' => $parentsUpdated,
+        ]);
+    }
+
+    /**
      * "Update" button: fill each parent's Title, Description and Bullet 1–5 from its own SKUs
      * (the Title / Description / Bullet text already on each SKU in CP master).
      * Text already typed in Variation Master is kept; only blank fields are filled.
@@ -272,7 +382,8 @@ class VariationMasterController extends Controller
     public function download(Request $request): StreamedResponse
     {
         $format = strtolower(trim((string) $request->query('format', 'xlsx')));
-        $rows = $this->productRows();
+        // Exports stay one line per child SKU (the import skips PARENT rows).
+        $rows = array_values(array_filter($this->productRows(), static fn (array $row): bool => $row['row_type'] === 'sku'));
 
         if ($format === 'csv') {
             return response()->streamDownload(function () use ($rows) {
@@ -482,6 +593,7 @@ class VariationMasterController extends Controller
             ->get();
 
         $listingByParent = [];
+        $parentRows = [];
         $children = [];
         foreach ($products as $product) {
             $sku = $this->normalizeDisplay($product->sku);
@@ -497,6 +609,7 @@ class VariationMasterController extends Controller
                 if ($key !== '' && ! isset($listingByParent[$key])) {
                     $listingByParent[$key] = $this->listingText($values);
                 }
+                $parentRows[] = ['product' => $product, 'key' => $key];
 
                 continue;
             }
@@ -505,12 +618,40 @@ class VariationMasterController extends Controller
         }
 
         $rows = [];
+        $sortKeys = [];
+
+        foreach ($parentRows as $entry) {
+            $product = $entry['product'];
+            $key = $entry['key'];
+            $values = is_array($product->Values) ? $product->Values : [];
+            $listing = $listingByParent[$key] ?? $this->emptyListingText();
+            $rows[] = [
+                'id' => (int) $product->id,
+                'row_type' => 'parent',
+                'parent_key' => $key,
+                'parent' => $key,
+                'sku' => $this->normalizeDisplay($product->sku),
+                'variation_type' => $this->normalizeDisplay($values['variation_type'] ?? null),
+                'variation_name' => $this->normalizeDisplay($values['variation_name'] ?? null),
+                'title' => $listing['title'],
+                'description' => $listing['description'],
+                'bullet_1' => $listing['bullet_1'],
+                'bullet_2' => $listing['bullet_2'],
+                'bullet_3' => $listing['bullet_3'],
+                'bullet_4' => $listing['bullet_4'],
+                'bullet_5' => $listing['bullet_5'],
+            ];
+            $sortKeys[] = [strtoupper($key), 0, strtoupper($this->normalizeDisplay($product->sku))];
+        }
+
         foreach ($children as $product) {
             $parent = ListingManagerFamily::normalizeParentKey($this->normalizeDisplay($product->parent));
             $values = is_array($product->Values) ? $product->Values : [];
             $listing = $listingByParent[$parent] ?? $this->emptyListingText();
             $rows[] = [
                 'id' => (int) $product->id,
+                'row_type' => 'sku',
+                'parent_key' => $parent,
                 'parent' => $this->normalizeDisplay($product->parent),
                 'sku' => $this->normalizeDisplay($product->sku),
                 'variation_type' => $this->normalizeDisplay($values['variation_type'] ?? null),
@@ -523,9 +664,14 @@ class VariationMasterController extends Controller
                 'bullet_4' => $listing['bullet_4'],
                 'bullet_5' => $listing['bullet_5'],
             ];
+            $sortKeys[] = [strtoupper($parent), 1, strtoupper($this->normalizeDisplay($product->sku))];
         }
 
-        return $rows;
+        // Each parent row sits directly above its own child SKUs.
+        $order = array_keys($rows);
+        usort($order, static fn (int $a, int $b): int => $sortKeys[$a] <=> $sortKeys[$b]);
+
+        return array_map(static fn (int $i): array => $rows[$i], $order);
     }
 
     /**
