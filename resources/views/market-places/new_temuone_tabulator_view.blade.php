@@ -2468,11 +2468,23 @@
         }
         return html;
     }
-    /** Promo Base Prc = Price After Discount − Ship Disc (same as /temu3-decrease). */
+    /**
+     * Promo Base Prc = the base price Temu holds for this SKU (last pull, same as the Temu API / Seller Center).
+     * When it was not pulled yet it is worked out from the live Temu Price the same way S Base Prc is worked out from
+     * S PRC: S R prc = Price × 0.88, then − $2.99 when that is under $30.
+     */
     function ntoRowPromoBasePrc(d) {
-        const p = ntoRowPriceAfterDisc(d);
-        if (p == null) return null;
-        return +(p - (ntoRowShipDisc(d) || 0)).toFixed(2);
+        if (!d || d.is_parent_summary) return null;
+        const sku = ntoRowSku(d);
+        if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return null;
+        const server = temuServerBasePrc(d);
+        if (server != null) return server;
+        const live = parseFloat(d.t_price) || parseFloat(d.temu_price) || 0;
+        return live > 0 ? (temuSBaseFromSprice(live) || null) : null;
+    }
+    /** True when Promo Base Prc comes from Temu's stored base (not the fallback worked out from Price). */
+    function ntoPromoBaseIsServer(d) {
+        return temuServerBasePrc(d) != null;
     }
     /**
      * S Base Prc = S R prc, where S R prc = S PRC × 0.88; when S R prc is under $30 it is S R prc − $2.99.
@@ -3988,14 +4000,19 @@
                     hozAlign: 'center',
                     width: 80,
                     sorter: temuComputedSorter(ntoRowPromoBasePrc),
-                    headerTooltip: 'Promo Base Prc = Price After Discount − Ship Disc.',
+                    headerTooltip: 'Promo Base Prc = the base price Temu holds now (same as the Temu API). If it has not been pulled yet: Price × 0.88, minus $2.99 when under $30 (same rule as S Base Prc).',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const v = ntoRowPromoBasePrc(row);
                         if (v == null) return '<span style="color: #6c757d;">—</span>';
-                        const tip = 'Price After Discount $' + ntoRowPriceAfterDisc(row).toFixed(2)
-                            + ' − Ship Disc $' + (ntoRowShipDisc(row) || 0).toFixed(2) + ' = $' + v.toFixed(2);
-                        return '<span style="font-weight: 600;" title="' + tip + '">$' + v.toFixed(2) + '</span>';
+                        let tip = ntoPromoBaseIsServer(row)
+                            ? 'Base price on Temu now: $' + v.toFixed(2)
+                            : 'Not pulled from Temu yet. Worked out from Price $' + (parseFloat(row.t_price) || 0).toFixed(2) + ' (× 0.88, − $2.99 if under $30) = $' + v.toFixed(2);
+                        const pushed = parseFloat(row.nto_pushed_base);
+                        if (pushed > 0 && !ntoMoneyEq(pushed, v)) {
+                            tip += '\nPushed $' + pushed.toFixed(2) + ' is waiting for Temu to apply it.';
+                        }
+                        return '<span style="font-weight: 600;" title="' + tip.replace(/"/g, '&quot;') + '">$' + v.toFixed(2) + '</span>';
                     }
                 },
                 {

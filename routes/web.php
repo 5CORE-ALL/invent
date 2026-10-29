@@ -240,6 +240,7 @@ use App\Http\Controllers\MarketPlace\Shopifyb2cZeroController;
 use App\Http\Controllers\MarketPlace\TemuController;
 use App\Http\Controllers\MarketPlace\Temu3Controller;
 use App\Http\Controllers\MarketPlace\NewTemuoneController;
+use App\Http\Controllers\MarketPlace\Temu1RawDataController;
 use App\Http\Controllers\MarketPlace\NewTemutwoController;
 use App\Http\Controllers\MarketPlace\TemuLowVisibilityController;
 use App\Http\Controllers\MarketPlace\TemuZeroController;
@@ -5454,6 +5455,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/new-temuone-save-links', [NewTemuoneController::class, 'saveLinks'])->name('newtemuone.save.links');
     Route::post('/new-temuone-save-sprice', [NewTemuoneController::class, 'saveSprice'])->name('newtemuone.save.sprice');
     Route::post('/new-temuone-save-promo-base', [NewTemuoneController::class, 'savePromoBase'])->name('newtemuone.save.promo-base');
+
+    // Temu 1 Raw Data — every Temu 1 API table, all columns as stored
+    Route::get('/temu1-raw-data', [Temu1RawDataController::class, 'index'])->name('temu1.raw.data');
+    Route::get('/temu1-raw-data/columns', [Temu1RawDataController::class, 'columns'])->name('temu1.raw.data.columns');
+    Route::get('/temu1-raw-data/data', [Temu1RawDataController::class, 'data'])->name('temu1.raw.data.json');
+    Route::get('/temu1-raw-data/cell', [Temu1RawDataController::class, 'cell'])->name('temu1.raw.data.cell');
 
     Route::get('/new-temu2', [NewTemutwoController::class, 'index'])->name('newtemutwo.index');
     Route::get('/new-temu2-data-json', [NewTemutwoController::class, 'dataJson'])->name('newtemutwo.data.json');
