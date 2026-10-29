@@ -1312,32 +1312,18 @@
 
     // Variation mode: ask whether the selected SKUs join a parent listing that already exists
     // on this marketplace or start a new parent. Only shown for marketplaces that can attach.
+    // Every marketplace gets the picker: search + select any existing parent, or name a new one.
+    // eBay / AliExpress attach by listing id (and must be told when the group already has a parent);
+    // other marketplaces publish the SKUs under the chosen parent's name.
     function attachBlock(group, gi, single) {
-        if (single || !group || !group.attach_supported) return '';
-        const parents = group.existing_parents || [];
-        const label = escapeHtml(channelLabel());
-        if (!parents.length) {
-            return '<div class="listing-publish-attach" data-attach-required="0">' +
-                '<div class="listing-publish-attach-note">No existing parent listing for this group was found on ' + label +
-                '. A new parent listing will be created.</div></div>';
-        }
-        let options = '<option value="">Select the parent listing…</option>';
-        parents.forEach(function (p) {
-            const title = String(p.title || '').trim();
-            const parentName = String(group.parent || '').trim();
-            const text = 'Parent ' + (parentName || '—') + ' · ID ' + p.id + ' · ' +
-                (p.sku_count || (p.skus || []).length) + ' variation(s)' + (title ? ' · ' + title : '');
-            options += '<option value="' + escapeHtml(String(p.id)) + '" title="' +
-                escapeHtml((title ? title + '\n' : '') + 'SKUs: ' + (p.skus || []).join(', ')) + '">' +
-                escapeHtml(text) + '</option>';
+        if (single || !group || !window.ListingParentPicker) return '';
+        const supported = !!group.attach_supported;
+        return window.ListingParentPicker.block(group, gi, {
+            channel: String(cfg().channel || ''),
+            label: channelLabel(),
+            attachSupported: supported,
+            required: supported && (group.existing_parents || []).length > 0
         });
-        const name = 'lp-attach-' + gi;
-        return '<div class="listing-publish-attach" data-attach-required="1">' +
-            '<div class="listing-publish-attach-title">This group already has a parent listing on ' + label + '. Where should the selected SKU(s) go?</div>' +
-            '<label class="listing-publish-attach-opt"><input type="radio" class="listing-publish-attach-radio" name="' + name + '" value="existing"> Add to an existing parent listing</label>' +
-            '<select class="form-select form-select-sm listing-publish-attach-select" disabled>' + options + '</select>' +
-            '<label class="listing-publish-attach-opt"><input type="radio" class="listing-publish-attach-radio" name="' + name + '" value="new"> Create a new parent listing</label>' +
-            '</div>';
     }
 
     // The Publish button stays off until every group that has existing parents has an answer.
@@ -1348,18 +1334,14 @@
         let pending = false;
         document.querySelectorAll('#listing-publish-groups .listing-publish-group').forEach(function (el) {
             if (!el.querySelector('.listing-publish-sku-check:checked:not(:disabled)')) return;
-            const box = el.querySelector('.listing-publish-attach[data-attach-required="1"]');
-            if (!box) return;
-            const radio = box.querySelector('.listing-publish-attach-radio:checked');
-            if (!radio || (radio.value === 'existing' && !box.querySelector('.listing-publish-attach-select').value)) {
-                pending = true;
-            }
+            const pick = window.ListingParentPicker ? window.ListingParentPicker.read(el) : null;
+            if (pick && !pick.ready) pending = true;
         });
         confirm.disabled = !anyChecked || pending;
         const progress = document.getElementById('listing-publish-progress');
         if (progress && !confirm.querySelector('.fa-spin')) {
             progress.textContent = (anyChecked && pending)
-                ? 'Choose an existing parent listing or "Create a new parent listing" to continue.'
+                ? 'Pick an existing parent listing, or choose "Create a new parent listing" and type its name, to continue.'
                 : '';
         }
     }
@@ -1374,13 +1356,20 @@
                 if (sku) skus.push(sku);
             });
             if (skus.length) {
-                const entry = { parent: parent, skus: skus, attach: '', existingId: '' };
-                const radio = el.querySelector('.listing-publish-attach-radio:checked');
-                if (radio) {
-                    entry.attach = radio.value;
-                    if (radio.value === 'existing') {
-                        const select = el.querySelector('.listing-publish-attach-select');
-                        entry.existingId = select ? String(select.value || '').trim() : '';
+                const entry = { parent: parent, skus: skus, attach: '', existingId: '', attachSupported: false, hint: '' };
+                const pick = window.ListingParentPicker ? window.ListingParentPicker.read(el) : null;
+                if (pick) {
+                    entry.attachSupported = pick.supported;
+                    if (pick.supported) {
+                        entry.attach = pick.attach;
+                        entry.existingId = pick.attach === 'existing' ? pick.existingId : '';
+                    }
+                    // Parent name sent to the marketplace: the name typed for a new parent, or the chosen
+                    // existing parent's name (eBay / AliExpress keep the group's own name when attaching by id).
+                    if (pick.attach === 'new' && pick.newParent) {
+                        entry.hint = pick.newParent;
+                    } else if (pick.attach === 'existing' && !pick.supported && pick.existingParent) {
+                        entry.hint = pick.existingParent;
                     }
                 }
                 groups.push(entry);
@@ -1693,9 +1682,12 @@
     function publishPayload(skus, parent, group) {
         const c = cfg();
         const payload = publishPayloadBase(skus, parent, c);
-        if (group && group.attach && selectedPublishMode() !== 'single') {
-            payload.attach = group.attach;
-            payload.existing_listing_id = group.attach === 'existing' ? (group.existingId || '') : '';
+        if (group && selectedPublishMode() !== 'single') {
+            if (group.attach && group.attachSupported) {
+                payload.attach = group.attach;
+                payload.existing_listing_id = group.attach === 'existing' ? (group.existingId || '') : '';
+            }
+            if (group.hint) payload.parent = group.hint;
         }
         return payload;
     }
@@ -1850,20 +1842,9 @@
                 refreshConfirmState();
             });
 
-        $(document).off('change.listingPageTools', '.listing-publish-attach-radio')
-            .on('change.listingPageTools', '.listing-publish-attach-radio', function () {
-                const $box = $(this).closest('.listing-publish-attach');
-                const $select = $box.find('.listing-publish-attach-select');
-                const existing = this.value === 'existing' && this.checked;
-                $select.prop('disabled', !existing);
-                if (existing && !$select.val() && $select.find('option').length === 2) {
-                    $select.prop('selectedIndex', 1);
-                }
-                refreshConfirmState();
-            });
-
-        $(document).off('change.listingPageTools', '.listing-publish-attach-select')
-            .on('change.listingPageTools', '.listing-publish-attach-select', function () {
+        // The parent picker (listing-parent-picker.js) fires this when its choice changes.
+        $(document).off('lp-parent:changed.listingPageTools')
+            .on('lp-parent:changed.listingPageTools', function () {
                 refreshConfirmState();
             });
 

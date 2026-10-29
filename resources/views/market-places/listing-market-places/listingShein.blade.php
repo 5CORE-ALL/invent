@@ -1157,6 +1157,6 @@
             categorySearchUrl: '/listing-manager/ebay/categories'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261029-nrl"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261029-parent"></script>
 @include('partials.listing-sku-search')
 @endsection

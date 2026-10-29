@@ -36,6 +36,31 @@ class ListingPublishCommonController extends Controller
         return response()->json($preview->previewFromSkus($skus, $channel, $this->skuParentsFromRequest($request), $mode));
     }
 
+    /** Search the parent (variation) listings that already exist on a marketplace. */
+    public function existingParents(Request $request)
+    {
+        $channel = strtolower(trim((string) $request->input('channel', '')));
+        if ($channel === '') {
+            return response()->json(['success' => false, 'message' => 'Marketplace channel is missing.', 'parents' => []], 422);
+        }
+
+        try {
+            $parents = \App\Support\Marketplace\ListingExistingParents::search(
+                $channel,
+                (string) $request->input('q', ''),
+                (string) $request->input('parent', '')
+            );
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'parents' => []], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'attach_supported' => \App\Support\Marketplace\ListingExistingParents::supports($channel),
+            'parents' => $parents,
+        ]);
+    }
+
     public function publish(Request $request, ListingVariationPreviewService $preview)
     {
         if (function_exists('set_time_limit')) {

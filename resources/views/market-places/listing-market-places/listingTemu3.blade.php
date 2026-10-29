@@ -1585,6 +1585,7 @@
                     const selectedCount = children.filter(childShouldCheck).length;
                     html += `<div class="temu3-publish-group" data-group-index="${gi}" data-parent="${escapeHtml(parent)}">`;
                     html += `<div class="temu3-publish-group-head">${escapeHtml(parent)} · ${selectedCount} selected for ${single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation'}</div>`;
+                    if (!single && window.ListingParentPicker) { html += window.ListingParentPicker.block(group, gi, { channel: 'temu3', label: 'Temu', attachSupported: false, required: false }); }
                     html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th>';
                     if (!single) html += '<th>Variation Type</th><th>Variation Name</th>';
                     html += '<th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
@@ -1614,6 +1615,7 @@
                 });
                 $('#temu3-publish-groups').html(html);
                 $('#temu3-publish-confirm').prop('disabled', !canPublish);
+                if (window.ListingParentPicker) window.ListingParentPicker.bindConfirm('#temu3-publish-groups', '#temu3-publish-confirm');
                 $('#temu3-publish-progress').text('');
                 updateTemu3ModalCopy();
             }
@@ -1636,7 +1638,7 @@
                     (single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation')
                 );
                 const anyChecked = $('#temu3-publish-groups .temu3-publish-sku-check:checked:not(:disabled)').length > 0;
-                $('#temu3-publish-confirm').prop('disabled', !anyChecked);
+                $('#temu3-publish-confirm').prop('disabled', !anyChecked || !(window.ListingParentPicker ? window.ListingParentPicker.allReady('#temu3-publish-groups') : true));
             });
 
             function selectedPublishGroups() {
@@ -1649,7 +1651,11 @@
                         if (sku) skus.push(sku);
                     });
                     if (skus.length) {
-                        groups.push({ parent: parent, skus: skus });
+                        const pick = window.ListingParentPicker ? window.ListingParentPicker.read(this) : null;
+                        let sendParent = parent;
+                        if (pick && pick.attach === 'new' && pick.newParent) sendParent = pick.newParent;
+                        else if (pick && pick.attach === 'existing' && pick.existingParent) sendParent = pick.existingParent;
+                        groups.push({ parent: sendParent, skus: skus });
                     }
                 });
                 if (selectedPublishMode() !== 'single') return groups;
@@ -1913,6 +1919,6 @@
             publishUrl: '/listing_temu3/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261029-nrl"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261029-parent"></script>
 @include('partials.listing-sku-search')
 @endsection

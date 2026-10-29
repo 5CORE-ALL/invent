@@ -418,7 +418,8 @@ class ListingVariationPreviewService
             'publish_skus' => $publishSkus,
             'publish_count' => count($publishSkus),
             'attach_supported' => $attachSupported,
-            'existing_parents' => ($attachSupported && strtolower(trim($mode)) !== 'single')
+            // Every marketplace gets the parent picker in variation mode; only eBay / AliExpress can attach by id.
+            'existing_parents' => (strtolower(trim($mode)) !== 'single')
                 ? ListingExistingParents::forGroup($channel, $skus, $listedMap)
                 : [],
         ];
