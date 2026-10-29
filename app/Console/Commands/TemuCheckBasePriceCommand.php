@@ -13,6 +13,7 @@ use Illuminate\Console\Command;
  * Read-only: compare, for one SKU, the base price Temu holds (live API) with what /new-temuone has stored and pushed.
  * Nothing is written to Temu or to the database.
  */
+
 class TemuCheckBasePriceCommand extends Command
 {
     protected $signature = 'temu:check-base-price {sku : Seller SKU, e.g. "CS 06 2W 2PAIR"}';

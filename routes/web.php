@@ -645,6 +645,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channel-metric-dot-trends', [ChannelMasterController::class, 'getChannelMetricDotTrends']);
     Route::post('/channel-archive', [ChannelMasterController::class, 'archiveChannel'])->name('channel.archive');
     Route::get('/all-marketplace-master', [ChannelMasterController::class, 'allMarketplaceMaster'])->name('all.marketplace.master');
+    Route::get('/channels-master-today', [ChannelMasterController::class, 'getTodayBlockData'])->name('all.marketplace.master.today');
     Route::get('/channels-master-inv-pies', [ChannelMasterController::class, 'getInventoryPies'])->name('all.marketplace.master.inv.pies');
 
     // API Vs Sheet (Active Channel Master channels + download/upload source)
@@ -7747,6 +7748,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/automated/{automateTaskId}/checklist/template', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'downloadTemplate'])->name('tasks.automatedChecklist.template.download');
     Route::post('/tasks/automated/{automateTaskId}/checklist/template', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'uploadTemplate'])->name('tasks.automatedChecklist.template.upload');
     Route::get('/tasks/automated/{automateTaskId}/checklist/history', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'history'])->name('tasks.automatedChecklist.history');
+    Route::get('/tasks/automated/{automateTaskId}/update-form', [\App\Http\Controllers\AutomatedTaskUpdateController::class, 'show'])->name('tasks.automatedUpdate.show');
+    Route::post('/tasks/automated/{automateTaskId}/update-form', [\App\Http\Controllers\AutomatedTaskUpdateController::class, 'save'])->name('tasks.automatedUpdate.save');
+    Route::post('/tasks/automated/{automateTaskId}/update-form/submit', [\App\Http\Controllers\AutomatedTaskUpdateController::class, 'submit'])->name('tasks.automatedUpdate.submit');
+    Route::get('/tasks/automated/{automateTaskId}/update-form/template', [\App\Http\Controllers\AutomatedTaskUpdateController::class, 'downloadTemplate'])->name('tasks.automatedUpdate.template.download');
+    Route::post('/tasks/automated/{automateTaskId}/update-form/template', [\App\Http\Controllers\AutomatedTaskUpdateController::class, 'uploadTemplate'])->name('tasks.automatedUpdate.template.upload');
+    Route::get('/tasks/automated/{automateTaskId}/update-form/history', [\App\Http\Controllers\AutomatedTaskUpdateController::class, 'history'])->name('tasks.automatedUpdate.history');
     Route::get('/tasks/automated/{id}/subtasks', [\App\Http\Controllers\TaskController::class, 'automatedSubtasks'])->name('tasks.automatedSubtasks');
     Route::post('/tasks/automated/{id}/subtasks', [\App\Http\Controllers\TaskController::class, 'storeAutomatedSubtask'])->name('tasks.automatedSubtasks.store');
     Route::get('/tasks/today-deleted/data', [\App\Http\Controllers\TaskController::class, 'todayDeletedData'])->name('tasks.todayDeleted.data');

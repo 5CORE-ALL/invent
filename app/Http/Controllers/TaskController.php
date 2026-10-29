@@ -5234,6 +5234,19 @@ class TaskController extends Controller
                 ->pluck('cnt', 'automate_task_id');
         }
 
+        // "Update" structure + "Update Reports" (separate tables from the checklist ones)
+        $updateFormIds = collect();
+        $updateSubmissionCounts = collect();
+        if (\Schema::hasTable('automate_task_update_forms')) {
+            $updateFormIds = \DB::table('automate_task_update_forms')->pluck('id', 'automate_task_id');
+        }
+        if (\Schema::hasTable('automate_task_update_submissions')) {
+            $updateSubmissionCounts = \DB::table('automate_task_update_submissions')
+                ->select('automate_task_id', \DB::raw('COUNT(*) as cnt'))
+                ->groupBy('automate_task_id')
+                ->pluck('cnt', 'automate_task_id');
+        }
+
         // Map emails to names and avatar URLs
         $defaultAvatar = asset('images/users/avatar-2.jpg');
         $sopPageSet = $sopPageIds->map(fn ($v) => (int) $v)->flip();
@@ -5242,7 +5255,7 @@ class TaskController extends Controller
         foreach ($tasks as $template) {
             $tasksById[(int) $template->id] = $template;
         }
-        $tasks->each(function($task) use ($defaultAvatar, $formMeta, $submissionCounts, $sopPageSet, $currentEmail, $user, $tasksById, $archived) {
+        $tasks->each(function($task) use ($defaultAvatar, $formMeta, $submissionCounts, $updateFormIds, $updateSubmissionCounts, $sopPageSet, $currentEmail, $user, $tasksById, $archived) {
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
                 $task->assignor_id = $assignorUser ? $assignorUser->id : null;
@@ -5280,6 +5293,8 @@ class TaskController extends Controller
                 $task->cl_id = null;
             }
             $task->checklist_submission_count = (int) ($submissionCounts[$task->id] ?? 0);
+            $task->has_update_form = $updateFormIds->has($task->id);
+            $task->update_submission_count = (int) ($updateSubmissionCounts[$task->id] ?? 0);
             $task->has_sop_page = $sopPageSet->has((int) $task->id);
             $hasSopFile = trim((string) ($task->link3 ?? '')) !== '';
             $task->has_sop_link = $hasSopFile;

@@ -3797,9 +3797,12 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      * Goods Temu still lists in Seller Center "Manage products" (goods.list.retrieve, ALL).
      * Removed / ended goods can still answer goods.detail and sku.list, but are not in this list.
      *
+     * Goods whose status says deleted / recycled / removed are NOT returned (they are gone from Seller Center
+     * even if the list endpoint still echoes them), unless $includeRemoved is true (diagnostics).
+     *
      * @return array<string, mixed>|null  goodsId => goodsStatus; null when the list could not be read completely
      */
-    public function fetchLiveGoodsIds(): ?array
+    public function fetchLiveGoodsIds(bool $includeRemoved = false): ?array
     {
         if (! $this->isConfigured()) {
             return null;
@@ -3831,7 +3834,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             }
             foreach (($resp['result']['goodsList'] ?? []) as $g) {
                 if (is_array($g) && isset($g['goodsId'])) {
-                    $live[(string) $g['goodsId']] = $g['goodsStatus'] ?? null;
+                    $status = $g['goodsStatus'] ?? ($g['status'] ?? ($g['statusName'] ?? null));
+                    if (! $includeRemoved && self::isRemovedGoodsStatus($status)) {
+                        continue;
+                    }
+                    $live[(string) $g['goodsId']] = $status;
                 }
             }
             $pageToken = $resp['result']['pagination']['nextToken'] ?? null;
@@ -3840,6 +3847,23 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         } while ($pageToken && $pages < 200);
 
         return $pageToken ? null : $live; // incomplete (page cap hit) = do not trust
+    }
+
+    /**
+     * True when a Temu goods status means the goods was deleted / recycled / removed from Seller Center.
+     * Inactive / off-sale / draft goods are still listed there, so they are NOT "removed".
+     */
+    public static function isRemovedGoodsStatus(mixed $status): bool
+    {
+        if ($status === null || is_array($status)) {
+            return false;
+        }
+        if (is_int($status) || (is_string($status) && ctype_digit(trim($status)))) {
+            return in_array((int) $status, [6, 4401], true);
+        }
+        $label = strtolower(trim((string) $status));
+
+        return $label !== '' && (bool) preg_match('/delet|recycl|remov|terminat|discontinu/', $label);
     }
 
     /**

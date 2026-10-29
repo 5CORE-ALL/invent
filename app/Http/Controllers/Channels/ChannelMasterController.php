@@ -8274,23 +8274,208 @@ class ChannelMasterController extends Controller
         ]);
     }
 
+    private const AMM_DAILY_TZ = 'America/Los_Angeles';
+
+    private const AMM_TODAY_BLOCK_TTL_SECONDS = 1800;
+
+    private function ammPacificDate(): string
+    {
+        return now(self::AMM_DAILY_TZ)->toDateString();
+    }
+
+    /** Daily cache entries expire shortly after Pacific midnight. */
+    private function ammEndOfPacificDay(): \DateTimeInterface
+    {
+        return now(self::AMM_DAILY_TZ)->endOfDay()->addHour();
+    }
+
+    /**
+     * Daily (Pacific) cache key for the /all-marketplace-master grid payload.
+     * Deliberately NOT tied to the fast-payload version, which channel:calculate-data bumps every few minutes.
+     *
+     * @param  array<string, mixed>  $parts
+     */
+    private function ammDailyPayloadKey(array $parts): string
+    {
+        return 'amm_fast_daily_v1:'.$this->ammPacificDate().':'.md5(json_encode($parts));
+    }
+
+    /**
+     * Changes whenever a channel is added / edited / archived, so edits show up
+     * immediately instead of waiting for the next Pacific day.
+     */
+    private function ammChannelMasterFingerprint(): string
+    {
+        try {
+            return md5(ChannelMaster::query()->count().'|'.(string) ChannelMaster::query()->max('updated_at'));
+        } catch (\Throwable $e) {
+            return 'na';
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function ammStoreDailyPayload(string $dailyKey, array $payload): void
+    {
+        try {
+            \Cache::put($dailyKey, [
+                'fingerprint' => $this->ammChannelMasterFingerprint(),
+                'cached_at' => now()->toIso8601String(),
+                'payload' => $payload,
+            ], $this->ammEndOfPacificDay());
+        } catch (\Throwable $e) {
+            Log::warning('AMM daily payload cache write failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Overwrite only the Today Sales column from the 30-minute Today block cache.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function applyTodayBlockRefresh(array $rows): array
+    {
+        $map = $this->todayBlockMap()['map'];
+        foreach ($rows as &$row) {
+            $name = (string) ($row['Channel '] ?? $row['Channel'] ?? '');
+            if ($name !== '' && array_key_exists($name, $map)) {
+                $row['Today Sales'] = $map[$name];
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Today Sales per channel (display name => value), recomputed at most every 30 minutes.
+     *
+     * @return array{map: array<string, float>, updated_at: string}
+     */
+    private function todayBlockMap(): array
+    {
+        $key = 'amm_today_block_v1:'.$this->ammPacificDate();
+        $cached = \Cache::get($key);
+        if (is_array($cached) && is_array($cached['map'] ?? null)) {
+            return $cached;
+        }
+
+        $hasTodaySales = Schema::hasColumn('channel_master_calculated_data', 'today_sales');
+        $rows = [];
+        foreach (\App\Models\ChannelMasterCalculatedData::query()->get() as $calc) {
+            $rows[] = [
+                'Channel ' => $this->allMarketplaceDisplayName($calc->channel),
+                'Today Sales' => $hasTodaySales ? (float) ($calc->today_sales ?? 0) : 0.0,
+            ];
+        }
+
+        // Same overlay order as the full fast path.
+        $rows = $this->overlayLiveEbayTodaySalesOnChannelRows($rows);
+        $rows = $this->overlayLiveMiraklTodaySalesOnChannelRows($rows);
+        $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map[(string) $row['Channel ']] = round((float) preg_replace('/[^0-9.-]/', '', (string) ($row['Today Sales'] ?? 0)), 2);
+        }
+
+        $result = ['map' => $map, 'updated_at' => now()->toIso8601String()];
+        try {
+            \Cache::put($key, $result, self::AMM_TODAY_BLOCK_TTL_SECONDS);
+        } catch (\Throwable $e) {
+            // ignore cache write failures
+        }
+
+        return $result;
+    }
+
+    /**
+     * eBay / eBay 2 / eBay 3 Today Sales (Eastern calendar day).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveEbayTodaySalesOnChannelRows(array $rows): array
+    {
+        $todayYmd = now(ChannelTodaySalesService::TZ)->toDateString();
+
+        foreach ($rows as &$row) {
+            $which = $this->ebayWhichFromChannelName(trim((string) ($row['Channel '] ?? $row['Channel'] ?? '')));
+            if ($which === null) {
+                continue;
+            }
+            $todaySales = EbayChannelMetricsService::sumSalesForTimezoneDates(
+                $which,
+                $todayYmd,
+                $todayYmd,
+                ChannelTodaySalesService::TZ
+            );
+            if ($todaySales !== null && (float) $todaySales > 0) {
+                $row['Today Sales'] = round((float) $todaySales, 2);
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Lightweight endpoint for the Today block auto-refresh on /all-marketplace-master.
+     */
+    public function getTodayBlockData()
+    {
+        try {
+            $result = $this->todayBlockMap();
+
+            return response()->json([
+                'status' => 200,
+                'date' => $this->ammPacificDate(),
+                'updated_at' => $result['updated_at'],
+                'refresh_seconds' => self::AMM_TODAY_BLOCK_TTL_SECONDS,
+                'data' => $result['map'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Today block refresh failed: '.$e->getMessage());
+
+            return response()->json(['status' => 500, 'message' => 'Failed to load Today block', 'data' => []], 500);
+        }
+    }
+
     /**
      * INV modal pies: Inv@LP / Inv@SP by DIL color (red / green / pink) + daily history.
      */
-    public function getInventoryPies()
+    public function getInventoryPies(Request $request)
     {
         try {
+            // Built once per Pacific day (same daily cache as the channel grid).
+            $piesKey = 'amm_inv_pies_daily_v1:'.$this->ammPacificDate();
+            if (! $request->boolean('refresh')) {
+                $cachedPies = \Cache::get($piesKey);
+                if (is_array($cachedPies) && ($cachedPies['status'] ?? null) === 200) {
+                    return response()->json($cachedPies);
+                }
+            }
+
             $metrics = $this->getShopifyInvLpMetrics();
             $pies = $this->inventoryDilPiesFromMetrics($metrics);
 
-            return response()->json([
+            $result = [
                 'status' => 200,
                 'inv_sum' => $metrics['inv_sum'],
                 'inv_at_lp' => $metrics['inv_at_lp'],
                 'inv_at_sp' => $metrics['inv_at_sp'],
                 'slices' => $pies['slices'],
                 'history' => $pies['history'],
-            ]);
+            ];
+            try {
+                \Cache::put($piesKey, $result, $this->ammEndOfPacificDay());
+            } catch (\Throwable $e) {
+                // ignore cache write failures
+            }
+
+            return response()->json($result);
         } catch (\Throwable $e) {
             return response()->json([
                 'status' => 500,
@@ -8723,6 +8908,34 @@ class ChannelMasterController extends Controller
                 'size' => $paginate ? $size : 0,
                 'section' => (string) $section,
             ]);
+            // /all-marketplace-master opts in (daily_cache=1): the whole grid is built once per
+            // Pacific day and reused; only the Today column is refreshed (every 30 min).
+            $dailyKey = null;
+            if ($request->boolean('daily_cache')) {
+                $dailyKey = $this->ammDailyPayloadKey([
+                    'page' => $paginate ? $page : 1,
+                    'size' => $paginate ? $size : 0,
+                    'section' => (string) $section,
+                ]);
+                if (! $request->boolean('refresh')) {
+                    $daily = \Cache::get($dailyKey);
+                    if (is_array($daily)
+                        && is_array($daily['payload'] ?? null)
+                        && ($daily['payload']['status'] ?? null) === 200
+                        && ($daily['fingerprint'] ?? null) === $this->ammChannelMasterFingerprint()) {
+                        $dailyPayload = $daily['payload'];
+                        $dailyPayload['data'] = $this->applyTodayBlockRefresh($dailyPayload['data'] ?? []);
+                        $dailyPayload['daily_cache'] = [
+                            'hit' => true,
+                            'date' => $this->ammPacificDate(),
+                            'cached_at' => $daily['cached_at'] ?? null,
+                        ];
+
+                        return response()->json($this->attachCachedDotTrends($dailyPayload));
+                    }
+                }
+            }
+
             $cachedPayload = \Cache::get($cacheKey);
             if (is_array($cachedPayload) && ($cachedPayload['status'] ?? null) === 200) {
                 $cachedPayload['data'] = $this->applyFastPathLiveSalesOverlays($cachedPayload['data'] ?? []);
@@ -8732,6 +8945,9 @@ class ChannelMasterController extends Controller
                     \Cache::put($cacheKey, $cachedPayload, now()->addSeconds(90));
                 } catch (\Throwable $e) {
                     // ignore cache write failures
+                }
+                if ($dailyKey !== null) {
+                    $this->ammStoreDailyPayload($dailyKey, $cachedPayload);
                 }
 
                 return response()->json($this->attachCachedDotTrends($cachedPayload));
@@ -9006,6 +9222,9 @@ class ChannelMasterController extends Controller
                 \Cache::put($cacheKey, $payload, now()->addSeconds(90));
             } catch (\Throwable $e) {
                 // ignore cache write failures
+            }
+            if ($dailyKey !== null) {
+                $this->ammStoreDailyPayload($dailyKey, $payload);
             }
 
             return response()->json($this->attachCachedDotTrends($payload));

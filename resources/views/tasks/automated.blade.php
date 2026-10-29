@@ -336,12 +336,34 @@
             overflow: visible !important;
             text-overflow: clip !important;
         }
-        #tasks-table .tabulator-row .tabulator-cell[tabulator-field="id"] {
-            white-space: normal !important;
+        /* ACTION column: buttons at 0.8x size (36px -> 29px), all in one row */
+        #tasks-table .tabulator-row .tabulator-cell[tabulator-field="id"],
+        #archived-tasks-table .tabulator-row .tabulator-cell[tabulator-field="id"] {
+            white-space: nowrap !important;
+            word-break: normal !important;
+            overflow-wrap: normal !important;
         }
-        #tasks-table .tabulator-row .tabulator-cell[tabulator-field="id"] .action-btn-icon {
-            padding: 6px 8px !important;
-            margin: 1px !important;
+        #tasks-table .tabulator-row .tabulator-cell[tabulator-field="id"] .tabulator-cell-contents,
+        #archived-tasks-table .tabulator-row .tabulator-cell[tabulator-field="id"] .tabulator-cell-contents {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+        #tasks-table .tabulator-row .tabulator-cell[tabulator-field="id"] .action-btn-icon,
+        #archived-tasks-table .tabulator-row .tabulator-cell[tabulator-field="id"] .action-btn-icon {
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            width: 29px !important;
+            height: 29px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            font-size: 13px !important;
+            line-height: 1 !important;
+            border-radius: 5px !important;
         }
 
         /* Status Badges */
@@ -747,13 +769,100 @@
         font-weight: 600;
     }
 
+
+    /* ===== Compact toolbar: stat badges + filters on one row (left to right) ===== */
+    #automated-toolbar-row .stat-card {
+        flex: 0 0 auto !important;
+        min-width: 0 !important;
+        padding: 3px 8px !important;
+        border-radius: 8px;
+        border-left-width: 3px;
+    }
+    #automated-toolbar-row .stat-card:hover { transform: none; }
+    #automated-toolbar-row .stat-card .stat-icon {
+        width: 22px !important;
+        height: 22px !important;
+        font-size: 12px !important;
+        margin-right: 5px !important;
+        border-radius: 6px;
+    }
+    #automated-toolbar-row .stat-card .stat-label {
+        font-size: 8px !important;
+        letter-spacing: 0.5px;
+        margin-bottom: 1px;
+        white-space: nowrap;
+    }
+    #automated-toolbar-row .stat-card .stat-value {
+        font-size: 14px !important;
+        white-space: nowrap;
+    }
+    #automated-toolbar-row > a.stat-card,
+    #automated-toolbar-row > button.stat-card {
+        padding: 5px 8px !important;
+    }
+    #automated-toolbar-row > a.stat-card i,
+    #automated-toolbar-row > button.stat-card i {
+        font-size: 15px !important;
+    }
+    #automated-filter-bar {
+        flex: 1 1 560px;
+        min-width: 0;
+        margin-left: 6px;
+    }
+    #automated-filter-bar .amm-filter-col {
+        flex: 1 1 0;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 3px;
+    }
+    #automated-filter-bar .form-control-sm,
+    #automated-filter-bar .form-select-sm {
+        height: 26px;
+        min-height: 26px;
+        padding-top: 1px;
+        padding-bottom: 1px;
+        font-size: 11px;
+        min-width: 0;
+        flex: 1 1 70px;
+    }
+    #automated-filter-bar .amm-filter-col > .d-flex {
+        margin-top: 0 !important;
+        flex-wrap: nowrap !important;
+        flex: 0 0 auto;
+        gap: 2px !important;
+    }
+    #automated-filter-bar .task-playback-group {
+        flex-wrap: nowrap;
+    }
+    #automated-filter-bar .task-playback-group .btn {
+        width: 20px !important;
+        height: 20px !important;
+        min-width: 20px;
+    }
+    #automated-filter-bar .task-playback-group .btn i {
+        font-size: 12px !important;
+    }
+    #automated-filter-bar [id^="task-playback-label-"] {
+        font-size: 10px !important;
+        white-space: nowrap;
+        max-width: 90px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
     /* Checklist form + report: ~2x wider, docked to the right */
     #checklistFormModal.modal,
-    #checklistHistoryModal.modal {
+    #checklistHistoryModal.modal,
+    #updateFormModal.modal,
+    #updateHistoryModal.modal {
         padding-right: 0 !important;
     }
     #checklistFormModal .modal-dialog,
-    #checklistHistoryModal .modal-dialog {
+    #checklistHistoryModal .modal-dialog,
+    #updateFormModal .modal-dialog,
+    #updateHistoryModal .modal-dialog {
         position: fixed;
         top: 0;
         right: 0;
@@ -766,7 +875,9 @@
         transform: none;
     }
     #checklistFormModal .modal-content,
-    #checklistHistoryModal .modal-content {
+    #checklistHistoryModal .modal-content,
+    #updateFormModal .modal-content,
+    #updateHistoryModal .modal-content {
         height: 100vh;
         border-radius: 0;
         border: none;
@@ -774,15 +885,20 @@
         box-shadow: -8px 0 28px rgba(0, 0, 0, 0.18);
     }
     #checklistFormModal .modal-body,
-    #checklistHistoryModal .modal-body {
+    #checklistHistoryModal .modal-body,
+    #updateFormModal .modal-body,
+    #updateHistoryModal .modal-body {
         overflow-y: auto;
         flex: 1 1 auto;
     }
     #checklistFormModal.show .modal-dialog,
-    #checklistHistoryModal.show .modal-dialog {
+    #checklistHistoryModal.show .modal-dialog,
+    #updateFormModal.show .modal-dialog,
+    #updateHistoryModal.show .modal-dialog {
         transform: none;
     }
-    #checklistFormModal .checklist-header-icon {
+    #checklistFormModal .checklist-header-icon,
+    #updateFormModal .checklist-header-icon {
         width: 32px;
         height: 32px;
         padding: 0;
@@ -791,14 +907,17 @@
         justify-content: center;
         border: 1px solid rgba(0,0,0,.15);
     }
-    #checklistFormModal .checklist-header-icon i {
+    #checklistFormModal .checklist-header-icon i,
+    #updateFormModal .checklist-header-icon i {
         font-size: 1.15rem;
         line-height: 1;
         color: #222;
     }
     @media (max-width: 768px) {
         #checklistFormModal .modal-dialog,
-        #checklistHistoryModal .modal-dialog {
+    #checklistHistoryModal .modal-dialog,
+    #updateFormModal .modal-dialog,
+    #updateHistoryModal .modal-dialog {
             max-width: 100vw;
             width: 100vw;
             min-width: 0;
@@ -872,10 +991,10 @@
         </div>     
         <!-- end page title --> 
 
-        <!-- Statistics Cards & Actions in One Line -->
-        <div class="row mb-3">
+        <!-- Statistics Cards, Actions & Filters in One Row -->
+        <div class="row mb-2">
             <div class="col-12">
-                <div class="d-flex gap-2 flex-wrap">
+                <div id="automated-toolbar-row" class="d-flex gap-1 flex-wrap align-items-center">
                     <!-- Total Tasks -->
                     <div class="stat-card stat-card-blue automated-stat-trigger" data-metric="total" data-value="{{ $stats['total'] }}" title="Click to view history" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0;">
                         <div class="d-flex align-items-center">
@@ -972,45 +1091,19 @@
                     <button type="button" class="stat-card border-0 text-dark" style="padding: 8px 12px; margin-bottom: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #ffc107 0%, #e0a800) !important; border-left-color: #e0a800 !important;" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
                         <i class="mdi mdi-refresh" style="font-size: 20px; color: #212529;"></i>
                     </button>
-                </div>
-            </div>
-        </div>
 
-        <div class="row">
-            <div class="col-12">
-                <div class="card task-card">
-                    <div class="card-body">
-
-                        @if(session('success'))
-                            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                <i class="mdi mdi-check-circle me-2"></i>{{ session('success') }}
-                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                            </div>
-                        @endif
-
-                        <!-- Active / Archived switch -->
-                        <ul class="nav nav-tabs mb-3" id="automated-view-tabs">
-                            <li class="nav-item">
-                                <a class="nav-link active" href="#" data-view="active"><i class="mdi mdi-robot me-1"></i>Automated Tasks</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="#" data-view="archived"><i class="mdi mdi-archive me-1"></i>Archived Automated <span class="badge bg-secondary" id="archived-count-badge">0</span></a>
-                            </li>
-                        </ul>
-
-                        <div id="automated-active-pane">
-                        <!-- Search/Filter Bar -->
-                        <div class="d-flex flex-nowrap align-items-start gap-2 mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
-                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
+                    <!-- Search/Filter Bar (same row as the stat badges) -->
+                        <div id="automated-filter-bar" class="d-flex flex-nowrap align-items-center gap-1">
+                            <div class="amm-filter-col">
                                 <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search all">
                             </div>
-                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
+                            <div class="amm-filter-col">
                                 <input type="text" id="filter-group" class="form-control form-control-sm" placeholder="Enter Group">
                             </div>
-                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
+                            <div class="amm-filter-col">
                                 <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Enter Task">
                             </div>
-                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
+                            <div class="amm-filter-col">
                                 <select id="filter-assignor" class="form-select form-select-sm">
                                     <option value="">All Assignors</option>
                                     <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignor</option>
@@ -1036,7 +1129,7 @@
                                     <span id="task-playback-label-assignor" class="text-muted small" style="font-size:11px; display:none;"></span>
                                 </div>
                             </div>
-                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
+                            <div class="amm-filter-col">
                                 <select id="filter-assignee" class="form-select form-select-sm">
                                     <option value="">All Assignees</option>
                                     <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignee</option>
@@ -1062,7 +1155,7 @@
                                     <span id="task-playback-label-assignee" class="text-muted small" style="font-size:11px; display:none;"></span>
                                 </div>
                             </div>
-                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
+                            <div class="amm-filter-col">
                                 <select id="filter-freq" class="form-select form-select-sm">
                                     <option value="">All Frequencies</option>
                                     <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Freq</option>
@@ -1073,6 +1166,33 @@
                             </div>
                         </div>
 
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card task-card">
+                    <div class="card-body">
+
+                        @if(session('success'))
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                <i class="mdi mdi-check-circle me-2"></i>{{ session('success') }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        @endif
+
+                        <!-- Active / Archived switch -->
+                        <ul class="nav nav-tabs mb-2" id="automated-view-tabs">
+                            <li class="nav-item">
+                                <a class="nav-link active" href="#" data-view="active"><i class="mdi mdi-robot me-1"></i>Automated Tasks</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="#" data-view="archived"><i class="mdi mdi-archive me-1"></i>Archived Automated <span class="badge bg-secondary" id="archived-count-badge">0</span></a>
+                            </li>
+                        </ul>
+
+                        <div id="automated-active-pane">
                         <div class="table-wrapper">
                             <div id="tasks-table"></div>
                         </div>
@@ -1415,6 +1535,85 @@
     </div>
 </div>
 
+<!-- Update Form Modal (separate from Checklist) -->
+<div class="modal fade" id="updateFormModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable checklist-side-panel">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #198754 0%, #4cc38a 100%); color: #fff;">
+                <h5 class="modal-title mb-0">
+                    <i class="mdi mdi-magnify me-2"></i><span>Update</span>
+                </h5>
+                <div class="d-flex align-items-center gap-2 ms-auto">
+                    <button type="button" class="btn btn-sm btn-light checklist-header-icon" id="update-download-template" title="Download template" aria-label="Download template">
+                        <i class="mdi mdi-download"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-light checklist-header-icon d-none" id="update-upload-template" title="Upload template data" aria-label="Upload template data">
+                        <i class="mdi mdi-upload"></i>
+                    </button>
+                    <input type="file" id="update-upload-file" class="d-none" accept=".csv,.txt,text/csv">
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="update-automate-task-id" value="">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <div>
+                        <div class="small text-muted">Automated Task</div>
+                        <div class="fw-semibold" id="update-task-title">—</div>
+                    </div>
+                    <div class="btn-group btn-group-sm" role="group" id="update-mode-toggle" style="display:none;">
+                        <button type="button" class="btn btn-outline-dark active" id="update-mode-fill">Fill</button>
+                        <button type="button" class="btn btn-outline-dark" id="update-mode-edit">Edit form</button>
+                    </div>
+                </div>
+
+                <div id="update-fill-pane">
+                    <div id="update-questions-fill" class="vstack gap-3"></div>
+                    <div id="update-empty-fill" class="alert alert-warning d-none mb-0">
+                        No update structure is attached yet.
+                        <span class="d-none" id="update-empty-manage-hint"> Use <strong>Edit form</strong> to create one.</span>
+                    </div>
+                </div>
+
+                <div id="update-edit-pane" class="d-none">
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold mb-1">Form title</label>
+                        <input type="text" class="form-control form-control-sm" id="update-form-title" placeholder="Update form title">
+                    </div>
+                    <div id="update-questions-edit" class="vstack gap-2 mb-2"></div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="update-add-checkbox"><i class="mdi mdi-checkbox-marked-outline me-1"></i>Add Yes/No</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="update-add-text"><i class="mdi mdi-text me-1"></i>Add text</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success d-none" id="update-save-form-btn"><i class="mdi mdi-content-save me-1"></i>Save form</button>
+                <button type="button" class="btn btn-primary" id="update-submit-btn"><i class="mdi mdi-send me-1"></i>Submit</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Update Reports Modal -->
+<div class="modal fade" id="updateHistoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable checklist-side-panel">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #495057 0%, #6c757d 100%); color: white;">
+                <h5 class="modal-title"><i class="mdi mdi-history me-2"></i>Update Reports</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="update-history-body" class="vstack gap-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- SOP upload / link modal -->
 <div class="modal fade" id="sopUploadModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -1538,7 +1737,7 @@
                 <div class="modal-body">
                     <div class="alert alert-info">
                         <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>CSV Format Required:</h6>
-                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, SOP (hover: Training), Video, CL (hover: Checklist), Report (hover: Form report)</p>
+                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, SOP (hover: Training), Video, CL (hover: Checklist), CL-R (hover: Checklist Reports)</p>
                         <p class="mb-1"><strong>Status Options:</strong> Todo, Working, Archived, Done, Need Help, Need Approval, Dependent, Approved, Hold, Monitor, Rework, Cancelled</p>
                         <p class="mb-0"><strong>Priority Options:</strong> Low, Normal, High, Urgent</p>
                         <p class="mb-0"><small class="text-muted">Note: Assignor and Assignee should match exact user names in the system</small></p>
@@ -1613,6 +1812,24 @@
                     '<i class="mdi mdi-magnify" style="font-size:22px;color:' + color + ';"></i></button>';
             }
 
+            // "Update" column: green magnifier when an update structure exists, red when it does not.
+            function formatUpdateIcon(rowData) {
+                var hasForm = !!rowData.has_update_form;
+                var color = hasForm ? '#198754' : '#dc3545';
+                var title = hasForm ? 'Open update form' : 'No update structure — click to create';
+                return '<button type="button" class="btn btn-link p-0 border-0 shadow-none at-update-open" data-id="' + checklistEsc(rowData.id) + '" title="' + title + '" aria-label="Open update form" style="line-height:1;">' +
+                    '<i class="mdi mdi-magnify" style="font-size:22px;color:' + color + ';"></i></button>';
+            }
+
+            // "Update Reports" column: green magnifier when reports exist, red when none yet.
+            function formatUpdateReportIcon(rowData) {
+                var count = parseInt(rowData.update_submission_count || 0, 10) || 0;
+                var color = count > 0 ? '#198754' : '#dc3545';
+                var title = count > 0 ? ('View update reports (' + count + ')') : 'No update reports yet';
+                return '<button type="button" class="btn btn-link p-0 border-0 shadow-none at-update-history" data-id="' + checklistEsc(rowData.id) + '" title="' + title + '" aria-label="Update reports" style="line-height:1;">' +
+                    '<i class="mdi mdi-magnify" style="font-size:22px;color:' + color + ';"></i></button>';
+            }
+
             function setChecklistFormIdDisplay(clId) {
                 var value = clId || '';
                 $('#checklist-form-id').text(value || '—');
@@ -1636,16 +1853,19 @@
                 return 'q_' + Math.random().toString(36).slice(2, 10);
             }
 
-            function renderChecklistFill(questions) {
-                var $box = $('#checklist-questions-fill');
+            function renderChecklistFill(questions, cfg) {
+                cfg = cfg || {};
+                var $box = $(cfg.box || '#checklist-questions-fill');
+                var emptySel = cfg.empty || '#checklist-empty-fill';
+                var submitSel = cfg.submit || '#checklist-submit-btn';
                 $box.empty();
                 if (!questions || !questions.length) {
-                    $('#checklist-empty-fill').removeClass('d-none');
-                    $('#checklist-submit-btn').prop('disabled', true);
+                    $(emptySel).removeClass('d-none');
+                    $(submitSel).prop('disabled', true);
                     return;
                 }
-                $('#checklist-empty-fill').addClass('d-none');
-                $('#checklist-submit-btn').prop('disabled', false);
+                $(emptySel).addClass('d-none');
+                $(submitSel).prop('disabled', false);
                 questions.forEach(function(q, idx) {
                     var req = q.required ? ' <span class="text-danger">*</span>' : '';
                     var qid = checklistEsc(q.id);
@@ -1680,8 +1900,8 @@
                 });
             }
 
-            function renderChecklistEdit(questions) {
-                var $box = $('#checklist-questions-edit');
+            function renderChecklistEdit(questions, boxSel) {
+                var $box = $(boxSel || '#checklist-questions-edit');
                 $box.empty();
                 (questions || []).forEach(function(q, idx) {
                     var typeLabel = q.type === 'checkbox' ? 'Yes/No' : checklistEsc(q.type);
@@ -1699,9 +1919,9 @@
                 });
             }
 
-            function collectChecklistEditQuestions() {
+            function collectChecklistEditQuestions(boxSel) {
                 var out = [];
-                $('#checklist-questions-edit .checklist-edit-row').each(function() {
+                $((boxSel || '#checklist-questions-edit') + ' .checklist-edit-row').each(function() {
                     var $row = $(this);
                     var storedType = String($row.data('type') || '').toLowerCase();
                     var typeBadge = ($row.find('.badge').text() || 'text').trim().toLowerCase();
@@ -1789,6 +2009,58 @@
                 }
             }
 
+            function renderChecklistSubmissionsHtml(subs) {
+                var html = '';
+                subs.forEach(function(s, i) {
+                    html += '<div class="border rounded p-2">';
+                    html += '<div class="d-flex justify-content-between"><strong>#' + (subs.length - i) + '</strong><span class="small text-muted">' + checklistEsc(s.submitted_at) + '</span></div>';
+                    html += '<div class="small mb-2">By: ' + checklistEsc(s.submitted_by) + ' · Submission ID: ' + checklistEsc(s.id) + '</div>';
+                    html += '<ul class="mb-0 ps-3">';
+                    (s.answers || []).forEach(function(a) {
+                        var v;
+                        if (a.type === 'checkbox') {
+                            var ans = a.value;
+                            var isYes = false;
+                            var action = '';
+                            var corrective = '';
+                            var actions = [];
+                            if (ans && typeof ans === 'object') {
+                                isYes = !!ans.answer;
+                                if (Array.isArray(ans.actions)) {
+                                    actions = ans.actions.filter(function(x) { return String(x || '').trim(); });
+                                } else if (ans.action) {
+                                    actions = [ans.action];
+                                }
+                                corrective = ans.corrective_action || '';
+                            } else {
+                                isYes = !!ans;
+                            }
+                            v = '<span class="checklist-answer-hl">' + (isYes
+                                ? '<i class="mdi mdi-check-circle" style="color:#198754;font-size:18px;vertical-align:middle;" title="Yes"></i> Yes'
+                                : '<i class="mdi mdi-close-circle" style="color:#dc3545;font-size:18px;vertical-align:middle;" title="No"></i> No'
+                            ) + '</span>';
+                            if (!isYes && (actions.length || corrective)) {
+                                v += '<ul class="mb-0 mt-1 ps-3 small">';
+                                actions.forEach(function(act, ai) {
+                                    v += '<li><span class="text-muted">Action' + (actions.length > 1 ? ' ' + (ai + 1) : '') + ':</span> ' +
+                                        '<span class="checklist-answer-hl">' + checklistEsc(act) + '</span></li>';
+                                });
+                                if (corrective) {
+                                    v += '<li><span class="text-muted">Corrective action:</span> ' +
+                                        '<span class="checklist-answer-hl">' + checklistEsc(corrective) + '</span></li>';
+                                }
+                                v += '</ul>';
+                            }
+                        } else {
+                            v = '<span class="checklist-answer-hl">' + checklistEsc(a.value || '—') + '</span>';
+                        }
+                        html += '<li class="mb-1"><span class="text-muted">' + checklistEsc(a.label) + ':</span> ' + v + '</li>';
+                    });
+                    html += '</ul></div>';
+                });
+                return html;
+            }
+
             async function openChecklistHistory(automateTaskId) {
                 $('#checklist-history-body').html('<div class="text-muted">Loading…</div>');
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('checklistHistoryModal')).show();
@@ -1807,54 +2079,7 @@
                         $('#checklist-history-body').html('<div class="text-muted">No submissions yet.</div>');
                         return;
                     }
-                    var html = '';
-                    subs.forEach(function(s, i) {
-                        html += '<div class="border rounded p-2">';
-                        html += '<div class="d-flex justify-content-between"><strong>#' + (subs.length - i) + '</strong><span class="small text-muted">' + checklistEsc(s.submitted_at) + '</span></div>';
-                        html += '<div class="small mb-2">By: ' + checklistEsc(s.submitted_by) + ' · Submission ID: ' + checklistEsc(s.id) + '</div>';
-                        html += '<ul class="mb-0 ps-3">';
-                        (s.answers || []).forEach(function(a) {
-                            var v;
-                            if (a.type === 'checkbox') {
-                                var ans = a.value;
-                                var isYes = false;
-                                var action = '';
-                                var corrective = '';
-                                var actions = [];
-                                if (ans && typeof ans === 'object') {
-                                    isYes = !!ans.answer;
-                                    if (Array.isArray(ans.actions)) {
-                                        actions = ans.actions.filter(function(x) { return String(x || '').trim(); });
-                                    } else if (ans.action) {
-                                        actions = [ans.action];
-                                    }
-                                    corrective = ans.corrective_action || '';
-                                } else {
-                                    isYes = !!ans;
-                                }
-                                v = '<span class="checklist-answer-hl">' + (isYes
-                                    ? '<i class="mdi mdi-check-circle" style="color:#198754;font-size:18px;vertical-align:middle;" title="Yes"></i> Yes'
-                                    : '<i class="mdi mdi-close-circle" style="color:#dc3545;font-size:18px;vertical-align:middle;" title="No"></i> No'
-                                ) + '</span>';
-                                if (!isYes && (actions.length || corrective)) {
-                                    v += '<ul class="mb-0 mt-1 ps-3 small">';
-                                    actions.forEach(function(act, ai) {
-                                        v += '<li><span class="text-muted">Action' + (actions.length > 1 ? ' ' + (ai + 1) : '') + ':</span> ' +
-                                            '<span class="checklist-answer-hl">' + checklistEsc(act) + '</span></li>';
-                                    });
-                                    if (corrective) {
-                                        v += '<li><span class="text-muted">Corrective action:</span> ' +
-                                            '<span class="checklist-answer-hl">' + checklistEsc(corrective) + '</span></li>';
-                                    }
-                                    v += '</ul>';
-                                }
-                            } else {
-                                v = '<span class="checklist-answer-hl">' + checklistEsc(a.value || '—') + '</span>';
-                            }
-                            html += '<li class="mb-1"><span class="text-muted">' + checklistEsc(a.label) + ':</span> ' + v + '</li>';
-                        });
-                        html += '</ul></div>';
-                    });
+                    var html = renderChecklistSubmissionsHtml(subs);
                     $('#checklist-history-body').html(html);
                 } catch (e) {
                     $('#checklist-history-body').html('<div class="alert alert-danger">Failed to load history</div>');
@@ -2179,7 +2404,10 @@
                                 : '';
 
                             // Wraps onto the next line when too long; full text also on hover (title attribute).
-                            return '<div class="title-cell-content" title="' + htmlTitle + '"><strong>' + htmlTitle + '</strong>' + subtaskBadge + '</div>';
+                            var copyBtn = title
+                                ? '<button type="button" class="btn btn-link p-0 border-0 shadow-none at-task-copy ms-1" data-title="' + htmlTitle + '" title="Copy task" aria-label="Copy task" style="line-height:1;vertical-align:middle;color:#6c757d;"><i class="mdi mdi-content-copy" style="font-size:14px;"></i></button>'
+                                : '';
+                            return '<div class="title-cell-content" title="' + htmlTitle + '"><strong>' + htmlTitle + '</strong>' + subtaskBadge + copyBtn + '</div>';
                         }
                     });
                     
@@ -2260,7 +2488,7 @@
                         title: "ETC-M",
                         headerTooltip: "ETC minutes × weight (Daily 25, Weekly 4, Monthly 1). Stat card ETC-M uses the same sum ÷ 60 (h).",
                         field: "etc_monthly",
-                       
+                        visible: false, // hidden (ETC-M stat card still works from row data)
                         hozAlign: "center",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
@@ -2383,7 +2611,7 @@
                         }
                     });
                     cols.push({
-                        title: "Report",
+                        title: "CL-R",
                         field: "checklist_submission_count",
                         width: 56,
                         minWidth: 48,
@@ -2391,9 +2619,49 @@
                         cssClass: "tasks-col-link-icon",
                         headerClass: "tasks-col-link-icon",
                         hozAlign: "center",
-                        headerTooltip: "Checklist submission history",
+                        headerTooltip: "Checklist Reports",
+                        titleFormatter: function() {
+                            return '<span title="Checklist Reports" style="font-weight:700;font-size:10.8px;color:#495057;">CL-R</span>';
+                        },
                         formatter: function(cell) {
                             return formatChecklistReportIcon(cell.getRow().getData());
+                        }
+                    });
+                    cols.push({
+                        title: "Update",
+                        field: "has_update_form",
+                        width: 52,
+                        minWidth: 46,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-link-icon",
+                        headerClass: "tasks-col-link-icon",
+                        hozAlign: "center",
+                        headerTooltip: "Update structure",
+                        titleFormatter: function() {
+                            return '<span title="Update structure" style="font-weight:700;font-size:10.8px;color:#495057;">Update</span>';
+                        },
+                        formatter: function(cell) {
+                            return formatUpdateIcon(cell.getRow().getData());
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            return (aRow.getData().has_update_form ? 1 : 0) - (bRow.getData().has_update_form ? 1 : 0);
+                        }
+                    });
+                    cols.push({
+                        title: "Update Reports",
+                        field: "update_submission_count",
+                        width: 84,
+                        minWidth: 70,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-link-icon",
+                        headerClass: "tasks-col-link-icon",
+                        hozAlign: "center",
+                        headerTooltip: "Update Reports",
+                        titleFormatter: function() {
+                            return '<span title="Update Reports" style="font-weight:700;font-size:10.8px;color:#495057;">Update Reports</span>';
+                        },
+                        formatter: function(cell) {
+                            return formatUpdateReportIcon(cell.getRow().getData());
                         }
                     });
                     
@@ -2660,8 +2928,8 @@
                     cols.push({
                         title: "ACTION", 
                         field: "id", 
-                        width: 150,
-                        minWidth: 120,
+                        width: 140,
+                        minWidth: 132,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var data = cell.getRow().getData() || {};
@@ -2768,10 +3036,12 @@
                 $(this).addClass('active');
                 if (view === 'archived') {
                     $('#automated-active-pane').hide();
+                    $('#automated-filter-bar').hide();
                     $('#automated-archived-pane').show();
                     archivedTable.redraw(true);
                 } else {
                     $('#automated-archived-pane').hide();
+                    $('#automated-filter-bar').css('display', '');
                     $('#automated-active-pane').show();
                     table.redraw(true);
                 }
@@ -2843,8 +3113,8 @@
                         case 'Weekly': valueEl.text(weekly); break;
                         case 'Monthly': valueEl.text(monthly); break;
                         case 'ACTIVE': valueEl.text(active); break;
-                        case 'ETC D': valueEl.text(Math.round(etcMonthlyTotal / 60 / 25) + 'h'); break;
-                        case 'ETC M': valueEl.text(Math.round(etcMonthlyTotal / 60) + 'h'); break;
+                        case 'ETC D': valueEl.text(formatEtcHoursMinutes(etcMonthlyTotal / 25)); break;
+                        case 'ETC M': valueEl.text(formatEtcHoursMinutes(etcMonthlyTotal)); break;
                     }
                 });
             }
@@ -3756,6 +4026,43 @@
                 copyClId($(this).data('cl-id'));
             });
 
+            // Copy the task title (works on http too via the execCommand fallback)
+            function copyTextToClipboard(text) {
+                text = String(text || '');
+                if (!text) return Promise.resolve(false);
+                if (navigator.clipboard && window.isSecureContext) {
+                    return navigator.clipboard.writeText(text).then(function() { return true; }, function() { return false; });
+                }
+                return new Promise(function(resolve) {
+                    var ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.setAttribute('readonly', '');
+                    ta.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    var ok = false;
+                    try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+                    document.body.removeChild(ta);
+                    resolve(ok);
+                });
+            }
+
+            $(document).on('click', '.at-task-copy', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var $btn = $(this);
+                var $icon = $btn.find('i');
+                copyTextToClipboard($btn.attr('data-title')).then(function(ok) {
+                    $icon.removeClass('mdi-content-copy mdi-close').addClass(ok ? 'mdi-check' : 'mdi-close')
+                        .css('color', ok ? '#198754' : '#dc3545');
+                    $btn.attr('title', ok ? 'Copied!' : 'Copy failed');
+                    setTimeout(function() {
+                        $icon.removeClass('mdi-check mdi-close').addClass('mdi-content-copy').css('color', '');
+                        $btn.attr('title', 'Copy task');
+                    }, 1200);
+                });
+            });
+
             function openSopUploadModal(taskId, taskTitle, existingLink) {
                 $('#sop-upload-task-id').val(taskId || '');
                 $('#sop-upload-task-title').text(taskTitle || ('Task #' + taskId));
@@ -4135,6 +4442,289 @@
                     $btn.prop('disabled', false);
                 }
             });
+
+            // ================= Update (structure) + Update Reports =================
+            // Same behaviour as Checklist (CL / CL-R) but backed by its own tables and routes.
+            var updateCurrentQuestions = [];
+            var updateCurrentMode = 'fill';
+            var updateCanManageRuntime = canManageChecklist;
+            var UPDATE_BASE = "{{ url('/tasks/automated') }}";
+            var UPDATE_FILL_CFG = { box: '#update-questions-fill', empty: '#update-empty-fill', submit: '#update-submit-btn' };
+
+            function setUpdateMode(mode) {
+                updateCurrentMode = mode;
+                if (mode === 'edit') {
+                    $('#update-fill-pane').addClass('d-none');
+                    $('#update-edit-pane').removeClass('d-none');
+                    $('#update-mode-fill').removeClass('active');
+                    $('#update-mode-edit').addClass('active');
+                    $('#update-save-form-btn').removeClass('d-none');
+                    $('#update-submit-btn').addClass('d-none');
+                    renderChecklistEdit(updateCurrentQuestions, '#update-questions-edit');
+                } else {
+                    $('#update-edit-pane').addClass('d-none');
+                    $('#update-fill-pane').removeClass('d-none');
+                    $('#update-mode-edit').removeClass('active');
+                    $('#update-mode-fill').addClass('active');
+                    $('#update-save-form-btn').addClass('d-none');
+                    $('#update-submit-btn').removeClass('d-none');
+                    renderChecklistFill(updateCurrentQuestions, UPDATE_FILL_CFG);
+                }
+            }
+
+            async function openUpdateModal(automateTaskId) {
+                $('#update-automate-task-id').val(automateTaskId);
+                $('#update-task-title').text('Loading…');
+                $('#update-questions-fill').empty();
+                $('#update-questions-edit').empty();
+                try {
+                    var res = await fetch(UPDATE_BASE + '/' + automateTaskId + '/update-form', {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin'
+                    });
+                    var data = await res.json();
+                    if (!res.ok) {
+                        alert(data.message || 'Failed to load update form');
+                        return;
+                    }
+                    $('#update-task-title').text(data.task_title || ('Task #' + automateTaskId));
+                    var form = data.form;
+                    updateCurrentQuestions = (form && form.questions) ? form.questions.slice() : [];
+                    $('#update-form-title').val(form && form.title ? form.title : ((data.task_title || '') + ' Update'));
+
+                    updateCanManageRuntime = !!(data.can_manage || canManageChecklist);
+                    if (updateCanManageRuntime) {
+                        $('#update-mode-toggle').show();
+                        $('#update-empty-manage-hint').removeClass('d-none');
+                        $('#update-upload-template').removeClass('d-none');
+                    } else {
+                        $('#update-mode-toggle').hide();
+                        $('#update-empty-manage-hint').addClass('d-none');
+                        $('#update-upload-template').addClass('d-none');
+                    }
+
+                    setUpdateMode(!form && updateCanManageRuntime ? 'edit' : 'fill');
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('updateFormModal')).show();
+                } catch (e) {
+                    alert('Failed to load update form');
+                }
+            }
+
+            async function openUpdateHistory(automateTaskId) {
+                $('#update-history-body').html('<div class="text-muted">Loading…</div>');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('updateHistoryModal')).show();
+                try {
+                    var res = await fetch(UPDATE_BASE + '/' + automateTaskId + '/update-form/history', {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin'
+                    });
+                    var data = await res.json();
+                    if (!res.ok) {
+                        $('#update-history-body').html('<div class="alert alert-danger">' + checklistEsc(data.message || 'Failed to load update reports') + '</div>');
+                        return;
+                    }
+                    var subs = data.submissions || [];
+                    if (!subs.length) {
+                        $('#update-history-body').html('<div class="text-muted">No update reports yet.</div>');
+                        return;
+                    }
+                    $('#update-history-body').html(renderChecklistSubmissionsHtml(subs));
+                } catch (e) {
+                    $('#update-history-body').html('<div class="alert alert-danger">Failed to load update reports</div>');
+                }
+            }
+
+            $(document).on('click', '.at-update-open', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openUpdateModal($(this).data('id'));
+            });
+
+            $(document).on('click', '.at-update-history', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openUpdateHistory($(this).data('id'));
+            });
+
+            $('#update-download-template').on('click', function() {
+                var id = $('#update-automate-task-id').val();
+                if (!id) return;
+                window.location = UPDATE_BASE + '/' + id + '/update-form/template';
+            });
+
+            $('#update-upload-template').on('click', function() {
+                if (!updateCanManageRuntime) return;
+                $('#update-upload-file').trigger('click');
+            });
+
+            $('#update-upload-file').on('change', async function() {
+                var file = this.files && this.files[0];
+                this.value = '';
+                if (!file) return;
+                var id = $('#update-automate-task-id').val();
+                if (!id) return;
+                var fd = new FormData();
+                fd.append('file', file);
+                try {
+                    var res = await fetch(UPDATE_BASE + '/' + id + '/update-form/template', {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': checklistCsrf, 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        body: fd
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    if (!res.ok) {
+                        alert(data.message || 'Failed to upload template');
+                        return;
+                    }
+                    updateCurrentQuestions = Array.isArray(data.questions) ? data.questions : [];
+                    if (data.title) $('#update-form-title').val(data.title);
+                    setUpdateMode('edit');
+                    alert(data.message || 'Template loaded. Click Save form to keep it.');
+                } catch (err) {
+                    alert('Failed to upload template');
+                }
+            });
+
+            $('#update-mode-fill').on('click', function() { setUpdateMode('fill'); });
+            $('#update-mode-edit').on('click', function() {
+                if (!updateCanManageRuntime) return;
+                setUpdateMode('edit');
+            });
+
+            $('#update-add-checkbox').on('click', function() {
+                updateCurrentQuestions = collectChecklistEditQuestions('#update-questions-edit');
+                updateCurrentQuestions.push({ id: checklistNewQuestionId(), type: 'checkbox', label: '', required: false });
+                renderChecklistEdit(updateCurrentQuestions, '#update-questions-edit');
+            });
+
+            $('#update-add-text').on('click', function() {
+                updateCurrentQuestions = collectChecklistEditQuestions('#update-questions-edit');
+                updateCurrentQuestions.push({ id: checklistNewQuestionId(), type: 'text', label: '', required: false });
+                renderChecklistEdit(updateCurrentQuestions, '#update-questions-edit');
+            });
+
+            $('#update-save-form-btn').on('click', async function() {
+                var id = $('#update-automate-task-id').val();
+                var questions = collectChecklistEditQuestions('#update-questions-edit').filter(function(q) { return q.label; });
+                if (!questions.length) {
+                    alert('Add at least one question with a label.');
+                    return;
+                }
+                var $btn = $(this).prop('disabled', true);
+                try {
+                    var res = await fetch(UPDATE_BASE + '/' + id + '/update-form', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': checklistCsrf,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ title: $('#update-form-title').val() || '', questions: questions })
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    if (!res.ok) {
+                        alert(data.message || 'Failed to save form');
+                        return;
+                    }
+                    updateCurrentQuestions = (data.form && data.form.questions) ? data.form.questions.slice() : questions;
+                    if (table) {
+                        var row = table.getRow(parseInt(id, 10));
+                        if (row) {
+                            row.update({ has_update_form: true });
+                        } else {
+                            table.replaceData();
+                        }
+                    }
+                    setUpdateMode('fill');
+                    alert(data.message || 'Update form saved.');
+                } catch (err) {
+                    alert('Failed to save form');
+                } finally {
+                    $btn.prop('disabled', false);
+                }
+            });
+
+            $('#update-submit-btn').on('click', async function() {
+                var id = $('#update-automate-task-id').val();
+                if (!updateCurrentQuestions.length) {
+                    alert('No update form is attached.');
+                    return;
+                }
+                var answers = {};
+                var missing = null;
+                var $modal = $('#updateFormModal');
+                updateCurrentQuestions.forEach(function(q) {
+                    if (q.type === 'checkbox') {
+                        var yn = $modal.find('input.checklist-yn[name="cl_yn_' + q.id + '"]:checked').val();
+                        if (!yn) {
+                            if (!missing) missing = 'Select Yes or No for: ' + q.label;
+                            return;
+                        }
+                        var isYes = yn === 'yes';
+                        var actions = [];
+                        $modal.find('.checklist-action[data-qid="' + q.id + '"]').each(function() {
+                            var v = ($(this).val() || '').trim();
+                            if (v) actions.push(v);
+                        });
+                        var corrective = ($modal.find('.checklist-corrective[data-qid="' + q.id + '"]').val() || '').trim();
+                        if (!isYes && !actions.length && !corrective) {
+                            if (!missing) missing = 'For "' + q.label + '", enter Action or Corrective action (minimum one)';
+                            return;
+                        }
+                        answers[q.id] = {
+                            answer: isYes,
+                            actions: isYes ? [] : actions,
+                            action: isYes ? '' : (actions[0] || ''),
+                            corrective_action: isYes ? '' : corrective
+                        };
+                    } else {
+                        var $el = $modal.find('.checklist-ans[data-qid="' + q.id + '"]');
+                        answers[q.id] = ($el.val() || '').trim();
+                        if (q.required && !answers[q.id] && !missing) missing = 'Please complete required field: ' + q.label;
+                    }
+                });
+                if (missing) {
+                    alert(missing);
+                    return;
+                }
+                var $btn = $(this).prop('disabled', true);
+                try {
+                    var res = await fetch(UPDATE_BASE + '/' + id + '/update-form/submit', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': checklistCsrf,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ answers: answers })
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    if (!res.ok) {
+                        alert(data.message || 'Submit failed');
+                        return;
+                    }
+                    if (table) {
+                        var row = table.getRow(parseInt(id, 10));
+                        if (row) {
+                            row.update({ update_submission_count: data.submission_count || 1 });
+                        } else {
+                            table.replaceData();
+                        }
+                    }
+                    bootstrap.Modal.getInstance(document.getElementById('updateFormModal'))?.hide();
+                    alert(data.message || 'Submitted.');
+                } catch (err) {
+                    alert('Submit failed');
+                } finally {
+                    $btn.prop('disabled', false);
+                }
+            });
+            // ================= /Update =================
 
             // Edit Automated Task — when more than one row is selected, the edit button
             // performs a BULK edit (opens the bulk actions modal) instead of opening the
@@ -4753,6 +5343,16 @@
             });
         });
 
+        // Minutes -> "1h 12m" / "45m" / "2h" (used by the ETC D / ETC M cards and their history chart)
+        function formatEtcHoursMinutes(totalMinutes) {
+            var m = Math.round(Number(totalMinutes) || 0);
+            if (m <= 0) return '0m';
+            var h = Math.floor(m / 60);
+            var r = m % 60;
+            if (h === 0) return r + 'm';
+            return r === 0 ? (h + 'h') : (h + 'h ' + r + 'm');
+        }
+
         function showAutomatedHistoryChart(metric, period, currentValue) {
             const modal = new bootstrap.Modal(document.getElementById('automatedHistoryChartModal'));
             
@@ -4841,7 +5441,7 @@
                                         label += ': ';
                                     }
                                     if (metric === 'etc' || metric === 'etcm') {
-                                        label += context.parsed.y.toFixed(1) + 'h';
+                                        label += formatEtcHoursMinutes(context.parsed.y * 60);
                                     } else {
                                         label += context.parsed.y;
                                     }
@@ -4859,7 +5459,7 @@
                                 },
                                 callback: function(value) {
                                     if (metric === 'etc' || metric === 'etcm') {
-                                        return value.toFixed(1) + 'h';
+                                        return formatEtcHoursMinutes(value * 60);
                                     }
                                     return value;
                                 }
