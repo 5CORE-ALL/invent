@@ -1960,7 +1960,9 @@
 
         const hasPublish = (table.getColumns() || []).some(function (col) {
             const def = col.getDefinition ? col.getDefinition() : {};
-            return def.field === 'publish_to_marketplace' || def.field === 'publish_to_temu2' || def.field === 'publish_to_temu3';
+            // Any page that already has its own "Publish to ..." column (publish_to_temu, publish_to_temu2, ...)
+            // must not get a second generic one.
+            return /^publish_to_/.test(String(def.field || ''));
         });
         if (!hasPublish && !ownPublishModalId()) {
             try {

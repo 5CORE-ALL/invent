@@ -1939,6 +1939,6 @@
             publishUrl: '/listing_temu/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261029-parent"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261030-onepublish"></script>
 @include('partials.listing-sku-search')
 @endsection
