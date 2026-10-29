@@ -13,15 +13,18 @@ class CategoryMaster extends Model
         'temu' => 'category_temu',
     ];
 
-    public const FIELDS = ['category_ebay', 'category_amz', 'category_temu'];
+    /** Editable category columns. category_5c is typed by hand: it has no channel to pull from or push to. */
+    public const FIELDS = ['category_5c', 'category_ebay', 'category_amz', 'category_temu'];
 
-    public const ID_FIELDS = ['category_ebay_id', 'category_amz_id', 'category_temu_id'];
+    public const ID_FIELDS = ['category_5c_id', 'category_ebay_id', 'category_amz_id', 'category_temu_id'];
 
     protected $table = 'category_masters';
 
     protected $fillable = [
         'sku',
         'parent',
+        'category_5c',
+        'category_5c_id',
         'category_ebay',
         'category_ebay_id',
         'category_amz',

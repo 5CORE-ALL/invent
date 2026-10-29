@@ -120,6 +120,21 @@
     .cm-col-menu { min-width: 220px; max-height: 320px; overflow-y: auto; }
     .cm-col-menu .cm-col-item { display: flex; align-items: center; gap: 8px; padding: 4px 16px; margin: 0; cursor: pointer; font-size: 0.85rem; white-space: nowrap; }
     .cm-col-menu .cm-col-item:hover { background: #f1f5fb; }
+    .cm-col-menu .cm-col-item { padding-left: 28px; }
+    .cm-col-menu .cm-col-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 16px;
+        margin: 4px 0 0;
+        cursor: pointer;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #1a3d7c;
+        background: #eef3fb;
+        border-top: 1px solid #d7e0ef;
+        border-bottom: 1px solid #d7e0ef;
+    }
 </style>
 @endsection
 
@@ -181,6 +196,14 @@
                         <option value="parent">Parent</option>
                         <option value="sku">SKU</option>
                     </select>
+                    <div class="cm-chan">
+                        <div class="input-group input-group-sm cm-category-search">
+                            <span class="input-group-text cm-chan-name">CAT-5C</span>
+                            <input type="text" id="cmSearch5c" class="form-control cm-channel-search" data-field="category_5c" list="cmList5c" placeholder="Category" aria-label="Search CAT-5C Category" autocomplete="off">
+                            <datalist id="cmList5c"></datalist>
+                        </div>
+                        <span class="badge bg-danger cm-blank-count" data-field="category_5c" title="Rows with a blank CAT-5C category">0</span>
+                    </div>
                     <div class="cm-chan">
                         <div class="input-group input-group-sm cm-shopify-cat">
                             <span class="input-group-text cm-chan-name">Shopify</span>
@@ -252,7 +275,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const pullUrl = @json(route('category.masters.pull'));
     const pushUrl = @json(route('category.masters.push'));
     const shopifyFillUrl = @json(route('category.masters.shopify.fill'));
-    const CATEGORY_FIELDS = ['category_ebay', 'category_amz', 'category_temu'];
+    // Editable columns. category_5c (CAT-5C) is typed by hand; the other three can also be pulled and pushed.
+    const CATEGORY_FIELDS = ['category_5c', 'category_ebay', 'category_amz', 'category_temu'];
     // Read-only: filled once from Shopify, never edited, pulled or pushed here.
     const SHOPIFY_FIELD = 'category_shopify';
     const FILL_CHUNK = 20;
@@ -420,6 +444,8 @@ document.addEventListener('DOMContentLoaded', function () {
         rows.forEach(function (row) {
             idBySku.set(row.sku, row.id);
             original.set(row.id, {
+                category_5c: row.category_5c || '',
+                category_5c_id: row.category_5c_id || '',
                 category_ebay: row.category_ebay || '',
                 category_ebay_id: row.category_ebay_id || '',
                 category_amz: row.category_amz || '',
@@ -605,7 +631,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 headerSortStartingDir: 'desc',
                 formatter: function (cell) { return fmtNum(cell.getValue()); },
             },
-            categoryColumn('Category', SHOPIFY_FIELD, true),
+            categoryColumn('CAT-5C', 'category_5c'),
+            categoryColumn('Category Shopify', SHOPIFY_FIELD, true),
             categoryColumn('Category eBay', 'category_ebay'),
             categoryColumn('Category Amz', 'category_amz'),
             categoryColumn('Category Temu', 'category_temu'),
@@ -771,23 +798,74 @@ document.addEventListener('DOMContentLoaded', function () {
         return col.getField() === '_select' ? 'Select' : String(col.getField() || '');
     }
 
+    // The column menu is split under four headers. Ticking a header shows or hides all its columns.
+    const COLUMN_GROUPS = [
+        { key: 'product', title: 'Product', fields: ['_select', 'image', 'parent', 'sku', 'inv'] },
+        { key: 'master', title: 'Master Categories', fields: ['category_5c', 'category_shopify'] },
+        { key: 'channel', title: 'Channel Categories', fields: ['category_ebay', 'category_amz', 'category_temu'] },
+        { key: 'actions', title: 'Actions', fields: ['_pull', '_push'] },
+    ];
+
+    function groupBoxes(key) {
+        return Array.from(el('cmColumnsList').querySelectorAll('input[data-field][data-group="' + key + '"]'));
+    }
+
+    // A header box is ticked when every column of its group shows, and half-ticked when only some do.
+    function paintGroupBoxes() {
+        COLUMN_GROUPS.forEach(function (group) {
+            const head = el('cmColumnsList').querySelector('input[data-group-head="' + group.key + '"]');
+            if (!head) return;
+            const boxes = groupBoxes(group.key);
+            const on = boxes.filter(function (b) { return b.checked; }).length;
+            head.checked = boxes.length > 0 && on === boxes.length;
+            head.indeterminate = on > 0 && on < boxes.length;
+        });
+    }
+
     function buildColumnMenu() {
         const list = el('cmColumnsList');
         list.innerHTML = '';
+        const byField = new Map();
         table.getColumns().forEach(function (col) {
-            const field = col.getField();
-            if (!field) return;
-            const label = document.createElement('label');
-            label.className = 'cm-col-item';
-            const box = document.createElement('input');
-            box.type = 'checkbox';
-            box.className = 'form-check-input m-0';
-            box.dataset.field = field;
-            box.checked = col.isVisible();
-            label.appendChild(box);
-            label.appendChild(document.createTextNode(colLabel(col)));
-            list.appendChild(label);
+            if (col.getField()) byField.set(col.getField(), col);
         });
+
+        // A column that is in no group would be unreachable: put it under Product.
+        const grouped = new Set();
+        COLUMN_GROUPS.forEach(function (g) { g.fields.forEach(function (f) { grouped.add(f); }); });
+        const strays = Array.from(byField.keys()).filter(function (f) { return !grouped.has(f); });
+
+        COLUMN_GROUPS.forEach(function (group) {
+            const fields = group.fields.concat(group.key === 'product' ? strays : [])
+                .filter(function (f) { return byField.has(f); });
+            if (!fields.length) return;
+
+            const head = document.createElement('label');
+            head.className = 'cm-col-head';
+            const headBox = document.createElement('input');
+            headBox.type = 'checkbox';
+            headBox.className = 'form-check-input m-0';
+            headBox.dataset.groupHead = group.key;
+            head.appendChild(headBox);
+            head.appendChild(document.createTextNode(group.title));
+            list.appendChild(head);
+
+            fields.forEach(function (field) {
+                const col = byField.get(field);
+                const label = document.createElement('label');
+                label.className = 'cm-col-item';
+                const box = document.createElement('input');
+                box.type = 'checkbox';
+                box.className = 'form-check-input m-0';
+                box.dataset.field = field;
+                box.dataset.group = group.key;
+                box.checked = col.isVisible();
+                label.appendChild(box);
+                label.appendChild(document.createTextNode(colLabel(col)));
+                list.appendChild(label);
+            });
+        });
+        paintGroupBoxes();
     }
 
     table.on('tableBuilt', function () {
@@ -800,6 +878,20 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     el('cmColumnsList').addEventListener('change', function (e) {
+        const head = e.target.closest('input[data-group-head]');
+        if (head) {
+            groupBoxes(head.dataset.groupHead).forEach(function (member) {
+                member.checked = head.checked;
+                const memberCol = table.getColumn(member.dataset.field);
+                if (!memberCol) return;
+                if (head.checked) memberCol.show();
+                else memberCol.hide();
+            });
+            writeColVis();
+            paintGroupBoxes();
+            table.redraw(true);
+            return;
+        }
         const box = e.target.closest('input[data-field]');
         if (!box) return;
         const col = table.getColumn(box.dataset.field);
@@ -807,6 +899,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (box.checked) col.show();
         else col.hide();
         writeColVis();
+        paintGroupBoxes();
         table.redraw(true);
     });
 

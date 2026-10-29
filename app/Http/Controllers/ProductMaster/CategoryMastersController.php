@@ -72,6 +72,8 @@ class CategoryMastersController extends Controller
                     'sku' => $sku,
                     'is_parent' => $isParent,
                     'inv' => $inv,
+                    'category_5c' => (string) ($category->category_5c ?? ''),
+                    'category_5c_id' => (string) ($category->category_5c_id ?? ''),
                     'category_ebay' => (string) ($category->category_ebay ?? ''),
                     'category_ebay_id' => (string) ($category->category_ebay_id ?? ''),
                     'category_amz' => (string) ($category->category_amz ?? ''),
@@ -130,6 +132,8 @@ class CategoryMastersController extends Controller
         $request->validate([
             'items' => 'required|array|min:1|max:5000',
             'items.*.sku' => 'required|string|max:191',
+            'items.*.category_5c' => 'nullable|string|max:255',
+            'items.*.category_5c_id' => 'nullable|string|max:64',
             'items.*.category_ebay' => 'nullable|string|max:255',
             'items.*.category_amz' => 'nullable|string|max:255',
             'items.*.category_temu' => 'nullable|string|max:255',
@@ -242,6 +246,8 @@ class CategoryMastersController extends Controller
                     $row = [
                         'sku' => $current->sku ?? $change['sku'],
                         'parent' => $change['parent'] !== '' ? $change['parent'] : null,
+                        'category_5c' => $current->category_5c ?? null,
+                        'category_5c_id' => $current->category_5c_id ?? null,
                         'category_ebay' => $current->category_ebay ?? null,
                         'category_ebay_id' => $current->category_ebay_id ?? null,
                         'category_amz' => $current->category_amz ?? null,
@@ -264,6 +270,7 @@ class CategoryMastersController extends Controller
                         ['sku'],
                         [
                             'parent',
+                            'category_5c', 'category_5c_id',
                             'category_ebay', 'category_ebay_id',
                             'category_amz', 'category_amz_id',
                             'category_temu', 'category_temu_id',
