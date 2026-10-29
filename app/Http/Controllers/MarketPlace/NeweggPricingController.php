@@ -848,7 +848,7 @@ class NeweggPricingController extends Controller
                     $priceBySpn[$spn] = $requested;
                     $this->stampPushStatus($localSku, 'pushed');
                 } else {
-                    $this->stampPushStatus($localSku, 'error');
+                    $this->stampPushStatus($localSku, 'error', (string) ($r['error'] ?? 'Rejected'));
                 }
                 $results[] = [
                     'sku'     => $localSku,
@@ -907,7 +907,7 @@ class NeweggPricingController extends Controller
     /**
      * Remember the last S PRC push result so the Push column survives reload.
      */
-    private function stampPushStatus(string $sku, string $status): void
+    private function stampPushStatus(string $sku, string $status, ?string $error = null): void
     {
         $sku = trim($sku);
         if ($sku === '') {
@@ -919,6 +919,12 @@ class NeweggPricingController extends Controller
             $values = is_array($dv->value) ? $dv->value : [];
             $values['SPRICE_STATUS'] = $status;
             $values['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            // Why Newegg rejected the last push (e.g. CT065 selling price below the volume-discount tier); cleared on success.
+            if ($status === 'error' && $error !== null && $error !== '') {
+                $values['SPRICE_ERROR'] = mb_substr($error, 0, 300);
+            } else {
+                unset($values['SPRICE_ERROR']);
+            }
             $dv->value = $values;
             $dv->save();
         } catch (\Throwable $e) {
@@ -1009,7 +1015,8 @@ class NeweggPricingController extends Controller
             return $sprice;
         }
 
-        return MacysAmazonPriceCap::capForSku($sku, $sprice);
+        // Clearance SKUs are priced only by the Clearance Target NROI% and never raised to A Price (the page does the same).
+        return MacysAmazonPriceCap::capForSku($sku, $sprice, true);
     }
 
     /**

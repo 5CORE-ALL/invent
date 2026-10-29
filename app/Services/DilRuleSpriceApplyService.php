@@ -97,7 +97,7 @@ class DilRuleSpriceApplyService
      * Channels whose clearance SKUs (Inv days clearance = YES) are priced only from the Clearance Target NROI%, in Std prc vs dil and
      * Sprc Dil alike. Every other channel here still gives clearance SKUs no S PRC until its page is moved over.
      */
-    public const CLEARANCE_NROI_CHANNELS = ['wayfair', 'temu3'];
+    public const CLEARANCE_NROI_CHANNELS = ['wayfair', 'temu3', 'newegg'];
 
     /** Channels whose Sprc Dil modal has the Ageing Rule (age band points on the Target NROI). */
     public const AGE_ADJ_CHANNELS = ['newegg', 'temu', 'temu3', 'doba', 'wayfair', 'walmart', 'fb_marketplace'];

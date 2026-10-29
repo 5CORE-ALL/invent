@@ -318,7 +318,9 @@ class ChannelPushSpriceRunner
                         $floored = MacysAmazonPriceCap::capForSku(
                             $sku,
                             $price,
-                            in_array($this->channel, ['macys', 'macy', 'purchasing_power'], true)
+                            // Clearance SKUs are priced only by the Clearance Target NROI% (no A Price floor), so the
+                            // push must not raise them either, else the live price never matches the page.
+                            in_array($this->channel, ['macys', 'macy', 'purchasing_power', 'newegg'], true)
                         );
                         if ($floored > 0 && abs($floored - $price) >= 0.005) {
                             $logger->info('S PRC raised to Amazon price', [

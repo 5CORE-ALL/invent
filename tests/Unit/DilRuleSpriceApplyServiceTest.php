@@ -324,9 +324,21 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertGreaterThan(25.0, $out['sprice']);
     }
 
+    public function test_newegg_clearance_is_priced_only_from_the_clearance_nroi_without_the_a_price_floor(): void
+    {
+        // LP 20, Ship 3, take-home 0.80, Clearance NROI 10%: (20 × 1.10 + 3) ÷ 0.80 = 31.25. Same as the page's C price.
+        $out = $this->compute('newegg', [
+            'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'lp' => 20, 'ship' => 3, 'amz' => 50,
+            'clearance' => true, 'clearance_nroi' => 10,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(31.25, $out['sprice'], 0.001);
+    }
+
     public function test_other_channels_still_give_clearance_no_price(): void
     {
-        $this->assertNull($this->compute('newegg', [
+        $this->assertNull($this->compute('doba', [
             'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'lp' => 20, 'ship' => 0, 'clearance' => true, 'clearance_nroi' => 10,
         ]));
     }
