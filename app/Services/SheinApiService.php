@@ -1957,7 +1957,15 @@ class SheinApiService
                         $this->sheinPushedLookup()
                     ) ?? max(0, $listed),
                     'original_price' => max(0, $retail),
-                    'special_offer_price' => max(0, $sale > 0 ? $sale : $retail),
+                    // The page's Sp. Price. The product list lags a pushed price, so keep the last pushed S PRC when the list
+                    // disagrees (same rule as `price` above). Otherwise every sync reverted the price the catch-up had
+                    // just read back and the SKU turned blue again.
+                    'special_offer_price' => ChannelLivePriceSync::preferIncoming(
+                        'shein',
+                        $sku,
+                        ($sale > 0 ? $sale : $retail) > 0 ? ($sale > 0 ? $sale : $retail) : null,
+                        $this->sheinPushedLookup()
+                    ) ?? max(0, $sale > 0 ? $sale : $retail),
                     'shein_stock' => max(0, $stock),
                 ]
             );
