@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Task;
 use App\Services\TaskWhatsAppNotificationService;
 use App\Support\AutomatedTaskChecklistIds;
+use App\Support\AutomatedTaskSchedule;
 use App\Support\AutomatedTaskSubtaskFirer;
 use App\Support\LmpMissingDailyAutomatedTask;
 use App\Support\MissingListingDailyAutomatedTask;
@@ -74,6 +75,14 @@ class GenerateDailyAutomatedTasks extends Command
             $query->orderBy('id')
                 ->chunk(100, function ($automatedTasks) use ($now, $today, $taskWhatsApp, &$generated, &$skipped) {
                     foreach ($automatedTasks as $autoTask) {
+                        // Week off: a daily template with weekdays listed only runs on those days.
+                        if (! AutomatedTaskSchedule::dailyRunsOn($autoTask->schedule_days ?? '', strtolower($now->format('D')))) {
+                            $skipped++;
+                            $this->line("⊘ Skipped (week off today): {$autoTask->title}");
+
+                            continue;
+                        }
+
                         try {
                             $dayStart = TaskBusinessTime::todayStart();
                             $dayEnd = TaskBusinessTime::todayEnd();

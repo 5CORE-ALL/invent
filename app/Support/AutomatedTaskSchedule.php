@@ -28,6 +28,34 @@ class AutomatedTaskSchedule
     }
 
     /**
+     * Whether a DAILY template should create an instance on the given weekday.
+     *
+     * Daily templates normally have an empty schedule_days and run every day.
+     * If weekdays are listed (e.g. "Mon,Tue,Wed,Thu,Fri,Sat"), the template is
+     * skipped on the other days (used for week offs such as Sunday).
+     *
+     * @param  string  $dayToken  three-letter lowercase weekday (mon, tue, …)
+     */
+    public static function dailyRunsOn(?string $scheduleDays, string $dayToken): bool
+    {
+        if (trim((string) $scheduleDays) === '') {
+            return true;
+        }
+
+        $tokens = array_values(array_filter(array_map(static function ($day) {
+            $day = strtolower(trim((string) $day));
+
+            return strlen($day) >= 3 ? substr($day, 0, 3) : $day;
+        }, explode(',', (string) $scheduleDays))));
+
+        if ($tokens === []) {
+            return true;
+        }
+
+        return in_array(strtolower($dayToken), $tokens, true);
+    }
+
+    /**
      * @return list<string> three-letter weekday tokens (mon, tue, …)
      */
     public static function weeklyDayTokens(?string $scheduleDays): array

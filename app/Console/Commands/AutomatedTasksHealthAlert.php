@@ -60,7 +60,8 @@ class AutomatedTasksHealthAlert extends Command
                 ->exists();
 
             $isDailyDueWindow = $currentTime >= $dailyGenHm;
-            if ($scheduleType === 'daily' && !$hasTodayInstance && $isDailyDueWindow) {
+            if ($scheduleType === 'daily' && !$hasTodayInstance && $isDailyDueWindow
+                && AutomatedTaskSchedule::dailyRunsOn($task->schedule_days ?? '', $currentDow)) {
                 $missingDaily[] = ['id' => $task->id, 'title' => (string) $task->title];
                 continue;
             }
