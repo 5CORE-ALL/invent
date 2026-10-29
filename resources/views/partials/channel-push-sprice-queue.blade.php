@@ -1430,6 +1430,8 @@
                 if (typeof isBbListed === 'function' && CH_PUSH_SPRICE_CHANNEL === 'bestbuy' && !isBbListed(d)) return true;
                 if (typeof isMacysListed === 'function' && (CH_PUSH_SPRICE_CHANNEL === 'macys' || CH_PUSH_SPRICE_CHANNEL === 'macy') && !isMacysListed(d)) return true;
                 if (d.is_missing_macy === true) return true;
+                // Shein: a row that is not on Shein (no skuCode: renamed / delisted SKU) cannot be pushed.
+                if (CH_PUSH_SPRICE_CHANNEL === 'shein' && (d.is_missing_shein === true || String(d.missing || '').toUpperCase() === 'M')) return true;
                 return false;
             }
             function chPushSpriceAlreadyPushedToSaved(d, saved) {
