@@ -916,6 +916,14 @@ class Kernel extends ConsoleKernel
 
         // Temu 1 + Temu 2 only: drop goods_id of listings deleted in Seller Center so they return to Missing L
         // (and are relisted as new). Runs after the metrics fetches above; Temu 3 is not touched.
+        $ist($schedule->command('temu:goods-status')
+            ->dailyAt('14:50')
+            ->timezone('Asia/Kolkata')
+            ->name('temu-goods-status')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('temu:reconcile-goods --shop=all')
             ->dailyAt('14:55')
             ->timezone('Asia/Kolkata')

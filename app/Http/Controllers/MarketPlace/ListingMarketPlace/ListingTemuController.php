@@ -73,6 +73,12 @@ class ListingTemuController extends Controller
         }
 
         try {
+            $rows = \App\Services\MarketplaceManager\TemuGoodsStatusSync::attach($rows);
+        } catch (\Throwable $e) {
+            // the Temu status columns are informational; never break the page
+        }
+
+        try {
             $rows = \App\Support\Marketplace\TemuSkuVsParent::attach($rows);
         } catch (\Throwable $e) {
             // SKU VS Parent is informational; never break the page

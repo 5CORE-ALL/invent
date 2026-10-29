@@ -183,6 +183,17 @@ class TemuLinkMapSyncService
             Log::warning('TemuLinkMapSyncService: reconcile failed', ['error' => $e->getMessage()]);
         }
 
+        // Status Seller Center shows per goods (Active / Inactive / Incomplete / Draft / Deleted) for the page's Temu Status column.
+        $statusNote = '';
+        try {
+            $status = app(TemuGoodsStatusSync::class)->refresh();
+            $statusNote = $status['ok']
+                ? ' Temu status read for '.$status['goods'].' goods.'
+                : ' '.$status['note'];
+        } catch (\Throwable $e) {
+            Log::warning('TemuLinkMapSyncService: goods status failed', ['error' => $e->getMessage()]);
+        }
+
         $linked = TemuMetric::query()
             ->whereNotNull('sku')
             ->whereNotNull('goods_id')
@@ -203,7 +214,8 @@ class TemuLinkMapSyncService
 
         $message = "Refreshed Temu link map — {$linked} linked SKU(s) (sku + goods_id)."
             .(($reconcile['cleared'] ?? 0) > 0 ? " Removed {$reconcile['cleared']} stale link(s) Temu no longer lists." : '')
-            .(($reconcile['note'] ?? '') !== '' ? ' '.$reconcile['note'] : '');
+            .(($reconcile['note'] ?? '') !== '' ? ' '.$reconcile['note'] : '')
+            .$statusNote;
         $this->updateProgress([
             'running' => false,
             'page' => 1,
