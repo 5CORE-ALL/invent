@@ -1979,6 +1979,17 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('app:amazon-sd-campaign-reports', 'amazon-sd-campaign-reports', '18:10');
         $retryFiveTimesUntil('amazon:ads-pull-product-ads', 'amazon-ads-pull-product-ads', '18:12');
 
+        // ENABLED campaigns with no impressions are missing from Amazon's reports. Pull them from the
+        // campaign list on its own schedule so a failed report run (or a campaign enabled mid-day)
+        // never leaves /amazon-ads/all short of the Amazon console.
+        $schedule->command('amazon:ads-sync-enabled-campaigns')
+            ->hourlyAt(20)
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-ads-sync-enabled-campaigns')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
       
         $retryFiveTimesUntil('app:amazon-sp-keyword-reports', 'amazon-sp-keyword-reports', '18:15');
         $retryFiveTimesUntil('app:amazon-sp-negative-keywords --prune', 'amazon-sp-negative-keywords', '18:20');

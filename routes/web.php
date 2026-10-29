@@ -7718,6 +7718,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/data', [\App\Http\Controllers\TaskController::class, 'getData'])->name('tasks.data');
     Route::get('/tasks/automated', [\App\Http\Controllers\TaskController::class, 'automatedIndex'])->name('tasks.automated');
     Route::get('/tasks/automated/data', [\App\Http\Controllers\TaskController::class, 'getAutomatedData'])->name('tasks.automatedData');
+    Route::get('/tasks/automated/archived/data', [\App\Http\Controllers\TaskController::class, 'getArchivedAutomatedData'])->name('tasks.automatedArchivedData');
+    Route::post('/tasks/automated/archived/restore', [\App\Http\Controllers\TaskController::class, 'restoreArchivedAutomated'])->name('tasks.automatedArchivedRestore');
     Route::get('/tasks/automated/create', [\App\Http\Controllers\TaskController::class, 'automatedCreate'])->name('tasks.automatedCreate');
     Route::post('/tasks/automated/store', [\App\Http\Controllers\TaskController::class, 'automatedStore'])->name('tasks.automatedStore');
     Route::get('/tasks/automated/{id}/edit', [\App\Http\Controllers\TaskController::class, 'automatedEdit'])->name('tasks.automatedEdit');

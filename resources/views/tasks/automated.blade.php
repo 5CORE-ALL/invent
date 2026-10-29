@@ -307,14 +307,41 @@
             vertical-align: top !important;
         }
         
-        /* Title cell: single line, truncate with ellipsis (full text on hover via title attr) */
+        /* Title cell: long text wraps onto the next line (row grows to fit) */
         .title-cell-content {
             display: block;
-            white-space: nowrap !important;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal !important;
+            overflow: visible;
+            word-break: break-word;
+            overflow-wrap: anywhere;
             line-height: 1.4;
             max-width: 100%;
+        }
+
+        /* Fit everything on one screen: no horizontal scroll, tighter cells, wrap long text */
+        .table-wrapper {
+            overflow-x: hidden;
+        }
+        #tasks-table .tabulator-row .tabulator-cell {
+            padding: 8px 6px !important;
+            white-space: normal !important;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+        #tasks-table .tabulator-header .tabulator-col {
+            padding: 8px 4px !important;
+        }
+        #tasks-table .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+        }
+        #tasks-table .tabulator-row .tabulator-cell[tabulator-field="id"] {
+            white-space: normal !important;
+        }
+        #tasks-table .tabulator-row .tabulator-cell[tabulator-field="id"] .action-btn-icon {
+            padding: 6px 8px !important;
+            margin: 1px !important;
         }
 
         /* Status Badges */
@@ -961,6 +988,17 @@
                             </div>
                         @endif
 
+                        <!-- Active / Archived switch -->
+                        <ul class="nav nav-tabs mb-3" id="automated-view-tabs">
+                            <li class="nav-item">
+                                <a class="nav-link active" href="#" data-view="active"><i class="mdi mdi-robot me-1"></i>Automated Tasks</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="#" data-view="archived"><i class="mdi mdi-archive me-1"></i>Archived Automated <span class="badge bg-secondary" id="archived-count-badge">0</span></a>
+                            </li>
+                        </ul>
+
+                        <div id="automated-active-pane">
                         <!-- Search/Filter Bar -->
                         <div class="d-flex flex-nowrap align-items-start gap-2 mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
                             <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
@@ -1037,6 +1075,22 @@
 
                         <div class="table-wrapper">
                             <div id="tasks-table"></div>
+                        </div>
+                        </div> <!-- end automated-active-pane -->
+
+                        <div id="automated-archived-pane" style="display:none;">
+                            <div class="d-flex align-items-center gap-2 mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
+                                <input type="text" id="archived-filter-search" class="form-control form-control-sm" placeholder="Search archived (task, group, assignor, assignee)" style="max-width: 360px;">
+                                <button type="button" class="btn btn-sm btn-success" id="archived-restore-selected-btn" style="display:none;">
+                                    <i class="mdi mdi-restore me-1"></i>Restore selected (<span id="archived-selected-count">0</span>)
+                                </button>
+                                <button type="button" class="btn btn-sm btn-warning ms-auto" id="archived-refresh-btn" title="Reload archived tasks">
+                                    <i class="mdi mdi-refresh"></i>
+                                </button>
+                            </div>
+                            <div class="table-wrapper">
+                                <div id="archived-tasks-table"></div>
+                            </div>
                         </div>
 
                     </div> <!-- end card-body-->
@@ -1176,7 +1230,7 @@
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
-                        <strong>Delete Selected Tasks</strong>
+                        <strong>Archive Selected Tasks</strong>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-assignor-btn">
                         <i class="mdi mdi-account-arrow-left text-warning me-2"></i>
@@ -2039,10 +2093,14 @@
                 paginationSizeSelector: [10, 25, 50, 100],
                 responsiveLayout: false,
                 placeholder: "No Tasks Found",
-                height: "600px",
+                height: Math.max(360, window.innerHeight - 330) + "px",
                 layoutColumnsOnNewData: true,
                 autoResize: true,
-                columns: (function() {
+                columns: buildAutomatedColumns(false)
+            });
+
+            // Column definitions shared by the active and archived tables.
+            function buildAutomatedColumns(archived) {
                     var cols = [];
                     
                     // Add checkbox column only for admin
@@ -2059,12 +2117,12 @@
                                     e.stopPropagation();
                                     if (this.checked) {
                                         // Select only visible/filtered rows
-                                        table.getRows("active").forEach(function(row) {
+                                        (archived ? archivedTable : table).getRows("active").forEach(function(row) {
                                             row.select();
                                         });
                                     } else {
                                         // Deselect all
-                                        table.deselectRow();
+                                        (archived ? archivedTable : table).deselectRow();
                                     }
                                 });
                                 
@@ -2098,7 +2156,7 @@
                         title: "GROUP", 
                         field: "group", 
                         widthGrow: 1.5,
-                        minWidth: 150,
+                        minWidth: 90,
                         formatter: function(cell) {
                             var value = cell.getValue();
                             return value ? '<span style="color: #6c757d;">' + value + '</span>' : '<span style="color: #adb5bd;">-</span>';
@@ -2106,15 +2164,12 @@
                     });
                     
                     // TASK - Multi-line with word wrap (no alert icon)
-                    // Cap the column at 40% of the table width so longer titles wrap to the next line.
-                    var taskTableWidth = (document.getElementById('tasks-table') || {}).clientWidth || window.innerWidth || 1000;
-                    var taskColMaxWidth = Math.round(taskTableWidth * 0.4);
+                    // Takes the remaining width; longer titles wrap to the next line.
                     cols.push({
                         title: "TASK", 
                         field: "title", 
-                        widthGrow: 3,
-                        minWidth: 200,
-                        maxWidth: taskColMaxWidth,
+                        widthGrow: 4,
+                        minWidth: 140,
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var title = cell.getValue() || '';
@@ -2123,7 +2178,7 @@
                                 ? '<span class="badge bg-secondary ms-1" style="font-size:9px; vertical-align:middle;">Subtask</span>'
                                 : '';
 
-                            // Single line, ellipsis when too long; full text shown on hover (title attribute).
+                            // Wraps onto the next line when too long; full text also on hover (title attribute).
                             return '<div class="title-cell-content" title="' + htmlTitle + '"><strong>' + htmlTitle + '</strong>' + subtaskBadge + '</div>';
                         }
                     });
@@ -2132,7 +2187,8 @@
                     cols.push({
                         title: "ASSIGNER",
                         field: "assignor_name",
-                        width: 120,
+                        width: 105,
+                        minWidth: 90,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
@@ -2156,7 +2212,8 @@
                     cols.push({
                         title: "ASSIGNEE",
                         field: "assignee_name",
-                        width: 120,
+                        width: 105,
+                        minWidth: 90,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
@@ -2603,12 +2660,20 @@
                     cols.push({
                         title: "ACTION", 
                         field: "id", 
-                        width: 220,
+                        width: 150,
+                        minWidth: 120,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var data = cell.getRow().getData() || {};
                             var id = data.id != null ? data.id : cell.getValue();
                             var html = '';
+                            if (archived) {
+                                if (automatedRowAllows(data, 'can_restore')) {
+                                    html += '<button class="action-btn-icon restore-automated-task" data-id="' + id + '" title="Restore" style="background: #198754; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">' +
+                                        '<i class="mdi mdi-restore"></i></button>';
+                                }
+                                return html || '<span style="color:#adb5bd;">-</span>';
+                            }
                             if (automatedRowAllows(data, 'can_modify')) {
                                 html += '<button class="action-btn-icon action-btn-edit edit-automated-task" data-id="' + id + '" title="Edit" style="background: #0dcaf0; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">' +
                                     '<i class="mdi mdi-pencil"></i></button>';
@@ -2618,7 +2683,7 @@
                                     '<i class="mdi mdi-subdirectory-arrow-right"></i></button>';
                             }
                             if (automatedRowAllows(data, 'can_delete')) {
-                                html += '<button class="action-btn-icon action-btn-delete delete-automated-task" data-id="' + id + '" title="Delete (or delete all selected)" style="background: #fd7e14; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">' +
+                                html += '<button class="action-btn-icon action-btn-delete delete-automated-task" data-id="' + id + '" title="Archive (or archive all selected)" style="background: #fd7e14; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">' +
                                     '<i class="mdi mdi-delete"></i></button>';
                             }
                             return html || '<span style="color:#adb5bd;">-</span>';
@@ -2626,7 +2691,127 @@
                     });
                     
                     return cols;
-                })(),
+            }
+
+            // Keep the table sized to the viewport so the data fits on one screen
+            $(window).on('resize', function () {
+                table.setHeight(Math.max(360, window.innerHeight - 330) + "px");
+                if (archivedTable) {
+                    archivedTable.setHeight(Math.max(360, window.innerHeight - 330) + "px");
+                }
+            });
+
+            // ===== Archived Automated tasks (same columns as Automated Tasks) =====
+            var archivedTable = new Tabulator("#archived-tasks-table", {
+                index: "id",
+                selectable: isAdmin,
+                selectableRangeMode: "click",
+                dataTree: true,
+                dataTreeElementColumn: "title",
+                dataTreeStartExpanded: true,
+                dataTreeChildIndent: 18,
+                defaultColumn: {
+                    headerHozAlign: "center",
+                },
+                ajaxURL: "{{ route('tasks.automatedArchivedData') }}",
+                ajaxContentType: "json",
+                ajaxResponse: function(url, params, response) {
+                    if (Array.isArray(response)) {
+                        $('#archived-count-badge').text(response.length);
+                        response = buildTaskTree(response);
+                    }
+                    return response;
+                },
+                rowFormatter: function(row) {
+                    row.getElement().style.backgroundColor = "#f8f9fa";
+                },
+                layout: "fitColumns",
+                pagination: true,
+                paginationSize: 50,
+                paginationSizeSelector: [10, 25, 50, 100],
+                responsiveLayout: false,
+                placeholder: "No Archived Automated Tasks",
+                height: Math.max(360, window.innerHeight - 330) + "px",
+                layoutColumnsOnNewData: true,
+                autoResize: true,
+                columns: buildAutomatedColumns(true)
+            });
+
+            archivedTable.on("rowSelectionChanged", function(data) {
+                $('#archived-selected-count').text(data.length);
+                $('#archived-restore-selected-btn').toggle(data.length > 0);
+            });
+
+            $('#archived-filter-search').on('keyup', function () {
+                var v = $(this).val();
+                if (!v) {
+                    archivedTable.clearFilter();
+                    return;
+                }
+                archivedTable.setFilter([[
+                    {field: "title", type: "like", value: v},
+                    {field: "group", type: "like", value: v},
+                    {field: "assignor_name", type: "like", value: v},
+                    {field: "assignee_name", type: "like", value: v}
+                ]]);
+            });
+
+            $('#archived-refresh-btn').on('click', function () {
+                archivedTable.replaceData();
+            });
+
+            // Switch between Automated Tasks and Archived Automated
+            $('#automated-view-tabs').on('click', 'a[data-view]', function (e) {
+                e.preventDefault();
+                var view = $(this).data('view');
+                $('#automated-view-tabs a').removeClass('active');
+                $(this).addClass('active');
+                if (view === 'archived') {
+                    $('#automated-active-pane').hide();
+                    $('#automated-archived-pane').show();
+                    archivedTable.redraw(true);
+                } else {
+                    $('#automated-archived-pane').hide();
+                    $('#automated-active-pane').show();
+                    table.redraw(true);
+                }
+            });
+
+            function restoreAutomatedTasks(ids) {
+                if (!ids || !ids.length) return;
+                if (!confirm('Restore ' + ids.length + ' archived automated task(s)? They will start running on their schedule again.')) {
+                    return;
+                }
+                $.ajax({
+                    url: "{{ route('tasks.automatedArchivedRestore') }}",
+                    type: 'POST',
+                    data: { _token: '{{ csrf_token() }}', task_ids: ids },
+                    success: function (response) {
+                        archivedTable.deselectRow();
+                        archivedTable.replaceData();
+                        table.replaceData();
+                        alert(response.message || 'Restored.');
+                    },
+                    error: function (xhr) {
+                        alert((xhr.responseJSON && xhr.responseJSON.message) || 'Error restoring task');
+                    }
+                });
+            }
+
+            $(document).on('click', '.restore-automated-task', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var id = String($(this).data('id'));
+                var selected = archivedTable.getSelectedData().map(function (r) { return String(r.id); });
+                if (selected.length > 1 && selected.indexOf(id) !== -1) {
+                    restoreAutomatedTasks(selected);
+                } else {
+                    restoreAutomatedTasks([id]);
+                }
+            });
+
+            $('#archived-restore-selected-btn').on('click', function () {
+                restoreAutomatedTasks(archivedTable.getSelectedData().map(function (r) { return String(r.id); }));
             });
 
             // Update statistics based on filtered data
@@ -3209,11 +3394,11 @@
                 console.log('Delete clicked, selectedTasks:', selectedTasks);
                 
                 if (selectedTasks.length === 0) {
-                    alert('Please select at least one task to delete');
+                    alert('Please select at least one task to archive');
                     return;
                 }
                 
-                if (confirm(`Are you sure you want to delete ${selectedTasks.length} automated task(s)?\n\nThis action cannot be undone.`)) {
+                if (confirm(`Are you sure you want to archive ${selectedTasks.length} automated task(s)?\n\nThey will stop running and move to the "Archived Automated" tab. You can restore them from there.`)) {
                     console.log('Delete confirmed, calling bulkUpdate');
                     bulkUpdate('delete', {});
                 }
@@ -4069,10 +4254,14 @@
                 var deleteMany = selectedTasks.length > 1 && selectedIdSet.has(taskId);
 
                 if (deleteMany) {
-                    if (!confirm('Delete ' + selectedTasks.length + ' selected automated task(s)? This cannot be undone.')) {
+                    if (!confirm('Archive ' + selectedTasks.length + ' selected automated task(s)?\n\nThey will stop running and move to the "Archived Automated" tab. You can restore them from there.')) {
                         return;
                     }
                     bulkUpdate('delete', {});
+                    return;
+                }
+
+                if (!confirm('Are you sure you want to archive this automated task?\n\nIt (and its subtasks) will stop running and move to the "Archived Automated" tab. You can restore it from there.')) {
                     return;
                 }
                 
@@ -4103,7 +4292,7 @@
                     error: function(xhr) {
                         var alertHtml = `
                             <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                <i class="mdi mdi-alert-circle me-2"></i>Error deleting task
+                                <i class="mdi mdi-alert-circle me-2"></i>Error archiving task
                                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                             </div>
                         `;

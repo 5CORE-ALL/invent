@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\Schema;
  */
 class AmazonAdsEnabledCampaignSync
 {
+    /** Summary labels the grid can pin to (Report range dropdown) besides the daily row. */
+    private const SUMMARY_RANGES = ['L30', 'L15', 'L7', 'L1'];
+
     public function __construct(private AmazonAdsService $ads) {}
 
     /**
@@ -56,6 +59,31 @@ class AmazonAdsEnabledCampaignSync
         $skipped = 0;
         $l30Window = self::l30WindowEnding($dayYmd);
 
+        $table = (new $modelClass)->getTable();
+        $tableColumns = Schema::getColumnListing($table);
+        $ranges = array_values(array_unique(array_merge([$dayYmd], self::SUMMARY_RANGES)));
+
+        $enabledIds = [];
+        foreach ($campaigns as $campaign) {
+            $cid = trim((string) ($campaign['campaignId'] ?? $campaign['campaign_id'] ?? ''));
+            if ($cid !== '') {
+                $enabledIds[$cid] = true;
+            }
+        }
+
+        // One lookup of every (campaign, range) row already stored, instead of one query per campaign.
+        $existing = [];
+        foreach (array_chunk(array_keys($enabledIds), 500) as $chunk) {
+            $rows = $modelClass::query()
+                ->where('profile_id', $profileId)
+                ->whereIn('campaign_id', $chunk)
+                ->whereIn('report_date_range', $ranges)
+                ->get(['campaign_id', 'report_date_range']);
+            foreach ($rows as $row) {
+                $existing[(string) $row->campaign_id."\0".(string) $row->report_date_range] = true;
+            }
+        }
+
         foreach ($campaigns as $campaign) {
             $cid = trim((string) ($campaign['campaignId'] ?? $campaign['campaign_id'] ?? ''));
             if ($cid === '') {
@@ -65,16 +93,11 @@ class AmazonAdsEnabledCampaignSync
 
             $payload = self::filterToColumns(
                 self::zeroMetricPayload($campaign, $profileId, $cid, $adType, $l30Window),
-                Schema::getColumnListing((new $modelClass)->getTable())
+                $tableColumns
             );
             $wrote = false;
-            foreach ([$dayYmd, 'L30', 'L1'] as $range) {
-                $existing = $modelClass::query()
-                    ->where('profile_id', $profileId)
-                    ->where('campaign_id', $cid)
-                    ->where('report_date_range', $range)
-                    ->exists();
-                if ($existing) {
+            foreach ($ranges as $range) {
+                if (isset($existing[$cid."\0".$range])) {
                     continue;
                 }
                 $modelClass::create(array_merge($payload, [
@@ -87,6 +110,21 @@ class AmazonAdsEnabledCampaignSync
             } else {
                 $skipped++;
             }
+        }
+
+        // Campaigns re-enabled after a zero-activity stretch keep an old PAUSED/ARCHIVED
+        // row (reports omit them), so the grid's ENABLED filter hid them. The Amazon list
+        // is the source of truth for the current state.
+        foreach (array_chunk(array_keys($enabledIds), 500) as $chunk) {
+            $modelClass::query()
+                ->where('profile_id', $profileId)
+                ->whereIn('campaign_id', $chunk)
+                ->whereIn('report_date_range', $ranges)
+                ->where(function ($q) {
+                    $q->whereNull('campaignStatus')
+                        ->orWhereRaw("UPPER(TRIM(campaignStatus)) <> 'ENABLED'");
+                })
+                ->update(['campaignStatus' => 'ENABLED']);
         }
 
         return ['created' => $created, 'skipped' => $skipped];

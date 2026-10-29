@@ -4660,14 +4660,12 @@ class TaskController extends Controller
         switch ($action) {
             case 'delete':
                 if ($isAutomatedTask) {
-                    // Delete automated tasks from automate_tasks table
-                    $deletedCount = \DB::table('automate_tasks')
-                        ->whereIn('id', $taskIds)
-                        ->delete();
-                    
+                    // Archive automated tasks (moved out of automate_tasks, restorable)
+                    $archivedCount = count(\App\Support\AutomatedTaskArchive::archive($taskIds, $user->email ?? null));
+
                     return response()->json([
                         'success' => true,
-                        'message' => "$deletedCount automated task(s) deleted successfully!"
+                        'message' => "$archivedCount automated task(s) archived successfully!"
                     ]);
                 } else {
                     try {
@@ -5204,6 +5202,15 @@ class TaskController extends Controller
 
         $tasks = AutomatedTaskAccess::visibleTasks($user);
 
+        return response()->json($this->decorateAutomatedRows($tasks, $user, false));
+    }
+
+    /**
+     * Adds assignor/assignee names, checklist/SOP flags and permission flags to template rows.
+     * Used by both the active and the archived automated task tables.
+     */
+    private function decorateAutomatedRows($tasks, $user, bool $archived)
+    {
         $formMeta = collect();
         $submissionCounts = collect();
         $sopPageIds = collect();
@@ -5235,7 +5242,7 @@ class TaskController extends Controller
         foreach ($tasks as $template) {
             $tasksById[(int) $template->id] = $template;
         }
-        $tasks->each(function($task) use ($defaultAvatar, $formMeta, $submissionCounts, $sopPageSet, $currentEmail, $user, $tasksById) {
+        $tasks->each(function($task) use ($defaultAvatar, $formMeta, $submissionCounts, $sopPageSet, $currentEmail, $user, $tasksById, $archived) {
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
                 $task->assignor_id = $assignorUser ? $assignorUser->id : null;
@@ -5277,13 +5284,21 @@ class TaskController extends Controller
             $hasSopFile = trim((string) ($task->link3 ?? '')) !== '';
             $task->has_sop_link = $hasSopFile;
             $task->sop_page_url = ($hasSopFile || $task->has_sop_page) ? url('/tasks/automated/'.$task->id.'/sop-page') : null;
-            $task->can_modify = AutomatedTaskAccess::canModify($user, $task, $tasksById);
-            $task->can_delete = AutomatedTaskAccess::canDelete($user, $task, $tasksById);
+            if ($archived) {
+                // Archived templates are read-only; the only action is restore.
+                $task->can_modify = false;
+                $task->can_delete = false;
+                $task->can_restore = AutomatedTaskAccess::canDelete($user, $task, $tasksById);
+            } else {
+                $task->can_modify = AutomatedTaskAccess::canModify($user, $task, $tasksById);
+                $task->can_delete = AutomatedTaskAccess::canDelete($user, $task, $tasksById);
+                $task->can_restore = false;
+            }
             $task->is_sop_assignor = $task->can_modify || ($currentEmail !== '' && strtolower(trim((string) ($task->assignor ?? ''))) === $currentEmail);
             $task->can_create_sop_page = $hasSopFile && $task->can_modify;
         });
 
-        return response()->json($tasks);
+        return $tasks;
     }
 
     public function uploadIndex()
@@ -5778,28 +5793,63 @@ class TaskController extends Controller
             ], 403);
         }
 
-        // Cascade-delete child subtask templates first, then the parent.
-        $childIds = \DB::table('automate_tasks')
-            ->where('parent_task_id', $id)
-            ->pluck('id')
-            ->all();
+        // Archive (not hard-delete) the template together with its subtask templates.
+        // Already-generated task instances are left untouched.
+        $archivedIds = \App\Support\AutomatedTaskArchive::archive([(int) $id], $user->email ?? null);
+        $subCount = max(0, count($archivedIds) - 1);
+        $extra = $subCount > 0 ? ' (including ' . $subCount . ' subtask template(s))' : '';
 
-        $allTemplateIds = array_merge([(int) $id], array_map('intval', $childIds));
+        return response()->json(['success' => true, 'message' => 'Automated task archived!' . $extra]);
+    }
 
-        \DB::table('automate_tasks')->whereIn('id', $allTemplateIds)->delete();
+    public function getArchivedAutomatedData()
+    {
+        $user = Auth::user();
+        \App\Support\AutomatedTaskArchive::ensureTable();
 
-        // Also delete any executed instances from tasks table
-        $instanceIds = \DB::table('tasks')->whereIn('automate_task_id', $allTemplateIds)->pluck('id')->all();
-        \DB::table('tasks')->whereIn('automate_task_id', $allTemplateIds)->delete();
-        try {
-            \App\Support\ChatWorkspace::deleteTaskChats($instanceIds);
-        } catch (\Throwable $e) {
-            \Log::warning('Automated task delete: task chat cleanup failed', ['error' => $e->getMessage()]);
+        $rows = \DB::table(\App\Support\AutomatedTaskArchive::TABLE)
+            ->orderByDesc('archived_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $tasks = AutomatedTaskAccess::filterVisible($user, $rows);
+
+        return response()->json($this->decorateAutomatedRows($tasks, $user, true));
+    }
+
+    public function restoreArchivedAutomated(Request $request)
+    {
+        $user = Auth::user();
+        $ids = $request->input('task_ids', []);
+        if (! is_array($ids)) {
+            $ids = [];
+        }
+        $ids = array_values(array_filter(array_map('intval', $ids), fn ($v) => $v > 0));
+        if ($ids === []) {
+            return response()->json(['success' => false, 'message' => 'No archived tasks selected.'], 422);
         }
 
-        $extra = count($childIds) > 0 ? ' (including ' . count($childIds) . ' subtask template(s))' : '';
+        \App\Support\AutomatedTaskArchive::ensureTable();
+        $rows = \DB::table(\App\Support\AutomatedTaskArchive::TABLE)->get();
+        $byId = [];
+        foreach ($rows as $row) {
+            $byId[(int) $row->id] = $row;
+        }
+        foreach ($ids as $id) {
+            if (! isset($byId[$id]) || ! $user || ! AutomatedTaskAccess::canDelete($user, $byId[$id], $byId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You are not allowed to restore this automated task.',
+                ], 403);
+            }
+        }
 
-        return response()->json(['success' => true, 'message' => 'Automated task and all its instances deleted!' . $extra]);
+        $restored = \App\Support\AutomatedTaskArchive::restore($ids);
+
+        return response()->json([
+            'success' => true,
+            'message' => count($restored) . ' automated task(s) restored!',
+        ]);
     }
 
     /**

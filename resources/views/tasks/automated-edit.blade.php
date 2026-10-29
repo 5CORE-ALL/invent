@@ -52,6 +52,12 @@
                                     <button type="button" class="btn btn-outline-secondary me-2" id="duplicate-from-edit-btn">
                                         <i class="mdi mdi-content-copy me-1"></i> Duplicate
                                     </button>
+                                    <button type="submit" id="channel-task-from-edit-btn"
+                                            formaction="{{ route('tasks.automatedStore') }}"
+                                            class="btn btn-outline-primary me-2"
+                                            title="Create this task once for every active channel (new automated tasks). Group becomes the channel name. This task is not changed.">
+                                        <i class="mdi mdi-plus me-1"></i> Channel Task
+                                    </button>
                                     <button type="submit" class="btn btn-danger">
                                         <i class="mdi mdi-check-circle me-1"></i> Update
                                     </button>
@@ -267,6 +273,29 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         $(document).ready(function() {
+            // Channel Task: create new automated tasks (one per active channel) from the values on this
+            // form, via the create endpoint. The existing task is not updated.
+            var $editForm = $('#channel-task-from-edit-btn').closest('form');
+            function resetChannelSubmitState() {
+                $editForm.find('input[name="_method"]').prop('disabled', false);
+                $editForm.find('input[name="create_for_all_channels"]').remove();
+            }
+            $editForm.on('submit', function (e) {
+                var submitter = e.originalEvent && e.originalEvent.submitter;
+                if (!submitter || submitter.id !== 'channel-task-from-edit-btn') {
+                    return;
+                }
+                if (!confirm('Create this task for every active channel as NEW automated tasks? Group will be each channel name. This task will not be changed.')) {
+                    e.preventDefault();
+                    return false;
+                }
+                // The create endpoint is POST (not PUT) and needs the channel flag.
+                $editForm.find('input[name="_method"]').prop('disabled', true);
+                $('<input type="hidden" name="create_for_all_channels" value="1">').appendTo($editForm);
+            });
+            // Coming back via the browser Back button should not keep the channel state.
+            $(window).on('pageshow', resetChannelSubmitState);
+
             // Initialize Select2
             $('#assignor_id').select2({
                 theme: 'bootstrap-5',

@@ -71,6 +71,9 @@
                             <!-- Action Buttons at Top Right -->
                             <div class="row mb-4">
                                 <div class="col-12 text-end">
+                                    <button type="button" id="auto-create-channel-btn" class="btn btn-outline-primary me-2" title="Create this task once for every active channel. Group becomes the channel name.">
+                                        <i class="mdi mdi-plus me-1"></i> Channel Task
+                                    </button>
                                     <button type="submit" name="after_create" value="list" class="btn btn-danger">
                                         <i class="mdi mdi-check-circle me-1"></i> Create
                                     </button>
@@ -302,6 +305,20 @@
                 var on = $(this).is(':checked');
                 $('#group').prop('disabled', on);
                 $('#group').attr('placeholder', on ? 'Group = channel name' : 'Enter Group');
+            });
+
+            // Channel Task button: same as ticking "Create for every active channel" and creating.
+            $('#auto-create-channel-btn').on('click', function () {
+                var form = $(this).closest('form')[0];
+                if (!form.checkValidity()) {
+                    form.reportValidity();
+                    return;
+                }
+                if (!confirm('Create this task for every active channel? Group will be each channel name.')) {
+                    return;
+                }
+                $('#auto_create_for_all_channels').prop('checked', true).trigger('change');
+                form.requestSubmit();
             });
 
             // Require a Joint/Split choice when more than one assignee is selected.
