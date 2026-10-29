@@ -49,6 +49,57 @@ class AccountHealthMasterDashboardController extends Controller
         ]);
     }
 
+    /**
+     * Clear (delete) the data of a single rate cell on the channel dashboard,
+     * e.g. after a wrong entry. History columns (prev_1 / prev_2) are untouched.
+     */
+    public function clearDashboardCell(Request $request)
+    {
+        $validated = $request->validate([
+            'channel' => 'required|string',
+            'field' => 'required|string',
+        ]);
+
+        $rateModels = [
+            'odr_rate' => OdrRate::class,
+            'fulfillment_rate' => FullfillmentRate::class,
+            'valid_tracking_rate' => ValidTrackingRate::class,
+            'late_shipment_rate' => LateShipmentRate::class,
+            'on_time_delivery' => OnTimeDeliveryRate::class,
+            'negative_seller_rate' => NegativeSellerRate::class,
+            'atoz_claims_rate' => AtoZClaimsRate::class,
+            'violation_rate' => VoilanceRate::class,
+            'refund_rate' => RefundRate::class,
+        ];
+
+        $field = $validated['field'];
+        $column = 'current';
+        if (str_ends_with($field, '_allowed')) {
+            $field = substr($field, 0, -strlen('_allowed'));
+            $column = 'allowed';
+        }
+
+        if (!isset($rateModels[$field])) {
+            return response()->json(['success' => false, 'message' => 'This cell cannot be cleared.'], 422);
+        }
+
+        $channelId = ChannelMaster::where('channel', trim($validated['channel']))->value('id');
+        if (!$channelId) {
+            return response()->json(['success' => false, 'message' => 'Channel not found'], 404);
+        }
+
+        $model = $rateModels[$field];
+        $rate = $model::where('channel_id', $channelId)->orderBy('report_date', 'desc')->first();
+        if (!$rate) {
+            return response()->json(['success' => true, 'message' => 'Nothing to clear.']);
+        }
+
+        $rate->{$column} = $column === 'allowed' ? '' : null;
+        $rate->save();
+
+        return response()->json(['success' => true, 'message' => 'Cell data deleted.']);
+    }
+
     public function getMasterChannelDataHealthDashboard(Request $request)
     {
         try {

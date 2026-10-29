@@ -489,6 +489,50 @@
             return parseFloat(cleaned) || 0;
         }
 
+        // Adds a "Delete cell data" option (right-click) to every editable rate cell, to remove wrong entries.
+        const clearableFields = Object.keys(fieldUpdateEndpoints);
+
+        function deleteCellData(cell) {
+            const field = cell.getField();
+            const channel = cell.getData().channel;
+            const label = cell.getColumn().getDefinition().title || field;
+            if (!confirm(`Delete "${String(label).replace(/<[^>]*>/g, ' ').trim()}" data for "${channel}"?`)) return;
+
+            fetch('/account-health-master/dashboard/clear-cell', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
+                    body: JSON.stringify({ channel: channel, field: field })
+                })
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        // row.update does not fire cellEdited, so nothing is re-saved
+                        cell.getRow().update({ [field]: field.endsWith('_allowed') ? '' : 'N/A' });
+                    } else {
+                        alert('Error: ' + (res.message || 'Failed to delete cell data.'));
+                    }
+                })
+                .catch(() => alert('Server error while deleting cell data.'));
+        }
+
+        function withCellDeleteMenu(columns) {
+            return columns.map(col => {
+                if (col.field && clearableFields.includes(col.field)) {
+                    col.contextMenu = [{
+                        label: '<i class="fas fa-trash text-danger"></i> Delete cell data',
+                        action: function(e, cell) {
+                            deleteCellData(cell);
+                        }
+                    }];
+                }
+                return col;
+            });
+        }
+
         function initializeTable() {
             const toNum = (v, def = 0) => {
                 const n = parseFloat(String(v).replace(/,/g, ''));
@@ -571,7 +615,7 @@
                 ajaxRequesting: function() {
                     jq('#customLoader').show();
                 },
-                columns: [{
+                columns: withCellDeleteMenu([{
                         title: "Channel",
                         field: "channel",
                         headerSort: true,
@@ -1349,14 +1393,11 @@
                                     <button class="btn btn-sm btn-outline-primary edit-btn me-1" title="Edit" data-channel="${cell.getData().channel}">
                                         <i class="fas fa-edit"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-outline-danger delete-btn" title="Archive" data-channel="${cell.getData().channel}">
-                                        <i class="fa fa-archive"></i>
-                                    </button>
                                 </div>`;
                         },
                         hozAlign: "center"
                     }
-                ]
+                ])
             });
 
             table.on("cellEdited", function(cell) {
@@ -1792,31 +1833,6 @@
                     jq('#editType').val(type);
                     jq('#originalChannel').val(channel);
                     jq('#editChannelModal').modal('show');
-                }
-
-                if (jq(e.target).closest('.delete-btn').length) {
-                    const channel = cell.getData().channel;
-                    if (confirm(`Are you sure you want to archive channel "${channel}"?`)) {
-                        jq.ajax({
-                            url: '/channel_master/archive',
-                            method: 'POST',
-                            data: {
-                                channel: channel,
-                                _token: jq('meta[name="csrf-token"]').attr('content')
-                            },
-                            success: function(res) {
-                                if (res.success) {
-                                    table.deleteRow(cell.getRow());
-                                    alert('Channel archived successfully.');
-                                } else {
-                                    alert('Error: ' + (res.message || 'Failed to archive channel.'));
-                                }
-                            },
-                            error: function() {
-                                alert('Server error while archiving channel.');
-                            }
-                        });
-                    }
                 }
             });
         }
