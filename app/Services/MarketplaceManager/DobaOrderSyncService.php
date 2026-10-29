@@ -21,9 +21,11 @@ class DobaOrderSyncService
      */
     public function sync(string $fromDate, bool $import = false): array
     {
-        unset($fromDate);
-
-        $result = $this->fetchAndStore(60);
+        // The 30-minute scheduled run asks for a short window (7 days). It used to crawl all 60 days
+        // every time, which kept the single mm-doba worker busy for many minutes (up to the job
+        // timeout when Doba was slow) so new orders and Shopify imports queued up behind it.
+        // The full 60-day refresh still runs daily (doba:daily --days=60).
+        $result = $this->fetchAndStore($this->daysFromDate($fromDate));
 
         if ($import && MarketplaceSyncSettings::canAutoImportToShopify('doba')) {
             $dispatched = $this->dispatchImportsForNewOrders();
@@ -38,9 +40,25 @@ class DobaOrderSyncService
      */
     public function fetchAndStoreFromDate(string $fromDate): array
     {
-        unset($fromDate);
+        return $this->fetchAndStore($this->daysFromDate($fromDate));
+    }
 
-        return $this->fetchAndStore(60);
+    /**
+     * Days of history for a "from" date: at least 3, at most 60 (blank/invalid = 60).
+     */
+    protected function daysFromDate(string $fromDate): int
+    {
+        $fromDate = trim($fromDate);
+        if ($fromDate === '') {
+            return 60;
+        }
+        try {
+            $days = (int) ceil(now()->diffInHours(\Carbon\Carbon::parse($fromDate), true) / 24) + 1;
+        } catch (\Throwable) {
+            return 60;
+        }
+
+        return max(3, min(60, $days));
     }
 
     /**
@@ -79,6 +97,16 @@ class DobaOrderSyncService
             $this->fetchRecentOrders(4, 6);
         } catch (\Throwable $e) {
             Log::warning('DobaOrderSyncService: recent pass failed', ['error' => $e->getMessage()]);
+        }
+
+        // Queue Shopify imports for the orders just stored BEFORE the longer crawl, so a slow or
+        // failing crawl can never hold back today's orders.
+        try {
+            if (MarketplaceSyncSettings::canAutoImportToShopify('doba')) {
+                $this->dispatchImportsForNewOrders();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('DobaOrderSyncService: early import dispatch failed', ['error' => $e->getMessage()]);
         }
 
         try {

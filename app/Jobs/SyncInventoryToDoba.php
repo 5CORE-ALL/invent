@@ -23,7 +23,9 @@ class SyncInventoryToDoba implements ShouldQueue, ShouldBeUnique
 
     public function __construct()
     {
-        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueFor('doba'));
+        // Own queue (mm-doba-listings): the full catalog push can run ~30 min and must not block
+        // order fetch / Shopify imports on mm-doba.
+        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::listingsQueueFor('doba'));
     }
 
     public function uniqueId(): string
