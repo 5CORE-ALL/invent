@@ -216,6 +216,8 @@ class VariationMasterController extends Controller
     /**
      * "Update" button: fill each parent's Title, Description and Bullet 1–5 from its own SKUs
      * (the Title / Description / Bullet text already on each SKU in CP master).
+     * When a SKU has none, falls back to the Temu tables (temu / temu2 / temu3 metrics), and if those
+     * have nothing either, to the Amazon tables (amazon_metrics / amazon_listings_raw).
      * Text already typed in Variation Master is kept; only blank fields are filled.
      */
     public function updateFromSku(): JsonResponse
@@ -249,6 +251,15 @@ class VariationMasterController extends Controller
         $unchanged = 0;
         $noParentRow = 0;
         $noSkuText = 0;
+        $fromSource = [];
+
+        $allSkus = [];
+        foreach ($families as $children) {
+            foreach ($children as $child) {
+                $allSkus[] = trim((string) $child->sku);
+            }
+        }
+        $external = $this->externalListingText(array_values(array_unique($allSkus)));
 
         foreach ($families as $parent => $children) {
             $row = VariationListingContent::parentProduct((string) $parent);
@@ -259,12 +270,27 @@ class VariationMasterController extends Controller
             }
             $current = $this->listingText(is_array($row->Values) ? $row->Values : []);
 
+            // Candidate text per child SKU, in priority order: CP master (the SKU itself) → Temu tables → Amazon tables.
+            $sources = [];
+            foreach (['pm', 'temu', 'amazon'] as $sourceName) {
+                foreach ($children as $child) {
+                    $key = $this->skuKey((string) $child->sku);
+                    $sources[] = [
+                        'name' => $sourceName,
+                        'text' => $sourceName === 'pm'
+                            ? ['title' => $this->skuTitle($child), 'description' => $this->skuDescription($child), 'bullets' => $this->skuBulletSlots($child)]
+                            : ($external[$sourceName][$key] ?? null),
+                    ];
+                }
+            }
+
             $title = null;
             if ($current['title'] === '') {
-                foreach ($children as $child) {
-                    $found = $this->skuTitle($child);
+                foreach ($sources as $source) {
+                    $found = (string) ($source['text']['title'] ?? '');
                     if ($found !== '') {
                         $title = $found;
+                        $fromSource[$source['name']] = ($fromSource[$source['name']] ?? 0) + 1;
                         break;
                     }
                 }
@@ -272,10 +298,11 @@ class VariationMasterController extends Controller
 
             $description = null;
             if ($current['description'] === '') {
-                foreach ($children as $child) {
-                    $found = $this->skuDescription($child);
+                foreach ($sources as $source) {
+                    $found = (string) ($source['text']['description'] ?? '');
                     if ($found !== '') {
                         $description = $found;
+                        $fromSource[$source['name']] = ($fromSource[$source['name']] ?? 0) + 1;
                         break;
                     }
                 }
@@ -286,21 +313,22 @@ class VariationMasterController extends Controller
                 $current['bullet_1'], $current['bullet_2'], $current['bullet_3'], $current['bullet_4'], $current['bullet_5'],
             ];
             if (in_array('', $currentSlots, true)) {
-                foreach ($children as $child) {
-                    $slots = $this->skuBulletSlots($child);
+                foreach ($sources as $source) {
+                    $slots = $source['text']['bullets'] ?? [];
                     if (array_filter($slots, static fn ($s) => $s !== '') === []) {
                         continue;
                     }
                     $merged = $currentSlots;
                     foreach ($merged as $i => $existing) {
                         if ($existing === '') {
-                            $merged[$i] = $slots[$i];
+                            $merged[$i] = $slots[$i] ?? '';
                         }
                     }
                     if ($merged !== $currentSlots) {
                         $bullets = $this->joinBullets($merged);
+                        $fromSource[$source['name']] = ($fromSource[$source['name']] ?? 0) + 1;
+                        break;
                     }
-                    break;
                 }
             }
 
@@ -327,6 +355,16 @@ class VariationMasterController extends Controller
 
         $message = "Filled {$filledFields} field(s) on {$updatedParents} parent(s) from their SKUs."
             ." Already complete {$unchanged}. No SKU text found {$noSkuText}.";
+        $fallbackBits = [];
+        if (($fromSource['temu'] ?? 0) > 0) {
+            $fallbackBits[] = $fromSource['temu'].' from Temu';
+        }
+        if (($fromSource['amazon'] ?? 0) > 0) {
+            $fallbackBits[] = $fromSource['amazon'].' from Amazon';
+        }
+        if ($fallbackBits !== []) {
+            $message .= ' Fallback sources: '.implode(', ', $fallbackBits).'.';
+        }
         if ($noParentRow > 0) {
             $message .= " No PARENT row on CP master {$noParentRow}.";
         }
@@ -340,6 +378,115 @@ class VariationMasterController extends Controller
             'no_sku_text' => $noSkuText,
             'no_parent_row' => $noParentRow,
         ]);
+    }
+
+    private function skuKey(string $sku): string
+    {
+        return strtoupper(trim(str_replace("\u{00a0}", ' ', $sku)));
+    }
+
+    /**
+     * Title / description / bullets that already sit in the Temu (temu, temu2, temu3) and Amazon marketplace tables.
+     * Used only when a field is still blank after CP master, in that order (Temu first, then Amazon).
+     *
+     * @param  list<string>  $skus
+     * @return array{temu: array<string, array{title: string, description: string, bullets: list<string>}>, amazon: array<string, array{title: string, description: string, bullets: list<string>}>}
+     */
+    private function externalListingText(array $skus): array
+    {
+        $out = ['temu' => [], 'amazon' => []];
+        $skus = array_values(array_filter($skus, static fn ($s) => $s !== ''));
+        if ($skus === []) {
+            return $out;
+        }
+
+        // [source, table, sku column, title column, description columns (priority), bullets column]
+        $definitions = [
+            ['temu', 'temu_metrics', 'sku', 'goods_summary', ['description_master', 'goods_desc'], 'bullet_points'],
+            ['temu', 'temu2_metrics', 'sku', 'goods_summary', ['description_master', 'goods_desc'], 'bullet_points'],
+            ['temu', 'temu3_metrics', 'sku', 'goods_summary', ['description_master', 'goods_desc'], 'bullet_points'],
+            ['amazon', 'amazon_metrics', 'sku', null, ['description_master'], 'bullet_points'],
+            ['amazon', 'amazon_listings_raw', 'seller_sku', 'item_name', ['product_description'], 'bullet_point'],
+        ];
+
+        foreach ($definitions as [$source, $table, $skuCol, $titleCol, $descCols, $bulletCol]) {
+            try {
+                if (! \Illuminate\Support\Facades\Schema::hasTable($table) || ! \Illuminate\Support\Facades\Schema::hasColumn($table, $skuCol)) {
+                    continue;
+                }
+                $columns = [$skuCol];
+                if ($titleCol !== null && \Illuminate\Support\Facades\Schema::hasColumn($table, $titleCol)) {
+                    $columns[] = $titleCol;
+                } else {
+                    $titleCol = null;
+                }
+                $descCols = array_values(array_filter($descCols, static fn ($c) => \Illuminate\Support\Facades\Schema::hasColumn($table, $c)));
+                foreach ($descCols as $c) {
+                    $columns[] = $c;
+                }
+                if (\Illuminate\Support\Facades\Schema::hasColumn($table, $bulletCol)) {
+                    $columns[] = $bulletCol;
+                } else {
+                    $bulletCol = null;
+                }
+                if (count($columns) === 1) {
+                    continue;
+                }
+
+                foreach (array_chunk($skus, 500) as $chunk) {
+                    $rows = DB::table($table)->whereIn($skuCol, $chunk)->get($columns);
+                    foreach ($rows as $row) {
+                        $key = $this->skuKey((string) ($row->{$skuCol} ?? ''));
+                        if ($key === '') {
+                            continue;
+                        }
+
+                        $title = '';
+                        if ($titleCol !== null) {
+                            $raw = $this->normalizeDisplay($row->{$titleCol} ?? null);
+                            // Temu goods_summary also stores copied bullet text; only a single line counts as a title.
+                            if ($raw !== '' && ! preg_match('/[\r\n]/', (string) ($row->{$titleCol} ?? '')) && mb_strlen($raw) <= 500) {
+                                $title = $raw;
+                            }
+                        }
+
+                        $description = '';
+                        foreach ($descCols as $c) {
+                            $description = $this->keepLines($row->{$c} ?? null);
+                            if ($description !== '') {
+                                break;
+                            }
+                        }
+
+                        $slots = ['', '', '', '', ''];
+                        if ($bulletCol !== null) {
+                            $rawBullets = $row->{$bulletCol} ?? null;
+                            $decoded = is_string($rawBullets) ? json_decode($rawBullets, true) : null;
+                            if (is_array($decoded)) {
+                                $rawBullets = implode("\n", array_map(static fn ($b) => is_scalar($b) ? (string) $b : '', $decoded));
+                            }
+                            $slots = $this->bulletSlots($rawBullets);
+                        }
+
+                        $entry = $out[$source][$key] ?? ['title' => '', 'description' => '', 'bullets' => ['', '', '', '', '']];
+                        if ($entry['title'] === '') {
+                            $entry['title'] = $title;
+                        }
+                        if ($entry['description'] === '') {
+                            $entry['description'] = $description;
+                        }
+                        if (array_filter($entry['bullets'], static fn ($s) => $s !== '') === []) {
+                            $entry['bullets'] = $slots;
+                        }
+                        $out[$source][$key] = $entry;
+                    }
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Variation Master update: could not read '.$table, ['error' => $e->getMessage()]);
+            }
+        }
+
+        return $out;
     }
 
     private function skuTitle(ProductMaster $product): string

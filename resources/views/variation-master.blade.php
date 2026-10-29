@@ -174,7 +174,7 @@
                         <a class="btn btn-sm btn-outline-success" href="{{ route('variation.master.download', ['format' => 'csv']) }}">
                             <i class="bi bi-filetype-csv me-1"></i>Download CSV
                         </a>
-                        <button type="button" class="btn btn-sm btn-warning" id="vm-update-btn" title="Fill empty Title, Description and Bullet 1–5 from each parent's own SKUs">
+                        <button type="button" class="btn btn-sm btn-warning" id="vm-update-btn" title="Fill empty Title, Description and Bullet 1–5 from each parent's SKUs; if a SKU has none, from the Temu tables, then the Amazon tables">
                             <i class="bi bi-arrow-repeat me-1"></i>Update
                         </button>
                         <input type="file" id="vm-upload-file" class="d-none" accept=".xlsx,.xls,.csv">
