@@ -10,6 +10,9 @@ use Illuminate\Support\Facades\Schema;
 
 class LqsShopifySeoService
 {
+    /** False when a live Shopify fetch stopped early (rate limit / API error). */
+    private bool $liveFetchComplete = true;
+
     public function __construct(protected LqsShopifySeoScorer $scorer)
     {
     }
@@ -46,6 +49,7 @@ class LqsShopifySeoService
 
         $products = [];
         $source = 'catalog';
+        $this->liveFetchComplete = true;
         if ($live) {
             $products = $this->fetchShopifyProducts();
             if ($products !== []) {
@@ -68,7 +72,10 @@ class LqsShopifySeoService
             $this->persistProduct($product, $source, $now);
         }
 
-        if ($seen !== []) {
+        // Only prune rows when the whole Shopify catalog was fetched. A partial fetch
+        // (e.g. HTTP 429) would otherwise delete every product it did not reach.
+        $canPrune = $source === 'catalog' || $this->liveFetchComplete;
+        if ($seen !== [] && $canPrune) {
             LqsShopifySeoScore::query()
                 ->whereNotIn('shopify_product_id', array_keys($seen))
                 ->delete();
@@ -77,6 +84,7 @@ class LqsShopifySeoService
         return [
             'products' => count($seen),
             'source' => $source,
+            'complete' => $this->liveFetchComplete,
             'seo' => $this->countByRating('seo_rating'),
             'readability' => $this->countByRating('readability_rating'),
         ];
@@ -201,12 +209,15 @@ class LqsShopifySeoService
             $out = [];
             $ok = true;
             for ($page = 0; $page < 80; $page++) {
-                $response = $this->shopifyRequest($domain, $token)
-                    ->timeout(90)
-                    ->post("https://{$domain}/admin/api/2025-01/graphql.json", [
-                        'query' => $query,
-                        'variables' => ['cursor' => $cursor],
-                    ]);
+                $response = $this->sendWithRetry(
+                    fn () => $this->shopifyRequest($domain, $token)
+                        ->timeout(90)
+                        ->post("https://{$domain}/admin/api/2025-01/graphql.json", [
+                            'query' => $query,
+                            'variables' => ['cursor' => $cursor],
+                        ]),
+                    true
+                );
 
                 if (! $response->successful()) {
                     Log::warning('LqsShopifySeoService: GraphQL page failed', [
@@ -214,6 +225,7 @@ class LqsShopifySeoService
                         'body' => mb_substr($response->body(), 0, 400),
                     ]);
                     $ok = false;
+                    $this->liveFetchComplete = false;
                     break;
                 }
 
@@ -223,6 +235,7 @@ class LqsShopifySeoService
                         'errors' => $json['errors'],
                     ]);
                     $ok = false;
+                    $this->liveFetchComplete = false;
                     break;
                 }
 
@@ -243,6 +256,8 @@ class LqsShopifySeoService
             }
 
             if ($ok && $out !== []) {
+                $this->liveFetchComplete = true;
+
                 return $out;
             }
         }
@@ -266,14 +281,17 @@ class LqsShopifySeoService
                 $query['page_info'] = $pageInfo;
             }
 
-            $response = $this->shopifyRequest($domain, $token)
-                ->timeout(90)
-                ->get("https://{$domain}/admin/api/2025-01/products.json", $query);
+            $response = $this->sendWithRetry(
+                fn () => $this->shopifyRequest($domain, $token)
+                    ->timeout(90)
+                    ->get("https://{$domain}/admin/api/2025-01/products.json", $query)
+            );
 
             if (! $response->successful()) {
                 Log::warning('LqsShopifySeoService: REST products failed', [
                     'status' => $response->status(),
                 ]);
+                $this->liveFetchComplete = false;
                 break;
             }
 
@@ -475,6 +493,38 @@ GQL;
         $token = (string) (config('services.shopify.access_token') ?: config('services.shopify.password') ?: '');
 
         return [$domain, $token];
+    }
+
+    /**
+     * Send a Shopify request, waiting and retrying on HTTP 429 and GraphQL THROTTLED errors.
+     *
+     * @param  callable(): \Illuminate\Http\Client\Response  $send
+     */
+    private function sendWithRetry(callable $send, bool $graphql = false, int $maxAttempts = 6)
+    {
+        $response = null;
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $response = $send();
+
+            $throttled = $response->status() === 429;
+            if (! $throttled && $graphql && $response->successful()) {
+                foreach ((array) $response->json('errors', []) as $error) {
+                    if (is_array($error) && data_get($error, 'extensions.code') === 'THROTTLED') {
+                        $throttled = true;
+                        break;
+                    }
+                }
+            }
+
+            if (! $throttled || $attempt === $maxAttempts) {
+                return $response;
+            }
+
+            $wait = (float) ($response->header('Retry-After') ?: 0);
+            usleep((int) (max($wait, 1.0 * $attempt) * 1_000_000));
+        }
+
+        return $response;
     }
 
     private function shopifyRequest(string $domain, string $token)

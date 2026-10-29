@@ -28,6 +28,9 @@ class SyncLqsShopifySeoCommand extends Command
         }
 
         $this->info("Scored {$result['products']} product(s) from {$result['source']}.");
+        if (($result['complete'] ?? true) === false) {
+            $this->warn('Shopify fetch was incomplete (rate limit/API error); existing scores were kept, nothing was pruned.');
+        }
         $this->line('SEO: good '.$result['seo']['good']
             .', ok '.$result['seo']['ok']
             .', needs improvement '.$result['seo']['bad']
