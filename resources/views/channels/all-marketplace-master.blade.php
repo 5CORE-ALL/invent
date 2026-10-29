@@ -1039,6 +1039,11 @@
                         <i class="fas fa-plus-circle" style="color: #000;"></i>
                     </button>
 
+                    <button id="clearCacheBtn" class="btn btn-sm btn-outline-dark" type="button"
+                        title="Clear cache & reload fresh data" aria-label="Clear cache">
+                        <i class="fas fa-broom" style="color: #000;"></i>
+                    </button>
+
                 </div>
 
                 <!-- Summary Stats -->
@@ -9608,6 +9613,30 @@
                         $('#yesterdayMpTableBody').html('<tr><td colspan="9" class="text-center text-danger">Could not load yesterday metrics</td></tr>');
                     });
             }
+
+            // Clear cache: drops this page's cached grid / Today / Y-sales data, then reloads.
+            $(document).on('click', '#clearCacheBtn', function(e) {
+                e.preventDefault();
+                const $btn = $(this);
+                if ($btn.prop('disabled')) return;
+                if (!window.confirm('Clear cache and reload fresh data? The page may take longer to load once.')) return;
+                const $icon = $btn.find('i');
+                $btn.prop('disabled', true);
+                $icon.removeClass('fa-broom').addClass('fa-spinner fa-spin');
+                $.ajax({
+                    url: '/channels-master-clear-cache',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') }
+                }).done(function() {
+                    window.location.reload();
+                }).fail(function(xhr) {
+                    $btn.prop('disabled', false);
+                    $icon.removeClass('fa-spinner fa-spin').addClass('fa-broom');
+                    alert(xhr && xhr.status === 429
+                        ? 'Too many clears — wait a minute and try again.'
+                        : 'Could not clear cache. Please try again.');
+                });
+            });
 
             $(document).on('click', '#yesterdayMpViewBtn', function(e) {
                 e.preventDefault();

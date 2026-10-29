@@ -8307,9 +8307,51 @@ class ChannelMasterController extends Controller
     private function ammChannelMasterFingerprint(): string
     {
         try {
-            return md5(ChannelMaster::query()->count().'|'.(string) ChannelMaster::query()->max('updated_at'));
+            // The manual "Clear cache" button changes the epoch, which makes every daily entry stale.
+            $epoch = (string) \Cache::get(self::AMM_CACHE_EPOCH_KEY, '0');
+
+            return md5(ChannelMaster::query()->count().'|'.(string) ChannelMaster::query()->max('updated_at').'|'.$epoch);
         } catch (\Throwable $e) {
             return 'na';
+        }
+    }
+
+    private const AMM_CACHE_EPOCH_KEY = 'amm_manual_cache_epoch';
+
+    /**
+     * "Clear cache" button on /all-marketplace-master: drops only the display caches of this
+     * page so the next load rebuilds from the database. It deliberately does NOT call
+     * cache:clear, which would also wipe stored history (channel_master_inv_dil_hist,
+     * channel_master_summary_data, backfill markers, …).
+     */
+    public function clearAllMarketplaceCache(Request $request)
+    {
+        try {
+            // Invalidates the daily grid payloads (compared through the fingerprint).
+            \Cache::forever(self::AMM_CACHE_EPOCH_KEY, (string) microtime(true));
+
+            // 90-second fast payloads + Y-sales charts + live Today sales cache.
+            \App\Models\ChannelMasterCalculatedData::bumpFastPayloadCache();
+
+            $date = $this->ammPacificDate();
+            \Cache::forget('amm_today_block_v1:'.$date);
+            \Cache::forget('amm_inv_pies_daily_v1:'.$date);
+            foreach ([7, 14, 30, 31, 32, 35, 45, 60, 90] as $days) {
+                \Cache::forget('amm_all_y_sales_chart_v4_d'.$days);
+            }
+
+            Log::info('All Marketplace Master cache cleared manually', [
+                'user_id' => optional($request->user())->id,
+            ]);
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'Cache cleared. Reloading fresh data…',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('All Marketplace Master cache clear failed: '.$e->getMessage());
+
+            return response()->json(['status' => 500, 'message' => 'Could not clear cache'], 500);
         }
     }
 
