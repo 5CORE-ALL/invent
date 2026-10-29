@@ -1113,6 +1113,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Account Health Master Channel Dashboard
     Route::get('/channel/dashboard', [AccountHealthMasterDashboardController::class, 'dashboard'])->name('account.health.master.channel.dashboard');
+    Route::post('/account-health-master/dashboard/clear-cell', [AccountHealthMasterDashboardController::class, 'clearDashboardCell'])->name('account.health.master.dashboard.clear.cell');
     Route::get('/account-health-master/dashboard-data', [AccountHealthMasterDashboardController::class, 'getMasterChannelDataHealthDashboard'])->name('account.health.master.dashboard.data');
     Route::get('/account-health-master-data', [AccountHealthMasterDashboardController::class, 'getMasterChannelDataHealthDashboard'])->name('account.health.master.data');
     Route::get('/account-health-master/export', [AccountHealthMasterDashboardController::class, 'export'])->name('account-health-master.export');
