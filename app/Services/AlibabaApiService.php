@@ -226,9 +226,16 @@ class AlibabaApiService extends AliExpressApiService
             $sellerQuery['create_date_end'] = ['date_str' => $end];
         }
 
-        $seller = $this->callIcbu('alibaba.seller.order.list', [
-            'param_trade_ecology_order_list_query' => $sellerQuery,
-        ]);
+        // Live REST path is /alibaba/order/list with flat params (role, start_page, page_size, create_date_*).
+        // The old alibaba.seller.order.list / /alibaba/seller/order/list names answer "InvalidApiPath", which
+        // left alibaba_order_metrics empty so /alibaba/daily-sales showed no sales.
+        $this->useIcbuRest();
+        $seller = $this->callRestGateway('/alibaba/order/list', $sellerQuery);
+        if (empty($seller['success']) && ! $this->isAuthError($seller)) {
+            $seller = $this->callIcbu('alibaba.seller.order.list', [
+                'param_trade_ecology_order_list_query' => $sellerQuery,
+            ]);
+        }
         if (! empty($seller['success'])) {
             $payload = $this->unwrapSolutionEnvelope($seller['data'] ?? []);
             $parsed = $this->parseIcbuOrderList(is_array($payload) ? $payload : []);
@@ -287,9 +294,15 @@ class AlibabaApiService extends AliExpressApiService
     public function getOrderInfo(string $orderId): array
     {
         $orderId = trim($orderId);
-        $seller = $this->callIcbu('alibaba.seller.order.get', [
+        $this->useIcbuRest();
+        $seller = $this->callRestGateway('/alibaba/order/get', [
             'e_trade_id' => $orderId,
         ]);
+        if (empty($seller['success']) && ! $this->isAuthError($seller)) {
+            $seller = $this->callIcbu('alibaba.seller.order.get', [
+                'e_trade_id' => $orderId,
+            ]);
+        }
         if (! empty($seller['success'])) {
             $payload = $this->unwrapSolutionEnvelope($seller['data'] ?? []);
             $result = $this->unwrapSellerOrder($payload);
