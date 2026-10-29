@@ -1958,6 +1958,12 @@
             });
         } catch (err) {}
 
+        // A page that declares its own Publish column (listingPageConfig.ownPublishColumn) never gets the generic one.
+        if (cfg().ownPublishColumn) {
+            try { table.deleteColumn('publish_to_marketplace'); } catch (err) {}
+            return;
+        }
+
         const hasPublish = (table.getColumns() || []).some(function (col) {
             const def = col.getDefinition ? col.getDefinition() : {};
             // Any page that already has its own "Publish to ..." column (publish_to_temu, publish_to_temu2, ...)

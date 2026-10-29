@@ -464,11 +464,14 @@ class FetchTemuMetrics extends Command
                             // Cast to string so MySQL does a string comparison — a numeric bind
                             // coerces the VARCHAR columns to DOUBLE and errors on text SKUs.
                             $skuSnKey = (string) $skuSn;
+                            $idUpdate = ['goods_id' => $goodsId];
+                            // The goods list also carries each SKU's Temu skuId - keep it in sync (SKU ID column).
+                            if (! empty($sku['skuId']) && preg_match('/^\d+$/', (string) $sku['skuId'])) {
+                                $idUpdate['sku_id'] = (string) $sku['skuId'];
+                            }
                             $updated = TemuMetric::where('sku', $skuSnKey)
                                 ->orWhere('sku_id', $skuSnKey)
-                                ->update([
-                                    'goods_id' => $goodsId,
-                                ]);
+                                ->update($idUpdate);
                             if ($updated) {
                                 $this->info("Updated goods_id for SKU: {$skuSn} to {$goodsId} ({$updated} records)");
                                 Log::info("Updated goods_id for SKU: {$skuSn}", ['goods_id' => $goodsId, 'count' => $updated]);
