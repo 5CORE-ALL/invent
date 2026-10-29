@@ -270,6 +270,8 @@ class NewTemuoneController extends Controller
                     ->whereIn('goods_id', $chunk)
                     ->whereNotNull('ad_create_reject')
                     ->where('ad_create_reject', '!=', '')
+                    // Budget alerts ("daily budget must be between X and Y") are not listing issues.
+                    ->where('ad_create_reject', 'not like', '%budget%')
                     ->orderByDesc('fetched_at')
                     ->orderByDesc('id')
                     ->get(['goods_id', 'ad_create_reject'])
@@ -289,7 +291,7 @@ class NewTemuoneController extends Controller
             return [];
         }
 
-        return array_filter($out, fn ($m) => $m !== '');
+        return array_filter($out, fn ($m) => $m !== '' && ! preg_match('/budget/i', $m));
     }
 
     /**
