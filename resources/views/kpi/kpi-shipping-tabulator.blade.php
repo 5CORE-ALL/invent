@@ -836,7 +836,7 @@
                     title: "Amount (Rs)",
                     field: "amount",
                     widthGrow: 1,
-                    hozAlign: "right",a
+                    hozAlign: "right",
                     formatter: function(cell) {
                         const v = cell.getValue();
                         return (v === null || v === undefined) ? '' : '₹' + Number(v).toLocaleString('en-IN');
