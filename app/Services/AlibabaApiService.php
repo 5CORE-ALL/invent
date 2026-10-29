@@ -2279,7 +2279,11 @@ class AlibabaApiService extends AliExpressApiService
         }
         // A seller-defined (negative id) attribute with a system twin is sent as the system attribute.
         // Alibaba answers a custom id such as -10001 "Material" with "SYS_ERROR", so the price never saves.
+        // Any other seller-defined attribute (Size, Type, QUANTITY, PACK, Wattage, Capacity, Impedance ...) fails the same
+        // way, so it is sent under an unused system attribute id (Size first). Alibaba accepts the seller's own value id
+        // and name under it; verified live for Size/Type/QUANTITY/PACK/Wattage listings.
         $systemTwin = ['color' => '191288010', 'material' => '191284014'];
+        $systemFallback = ['191284006', '191288010', '191284014'];
         foreach ($node as $key => $value) {
             if (! is_string($key) || preg_match('/^attr\d+Value$/', $key) !== 1 || ! is_array($value)) {
                 continue;
@@ -2294,9 +2298,20 @@ class AlibabaApiService extends AliExpressApiService
                 $name = is_array($known) ? (string) $known['name'] : '';
                 $valueName = is_array($known) ? (string) ($known['values'][$valueId] ?? '') : '';
                 $twin = $systemTwin[strtolower($name)] ?? null;
-                if ((int) $attrId < 0 && $twin !== null && ! isset($present[$twin])) {
-                    $attrId = $twin;
-                    $present[$twin] = true;
+                if ((int) $attrId < 0) {
+                    if ($twin === null || isset($present[$twin])) {
+                        $twin = null;
+                        foreach ($systemFallback as $candidate) {
+                            if (! isset($present[$candidate])) {
+                                $twin = $candidate;
+                                break;
+                            }
+                        }
+                    }
+                    if ($twin !== null) {
+                        $attrId = $twin;
+                        $present[$twin] = true;
+                    }
                 }
                 $pairs[] = [
                     'id' => $attrId,
