@@ -1001,6 +1001,18 @@ class DilRuleSpriceApplyService
 
     protected function takeHome(): float
     {
+        // Newegg: the page (NeweggPricingController::getData) takes the margin from the "Neweggb2c" row as
+        // (percentage − ad_updates) / 100 and falls back to 0.80 when that row is missing. The generic lookup below
+        // returned 1.0 for a missing row, so the server priced every Newegg SKU as if there were no marketplace fee
+        // and its S PRC sat far below the page's (and was pushed that low).
+        if ($this->channel === 'newegg') {
+            $row = MarketplacePercentage::where('marketplace', 'Neweggb2c')->first();
+            $pct = $row ? (float) $row->percentage : 80.0;
+            $net = $pct - ($row ? (float) $row->ad_updates : 0.0);
+
+            return $net > 0 ? min(1.0, $net / 100) : 0.80;
+        }
+
         $margin = MarketplacePercentage::takeHomeForPromoChannel($this->channel);
         if (! ($margin > 0) || $margin > 1) {
             $margin = $margin > 1 ? $margin / 100 : 0.80;
