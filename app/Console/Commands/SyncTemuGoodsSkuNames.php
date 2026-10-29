@@ -20,6 +20,69 @@ class SyncTemuGoodsSkuNames extends Command
     public const CACHE_KEY = 'temu_goods_sku_names_v1';
     public const LIVE_GOODS_CACHE_KEY = 'temu_live_goods_ids_v1';
 
+    /**
+     * Goods Temu still lists (goodsId => status). Cache first, then a file copy that survives
+     * `cache:clear` / `optimize:clear` on deploy (the cache alone was found empty on the server, so
+     * /temu/ads hid nothing and showed deleted goods).
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function getLiveGoods(): ?array
+    {
+        return self::readDurable(self::LIVE_GOODS_CACHE_KEY, 'temu_live_goods.json');
+    }
+
+    /** @param array<string, mixed> $live */
+    public static function putLiveGoods(array $live): void
+    {
+        self::writeDurable(self::LIVE_GOODS_CACHE_KEY, 'temu_live_goods.json', $live);
+    }
+
+    /** @return array<string, array<string, mixed>>|null */
+    public static function getSkuNames(): ?array
+    {
+        return self::readDurable(self::CACHE_KEY, 'temu_goods_sku_names.json');
+    }
+
+    /** @param array<string, array<string, mixed>> $map */
+    public static function putSkuNames(array $map): void
+    {
+        self::writeDurable(self::CACHE_KEY, 'temu_goods_sku_names.json', $map);
+    }
+
+    private static function readDurable(string $cacheKey, string $file): ?array
+    {
+        $v = Cache::get($cacheKey);
+        if (is_array($v) && $v !== []) {
+            return $v;
+        }
+        try {
+            $disk = Storage::disk('local');
+            if ($disk->exists('temu_cache/'.$file)) {
+                $data = json_decode((string) $disk->get('temu_cache/'.$file), true);
+                if (is_array($data) && $data !== []) {
+                    Cache::forever($cacheKey, $data); // re-warm the cache
+
+                    return $data;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Temu durable cache read failed', ['file' => $file, 'error' => $e->getMessage()]);
+        }
+
+        return is_array($v) ? $v : null;
+    }
+
+    private static function writeDurable(string $cacheKey, string $file, array $data): void
+    {
+        Cache::forever($cacheKey, $data);
+        try {
+            Storage::disk('local')->put('temu_cache/'.$file, json_encode($data, JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            Log::warning('Temu durable cache write failed', ['file' => $file, 'error' => $e->getMessage()]);
+        }
+    }
+
     protected $signature = 'temu:sync-goods-sku-names
                             {--goods-id= : Only this goods ID}
                             {--live-only : Only refresh the list of goods Temu still lists (fast)}';
@@ -33,7 +96,7 @@ class SyncTemuGoodsSkuNames extends Command
         // Goods Temu still lists in Seller Center. Anything else is removed/ended there.
         $live = $api->fetchLiveGoodsIds();
         if (is_array($live) && $live !== []) {
-            Cache::forever(self::LIVE_GOODS_CACHE_KEY, $live);
+            self::putLiveGoods($live);
             $this->info('Temu lists '.count($live).' goods in Seller Center.');
         } else {
             $this->warn('Could not read Temu goods list; keeping previous live-goods cache.');
@@ -55,7 +118,7 @@ class SyncTemuGoodsSkuNames extends Command
             return 1;
         }
 
-        $existing = Cache::get(self::CACHE_KEY, []);
+        $existing = self::getSkuNames() ?? [];
         $map = is_array($existing) ? $existing : [];
 
         $this->info('Fetching Temu SKU lists for '.count($goodsIds).' goods...');
@@ -74,14 +137,14 @@ class SyncTemuGoodsSkuNames extends Command
             }
             $bar->advance();
             if ($ok > 0 && $ok % 50 === 0) {
-                Cache::forever(self::CACHE_KEY, $map);
+                self::putSkuNames($map);
             }
             usleep(150000);
         }
         $bar->finish();
         $this->newLine();
 
-        Cache::forever(self::CACHE_KEY, $map);
+        self::putSkuNames($map);
 
         $audit = $this->buildAudit($goodsIds, $map);
         Storage::disk('local')->put('temu_sku_audit.json', json_encode($audit, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));

@@ -286,7 +286,7 @@ class TemuSoldRoasRuleService
         }
 
         // Parent = what Temu Seller Center shows (all variations the goods lists), not only the SKUs that had ad traffic.
-        $temuMap = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::CACHE_KEY);
+        $temuMap = \App\Console\Commands\SyncTemuGoodsSkuNames::getSkuNames();
         if (is_array($temuMap)) {
             foreach ($groups as $gid => &$g) {
                 $temuSkus = $temuMap[$gid]['skus'] ?? null;

@@ -1348,7 +1348,7 @@ class TemuAdsController extends Controller
      */
     private function dropGoodsNotOnTemu($records)
     {
-        $live = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::LIVE_GOODS_CACHE_KEY);
+        $live = \App\Console\Commands\SyncTemuGoodsSkuNames::getLiveGoods();
         if (! is_array($live) || count($live) < 50) {
             return $records;
         }
@@ -1368,7 +1368,7 @@ class TemuAdsController extends Controller
      */
     private function applyTemuSkuNames($records)
     {
-        $map = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::CACHE_KEY);
+        $map = \App\Console\Commands\SyncTemuGoodsSkuNames::getSkuNames();
         if (! is_array($map) || $map === []) {
             return $records;
         }
@@ -1529,7 +1529,7 @@ class TemuAdsController extends Controller
      */
     private function layoutAdsRowsLikeTemu($rows)
     {
-        $names = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::CACHE_KEY);
+        $names = \App\Console\Commands\SyncTemuGoodsSkuNames::getSkuNames();
         $names = is_array($names) ? $names : [];
 
         $children = collect($rows)->map(function (array $row) use ($names): array {
@@ -1683,9 +1683,9 @@ class TemuAdsController extends Controller
         }
 
         // Plus every named variation Temu itself holds (covers goods that have no ads-report row at all).
-        $temuMap = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::CACHE_KEY);
+        $temuMap = \App\Console\Commands\SyncTemuGoodsSkuNames::getSkuNames();
         if (is_array($temuMap)) {
-            $live = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::LIVE_GOODS_CACHE_KEY);
+            $live = \App\Console\Commands\SyncTemuGoodsSkuNames::getLiveGoods();
             $live = (is_array($live) && count($live) >= 50) ? $live : null;
             foreach ($temuMap as $gid => $goods) {
                 if ($live !== null && ! array_key_exists((string) $gid, $live)) {

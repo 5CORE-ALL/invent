@@ -6,7 +6,6 @@ use App\Models\TemuAdsApiReport;
 use App\Models\TemuMetric;
 use App\Services\TemuApiService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * Read-only: shows what Temu's API says about one goods_id and why /temu/ads does (not) list it.
@@ -80,7 +79,7 @@ class TemuCheckGoodsCommand extends Command
         $rep = TemuAdsApiReport::query()->where('goods_id', $gid)->get(['period', 'sku', 'ad_status', 'fetched_at']);
         $this->line('   temu_ads_api_reports rows: '.$rep->count().($rep->isNotEmpty() ? ' | '.$rep->map(fn ($r) => $r->period.':'.$r->sku)->implode(', ') : ''));
         $this->line('   temu_metrics rows: '.TemuMetric::query()->where('goods_id', $gid)->count());
-        $live = Cache::get(SyncTemuGoodsSkuNames::LIVE_GOODS_CACHE_KEY);
+        $live = SyncTemuGoodsSkuNames::getLiveGoods();
         $this->line('   live-goods cache: '.(is_array($live) ? count($live).' goods; contains this goods: '.(array_key_exists($gid, $live) ? 'YES' : 'NO') : 'MISSING'));
         if (! is_array($live) || count($live) < 50) {
             $this->warn('   Cache missing/too small -> /temu/ads hides nothing. Run: php artisan temu:sync-goods-sku-names --live-only');
@@ -89,7 +88,7 @@ class TemuCheckGoodsCommand extends Command
         if ($this->option('refresh-live')) {
             $fresh = $temu->fetchLiveGoodsIds();
             if (is_array($fresh) && $fresh !== []) {
-                Cache::forever(SyncTemuGoodsSkuNames::LIVE_GOODS_CACHE_KEY, $fresh);
+                SyncTemuGoodsSkuNames::putLiveGoods($fresh);
                 $this->info('Live-goods cache refreshed: '.count($fresh).' goods; contains this goods: '.(array_key_exists($gid, $fresh) ? 'YES' : 'NO'));
             } else {
                 $this->warn('Could not refresh the live-goods cache.');

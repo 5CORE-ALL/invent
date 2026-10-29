@@ -49,7 +49,7 @@ class TemuAdsApiReportService
 
         // Skip goods Temu no longer lists in Seller Center (removed / ended): no ads data to fetch,
         // and fetching would re-create rows that /temu/ads hides. Ignored if the live list is missing/partial.
-        $live = Cache::get(\App\Console\Commands\SyncTemuGoodsSkuNames::LIVE_GOODS_CACHE_KEY);
+        $live = \App\Console\Commands\SyncTemuGoodsSkuNames::getLiveGoods();
         if (is_array($live) && count($live) >= 50) {
             $ids = array_values(array_filter($ids, fn ($id) => array_key_exists($id, $live)));
         }
