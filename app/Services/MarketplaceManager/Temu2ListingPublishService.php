@@ -2262,13 +2262,24 @@ class Temu2ListingPublishService
                 $body['imageUrl'] = trim($imageUrl);
             }
             $data = $this->temuCallBody($body, 35);
+            $chains = [];
             foreach ($this->parseRecommendCategories(is_array($data['result'] ?? null) ? $data['result'] : []) as $row) {
                 $push((string) ($row['id'] ?? ''), (string) ($row['path'] ?? ''), true);
+                $chains[(string) $row['id']] = $row['chain'] ?? [];
             }
 
             $names = $this->cachedCategoryNameMap();
+            $lookups = 0;
             foreach ($categories as $i => $row) {
                 $named = $names[$row['id']] ?? $this->localCategoryNameForId($row['id']);
+                if ($named === '' && str_starts_with($row['path'], 'Temu category ') && $lookups < 6) {
+                    $lookups++;
+                    try {
+                        $named = $this->resolveCategoryPathName($row['id'], $chains[$row['id']] ?? []);
+                    } catch (\Throwable $e) {
+                        Log::debug('Temu category name lookup skipped', ['id' => $row['id'], 'error' => $e->getMessage()]);
+                    }
+                }
                 if ($named !== '' && (str_starts_with($row['path'], 'Temu category ') || str_contains($row['path'], '(ID '.$row['id'].')'))) {
                     $categories[$i]['path'] = $named.' (ID '.$row['id'].')';
                 }
@@ -2308,20 +2319,33 @@ class Temu2ListingPublishService
 
     /**
      * @param  array<string, mixed>  $result
-     * @return list<array{id: string, path: string}>
+     * @return list<array{id: string, path: string, chain: list<string>}>
      */
     protected function parseRecommendCategories(array $result): array
     {
         $out = [];
-        $add = static function ($id, $path) use (&$out): void {
+        $toChain = static function ($list): array {
+            $chain = [];
+            if (is_array($list)) {
+                foreach ($list as $part) {
+                    $part = preg_replace('/\D+/', '', (string) $part) ?? '';
+                    if ($part !== '') {
+                        $chain[] = $part;
+                    }
+                }
+            }
+
+            return $chain;
+        };
+        $add = static function ($id, $path, $chain = []) use (&$out): void {
             $id = preg_replace('/\D+/', '', (string) $id) ?? '';
             if ($id === '') {
                 return;
             }
-            $out[] = ['id' => $id, 'path' => trim((string) $path)];
+            $out[] = ['id' => $id, 'path' => trim((string) $path), 'chain' => is_array($chain) ? $chain : []];
         };
 
-        $add($result['catId'] ?? $result['cat_id'] ?? '', $result['catPath'] ?? $result['categoryPath'] ?? $result['catName'] ?? $result['categoryName'] ?? '');
+        $add($result['catId'] ?? $result['cat_id'] ?? '', $result['catPath'] ?? $result['categoryPath'] ?? $result['catName'] ?? $result['categoryName'] ?? '', $toChain($result['catIdList'] ?? []));
         foreach (['recommendCatList', 'categoryList', 'catList', 'recommendList', 'goodsCatsList'] as $key) {
             if (! is_array($result[$key] ?? null)) {
                 continue;
@@ -2332,17 +2356,124 @@ class Temu2ListingPublishService
                 }
                 $add(
                     $row['catId'] ?? $row['cat_id'] ?? '',
-                    $row['catPath'] ?? $row['categoryPath'] ?? $row['catName'] ?? $row['cat_name'] ?? $row['categoryName'] ?? ''
+                    $row['catPath'] ?? $row['categoryPath'] ?? $row['catName'] ?? $row['cat_name'] ?? $row['categoryName'] ?? '',
+                    $toChain($row['catIdList'] ?? [])
                 );
             }
         }
         $list = $result['catIdList'] ?? [];
         if (is_array($list) && $list !== []) {
             $leaf = end($list);
-            $add($leaf, '');
+            $add($leaf, '', $toChain($list));
         }
 
         return $out;
+    }
+
+    /**
+     * Readable "A > B > C" name for a Temu category, built from the cats.get tree and cached for good.
+     * $chain is the id path from the top category down to $id (as returned by category.recommend).
+     * Returns '' when Temu gives no names, so callers keep the "Temu category 123" fallback.
+     *
+     * @param  list<string>  $chain
+     */
+    protected function resolveCategoryPathName(string $id, array $chain = []): string
+    {
+        $id = preg_replace('/\D+/', '', $id) ?? '';
+        if ($id === '') {
+            return '';
+        }
+        $pathKey = $this->shopConfigKey().'_listing_cat_path_v1';
+        $paths = Cache::get($pathKey);
+        $paths = is_array($paths) ? $paths : [];
+        if (($paths[$id] ?? '') !== '') {
+            return (string) $paths[$id];
+        }
+
+        if ($chain === [] || end($chain) !== $id) {
+            $chain = array_values(array_filter(array_merge($chain, [$id])));
+        }
+
+        $nameKey = $this->shopConfigKey().'_listing_cat_names_v1';
+        $names = Cache::get($nameKey);
+        $names = is_array($names) ? $names : [];
+        $changed = false;
+
+        $parent = '0';
+        $parts = [];
+        foreach ($chain as $catId) {
+            if (($names[$catId] ?? '') === '') {
+                foreach ($this->fetchCategoryChildren($parent) as $childId => $childName) {
+                    if ($childName !== '' && ($names[$childId] ?? '') !== $childName) {
+                        $names[$childId] = $childName;
+                        $changed = true;
+                    }
+                }
+            }
+            if (($names[$catId] ?? '') === '') {
+                break;
+            }
+            $parts[] = $names[$catId];
+            $parent = $catId;
+        }
+
+        if ($changed) {
+            Cache::forever($nameKey, $names);
+        }
+        if (count($parts) === count($chain) && $parts !== []) {
+            $paths[$id] = implode(' > ', $parts);
+            Cache::forever($pathKey, $paths);
+
+            return $paths[$id];
+        }
+
+        // Leaf name alone is still better than a bare number.
+        return ($names[$id] ?? '') !== '' ? (string) $names[$id] : '';
+    }
+
+    /**
+     * @return array<string, string> childId => name, children of $parentId ('0' = top level)
+     */
+    protected function fetchCategoryChildren(string $parentId): array
+    {
+        $blockKey = $this->shopConfigKey().'_listing_cat_api_unavailable';
+        if (Cache::get($blockKey)) {
+            return [];
+        }
+
+        foreach (['bg.local.goods.cats.get', 'temu.local.goods.cats.get'] as $type) {
+            $data = $this->temuCallBody([
+                'type' => $type,
+                'parentCatId' => (int) $parentId,
+                'language' => 'en',
+            ], 15);
+            if (empty($data['success'])) {
+                continue;
+            }
+            $result = is_array($data['result'] ?? null) ? $data['result'] : [];
+            $list = $result['goodsCatsList'] ?? $result['catList'] ?? $result['categoryList'] ?? $result['goodsCats'] ?? $result;
+            $out = [];
+            if (is_array($list)) {
+                foreach ($list as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $cid = preg_replace('/\D+/', '', (string) ($row['catId'] ?? $row['cat_id'] ?? '')) ?? '';
+                    $name = trim((string) ($row['catName'] ?? $row['cat_name'] ?? $row['categoryName'] ?? $row['name'] ?? ''));
+                    if ($cid !== '' && $name !== '') {
+                        $out[$cid] = $name;
+                    }
+                }
+            }
+            if ($out !== []) {
+                return $out;
+            }
+        }
+
+        // Do not hammer Temu on every keystroke when this call is not available.
+        Cache::put($blockKey, true, now()->addMinutes(10));
+
+        return [];
     }
 
     /**
