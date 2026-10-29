@@ -1466,6 +1466,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Push + read-back (same as amazon:pull-pushed-prices): Shein reviews price changes, so the Price column keeps the
+        // old value for a few minutes after a push. Recently pushed SKUs are re-read every 2 min until Price = pushed price,
+        // so the blue triangle clears without waiting for the 10-min catch-up or the page.
+        $schedule->command('shein:pull-pushed-prices')
+            ->everyTwoMinutes()
+            ->name('shein-pull-pushed-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_MINUTE)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // PLS (ProLightSounds) Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, no ads, no LMP, Std max)
         // → S PRC → ProLightSounds Shopify price. Same twice-daily idea as Amazon. /pls-pricing does not need to be open.
         // Evening run is NOT wrapped in $ist() — the IST window ends at 20:00.
