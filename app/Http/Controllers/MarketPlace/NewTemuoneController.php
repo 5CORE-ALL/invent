@@ -522,9 +522,8 @@ class NewTemuoneController extends Controller
                 $temuShip = ProductMasterTemuShip::forPricing($values, $pm);
                 $basePrice = $temuMetric ? (float) ($temuMetric->base_price ?? 0) : 0.0;
                 $rPrice = TemuShopifySalesService::computeRPrice($basePrice);
-                $tPrice = $basePrice > 0
-                    ? round(TemuShopifySalesService::computeFullTemuPrice($basePrice), 2)
-                    : 0.0;
+                // Price = the S PRC that pushes this base (inverse of S Base Prc), so equal bases show equal S PRC and Price.
+                $tPrice = TemuShopifySalesService::newTemuonePriceFromBase($basePrice);
                 $amazonPrice = $this->lookupMappedPrice($amazonPriceBySku, $sku, $normalizeSku);
                 $ebayPrice = $this->lookupMappedPrice($ebayPriceBySku, $sku, $normalizeSku);
                 $ebay2Price = $this->lookupMappedPrice($ebay2PriceBySku, $sku, $normalizeSku);

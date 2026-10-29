@@ -166,6 +166,23 @@ class TemuShopifySalesService
     }
 
     /**
+     * New Temu One (/new-temuone) Price = the S PRC that pushes this base: the exact inverse of
+     * newTemuoneSBasePrice(). S Base Prc = S R Prc − $2.99 when S R Prc < $30, S R Prc = S PRC × 0.88, so
+     *   Price = (base + $2.99) ÷ 0.88 while that stays under $30 (base < $27.01), else base ÷ 0.88.
+     * Scoped to /new-temuone: sales and the other Temu pages keep computeFullTemuPrice().
+     */
+    public static function newTemuonePriceFromBase(float $basePrice): float
+    {
+        if (! ($basePrice > 0) || ! is_finite($basePrice)) {
+            return 0.0;
+        }
+        $sR = round($basePrice + self::NTO_SBASE_DEDUCT, 2);
+        $recovery = $sR < self::NTO_SBASE_SR_THRESHOLD ? $sR : $basePrice;
+
+        return round($recovery / self::S_RECOVERY_RATE, 2);
+    }
+
+    /**
      * Temu R Price: base, then +$2.99 if base ≤ $26.99.
      * Same as /temu-decrease temuRPriceFromBase.
      */

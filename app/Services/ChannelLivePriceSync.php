@@ -548,7 +548,9 @@ class ChannelLivePriceSync
         }
 
         $liveCompare = in_array(self::normalize($channel), ['temu', 'temu2', 'temu3'], true)
-            ? round(TemuShopifySalesService::computeFullTemuPrice($live), 2)
+            ? round(strtolower(trim($channel)) === 'newtemuone'
+                ? TemuShopifySalesService::newTemuonePriceFromBase($live)
+                : TemuShopifySalesService::computeFullTemuPrice($live), 2)
             : $live;
         if (PushedListingPrice::same($next, $liveCompare)) {
             return true;

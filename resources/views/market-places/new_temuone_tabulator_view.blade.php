@@ -3933,7 +3933,7 @@
                     cellMouseLeave: function() { temuRuleTipScheduleHide(); },
                     width: 70,
                     sorter: 'number',
-                    headerTooltip: 'Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99',
+                    headerTooltip: 'Temu Price = the S PRC that gives this base = (Base + $2.99) ÷ 0.88 when that is under $30, else Base ÷ 0.88. Exact inverse of S Base Prc.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const base = parseFloat(row.base_price) || 0;
@@ -3941,10 +3941,10 @@
                         if (!(tPrice > 0) || !(base > 0)) {
                             return '<span style="color: #6c757d;">—</span>';
                         }
-                        const afterMult = +(base * 1.1364).toFixed(2);
-                        const tip = afterMult <= 26.99
-                            ? ('Temu Price = (Base × 1.1364) + $2.99 → $' + base.toFixed(2) + ' × 1.1364 = $' + afterMult.toFixed(2) + ' + $2.99 = $' + tPrice.toFixed(2))
-                            : ('Temu Price = (Base × 1.1364) → $' + base.toFixed(2) + ' × 1.1364 = $' + tPrice.toFixed(2) + ' (no +$2.99, result > $26.99)');
+                        const withShip = +(base + 2.99).toFixed(2);
+                        const tip = withShip < 30
+                            ? ('Temu Price = (Base + $2.99) ÷ 0.88 → ($' + base.toFixed(2) + ' + $2.99) ÷ 0.88 = $' + tPrice.toFixed(2))
+                            : ('Temu Price = Base ÷ 0.88 → $' + base.toFixed(2) + ' ÷ 0.88 = $' + tPrice.toFixed(2) + ' (S R prc $30 or more, no $2.99)');
                         const live = parseFloat(row.temu_price || tPrice) || tPrice;
                         const lmp = temuBadgeLmpValue(row);
                         const redTri = (window.PriceGtLmpBadge

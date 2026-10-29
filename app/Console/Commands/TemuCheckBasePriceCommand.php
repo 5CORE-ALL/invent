@@ -65,8 +65,8 @@ class TemuCheckBasePriceCommand extends Command
                 ['App S Base Prc saved (NTO_S_BASE)', $sBase === null ? '-' : '$'.number_format($sBase, 2)],
                 ['Last pushed base (NTO_PUSHED_BASE)', $pushed === null ? '-' : '$'.number_format($pushed, 2)],
                 ['Last pushed at', (string) ($saved[NewTemuoneSuggestedPriceStore::KEY_PUSHED_AT] ?? '-')],
-                ['Page Price from live base', $live > 0 ? '$'.number_format(TemuShopifySalesService::computeFullTemuPrice((float) $live), 2) : '-'],
-                ['Page Price from stored base', $stored > 0 ? '$'.number_format(TemuShopifySalesService::computeFullTemuPrice((float) $stored), 2) : '-'],
+                ['Page Price from live base', $live > 0 ? '$'.number_format(TemuShopifySalesService::newTemuonePriceFromBase((float) $live), 2) : '-'],
+                ['Page Price from stored base', $stored > 0 ? '$'.number_format(TemuShopifySalesService::newTemuonePriceFromBase((float) $stored), 2) : '-'],
             ]);
 
             if ($live !== null && $stored !== null && abs($live - $stored) >= 0.01) {
