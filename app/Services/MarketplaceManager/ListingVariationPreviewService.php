@@ -85,6 +85,9 @@ class ListingVariationPreviewService
         foreach ($this->expandSeedSkusToParentGroups($seedSkus, $mode === 'variation') as $parent => $children) {
             $groups[] = $this->formatPreviewGroup($channel, $parent, $children, $seedList, $mode);
         }
+        if ($mode === 'variation') {
+            $this->attachSuggestedCategoryPerParent($groups, $channel);
+        }
 
         $payload = [
             'success' => true,
@@ -161,39 +164,92 @@ class ListingVariationPreviewService
             if (microtime(true) > $deadline) {
                 break;
             }
-            try {
-                if ($isReverb) {
-                    $row = $this->reverb->suggestCategoryForSku($sku);
-                } elseif ($channel === 'aliexpress') {
-                    $row = $this->aliexpress->suggestCategoryForSku($sku);
-                } elseif ($channel === 'wayfair') {
-                    $row = $this->wayfair->suggestClassForSku($sku);
-                } elseif ($this->isEbayChannel($channel)) {
-                    $row = $this->ebay->suggestCategoryForSku($sku, $channel);
-                } elseif ($this->isTiktokChannel($channel)) {
-                    $row = $this->tiktok->suggestCategoryForSku($sku, $channel);
-                } else {
-                    $row = $this->shein->suggestCategoryForSku($sku);
-                }
-            } catch (\Throwable $e) {
-                continue;
+            $row = $this->suggestCategoryRow($sku, $channel);
+            if ($row !== null) {
+                $out[$sku] = $row;
             }
-            if (! is_array($row)) {
-                continue;
-            }
-            $id = trim((string) ($row['id'] ?? ''));
-            if ($id === '0') {
-                $id = '';
-            }
-            $path = trim((string) ($row['path'] ?? ''));
-            $name = trim((string) ($row['name'] ?? ''));
-            if ($id === '' && $path === '' && $name === '') {
-                continue;
-            }
-            $out[$sku] = ['id' => $id, 'path' => $path, 'name' => $name];
         }
 
         return $out;
+    }
+
+    /**
+     * Variation listings: each parent is its own listing, so each gets a category suggestion
+     * from one of its own SKUs instead of the first parent in the whole selection.
+     *
+     * @param  list<array<string, mixed>>  $groups
+     */
+    private function attachSuggestedCategoryPerParent(array &$groups, string $channel): void
+    {
+        $deadline = microtime(true) + 18;
+        foreach ($groups as &$group) {
+            if (microtime(true) > $deadline) {
+                break;
+            }
+            $sku = '';
+            foreach (($group['children'] ?? []) as $child) {
+                if (($child['status'] ?? '') === 'will_publish' && ! empty($child['selected'])) {
+                    $sku = trim((string) ($child['sku'] ?? ''));
+                    break;
+                }
+            }
+            if ($sku === '') {
+                foreach (($group['children'] ?? []) as $child) {
+                    if (($child['status'] ?? '') === 'will_publish') {
+                        $sku = trim((string) ($child['sku'] ?? ''));
+                        break;
+                    }
+                }
+            }
+            if ($sku === '') {
+                continue;
+            }
+            $row = $this->suggestCategoryRow($sku, $channel);
+            if ($row !== null) {
+                $group['suggested_category'] = $row;
+            }
+        }
+        unset($group);
+    }
+
+    /**
+     * @return array{id: string, path: string, name: string}|null
+     */
+    private function suggestCategoryRow(string $sku, string $channel): ?array
+    {
+        try {
+            if (in_array($channel, ['reverb', 'reverbcom'], true)) {
+                $row = $this->reverb->suggestCategoryForSku($sku);
+            } elseif ($channel === 'aliexpress') {
+                $row = $this->aliexpress->suggestCategoryForSku($sku);
+            } elseif ($channel === 'wayfair') {
+                $row = $this->wayfair->suggestClassForSku($sku);
+            } elseif ($this->isEbayChannel($channel)) {
+                $row = $this->ebay->suggestCategoryForSku($sku, $channel);
+            } elseif ($this->isTiktokChannel($channel)) {
+                $row = $this->tiktok->suggestCategoryForSku($sku, $channel);
+            } elseif ($this->isSheinChannel($channel)) {
+                $row = $this->shein->suggestCategoryForSku($sku);
+            } else {
+                return null;
+            }
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if (! is_array($row)) {
+            return null;
+        }
+        $id = trim((string) ($row['id'] ?? ''));
+        if ($id === '0') {
+            $id = '';
+        }
+        $path = trim((string) ($row['path'] ?? ''));
+        $name = trim((string) ($row['name'] ?? ''));
+        if ($id === '' && $path === '' && $name === '') {
+            return null;
+        }
+
+        return ['id' => $id, 'path' => $path, 'name' => $name];
     }
 
     /**
@@ -281,7 +337,7 @@ class ListingVariationPreviewService
             return $this->mirakl->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $code, $overrides);
         }
         if ($this->isAmazonChannel($channel)) {
-            return $this->publishAmazon($skus);
+            return $this->publishAmazon($skus, $categoryName);
         }
 
         $label = $this->channelLabel($channel);
@@ -488,7 +544,7 @@ class ListingVariationPreviewService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string|null, skus?: list<string>}
      */
-    private function publishAmazon(array $skus): array
+    private function publishAmazon(array $skus, ?string $categoryName = null): array
     {
         $publisher = app(AmazonListingPublishService::class);
         $ok = [];
@@ -511,7 +567,8 @@ class ListingVariationPreviewService
                 $errors[] = $sku.': Amazon SP-API is not connected. Set Amazon client id, secret, refresh token, and seller id.';
                 continue;
             }
-            $productType = $publisher->suggestProductType($sku, $content['title']);
+            $pickedType = trim((string) $categoryName);
+            $productType = $pickedType !== '' ? $pickedType : $publisher->suggestProductType($sku, $content['title']);
             if ($productType === '') {
                 $errors[] = $sku.': Amazon product type could not be matched from the title or an existing family listing.';
                 continue;

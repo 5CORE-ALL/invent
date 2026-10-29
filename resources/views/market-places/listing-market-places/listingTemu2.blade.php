@@ -1584,7 +1584,8 @@
                     const children = normalizePreviewChildren(group.children);
                     const selectedCount = children.filter(childShouldCheck).length;
                     html += `<div class="temu2-publish-group" data-group-index="${gi}" data-parent="${escapeHtml(parent)}">`;
-                    html += `<div class="temu2-publish-group-head">${escapeHtml(parent)} · ${selectedCount} selected for ${single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation'}</div>`;
+                    html += `<div class="temu2-publish-group-head"><span class="listing-publish-group-title">${escapeHtml(parent)} · ${selectedCount} selected for ${single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation'}</span><button type="button" class="listing-publish-group-close" title="Remove this parent from this publish" aria-label="Remove ${escapeHtml(parent)}">&times;</button></div>`;
+                    if (!single && window.ListingParentCategory) html += window.ListingParentCategory.block(parent, group.suggested_category);
                     if (!single && window.ListingParentPicker) { html += window.ListingParentPicker.block(group, gi, { channel: 'temu2', label: 'Temu', attachSupported: false, required: false }); }
                     html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th><th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
                     children.forEach(function (child) {
@@ -1625,7 +1626,7 @@
                         $role.removeClass('is-picked').addClass('is-suggested').text('Suggested sibling');
                     }
                 }
-                $group.find('.temu2-publish-group-head').text(
+                $group.find('.listing-publish-group-title').text(
                     parent + ' · ' + selectedCount + ' selected for ' +
                     (single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation')
                 );
@@ -1647,7 +1648,8 @@
                         let sendParent = parent;
                         if (pick && pick.attach === 'new' && pick.newParent) sendParent = pick.newParent;
                         else if (pick && pick.attach === 'existing' && pick.existingParent) sendParent = pick.existingParent;
-                        groups.push({ parent: sendParent, skus: skus });
+                        const cat = window.ListingParentCategory ? window.ListingParentCategory.read(this) : {};
+                        groups.push({ parent: sendParent, skus: skus, category_id: cat.category_id || '', category_name: cat.category_name || '', category_uuid: cat.category_uuid || '' });
                     }
                 });
                 if (selectedPublishMode() !== 'single') return groups;
@@ -1748,7 +1750,8 @@
                 return 'Publish to Temu 2 failed.';
             }
 
-            function publishGroup(skus, parent) {
+            function publishGroup(skus, parent, category) {
+                category = category || {};
                 return $.ajax({
                     url: "{{ url('/listing_temu2/save-status') }}",
                     type: 'POST',
@@ -1760,7 +1763,10 @@
                         publish: 1,
                         channel: 'temu2',
                         mode: selectedPublishMode(),
-                        parent: parent || ''
+                        parent: parent || '',
+                        category_id: category.category_id || '',
+                        category_name: category.category_name || '',
+                        category_uuid: category.category_uuid || ''
                     }),
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
                     timeout: 180000
@@ -1832,7 +1838,7 @@
                     const group = groups[index];
                     index += 1;
                     $('#temu2-publish-progress').text('Publishing ' + group.parent + ' (' + index + '/' + groups.length + ')…');
-                    publishGroup(group.skus, group.parent).done(function (response) {
+                    publishGroup(group.skus, group.parent, group).done(function (response) {
                         const goodsId = String((response && response.goods_id) || '').trim();
                         const listedSkus = (response && response.skus) || group.skus;
                         if (goodsId) {
