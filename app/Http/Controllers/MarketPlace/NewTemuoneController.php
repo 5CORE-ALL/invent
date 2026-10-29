@@ -656,6 +656,7 @@ class NewTemuoneController extends Controller
                     'nto_pushed_base' => $suggested['pushed_base'] ?? null,
                     'nto_pushed_at' => $suggested['pushed_at'] ?? null,
                     'nto_push_status' => $suggested['push_status'] ?? null,
+                    'nto_push_hold' => $suggested['push_hold'] ?? null,
                     'npft_percent' => $npftPercent,
                     'nroi_percent' => $nroiPercent,
                     'snpft_percent' => $snpftPercent,

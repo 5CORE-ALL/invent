@@ -164,7 +164,7 @@ class NewTemuoneSuggestedPriceStore
      * Remember that the push runner looked at this S Promo Base Prc and did not send it, so the 10-minute job
      * does not queue the same SKU at the same price again and again. A new price clears the effect.
      *
-     * @param  string  $reason  negative_snroi | already_live | failed
+     * @param  string  $reason  negative_snroi | already_live | failed | pending_review
      */
     public static function markSkipped(string $sku, float $base, string $reason): void
     {
@@ -196,7 +196,7 @@ class NewTemuoneSuggestedPriceStore
         if (! is_numeric($skipped) || abs((float) $skipped - $base) >= 0.015) {
             return false;
         }
-        if (($value[self::KEY_SKIPPED_REASON] ?? '') !== 'failed') {
+        if (! in_array(($value[self::KEY_SKIPPED_REASON] ?? ''), ['failed', 'pending_review'], true)) {
             return true;
         }
         $at = $value[self::KEY_SKIPPED_AT] ?? null;
@@ -549,6 +549,13 @@ class NewTemuoneSuggestedPriceStore
         $row['pushed_base'] = $pushedBase > 0 ? $pushedBase : null;
         $row['pushed_at'] = $saved[self::KEY_PUSHED_AT] ?? $saved['SPRICE_PUSHED_AT'] ?? null;
         $row['push_status'] = $matched ? 'pushed' : null;
+        // A temporary hold at this exact price (Temu still reviewing the last change, or a recent failure): the page
+        // keeps the SKU out of its push queue until the retry window passes. The 10-minute job honours the same hold.
+        $holdReason = (string) ($saved[self::KEY_SKIPPED_REASON] ?? '');
+        $row['push_hold'] = (! $matched && in_array($holdReason, ['failed', 'pending_review'], true) && self::wasSkippedAtBase($saved, $sBase))
+            ? $holdReason
+            : null;
+
         return $row;
     }
 

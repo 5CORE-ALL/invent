@@ -250,6 +250,7 @@ class ChannelPushSpriceRunner
             $alreadyLive = false;
             $negSnroi = false;
             $dupSkip = false;
+            $pendingReview = false;
             try {
                 if ($sku === '' || ! ($price > 0)) {
                     throw new \RuntimeException('SKU and S PRC > 0 required');
@@ -388,7 +389,23 @@ class ChannelPushSpriceRunner
                     'error' => $error,
                 ]);
                 $this->markListingEndedIfNeeded($sku, $error);
-                if ($this->channel === 'newtemuone' && $sku !== '' && $price > 0) {
+                if ($this->channel === 'newtemuone' && $sku !== '' && $price > 0
+                    && preg_match('/review your last application/i', (string) $error)) {
+                    // Temu still has the previous price change under review ("Please wait for Temu to review your last
+                    // application."). Nothing is wrong and nothing can be sent now: hold the SKU, do not report a failure.
+                    $ok = true;
+                    $pendingReview = true;
+                    $logger->info('S PRC background push held — Temu is still reviewing the last price change', [
+                        'channel' => $this->channel,
+                        'sku' => $sku,
+                        'price' => $price,
+                    ]);
+                    try {
+                        NewTemuoneSuggestedPriceStore::markSkipped($sku, $price, 'pending_review');
+                    } catch (\Throwable) {
+                        // ignore
+                    }
+                } elseif ($this->channel === 'newtemuone' && $sku !== '' && $price > 0) {
                     // Not retried at the same price by the 10-minute job for a few hours.
                     try {
                         NewTemuoneSuggestedPriceStore::markSkipped($sku, $price, 'failed');
@@ -411,7 +428,7 @@ class ChannelPushSpriceRunner
                 }
             }
 
-            $store->update(function (array $state) use ($index, $sku, $ok, $error, $live, $alreadyLive, $negSnroi, $dupSkip) {
+            $store->update(function (array $state) use ($index, $sku, $ok, $error, $live, $alreadyLive, $negSnroi, $dupSkip, $pendingReview) {
                 if (! isset($state['tasks'][$index]) || ! is_array($state['tasks'][$index])) {
                     return $state;
                 }
@@ -420,7 +437,7 @@ class ChannelPushSpriceRunner
                     $state['tasks'][$index]['error'] = null;
                     $state['tasks'][$index]['message'] = $negSnroi
                         ? 'negative SNROI'
-                        : ($dupSkip ? 'already pushed' : ($alreadyLive ? 'already live' : 'pushed'));
+                        : ($pendingReview ? 'waiting for Temu review' : ($dupSkip ? 'already pushed' : ($alreadyLive ? 'already live' : 'pushed')));
                     if ($live !== null) {
                         $state['tasks'][$index]['ebay_price'] = $live;
                     }
@@ -447,8 +464,8 @@ class ChannelPushSpriceRunner
 
             if (! $dupSkip) { // the duplicate-push skip already appended its own message above
                 $store->appendMessage(
-                    ($ok ? (($negSnroi || $alreadyLive) ? 'Skip ' : 'OK ') : 'Fail ').$sku
-                        .($negSnroi ? ': negative SNROI' : ($alreadyLive ? ': Price already = S PRC' : ($error ? (': '.$error) : ''))),
+                    ($ok ? (($negSnroi || $alreadyLive || $pendingReview) ? 'Skip ' : 'OK ') : 'Fail ').$sku
+                        .($negSnroi ? ': negative SNROI' : ($pendingReview ? ': waiting for Temu to review the last price change' : ($alreadyLive ? ': Price already = S PRC' : ($error ? (': '.$error) : '')))),
                     $ok
                 );
             }

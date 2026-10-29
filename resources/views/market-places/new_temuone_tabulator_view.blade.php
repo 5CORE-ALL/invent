@@ -2288,7 +2288,11 @@
         if (typeof ntoRowPushState === 'function') {
             const st = ntoRowPushState(row);
             if (st === 'pushed' || st === 'pushing') return 'pushed';
+            // Temu refused the last try (still reviewing the previous change, or an error): hold it, do not re-send now.
+            // It is retried on the next page load after the hold window, and by the 10-minute server job.
+            if (st === 'error') return 'hold';
         }
+        if (row && row.nto_push_hold) return 'hold';
         if (typeof ntoRowPushPrice === 'function') {
             const pushPrc = ntoRowPushPrice(row);
             if (pushPrc > 0) {
@@ -2638,6 +2642,10 @@
                 // blue-badge queue does not keep re-adding it.
                 window._ntoNegSkip = window._ntoNegSkip || {};
                 window._ntoNegSkip[ntoRowSku(d).toUpperCase() + '|' + price.toFixed(2)] = true;
+            } else if ((st === 'ok' || st === 'pushed') && String(task.message || '') === 'waiting for Temu review') {
+                // Temu is still reviewing the previous price change: nothing was sent, so it is not "pushed". Hold it.
+                if (d.nto_push_hold === 'pending_review') return;
+                next.nto_push_hold = 'pending_review';
             } else if (st === 'ok' || st === 'pushed') {
                 next.nto_push_status = 'pushed';
                 if (price > 0) next.nto_pushed_base = +price.toFixed(2);
@@ -3057,7 +3065,7 @@
         let gpftBase = 0;
         let gpftLp = 0;
         let blueTriangle = 0;
-        const blueBreakdown = { push: 0, pushed: 0, neg: 0, same: 0 };
+        const blueBreakdown = { push: 0, pushed: 0, hold: 0, neg: 0, same: 0 };
 
         rows.forEach(function(row) {
             rowsCount++;
@@ -3104,6 +3112,7 @@
             + '\n' + blueTriangle.toLocaleString() + ' SKUs: '
             + blueBreakdown.push.toLocaleString() + ' will be pushed, '
             + blueBreakdown.pushed.toLocaleString() + ' already pushed (waiting for Temu to apply), '
+            + blueBreakdown.hold.toLocaleString() + ' on hold (Temu is still reviewing the last price change, or the last try failed), '
             + blueBreakdown.neg.toLocaleString() + ' blocked by negative SNROI, '
             + blueBreakdown.same.toLocaleString() + ' already at Temu\'s base.');
         if (blueTriangle > 0 && typeof window.ntoPushLeftoverBlues === 'function') {
