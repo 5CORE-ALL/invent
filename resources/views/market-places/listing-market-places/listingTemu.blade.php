@@ -995,10 +995,34 @@
             return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no Temu goods_id">Missing L</span>`;
         }
 
-        function formatTemuId(value) {
+        // fallback = the ID Seller Center holds for this SKU when our own link is missing (e.g. an Incomplete goods).
+        function formatTemuId(value, fallback) {
             const id = String(value || '').trim();
-            if (!id) return '<span class="text-muted">—</span>';
-            return '<span style="font-family:monospace;font-size:12px;">' + escapeHtml(id) + '</span>';
+            if (id) return '<span style="font-family:monospace;font-size:12px;">' + escapeHtml(id) + '</span>';
+            const fb = String(fallback || '').trim();
+            if (fb) {
+                return '<span style="font-family:monospace;font-size:12px;color:#b45309;" title="Found in Temu Seller Center, not linked as a live listing">' + escapeHtml(fb) + '</span>';
+            }
+            return '<span class="text-muted">—</span>';
+        }
+
+        function formatTemuStatus(cell) {
+            const d = cell.getRow().getData() || {};
+            const status = String(d.temu_status || '').trim();
+            if (!status) {
+                if (!d.temu_status_checked) return '<span class="text-muted" title="Click Refresh listings to read the status from Temu">—</span>';
+                return '<span class="text-muted" title="This SKU was not found in Temu Seller Center">Not on Temu</span>';
+            }
+            const colors = {
+                'Active': 'background:#dcfce7;color:#15803d;',
+                'Inactive': 'background:#e2e8f0;color:#334155;',
+                'Incomplete': 'background:#ffedd5;color:#c2410c;',
+                'Draft': 'background:#dbeafe;color:#1d4ed8;',
+                'Deleted': 'background:#fee2e2;color:#b91c1c;'
+            };
+            const style = colors[status] || 'background:#f1f5f9;color:#475569;';
+            const raw = d.temu_status_raw ? ' (' + d.temu_status_raw + ')' : '';
+            return '<span title="' + escapeHtml('Status in Temu Seller Center' + raw) + '" style="display:inline-block;padding:1px 8px;border-radius:10px;font-weight:700;' + style + '">' + escapeHtml(status) + '</span>';
         }
 
         $(document).ready(function () {
@@ -1183,7 +1207,7 @@
                         headerSort: false,
                         minWidth: 130,
                         headerTooltip: 'Temu goods ID (imported from the Temu API)',
-                        formatter: function (cell) { return formatTemuId(cell.getRow().getData().goods_id); }
+                        formatter: function (cell) { const d = cell.getRow().getData(); return formatTemuId(d.goods_id, d.temu_goods_id); }
                     },
                     {
                         title: 'SKU ID',
@@ -1193,7 +1217,17 @@
                         headerSort: false,
                         minWidth: 130,
                         headerTooltip: 'Temu SKU ID (imported from the Temu API)',
-                        formatter: function (cell) { return formatTemuId(cell.getRow().getData().sku_id); }
+                        formatter: function (cell) { const d = cell.getRow().getData(); return formatTemuId(d.sku_id, d.temu_sku_id); }
+                    },
+                    {
+                        title: 'Temu Status',
+                        field: 'temu_status',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 120,
+                        headerTooltip: 'Status of this SKU in Temu Seller Center: Active, Inactive, Incomplete, Draft or Deleted',
+                        formatter: formatTemuStatus
                     },
                     {
                         title: 'Missing L',
