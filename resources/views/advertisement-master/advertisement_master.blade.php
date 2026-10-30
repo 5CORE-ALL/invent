@@ -1913,7 +1913,7 @@
                 const current = sel.value;
                 sel.innerHTML = '<option value="__total__">All channels</option>'
                     + options.map(function (o) {
-                        return '<option value="' + admEsc(o.key) + '">' + admEsc(o.label) + '</option>';
+                        return '<option value="' + admEsc(o.key) + '" data-alt="' + admEsc(o.label) + '">' + admEsc(o.label) + '</option>';
                     }).join('');
                 if (Array.prototype.slice.call(sel.options).some(function (o) { return o.value === current; })) sel.value = current;
             }
@@ -2055,8 +2055,12 @@
                 admClearTrendChart();
                 const chSel = document.getElementById('adm-trend-channel');
                 const channel = chSel ? chSel.value : '__total__';
+                // Snapshots may be saved under the key (Temu) or the display name (Temu 1).
+                const selOpt = chSel && chSel.selectedOptions ? chSel.selectedOptions[0] : null;
+                const alt = selOpt ? (selOpt.getAttribute('data-alt') || '') : '';
                 fetch(historyUrl + '?days=' + encodeURIComponent(days)
                     + '&channel=' + encodeURIComponent(channel)
+                    + '&alt=' + encodeURIComponent(alt)
                     + '&metric=' + encodeURIComponent(admTrendMetric)
                     + '&_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
                     .then(function (r) { return r.json(); })

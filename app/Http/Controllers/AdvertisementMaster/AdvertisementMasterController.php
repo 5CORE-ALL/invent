@@ -3108,7 +3108,7 @@ class AdvertisementMasterController extends Controller
             } elseif ($this->historyIsAllChannels($channel) && $this->activeChannelChartMetric($metric) !== null) {
                 [$labels, $series] = $this->activeChannelChartHistory($metric, $days);
             } else {
-                [$labels, $series] = $this->snapshotHistory($channel, $metric, $days);
+                [$labels, $series] = $this->snapshotHistory($channel, $metric, $days, (string) $request->query('alt', ''));
             }
         } catch (\Throwable $e) {
             \Log::warning('Advertisement Master history failed: '.$e->getMessage());
@@ -3341,7 +3341,7 @@ class AdvertisementMasterController extends Controller
      *
      * @return array{0: list<string>, 1: list<float|null>}
      */
-    private function snapshotHistory(string $channel, string $metric, int $days): array
+    private function snapshotHistory(string $channel, string $metric, int $days, string $alt = ''): array
     {
         $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
         $from = $today->copy()->subDays($days - 1);
@@ -3404,8 +3404,18 @@ class AdvertisementMasterController extends Controller
             // 1) The exact row that was clicked: what that cell showed on each saved day.
             //    Group names (eBay Total -> eBay + eBay 2 + eBay 3) only cover days this row
             //    itself has no snapshot.
-            foreach ($this->savedExactRowByDate($channel, $from, $today) as $date => $saved) {
+            //    Rows are saved under the channel key (Temu) or the display name (Temu 1).
+            foreach ($this->savedExactRowByDate([$channel, $alt], $from, $today) as $date => $saved) {
                 $byDate[$date] = $saved;
+            }
+            // A day whose row has no measurement at all is a stub (e.g. a missing-ads-only row),
+            // not a real zero: leave it empty so the gap fill below can supply the value.
+            if ($metric !== 'missing_ads') {
+                foreach ($byDate as $date => $m) {
+                    if (((float) $m['spend'] + (float) $m['clicks'] + (float) $m['sold'] + (float) $m['sales'] + (float) $m['active']) <= 0) {
+                        unset($byDate[$date]);
+                    }
+                }
             }
             // 2) Days nobody opened this page: Amazon / eBay rebuilt from the dated daily ad
             //    reports, then any single parent channel from the daily Active Channel snapshots.
@@ -3505,8 +3515,15 @@ class AdvertisementMasterController extends Controller
      *
      * @return array<string, array<string, float>>
      */
-    private function savedExactRowByDate(string $channel, Carbon $from, Carbon $today): array
+    private function savedExactRowByDate(array $channelNames, Carbon $from, Carbon $today): array
     {
+        $channelNames = array_values(array_unique(array_filter(
+            array_map(static fn ($n) => trim((string) $n), $channelNames),
+            static fn ($n) => $n !== '' && ! str_starts_with($n, 'default-type:')
+        )));
+        if ($channelNames === []) {
+            return [];
+        }
         $cols = ['snapshot_date', 'spend', 'clicks', 'sold', 'sales', 'active'];
         if ($this->snapshotsHaveMissingAdsColumn()) {
             $cols[] = 'missing_ads';
@@ -3517,10 +3534,10 @@ class AdvertisementMasterController extends Controller
         $out = [];
         try {
             $rows = DB::table('advertisement_master_metric_snapshots')
-                ->where('channel', trim($channel))
+                ->whereIn('channel', $channelNames)
                 ->whereDate('snapshot_date', '>=', $from->toDateString())
                 ->whereDate('snapshot_date', '<=', $today->toDateString())
-                ->get($cols);
+                ->get(array_merge(['channel'], $cols));
             foreach ($rows as $row) {
                 $date = $row->snapshot_date instanceof \DateTimeInterface
                     ? $row->snapshot_date->format('Y-m-d')
@@ -3538,7 +3555,15 @@ class AdvertisementMasterController extends Controller
                         $entry['cell_'.$col] = (float) $row->{$col};
                     }
                 }
-                $out[$date] = $entry;
+                // Key row and display-name row can both exist for a day; keep the one that holds
+                // the measurements (the other is typically a missing-ads-only stub).
+                $weight = static fn (array $e): float => $e['spend'] + $e['clicks'] + $e['sold'] + $e['sales'] + $e['active'];
+                if (! isset($out[$date]) || $weight($entry) > $weight($out[$date])) {
+                    $entry['missing_ads'] = max($entry['missing_ads'], (float) ($out[$date]['missing_ads'] ?? 0));
+                    $out[$date] = $entry;
+                } else {
+                    $out[$date]['missing_ads'] = max($out[$date]['missing_ads'], $entry['missing_ads']);
+                }
             }
         } catch (\Throwable $e) {
             \Log::warning('Advertisement Master saved exact-row read failed: '.$e->getMessage());
