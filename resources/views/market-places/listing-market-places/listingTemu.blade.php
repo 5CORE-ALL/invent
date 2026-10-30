@@ -985,7 +985,8 @@
                             if (item.listed === 'Listed') {
                                 metrics.listedTotal++;
                             }
-                            if (item.listed === 'Pending' || !item.listed) {
+                            // Missing L counts SKU rows only - parent rows are never counted.
+                            if (!item.is_parent && (item.listed === 'Pending' || !item.listed)) {
                                 metrics.pendingTotal++;
                             }
                         }
@@ -1457,7 +1458,7 @@
                 }
                 const $badge = $('#missing-l-badge');
                 if (missingLFilterActive) {
-                    $('#row-data-type').val('all');
+                    $('#row-data-type').val('sku'); // Missing L never includes parent rows
                     $('#inv-filter').val('all');
                     $('#listed-filter').val('Pending');
                     $badge.addClass('is-active');
@@ -1481,7 +1482,7 @@
                 const stillMissing =
                     $('#listed-filter').val() === 'Pending' &&
                     $('#inv-filter').val() === 'all' &&
-                    $('#row-data-type').val() !== 'parent';
+                    $('#row-data-type').val() === 'sku';
                 if (!stillMissing) {
                     missingLFilterActive = false;
                     $('#missing-l-badge').removeClass('is-active');
@@ -2095,6 +2096,6 @@
             publishUrl: '/listing_temu/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261030-incomplete1"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261030-category1"></script>
 @include('partials.listing-sku-search')
 @endsection

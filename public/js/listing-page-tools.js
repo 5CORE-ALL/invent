@@ -1360,7 +1360,10 @@
                     results.innerHTML = '<div class="listing-publish-cat-empty">' + escapeHtml((res && res.message) || 'No categories matched.') + '</div>';
                     return;
                 }
-                results.innerHTML = rows.map(function (row) {
+                // Temu: tell the user why names are missing while the category tree is still being downloaded.
+                const note = (res && res.message && /^temu[12]?$/.test(String(cfg().channel || '')))
+                    ? '<div class="listing-publish-cat-empty">' + escapeHtml(res.message) + '</div>' : '';
+                results.innerHTML = note + rows.map(function (row) {
                     return '<button type="button" class="listing-publish-cat-item lp-parent-cat-item" data-id="' + escapeHtml(row.id || '') +
                         '" data-path="' + escapeHtml(row.path || '') + '">' + escapeHtml(row.path || row.id || '') + '</button>';
                 }).join('');

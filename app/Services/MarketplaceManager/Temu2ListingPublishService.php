@@ -2649,6 +2649,7 @@ class Temu2ListingPublishService
 
         $categories = [];
         $seen = [];
+        $treeNote = '';
         $push = static function (string $id, string $path, bool $suggested = false) use (&$categories, &$seen): void {
             $id = preg_replace('/\D+/', '', $id) ?? '';
             if ($id === '' || isset($seen[$id])) {
@@ -2702,6 +2703,35 @@ class Temu2ListingPublishService
                     }
                 }
             }
+
+            // Category names come from Temu's category tree (downloaded once, in the background).
+            $shopKey = $this->shopConfigKey();
+            if (TemuCategoryTree::isComplete($shopKey)) {
+                if (mb_strlen($keyword) >= 2) {
+                    $needle = mb_strtolower($keyword);
+                    $hits = 0;
+                    foreach (TemuCategoryTree::read($shopKey)['nodes'] as $id => $node) {
+                        if (empty($node[2]) || ! str_contains(mb_strtolower((string) $node[0]), $needle)) {
+                            continue;
+                        }
+                        $push((string) $id, TemuCategoryTree::path($shopKey, (string) $id), false);
+                        if (++$hits >= 25) {
+                            break;
+                        }
+                    }
+                }
+            } else {
+                $queued = false;
+                try {
+                    $queued = \App\Jobs\SyncTemuCategoryTreeJob::dispatchOnce($shopKey);
+                } catch (\Throwable $e) {
+                    Log::debug('Temu category tree job not queued', ['error' => $e->getMessage()]);
+                }
+                $state = TemuCategoryTree::read($shopKey);
+                $treeNote = 'Category names are still being downloaded from Temu ('.count($state['nodes']).' loaded so far). '
+                    .'Search again in a few minutes, or run: php artisan temu:sync-categories'.($shopKey === 'temu2' ? ' --shop=2' : '').'.'
+                    .(($state['error'] ?? '') !== '' ? ' Last Temu answer: '.$state['error'] : '');
+            }
         }
 
         foreach ($this->localCategorySuggestions($keyword) as $row) {
@@ -2723,7 +2753,7 @@ class Temu2ListingPublishService
             'categories' => array_slice($categories, 0, 40),
             'message' => $categories === []
                 ? 'Temu returned no matching leaf categories. Try a shorter keyword (e.g. light stand, speaker).'
-                : null,
+                : ($treeNote !== '' ? $treeNote : null),
         ];
     }
 
@@ -2792,6 +2822,10 @@ class Temu2ListingPublishService
         $id = preg_replace('/\D+/', '', $id) ?? '';
         if ($id === '') {
             return '';
+        }
+        $fromTree = TemuCategoryTree::path($this->shopConfigKey(), $id);
+        if ($fromTree !== '') {
+            return $fromTree;
         }
         $pathKey = $this->shopConfigKey().'_listing_cat_path_v1';
         $paths = Cache::get($pathKey);
