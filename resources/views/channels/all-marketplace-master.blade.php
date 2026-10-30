@@ -1521,9 +1521,6 @@
                     </form>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-danger me-auto" id="archiveChannelBtn" title="Archive channel">
-                        <i class="fa fa-archive"></i> Archive
-                    </button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="updateChannelBtn">Update Channel</button>
                 </div>
@@ -9155,49 +9152,6 @@
                             ? xhr.responseJSON.message
                             : 'Error submitting form';
                         showToast('error', msg);
-                    }
-                });
-            });
-
-            // Archive channel from Edit modal
-            $(document).on('click', '#archiveChannelBtn', function() {
-                const channel = ($('#originalChannel').val() || $('#editChannelName').val() || '').trim();
-                if (!channel) {
-                    showToast('error', 'Channel name is missing');
-                    return;
-                }
-                if (!confirm(
-                        `Are you sure you want to archive channel: ${channel}?\n\nThis will set the channel status to "Inactive" and it will no longer appear in the list.`
-                    )) {
-                    return;
-                }
-                const $btn = $(this);
-                $btn.prop('disabled', true);
-                $.ajax({
-                    url: '/channel-archive',
-                    method: 'POST',
-                    data: {
-                        channel: channel,
-                        _token: '{{ csrf_token() }}'
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            const modal = bootstrap.Modal.getInstance(document.getElementById(
-                                'editChannelModal'));
-                            if (modal) modal.hide();
-                            showToast('success', 'Channel archived successfully');
-                            table.replaceData();
-                        } else {
-                            showToast('error', response.message || 'Failed to archive channel');
-                        }
-                    },
-                    error: function(xhr) {
-                        showToast('error',
-                            'Error archiving channel: ' + (xhr.responseJSON?.message ||
-                                'Unknown error'));
-                    },
-                    complete: function() {
-                        $btn.prop('disabled', false);
                     }
                 });
             });
