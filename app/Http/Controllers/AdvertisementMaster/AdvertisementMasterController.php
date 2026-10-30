@@ -2767,7 +2767,12 @@ class AdvertisementMasterController extends Controller
         $today = $now->toDateString();
 
         foreach ($rows as $row) {
-            $channel = (string) ($row['channel'] ?? '');
+            // Save under the unique channel key. The display name can be renamed by labels or
+            // shared by several rows (two "P Video" rows), which mixed their history together.
+            $channel = trim((string) ($row['channel_key'] ?? ''));
+            if ($channel === '' || str_starts_with($channel, 'default-type:')) {
+                $channel = (string) ($row['channel'] ?? '');
+            }
             if ($channel === '' || $this->isActiveChannelSnapshot($channel)) {
                 continue;
             }
@@ -3408,12 +3413,15 @@ class AdvertisementMasterController extends Controller
             foreach ($this->savedExactRowByDate([$channel, $alt], $from, $today) as $date => $saved) {
                 $byDate[$date] = $saved;
             }
-            // A day whose row has no measurement at all is a stub (e.g. a missing-ads-only row),
-            // not a real zero: leave it empty so the gap fill below can supply the value.
+            // A day with no measurement and no saved cell values is probably a stub (e.g. a
+            // missing-ads-only row), not a real zero. Mark it so the fills below may replace
+            // it; if nothing can, it still plots as 0 like before.
             if ($metric !== 'missing_ads') {
                 foreach ($byDate as $date => $m) {
-                    if (((float) $m['spend'] + (float) $m['clicks'] + (float) $m['sold'] + (float) $m['sales'] + (float) $m['active']) <= 0) {
-                        unset($byDate[$date]);
+                    $empty = ((float) $m['spend'] + (float) $m['clicks'] + (float) $m['sold'] + (float) $m['sales'] + (float) $m['active']) <= 0;
+                    $hasCell = isset($m['cell_acos']) || isset($m['cell_cvr']) || isset($m['cell_tcos']);
+                    if ($empty && ! $hasCell) {
+                        $byDate[$date]['_stub'] = true;
                     }
                 }
             }
@@ -3492,7 +3500,7 @@ class AdvertisementMasterController extends Controller
         }
 
         foreach ($picked as $date => $summary) {
-            if (isset($byDate[$date])) {
+            if (isset($byDate[$date]) && empty($byDate[$date]['_stub'])) {
                 continue;
             }
             $byDate[$date] = [
@@ -3500,8 +3508,8 @@ class AdvertisementMasterController extends Controller
                 'clicks' => (float) ($summary['clicks'] ?? 0),
                 'sold' => (float) ($summary['ad_sold'] ?? 0),
                 'sales' => round((float) ($summary['ad_sales'] ?? 0), 2),
-                'active' => 0.0,
-                'missing_ads' => 0.0,
+                'active' => (float) ($byDate[$date]['active'] ?? 0),
+                'missing_ads' => (float) ($byDate[$date]['missing_ads'] ?? 0),
             ];
         }
 
@@ -3532,6 +3540,7 @@ class AdvertisementMasterController extends Controller
         $cols = array_merge($cols, $cellCols);
 
         $out = [];
+        $perName = [];
         try {
             $rows = DB::table('advertisement_master_metric_snapshots')
                 ->whereIn('channel', $channelNames)
@@ -3555,18 +3564,29 @@ class AdvertisementMasterController extends Controller
                         $entry['cell_'.$col] = (float) $row->{$col};
                     }
                 }
-                // Key row and display-name row can both exist for a day; keep the one that holds
-                // the measurements (the other is typically a missing-ads-only stub).
-                $weight = static fn (array $e): float => $e['spend'] + $e['clicks'] + $e['sold'] + $e['sales'] + $e['active'];
-                if (! isset($out[$date]) || $weight($entry) > $weight($out[$date])) {
-                    $entry['missing_ads'] = max($entry['missing_ads'], (float) ($out[$date]['missing_ads'] ?? 0));
-                    $out[$date] = $entry;
-                } else {
-                    $out[$date]['missing_ads'] = max($out[$date]['missing_ads'], $entry['missing_ads']);
-                }
+                $perName[(string) $row->channel][$date] = $entry;
             }
         } catch (\Throwable $e) {
             \Log::warning('Advertisement Master saved exact-row read failed: '.$e->getMessage());
+        }
+
+        // Priority = order of $channelNames (channel key first, display name second). The
+        // display name can be shared by different rows (two "P Video" rows), so it only
+        // supplies days where the key row has no real measurement.
+        $isReal = static fn (array $e): bool => ($e['spend'] + $e['clicks'] + $e['sold'] + $e['sales'] + $e['active']) > 0
+            || isset($e['cell_acos']) || isset($e['cell_cvr']) || isset($e['cell_tcos']);
+        foreach ($channelNames as $name) {
+            foreach ($perName[$name] ?? [] as $date => $entry) {
+                if (! isset($out[$date])) {
+                    $out[$date] = $entry;
+                    continue;
+                }
+                $missing = max($out[$date]['missing_ads'], $entry['missing_ads']);
+                if (! $isReal($out[$date]) && $isReal($entry)) {
+                    $out[$date] = $entry;
+                }
+                $out[$date]['missing_ads'] = $missing;
+            }
         }
 
         return $out;
@@ -3634,7 +3654,7 @@ class AdvertisementMasterController extends Controller
         foreach ($computed as $date => $m) {
             // A saved snapshot is exactly what the cell showed that day: never replace it,
             // only fill days that have none.
-            if (isset($byDate[$date])) {
+            if (isset($byDate[$date]) && empty($byDate[$date]['_stub'])) {
                 continue;
             }
             $byDate[$date] = [
