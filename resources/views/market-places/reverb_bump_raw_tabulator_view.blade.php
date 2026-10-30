@@ -122,7 +122,7 @@
 
             /** Group of a column definition: base fields by name, raw fields by their data path. */
             function groupOfDef(def) {
-                const p = def.rawPath;
+                const p = fieldPath[def.field];
                 if (!p) return BASE_FIELD_GROUP[def.field] || 'basic';
                 if (/description/i.test(p)) return 'description';
                 if (p === 'current_bid' || p.startsWith('current_bid.') || p.startsWith('bump_v2_stats.current_bid')) return 'bid';
@@ -133,13 +133,14 @@
 
             /** Stable key for saving visibility: the data path for raw fields (rk1, rk2… can shift), field name otherwise. */
             function colKey(col) {
-                const def = col.getDefinition();
-                return def.rawPath || def.field;
+                const f = col.getField();
+                return fieldPath[f] || f;
             }
 
             let table = null;
             let rawKeys = [];            // ordered union of flattened raw paths
             let keyField = {};           // path -> tabulator field
+            let fieldPath = {};          // tabulator field -> path (raw fields only)
             let stopPull = false;
             let pulling = false;
             const rawStore = new Map();  // listing_id -> { raw, raw_text }
@@ -191,6 +192,7 @@
             function fieldFor(path) {
                 if (!keyField[path]) {
                     keyField[path] = 'rk' + (Object.keys(keyField).length + 1);
+                    fieldPath[keyField[path]] = path;
                 }
                 return keyField[path];
             }
@@ -233,7 +235,6 @@
             function rawColumnDef(path) {
                 return {
                     title: path,
-                    rawPath: path,
                     headerTooltip: path,
                     field: fieldFor(path),
                     formatter: rawCellFormatter,
@@ -428,6 +429,10 @@
 
             function buildColumnMenu() {
                 const menu = document.getElementById('column-dropdown-menu');
+                // keep the scroll positions, so a click does not jump the lists back to the top
+                const keepTop = {};
+                menu.querySelectorAll('[data-gid]').forEach(el => { keepTop[el.dataset.gid] = el.scrollTop; });
+                const keepLeft = menu.querySelector('[data-hscroll]')?.scrollLeft || 0;
                 menu.innerHTML = '';
 
                 // Top row: bulk actions
@@ -458,6 +463,7 @@
                 const row = document.createElement('li');
                 row.className = 'd-flex align-items-start gap-2 px-2 pt-2';
                 row.style.overflowX = 'auto';
+                row.dataset.hscroll = '1';
                 menu.appendChild(row);
 
                 COL_GROUPS.forEach(g => {
@@ -498,6 +504,7 @@
 
                     const list = document.createElement('div');
                     list.style.cssText = 'max-height:55vh;overflow-y:auto;';
+                    list.dataset.gid = g.id;
                     cols.forEach(col => {
                         const def = col.getDefinition();
                         const item = document.createElement('div');
@@ -513,7 +520,9 @@
                     });
                     panel.appendChild(list);
                     row.appendChild(panel);
+                    if (keepTop[g.id]) list.scrollTop = keepTop[g.id];
                 });
+                if (keepLeft) row.scrollLeft = keepLeft;
             }
 
             function saveVis() {

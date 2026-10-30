@@ -63,7 +63,7 @@ class ReverbBumpController extends Controller
                 'http_status' => $raw?->http_status,
                 'error' => $raw?->error,
                 'fetched_at' => $raw?->fetched_at?->toDateTimeString(),
-                'raw' => is_array($decoded) ? self::withoutDescriptions($decoded) : null,
+                'raw' => is_array($decoded) ? self::withoutHiddenFields($decoded) : null,
                 'raw_text' => $raw && $decoded === null ? $raw->raw_response : null,
             ];
         }
@@ -96,7 +96,7 @@ class ReverbBumpController extends Controller
 
         foreach (array_unique($request->input('listing_ids')) as $listingId) {
             $res = $this->pullOne($api, trim((string) $listingId));
-            $res['raw'] = is_array($res['raw'] ?? null) ? self::withoutDescriptions($res['raw']) : ($res['raw'] ?? null);
+            $res['raw'] = is_array($res['raw'] ?? null) ? self::withoutHiddenFields($res['raw']) : ($res['raw'] ?? null);
             $res['success'] ? $ok++ : $fail++;
             $results[] = $res;
             usleep(150000);
@@ -128,7 +128,7 @@ class ReverbBumpController extends Controller
         if (! empty($res['success']) && ! empty($res['listing_id']) && Schema::hasTable('reverb_bump_raw')) {
             $pulled = $this->pullOne($api, (string) $res['listing_id'], (string) $request->input('sku'));
             if (is_array($pulled['raw'] ?? null)) {
-                $pulled['raw'] = self::withoutDescriptions($pulled['raw']);
+                $pulled['raw'] = self::withoutHiddenFields($pulled['raw']);
             }
         }
 
@@ -142,17 +142,27 @@ class ReverbBumpController extends Controller
     }
 
     /**
-     * Drop every "description" key (any depth) from a raw response before it goes to the page.
+     * Drop every "description", "_links" and "deleted_bid" key (any depth), and the display / bid_percentage fields of "bids" entries, from a raw response before it goes to the page.
      * The stored reverb_bump_raw row stays untouched; only what the table receives is trimmed.
      */
-    private static function withoutDescriptions(array $data): array
+    private static function withoutHiddenFields(array $data): array
     {
         $out = [];
         foreach ($data as $key => $value) {
-            if (is_string($key) && strtolower($key) === 'description') {
+            if (is_string($key) && in_array(strtolower($key), ['description', '_links', 'deleted_bid'], true)) {
                 continue;
             }
-            $out[$key] = is_array($value) ? self::withoutDescriptions($value) : $value;
+            if ($key === 'bids' && is_array($value)) {
+                // bids.N.display / bids.N.bid_percentage columns are not wanted; keep anything else in the entries
+                $value = array_values(array_filter(array_map(
+                    fn ($bid) => is_array($bid) ? array_diff_key($bid, ['display' => 1, 'bid_percentage' => 1]) : $bid,
+                    $value
+                ), fn ($bid) => ! is_array($bid) || $bid !== []));
+                if ($value === []) {
+                    continue;
+                }
+            }
+            $out[$key] = is_array($value) ? self::withoutHiddenFields($value) : $value;
         }
 
         return $out;
