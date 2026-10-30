@@ -59,7 +59,7 @@
                             <i class="fa fa-eye"></i> Columns
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end" id="column-dropdown-menu"
-                            style="max-height: 400px; overflow-y: auto; min-width: 280px;"></ul>
+                            style="width: min(1280px, 94vw); max-height: 75vh; overflow: hidden; padding: 8px 0;"></ul>
                     </div>
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-file-csv"></i> Export CSV
@@ -104,12 +104,12 @@
             const PULL_CHUNK = 10;
             const MAX_RAW_COLUMNS = 250;
             const COL_VIS_KEY = 'reverb_bump_raw_cols_v2';
-            const COL_COLLAPSE_KEY = 'reverb_bump_raw_col_groups_v1';
 
-            // The 5 basic column groups shown in the Columns menu.
+            // The basic column groups (description fields get their own area) shown in the Columns menu.
             const COL_GROUPS = [
                 { id: 'basic',   label: 'Basic (listing & pull status)' },
                 { id: 'bid',     label: 'Bump Bid' },
+                { id: 'description', label: 'Description' },
                 { id: 'stats',   label: 'Bump Stats (bump_v2_stats)' },
                 { id: 'budgets', label: 'Budgets' },
                 { id: 'other',   label: 'Other raw fields' },
@@ -124,6 +124,7 @@
             function groupOfDef(def) {
                 const p = def.rawPath;
                 if (!p) return BASE_FIELD_GROUP[def.field] || 'basic';
+                if (/description/i.test(p)) return 'description';
                 if (p === 'current_bid' || p.startsWith('current_bid.') || p.startsWith('bump_v2_stats.current_bid')) return 'bid';
                 if (p.startsWith('bump_v2_stats')) return 'stats';
                 if (p === 'budgets' || p.startsWith('budgets.') || p.includes('.budgets')) return 'budgets';
@@ -134,10 +135,6 @@
             function colKey(col) {
                 const def = col.getDefinition();
                 return def.rawPath || def.field;
-            }
-
-            function loadCollapsed() {
-                try { return JSON.parse(localStorage.getItem(COL_COLLAPSE_KEY) || '{}'); } catch (e) { return {}; }
             }
 
             let table = null;
@@ -432,16 +429,21 @@
             function buildColumnMenu() {
                 const menu = document.getElementById('column-dropdown-menu');
                 menu.innerHTML = '';
+
+                // Top row: bulk actions
+                const actions = document.createElement('li');
+                actions.className = 'px-3 pb-2 d-flex gap-3 border-bottom';
                 const mk = (label, onclick) => {
-                    const li = document.createElement('li');
-                    li.innerHTML = '<a class="dropdown-item small" href="#"></a>';
-                    li.firstChild.textContent = label;
-                    li.firstChild.addEventListener('click', e => { e.preventDefault(); onclick(); });
-                    menu.appendChild(li);
+                    const a = document.createElement('a');
+                    a.href = '#';
+                    a.className = 'small fw-semibold text-decoration-none';
+                    a.textContent = label;
+                    a.addEventListener('click', e => { e.preventDefault(); onclick(); });
+                    actions.appendChild(a);
                 };
                 mk('Show all columns', () => { table.getColumns().forEach(c => c.show()); saveVis(); buildColumnMenu(); });
                 mk('Hide all raw fields', () => { rawKeys.forEach(p => table.getColumn(keyField[p])?.hide()); saveVis(); buildColumnMenu(); });
-                const hr = document.createElement('li'); hr.innerHTML = '<hr class="dropdown-divider">'; menu.appendChild(hr);
+                menu.appendChild(actions);
 
                 // Split the columns into the 5 groups
                 const byGroup = {};
@@ -452,23 +454,28 @@
                     byGroup[groupOfDef(def)].push(col);
                 });
 
-                const collapsed = loadCollapsed();
+                // The groups sit side by side (horizontal); each one scrolls on its own
+                const row = document.createElement('li');
+                row.className = 'd-flex align-items-start gap-2 px-2 pt-2';
+                row.style.overflowX = 'auto';
+                menu.appendChild(row);
+
                 COL_GROUPS.forEach(g => {
                     const cols = byGroup[g.id];
                     if (!cols.length) return;
                     const shown = cols.filter(c => c.isVisible()).length;
 
-                    // Group header: caret (collapse), tri-state checkbox (show/hide the whole group), count
-                    const head = document.createElement('li');
-                    head.className = 'px-3 py-1 bg-light border-top border-bottom d-flex align-items-center gap-2';
-                    head.innerHTML = '<i class="fa fa-caret-down small text-muted" style="cursor:pointer;width:10px"></i>' +
-                        '<input class="form-check-input mt-0" type="checkbox">' +
-                        '<span class="fw-semibold small flex-grow-1" style="cursor:pointer"></span>' +
+                    const panel = document.createElement('div');
+                    panel.style.cssText = 'flex:0 0 240px;width:240px;border:1px solid #dee2e6;border-radius:6px;overflow:hidden;';
+
+                    // Group header: tri-state checkbox (show/hide the whole group) + count
+                    const head = document.createElement('div');
+                    head.className = 'px-2 py-1 bg-light border-bottom d-flex align-items-center gap-2';
+                    head.innerHTML = '<input class="form-check-input mt-0" type="checkbox">' +
+                        '<span class="fw-semibold small flex-grow-1"></span>' +
                         '<span class="small text-muted"></span>';
-                    const caret = head.querySelector('i');
                     const gcb = head.querySelector('input');
-                    const label = head.querySelector('span.fw-semibold');
-                    label.textContent = g.label;
+                    head.querySelector('span.fw-semibold').textContent = g.label;
                     head.querySelector('span.text-muted').textContent = shown + '/' + cols.length;
                     gcb.checked = shown === cols.length;
                     gcb.indeterminate = shown > 0 && shown < cols.length;
@@ -476,32 +483,25 @@
                         cols.forEach(c => gcb.checked ? c.show() : c.hide());
                         saveVis(); buildColumnMenu();
                     });
-                    const isCollapsed = !!collapsed[g.id];
-                    caret.className = 'fa ' + (isCollapsed ? 'fa-caret-right' : 'fa-caret-down') + ' small text-muted';
-                    const toggleCollapse = () => {
-                        const c = loadCollapsed();
-                        c[g.id] = !c[g.id];
-                        localStorage.setItem(COL_COLLAPSE_KEY, JSON.stringify(c));
-                        buildColumnMenu();
-                    };
-                    caret.addEventListener('click', toggleCollapse);
-                    label.addEventListener('click', toggleCollapse);
-                    menu.appendChild(head);
-                    if (isCollapsed) return;
+                    panel.appendChild(head);
 
+                    const list = document.createElement('div');
+                    list.style.cssText = 'max-height:55vh;overflow-y:auto;';
                     cols.forEach(col => {
                         const def = col.getDefinition();
-                        const li = document.createElement('li');
+                        const item = document.createElement('div');
                         const id = 'cv_' + def.field;
-                        li.className = 'px-3 py-1 ps-4';
-                        li.innerHTML = '<div class="form-check"><input class="form-check-input" type="checkbox" id="' + id + '">' +
-                            '<label class="form-check-label small" for="' + id + '"></label></div>';
-                        li.querySelector('label').textContent = def.title;
-                        const cb = li.querySelector('input');
+                        item.className = 'px-2 py-1';
+                        item.innerHTML = '<div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="' + id + '">' +
+                            '<label class="form-check-label small" style="word-break:break-all" for="' + id + '"></label></div>';
+                        item.querySelector('label').textContent = def.title;
+                        const cb = item.querySelector('input');
                         cb.checked = col.isVisible();
                         cb.addEventListener('change', () => { cb.checked ? col.show() : col.hide(); saveVis(); buildColumnMenu(); });
-                        menu.appendChild(li);
+                        list.appendChild(item);
                     });
+                    panel.appendChild(list);
+                    row.appendChild(panel);
                 });
             }
 
