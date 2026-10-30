@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Task;
 use App\Models\User;
 use App\Support\ChatWorkspace;
 use App\Support\GoogleShoppingCampaignsRawRule;
@@ -9,10 +10,11 @@ use App\Support\GoogleShoppingLiveSyncStatus;
 use App\Support\InventChatBot;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
- * Tells Shobha (5Core Chat bot inbox + WhatsApp) when an ENABLED Google Shopping campaign still has
+ * Tells Shobha (5Core Chat bot inbox + a Task that sends the approved task WhatsApp template) when an ENABLED Google Shopping campaign still has
  * SBGT != LBgt or SBID != LBid after the background match run, with the reason for each one.
  *
  * The same issue is not repeated within `services.google_shopping_alerts.cooldown_hours`.
@@ -188,28 +190,30 @@ class GoogleShoppingMismatchAlertService
             ]);
         }
 
-        $phones = (array) config('services.google_shopping_alerts.whatsapp_to', []);
-        if ($phones === [] && $user !== null && trim((string) ($user->phone ?? '')) !== '') {
-            $phones = [(string) $user->phone];
-        }
-        if ($phones === []) {
-            Log::warning('Google Shopping mismatch alert: no WhatsApp number (set GOOGLE_SHOPPING_ALERT_WHATSAPP_TO or users.phone).');
+        // WhatsApp: create a Task for the same user. Creating a task sends the approved "task assigned"
+        // WhatsApp template (delivers at any time), which plain WhatsApp text does not.
+        if ($user !== null) {
+            try {
+                $task = $this->createAlertTask($user, $body, $included);
+                $status = app(TaskWhatsAppNotificationService::class)->notifyNewTaskAssigned($task);
+                $result['whatsapp'] = $status === 'sent';
+                if (! $result['whatsapp']) {
+                    Log::warning('Google Shopping mismatch alert: task WhatsApp not sent', ['task_id' => $task->id, 'status' => $status]);
+                }
+            } catch (Throwable $e) {
+                Log::error('Google Shopping mismatch alert: task create/WhatsApp failed', ['error' => $e->getMessage()]);
+            }
         }
 
-        // Plain text only reaches a phone that messaged the business number in the last 24 hours.
-        // With an approved template id configured, use the template (delivers any time).
-        $templateId = trim((string) config('services.google_shopping_alerts.whatsapp_template_id', ''));
+        // Extra numbers (GOOGLE_SHOPPING_ALERT_WHATSAPP_TO): plain text, only delivered inside a 24-hour session.
         $wa = app(WhatsAppService::class);
-        foreach ($phones as $phone) {
+        foreach ((array) config('services.google_shopping_alerts.whatsapp_to', []) as $phone) {
             $clean = WhatsAppService::cleanPhone($phone);
             if (! $clean) {
                 continue;
             }
             try {
-                $ok = $templateId !== ''
-                    ? $wa->sendTemplate($clean, $templateId, self::templateParams($included))
-                    : $wa->sendText($clean, $body);
-                if ($ok) {
+                if ($wa->sendText($clean, $body)) {
                     $result['whatsapp'] = true;
                 }
             } catch (Throwable $e) {
@@ -221,24 +225,61 @@ class GoogleShoppingMismatchAlertService
     }
 
     /**
-     * WhatsApp template variables (no line breaks allowed): {{1}} issue count, {{2}} one-line summary, {{3}} page link.
+     * One task per digest, assigned to the alert user. The title goes into the WhatsApp template as one
+     * line, so it stays short; the full per-campaign reasons are in the description.
      *
      * @param  list<array{key: string, cid: string, name: string, kind: string, label: string, text: string}>  $included
-     * @return list<string>
      */
-    public static function templateParams(array $included): array
+    private function createAlertTask(User $user, string $body, array $included): Task
     {
-        $parts = [];
-        foreach ($included as $i) {
-            $parts[] = $i['name'].' — '.$i['label'].' — '.$i['text'];
+        $first = $included[0] ?? null;
+        $title = 'Google Shopping: '.count($included).' campaign'.(count($included) === 1 ? '' : 's').' SBGT/SBID not matching live';
+        if ($first !== null) {
+            $title .= ' — '.$first['name'].': '.$first['label'];
         }
-        $summary = trim((string) preg_replace('/\s+/', ' ', implode(' | ', $parts)));
+        $title = mb_strimwidth(trim((string) preg_replace('/\s+/', ' ', $title)), 0, 200, '…');
 
-        return [
-            (string) count($included),
-            mb_strimwidth($summary, 0, 700, '…'),
-            url('/google/shopping/google-shopping'),
+        $start = now();
+        $due = $start->copy()->addDay();
+        $data = [
+            'title' => $title,
+            'description' => $body,
+            'group' => 'Google Shopping',
+            'priority' => 'High',
+            // Shobha is both assignor and assignee: nobody else gets this task or its WhatsApp/notifications.
+            'assignor' => trim((string) config('services.google_shopping_alerts.task_assignor', '')) !== ''
+                ? (string) config('services.google_shopping_alerts.task_assignor')
+                : (string) $user->email,
+            'assign_to' => (string) $user->email,
+            'status' => 'Todo',
+            'eta_time' => 15,
+            'start_date' => $start,
+            'completion_date' => $due,
+            'due_date' => $due,
+            'completion_day' => 0,
+            'etc_done' => 0,
+            'is_missed' => 0,
+            'is_missed_track' => 0,
+            'workspace' => 0,
+            'order' => 0,
+            'task_id' => '',
+            'link1' => url('/google/shopping/google-shopping'),
+            'link2' => '', 'link3' => '', 'link4' => '', 'link5' => '', 'link6' => '', 'link7' => '',
+            'link8' => 'google-shopping-mismatch',
+            'link9' => '',
+            'is_data_from' => 0,
+            'is_automate_task' => 0,
+            'task_type' => 'manual',
+            'rework_reason' => '',
+            'delete_rating' => 0,
+            'delete_feedback' => '',
+            'split_tasks' => 0,
         ];
+        if (Schema::hasColumn('tasks', 'is_corrective_action')) {
+            $data['is_corrective_action'] = 0;
+        }
+
+        return Task::create($data);
     }
 
     /**

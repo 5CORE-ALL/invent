@@ -1324,16 +1324,18 @@ return [
     |--------------------------------------------------------------------------
     | Google Shopping SBGT/SBID vs LBgt/LBid mismatch alerts
     |--------------------------------------------------------------------------
-    | Sent by google-shopping:match-live-bid-bgt to the user with `email` (5Core Chat bot inbox)
-    | and by WhatsApp. WhatsApp goes to `whatsapp_to` (digits, comma separated) when set,
-    | otherwise to that user's `phone`. The same issue is not repeated within `cooldown_hours`.
+    | Sent by google-shopping:match-live-bid-bgt to the user with `email`: a message in the 5Core Chat
+    | bot inbox, and a Task (which sends the approved task WhatsApp template to that user's `phone`).
+    | `whatsapp_to` (digits, comma separated) adds plain-text WhatsApp to extra numbers.
+    | The same issue is not repeated within `cooldown_hours`.
     */
     'google_shopping_alerts' => [
         'enabled' => env('GOOGLE_SHOPPING_ALERT_ENABLED', true),
         'email' => env('GOOGLE_SHOPPING_ALERT_EMAIL', 'software5@5core.com'),
         'whatsapp_to' => array_filter(array_map('trim', explode(',', (string) env('GOOGLE_SHOPPING_ALERT_WHATSAPP_TO', '')))),
         'cooldown_hours' => (int) env('GOOGLE_SHOPPING_ALERT_COOLDOWN_HOURS', 24),
-        // Approved Gupshup template (3 variables: count, summary, link). Empty = plain text (24-hour session only).
-        'whatsapp_template_id' => env('GOOGLE_SHOPPING_ALERT_WHATSAPP_TEMPLATE_ID', ''),
+        // The WhatsApp alert is a Task sent by the approved "task assigned" template.
+        // Assignee and assignor are both `email` (Shobha) unless an assignor is set here.
+        'task_assignor' => env('GOOGLE_SHOPPING_ALERT_TASK_ASSIGNOR', ''),
     ],
 ];
