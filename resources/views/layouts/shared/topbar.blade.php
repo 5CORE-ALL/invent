@@ -617,7 +617,7 @@
                                 }
                             }
                         @endphp
-                        <h5 class="my-0 {{ $topbarIsShobha ? 'fw-bold' : 'fw-normal' }}"@if($topbarIsShobha) style="color:#000;font-weight:700;"@endif>{{ auth()->user()->name ?? '5Core' }}@if($topbarFraudAlert)
+                        <h5 class="my-0 {{ $topbarFraudAlert ? 'fw-bold' : 'fw-normal' }}"@if($topbarFraudAlert) style="color:#000;font-weight:700;"@endif>{{ auth()->user()->name ?? '5Core' }}@if($topbarFraudAlert)
                             @include('attendance.partials.fraud-alert', ['alert' => null])
                             <span class="fraud-tri {{ $topbarFraudAlert['level'] }}" role="img"
                                title="{{ $topbarFraudAlert['tooltip'] }}"
