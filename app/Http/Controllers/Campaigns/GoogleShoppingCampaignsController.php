@@ -4970,7 +4970,7 @@ class GoogleShoppingCampaignsController extends Controller
             $childInvBySku,
             &$memo
         ): ?int {
-            $norm = preg_replace('/\s+/', ' ', strtoupper(rtrim(trim($campaignName), '.')));
+            $norm = GoogleShoppingBgtSkuMetrics::normalizeCampaignName($campaignName);
             if ($norm === '') {
                 return null;
             }
@@ -5209,7 +5209,7 @@ class GoogleShoppingCampaignsController extends Controller
             });
         }
 
-        $norm = preg_replace('/\s+/', ' ', strtoupper(rtrim(trim($campaignName), '.')));
+        $norm = GoogleShoppingBgtSkuMetrics::normalizeCampaignName($campaignName);
         if ($norm === '') {
             return [];
         }

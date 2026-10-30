@@ -137,7 +137,7 @@ final class GoogleShoppingBgtSkuMetrics
         $memo = [];
 
         return static function (string $campaignName) use ($payload, &$memo): array {
-            $norm = preg_replace('/\s+/', ' ', strtoupper(rtrim(trim($campaignName), '.')));
+            $norm = GoogleShoppingBgtSkuMetrics::normalizeCampaignName($campaignName);
             if ($norm === '') {
                 return GoogleShoppingBgtSkuMetrics::empty();
             }
@@ -171,6 +171,19 @@ final class GoogleShoppingBgtSkuMetrics
 
             return $memo[$norm];
         };
+    }
+
+    /**
+     * Upper-case, whitespace-collapsed campaign name for SKU / family matching.
+     * Campaigns created by the missing-ads tool carry a trailing yyyymmddhhmmss stamp
+     * (e.g. "PARENT MEGA WP 20261028094155"); strip it so the name matches product_master.
+     */
+    public static function normalizeCampaignName(string $campaignName): string
+    {
+        $norm = preg_replace('/\s+/', ' ', strtoupper(rtrim(trim($campaignName), '.'))) ?? '';
+        $stripped = preg_replace('/ \d{14}$/', '', $norm);
+
+        return rtrim($stripped ?? $norm, '. ');
     }
 
     private static function positivePrice(mixed $raw): ?float
