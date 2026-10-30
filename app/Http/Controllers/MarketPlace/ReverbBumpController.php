@@ -142,25 +142,15 @@ class ReverbBumpController extends Controller
     }
 
     /**
-     * Drop every "description", "_links" and "deleted_bid" key (any depth), and the display / bid_percentage fields of "bids" entries, from a raw response before it goes to the page.
+     * Drop every "description", "_links", "deleted_bid" and "bids" key (any depth) from a raw response before it goes to the page.
      * The stored reverb_bump_raw row stays untouched; only what the table receives is trimmed.
      */
     private static function withoutHiddenFields(array $data): array
     {
         $out = [];
         foreach ($data as $key => $value) {
-            if (is_string($key) && in_array(strtolower($key), ['description', '_links', 'deleted_bid'], true)) {
+            if (is_string($key) && in_array(strtolower($key), ['description', '_links', 'deleted_bid', 'bids'], true)) {
                 continue;
-            }
-            if ($key === 'bids' && is_array($value)) {
-                // bids.N.display / bids.N.bid_percentage columns are not wanted; keep anything else in the entries
-                $value = array_values(array_filter(array_map(
-                    fn ($bid) => is_array($bid) ? array_diff_key($bid, ['display' => 1, 'bid_percentage' => 1]) : $bid,
-                    $value
-                ), fn ($bid) => ! is_array($bid) || $bid !== []));
-                if ($value === []) {
-                    continue;
-                }
             }
             $out[$key] = is_array($value) ? self::withoutHiddenFields($value) : $value;
         }

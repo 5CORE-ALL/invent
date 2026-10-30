@@ -103,6 +103,8 @@
             };
             const PULL_CHUNK = 10;
             const MAX_RAW_COLUMNS = 250;
+            // Raw fields that never become columns (the server drops them too): description, _links, deleted_bid, bids
+            const HIDDEN_RAW_PATH = /(^|\.)(description|_links|deleted_bid)(\.|$)|^bids(\.|$)/;
             const COL_VIS_KEY = 'reverb_bump_raw_cols_v2';
 
             // The basic column groups (description fields get their own area) shown in the Columns menu.
@@ -206,6 +208,7 @@
                 if (!raw) return fresh;
                 const flat = flatten(raw, '', {});
                 Object.keys(flat).forEach(path => {
+                    if (HIDDEN_RAW_PATH.test(path)) return;   // fields that are not wanted in the table
                     if (!keyField[path]) {
                         if (rawKeys.length >= MAX_RAW_COLUMNS) return;
                         fresh = true;
