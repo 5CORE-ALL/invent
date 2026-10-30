@@ -33,14 +33,6 @@
             <div class="card-body py-3">
                 <h4>Depop Sales Data — Margin {{ number_format((float) ($marginPercent ?? 87), 2) }}% (PFT = sale × margin − LP)</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-                    <form id="upload-form-depop" class="d-flex align-items-center gap-2 me-2">
-                        @csrf
-                        <input type="file" name="file" id="upload-file-depop" accept=".txt,.csv,.tsv,.xlsx,.xls" class="form-control form-control-sm" style="max-width: 220px;">
-                        <button type="submit" class="btn btn-sm btn-primary" id="upload-btn-depop">
-                            <i class="fa fa-upload"></i> Upload (Truncate & Replace)
-                        </button>
-                    </form>
-                    <button type="button" class="btn btn-sm btn-warning" id="sync-shopify-btn" title="Depop orders reach Shopify through Fluf"><i class="fa fa-sync"></i> Sync from Shopify (Fluf)</button>
                     <button type="button" class="btn btn-sm btn-success" id="export-btn"><i class="fa fa-file-excel"></i> Export</button>
                 </div>
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -132,27 +124,7 @@
         }
         table.on('dataProcessed', updateSummary);
         table.on('dataFiltered', updateSummary);
-        $('#sync-shopify-btn').on('click', function() {
-            var $b = $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing...');
-            $.ajax({ url: "{{ url('/depop/sync-shopify') }}", type: 'POST', data: { days: 60 },
-                success: function(res) { showToast(res.message || 'Synced.', 'success'); table.setData(); },
-                error: function(xhr) { showToast((xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Shopify sync failed', 'error'); },
-                complete: function() { $b.prop('disabled', false).html('<i class="fa fa-sync"></i> Sync from Shopify (Fluf)'); }
-            });
-        });
         $('#export-btn').on('click', function() { table.download("csv", "depop_sheet_data.csv"); });
-        $('#upload-form-depop').on('submit', function(e) {
-            e.preventDefault();
-            if (!document.getElementById('upload-file-depop').files.length) { showToast('Select a file', 'error'); return; }
-            var fd = new FormData(this);
-            fd.append('file', document.getElementById('upload-file-depop').files[0]);
-            $('#upload-btn-depop').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Uploading...');
-            $.ajax({ url: "{{ url('/depop/upload') }}", type: 'POST', data: fd, processData: false, contentType: false,
-                success: function(res) { showToast(res.message || 'Upload complete.', 'success'); table.setData(); },
-                error: function(xhr) { showToast((xhr.responseJSON && xhr.responseJSON.error) || 'Upload failed', 'error'); },
-                complete: function() { $('#upload-btn-depop').prop('disabled', false).html('<i class="fa fa-upload"></i> Upload (Truncate & Replace)'); }
-            });
-        });
     });
 </script>
 @endsection
