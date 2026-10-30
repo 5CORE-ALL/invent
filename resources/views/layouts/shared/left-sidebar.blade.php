@@ -3428,7 +3428,7 @@
                             </a>
                         </li>
                         @endif
-                        @if(\App\Support\AttendanceAccess::isPresident())
+                        @if(\App\Support\AttendanceAccess::canSeeVideoNav())
                         <li>
                             <a href="{{ route('attendance.live.team') }}" class="{{ request()->routeIs('attendance.live.team') ? 'active' : '' }}">
                                 <i class="ri-vidicon-line me-2"></i>Team Monitor Video

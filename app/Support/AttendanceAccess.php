@@ -133,6 +133,19 @@ class AttendanceAccess
     }
 
     /**
+     * Sidebar link to Team Monitor Video: President and Software 5 only.
+     */
+    public static function canSeeVideoNav(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        return in_array(strtolower(trim((string) $user->email)), ['president@5core.com', 'software5@5core.com'], true);
+    }
+
+    /**
      * Team Monitoring summary page (/attendance/summary): President, Software 5, HR and Tech Support only.
      */
     public static function canViewSummary(?User $user = null): bool
