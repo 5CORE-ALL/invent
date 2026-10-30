@@ -540,7 +540,7 @@
         viewerId: @json((int) auth()->id()),
         viewerName: @json(auth()->user()->name ?? ''),
         canEdit: @json(strtolower((string) (auth()->user()->email ?? '')) === 'president@5core.com'),
-        businessToday: @json(\App\Support\TaskBusinessTime::today()->toDateString()),
+        businessToday: @json(\App\Support\TaskBusinessTime::incentiveToday()->toDateString()),
         routes: {
             get: @json(route('tasks.userIncentives.get')),
             sync: @json(route('tasks.userIncentives.sync'))

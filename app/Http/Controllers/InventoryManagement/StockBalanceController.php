@@ -1052,6 +1052,19 @@ class StockBalanceController extends Controller
             ], 500);
         }
 
+        // Remember this TO SKU as a combo (both FROM SKUs + ratio "combo") so the table keeps showing 2 SKUs.
+        if (count($fromInfos) >= 2) {
+            try {
+                $this->saveComboRuleFromSources(
+                    $toSku,
+                    array_map(fn ($f) => ['sku' => $f['sku'], 'qty' => $f['adjust_qty']], $fromInfos),
+                    Auth::id()
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Combo TRF rule save failed', ['to_sku' => $toSku, 'error' => $e->getMessage()]);
+            }
+        }
+
         return response()->json([
             'message' => '✓ Combo transfer completed. ' . count($fromInfos) . ' FROM SKU(s) → 1 TO SKU, saved to database.',
             'to_sku' => $toSku,
@@ -2077,10 +2090,46 @@ class StockBalanceController extends Controller
             ->whereIn('id', $latestIds)
             ->orderBy('id')
             ->chunkById(200, function ($rows) use ($force, &$updated) {
+                // A combo transfer is saved as several rows (one per FROM SKU) with the same to_sku + transferred_at.
+                $siblings = StockBalance::query()
+                    ->whereIn('to_sku', $rows->pluck('to_sku')->unique()->all())
+                    ->whereIn('transferred_at', $rows->pluck('transferred_at')->unique()->all())
+                    ->orderBy('id')
+                    ->get()
+                    ->groupBy(fn ($r) => strtoupper(trim((string) $r->to_sku)) . '|' . Carbon::parse($r->transferred_at)->format('Y-m-d H:i:s'));
+
                 foreach ($rows as $transfer) {
                     $toSku = trim((string) $transfer->to_sku);
                     $fromSku = trim((string) $transfer->from_sku);
                     if ($toSku === '' || $fromSku === '' || strcasecmp($toSku, $fromSku) === 0) {
+                        continue;
+                    }
+
+                    $groupKey = strtoupper($toSku) . '|' . Carbon::parse($transfer->transferred_at)->format('Y-m-d H:i:s');
+                    $comboSources = collect($siblings->get($groupKey, []))
+                        ->filter(fn ($r) => trim((string) $r->from_sku) !== '' && strcasecmp(trim((string) $r->from_sku), $toSku) !== 0)
+                        ->unique(fn ($r) => strtoupper(trim((string) $r->from_sku)))
+                        ->values();
+                    if ($comboSources->count() >= 2) {
+                        $existingCombo = StockBalanceRule::query()->where('to_sku', $toSku)->first();
+                        $transferredAtCombo = $transfer->transferred_at ? Carbon::parse($transfer->transferred_at) : null;
+                        $editedAfter = ! $force && $existingCombo && $transferredAtCombo && $existingCombo->updated_at && $existingCombo->updated_at->gt($transferredAtCombo);
+                        $sameAsSaved = $existingCombo
+                            && strcasecmp((string) $existingCombo->ratio, 'combo') === 0
+                            && strcasecmp((string) $existingCombo->from_sku, (string) $comboSources[0]->from_sku) === 0
+                            && collect($existingCombo->from_items ?: [])->pluck('sku')->map(fn ($s) => strtoupper(trim((string) $s)))->sort()->values()->all()
+                                === $comboSources->slice(1)->map(fn ($r) => strtoupper(trim((string) $r->from_sku)))->sort()->values()->all();
+                        if (! $editedAfter && ! $sameAsSaved) {
+                            $this->saveComboRuleFromSources(
+                                $toSku,
+                                $comboSources->map(fn ($r) => [
+                                    'sku' => trim((string) $r->from_sku),
+                                    'qty' => (int) $r->from_adjust_qty,
+                                ])->all(),
+                                $existingCombo->user_id ?? Auth::id()
+                            );
+                            $updated++;
+                        }
                         continue;
                     }
 
@@ -2125,6 +2174,57 @@ class StockBalanceController extends Controller
             });
 
         return $updated;
+    }
+
+    /**
+     * Save a TO SKU as a combo: ratio "combo", first source as FROM SKU, the rest as extra FROM items.
+     *
+     * @param  array<int, array{sku: string, qty: int}>  $sources
+     */
+    private function saveComboRuleFromSources(string $toSku, array $sources, $userId = null): void
+    {
+        $sources = array_values($sources);
+        if (count($sources) < 2) {
+            return;
+        }
+
+        $fromSku = trim((string) $sources[0]['sku']);
+        $fromQty = max(1, (int) $sources[0]['qty']);
+        $fromItems = [];
+        foreach (array_slice($sources, 1) as $source) {
+            $fromItems[] = [
+                'sku' => trim((string) $source['sku']),
+                'fromQty' => $fromQty,
+            ];
+        }
+
+        $existing = StockBalanceRule::query()->where('to_sku', $toSku)->first();
+        StockBalanceRule::updateOrCreate(
+            ['to_sku' => $toSku],
+            [
+                'from_sku' => $fromSku,
+                'ratio' => 'combo',
+                'from_qty' => $fromQty,
+                'from_items' => $fromItems,
+                'action' => $existing->action ?? null,
+                'user_id' => $userId ?? ($existing->user_id ?? null),
+            ]
+        );
+
+        $prefPayload = [
+            'from_sku' => $fromSku,
+            'ratio' => 'combo',
+            'from_qty' => $fromQty,
+        ];
+        StockBalanceTransferPreference::query()
+            ->where('to_sku', $toSku)
+            ->update($prefPayload + ['updated_at' => now()]);
+        if ($userId) {
+            StockBalanceTransferPreference::updateOrCreate(
+                ['user_id' => $userId, 'to_sku' => $toSku],
+                $prefPayload
+            );
+        }
     }
 
     private function nearestTransferRatio(int $fromQty, int $toQty): string

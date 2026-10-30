@@ -38,6 +38,17 @@ class TaskBusinessTime
         return Carbon::today(static::tz());
     }
 
+    /**
+     * Incentive cutoff dates and "Days Left" always follow California time,
+     * independent of the Task Manager business timezone.
+     */
+    public const INCENTIVE_TIMEZONE = 'America/Los_Angeles';
+
+    public static function incentiveToday(): Carbon
+    {
+        return Carbon::today(self::INCENTIVE_TIMEZONE);
+    }
+
     public static function todayStart(): Carbon
     {
         return static::today()->startOfDay();

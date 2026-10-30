@@ -680,7 +680,7 @@ class TaskController extends Controller
 
         $incentiveCutoffAlerts = [];
         if (Schema::hasColumn('user_incentives', 'additional_condition') && $members->isNotEmpty()) {
-            $today = TaskBusinessTime::today()->startOfDay();
+            $today = TaskBusinessTime::incentiveToday()->startOfDay();
             $alertFrom = $today->copy()->addDay();
             UserIncentive::query()
                 ->whereIn('user_id', $members->pluck('id'))
@@ -10770,7 +10770,8 @@ class TaskController extends Controller
             'canEdit' => $canEdit,
             'canViewAll' => $canViewAll,
             'editUserId' => $editUserId,
-            'defaultCutoff' => TaskBusinessTime::today()->addMonth()->toDateString(),
+            'defaultCutoff' => TaskBusinessTime::incentiveToday()->addMonth()->toDateString(),
+            'businessToday' => TaskBusinessTime::incentiveToday()->toDateString(),
         ]);
     }
 
@@ -10848,7 +10849,7 @@ class TaskController extends Controller
             }
         }
 
-        $today = TaskBusinessTime::today()->startOfDay();
+        $today = TaskBusinessTime::incentiveToday()->startOfDay();
         $alertThrough = $today->copy()->addDay();
         $people = [];
         $alerts = [];

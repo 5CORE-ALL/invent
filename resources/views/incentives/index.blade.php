@@ -124,7 +124,7 @@
             $n = is_numeric($amount) ? (float) $amount : 0;
             return '₹'.number_format($n, 0);
         };
-        $businessToday = \App\Support\TaskBusinessTime::today()->toDateString();
+        $businessToday = \App\Support\TaskBusinessTime::incentiveToday()->toDateString();
         $daysLeft = function ($value) use ($cutoffInput, $businessToday) {
             $iso = $cutoffInput($value);
             if ($iso === '' || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $businessToday)) {
@@ -357,7 +357,7 @@
         @endforelse
     </div>
     <p class="text-muted small d-none mt-3 mb-0" id="inc-search-empty">No matching people.</p>
-    <p class="text-muted small mt-3 mb-0">Incentives are managed by president@5core.com. Days Left counts from today to the cutoff date.</p>
+    <p class="text-muted small mt-3 mb-0">Incentives are managed by president@5core.com. Days Left counts from today (California time, {{ \App\Support\TaskBusinessTime::incentiveToday()->format('j M Y') }}) to the cutoff date.</p>
 
     @if ($canEdit)
         <template id="inc-row-template">
