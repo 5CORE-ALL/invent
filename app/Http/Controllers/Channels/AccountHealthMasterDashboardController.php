@@ -89,13 +89,11 @@ class AccountHealthMasterDashboardController extends Controller
         }
 
         $model = $rateModels[$field];
-        $rate = $model::where('channel_id', $channelId)->orderBy('report_date', 'desc')->first();
-        if (!$rate) {
-            return response()->json(['success' => true, 'message' => 'Nothing to clear.']);
-        }
-
-        $rate->{$column} = $column === 'allowed' ? '' : null;
-        $rate->save();
+        // A channel can have more than one row per rate table, and the dashboard,
+        // the update endpoints and this action don't all pick the same row. Clear
+        // every row of the channel so the cell is empty whichever one is shown.
+        $model::where('channel_id', $channelId)
+            ->update([$column => $column === 'allowed' ? '' : null]);
 
         return response()->json(['success' => true, 'message' => 'Cell data deleted.']);
     }
