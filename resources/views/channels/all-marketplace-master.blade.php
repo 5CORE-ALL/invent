@@ -635,8 +635,8 @@
         #summary-stats .amm-inv-band--red2 { background: #fee2e2; color: #991b1b; }
         #summary-stats .amm-inv-band--green { background: #dcfce7; color: #14532d; }
         #summary-stats .amm-inv-band--pink { background: #fce7f3; color: #9d174d; }
-        #summary-stats .amm-inv-band-name { font-size: 12px; font-weight: 800; white-space: nowrap; }
-        #summary-stats .amm-inv-band-meta { font-size: 13px; font-weight: 700; white-space: nowrap; }
+        #summary-stats .amm-inv-band-name { font-size: 13px; font-weight: 800; white-space: nowrap; }
+        #summary-stats .amm-inv-band-meta { font-size: 14px; font-weight: 700; white-space: nowrap; }
         #summary-stats .amm-badge-block--today .ebay2-summary-badge-row,
         #summary-stats .amm-badge-block--yesterday .ebay2-summary-badge-row,
         #summary-stats .amm-badge-block--projected .ebay2-summary-badge-row,
@@ -670,9 +670,9 @@
             min-height: 31.5px;
             height: 31.5px;
             max-height: 31.5px;
-            font-size: 0.8rem !important;
+            font-size: 0.92rem !important;
             line-height: 1;
-            padding: 0.1rem 0.2rem !important;
+            padding: 0.1rem 0.15rem !important;
             border-radius: 0.375rem;
             font-weight: bold;
             box-sizing: border-box;
