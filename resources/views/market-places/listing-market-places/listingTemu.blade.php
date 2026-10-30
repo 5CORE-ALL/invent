@@ -434,13 +434,52 @@
 
         .temu-complete-btn {
             gap: 4px;
+            border: 0;
             border-radius: 6px;
             background: #f59e0b;
             color: #1c1917;
             font-weight: 700;
             text-decoration: none;
+            cursor: pointer;
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
+
+        .temu-complete-btn:disabled,
+        .temu-complete-btn.is-working {
+            opacity: 0.75;
+            cursor: wait;
+        }
+
+        .temu-incomplete-flag {
+            border: 0;
+            background: transparent;
+            color: #dc2626;
+            font-size: 20px;
+            line-height: 1;
+            padding: 2px 6px;
+            cursor: pointer;
+        }
+
+        .temu-incomplete-flag:hover {
+            color: #991b1b;
+            transform: scale(1.12);
+        }
+
+        .temu-incomplete-list {
+            list-style: none;
+            margin: 0 0 12px;
+            padding: 0;
+            font-size: 13px;
+        }
+
+        .temu-incomplete-list li {
+            padding: 4px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .temu-incomplete-list .bad { color: #b91c1c; font-weight: 600; }
+        .temu-incomplete-list .good { color: #15803d; }
+        .temu-incomplete-list .hint { display: block; color: #64748b; font-size: 12px; font-weight: 400; }
 
         .temu-complete-btn:hover {
             background: #d97706;
@@ -707,6 +746,25 @@
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                     <button type="button" class="btn btn-primary" id="temu-publish-confirm">
                                         <i class="fas fa-cloud-upload-alt"></i> Publish listing(s)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal fade" id="temuIncompleteModal" tabindex="-1" aria-labelledby="temuIncompleteModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="temuIncompleteModalLabel"><i class="fas fa-exclamation-triangle text-danger me-2"></i>Incomplete on Temu</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body" id="temu-incomplete-body">Loading…</div>
+                                <div class="modal-footer">
+                                    <a href="#" target="_blank" rel="noopener" class="btn btn-outline-secondary me-auto d-none" id="temu-incomplete-seller">Open in Seller Center</a>
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn btn-warning" id="temu-incomplete-complete" data-sku="" disabled>
+                                        <i class="fas fa-check-circle"></i> Complete
                                     </button>
                                 </div>
                             </div>
@@ -1081,12 +1139,11 @@
             const sku = String(data.sku || '').trim();
             if (!sku) return '';
 
-            // Incomplete goods already exists in Seller Center: publishing again would not complete it, finish it there.
-            if (data.listed === 'Incomplete' && data.temu_goods_id) {
-                const url = 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id=' + encodeURIComponent(data.temu_goods_id);
-                return `<a class="temu-complete-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Goods ${escapeHtml(data.temu_goods_id)} is Incomplete on Temu - finish it in Seller Center">
-                    <i class="fas fa-external-link-alt"></i> Complete
-                </a>`;
+            // Incomplete goods already exists on Temu: publishing again would not complete it, update it instead.
+            if (data.listed === 'Incomplete') {
+                return `<button type="button" class="temu-complete-btn" data-sku="${escapeHtml(sku)}" title="Send the listing data to the Incomplete Temu product (goods ${escapeHtml(data.temu_goods_id || '')}) so it can be completed">
+                    <i class="fas fa-check-circle"></i> Complete
+                </button>`;
             }
 
             return `<button type="button" class="temu-publish-btn" data-sku="${escapeHtml(sku)}" title="Review variations for ${escapeHtml(sku)} then publish to Temu as a new listing">
@@ -1106,6 +1163,15 @@
                 return '<span style="font-family:monospace;font-size:12px;color:#b45309;" title="Found in Temu Seller Center, not linked as a live listing">' + escapeHtml(fb) + '</span>';
             }
             return '<span class="text-muted">—</span>';
+        }
+
+        // Red triangle for SKUs whose goods is Incomplete on Temu; click shows what is missing.
+        function formatIncompleteFlag(cell) {
+            const d = cell.getRow().getData() || {};
+            if (d.is_parent || String(d.temu_status || '') !== 'Incomplete') return '';
+            const sku = String(d.sku || '').trim();
+            if (!sku) return '';
+            return `<button type="button" class="temu-incomplete-flag" data-sku="${escapeHtml(sku)}" title="Incomplete on Temu - click to see what is missing" aria-label="Incomplete - show details"><i class="fas fa-exclamation-triangle"></i></button>`;
         }
 
         function formatTemuStatus(cell) {
@@ -1333,6 +1399,16 @@
                         width: 170,
                         headerTooltip: 'Status of this SKU in Temu Seller Center: Active, Inactive, Incomplete, Draft or Deleted',
                         formatter: formatTemuStatus
+                    },
+                    {
+                        title: 'Incomplete',
+                        field: 'temu_incomplete',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 95,
+                        headerTooltip: 'Red triangle = this SKU is in an Incomplete product on Temu. Click it to see what is missing.',
+                        formatter: formatIncompleteFlag
                     },
                     {
                         title: 'Missing L',
@@ -1840,6 +1916,109 @@
                 if (sku) copySkuToClipboard(sku, this);
             });
 
+            // ---- Incomplete products: red triangle details + Complete ----
+            function incompleteError(xhr, fallback) {
+                if (xhr.status === 0) return 'The request timed out or the connection dropped. Try again.';
+                if (xhr.status === 419) return 'Session expired. Refresh the page and try again.';
+                if (xhr.responseJSON && xhr.responseJSON.message) return xhr.responseJSON.message;
+                return fallback;
+            }
+
+            function runComplete(sku, $btn, onDone) {
+                const original = $btn.html();
+                $btn.prop('disabled', true).addClass('is-working').html('<i class="fas fa-spinner fa-spin"></i> Completing');
+                $.ajax({
+                    url: "{{ url('/listing_temu/complete-incomplete') }}",
+                    type: 'POST',
+                    dataType: 'json',
+                    data: { sku: sku },
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                    timeout: 240000
+                }).done(function (response) {
+                    const goodsId = String((response && response.goods_id) || '').trim();
+                    if (goodsId) markRowsListed((response && response.skus) || [sku], goodsId);
+                    showNotification('success', (response && response.message) || 'Sent to Temu.');
+                    if (onDone) onDone(true);
+                }).fail(function (xhr) {
+                    showNotification('danger', incompleteError(xhr, 'Complete failed.'));
+                    if (onDone) onDone(false);
+                }).always(function () {
+                    $btn.prop('disabled', false).removeClass('is-working').html(original);
+                });
+            }
+
+            $(document).on('click', '.temu-complete-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = String($(this).attr('data-sku') || '').trim();
+                if (!sku) return;
+                runComplete(sku, $(this));
+            });
+
+            function renderIncompleteDetails(r) {
+                let html = '<p class="mb-2"><strong>Goods ' + escapeHtml(r.goods_id) + '</strong>' +
+                    (r.goods_name ? ' &middot; ' + escapeHtml(r.goods_name) : '') + '<br>' +
+                    '<span class="text-muted small">SKUs in this product: ' + escapeHtml((r.skus || []).join(', ')) +
+                    ' &middot; found via ' + escapeHtml(r.found_by || 'Temu') + '</span></p>';
+
+                html += '<h6 class="mt-3">What Temu says</h6>';
+                if (r.temu && r.temu.length) {
+                    html += '<ul class="temu-incomplete-list">' + r.temu.map(function (t) {
+                        return '<li><strong>' + escapeHtml(t.label) + ':</strong> ' + escapeHtml(t.value) + '</li>';
+                    }).join('') + '</ul>';
+                } else {
+                    html += '<p class="text-muted small">' + (r.record_found
+                        ? 'Temu returned no reason text for this product through the API.'
+                        : 'Temu did not return this product from its goods list, so no reason text is available.') +
+                        ' Open it in Seller Center to see its "Product to be completed" message.</p>';
+                }
+
+                html += '<h6 class="mt-3">What our masters need for Temu</h6>';
+                const rows = (r.checks || []).map(function (c) {
+                    const who = c.sku ? '<code>' + escapeHtml(c.sku) + '</code> &middot; ' : '';
+                    return '<li class="' + (c.ok ? 'good' : 'bad') + '">' + (c.ok ? '&#10003; ' : '&#10007; ') + who + escapeHtml(c.label) +
+                        (c.ok ? '' : '<span class="hint">' + escapeHtml(c.hint || 'Missing') + '</span>') + '</li>';
+                });
+                html += '<ul class="temu-incomplete-list">' + rows.join('') + '</ul>';
+                html += r.can_complete
+                    ? '<p class="text-success small mb-0">Everything we need is present. Click Complete to send it to Temu.</p>'
+                    : '<p class="text-danger small mb-0">Fix the red items above, then click Complete.</p>';
+                $('#temu-incomplete-body').html(html);
+            }
+
+            $(document).on('click', '.temu-incomplete-flag', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = String($(this).attr('data-sku') || '').trim();
+                if (!sku) return;
+                $('#temu-incomplete-body').html('<p class="text-muted mb-0">Reading the product from Temu…</p>');
+                $('#temu-incomplete-complete').attr('data-sku', sku).prop('disabled', true);
+                $('#temu-incomplete-seller').addClass('d-none');
+                showBsModal('temuIncompleteModal');
+                $.ajax({
+                    url: "{{ url('/listing_temu/incomplete-details') }}",
+                    type: 'GET',
+                    dataType: 'json',
+                    data: { sku: sku },
+                    headers: { 'Accept': 'application/json' },
+                    timeout: 120000
+                }).done(function (r) {
+                    renderIncompleteDetails(r || {});
+                    $('#temu-incomplete-complete').prop('disabled', false);
+                    if (r && r.seller_url) $('#temu-incomplete-seller').attr('href', r.seller_url).removeClass('d-none');
+                }).fail(function (xhr) {
+                    $('#temu-incomplete-body').html('<p class="text-danger mb-0">' + escapeHtml(incompleteError(xhr, 'Could not read the product from Temu.')) + '</p>');
+                });
+            });
+
+            $('#temu-incomplete-complete').on('click', function () {
+                const sku = String($(this).attr('data-sku') || '').trim();
+                if (!sku) return;
+                runComplete(sku, $(this), function (ok) {
+                    if (ok) hideBsModal('temuIncompleteModal');
+                });
+            });
+
             $(document).on('click', '.temu-publish-btn', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1916,6 +2095,6 @@
             publishUrl: '/listing_temu/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261030-onepublish2"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261030-incomplete1"></script>
 @include('partials.listing-sku-search')
 @endsection

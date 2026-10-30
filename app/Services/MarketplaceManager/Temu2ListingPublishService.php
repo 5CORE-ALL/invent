@@ -48,6 +48,15 @@ class Temu2ListingPublishService
     /** @var Temu2ApiService|\App\Services\TemuApiService */
     protected $api;
 
+    /**
+     * Temu 1 only: set while an Incomplete goods is being completed. publishSkus() then updates that goods
+     * instead of creating a new one.
+     */
+    protected ?string $completeGoodsId = null;
+
+    /** @var array<string, string> strtoupper(outSkuSn) => skuId of the goods being completed */
+    protected array $completeSkuIds = [];
+
     public function __construct(Temu2ApiService $api)
     {
         $this->api = $api;
@@ -400,15 +409,17 @@ class Temu2ListingPublishService
         $stillSkuList = [];
         $restored = [];
         foreach ($prepared as $index => $row) {
-            $remote = $this->remoteSkuDuplicate($row['sku']);
+            $remote = $this->completeGoodsId !== null ? null : $this->remoteSkuDuplicate($row['sku']);
             if ($remote !== null) {
                 $life = $this->remoteGoodsLifecycle($remote['goodsId']);
                 if ($life === 'incomplete' && $this->shopLabel() === 'Temu') {
                     // Temu 1: the SKU sits in an Incomplete goods. Linking it would mark it Listed while it is not
-                    // live, and publishing cannot complete it - it has to be finished in Seller Center.
+                    // live, and publishing cannot complete it - the Complete button updates that goods instead.
+                    TemuGoodsStatusSync::rememberIncomplete($row['sku'], $remote['goodsId']);
+
                     return [
                         'success' => false,
-                        'message' => $row['sku'].' is Incomplete on Temu (goods '.$remote['goodsId'].'). Finish it in Seller Center; publishing again does not change it.',
+                        'message' => $row['sku'].' is Incomplete on Temu (goods '.$remote['goodsId'].'). Use the Complete button on the listing page; publishing again does not change it.',
                     ];
                 }
                 if (in_array($life, ['deleted', 'draft', 'unknown'], true)) {
@@ -450,7 +461,7 @@ class Temu2ListingPublishService
         $prepared = $stillPrepared;
         $skuList = $stillSkuList;
 
-        $existingGoodsId = $mode === 'single' ? '' : $this->siblingGoodsId($parentKey);
+        $existingGoodsId = ($mode === 'single' || $this->completeGoodsId !== null) ? '' : $this->siblingGoodsId($parentKey);
         if ($existingGoodsId !== '') {
             $added = $this->addSkusToExistingGoods($existingGoodsId, $skuList);
             if ($added['success'] ?? false) {
@@ -518,7 +529,7 @@ class Temu2ListingPublishService
         ]);
 
         $data = $this->submitGoodsAdd($payloadV2);
-        if (! ($data['success'] ?? false) && $this->isDuplicateSkuError($this->apiErrorMessage($data))) {
+        if ($this->completeGoodsId === null && ! ($data['success'] ?? false) && $this->isDuplicateSkuError($this->apiErrorMessage($data))) {
             $retrySn = $this->uniqueOutGoodsSn($primarySku, $primarySku.'-'.substr(md5($primarySku), 0, 6));
             if ($retrySn !== '' && strcasecmp($retrySn, $outGoodsSn) !== 0) {
                 $payloadV2['goodsBasic']['outGoodsSn'] = $retrySn;
@@ -543,6 +554,14 @@ class Temu2ListingPublishService
         }
 
         $goodsId = (string) ($data['result']['goodsId'] ?? '');
+        if ($goodsId === '' && $this->completeGoodsId !== null) {
+            $goodsId = $this->completeGoodsId;
+            $infoList = [];
+            foreach ($prepared as $row) {
+                $infoList[] = ['outSkuSn' => $row['sku'], 'skuId' => $this->completeSkuIds[strtoupper((string) $row['sku'])] ?? ''];
+            }
+            $data['result']['skuInfoList'] = $infoList;
+        }
         if ($goodsId === '') {
             return ['success' => false, 'message' => $this->shopLabel().' add succeeded but returned no goodsId.'];
         }
@@ -591,6 +610,11 @@ class Temu2ListingPublishService
      */
     private function submitGoodsAdd(array $payloadV2): array
     {
+        if ($this->completeGoodsId !== null) {
+            // Completing an Incomplete goods: only ever UPDATE it, never create a second goods.
+            return $this->addViaV1($payloadV2)['data'] ?? ['success' => false, 'errorMsg' => 'Temu goods update failed.'];
+        }
+
         $denied = null;
         $other = null;
         foreach ($this->goodsAddTypes() as $type) {
@@ -723,6 +747,10 @@ class Temu2ListingPublishService
         }
         $v1['skuList'] = $skuList;
 
+        if ($this->completeGoodsId !== null) {
+            return $this->updateViaV1($v1, $listPrices);
+        }
+
         $data = $this->temuCallBody($v1, 120);
         if (! ($data['success'] ?? false) && $this->isPriceTypeError($data)) {
             foreach ($v1['skuList'] as $index => $sku) {
@@ -738,6 +766,71 @@ class Temu2ListingPublishService
             'success' => (bool) ($data['success'] ?? false),
             'data' => $data,
         ];
+    }
+
+    /**
+     * Temu 1: send the same data a new listing would carry to the existing Incomplete goods, so Temu can finish it.
+     * Tries the update APIs this shop may be authorized for; the first one that answers wins and is logged.
+     *
+     * @param  array<string, mixed>  $v1
+     * @param  list<?array{amount: string, currency: string}>  $listPrices
+     * @return array{success: bool, data?: array<string, mixed>}
+     */
+    private function updateViaV1(array $v1, array $listPrices): array
+    {
+        $goodsId = (int) $this->completeGoodsId;
+        $v1['goodsId'] = $goodsId;
+        if (is_array($v1['goodsBasic'] ?? null)) {
+            unset($v1['goodsBasic']['outGoodsSn']);
+        }
+        foreach ($v1['skuList'] as $i => $sku) {
+            $skuId = $this->completeSkuIds[strtoupper((string) ($sku['outSkuSn'] ?? ''))] ?? '';
+            if ($skuId !== '' && ctype_digit($skuId)) {
+                $v1['skuList'][$i]['skuId'] = (int) $skuId;
+            }
+        }
+
+        $denied = null;
+        $other = null;
+        foreach (['bg.local.goods.update', 'temu.local.goods.update', 'bg.local.goods.edit', 'temu.local.goods.edit'] as $type) {
+            $body = array_merge($v1, ['type' => $type]);
+            $data = $this->temuCallBody($body, 120);
+            if (! ($data['success'] ?? false) && $this->isPriceTypeError($data)) {
+                foreach ($body['skuList'] as $i => $sku) {
+                    if (is_array($sku['price'] ?? null) && ($listPrices[$i] ?? null) !== null) {
+                        $body['skuList'][$i]['price']['listPrice'] = $listPrices[$i];
+                        $body['skuList'][$i]['price']['listPriceType'] = 1;
+                    }
+                }
+                $data = $this->temuCallBody($body, 120);
+            }
+            Log::info('Temu1 complete incomplete goods', [
+                'type' => $type,
+                'goods_id' => $goodsId,
+                'success' => (bool) ($data['success'] ?? false),
+                'message' => $this->apiErrorMessage($data),
+            ]);
+            if ($data['success'] ?? false) {
+                return ['success' => true, 'data' => $data];
+            }
+            if ($this->isApiAccessDenied($data) || $this->isUnknownApiType($data)) {
+                $denied ??= $data;
+                continue;
+            }
+            $other ??= $data;
+        }
+
+        return ['success' => false, 'data' => $other ?? $denied ?? ['success' => false, 'errorMsg' => 'Temu did not accept the goods update.']];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function isUnknownApiType(array $data): bool
+    {
+        $msg = strtolower(trim((string) ($data['errorMsg'] ?? $data['message'] ?? '')));
+
+        return str_contains($msg, 'type not exist') || str_contains($msg, 'type not exists') || str_contains($msg, 'api not exist');
     }
 
     /**
@@ -1198,12 +1291,12 @@ class Temu2ListingPublishService
         if ($this->localGoodsId($sku) !== '' && ! in_array($localStatus, ['deleted', 'recycle', 'removed', 'draft'], true)) {
             return ['status' => 'skipped_listed', 'reason' => 'Already listed'];
         }
-        if ($this->shopLabel() === 'Temu') {
-            // Temu 1 only: a SKU inside an Incomplete goods is finished in Seller Center, not published again.
+        if ($this->shopLabel() === 'Temu' && $this->completeGoodsId === null) {
+            // Temu 1 only: a SKU inside an Incomplete goods is completed with the Complete button, not published again.
             try {
                 $hit = \App\Services\MarketplaceManager\TemuGoodsStatusSync::read()['skus'][\App\Services\MarketplaceManager\TemuGoodsStatusSync::key($sku)] ?? null;
                 if (is_array($hit) && ($hit['status'] ?? '') === 'Incomplete') {
-                    return ['status' => 'skipped_incomplete', 'reason' => 'Incomplete on Temu (goods '.($hit['goods_id'] ?? '').') - finish it in Seller Center'];
+                    return ['status' => 'skipped_incomplete', 'reason' => 'Incomplete on Temu (goods '.($hit['goods_id'] ?? '').') - use the Complete button'];
                 }
             } catch (\Throwable $e) {
                 // status cache is optional
@@ -2221,6 +2314,281 @@ class Temu2ListingPublishService
         }
 
         return '';
+    }
+
+    /**
+     * Temu 1 only. Find the Incomplete goods a SKU sits in and the SKUs that belong to it.
+     *
+     * @return array{goods_id: string, source: string, skus: array<string, string>}  skus = sku => skuId
+     */
+    private function locateIncompleteGoods(string $sku): array
+    {
+        $key = TemuGoodsStatusSync::key($sku);
+        $data = TemuGoodsStatusSync::read();
+        $hit = $data['skus'][$key] ?? null;
+        $goodsId = '';
+        $source = '';
+        if (is_array($hit) && ($hit['status'] ?? '') === 'Incomplete' && ($hit['goods_id'] ?? '') !== '') {
+            $goodsId = (string) $hit['goods_id'];
+            $source = 'Seller Center list';
+        }
+        if ($goodsId === '') {
+            $seen = TemuGoodsStatusSync::readIncompleteSeen()[$key] ?? null;
+            if (is_array($seen) && ($seen['goods_id'] ?? '') !== '') {
+                $goodsId = (string) $seen['goods_id'];
+                $source = 'earlier publish check';
+            }
+        }
+        if ($goodsId === '') {
+            $remote = $this->remoteSkuDuplicate($sku);
+            if ($remote !== null && $this->remoteGoodsLifecycle($remote['goodsId']) === 'incomplete') {
+                $goodsId = $remote['goodsId'];
+                $source = 'Temu SKU check';
+                TemuGoodsStatusSync::rememberIncomplete($sku, $goodsId);
+            }
+        }
+        if ($goodsId === '') {
+            return ['goods_id' => '', 'source' => '', 'skus' => []];
+        }
+
+        $metricIds = [];
+        $metricByKey = [];
+        try {
+            foreach (TemuMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'sku_id']) as $m) {
+                $k = TemuGoodsStatusSync::key((string) $m->sku);
+                $metricByKey[$k] = (string) $m->sku;
+                $sid = trim((string) $m->sku_id);
+                $metricIds[$k] = ctype_digit($sid) ? $sid : '';
+            }
+        } catch (\Throwable $e) {
+            // metrics are only used for SKU ids
+        }
+
+        $siblings = [$sku];
+        foreach ((array) ($data['skus'] ?? []) as $k => $row) {
+            if ((string) ($row['goods_id'] ?? '') === $goodsId && isset($metricByKey[$k])) {
+                $siblings[] = $metricByKey[$k];
+            }
+        }
+        foreach (TemuGoodsStatusSync::readIncompleteSeen() as $row) {
+            if ((string) ($row['goods_id'] ?? '') === $goodsId && ($row['sku'] ?? '') !== '') {
+                $siblings[] = (string) $row['sku'];
+            }
+        }
+        if (count(array_unique(array_map('strtolower', $siblings))) === 1 && $data === null) {
+            // No Seller Center list yet: same-parent SKUs Temu knows (SKU id) but that have no live goods link.
+            $parent = ProductMaster::query()->where('sku', $sku)->value('parent');
+            if (is_string($parent) && trim($parent) !== '') {
+                $mates = ProductMaster::query()->whereNull('deleted_at')->where('parent', $parent)->pluck('sku')->all();
+                foreach ($mates as $mate) {
+                    $mk = TemuGoodsStatusSync::key((string) $mate);
+                    if (($metricIds[$mk] ?? '') !== '' && $this->localGoodsId((string) $mate) === '') {
+                        $siblings[] = (string) $mate;
+                    }
+                }
+            }
+        }
+
+        $skus = [];
+        foreach ($siblings as $sn) {
+            $sn = trim((string) $sn);
+            if ($sn === '' || isset($skus[$sn]) || $this->isParentMasterSku($sn)) {
+                continue;
+            }
+            $skus[$sn] = $metricIds[TemuGoodsStatusSync::key($sn)] ?? '';
+        }
+
+        return ['goods_id' => $goodsId, 'source' => $source, 'skus' => $skus];
+    }
+
+    /**
+     * Temu 1 only. The goods record Temu holds for an Incomplete goods (null when the list does not return it).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function fetchIncompleteGoodsRecord(string $goodsId): ?array
+    {
+        foreach (['INCOMPLETE', 'ALL'] as $searchType) {
+            $pageToken = null;
+            for ($page = 0; $page < 10; $page++) {
+                $body = ['type' => 'temu.local.goods.list.retrieve', 'goodsSearchType' => $searchType, 'pageSize' => 100];
+                if ($pageToken) {
+                    $body['pageToken'] = $pageToken;
+                }
+                $res = $this->temuCallBody($body, 45);
+                if (! ($res['success'] ?? false)) {
+                    break;
+                }
+                foreach ((array) ($res['result']['goodsList'] ?? []) as $g) {
+                    if (is_array($g) && (string) ($g['goodsId'] ?? '') === $goodsId) {
+                        return $g;
+                    }
+                }
+                $pageToken = $res['result']['pagination']['nextToken'] ?? null;
+                if (! $pageToken) {
+                    break;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Temu 1 only. What is wrong with an Incomplete goods, for the red-triangle popup: whatever Temu says about
+     * the goods, plus what our own masters are missing for the data Temu needs to finish it.
+     *
+     * @return array<string, mixed>
+     */
+    public function incompleteDetails(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($this->shopLabel() !== 'Temu' || $sku === '') {
+            return ['success' => false, 'message' => 'Only available on Listing Temu 1.'];
+        }
+        if (! $this->api->isConfigured()) {
+            return ['success' => false, 'message' => 'Temu API credentials missing.'];
+        }
+
+        $found = $this->locateIncompleteGoods($sku);
+        if ($found['goods_id'] === '') {
+            return ['success' => false, 'message' => 'Temu does not report '.$sku.' inside an Incomplete product. Click Refresh listings and try again.'];
+        }
+        $goodsId = $found['goods_id'];
+
+        $record = $this->fetchIncompleteGoodsRecord($goodsId);
+        $temu = [];
+        $goodsName = '';
+        if (is_array($record)) {
+            $goodsName = (string) ($record['goodsName'] ?? '');
+            $walk = function (array $node, string $prefix) use (&$walk, &$temu): void {
+                foreach ($node as $k => $v) {
+                    $label = $prefix.$k;
+                    if (is_array($v)) {
+                        if (! in_array((string) $k, ['skuInfoList', 'images', 'goodsGallery', 'imageUrlList'], true) && count($v) <= 20) {
+                            $walk($v, $label.' › ');
+                        }
+                        continue;
+                    }
+                    if ($v === null || $v === '' || mb_strlen((string) $v) > 300) {
+                        continue;
+                    }
+                    if (preg_match('/status|reason|tip|remark|msg|message|desc|check|audit|reject|incomplete|missing|error|fail|warn|todo|need/i', (string) $k)) {
+                        $temu[] = ['label' => $label, 'value' => is_bool($v) ? ($v ? 'yes' : 'no') : (string) $v];
+                    }
+                }
+            };
+            $walk($record, '');
+        }
+
+        $checks = [];
+        $missing = [];
+        $add = function (string $sn, string $label, bool $ok, string $hint = '') use (&$checks, &$missing): void {
+            $checks[] = ['sku' => $sn, 'label' => $label, 'ok' => $ok, 'hint' => $ok ? '' : $hint];
+            if (! $ok) {
+                $missing[] = ['sku' => $sn, 'label' => $label, 'hint' => $hint];
+            }
+        };
+
+        foreach (array_keys($found['skus']) as $sn) {
+            $product = $this->findProductLoose($sn);
+            if (! $product) {
+                $add($sn, 'In product master', false, 'SKU is not in the product master.');
+                continue;
+            }
+            $titleOk = $this->resolveTitle($product, $sn) !== '';
+            $add($sn, 'Title', $titleOk, \App\Support\Marketplace\VariationListingContent::titleGapMessage());
+            $descOk = $this->resolveDescription($product, $sn) !== '';
+            $add($sn, 'Description', $descOk, \App\Support\Marketplace\VariationListingContent::descriptionGapMessage());
+            $imgOk = ListingManagerAmazonHydrator::hasImageMasterImages($sn) && $this->resolveSourceImages($product, $sn) !== [];
+            $add($sn, 'Images', $imgOk, 'Add photos on Image Master (JPEG or PNG).');
+            $add($sn, 'Dimensions & weight', $this->hasDimWt($product, $sn), 'Fill Dim/Wt Master.');
+            $price = $this->resolvePrice($sn);
+            $add($sn, 'Price', $price !== null && $price > 0, 'Set Std Prc on '.$this->stdPriceHelp().' (LMP Overall).');
+        }
+        $add('', 'Shipping template', $this->resolveCostTemplateId() !== '', 'No Temu 1 shipping template found in Seller Center.');
+
+        $seller = 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id='.rawurlencode($goodsId);
+
+        return [
+            'success' => true,
+            'goods_id' => $goodsId,
+            'goods_name' => $goodsName,
+            'found_by' => $found['source'],
+            'skus' => array_keys($found['skus']),
+            'temu' => $temu,
+            'record_found' => $record !== null,
+            'checks' => $checks,
+            'missing' => $missing,
+            'can_complete' => $missing === [],
+            'seller_url' => $seller,
+        ];
+    }
+
+    /**
+     * Temu 1 only. Send the data from our masters to the Incomplete goods so Temu can finish it.
+     *
+     * @return array{success: bool, message: string, goods_id?: string, skus?: list<string>}
+     */
+    public function completeIncompleteGoods(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($this->shopLabel() !== 'Temu' || $sku === '') {
+            return ['success' => false, 'message' => 'Only available on Listing Temu 1.'];
+        }
+        if (! $this->api->isConfigured()) {
+            return ['success' => false, 'message' => 'Temu API credentials missing.'];
+        }
+        $blocked = $this->temu2IpWhitelistError();
+        if ($blocked !== null) {
+            return ['success' => false, 'message' => $blocked];
+        }
+
+        $found = $this->locateIncompleteGoods($sku);
+        if ($found['goods_id'] === '' || $found['skus'] === []) {
+            return ['success' => false, 'message' => 'Temu does not report '.$sku.' inside an Incomplete product. Click Refresh listings and try again.'];
+        }
+
+        $this->completeGoodsId = $found['goods_id'];
+        $this->completeSkuIds = [];
+        foreach ($found['skus'] as $sn => $skuId) {
+            if ($skuId !== '') {
+                $this->completeSkuIds[strtoupper($sn)] = $skuId;
+            }
+        }
+
+        try {
+            // Every SKU of the goods must be complete on our side, or the update would drop / blank some of them.
+            $problems = [];
+            foreach (array_keys($found['skus']) as $sn) {
+                $c = $this->classifyChildSku($sn);
+                if (($c['status'] ?? '') !== 'will_publish') {
+                    $problems[] = $sn.': '.(($c['reason'] ?? '') !== '' ? $c['reason'] : 'not ready');
+                }
+            }
+            if ($problems !== []) {
+                $this->completeGoodsId = null;
+                $this->completeSkuIds = [];
+
+                return ['success' => false, 'message' => 'Cannot complete yet - '.implode('; ', $problems).'. Click the red triangle to see everything that is missing.'];
+            }
+            $result = $this->publishSkus(array_keys($found['skus']), false, 'variation', '', null);
+        } catch (\Throwable $e) {
+            $result = ['success' => false, 'message' => 'Complete failed: '.$e->getMessage()];
+        } finally {
+            $this->completeGoodsId = null;
+            $this->completeSkuIds = [];
+        }
+
+        if ($result['success'] ?? false) {
+            foreach (array_keys($found['skus']) as $sn) {
+                TemuGoodsStatusSync::forgetIncomplete($sn);
+            }
+            $result['message'] = 'Sent the full listing data to Temu for goods '.$found['goods_id'].' ('.count($found['skus']).' SKU(s)). Click Refresh listings to see its new status.';
+            $result['goods_id'] = $found['goods_id'];
+        }
+
+        return $result;
     }
 
     /**

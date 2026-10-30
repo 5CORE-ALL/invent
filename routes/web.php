@@ -5416,6 +5416,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_temu/import', [ListingTemuController::class, 'import'])->name('listing_temu.import');
     Route::post('/listing_temu/publish', [ListingTemuController::class, 'publish'])->name('listing_temu.publish');
     Route::post('/listing_temu/publish-preview', [ListingTemuController::class, 'publishPreview'])->name('listing_temu.publish.preview');
+    Route::get('/listing_temu/incomplete-details', [ListingTemuController::class, 'incompleteDetails'])->name('listing_temu.incomplete.details');
+    Route::post('/listing_temu/complete-incomplete', [ListingTemuController::class, 'completeIncomplete'])->name('listing_temu.incomplete.complete');
     Route::get('/listing_temu/export', [ListingTemuController::class, 'export'])->name('listing_temu.export');
 
     // listing temu 2

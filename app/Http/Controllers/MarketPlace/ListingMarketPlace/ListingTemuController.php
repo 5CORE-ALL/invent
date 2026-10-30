@@ -160,6 +160,44 @@ class ListingTemuController extends Controller
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }
 
+    /** What is wrong with an Incomplete Temu 1 goods (red triangle popup). */
+    public function incompleteDetails(Request $request, TemuListingPublishService $publisher)
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(120);
+        }
+        try {
+            $result = $publisher->incompleteDetails($sku);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Could not read the Incomplete product: '.$e->getMessage()], 500);
+        }
+
+        return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+    }
+
+    /** Send the master data to the Incomplete Temu 1 goods so it can be completed. */
+    public function completeIncomplete(Request $request, TemuListingPublishService $publisher)
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(240);
+        }
+        try {
+            $result = $publisher->completeIncompleteGoods($sku);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Complete failed: '.$e->getMessage()], 500);
+        }
+
+        return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+    }
+
     public function publishPreview(Request $request, TemuListingPublishService $publisher)
     {
         $skus = $this->skusFromRequest($request);

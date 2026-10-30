@@ -384,6 +384,8 @@ class TemuGoodsStatusSync
             // column may not exist on old installs
         }
 
+        $seen = self::readIncompleteSeen();
+
         foreach ($rows as $row) {
             $key = self::key((string) ($row->sku ?? ''));
             $row->temu_status_checked = $data !== null || $local !== [];
@@ -402,6 +404,14 @@ class TemuGoodsStatusSync
                 $row->temu_sku_id = ($hit['sku_id'] ?? '') !== '' ? $hit['sku_id'] : null;
             }
 
+            if (! $row->temu_status && $key !== '' && trim((string) ($row->goods_id ?? '')) === '' && isset($seen[$key])) {
+                // The goods list did not show it, but Temu told us when we tried to publish: it is Incomplete.
+                $row->temu_status = 'Incomplete';
+                $row->temu_status_source = 'Publish check';
+                $row->temu_goods_id = $seen[$key]['goods_id'] ?? null;
+                $row->temu_status_checked = true;
+            }
+
             $localStatus = $local[$key] ?? '';
             if ($localStatus === 'inactive' && $row->temu_status === 'Active') {
                 // active goods, but this SKU is switched off ("1 of them inactive" in Seller Center)
@@ -416,6 +426,54 @@ class TemuGoodsStatusSync
         }
 
         return $rows;
+    }
+
+    public const SEEN_FILE = 'temu_cache/temu1_incomplete_seen.json';
+
+    /** @return array<string, array{goods_id: string, sku: string, seen_at: string}> */
+    public static function readIncompleteSeen(): array
+    {
+        try {
+            if (! Storage::disk('local')->exists(self::SEEN_FILE)) {
+                return [];
+            }
+            $json = json_decode((string) Storage::disk('local')->get(self::SEEN_FILE), true);
+
+            return is_array($json) ? $json : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /** Remember that Temu answered "Incomplete" for this SKU (used when the goods list does not show it). */
+    public static function rememberIncomplete(string $sku, string $goodsId): void
+    {
+        $key = self::key($sku);
+        if ($key === '') {
+            return;
+        }
+        $all = self::readIncompleteSeen();
+        $all[$key] = ['goods_id' => $goodsId, 'sku' => $sku, 'seen_at' => now()->toIso8601String()];
+        try {
+            Storage::disk('local')->put(self::SEEN_FILE, json_encode($all, JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            Log::warning('TemuGoodsStatusSync: could not remember incomplete SKU', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public static function forgetIncomplete(string $sku): void
+    {
+        $key = self::key($sku);
+        $all = self::readIncompleteSeen();
+        if ($key === '' || ! isset($all[$key])) {
+            return;
+        }
+        unset($all[$key]);
+        try {
+            Storage::disk('local')->put(self::SEEN_FILE, json_encode($all, JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            // ignore
+        }
     }
 
     public static function key(string $sku): string
