@@ -2229,7 +2229,7 @@
                             borderColor: '#adb5bd',
                             borderWidth: 1.5,
                             fill: true,
-                            spanGaps: true,
+                            spanGaps: false, // show days with no saved history as real gaps
                             tension: 0.3,
                             pointRadius: 4,
                             pointHoverRadius: 6,

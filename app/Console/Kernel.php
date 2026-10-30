@@ -1075,6 +1075,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // /advertisement-master history was only saved when someone opened the page.
+        // Hourly 24/7 (not wrapped in $ist) so every Pacific day always gets a row.
+        $schedule->command('advertisement-master:snapshot')
+            ->hourlyAt(20)
+            ->timezone('Asia/Kolkata')
+            ->name('advertisement-master-snapshot')
+            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Today Sales on /all-marketplace-master — hourly 9 AM–10 PM EST/EDT.
         // Lightweight persist so the column does not sit at $0 while calculate-data holds its lock.
         $schedule->command('channel:refresh-today-sales')

@@ -2577,6 +2577,38 @@ class AdvertisementMasterController extends Controller
      * Write Active Channel daily totals into advertisement history.
      * A past day is inserted once and then left alone. Today is refreshed.
      */
+    /**
+     * Save today's history without anyone opening the page (scheduler entry point).
+     * Runs the same pipeline as GET /advertisement-master/data, which writes the
+     * per-channel snapshots, and first back-fills missing past Active Channel days.
+     *
+     * @return array{ok: bool, message: string}
+     */
+    public function runScheduledSnapshot(int $backfillDays = 40): array
+    {
+        $backfillDays = max(1, min(400, $backfillDays));
+        $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
+
+        try {
+            $this->persistActiveChannelDaily(
+                $today->copy()->subDays($backfillDays)->toDateString(),
+                $today->toDateString()
+            );
+            $response = app()->call([$this, 'data']);
+        } catch (\Throwable $e) {
+            \Log::error('Advertisement Master scheduled snapshot failed: '.$e->getMessage());
+
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
+
+        $status = $response instanceof JsonResponse ? $response->getStatusCode() : 200;
+
+        return [
+            'ok' => $status === 200,
+            'message' => $status === 200 ? 'Snapshot saved for '.$today->toDateString() : 'data() returned HTTP '.$status,
+        ];
+    }
+
     private function persistActiveChannelDaily(string $from, string $to): void
     {
         if (! Schema::hasTable('advertisement_master_metric_snapshots')) {
