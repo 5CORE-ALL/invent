@@ -2017,8 +2017,8 @@
             });
 
         $('#bulk-publish-btn').off('click.listingPageTools').on('click.listingPageTools', function () {
-            if (ownPublishModalId()) {
-                return;
+            if (ownPublishModalId() || cfg().ownPublishColumn) {
+                return; // the page has its own publish modal (Temu 1 / 2 / 3)
             }
             const selected = (table.getSelectedData() || [])
                 .map(function (row) { return String(row.sku || '').trim(); })
