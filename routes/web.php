@@ -4337,6 +4337,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shopify-b2c-listing-variation-verify/pull-listings', [ShopifyB2cListingVariationVerifyController::class, 'pullListings'])->name('shopify.b2c.listing.variation.verify.pull');
 
     Route::get('/shopify-b2c-pricing', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'shopifyB2cTabulatorView'])->name('shopify.b2c.pricing');
+    // Shopify Open Box Analytics — separate page + calc from the eBay 2 Open Box page
+    Route::get('/shopify-openbox-analytics', [\App\Http\Controllers\MarketPlace\ShopifyOpenBoxAnalyticsController::class, 'view'])->name('shopify.openbox.analytics');
+    Route::get('/shopify-openbox-analytics/data', [\App\Http\Controllers\MarketPlace\ShopifyOpenBoxAnalyticsController::class, 'data'])->name('shopify.openbox.analytics.data');
     Route::get('/shopify-b2c-data-json', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'shopifyB2cDataJson'])->name('shopify.b2c.data.json');
     Route::get('/shopify-b2c-badge-chart-data', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'getShopifyB2cBadgeChartData'])->name('shopify.b2c.badge.chart.data');
     Route::get('/shopify-b2c-badge-prev-day', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'getShopifyB2cBadgePrevDay'])->name('shopify.b2c.badge.prev.day');

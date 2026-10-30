@@ -1828,6 +1828,10 @@
                                             Shopify B2C - Analytics</a>
                                     </li>
 
+                                    <li>
+                                        <a href="{{ route('shopify.openbox.analytics') }}">Shopify Open Box</a>
+                                    </li>
+
 
                                 </ul>
                             </div>

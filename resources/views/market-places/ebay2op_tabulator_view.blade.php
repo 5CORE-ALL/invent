@@ -254,9 +254,9 @@
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All Stock</option>
-                        <option value="zero">0 Stock (eBay + Shopify)</option>
-                        <option value="more" selected>Stock &gt; 0 (eBay or Shopify)</option>
+                        <option value="all">All E Stock</option>
+                        <option value="zero">0 E Stock</option>
+                        <option value="more" selected>E Stock &gt; 0</option>
                     </select>
 
                     <select id="el30-filter" class="form-select form-select-sm"
@@ -565,7 +565,7 @@
                         <span class="badge bg-success fs-6 p-2" style="color: white; font-weight: bold;">Total SKU: <span id="kw-total-sku-count">0</span></span>
                         <span class="badge fs-6 p-2" style="background-color: #8b5cf6; color: white; font-weight: bold;">Ebay SKU: <span id="kw-ebay-sku-count">0</span></span>
                         <span class="badge bg-info fs-6 p-2" id="kw-campaign-card" style="color: white; font-weight: bold; cursor: pointer;">Campaign: <span id="kw-campaign-count">0</span></span>
-                        <span class="badge fs-6 p-2" id="kw-zero-inv-card" style="background-color: #f59e0b; color: black; font-weight: bold; cursor: pointer;">Zero Stock: <span id="kw-zero-inv-count">0</span></span>
+                        <span class="badge fs-6 p-2" id="kw-zero-inv-card" style="background-color: #f59e0b; color: black; font-weight: bold; cursor: pointer;">Zero E Stock: <span id="kw-zero-inv-count">0</span></span>
                         <span class="badge fs-6 p-2" id="kw-nra-card" style="background-color: #ef4444; color: white; font-weight: bold; cursor: pointer;">NRA: <span id="kw-nra-count">0</span></span>
                         <span class="badge fs-6 p-2" id="kw-nrl-missing-card" style="background-color: #ffc107; color: black; font-weight: bold; cursor: pointer;">NRL MISSING: <span id="kw-nrl-missing-count">0</span></span>
                         <span class="badge fs-6 p-2" id="kw-nrl-card" style="background-color: #ef4444; color: white; font-weight: bold; cursor: pointer;">NRL: <span id="kw-nrl-count">0</span></span>
@@ -581,7 +581,7 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary (Stock &gt; 0)</h6>
+                    <h6 class="mb-3">Summary (E Stock &gt; 0)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <!-- Sold Filter Badges (Clickable) -->
                         <span class="badge bg-danger fs-6 p-2 sold-filter-badge" data-filter="zero" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: <span id="zero-sold-count">0</span></span>
@@ -604,7 +604,6 @@
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay2op'])
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">E Stock: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-shopify-inv-badge" style="color: white; font-weight: bold;" title="Shopify stock of Open Box SKUs in view">S Stock: 0</span>
                     </div>
                 </div>
             </div>
@@ -2177,37 +2176,6 @@
                                 ? '<span style="color: #dc3545; font-weight: 600;">0</span>'
                                 : `<span style="font-weight: 600;">${value}</span>`;
                             return `<span title="${tip.replace(/"/g, '&quot;')}" style="cursor: default;">${inner}</span>`;
-                        }
-                    },
-                    {
-                        title: "S Stock",
-                        field: "shopify_stock",
-                        hozAlign: "center",
-                        width: 60,
-                        sorter: "number",
-                        tooltip: "Shopify stock on hand for this Open Box SKU (shopify_skus.inv)",
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0) || 0;
-                            return value === 0
-                                ? '<span style="color: #dc3545; font-weight: 600;">0</span>'
-                                : `<span style="font-weight: 600; color: #198754;">${value}</span>`;
-                        }
-                    },
-                    {
-                        title: "Listed On",
-                        field: "ob_source",
-                        hozAlign: "center",
-                        width: 90,
-                        headerSort: false,
-                        tooltip: "Where this Open Box SKU has stock / a listing",
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            const onEbay = !!(d.eBay_item_id || parseFloat(d['eBay Price'] || 0) > 0 || parseFloat(d['E Stock'] || 0) > 0);
-                            const onShopify = (parseFloat(d.shopify_stock || 0) || 0) > 0;
-                            const badges = [];
-                            if (onEbay) badges.push('<span class="badge bg-info text-dark">eBay</span>');
-                            if (onShopify) badges.push('<span class="badge bg-success">Shopify</span>');
-                            return badges.length ? badges.join(' ') : '<span class="text-muted">—</span>';
                         }
                     },
                     {
@@ -3888,11 +3856,6 @@
                 }
             });
 
-            // Open Box stock = eBay stock + Shopify stock (a Shopify-only Open Box SKU has E Stock 0)
-            window.ebay2opRowStock = function(row) {
-                return (parseFloat(row['E Stock'] || 0) || 0) + (parseFloat(row['shopify_stock'] || 0) || 0);
-            };
-
             // Apply filters
             function applyFilters() {
                 if (window.ParentExpand && ParentExpand.isExpanded()) {
@@ -3915,11 +3878,11 @@
 
                 if (inventoryFilter === 'zero') {
                     table.addFilter(function(data) {
-                        return window.ebay2opRowStock(data) === 0;
+                        return (parseFloat(data['E Stock'] || 0) || 0) === 0;
                     });
                 } else if (inventoryFilter === 'more') {
                     table.addFilter(function(data) {
-                        return window.ebay2opRowStock(data) > 0;
+                        return (parseFloat(data['E Stock'] || 0) || 0) > 0;
                     });
                 }
 
@@ -4025,7 +3988,7 @@
                 if (zeroSoldFilterActive) {
                     table.addFilter(function(data) {
                         const ebayL30 = parseFloat(data['eBay L30']) || 0;
-                        const estock = window.ebay2opRowStock(data);
+                        const estock = parseFloat(data['E Stock'] || 0) || 0;
                         return ebayL30 === 0 && estock > 0;
                     });
                 }
@@ -4033,7 +3996,7 @@
                 if (moreSoldFilterActive) {
                     table.addFilter(function(data) {
                         const ebayL30 = parseFloat(data['eBay L30']) || 0;
-                        const estock = window.ebay2opRowStock(data);
+                        const estock = parseFloat(data['E Stock'] || 0) || 0;
                         return ebayL30 > 0 && estock > 0;
                     });
                 }
@@ -4293,7 +4256,7 @@
 
             // Section Filter: column visibility groups
             var pricingOnlyColumns = [
-                'image_path', 'E Stock', 'shopify_stock', 'ob_source', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
+                'image_path', 'E Stock', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
                 'GPFT%', 'AD%', 'PFT %', 'ROI%',
                 'lmp_price', 'STANDARD_PRICE',
                 'prmt_pct', 'push_prmt', 'cpn_pct', 'zero_sold', 'push_cpn', 'dsc', 'appr', 'push_prc',
@@ -4422,7 +4385,7 @@
                     var sku = row['(Child) sku'] || '';
                     if (!sku) return;
 
-                    var estock = window.ebay2opRowStock(row);
+                    var estock = parseFloat(row['E Stock'] || 0) || 0;
                     var ebayL30ForFilter = parseFloat(row['eBay L30'] || 0) || 0;
                     var ebayPrice = parseFloat(row['eBay Price'] || 0);
                     var ebayItemId = row.eBay_item_id || '';
@@ -4644,7 +4607,6 @@
                 let totalSalesAmt = 0;
                 let totalLpAmt = 0;
                 let totalFbaInv = 0;
-                let totalShopifyInv = 0;
                 let totalFbaL30 = 0;
                 let zeroSoldCount = 0;
                 let moreSoldCount = 0;
@@ -4652,9 +4614,8 @@
                 data.forEach(row => {
                     const estock = parseFloat(row['E Stock'] || 0) || 0;
                     const ebayL30 = parseFloat(row['eBay L30'] || 0);
-                    totalShopifyInv += parseFloat(row['shopify_stock'] || 0) || 0;
                     
-                    if (window.ebay2opRowStock(row) > 0) {
+                    if (estock > 0) {
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * ebayL30;
@@ -4672,7 +4633,7 @@
                 let totalWeightedPrice = 0;
                 let totalL30 = 0;
                 data.forEach(row => {
-                    if (window.ebay2opRowStock(row) > 0) {
+                    if ((parseFloat(row['E Stock'] || 0) || 0) > 0) {
                         const price = parseFloat(row['eBay Price'] || 0);
                         const l30 = parseFloat(row['eBay L30'] || 0);
                         totalWeightedPrice += price * l30;
@@ -4684,7 +4645,7 @@
                 // Calculate views and CVR
                 let totalViews = 0;
                 data.forEach(row => {
-                    if (window.ebay2opRowStock(row) > 0) {
+                    if ((parseFloat(row['E Stock'] || 0) || 0) > 0) {
                         totalViews += parseFloat(row.views || 0);
                     }
                 });
@@ -4733,7 +4694,6 @@
                 $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());
-                $('#total-shopify-inv-badge').text('S Stock: ' + Math.round(totalShopifyInv).toLocaleString());
             
                 if (window.AnalyticsDilBadge) {
                     var __dilRows = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) ? allTableData
@@ -4981,7 +4941,6 @@
                 'base_inv': 'Base INV',
                 '(Child) sku': 'Open Box SKU',
                 'INV': 'INV',
-                'shopify_stock': 'Shopify Stock',
                 'L30': 'L30',
                 'E Dil%': 'Dil%',
                 'eBay L30': 'eBay L30',

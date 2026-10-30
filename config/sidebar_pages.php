@@ -115,6 +115,7 @@ return [
     ['value' => 'ebay_low_visibility', 'text' => 'eBay Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_ebay', 'text' => 'Listing eBay', 'group' => 'Marketplace'],
     ['value' => 'shopify_b2c', 'text' => 'Shopify B2C', 'group' => 'Marketplace'],
+    ['value' => 'shopify_openbox_analytics', 'text' => 'Shopify Open Box', 'group' => 'Marketplace'],
     ['value' => 'shopifyb2c_zero_view', 'text' => 'Shopify B2C 0 View', 'group' => 'Marketplace'],
     ['value' => 'shopifyb2c_low_visibility', 'text' => 'Shopify B2C Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_shopifyb2c', 'text' => 'Listing Shopify B2C', 'group' => 'Marketplace'],
