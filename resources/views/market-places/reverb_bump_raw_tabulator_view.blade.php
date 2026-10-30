@@ -48,9 +48,6 @@
                     <button type="button" class="btn btn-sm btn-primary" id="pull-all-btn">
                         <i class="fa fa-download"></i> Pull All
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="pull-filtered-btn">
-                        <i class="fa fa-download"></i> Pull Filtered
-                    </button>
                     <button type="button" class="btn btn-sm btn-danger d-none" id="pull-stop-btn">
                         <i class="fa fa-stop"></i> Stop
                     </button>
@@ -228,7 +225,6 @@
                     {
                         title: 'Actions', field: 'actions', width: 200, headerSort: false, download: false, frozen: false,
                         formatter: () =>
-                            '<button class="btn btn-sm btn-outline-primary py-0 me-1" data-act="pull">Pull</button>' +
                             '<button class="btn btn-sm btn-outline-success py-0 me-1" data-act="push">Push</button>' +
                             '<button class="btn btn-sm btn-outline-secondary py-0" data-act="json">JSON</button>',
                         cellClick: async (e, cell) => {
@@ -237,7 +233,6 @@
                             const row = cell.getRow();
                             const d = row.getData();
                             if (act === 'json') return showJson(d);
-                            if (act === 'pull') return pullRow(row, e.target);
                             if (act === 'push') return pushRow(row, e.target);
                         },
                     },
@@ -260,19 +255,6 @@
                 }
                 row.update(d);
                 updateSummary();
-            }
-
-            async function pullRow(row, btn) {
-                const d = row.getData();
-                btn.disabled = true;
-                const r = await post(URLS.pull, { listing_ids: [d.listing_id] });
-                btn.disabled = false;
-                if (r.ok && r.json.results) {
-                    r.json.results.forEach(applyPullResult);
-                    toast('Pulled ' + d.sku);
-                } else {
-                    toast('Pull failed: ' + (r.json.message || ('HTTP ' + r.status)), false);
-                }
             }
 
             async function pushRow(row, btn) {
@@ -311,7 +293,6 @@
                 const prog = document.getElementById('pull-progress');
                 stopBtn.classList.remove('d-none');
                 document.getElementById('pull-all-btn').disabled = true;
-                document.getElementById('pull-filtered-btn').disabled = true;
 
                 let done = 0, fail = 0;
                 for (let i = 0; i < listingIds.length; i += PULL_CHUNK) {
@@ -328,7 +309,6 @@
                 prog.textContent = (stopPull ? 'Stopped' : 'Done') + ': ' + done + '/' + listingIds.length + ' pulled, ' + fail + ' failed';
                 stopBtn.classList.add('d-none');
                 document.getElementById('pull-all-btn').disabled = false;
-                document.getElementById('pull-filtered-btn').disabled = false;
                 pulling = false;
                 updateSummary();
             }
@@ -450,10 +430,6 @@
                 document.getElementById('pull-all-btn').addEventListener('click', () => {
                     const ids = table.getData().map(r => r.listing_id);
                     if (confirm('Pull raw Bump data for ' + ids.length + ' listings from Reverb? This can take a while.')) pullMany(ids, 'Pull All');
-                });
-                document.getElementById('pull-filtered-btn').addEventListener('click', () => {
-                    const ids = table.getData('active').map(r => r.listing_id);
-                    pullMany(ids, 'Pull Filtered');
                 });
                 document.getElementById('pull-stop-btn').addEventListener('click', () => { stopPull = true; });
                 document.getElementById('export-btn').addEventListener('click', () => {
