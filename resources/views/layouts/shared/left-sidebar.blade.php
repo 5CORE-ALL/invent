@@ -1991,6 +1991,9 @@
                                         <a href="{{ url('reverb-sales') }}">Reverb Sales Data</a>
                                     </li>
                                     <li>
+                                        <a href="{{ url('reverb-bump') }}">Reverb Bump (Raw API)</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('listing.reverb') }}">Listing Reverb</a>
                                     </li>
                                     <li>

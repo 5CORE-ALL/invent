@@ -4200,6 +4200,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/reverb-push-bump', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'queuePushBump'])->name('reverb.push-bump.queue');
     Route::get('/reverb-push-bump/status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'pushBumpJobStatus'])->name('reverb.push-bump.status');
     Route::post('/reverb-push-bump/cancel', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'cancelPushBump'])->name('reverb.push-bump.cancel');
+    // Reverb Bump — raw API data (Tabulator) + push / pull
+    Route::get('/reverb-bump', [\App\Http\Controllers\MarketPlace\ReverbBumpController::class, 'index'])->name('reverb.bump.raw');
+    Route::get('/reverb-bump/data', [\App\Http\Controllers\MarketPlace\ReverbBumpController::class, 'data'])->name('reverb.bump.raw.data');
+    Route::post('/reverb-bump/pull', [\App\Http\Controllers\MarketPlace\ReverbBumpController::class, 'pull'])->name('reverb.bump.raw.pull');
+    Route::post('/reverb-bump/push', [\App\Http\Controllers\MarketPlace\ReverbBumpController::class, 'push'])->name('reverb.bump.raw.push');
     Route::post('/reverb-save-links', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveLinks'])->name('reverb.save.links');
     Route::post('/reverb-save-recommended-bid', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveRecommendedBid'])->name('reverb.save.recommended.bid');
     Route::post('/reverb-save-recommended-bids', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveRecommendedBids'])->name('reverb.save.recommended.bids');

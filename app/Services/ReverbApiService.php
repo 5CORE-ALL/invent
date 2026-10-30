@@ -1324,6 +1324,46 @@ class ReverbApiService
         return is_numeric($raw) && (int) $raw > 0 ? (int) $raw : 0;
     }
 
+    /**
+     * Pull the untouched GET /listings/{id}/bump response (no parsing / no DB writes).
+     *
+     * @return array{success: bool, status: ?int, json: ?array, body: ?string, message: ?string}
+     */
+    public function fetchListingBumpRaw(string $listingId): array
+    {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return [
+                'success' => false,
+                'status' => null,
+                'json' => null,
+                'body' => null,
+                'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
+            ];
+        }
+
+        try {
+            $response = $this->reverbApiRequestWithRetry($token, 'GET', '/listings/'.$listingId.'/bump');
+            $json = $response->json();
+
+            return [
+                'success' => $response->successful(),
+                'status' => $response->status(),
+                'json' => is_array($json) ? $json : null,
+                'body' => mb_substr((string) $response->body(), 0, 200000),
+                'message' => $response->successful() ? null : 'HTTP '.$response->status(),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'status' => null,
+                'json' => null,
+                'body' => null,
+                'message' => 'Exception: '.$e->getMessage(),
+            ];
+        }
+    }
+
     private function listingBumpPercent(string $token, string $listingId): ?float
     {
         try {

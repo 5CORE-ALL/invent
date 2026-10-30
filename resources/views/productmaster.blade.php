@@ -855,6 +855,17 @@
             color: #28a745;
         }
 
+        /* Clickable Parent / SKU count badges (row-type filter) */
+        .pm-rowtype-badge {
+            cursor: pointer;
+            user-select: none;
+            border: 2px solid transparent;
+            transition: transform .1s ease, box-shadow .1s ease, opacity .1s ease;
+        }
+        .pm-rowtype-badge:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+        .pm-rowtype-badge.is-dimmed { opacity: .45; }
+        .pm-rowtype-badge.is-active { border-color: #212529; box-shadow: 0 0 0 2px rgba(33,37,41,.25); }
+
         /* Column header badges (Parent count, SKU count) – 2x size */
         .column-badge {
             font-size: 2em;
@@ -984,8 +995,8 @@
                             </button>
                             <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Search Parent" style="width: 160px;">
                             <input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="Search SKU" style="width: 160px;">
-                            <span id="pmParentBadge" class="badge bg-primary" style="font-size: 18px; padding: 9px 15px; white-space: nowrap;">Parent 0</span>
-                            <span id="pmSkuBadge" class="badge bg-success" style="font-size: 18px; padding: 9px 15px; white-space: nowrap;">SKU 0</span>
+                            <span id="pmParentBadge" class="badge bg-primary pm-rowtype-badge" data-row-type="parent" role="button" tabindex="0" title="Click to show only Parent rows (click again to clear)" style="font-size: 18px; padding: 9px 15px; white-space: nowrap;">Parent 0</span>
+                            <span id="pmSkuBadge" class="badge bg-success pm-rowtype-badge" data-row-type="sku" role="button" tabindex="0" title="Click to show only SKU rows (click again to clear)" style="font-size: 18px; padding: 9px 15px; white-space: nowrap;">SKU 0</span>
                         </div>
                     </div>
 
@@ -1754,6 +1765,24 @@
             // Store current filter values globally to preserve them across data reloads
             let currentFilterValues = {};
 
+            // Row-type filter set by the Parent / SKU badges: null | 'parent' | 'sku'
+            let pmRowTypeFilter = null;
+            function isParentRowItem(item) {
+                return !!(item && String(item.SKU || item.sku || '').toUpperCase().includes('PARENT'));
+            }
+            function applyRowTypeFilter(rows, rowType) {
+                if (rowType === 'parent') return rows.filter(isParentRowItem);
+                if (rowType === 'sku') return rows.filter(item => !isParentRowItem(item));
+                return rows;
+            }
+            function refreshRowTypeBadges() {
+                document.querySelectorAll('.pm-rowtype-badge').forEach(b => {
+                    const t = b.getAttribute('data-row-type');
+                    b.classList.toggle('is-active', pmRowTypeFilter === t);
+                    b.classList.toggle('is-dimmed', !!pmRowTypeFilter && pmRowTypeFilter !== t);
+                });
+            }
+
             // Header sort state: dir 1 = ascending, -1 = descending; col null = default order
             let currentSort = { col: null, dir: 1 };
 
@@ -1929,7 +1958,7 @@
                                 callback();
                             } else {
                                 // Check if any filters are active
-                                const hasActiveFilters = Object.keys(currentFilterValues).length > 0;
+                                const hasActiveFilters = Object.keys(currentFilterValues).length > 0 || !!pmRowTypeFilter;
                                 if (hasActiveFilters) {
                                     // Restore filter values and apply filters
                                     renderTable(tableData);
@@ -4668,7 +4697,7 @@
             function applyFilters() {
                 const parentValue = normalizeForTextSearch(document.getElementById('parentSearch')?.value || '');
                 const skuValue = normalizeForTextSearch(document.getElementById('skuSearch')?.value || '');
-                let filteredData = [...tableData];
+                let filteredData = applyRowTypeFilter([...tableData], pmRowTypeFilter);
 
                 if (parentValue) {
                     filteredData = filteredData.filter(item =>
@@ -4850,6 +4879,25 @@
                         updateFilterStyling(e.target);
                         applyFilters();
                     }
+                });
+
+                // Parent / SKU badges: click to show only that row type; click again to clear
+                const toggleRowTypeBadge = (badge) => {
+                    const t = badge.getAttribute('data-row-type');
+                    pmRowTypeFilter = (pmRowTypeFilter === t) ? null : t;
+                    refreshRowTypeBadges();
+                    applyFilters();
+                };
+                document.addEventListener('click', function (e) {
+                    const badge = e.target.closest ? e.target.closest('.pm-rowtype-badge') : null;
+                    if (badge) toggleRowTypeBadge(badge);
+                });
+                document.addEventListener('keydown', function (e) {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    const badge = e.target.closest ? e.target.closest('.pm-rowtype-badge') : null;
+                    if (!badge) return;
+                    e.preventDefault();
+                    toggleRowTypeBadge(badge);
                 });
 
                 // Header sort: click (or Enter/Space) on a column label
@@ -6488,13 +6536,14 @@
                 return {
                     parent: normalizeForTextSearch(document.getElementById('parentSearch')?.value || ''),
                     sku: normalizeForTextSearch(document.getElementById('skuSearch')?.value || ''),
+                    rowType: pmRowTypeFilter,
                     global: ''
                 };
             }
 
             // Apply filters to data
             function applyFiltersToData(filters) {
-                let filteredData = [...tableData];
+                let filteredData = applyRowTypeFilter([...tableData], filters.rowType);
 
                 if (filters.parent) {
                     filteredData = filteredData.filter(item =>
