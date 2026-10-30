@@ -36,188 +36,6 @@ class GoogleShoppingLiveMatchService
      */
     public function run(bool $dryRun = false, ?string $onlyCampaignId = null, bool $retryFailed = false): array
     {
-        $targets = [];
-        $stats = $this->execute($dryRun, $onlyCampaignId, $retryFailed, $targets);
-
-        if (! $dryRun) {
-            $this->alertUnmatched($targets, $stats);
-        }
-
-        return $stats;
-    }
-
-    /**
-     * After the push + confirm run, tell Shobha (5Core Chat + WhatsApp) about every campaign whose
-     * SBGT/SBID still does not match LBgt/LBid, with the reason. Never breaks the match run.
-     *
-     * @param  array<string, array<string, mixed>>  $targets
-     * @param  array<string, mixed>  $stats
-     */
-    private function alertUnmatched(array $targets, array $stats): void
-    {
-        // Tests that inject their own grid (hooks) only alert when they also inject the 'alert' hook.
-        if (isset($this->hooks['targets']) && ! isset($this->hooks['alert'])) {
-            return;
-        }
-
-        try {
-            if (isset($this->hooks['alert'])) {
-                ($this->hooks['alert'])($targets, $stats, $this->states(array_keys($targets)));
-
-                return;
-            }
-
-            $alerts = new GoogleShoppingMismatchAlertService;
-            if ($stats['error'] !== null) {
-                $alerts->notify([$alerts->pullFailedIssue((string) $stats['error'])]);
-
-                return;
-            }
-            if ($targets === []) {
-                return;
-            }
-
-            $states = $this->states(array_keys($targets), true);
-            $issues = $alerts->findIssues($targets, $states, fn (string $field, string $id): bool => $this->isWaiting($field, $id));
-            $alerts->notify($issues, $alerts->campaignRows($issues, $targets, $states));
-        } catch (Throwable $e) {
-            Log::error('Google Shopping live match: mismatch alert failed', ['error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * Campaigns whose SBGT/SBID still do not match the stored live LBgt/LBid (what the alert message lists).
-     * With $refresh the live values are pulled from Google Ads first.
-     *
-     * @return array{rows: list<array<string, mixed>>, checked: int, error: ?string}
-     */
-    public function mismatchRows(bool $refresh = false): array
-    {
-        $targets = $this->enabledTargets(null);
-        if ($targets === []) {
-            return ['rows' => [], 'checked' => 0, 'error' => null];
-        }
-        if ($refresh) {
-            try {
-                $this->pull($targets);
-            } catch (Throwable $e) {
-                return ['rows' => [], 'checked' => count($targets), 'error' => 'Live pull failed: '.$e->getMessage()];
-            }
-        }
-
-        $alerts = new GoogleShoppingMismatchAlertService;
-        $states = $this->states(array_keys($targets), true);
-        $issues = $alerts->findIssues($targets, $states, fn (string $field, string $id): bool => $this->isWaiting($field, $id));
-
-        return ['rows' => $alerts->campaignRows($issues, $targets, $states), 'checked' => count($targets), 'error' => null];
-    }
-
-    /**
-     * Push the campaigns picked on the mismatch page: read Google Ads now, push SBGT / SBID only where the live
-     * value really differs, read again and report per campaign. An SBGT 0 campaign is never pushed (a $0
-     * budget cannot be pushed); nothing is pushed for a campaign that is not ENABLED or already matches.
-     *
-     * @param  list<string>  $campaignIds
-     * @return array{results: list<array<string, mixed>>, push_errors: list<string>}
-     */
-    public function pushSelected(array $campaignIds): array
-    {
-        $ids = array_values(array_unique(array_filter(array_map(
-            fn ($id) => preg_replace('/\D+/', '', (string) $id) ?? '',
-            $campaignIds
-        ))));
-        $out = ['results' => [], 'push_errors' => []];
-        if ($ids === []) {
-            return $out;
-        }
-
-        $all = $this->enabledTargets(null);
-        $targets = array_intersect_key($all, array_flip($ids));
-
-        try {
-            $this->pull($targets);
-        } catch (Throwable $e) {
-            $out['push_errors'][] = 'Live pull failed: '.$e->getMessage();
-
-            return $out;
-        }
-
-        $alerts = new GoogleShoppingMismatchAlertService;
-        $states = $this->states(array_keys($targets), true);
-        $issues = $alerts->findIssues($targets, $states, fn () => false);
-        $rows = [];
-        foreach ($alerts->campaignRows($issues, $targets, $states) as $row) {
-            $rows[$row['cid']] = $row;
-        }
-
-        $bidIds = [];
-        $bgtIds = [];
-        foreach ($ids as $id) {
-            $row = $rows[$id] ?? null;
-            if (! isset($targets[$id])) {
-                $out['results'][$id] = ['campaign_id' => $id, 'name' => '', 'status' => 'skipped', 'message' => 'Not an ENABLED Shopping campaign in the grid.'];
-            } elseif ($row === null) {
-                $out['results'][$id] = ['campaign_id' => $id, 'name' => (string) ($targets[$id]['name'] ?? ''), 'status' => 'matched', 'message' => 'Already matches Google Ads — nothing to push.'];
-            } elseif (! $row['can_push_bgt'] && ! $row['can_push_bid']) {
-                $out['results'][$id] = ['campaign_id' => $id, 'name' => $row['name'], 'status' => 'blocked', 'message' => implode(' ', $row['reasons'])];
-            } else {
-                $out['results'][$id] = ['campaign_id' => $id, 'name' => $row['name'], 'status' => 'pending', 'message' => ''];
-                if ($row['can_push_bid']) {
-                    $bidIds[] = $id;
-                }
-                if ($row['can_push_bgt']) {
-                    $bgtIds[] = $id;
-                }
-            }
-        }
-
-        foreach ([['bid', $bidIds], ['bgt', $bgtIds]] as [$field, $fieldIds]) {
-            foreach (array_chunk($fieldIds, 10) as $chunk) {
-                try {
-                    $result = $field === 'bid' ? $this->pushBid($chunk) : $this->pushBgt($chunk);
-                    if (! ($result['ok'] ?? false)) {
-                        $out['push_errors'][] = $field.': '.trim((string) ($result['message'] ?? 'push failed'));
-                    }
-                } catch (Throwable $e) {
-                    $out['push_errors'][] = $field.': '.$e->getMessage();
-                    Log::error('Google Shopping mismatch page: push failed', ['field' => $field, 'error' => $e->getMessage()]);
-                }
-            }
-        }
-
-        $pushed = array_intersect_key($targets, array_flip(array_merge($bidIds, $bgtIds)));
-        if ($pushed !== []) {
-            try {
-                $this->pull($pushed);
-            } catch (Throwable $e) {
-                $out['push_errors'][] = 'verify pull failed: '.$e->getMessage();
-            }
-            [$bidStill, $bgtStill] = $this->mismatches($pushed);
-            foreach ($bidIds as $id) {
-                in_array($id, $bidStill, true) ? $this->markFailed('bid', $id) : $this->clearFailed('bid', $id);
-            }
-            foreach ($bgtIds as $id) {
-                in_array($id, $bgtStill, true) ? $this->markFailed('bgt', $id) : $this->clearFailed('bgt', $id);
-            }
-            foreach (array_merge($bidIds, $bgtIds) as $id) {
-                $still = in_array($id, $bidStill, true) || in_array($id, $bgtStill, true);
-                $out['results'][$id]['status'] = $still ? 'not_matched' : 'matched';
-                $out['results'][$id]['message'] = $still
-                    ? 'Pushed, but Google Ads still shows a different value.'
-                    : 'Pushed and confirmed in Google Ads.';
-            }
-        }
-
-        $out['results'] = array_values($out['results']);
-
-        return $out;
-    }
-
-    /**
-     * @param  array<string, array<string, mixed>>  $targets  filled with the ENABLED targets of this run
-     */
-    private function execute(bool $dryRun, ?string $onlyCampaignId, bool $retryFailed, array &$targets): array
-    {
         $stats = [
             'checked' => 0, 'bid_mismatch' => 0, 'bgt_mismatch' => 0,
             'bid_pushed' => 0, 'bgt_pushed' => 0, 'bid_left' => 0, 'bgt_left' => 0, 'waiting' => 0,
@@ -386,7 +204,7 @@ class GoogleShoppingLiveMatchService
      * @param  list<string>  $ids
      * @return array<string, array<string, mixed>>
      */
-    private function states(array $ids, bool $withFetchInfo = false): array
+    private function states(array $ids): array
     {
         if (isset($this->hooks['states'])) {
             return ($this->hooks['states'])($ids);
@@ -394,20 +212,12 @@ class GoogleShoppingLiveMatchService
         if ($ids === [] || ! Schema::hasTable('google_shopping_live_syncs')) {
             return [];
         }
-        $columns = ['campaign_id', 'live_bid', 'live_bgt'];
-        if ($withFetchInfo) {
-            foreach (['bid_fetch_ok', 'bid_fetch_error', 'bgt_fetch_ok', 'bgt_fetch_error'] as $col) {
-                if (Schema::hasColumn('google_shopping_live_syncs', $col)) {
-                    $columns[] = $col;
-                }
-            }
-        }
         $out = [];
         foreach (array_chunk($ids, 500) as $chunk) {
             foreach (DB::table('google_shopping_live_syncs')
                 ->where('channel', 'shopping')
                 ->whereIn('campaign_id', $chunk)
-                ->get($columns) as $row) {
+                ->get(['campaign_id', 'live_bid', 'live_bgt']) as $row) {
                 $out[(string) $row->campaign_id] = (array) $row;
             }
         }
