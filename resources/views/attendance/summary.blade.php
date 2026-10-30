@@ -960,7 +960,7 @@
     // server-rendered partial attendance/partials/fraud-alert.blade.php).
     function fraudTriangle(row) {
         const a = row.fraud_alert;
-        if (!a || !@json(\App\Support\AttendanceAccess::isPresident())) return '';
+        if (!a || !@json(\App\Support\AttendanceAccess::canSeeMonitorExtras())) return '';
         return '<a href="' + escapeAttr(row.detail_url || '#') + '" class="fraud-tri ' + escapeAttr(a.level) + '"'
             + ' title="' + escapeAttr(a.tooltip) + '" aria-label="Fraud check: ' + escapeAttr(a.count) + ' open alert(s), ' + escapeAttr(a.level) + ' risk">'
             + '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">'
