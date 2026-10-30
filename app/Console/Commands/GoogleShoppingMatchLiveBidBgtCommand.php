@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\CronExecutionLog;
 use App\Services\CronMonitor\CronMonitorService;
 use App\Services\GoogleShoppingLiveMatchService;
 use App\Support\SchedulerLease;
@@ -36,7 +37,7 @@ class GoogleShoppingMatchLiveBidBgtCommand extends Command
         if ($lease === null) {
             $this->warn('Another Google Shopping live match is already running.');
             Log::info('[GoogleShoppingLiveMatch] skipped', ['reason' => 'lease held by a live run']);
-            $this->markSkipped('lease held by a live run');
+            $this->reportToMonitor(CronExecutionLog::STATUS_SKIPPED, null, 'lease held by a live run');
 
             return self::SUCCESS;
         }
@@ -54,7 +55,7 @@ class GoogleShoppingMatchLiveBidBgtCommand extends Command
                 (bool) $this->option('retry-failed'),
                 $lease
             );
-            $status = $stats['error'] === null ? 'success' : 'failed';
+            $status = $stats['status'];
         } catch (Throwable $e) {
             Log::error('[GoogleShoppingLiveMatch] crashed', ['execution' => $lease->token, 'error' => $e->getMessage()]);
             throw $e;
@@ -74,20 +75,63 @@ class GoogleShoppingMatchLiveBidBgtCommand extends Command
         foreach ($stats['push_errors'] as $err) {
             $this->warn($err);
         }
+        foreach ($stats['failed'] as $key => $reason) {
+            $this->warn("Failed {$key}: {$reason}");
+        }
+        $sum = $stats['summary'];
+        $line = 'Run '.$stats['execution'].' finished: status='.$stats['status']
+            .' | checked '.$sum['checked'].' | mismatches SBID '.$sum['sbid_mismatch'].' SBGT '.$sum['sbgt_mismatch']
+            .' | pushed '.$sum['pushed'].' | confirmed '.$sum['confirmed'].' | held '.$sum['held']
+            .' | skipped '.$sum['skipped'].' | busy '.$sum['busy'].' | failed '.$sum['failed'];
+        $stats['status'] === GoogleShoppingLiveMatchService::STATUS_SUCCESS ? $this->info($line) : $this->warn($line);
+
+        $this->reportToMonitor($stats['status'], $stats);
+
         if ($stats['error'] !== null) {
             $this->error($stats['error']);
-
-            return self::FAILURE;
         }
 
-        return self::SUCCESS;
+        // A run-level error, or every operation failing, is a failed run. Partial success exits 0 on purpose:
+        // the status above (and the Cron Monitor) carries it, and a non-zero exit would be shown as plain "failed".
+        return $stats['status'] === GoogleShoppingLiveMatchService::STATUS_FAILED ? self::FAILURE : self::SUCCESS;
     }
 
-    /** Tag the CronMonitor log so a skipped run is not mistaken for a run that did the work. */
-    private function markSkipped(string $reason): void
+    /**
+     * Tell the Cron Monitor how the run really ended (success / partial_success / failed / skipped) and with which
+     * counts, so the dashboard does not have to guess from the exit code. Monitoring must never break the job.
+     *
+     * @param  array<string, mixed>|null  $stats
+     */
+    private function reportToMonitor(string $status, ?array $stats, ?string $skippedReason = null): void
     {
         try {
-            app(CronMonitorService::class)->context()?->mergeMeta(['skipped' => true, 'skipped_reason' => $reason]);
+            $ctx = app(CronMonitorService::class)->context();
+            if ($ctx === null) {
+                return;
+            }
+            $meta = ['result_status' => $status];
+            if ($skippedReason !== null) {
+                $meta += ['skipped' => true, 'skipped_reason' => $skippedReason];
+            }
+            if ($stats !== null) {
+                $sum = $stats['summary'];
+                $ok = $sum['confirmed'];
+                $attempted = $ok + $sum['failed'];
+                $meta += [
+                    'summary' => $sum,
+                    'execution' => $stats['execution'],
+                    'success_percentage' => $attempted > 0 ? round($ok / $attempted * 100, 2) : 100.0,
+                ];
+                $ctx->setFetched($sum['checked'])
+                    ->setProcessed($sum['checked'])
+                    ->setUpdated($sum['confirmed'])
+                    ->setSkipped($sum['skipped'] + $sum['busy'] + $sum['held'])
+                    ->setFailed($sum['failed']);
+                if ($status === GoogleShoppingLiveMatchService::STATUS_FAILED) {
+                    $ctx->rootCause = $stats['error'] ?? "Live match failed: {$sum['failed']} of {$attempted} pushes did not stick.";
+                }
+            }
+            $ctx->mergeMeta($meta);
         } catch (Throwable) {
             // monitoring must never break the job
         }

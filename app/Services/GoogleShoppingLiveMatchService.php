@@ -53,9 +53,10 @@ class GoogleShoppingLiveMatchService
      *   checked: int, bid_mismatch: int, bgt_mismatch: int,
      *   bid_pushed: int, bgt_pushed: int, bid_left: int, bgt_left: int, waiting: int,
      *   push_errors: list<string>, error: ?string,
-     *   execution: string, retried: int,
+     *   execution: string, retried: int, pushed: int,
      *   pushed_ids: array{bid: list<string>, bgt: list<string>},
-     *   held_ids: list<string>, skipped: array<string, string>, failed: array<string, string>
+     *   held_ids: list<string>, skipped: array<string, string>, failed: array<string, string>,
+     *   status: string, summary: array<string, int>
      * }
      */
     public function run(bool $dryRun = false, ?string $onlyCampaignId = null, bool $retryFailed = false, ?SchedulerLease $lease = null): array
@@ -67,16 +68,17 @@ class GoogleShoppingLiveMatchService
 
         $stats = $this->execute($dryRun, $onlyCampaignId, $retryFailed);
         $stats['execution'] = $this->execution;
+        $stats['summary'] = self::summarize($stats);
+        $stats['status'] = self::resolveStatus($stats, $dryRun);
 
-        Log::log($stats['error'] === null ? 'info' : 'error', '[GoogleShoppingLiveMatch] finished', [
+        Log::log($stats['status'] === self::STATUS_FAILED ? 'error' : ($stats['status'] === self::STATUS_PARTIAL ? 'warning' : 'info'), '[GoogleShoppingLiveMatch] finished', [
             'execution' => $this->execution,
             'dry_run' => $dryRun,
-            'status' => $stats['error'] === null ? 'success' : 'failed',
+            'status' => $stats['status'],
             'duration_s' => round(microtime(true) - $t0, 2),
-            'checked' => $stats['checked'],
-            'mismatch' => ['bid' => $stats['bid_mismatch'], 'bgt' => $stats['bgt_mismatch']],
-            'pushed_and_confirmed' => $stats['pushed_ids'],
+            'summary' => $stats['summary'],
             'still_different' => ['bid' => $stats['bid_left'], 'bgt' => $stats['bgt_left']],
+            'pushed_and_confirmed' => $stats['pushed_ids'],
             'held_after_failed_push' => $stats['held_ids'],
             'skipped' => $stats['skipped'],
             'failed' => $stats['failed'],
@@ -87,13 +89,65 @@ class GoogleShoppingLiveMatchService
         return $stats;
     }
 
+    /** Run outcomes. `skipped` (another run holds the lease) is decided by the command, not here. */
+    public const STATUS_SUCCESS = 'success';
+
+    public const STATUS_PARTIAL = 'partial_success';
+
+    public const STATUS_FAILED = 'failed';
+
+    /**
+     * One count per campaign operation (a bid push and a budget push of one campaign are two operations).
+     * pushed = Google Ads accepted the push; confirmed = the live re-read now matches; held = waiting after an
+     * earlier failed push; busy = another push (e.g. the page button) held the campaign; skipped = not pushed
+     * for another reason; failed = Google rejected it or the live value still differs after the push.
+     *
+     * @param  array<string, mixed>  $stats
+     * @return array<string, int>
+     */
+    public static function summarize(array $stats): array
+    {
+        $busy = count(array_filter((array) $stats['skipped'], fn ($m) => str_starts_with((string) $m, 'busy:')));
+
+        return [
+            'checked' => (int) $stats['checked'],
+            'sbid_mismatch' => (int) $stats['bid_mismatch'],
+            'sbgt_mismatch' => (int) $stats['bgt_mismatch'],
+            'pushed' => (int) $stats['pushed'],
+            'confirmed' => count($stats['pushed_ids']['bid']) + count($stats['pushed_ids']['bgt']),
+            'held' => (int) $stats['waiting'],
+            'skipped' => count((array) $stats['skipped']) - $busy,
+            'busy' => $busy,
+            'failed' => count((array) $stats['failed']),
+        ];
+    }
+
+    /**
+     * success: nothing failed. partial_success: something was confirmed and something failed.
+     * failed: a run-level error (pull failed, lease lost) or every operation failed. Held, busy and skipped
+     * campaigns are not failures of this run; they are reported in the summary and picked up by a later run.
+     *
+     * @param  array<string, mixed>  $stats
+     */
+    public static function resolveStatus(array $stats, bool $dryRun = false): string
+    {
+        if ($stats['error'] !== null) {
+            return self::STATUS_FAILED;
+        }
+        if ($dryRun || $stats['summary']['failed'] === 0) {
+            return self::STATUS_SUCCESS;
+        }
+
+        return $stats['summary']['confirmed'] > 0 ? self::STATUS_PARTIAL : self::STATUS_FAILED;
+    }
+
     private function execute(bool $dryRun, ?string $onlyCampaignId, bool $retryFailed): array
     {
         $stats = [
             'checked' => 0, 'bid_mismatch' => 0, 'bgt_mismatch' => 0,
             'bid_pushed' => 0, 'bgt_pushed' => 0, 'bid_left' => 0, 'bgt_left' => 0, 'waiting' => 0,
             'push_errors' => [], 'error' => null,
-            'execution' => $this->execution, 'retried' => 0,
+            'execution' => $this->execution, 'retried' => 0, 'pushed' => 0,
             'pushed_ids' => ['bid' => [], 'bgt' => []], 'held_ids' => [], 'skipped' => [], 'failed' => [],
         ];
 
@@ -187,6 +241,10 @@ class GoogleShoppingLiveMatchService
         $stats['bgt_left'] = count($bgtStill) + $this->waitingCount('bgt', $stats['bgt_mismatch'], $bgtIds);
         $stats['bid_pushed'] = count($bidIds) - count(array_intersect($bidIds, $bidStill));
         $stats['bgt_pushed'] = count($bgtIds) - count(array_intersect($bgtIds, $bgtStill));
+
+        foreach ($outcomes as $byId) {
+            $stats['pushed'] += count(array_filter($byId, fn (array $o) => $o['status'] === 'ok'));
+        }
 
         foreach (['bid' => [$bidIds, $bidStill], 'bgt' => [$bgtIds, $bgtStill]] as $field => [$ids, $still]) {
             foreach ($ids as $id) {

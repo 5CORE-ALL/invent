@@ -18,6 +18,8 @@ class CronExecutionLog extends Model
     public const STATUS_CANCELLED = 'cancelled';
     /** The process died (crash, kill, restart) without finishing; closed by the watchdog. */
     public const STATUS_INTERRUPTED = 'interrupted';
+    /** The run did not start because another execution holds the lock. Not a failure, not a success. */
+    public const STATUS_SKIPPED = 'skipped';
 
     public const RECOVERY_NONE = 'none';
     public const RECOVERY_ATTEMPTING = 'attempting';
@@ -108,6 +110,7 @@ class CronExecutionLog extends Model
             self::STATUS_PARTIAL_SUCCESS => 2,
             self::STATUS_RUNNING => 3,
             self::STATUS_SUCCESS,
+            self::STATUS_SKIPPED,
             self::STATUS_RECOVERED => 4,
             default => 5,
         };
@@ -142,6 +145,7 @@ class CronExecutionLog extends Model
             self::STATUS_SUCCESS, self::STATUS_RECOVERED => 'success',
             self::STATUS_PARTIAL_SUCCESS => 'warning',
             self::STATUS_RUNNING => 'info',
+            self::STATUS_SKIPPED => 'secondary',
             self::STATUS_STUCK => 'warning',
             default => 'danger',
         };

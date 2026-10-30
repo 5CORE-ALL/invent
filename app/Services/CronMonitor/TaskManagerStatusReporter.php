@@ -115,7 +115,8 @@ class TaskManagerStatusReporter
     {
         return match ($status) {
             CronExecutionLog::STATUS_RUNNING => 'running',
-            CronExecutionLog::STATUS_SUCCESS => 'success',
+            CronExecutionLog::STATUS_SUCCESS,
+            CronExecutionLog::STATUS_SKIPPED => 'success',
             CronExecutionLog::STATUS_PARTIAL_SUCCESS => 'partial_success',
             default => 'failed',
         };

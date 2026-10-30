@@ -248,9 +248,10 @@ class GoogleShoppingLiveMatchTest extends TestCase
         $this->campaign('1', 0.33, 3, 0.50, 3.0);
         $this->googleIgnoresPushes = true;
 
+        // Every operation failed (Google ignored the push): the run is reported as failed, not as a success.
         $this->runMatch()
             ->expectsOutputToContain('SBID matched 0, still different 1')
-            ->assertExitCode(0);
+            ->assertExitCode(1);
 
         $this->assertEquals(0.50, (float) DB::table('google_shopping_live_syncs')->value('live_bid'));
     }
@@ -292,7 +293,7 @@ class GoogleShoppingLiveMatchTest extends TestCase
         $this->campaign('1', 0.33, 3, 0.50, 3.0);
         $this->googleIgnoresPushes = true;
 
-        $this->runMatch()->assertExitCode(0);
+        $this->runMatch()->assertExitCode(1);
         $this->assertCount(1, $this->pushes);
 
         $this->runMatch()
@@ -305,7 +306,7 @@ class GoogleShoppingLiveMatchTest extends TestCase
     {
         $this->campaign('1', 0.33, 3, 0.50, 3.0);
         $this->googleIgnoresPushes = true;
-        $this->runMatch()->assertExitCode(0);
+        $this->runMatch()->assertExitCode(1);
 
         $this->googleIgnoresPushes = false;
         $this->runMatch(['--retry-failed' => true])->assertExitCode(0);
@@ -318,7 +319,7 @@ class GoogleShoppingLiveMatchTest extends TestCase
     {
         $this->campaign('1', 0.33, 3, 0.50, 3.0);
         $this->googleIgnoresPushes = true;
-        $this->runMatch()->assertExitCode(0);
+        $this->runMatch()->assertExitCode(1);
 
         $this->googleIgnoresPushes = false;
         $this->travel(GoogleShoppingLiveMatchService::FAILED_RETRY_AFTER_HOURS + 1)->hours();
@@ -335,7 +336,7 @@ class GoogleShoppingLiveMatchTest extends TestCase
     {
         $this->campaign('1', 0.33, 3, 0.50, 3.0);
         $this->googleIgnoresPushes = true;
-        $this->runMatch()->assertExitCode(0);
+        $this->runMatch()->assertExitCode(1);
 
         $this->googleIgnoresPushes = false;
         $this->campaign('2', 0.40, 3, 0.60, 3.0);

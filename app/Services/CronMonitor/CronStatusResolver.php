@@ -20,6 +20,21 @@ class CronStatusResolver
                 ];
             }
 
+            // A command may report how the run really ended (e.g. some campaigns failed) beside its exit code.
+            $declared = $ctx->meta['result_status'] ?? null;
+            if ($declared === CronExecutionLog::STATUS_PARTIAL_SUCCESS) {
+                return [
+                    'status' => CronExecutionLog::STATUS_PARTIAL_SUCCESS,
+                    'success_percentage' => CronExecutionLog::clampSuccessPercentage($ctx->meta['success_percentage'] ?? 50.0) ?? 50.0,
+                ];
+            }
+            if ($declared === CronExecutionLog::STATUS_SKIPPED) {
+                return [
+                    'status' => CronExecutionLog::STATUS_SKIPPED,
+                    'success_percentage' => 100.0,
+                ];
+            }
+
             return [
                 'status' => CronExecutionLog::STATUS_SUCCESS,
                 'success_percentage' => 100.0,

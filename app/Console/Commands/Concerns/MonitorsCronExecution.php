@@ -176,7 +176,7 @@ trait MonitorsCronExecution
         $statusLine = 'Overall Status: ' . strtoupper(str_replace('_', ' ', $log->status));
         match ($log->status) {
             CronExecutionLog::STATUS_SUCCESS, CronExecutionLog::STATUS_RECOVERED => $this->info($statusLine),
-            CronExecutionLog::STATUS_PARTIAL_SUCCESS => $this->warn($statusLine),
+            CronExecutionLog::STATUS_PARTIAL_SUCCESS, CronExecutionLog::STATUS_SKIPPED => $this->warn($statusLine),
             default => $this->error($statusLine),
         };
 

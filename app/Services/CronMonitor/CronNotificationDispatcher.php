@@ -20,6 +20,11 @@ class CronNotificationDispatcher
             return false;
         }
 
+        // Another run holds the lock: nothing failed, nothing to report.
+        if ($log->status === CronExecutionLog::STATUS_SKIPPED) {
+            return false;
+        }
+
         // Recovered still notifies if configured
         $alertOn = config('cron-monitor.notifications.alert_on', []);
 

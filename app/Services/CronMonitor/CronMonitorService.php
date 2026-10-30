@@ -240,6 +240,7 @@ class CronMonitorService
         $ctx->log->health_label = match ($ctx->log->status) {
             CronExecutionLog::STATUS_SUCCESS, CronExecutionLog::STATUS_RECOVERED => $healthLabel === 'critical' ? 'warning' : $healthLabel,
             CronExecutionLog::STATUS_PARTIAL_SUCCESS, CronExecutionLog::STATUS_STUCK => 'warning',
+            CronExecutionLog::STATUS_SKIPPED => 'healthy',
             default => 'critical',
         };
 
@@ -324,6 +325,7 @@ class CronMonitorService
         $prev = CronExecutionLog::query()
             ->forJob($jobName)
             ->finished()
+            ->where('status', '!=', CronExecutionLog::STATUS_SKIPPED)
             ->orderByDesc('id')
             ->first();
 
@@ -347,9 +349,14 @@ class CronMonitorService
         $prev = CronExecutionLog::query()
             ->forJob($jobName)
             ->finished()
+            ->where('status', '!=', CronExecutionLog::STATUS_SKIPPED)
             ->when($currentId, fn ($q) => $q->where('id', '!=', $currentId))
             ->orderByDesc('id')
             ->first();
+
+        if ($status === CronExecutionLog::STATUS_SKIPPED) {
+            return (int) ($prev->consecutive_failures ?? 0); // skipped: the streak is neither extended nor reset
+        }
 
         if (! $prev || in_array($prev->status, [CronExecutionLog::STATUS_SUCCESS, CronExecutionLog::STATUS_RECOVERED], true)) {
             return 1;

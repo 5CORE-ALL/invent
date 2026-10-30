@@ -50,6 +50,7 @@
     .cm-pill-warn { background: #fffbeb; color: #d97706; border-color: #fde68a; }
     .cm-pill-bad { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
     .cm-pill-run { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+    .cm-pill-skip { background: #f3f4f6; color: #6b7280; border-color: #d1d5db; }
     #cmTrendChart { min-height: 260px; }
     #cmStatusTabs { border-bottom: 1px solid #e5e7eb; flex-wrap: nowrap; overflow-x: auto; }
     #cmStatusTabs .nav-link {
@@ -87,6 +88,7 @@
     <span class="badge bg-warning fs-6 p-2 flex-shrink-0" style="color: black; font-weight: bold;">Partial: {{ number_format($overview['partial']) }}</span>
     <span class="badge bg-danger fs-6 p-2 flex-shrink-0" style="color: white; font-weight: bold;">Failed: {{ number_format($overview['failed']) }}</span>
     <span class="badge bg-info fs-6 p-2 flex-shrink-0" style="color: black; font-weight: bold;">Running: {{ number_format($overview['running'] ?? 0) }}</span>
+    @if(($overview['skipped'] ?? 0) > 0)<span class="badge bg-secondary fs-6 p-2 flex-shrink-0" style="color: white; font-weight: bold;">Skipped: {{ number_format($overview['skipped']) }}</span>@endif
     <span class="badge {{ ($overview['stuck'] ?? 0) > 0 ? 'bg-danger' : 'bg-secondary' }} fs-6 p-2 flex-shrink-0" style="color: white; font-weight: bold;">Stuck: {{ number_format($overview['stuck'] ?? 0) }}</span>
     <form id="cmFilterForm" method="get" action="{{ route('cron-monitor.index') }}" class="d-flex flex-nowrap align-items-center gap-2 ms-auto flex-shrink-0">
         <select name="job" class="form-select form-select-sm cm-auto-filter" style="width:160px">
@@ -125,6 +127,7 @@
             'partial_success' => 'Partial success',
             'running' => 'Running',
             'success' => 'Success',
+            'skipped' => 'Skipped',
         ];
         $cmActiveStatus = (string) ($filters['status'] ?? '');
         if ($cmActiveStatus === 'recovered') {
@@ -237,7 +240,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const alertsData = @json($alertsTableData);
     let activeStatus = @json($filters['status'] ?? '');
     if (activeStatus === 'recovered') activeStatus = 'success';
-    if (!['failed', 'timed_out', 'missed', 'stuck', 'interrupted', 'partial_success', 'running', 'success'].includes(activeStatus)) {
+    if (!['failed', 'timed_out', 'missed', 'stuck', 'interrupted', 'partial_success', 'running', 'success', 'skipped'].includes(activeStatus)) {
         activeStatus = '';
     }
     let jobsSearch = '';
@@ -285,7 +288,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (['failed', 'timed_out', 'missed', 'stuck', 'interrupted', 'cancelled'].includes(s)) return 1;
         if (s === 'partial_success') return 2;
         if (s === 'running') return 3;
-        if (['success', 'recovered'].includes(s)) return 4;
+        if (['success', 'recovered', 'skipped'].includes(s)) return 4;
         return 5;
     }
 
@@ -299,6 +302,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (['success', 'recovered'].includes(s)) cls = 'cm-pill-ok';
         else if (['partial_success', 'stuck'].includes(s)) cls = 'cm-pill-warn';
         else if (s === 'running') cls = 'cm-pill-run';
+        else if (s === 'skipped') cls = 'cm-pill-skip';
         return `<span class="cm-pill ${cls}">${s.replace(/_/g, ' ')}</span>`;
     }
 

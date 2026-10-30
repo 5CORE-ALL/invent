@@ -32,6 +32,7 @@
     .cm-pill-warn { background: #fffbeb; color: #d97706; border-color: #fde68a; }
     .cm-pill-bad { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
     .cm-pill-run { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+    .cm-pill-skip { background: #f3f4f6; color: #6b7280; border-color: #d1d5db; }
     .cm-chunk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
     @media (max-width: 767px) { .cm-chunk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .cm-chunk-cell { border: 1px solid #e5e7eb; border-radius: 8px; padding: .75rem .85rem; background: #fff; }
@@ -49,6 +50,7 @@
         'success', 'recovered' => 'ok',
         'partial_success', 'stuck' => 'warn',
         'running' => 'run',
+        'skipped' => 'skip',
         default => 'bad',
     };
     $pillLabel = str_replace('_', ' ', (string) $log->status);
@@ -261,6 +263,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (['success', 'recovered'].includes(s)) cls = 'cm-pill-ok';
         else if (['partial_success', 'stuck'].includes(s)) cls = 'cm-pill-warn';
         else if (s === 'running') cls = 'cm-pill-run';
+        else if (s === 'skipped') cls = 'cm-pill-skip';
         return `<span class="cm-pill ${cls}">${s.replace(/_/g, ' ')}</span>`;
     }
 
