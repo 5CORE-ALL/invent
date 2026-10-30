@@ -4074,9 +4074,12 @@
         }
         function chPromoOvL30(d) {
             if (!d) return 0;
-            const raw = d.ov_l30 != null && d.ov_l30 !== '' ? d.ov_l30
-                : (d.L30 != null && d.L30 !== '' ? d.L30
-                    : (d['L30'] != null && d['L30'] !== '' ? d['L30'] : d.ovl30));
+            // /pls-pricing rows carry OV L30 as `l30`. Without this the page read Dil as 0 for every SKU, priced
+            // everything from the 0–0 slab and queued ~500 pushes on each open, fighting the server (true Dil).
+            const raw = (CHANNEL_PROMO_CHANNEL === 'pls' && d.l30 != null && d.l30 !== '') ? d.l30
+                : (d.ov_l30 != null && d.ov_l30 !== '' ? d.ov_l30
+                    : (d.L30 != null && d.L30 !== '' ? d.L30
+                        : (d['L30'] != null && d['L30'] !== '' ? d['L30'] : d.ovl30)));
             const n = Number(raw);
             return isFinite(n) && n > 0 ? n : 0;
         }
