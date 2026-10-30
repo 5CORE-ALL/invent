@@ -11,6 +11,7 @@ class SyncFlufMarketplaceSales extends Command
                             {channel=all : vinted, depop or all}
                             {--days=60 : How many days of Shopify orders to read}
                             {--replace-uploads : Also delete CSV-uploaded rows dated on/after the first Shopify sale (they would double count)}
+                            {--check-duplicates : Only report sales entered twice on the sheet, change nothing}
                             {--inspect : Only list how Fluf/Vinted/Depop orders look in Shopify, change nothing}';
 
     protected $description = 'Copy Vinted and Depop sales (Shopify orders created by Fluf) into /vinted/sheet and /depop/sheet.';
@@ -39,6 +40,35 @@ class SyncFlufMarketplaceSales extends Command
 
         $arg = strtolower(trim((string) $this->argument('channel')));
         $channels = $arg === 'all' ? array_keys(FlufMarketplaceSalesSync::CHANNELS) : [$arg];
+
+        if ($this->option('check-duplicates')) {
+            foreach ($channels as $channel) {
+                $r = $sync->duplicateReport($channel);
+                $this->info('== '.$r['label'].' ==');
+                if (isset($r['error'])) {
+                    $this->error($r['error']);
+
+                    continue;
+                }
+                $this->line('Shopify rows: '.$r['shopify_rows'].' | uploaded rows: '.$r['upload_rows']);
+                foreach ([
+                    'upload_vs_shopify' => 'Uploaded row has the same date + SKU + qty as a Shopify row',
+                    'shopify_vs_shopify' => 'Two Shopify orders with the same date + SKU + qty + price',
+                    'upload_vs_upload' => 'Uploaded rows repeated (same date + buyer + SKU + price)',
+                ] as $key => $title) {
+                    $list = $r[$key];
+                    $this->line($title.': '.count($list));
+                    foreach (array_slice($list, 0, 15) as $line) {
+                        $this->line('   '.$line);
+                    }
+                    if (count($list) > 15) {
+                        $this->line('   … and '.(count($list) - 15).' more');
+                    }
+                }
+            }
+
+            return self::SUCCESS;
+        }
         $failed = 0;
         foreach ($channels as $channel) {
             try {

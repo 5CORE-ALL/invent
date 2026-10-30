@@ -217,6 +217,74 @@ class FlufMarketplaceSalesSync
         return $out;
     }
 
+    /**
+     * Look for the same sale entered twice on a sheet, without changing anything.
+     *
+     * - upload_vs_shopify: a CSV-uploaded row and a Shopify row with the same date + SKU + quantity.
+     * - shopify_vs_shopify: two Shopify rows (different orders) with the same date + SKU + quantity + price,
+     *   e.g. a manual draft order and a Fluf order for the same sale.
+     * - upload_vs_upload: the same date + buyer + SKU + price twice inside the uploaded rows.
+     *
+     * @return array<string, mixed>
+     */
+    public function duplicateReport(string $channel): array
+    {
+        $cfg = self::CHANNELS[strtolower($channel)] ?? null;
+        if ($cfg === null || ! Schema::hasTable($cfg['table']) || ! Schema::hasColumn($cfg['table'], 'shopify_order_id')) {
+            return ['label' => $cfg['label'] ?? $channel, 'error' => 'sheet table or Shopify columns missing (run migrate)'];
+        }
+        $rows = DB::table($cfg['table'])->get(['id', 'sale_date', 'buyer', 'sku_code', 'quantity', 'item_price', 'shopify_order_id', 'shopify_order_number']);
+
+        $sku = static fn ($r) => strtoupper(trim((string) $r->sku_code));
+        $shopify = $rows->filter(fn ($r) => $r->shopify_order_id !== null);
+        $uploads = $rows->filter(fn ($r) => $r->shopify_order_id === null);
+
+        $shopifyByKey = [];
+        foreach ($shopify as $r) {
+            $shopifyByKey[$r->sale_date.'|'.$sku($r).'|'.(int) $r->quantity][] = $r;
+        }
+
+        $uploadVsShopify = [];
+        foreach ($uploads as $r) {
+            $k = $r->sale_date.'|'.$sku($r).'|'.(int) $r->quantity;
+            if ($sku($r) !== '' && isset($shopifyByKey[$k])) {
+                $uploadVsShopify[] = 'upload #'.$r->id.' '.$r->sale_date.' '.$r->sku_code.' x'.$r->quantity.' ↔ Shopify '.($shopifyByKey[$k][0]->shopify_order_number ?? '?');
+            }
+        }
+
+        $shopifyVsShopify = [];
+        $seen = [];
+        foreach ($shopify as $r) {
+            $k = $r->sale_date.'|'.$sku($r).'|'.(int) $r->quantity.'|'.number_format((float) $r->item_price, 2, '.', '');
+            if ($sku($r) === '') {
+                continue;
+            }
+            if (isset($seen[$k]) && (string) $seen[$k]->shopify_order_id !== (string) $r->shopify_order_id) {
+                $shopifyVsShopify[] = $r->sale_date.' '.$r->sku_code.' x'.$r->quantity.' $'.number_format((float) $r->item_price, 2).' in '.($seen[$k]->shopify_order_number ?? '?').' and '.($r->shopify_order_number ?? '?');
+            }
+            $seen[$k] ??= $r;
+        }
+
+        $uploadVsUpload = [];
+        $seenUp = [];
+        foreach ($uploads as $r) {
+            $k = $r->sale_date.'|'.strtolower(trim((string) $r->buyer)).'|'.$sku($r).'|'.number_format((float) $r->item_price, 2, '.', '');
+            if (isset($seenUp[$k])) {
+                $uploadVsUpload[] = 'uploads #'.$seenUp[$k].' and #'.$r->id.': '.$r->sale_date.' '.$r->sku_code.' '.$r->buyer;
+            }
+            $seenUp[$k] ??= $r->id;
+        }
+
+        return [
+            'label' => $cfg['label'],
+            'shopify_rows' => $shopify->count(),
+            'upload_rows' => $uploads->count(),
+            'upload_vs_shopify' => $uploadVsShopify,
+            'shopify_vs_shopify' => $shopifyVsShopify,
+            'upload_vs_upload' => $uploadVsUpload,
+        ];
+    }
+
     private function refreshDependents(string $channel): void
     {
         try {
