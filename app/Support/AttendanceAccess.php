@@ -124,6 +124,14 @@ class AttendanceAccess
         return $user && strtolower(trim((string) $user->email)) === 'president@5core.com';
     }
 
+    /** Shobha's account (software5@5core.com). */
+    public static function isShobha(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+
+        return $user && strtolower(trim((string) $user->email)) === 'software5@5core.com';
+    }
+
     /**
      * Team Monitoring summary page (/attendance/summary): President, Software 5, HR and Tech Support only.
      */

@@ -606,7 +606,29 @@
                         <!-- <img src="/images/users/avatar-1.jpg" alt="user-image" width="32" class="rounded-circle"> -->
                     </span>
                     <span class="d-lg-block d-none">
-                        <h5 class="my-0 fw-normal">{{ auth()->user()->name ?? '5Core' }} <i
+                        @php
+                            $topbarIsShobha = \App\Support\AttendanceAccess::isShobha();
+                            $topbarFraudAlert = null;
+                            if ($topbarIsShobha) {
+                                try {
+                                    $topbarFraudAlert = \App\Support\AttendanceFraudAlerts::forUsers([(int) auth()->id()])[(int) auth()->id()] ?? null;
+                                } catch (\Throwable $e) {
+                                    $topbarFraudAlert = null;
+                                }
+                            }
+                        @endphp
+                        <h5 class="my-0 {{ $topbarIsShobha ? 'fw-bold' : 'fw-normal' }}"@if($topbarIsShobha) style="color:#000;font-weight:700;"@endif>{{ auth()->user()->name ?? '5Core' }}@if($topbarFraudAlert)
+                            @include('attendance.partials.fraud-alert', ['alert' => null])
+                            <span class="fraud-tri {{ $topbarFraudAlert['level'] }}" role="img"
+                               title="{{ $topbarFraudAlert['tooltip'] }}"
+                               aria-label="Fraud check: {{ $topbarFraudAlert['count'] }} open alert(s), {{ $topbarFraudAlert['level'] }} risk">
+                                <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M12 2.2 23.2 21.6H0.8z" fill="#dc2626" stroke="#991b1b" stroke-width="1.2" stroke-linejoin="round"/>
+                                    <rect x="11" y="8.6" width="2" height="6.4" rx="1" fill="#fff"/>
+                                    <circle cx="12" cy="17.9" r="1.2" fill="#fff"/>
+                                </svg>
+                            </span>
+                        @endif <i
                                 class="ri-arrow-down-s-line d-none d-sm-inline-block align-middle"></i></h5>
                     </span>
                 </a>
