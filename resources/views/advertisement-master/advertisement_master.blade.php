@@ -506,6 +506,8 @@
                                 <span class="adm-stat-badge" id="adm-pb-p-spend" title="Spend held at the current L30 ad spend."><span class="adm-trend-dot"></span>Spend: <span class="v">-</span></span>
                                 <span class="adm-stat-badge" id="adm-pb-p-ads" title="P Ads% = L30 ad spend ÷ P-Sales. Green when at or below L30 Ads%."><span class="adm-trend-dot"></span>Ads%: <span class="v">-</span></span>
                                 <span class="adm-stat-badge" id="adm-pb-p-clicks" title="P Clicks = Σ (Clicks × P-Sales ÷ L30 Sales). Green when above L30 clicks."><span class="adm-trend-dot"></span>Clicks: <span class="v">-</span></span>
+                                <span class="adm-stat-badge" id="adm-pb-p-orders" title="P Orders = Σ (L30 Orders × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales."><span class="adm-trend-dot"></span>Orders: <span class="v">-</span></span>
+                                <span class="adm-stat-badge" id="adm-pb-p-cvr" title="P CVR = P Orders ÷ P Views. Green when at or above L30 CVR."><span class="adm-trend-dot"></span>CVR: <span class="v">-</span></span>
                             </div>
                         </div>
                     </div>
@@ -801,6 +803,9 @@
                 admSetPeriodBadge('adm-pb-p-clicks', has(p.clicks) ? Math.round(Number(p.clicks)).toLocaleString() : '-',
                     has(p.clicks) && has(l30.clicks) && Number(l30.clicks) > 0
                         ? (Number(p.clicks) >= Number(l30.clicks) ? 'good' : 'bad') : '');
+                admSetPeriodBadge('adm-pb-p-orders', has(p.orders) ? Math.round(Number(p.orders)).toLocaleString() : '-', '');
+                admSetPeriodBadge('adm-pb-p-cvr', has(p.cvr) ? pct(p.cvr, 2) : '-',
+                    has(p.cvr) && has(l30.cvr) ? (Number(p.cvr) >= Number(l30.cvr) ? 'good' : 'bad') : '');
             }
 
             function wholeMoneyFormatter(cell) {

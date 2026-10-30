@@ -355,6 +355,11 @@ class AdvertisementMasterController extends Controller
                 'spend' => $l30Spend,
                 'ads_pct' => $pSales > 0 ? round(($l30Spend / $pSales) * 100, 2) : null,
                 'clicks' => (float) ($projected['p_views'] ?? 0),
+                'orders' => (float) ($projected['p_orders'] ?? 0),
+                // P CVR = P Orders ÷ P Views (both paced by P-Sales ÷ L30 Sales).
+                'cvr' => ((float) ($projected['p_views'] ?? 0)) > 0
+                    ? round(((float) ($projected['p_orders'] ?? 0) / (float) $projected['p_views']) * 100, 2)
+                    : null,
             ],
         ];
     }
