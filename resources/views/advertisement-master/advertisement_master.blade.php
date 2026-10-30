@@ -81,6 +81,7 @@
         .adm-panel-grid { display: grid; gap: 3px; }
         .adm-panel-grid.cols-1 { grid-template-columns: minmax(max-content, 1fr); }
         .adm-panel-grid.cols-2 { grid-template-columns: repeat(2, minmax(max-content, 1fr)); }
+        .adm-panel-grid.cols-3 { grid-template-columns: repeat(3, minmax(max-content, 1fr)); }
         .adm-panel-grid.cols-4 { grid-template-columns: repeat(4, minmax(max-content, 1fr)); }
         .adm-panel--l30 { flex: 1 1 auto; }
         .adm-panel--projected, .adm-panel--view { flex: 0 1 auto; }
@@ -492,7 +493,7 @@
 
                         <div class="adm-panel adm-panel--l30">
                             <div class="adm-panel-title">L30</div>
-                            <div class="adm-panel-grid cols-4">
+                            <div class="adm-panel-grid cols-3">
                                 <span class="adm-stat-badge adm-badge-link" data-metric="spend" data-label="Spend" title="Same Spend badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="spend" title="vs previous day"></span>Spend: <span id="adm-badge-spend">$0</span></span>
                                 <span class="adm-stat-badge adm-badge-link" data-metric="ad_sales" data-label="Ad Sales" title="Active Channel Ad Sales total — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="ad_sales" title="vs previous day"></span>Ad Sales: <span id="adm-badge-ad-sales">$0</span></span>
                                 <span class="adm-stat-badge adm-badge-link" data-metric="ssales" data-label="Total Sales" title="Active Channel L30 Sales total — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="ssales" title="vs previous day"></span>Total Sales: <span id="adm-badge-total-sales">$0</span></span>
