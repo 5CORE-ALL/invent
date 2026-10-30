@@ -2793,26 +2793,17 @@ class AdvertisementMasterController extends Controller
         if ($this->snapshotsHaveMissingAdsColumn()) {
             $measures['missing_ads'] = (int) ($row['missing_ads'] ?? 0);
         }
-        if ($withCellAcos && $this->snapshotsHaveAcosColumn() && is_numeric($row['acos'] ?? null)) {
-            $measures['acos'] = round((float) $row['acos'], 2);
+        if ($withCellAcos) {
+            // The numbers the ACOS / CVR / TCOS cells actually show (Active Channel values,
+            // Spend / T Sales on total rows), so the graphs plot the same thing.
+            foreach ($this->snapshotCellMetricColumns() as $col) {
+                if (is_numeric($row[$col] ?? null)) {
+                    $measures[$col] = round((float) $row[$col], 2);
+                }
+            }
         }
 
         return $measures;
-    }
-
-    private function snapshotsHaveAcosColumn(): bool
-    {
-        static $has = null;
-        if ($has !== null) {
-            return $has;
-        }
-        try {
-            $has = Schema::hasColumn('advertisement_master_metric_snapshots', 'acos');
-        } catch (\Throwable $e) {
-            $has = false;
-        }
-
-        return $has;
     }
 
     private function snapshotsHaveMissingAdsColumn(): bool
@@ -3409,20 +3400,18 @@ class AdvertisementMasterController extends Controller
             }
         }
 
-        // Amazon (+ KW / PT / HL): rebuild rolling L30 from the dated daily ad reports so
-        // days nobody opened this page still have a point (snapshots only exist for days
-        // the page was loaded).
         if (! $this->historyIsAllChannels($channel)) {
+            // 1) The exact row that was clicked: what that cell showed on each saved day.
+            //    Group names (eBay Total -> eBay + eBay 2 + eBay 3) only cover days this row
+            //    itself has no snapshot.
+            foreach ($this->savedExactRowByDate($channel, $from, $today) as $date => $saved) {
+                $byDate[$date] = $saved;
+            }
+            // 2) Days nobody opened this page: Amazon / eBay rebuilt from the dated daily ad
+            //    reports, then any single parent channel from the daily Active Channel snapshots.
+            //    Both only fill days that have no saved snapshot.
             $byDate = $this->overlayAmazonRollingL30($channel, $byDate, $from, $today);
             $byDate = $this->fillGapsFromChannelMasterDaily($channel, $metric, $byDate, $from, $today);
-
-            // ACOS graph must plot the number the cell shows, not Spend / Ads Sales recomputed
-            // from the saved columns (cells use Active Channel ACOS; total rows use Spend / T Sales).
-            foreach ($this->savedCellAcosByDate($channel, $from, $today) as $date => $acos) {
-                if (isset($byDate[$date])) {
-                    $byDate[$date]['cell_acos'] = $acos;
-                }
-            }
         }
 
         $built = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
@@ -3510,35 +3499,77 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
-     * ACOS saved from the grid cell itself, per Pacific day, for exactly this row.
+     * Snapshot rows saved under exactly this row's name, per Pacific day. These are the
+     * values the grid cells showed (including the cell's own ACOS / CVR / TCOS when saved),
+     * so the graph and the cell cannot disagree.
      *
-     * @return array<string, float>
+     * @return array<string, array<string, float>>
      */
-    private function savedCellAcosByDate(string $channel, Carbon $from, Carbon $today): array
+    private function savedExactRowByDate(string $channel, Carbon $from, Carbon $today): array
     {
-        if (! $this->snapshotsHaveAcosColumn()) {
-            return [];
+        $cols = ['snapshot_date', 'spend', 'clicks', 'sold', 'sales', 'active'];
+        if ($this->snapshotsHaveMissingAdsColumn()) {
+            $cols[] = 'missing_ads';
         }
+        $cellCols = $this->snapshotCellMetricColumns();
+        $cols = array_merge($cols, $cellCols);
 
         $out = [];
         try {
             $rows = DB::table('advertisement_master_metric_snapshots')
                 ->where('channel', trim($channel))
-                ->whereNotNull('acos')
                 ->whereDate('snapshot_date', '>=', $from->toDateString())
                 ->whereDate('snapshot_date', '<=', $today->toDateString())
-                ->get(['snapshot_date', 'acos']);
+                ->get($cols);
             foreach ($rows as $row) {
                 $date = $row->snapshot_date instanceof \DateTimeInterface
                     ? $row->snapshot_date->format('Y-m-d')
                     : substr((string) $row->snapshot_date, 0, 10);
-                $out[$date] = (float) $row->acos;
+                $entry = [
+                    'spend' => (float) ($row->spend ?? 0),
+                    'clicks' => (float) ($row->clicks ?? 0),
+                    'sold' => (float) ($row->sold ?? 0),
+                    'sales' => (float) ($row->sales ?? 0),
+                    'active' => (float) ($row->active ?? 0),
+                    'missing_ads' => (float) ($row->missing_ads ?? 0),
+                ];
+                foreach ($cellCols as $col) {
+                    if (isset($row->{$col}) && $row->{$col} !== null) {
+                        $entry['cell_'.$col] = (float) $row->{$col};
+                    }
+                }
+                $out[$date] = $entry;
             }
         } catch (\Throwable $e) {
-            \Log::warning('Advertisement Master saved cell ACOS read failed: '.$e->getMessage());
+            \Log::warning('Advertisement Master saved exact-row read failed: '.$e->getMessage());
         }
 
         return $out;
+    }
+
+    /**
+     * Cell-value columns that exist on the snapshots table (acos, cvr, tcos).
+     *
+     * @return list<string>
+     */
+    private function snapshotCellMetricColumns(): array
+    {
+        static $cols = null;
+        if ($cols !== null) {
+            return $cols;
+        }
+        $cols = [];
+        try {
+            foreach (['acos', 'cvr', 'tcos'] as $col) {
+                if (Schema::hasColumn('advertisement_master_metric_snapshots', $col)) {
+                    $cols[] = $col;
+                }
+            }
+        } catch (\Throwable $e) {
+            $cols = [];
+        }
+
+        return $cols;
     }
 
     /**
@@ -3575,18 +3606,11 @@ class AdvertisementMasterController extends Controller
             return $byDate;
         }
 
-        $todayYmd = $today->toDateString();
         foreach ($computed as $date => $m) {
+            // A saved snapshot is exactly what the cell showed that day: never replace it,
+            // only fill days that have none.
             if (isset($byDate[$date])) {
-                // Today's saved snapshot is exactly what the cell shows: never replace it.
-                // eBay has no stale-L30 problem, so only fill days that have no snapshot.
-                if ($date === $todayYmd || ! $isAmazon) {
-                    continue;
-                }
-                // Keep the value already saved for a past day when the reports hold nothing for it.
-                if ((float) $m['spend'] <= 0 && (float) $m['sales'] <= 0) {
-                    continue;
-                }
+                continue;
             }
             $byDate[$date] = [
                 'spend' => round((float) $m['spend'], 2),
@@ -3647,7 +3671,9 @@ class AdvertisementMasterController extends Controller
             $series['sold'][]   = (int) round($m['sold']);
             $series['sales'][]  = round($m['sales'], 2);
             $series['active'][] = (int) round($m['active'] ?? 0);
-            $series['cvr'][]    = $m['clicks'] > 0 ? round(($m['sold'] / $m['clicks']) * 100, 1) : 0;
+            $series['cvr'][]    = isset($m['cell_cvr'])
+                ? round((float) $m['cell_cvr'], 1)
+                : ($m['clicks'] > 0 ? round(($m['sold'] / $m['clicks']) * 100, 1) : 0);
             // Cell ACOS saved with the snapshot wins; otherwise Spend / Ads Sales (1 decimal like the cell).
             $series['acos'][]   = isset($m['cell_acos'])
                 ? round((float) $m['cell_acos'], 1)
@@ -3655,10 +3681,13 @@ class AdvertisementMasterController extends Controller
                     ? round(($m['spend'] / $m['sales']) * 100, 1)
                     : ($m['spend'] > 0 ? 100 : 0));
             // TCOS = Spend / S Sales (combined store net sales).
+            // A saved cell TCOS (channel spend / that channel's L30 sales) wins for single rows.
             $ss = $ssalesByDate[$d] ?? 0;
-            $series['tcos'][]   = $ss > 0
-                ? round(($m['spend'] / $ss) * 100, 0)
-                : ($m['spend'] > 0 ? 100 : 0);
+            $series['tcos'][]   = isset($m['cell_tcos'])
+                ? round((float) $m['cell_tcos'], 1)
+                : ($ss > 0
+                    ? round(($m['spend'] / $ss) * 100, 1)
+                    : ($m['spend'] > 0 ? 100 : 0));
             $series['missing_ads'][] = (int) round($m['missing_ads'] ?? 0);
         }
 
