@@ -359,6 +359,46 @@ class EbayTwoController extends Controller
         }
     }
 
+    /**
+     * OPEN BOX listing SKU (tolerates NBSP / hyphen / underscore between the words, as in Shopify SKUs).
+     */
+    public static function isOpenBoxSku(string $sku): bool
+    {
+        return str_contains(ShopifySku::normalizeSkuForShopifyLookup($sku), 'OPEN BOX');
+    }
+
+    /**
+     * Shopify (shopify_skus) OPEN BOX SKUs that have stock on hand, keyed by normalized SKU.
+     * When a SKU appears twice, the row with a variant id wins.
+     *
+     * @return array<string, ShopifySku>
+     */
+    private function shopifyOpenBoxStockRows(): array
+    {
+        $out = [];
+        $rows = ShopifySku::query()
+            ->where('inv', '>', 0)
+            ->whereRaw("UPPER(sku) LIKE '%OPEN%BOX%'")
+            ->orderBy('id')
+            ->get(['id', 'sku', 'variant_id', 'inv', 'quantity', 'image_src', 'price']);
+
+        foreach ($rows as $row) {
+            $sku = trim((string) $row->sku);
+            if ($sku === '' || ! self::isOpenBoxSku($sku)) {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $existing = $out[$norm] ?? null;
+            $hasVariant = trim((string) ($row->variant_id ?? '')) !== '';
+            $existingHasVariant = $existing !== null && trim((string) ($existing->variant_id ?? '')) !== '';
+            if ($existing === null || ($hasVariant && ! $existingHasVariant)) {
+                $out[$norm] = $row;
+            }
+        }
+
+        return $out;
+    }
+
     public function getViewEbayData(Request $request)
     {
         // 1. Base ProductMaster fetch — same PARENT filter as /ebay-tabulator-view
@@ -465,6 +505,28 @@ class EbayTwoController extends Controller
                     }
                 }
             }
+        }
+
+        // Open Box page: Shopify OPEN BOX SKUs that have stock, even when eBay 2 has no listing for them.
+        $shopifyOpenBoxByNorm = $request->boolean('open_box_only')
+            ? $this->shopifyOpenBoxStockRows()
+            : [];
+        foreach ($shopifyOpenBoxByNorm as $obNorm => $obShopify) {
+            if (isset($pmKeyByNorm[$obNorm])) {
+                continue;
+            }
+            $obBaseNorm = trim((string) preg_replace('/\s+/', ' ', str_ireplace('OPEN BOX', '', $obNorm)));
+            $obBasePmKey = ($obBaseNorm !== '' && isset($pmKeyByNorm[$obBaseNorm]))
+                ? $pmKeyByNorm[$obBaseNorm]
+                : null;
+            if ($obBasePmKey === null || ! isset($productMasters[$obBasePmKey])) {
+                continue;
+            }
+            $obSku = trim((string) $obShopify->sku);
+            $obPseudo = clone $productMasters[$obBasePmKey];
+            $obPseudo->sku = $obSku;
+            $productMasters[$obSku] = $obPseudo;
+            $pmKeyByNorm[$obNorm] = $obSku;
         }
 
         // OPEN BOX / USED rows use listing SKUs; reload SKU list so EbayTwoDataView & listing status load for them
@@ -841,6 +903,7 @@ class EbayTwoController extends Controller
             // Shopify
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
+            $row['shopify_stock'] = (float) ($shopify->inv ?? 0);
             $pmNormInv = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
             $row['inv_yesterday'] = $invYesterdayBySku[$pmNormInv] ?? null;
             $row['l30_yesterday'] = $l30YesterdayBySku[$pmNormInv] ?? null;
@@ -1150,7 +1213,15 @@ class EbayTwoController extends Controller
                 $processedSkusNorm[$norm] = true;
             }
         }
-        foreach ($ebayMetrics as $metricNormKey => $metric) {
+        // Shopify-only Open Box SKUs (no eBay 2 metric, base not in product master) get a blank eBay stub.
+        $orphanMetricSources = $ebayMetrics->all();
+        foreach ($shopifyOpenBoxByNorm as $obNorm => $obShopify) {
+            if (isset($processedSkusNorm[$obNorm]) || isset($orphanMetricSources[$obNorm])) {
+                continue;
+            }
+            $orphanMetricSources[$obNorm] = (object) ['sku' => trim((string) $obShopify->sku)];
+        }
+        foreach ($orphanMetricSources as $metricNormKey => $metric) {
             $originalSku = trim((string) ($metric->sku ?? ''));
             $displaySku = $originalSku !== '' ? $originalSku : (string) $metricNormKey;
             $normKey = ShopifySku::normalizeSkuForShopifyLookup($displaySku);
@@ -1177,8 +1248,10 @@ class EbayTwoController extends Controller
                     }
                 }
                 $row['fba'] = "";
-                $row["INV"] = 0;
-                $row["L30"] = 0;
+                $obShopifyRow = $shopifyOpenBoxByNorm[$normKey] ?? null;
+                $row["INV"] = $obShopifyRow ? ($obShopifyRow->inv ?? 0) : 0;
+                $row["L30"] = $obShopifyRow ? ($obShopifyRow->quantity ?? 0) : 0;
+                $row['shopify_stock'] = $obShopifyRow ? (float) ($obShopifyRow->inv ?? 0) : 0;
                 $row['inv_yesterday'] = $invYesterdayBySku[$normKey] ?? null;
                 $row['l30_yesterday'] = $l30YesterdayBySku[$normKey] ?? null;
                 $row['nr_req'] = 'REQ';
@@ -1291,7 +1364,7 @@ class EbayTwoController extends Controller
                 $row['Listed'] = null;
                 $row['Live'] = null;
                 $row['APlus'] = null;
-                $row["image_path"] = null;
+                $row["image_path"] = $obShopifyRow->image_src ?? null;
 
                 $faRecNrpOb = $forecastNrpBySku[$normalizeSkuFa($displaySku)] ?? null;
                 $nrpOutOb = '';
@@ -1377,7 +1450,7 @@ class EbayTwoController extends Controller
                     ? ($row->{'(Child) sku'} ?? '')
                     : ($row['(Child) sku'] ?? '');
 
-                return stripos((string) $sku, 'OPEN BOX') !== false;
+                return self::isOpenBoxSku((string) $sku);
             }));
         }
 
