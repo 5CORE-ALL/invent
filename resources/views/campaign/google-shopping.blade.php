@@ -270,6 +270,16 @@
             background: #22c55e;
             flex-shrink: 0;
         }
+        /* LBgt matches SBGT → green triangle instead of the dot */
+        #google-ads-campaigns-raw-wrap .gac-live-tri {
+            display: inline-block;
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-bottom: 9px solid #22c55e;
+            flex-shrink: 0;
+        }
         /* CTR / CVR flag bands (relative to the filtered-set average):
            red   < avg*0.80, green avg*0.80–avg*1.20, magenta > avg*1.20 */
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.flag-red {
@@ -1902,7 +1912,10 @@
                 var text = isFinite(v) && v > 0
                     ? v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                     : '—';
-                var dot = green ? '<span class="gac-live-dot" aria-hidden="true"></span>' : '';
+                // LBgt equal to SBGT → green triangle; LBid keeps the dot.
+                var dot = green
+                    ? '<span class="' + (isBid ? 'gac-live-dot' : 'gac-live-tri') + '" aria-hidden="true"></span>'
+                    : '';
                 return '<span class="gac-live-cell" title="' + gacRawEscAttr(tip) + '">' + dot + text + '</span>';
             }
             function gacRawSbgtCellFormatter(cell) {
