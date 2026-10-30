@@ -501,6 +501,75 @@ class TemuGoodsStatusSync
         }
     }
 
+    public const PUBLISHING_FILE = 'temu_cache/temu1_pending_publish.json';
+
+    /** @return array<string, array{sku: string, at: int}> */
+    private static function readPublishing(): array
+    {
+        try {
+            if (! Storage::disk('local')->exists(self::PUBLISHING_FILE)) {
+                return [];
+            }
+            $json = json_decode((string) Storage::disk('local')->get(self::PUBLISHING_FILE), true);
+
+            return is_array($json) ? $json : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /** @param  array<string, array{sku: string, at: int}>  $all */
+    private static function writePublishing(array $all): void
+    {
+        $cut = time() - 7 * 86400;
+        foreach ($all as $k => $row) {
+            if ((int) ($row['at'] ?? 0) < $cut) {
+                unset($all[$k]);
+            }
+        }
+        try {
+            Storage::disk('local')->put(self::PUBLISHING_FILE, json_encode($all, JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            // ledger is a safety net only
+        }
+    }
+
+    /**
+     * Ledger of SKUs we are about to send to Temu 1. If the answer is lost (timeout, crash) the goods still exists
+     * on Temu as "Incomplete / pricing under assessment"; the ledger lets the next publish recognise it as OUR
+     * listing and link it instead of calling it a failure.
+     *
+     * @param  list<string>  $skus
+     */
+    public static function notePublishing(array $skus): void
+    {
+        $all = self::readPublishing();
+        foreach ($skus as $sku) {
+            $k = self::key((string) $sku);
+            if ($k !== '') {
+                $all[$k] = ['sku' => (string) $sku, 'at' => time()];
+            }
+        }
+        self::writePublishing($all);
+    }
+
+    /** @param  list<string>  $skus */
+    public static function clearPublishing(array $skus): void
+    {
+        $all = self::readPublishing();
+        foreach ($skus as $sku) {
+            unset($all[self::key((string) $sku)]);
+        }
+        self::writePublishing($all);
+    }
+
+    public static function wasPublishedByUs(string $sku, int $hours = 72): bool
+    {
+        $row = self::readPublishing()[self::key($sku)] ?? null;
+
+        return is_array($row) && (int) ($row['at'] ?? 0) >= time() - $hours * 3600;
+    }
+
     public static function forgetIncomplete(string $sku): void
     {
         $key = self::key($sku);

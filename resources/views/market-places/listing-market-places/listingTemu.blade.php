@@ -288,6 +288,18 @@
             line-height: 1.2;
         }
 
+        #temu-listing-toolbar .temu-bulk-publish-btn {
+            height: 30px;
+            padding: 0 10px;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
         #temu-listing-toolbar .filter-select:focus {
             outline: none;
             border-color: #4361ee;
@@ -709,6 +721,12 @@
                                 <option value="Listed">Listed Only</option>
                                 <option value="Pending">Missing L</option>
                             </select>
+                            <button type="button"
+                                class="btn btn-sm btn-primary temu-bulk-publish-btn"
+                                id="bulk-publish-btn"
+                                title="Publish the checked SKUs to Temu 1 as parent variations">
+                                <i class="fas fa-cloud-upload-alt"></i> Publish selected
+                            </button>
                         </div>
                     </div>
 
@@ -1917,6 +1935,19 @@
                 if (sku) copySkuToClipboard(sku, this);
             });
 
+            // Publish selected: the checked SKU rows go to the same review modal as the row Publish button.
+            $('#bulk-publish-btn').on('click', function () {
+                if (!temuListingTable) return;
+                const selected = (temuListingTable.getSelectedData() || [])
+                    .map(function (row) { return String(row.sku || '').trim(); })
+                    .filter(function (sku) { return sku && !isParentSku(sku); });
+                if (!selected.length) {
+                    showNotification('danger', 'Select one or more SKUs first.');
+                    return;
+                }
+                openPublishPreview(selected);
+            });
+
             // ---- Incomplete products: red triangle details + Complete ----
             function incompleteError(xhr, fallback) {
                 if (xhr.status === 0) return 'The request timed out or the connection dropped. Try again.';
@@ -2096,6 +2127,6 @@
             publishUrl: '/listing_temu/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261030-category1"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261030-bulk1"></script>
 @include('partials.listing-sku-search')
 @endsection

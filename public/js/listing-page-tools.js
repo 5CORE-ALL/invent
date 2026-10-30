@@ -1330,7 +1330,7 @@
             '<input type="text" class="form-control form-control-sm lp-parent-cat-input" value="' + escapeHtml(leaf || shown) + '" placeholder="Search a category…" autocomplete="off">' +
             '<div class="lp-parent-cat-results listing-publish-cat-results"></div>' +
             '</div>' +
-            '<small>Used only for this parent. Adding to an existing listing keeps that listing’s category.</small>' +
+            '<small>Used when you create a new parent. Adding to an existing listing keeps that listing’s category.</small>' +
             '</div>';
     }
 
@@ -1403,8 +1403,9 @@
     function syncParentCategoryVisibility(groupEl) {
         const cat = groupEl && groupEl.querySelector('.lp-parent-cat');
         if (!cat) return;
-        const pick = window.ListingParentPicker ? window.ListingParentPicker.read(groupEl) : null;
-        cat.hidden = !!(pick && pick.supported && pick.attach === 'existing');
+        // Always show it. Hiding it while "Add to an existing parent" was selected removed the
+        // only category field in this window, including after switching to "Create a new parent".
+        cat.hidden = false;
     }
 
     function mapParentCategory(raw) {
@@ -1530,17 +1531,73 @@
         });
     }
 
-    // The Publish button stays off until every group that has existing parents has an answer.
+    function panelShown(el) {
+        if (!el) return false;
+        const st = window.getComputedStyle ? window.getComputedStyle(el) : null;
+        return !st || (st.display !== 'none' && st.visibility !== 'hidden');
+    }
+
+    // Read the parent choice from what is actually on screen. The list box can paint a row
+    // as selected while its value stays empty, so the listing id is also taken from the row text.
+    function parentChoiceFromDom(groupEl) {
+        const box = groupEl && groupEl.querySelector ? groupEl.querySelector('.lp-parent') : null;
+        const pick = window.ListingParentPicker ? window.ListingParentPicker.read(groupEl) : null;
+        if (!box) return pick;
+        const radios = box.querySelectorAll('.lp-parent-radio');
+        let attach = '';
+        radios.forEach(function (radio) {
+            if (radio.checked) attach = String(radio.value || '');
+        });
+        const existingPanel = box.querySelector('.lp-existing');
+        const newPanel = box.querySelector('.lp-new');
+        if (!attach) {
+            if (panelShown(newPanel) && !panelShown(existingPanel)) attach = 'new';
+            else if (panelShown(existingPanel)) attach = 'existing';
+        }
+        let existingId = String((pick && pick.existingId) || box.getAttribute('data-chosen-id') || '').trim();
+        const select = box.querySelector('.lp-parent-select');
+        if (!existingId && select && select.options && select.options.length) {
+            const idx = select.selectedIndex >= 0 ? select.selectedIndex : (select.options.length === 1 ? 0 : -1);
+            const opt = idx >= 0 ? select.options[idx] : null;
+            if (opt) {
+                existingId = String(opt.getAttribute('value') || opt.value || '').trim();
+                if (!existingId) {
+                    const match = String(opt.textContent || '').match(/ID\s+([0-9]+)/);
+                    if (match) existingId = match[1];
+                }
+            }
+        }
+        const nameInput = box.querySelector('.lp-parent-name');
+        const newParent = String((nameInput && nameInput.value) || (pick && pick.newParent) || '').trim();
+        const supported = box.getAttribute('data-attach-supported') === '1' || !!(pick && pick.supported);
+        const required = box.getAttribute('data-required') === '1';
+        const ready = attach === 'new' ? newParent !== ''
+            : attach === 'existing' ? existingId !== ''
+            : !required;
+        return {
+            attach: attach,
+            supported: supported,
+            required: required,
+            existingId: existingId,
+            existingParent: String((pick && pick.existingParent) || box.getAttribute('data-chosen-parent') || '').trim(),
+            newParent: newParent,
+            ready: ready
+        };
+    }
+
+    // The Publish button stays off only when no SKU is ticked. A highlighted parent row counts.
     function refreshConfirmState() {
         const confirm = document.getElementById('listing-publish-confirm');
         if (!confirm) return;
         const anyChecked = $('#listing-publish-groups .listing-publish-sku-check:checked:not(:disabled)').length > 0;
         let pending = false;
-        document.querySelectorAll('#listing-publish-groups .listing-publish-group').forEach(function (el) {
-            if (!el.querySelector('.listing-publish-sku-check:checked:not(:disabled)')) return;
-            const pick = window.ListingParentPicker ? window.ListingParentPicker.read(el) : null;
-            if (pick && !pick.ready) pending = true;
-        });
+        if (anyChecked && selectedPublishMode() !== 'single') {
+            document.querySelectorAll('#listing-publish-groups .listing-publish-group').forEach(function (el) {
+                if (!el.querySelector('.listing-publish-sku-check:checked:not(:disabled)')) return;
+                const pick = parentChoiceFromDom(el);
+                if (pick && pick.required && !pick.ready) pending = true;
+            });
+        }
         confirm.disabled = !anyChecked || pending;
         const progress = document.getElementById('listing-publish-progress');
         if (progress && !confirm.querySelector('.fa-spin')) {
@@ -1561,7 +1618,7 @@
             });
             if (skus.length) {
                 const entry = { parent: parent, skus: skus, attach: '', existingId: '', attachSupported: false, hint: '' };
-                const pick = window.ListingParentPicker ? window.ListingParentPicker.read(el) : null;
+                const pick = parentChoiceFromDom(el);
                 if (pick) {
                     entry.attachSupported = pick.supported;
                     if (pick.supported) {
@@ -2017,8 +2074,8 @@
             });
 
         $('#bulk-publish-btn').off('click.listingPageTools').on('click.listingPageTools', function () {
-            if (ownPublishModalId()) {
-                return;
+            if (ownPublishModalId() || cfg().ownPublishColumn) {
+                return; // the page has its own publish modal (Temu 1 / 2 / 3)
             }
             const selected = (table.getSelectedData() || [])
                 .map(function (row) { return String(row.sku || '').trim(); })

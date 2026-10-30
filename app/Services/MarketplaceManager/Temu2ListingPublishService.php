@@ -205,6 +205,14 @@ class Temu2ListingPublishService
             return ['success' => false, 'message' => 'SKU is required.'];
         }
 
+        if ($this->shopLabel() === 'Temu') {
+            // Temu 1: keep going if the browser gives up waiting, so a listing Temu already created is still linked.
+            @ignore_user_abort(true);
+            if (function_exists('set_time_limit')) {
+                @set_time_limit(600);
+            }
+        }
+
         if (! $this->api->isConfigured()) {
             return [
                 'success' => false,
@@ -408,10 +416,23 @@ class Temu2ListingPublishService
         $stillPrepared = [];
         $stillSkuList = [];
         $restored = [];
+        $ownLinked = [];
+        $ownGoodsId = '';
         foreach ($prepared as $index => $row) {
             $remote = $this->completeGoodsId !== null ? null : $this->remoteSkuDuplicate($row['sku']);
             if ($remote !== null) {
                 $life = $this->remoteGoodsLifecycle($remote['goodsId']);
+                if ($life === 'incomplete' && $this->shopLabel() === 'Temu' && TemuGoodsStatusSync::wasPublishedByUs($row['sku'])) {
+                    // Our own publish created this goods a moment ago (Temu keeps it as Incomplete / pricing under
+                    // assessment while it reviews it) but the answer never reached us. Link it, do not fail.
+                    $this->api->persistNewListing($row['sku'], $remote['goodsId'], $remote['skuId'] !== '' ? $remote['skuId'] : null);
+                    $this->persistExtraListingFields($row['sku'], $row['price'], $row['qty']);
+                    TemuGoodsStatusSync::clearPublishing([$row['sku']]);
+                    TemuGoodsStatusSync::forgetIncomplete($row['sku']);
+                    $ownLinked[] = $row['sku'];
+                    $ownGoodsId = $remote['goodsId'];
+                    continue;
+                }
                 if ($life === 'incomplete' && $this->shopLabel() === 'Temu') {
                     // Temu 1: the SKU sits in an Incomplete goods. Linking it would mark it Listed while it is not
                     // live, and publishing cannot complete it - the Complete button updates that goods instead.
@@ -449,6 +470,15 @@ class Temu2ListingPublishService
         }
         if ($stillPrepared === []) {
             $this->forgetListingCaches();
+
+            if ($ownLinked !== []) {
+                return [
+                    'success' => true,
+                    'message' => 'This listing was already created on Temu by your earlier publish (goods '.$ownGoodsId.', Temu is still reviewing it). Linked '.count($ownLinked).' SKU(s) to it.',
+                    'goods_id' => $ownGoodsId,
+                    'skus' => $skus,
+                ];
+            }
 
             return [
                 'success' => true,
@@ -528,6 +558,12 @@ class Temu2ListingPublishService
             'type' => $payloadV2['type'],
         ]);
 
+        $trackPublish = $this->shopLabel() === 'Temu' && $this->completeGoodsId === null;
+        if ($trackPublish) {
+            // If the answer is lost, the goods may still exist on Temu: remember we sent it (see wasPublishedByUs).
+            TemuGoodsStatusSync::notePublishing(array_values(array_map(static fn ($row) => (string) $row['sku'], $prepared)));
+        }
+
         $data = $this->submitGoodsAdd($payloadV2);
         if ($this->completeGoodsId === null && ! ($data['success'] ?? false) && $this->isDuplicateSkuError($this->apiErrorMessage($data))) {
             $retrySn = $this->uniqueOutGoodsSn($primarySku, $primarySku.'-'.substr(md5($primarySku), 0, 6));
@@ -546,6 +582,10 @@ class Temu2ListingPublishService
                 'shop' => $this->shopLabel(),
                 'message' => $msg,
             ]);
+            if ($trackPublish && isset($data['errorCode'])) {
+                // Temu answered with a refusal, so nothing was created: forget the ledger entry.
+                TemuGoodsStatusSync::clearPublishing(array_values(array_map(static fn ($row) => (string) $row['sku'], $prepared)));
+            }
 
             return [
                 'success' => false,
@@ -567,6 +607,9 @@ class Temu2ListingPublishService
         }
 
         $firstSkuId = $this->persistPublishedRows($prepared, $goodsId, $data);
+        if ($trackPublish) {
+            TemuGoodsStatusSync::clearPublishing(array_values(array_map(static fn ($row) => (string) $row['sku'], $prepared)));
+        }
 
         Log::info('Temu2 publish: listed', [
             'parent' => $parentKey,
@@ -2474,6 +2517,50 @@ class Temu2ListingPublishService
         }
 
         return null;
+    }
+
+    /**
+     * Temu 1 only. Link every SKU of a goods that Temu holds to our listing (goods id + SKU id). Used to recover a
+     * listing Temu created from our publish when the answer never reached us.
+     *
+     * @return array{success: bool, message: string, linked: list<string>}
+     */
+    public function linkGoodsFromTemu(string $goodsId, bool $dryRun = false): array
+    {
+        $goodsId = trim($goodsId);
+        if ($this->shopLabel() !== 'Temu' || $goodsId === '' || ! ctype_digit($goodsId)) {
+            return ['success' => false, 'message' => 'A numeric Temu 1 goods ID is required.', 'linked' => []];
+        }
+        $record = $this->fetchIncompleteGoodsRecord($goodsId);
+        if (! is_array($record)) {
+            return ['success' => false, 'message' => 'Temu did not return goods '.$goodsId.' from its goods list.', 'linked' => []];
+        }
+        $linked = [];
+        foreach ((array) ($record['skuInfoList'] ?? []) as $info) {
+            if (! is_array($info)) {
+                continue;
+            }
+            $sn = trim((string) ($info['skuSn'] ?? $info['outSkuSn'] ?? ''));
+            if ($sn === '') {
+                continue;
+            }
+            $skuId = trim((string) ($info['skuId'] ?? ''));
+            if (! $dryRun) {
+                $this->api->persistNewListing($sn, $goodsId, $skuId !== '' ? $skuId : null);
+                TemuGoodsStatusSync::clearPublishing([$sn]);
+                TemuGoodsStatusSync::forgetIncomplete($sn);
+            }
+            $linked[] = $sn;
+        }
+        if (! $dryRun && $linked !== []) {
+            $this->forgetListingCaches();
+        }
+
+        return [
+            'success' => $linked !== [],
+            'message' => $linked !== [] ? ($dryRun ? 'Would link ' : 'Linked ').count($linked).' SKU(s) to goods '.$goodsId.'.' : 'Goods '.$goodsId.' has no SKUs in Temu\'s answer.',
+            'linked' => $linked,
+        ];
     }
 
     /**

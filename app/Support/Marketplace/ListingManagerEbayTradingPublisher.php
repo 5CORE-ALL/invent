@@ -5,6 +5,7 @@ namespace App\Support\Marketplace;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
+use App\Services\Support\EbayTradingReviseItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -728,17 +729,24 @@ class ListingManagerEbayTradingPublisher
 
         // eBay refuses a listing that mixes eBay-hosted (EPS) and self-hosted pictures. When the live
         // listing uses EPS pictures, copy our new images onto eBay's servers first and use those URLs.
+        $photoNotes = [];
         if ($epsHosted) {
             foreach ($newVariations as $i => $row) {
                 $hosted = [];
-                foreach (array_slice(array_values(array_unique($row['images'] ?? [])), 0, 12) as $url) {
-                    $eps = self::uploadPictureToEps($ctx, (string) $url);
+                $lastError = '';
+                $wanted = array_slice(array_values(array_unique($row['images'] ?? [])), 0, 12);
+                foreach ($wanted as $url) {
+                    $eps = self::uploadPictureToEps($ctx, (string) $url, $lastError);
                     if ($eps !== null) {
                         $hosted[] = $eps;
                     }
                 }
+                $photoNotes[] = $row['sku'].': '.count($hosted).' of '.count($wanted).' photo(s) copied to eBay'
+                    .(count($hosted) < count($wanted) && $lastError !== '' ? ' ('.$lastError.')' : '');
                 if ($hosted === []) {
-                    return ['success' => false, 'message' => 'Could not copy the Image Master photos of '.$row['sku'].' to eBay, so nothing was added. Try again.'];
+                    return ['success' => false, 'message' => 'Could not copy the Image Master photos of '.$row['sku'].' to eBay'
+                        .($lastError !== '' ? ': '.$lastError : '.')
+                        .' Nothing was added.'];
                 }
                 $newVariations[$i]['images'] = $hosted;
             }
@@ -810,7 +818,13 @@ class ListingManagerEbayTradingPublisher
             $data = json_decode(json_encode($xmlResp), true) ?: [];
             $ack = $data['Ack'] ?? 'Failure';
             if ($ack === 'Success' || $ack === 'Warning') {
-                return ['success' => true, 'message' => 'Added '.count($newVariations).' variation(s) to eBay item '.$itemId.'.'];
+                if ($photoNotes === []) {
+                    foreach ($newVariations as $row) {
+                        $photoNotes[] = $row['sku'].': '.count(array_slice(array_values(array_unique($row['images'] ?? [])), 0, 12)).' photo(s) sent';
+                    }
+                }
+
+                return ['success' => true, 'message' => 'Added '.count($newVariations).' variation(s) to eBay item '.$itemId.'. Photos — '.implode('; ', $photoNotes).'.'];
             }
 
             $errors = $data['Errors'] ?? [];
@@ -834,42 +848,134 @@ class ListingManagerEbayTradingPublisher
     }
 
     /**
-     * Copy an image URL onto eBay Picture Services; returns the eBay-hosted URL or null.
+     * Copy an image onto eBay Picture Services and return the eBay-hosted URL.
+     * The photo is downloaded here and sent as a file. Asking eBay to fetch a Shopify
+     * link itself fails, which is what blocked variation photos.
      *
      * @param  array<string, mixed>  $ctx
      */
-    private static function uploadPictureToEps(array $ctx, string $url): ?string
+    private static function uploadPictureToEps(array $ctx, string $url, string &$error = ''): ?string
     {
         $url = trim($url);
         if ($url === '') {
+            $error = 'Image Master photo URL is empty.';
+
             return null;
         }
-        try {
-            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
-            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
-            $xml->addChild('ExternalPictureURL', htmlspecialchars($url, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
-            $xml->addChild('PictureSet', 'Supersize');
-
-            $response = Http::timeout(90)
-                ->withHeaders(self::tradingHeaders($ctx, 'UploadSiteHostedPictures'))
-                ->withBody($xml->asXML(), 'text/xml')
-                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
-
-            libxml_use_internal_errors(true);
-            $xmlResp = simplexml_load_string($response->body());
-            $data = $xmlResp !== false ? (json_decode(json_encode($xmlResp), true) ?: []) : [];
-            $ack = $data['Ack'] ?? 'Failure';
-            $full = trim((string) ($data['SiteHostedPictureDetails']['FullURL'] ?? ''));
-            if (($ack === 'Success' || $ack === 'Warning') && $full !== '') {
-                return $full;
-            }
-            Log::warning(($ctx['label'] ?? 'eBay').' UploadSiteHostedPictures failed', [
-                'url' => $url,
-                'error' => $data['Errors']['LongMessage'] ?? ($data['Errors'][0]['LongMessage'] ?? ''),
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning(($ctx['label'] ?? 'eBay').' UploadSiteHostedPictures error: '.$e->getMessage(), ['url' => $url]);
+        if (preg_match('#ebayimg\.com|ebaystatic\.com#i', $url)) {
+            return $url;
         }
+
+        // eBay's Trading UploadSiteHostedPictures answers HTTP 404 for this account, so the picture
+        // goes through eBay's Media API first (it returns an i.ebayimg.com address).
+        $mediaError = '';
+        $media = self::uploadPictureViaMediaApi($ctx, $url, $mediaError);
+        if ($media !== null) {
+            return $media;
+        }
+
+        $result = EbayTradingReviseItem::uploadImageToEps(
+            (string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'),
+            (string) ($ctx['dev_id'] ?? ''),
+            (string) ($ctx['app_id'] ?? ''),
+            (string) ($ctx['cert_id'] ?? ''),
+            (string) ($ctx['token'] ?? ''),
+            $url,
+            'image'
+        );
+        if (! empty($result['success']) && trim((string) ($result['url'] ?? '')) !== '') {
+            return trim((string) $result['url']);
+        }
+
+        $fileError = trim((string) ($result['message'] ?? 'eBay did not accept the photo.'));
+
+        $error = 'Media API: '.$mediaError.' | Trading API: '.$fileError;
+        Log::warning(($ctx['label'] ?? 'eBay').' picture upload failed', [
+            'url' => $url,
+            'error' => $error,
+        ]);
+
+        return null;
+    }
+
+    /**
+     * eBay Media API: copy a picture onto eBay's servers (needs the sell.inventory OAuth scope).
+     * First asks eBay to fetch the link, then uploads the downloaded file.
+     *
+     * @param  array<string, mixed>  $ctx
+     */
+    private static function uploadPictureViaMediaApi(array $ctx, string $url, string &$error): ?string
+    {
+        $token = trim((string) ($ctx['token'] ?? ''));
+        if ($token === '') {
+            $error = 'no OAuth token.';
+
+            return null;
+        }
+        $base = 'https://apim.ebay.com/commerce/media/v1_beta/image';
+        $auth = ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json'];
+        $notes = [];
+
+        $read = static function ($response) use ($auth, $base): string {
+            $body = $response->json();
+            $found = is_array($body) ? trim((string) ($body['imageUrl'] ?? '')) : '';
+            if ($found !== '') {
+                return $found;
+            }
+            $location = trim((string) $response->header('Location'));
+            if ($location !== '') {
+                $get = Http::timeout(30)->withHeaders($auth)->get($location);
+                $data = $get->json();
+
+                return is_array($data) ? trim((string) ($data['imageUrl'] ?? '')) : '';
+            }
+
+            return '';
+        };
+
+        $summary = static function ($response): string {
+            $text = trim(preg_replace('/\s+/', ' ', strip_tags(substr((string) $response->body(), 0, 220))) ?? '');
+
+            return 'HTTP '.$response->status().($text !== '' ? ' '.$text : '');
+        };
+
+        try {
+            $response = Http::timeout(60)->withHeaders($auth)->asJson()
+                ->post($base.'/create_image_from_url', ['imageUrl' => $url]);
+            if ($response->successful()) {
+                $hosted = $read($response);
+                if ($hosted !== '') {
+                    return $hosted;
+                }
+            }
+            $notes[] = 'by link '.$summary($response);
+        } catch (\Throwable $e) {
+            $notes[] = 'by link '.$e->getMessage();
+        }
+
+        try {
+            $file = Http::timeout(30)->connectTimeout(10)->get($url);
+            if ($file->successful() && $file->body() !== '') {
+                $mime = strtolower(trim(explode(';', (string) $file->header('Content-Type'))[0]));
+                $ext = str_contains($mime, 'png') ? 'png' : 'jpg';
+                $response = Http::timeout(90)->withHeaders($auth)
+                    ->attach('image', $file->body(), 'photo.'.$ext)
+                    ->post($base.'/create_image_from_file');
+                if ($response->successful()) {
+                    $hosted = $read($response);
+                    if ($hosted !== '') {
+                        return $hosted;
+                    }
+                }
+                $notes[] = 'by file '.$summary($response);
+            } else {
+                $notes[] = 'photo download HTTP '.$file->status();
+            }
+        } catch (\Throwable $e) {
+            $notes[] = 'by file '.$e->getMessage();
+        }
+
+        $error = implode('; ', $notes);
 
         return null;
     }
