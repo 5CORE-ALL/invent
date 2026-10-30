@@ -1330,7 +1330,7 @@
             '<input type="text" class="form-control form-control-sm lp-parent-cat-input" value="' + escapeHtml(leaf || shown) + '" placeholder="Search a category…" autocomplete="off">' +
             '<div class="lp-parent-cat-results listing-publish-cat-results"></div>' +
             '</div>' +
-            '<small>Used only for this parent. Adding to an existing listing keeps that listing’s category.</small>' +
+            '<small>Used when you create a new parent. Adding to an existing listing keeps that listing’s category.</small>' +
             '</div>';
     }
 
@@ -1403,8 +1403,9 @@
     function syncParentCategoryVisibility(groupEl) {
         const cat = groupEl && groupEl.querySelector('.lp-parent-cat');
         if (!cat) return;
-        const pick = window.ListingParentPicker ? window.ListingParentPicker.read(groupEl) : null;
-        cat.hidden = !!(pick && pick.supported && pick.attach === 'existing');
+        // Always show it. Hiding it while "Add to an existing parent" was selected removed the
+        // only category field in this window, including after switching to "Create a new parent".
+        cat.hidden = false;
     }
 
     function mapParentCategory(raw) {
