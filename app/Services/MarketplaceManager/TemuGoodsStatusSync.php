@@ -103,9 +103,49 @@ class TemuGoodsStatusSync
             }
         }
 
+        // 4) The goods list does not always return Incomplete goods. SKUs Temu knows (SKU id) but that have no
+        //    live goods are asked about one by one, so an Incomplete product is flagged without a publish attempt.
+        $probed = 0;
+        $probeFound = 0;
+        try {
+            $candidates = [];
+            $metricIds = [];
+            foreach (\App\Models\TemuMetric::query()
+                ->whereNotNull('sku')->where('sku', '!=', '')
+                ->whereNotNull('sku_id')->where('sku_id', '!=', '')
+                ->where(function ($q) {
+                    $q->whereNull('goods_id')->orWhere('goods_id', '');
+                })
+                ->get(['sku', 'sku_id']) as $m) {
+                $k = self::key((string) $m->sku);
+                $known = $skus[$k]['status'] ?? null;
+                if ($k === '' || ! ctype_digit(trim((string) $m->sku_id)) || in_array($known, ['Active', 'Inactive', 'Incomplete', 'Draft', 'Deleted'], true)) {
+                    continue;
+                }
+                $candidates[] = (string) $m->sku;
+                $metricIds[$k] = trim((string) $m->sku_id);
+            }
+            $candidates = array_slice($candidates, 0, 400);
+            $probed = count($candidates);
+            if ($candidates !== []) {
+                $incomplete = app(TemuListingPublishService::class)->probeIncompleteSkus($candidates, 100);
+                foreach ($incomplete as $sn => $gid) {
+                    $k = self::key($sn);
+                    $skus[$k] = ['goods_id' => (string) $gid, 'sku_id' => $metricIds[$k] ?? '', 'status' => 'Incomplete', 'raw' => ['source' => 'sku check'], 'rank' => self::RANK['Incomplete']];
+                    self::rememberIncomplete($sn, (string) $gid);
+                    $probeFound++;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TemuGoodsStatusSync: incomplete probe failed', ['error' => $e->getMessage()]);
+        }
+
         $counts = [];
         foreach ($goods as $info) {
             $counts[$info['status']] = ($counts[$info['status']] ?? 0) + 1;
+        }
+        if ($probeFound > 0) {
+            $counts['Incomplete (by SKU check)'] = $probeFound;
         }
         try {
             $this->syncLegacyCaches($goods);
