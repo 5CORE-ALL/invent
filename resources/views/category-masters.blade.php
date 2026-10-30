@@ -29,7 +29,8 @@
     .cm-toolbar .cm-shopify-cat { width: 330px; flex: 0 0 330px; }
     .cm-toolbar .cm-chan { display: inline-flex; align-items: center; gap: 4px; }
     .cm-toolbar .cm-chan-name { font-weight: 700; font-size: 0.8rem; color: #1a3d7c; background: #eef3fb; }
-    .cm-toolbar .cm-blank-count { min-width: 28px; font-size: 0.75rem; }
+    .cm-toolbar .cm-blank-count { min-width: 28px; font-size: 0.75rem; cursor: pointer; user-select: none; }
+    .cm-toolbar .cm-blank-count.cm-blank-on { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626; }
     #cm-table.tabulator { width: 100%; }
     #cm-table .tabulator-header {
         background: linear-gradient(180deg, #eef3fb 0%, #e3ebf8 100%);
@@ -331,6 +332,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function rowPasses(data) {
+        return rowMatches(data, null);
+    }
+
+    // Does the row pass every filter? A column named in skipField is not tested, so its red
+    // blank count can be worked out from the rows that the other filters leave.
+    function rowMatches(data, skipField) {
         const parentQ = (el('cmParentSearch').value || '').trim().toLowerCase();
         const skuQ = (el('cmSkuSearch').value || '').trim().toLowerCase();
         const type = el('cmRowType').value;
@@ -339,20 +346,27 @@ document.addEventListener('DOMContentLoaded', function () {
         if (type === 'sku' && data.is_parent) return false;
         if (parentQ && !String(data.parent || '').toLowerCase().includes(parentQ)) return false;
         if (skuQ && !String(data.sku || '').toLowerCase().includes(skuQ)) return false;
+
         const shopifyCat = el('cmShopifyCat').value;
-        if (shopifyCat === BLANK_CATEGORY) {
-            if (cleanValue(data[SHOPIFY_FIELD]) !== '') return false;
-        } else if (shopifyCat !== '' && cleanValue(data[SHOPIFY_FIELD]).toLowerCase() !== shopifyCat.toLowerCase()) {
-            return false;
+        if (skipField !== SHOPIFY_FIELD && shopifyCat !== '') {
+            if (shopifyCat === BLANK_CATEGORY) {
+                // A parent row is blank on every channel by design: never part of a blank search.
+                if (data.is_parent || cleanValue(data[SHOPIFY_FIELD]) !== '') return false;
+            } else if (cleanValue(data[SHOPIFY_FIELD]).toLowerCase() !== shopifyCat.toLowerCase()) {
+                return false;
+            }
         }
+
         // Each channel has its own search box; every filled box must match its own column.
         const boxes = channelSearchBoxes();
         for (let i = 0; i < boxes.length; i++) {
+            const field = boxes[i].dataset.field;
+            if (field === skipField) continue;
             const q = (boxes[i].value || '').trim().toLowerCase();
             if (!q) continue;
-            const value = cleanValue(data[boxes[i].dataset.field]).toLowerCase();
+            const value = cleanValue(data[field]).toLowerCase();
             if (q === BLANK_LABEL.toLowerCase()) {
-                if (value !== '') return false;
+                if (data.is_parent || value !== '') return false;
             } else if (!value.includes(q)) {
                 return false;
             }
@@ -360,20 +374,44 @@ document.addEventListener('DOMContentLoaded', function () {
         return true;
     }
 
-    // Red count beside each category box: rows whose category is blank.
+    function blankFilterOn(field) {
+        if (field === SHOPIFY_FIELD) return el('cmShopifyCat').value === BLANK_CATEGORY;
+        const box = channelSearchBoxes().find(function (b) { return b.dataset.field === field; });
+        return !!box && (box.value || '').trim().toLowerCase() === BLANK_LABEL.toLowerCase();
+    }
+
+    // Red count beside each category box: SKU rows with a blank category in that channel, among the
+    // rows the other filters leave. Parent rows are never counted. It follows every filter change.
     function updateBlankCounts() {
         if (!table) return;
-        const counts = {};
-        document.querySelectorAll('.cm-blank-count').forEach(function (badge) { counts[badge.dataset.field] = 0; });
-        table.getData().forEach(function (row) {
-            Object.keys(counts).forEach(function (field) {
-                if (cleanValue(row[field]) === '') counts[field]++;
-            });
-        });
+        const rows = table.getData();
         document.querySelectorAll('.cm-blank-count').forEach(function (badge) {
-            badge.textContent = (counts[badge.dataset.field] || 0).toLocaleString();
+            const field = badge.dataset.field;
+            let n = 0;
+            rows.forEach(function (row) {
+                if (row.is_parent || cleanValue(row[field]) !== '') return;
+                if (rowMatches(row, field)) n++;
+            });
+            badge.textContent = n.toLocaleString();
+            badge.classList.toggle('cm-blank-on', blankFilterOn(field));
         });
     }
+
+    // Click a red count: show only the blank rows of that channel. Click again to undo.
+    document.querySelectorAll('.cm-blank-count').forEach(function (badge) {
+        badge.title = 'SKU rows with a blank category here (parent rows not counted). Click to show only those rows; click again to undo.';
+        badge.addEventListener('click', function () {
+            const field = badge.dataset.field;
+            const turnOn = !blankFilterOn(field);
+            if (field === SHOPIFY_FIELD) {
+                el('cmShopifyCat').value = turnOn ? BLANK_CATEGORY : '';
+            } else {
+                const box = channelSearchBoxes().find(function (b) { return b.dataset.field === field; });
+                if (box) box.value = turnOn ? BLANK_LABEL : '';
+            }
+            applyFilters();
+        });
+    });
 
     function channelSearchBoxes() {
         return Array.from(document.querySelectorAll('.cm-channel-search'));
@@ -434,6 +472,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!table) return;
         table.setFilter(rowPasses);
         updateCount();
+        updateBlankCounts();
         paintClearBadge();
     }
 
