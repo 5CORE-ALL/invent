@@ -64,7 +64,7 @@
             border: 1px solid #fde68a;
             border-radius: 6px;
             padding: 6px 8px 8px;
-            min-width: 0;
+            min-width: min-content;
         }
         .adm-panel-title {
             font-size: 11px;
@@ -75,9 +75,9 @@
             margin-bottom: 5px;
         }
         .adm-panel-grid { display: grid; gap: 4px; }
-        .adm-panel-grid.cols-1 { grid-template-columns: minmax(130px, 1fr); }
-        .adm-panel-grid.cols-2 { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
-        .adm-panel-grid.cols-4 { grid-template-columns: repeat(4, minmax(104px, 1fr)); }
+        .adm-panel-grid.cols-1 { grid-template-columns: minmax(max-content, 1fr); }
+        .adm-panel-grid.cols-2 { grid-template-columns: repeat(2, minmax(max-content, 1fr)); }
+        .adm-panel-grid.cols-4 { grid-template-columns: repeat(4, minmax(max-content, 1fr)); }
         .adm-panel--l30 { flex: 2 1 460px; }
         .adm-panel--projected { flex: 1 1 250px; }
         .adm-panel--view { flex: 1 1 250px; }
@@ -91,8 +91,7 @@
             font-weight: 700;
             padding: 4px 8px;
             border-radius: 5px;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .adm-panel .adm-stat-badge.adm-good { background: #22c55e; color: #fff; }
         .adm-panel .adm-stat-badge.adm-bad  { background: #ef4444; color: #fff; }
