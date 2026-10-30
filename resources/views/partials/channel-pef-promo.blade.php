@@ -3496,7 +3496,7 @@
             // Same list as NegativeSnroiPushGuard::excludeShip. These pages' SNROI has no Ship, so a row
             // with a Ship value was judged negative here and its push was silently dropped.
             const noShip = ['wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace',
-                'shopify_b2b', 'mercari_woship', 'depop', 'instagram', 'alibaba'].indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
+                'shopify_b2b', 'mercari_woship', 'depop', 'instagram', 'alibaba', 'vinted'].indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
             const ship = noShip ? 0 : ((typeof chPromoShipCost === 'function')
                 ? (Number(chPromoShipCost(d)) || 0)
                 : (parseFloat(d && (d.Ship_productmaster != null ? d.Ship_productmaster : d.ship)) || 0));
@@ -5100,6 +5100,7 @@
         }
         function chPromoShipCost(d) {
             if (CHANNEL_PROMO_CHANNEL === 'depop'
+                || CHANNEL_PROMO_CHANNEL === 'vinted'
                 || CHANNEL_PROMO_CHANNEL === 'instagram') return 0;
             if (chPromoIsTemuPromoChannel()) {
                 const temuShip = Number(d && (d.temu_ship != null ? d.temu_ship : d.temuShip));
@@ -5445,6 +5446,7 @@
                 || CHANNEL_PROMO_CHANNEL === 'fb_marketplace'
                 || CHANNEL_PROMO_CHANNEL === 'mercari_woship'
                 || CHANNEL_PROMO_CHANNEL === 'depop'
+                || CHANNEL_PROMO_CHANNEL === 'vinted'
                 || CHANNEL_PROMO_CHANNEL === 'instagram')
                 ? 0
                 : chPromoShipCost(d);

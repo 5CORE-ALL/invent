@@ -110,12 +110,12 @@
                             <span class="badge bg-primary fs-6 p-2" id="dp-total-sales-badge"
                                 title="Σ Vinted sheet Sale AMT (item price × qty) in last 30 sale days">Sales: $0</span>
                             <span class="badge bg-info fs-6 p-2" id="dp-avg-gpft-badge"
-                                title="L30 GPFT % = PFT ÷ Sales. PFT = (sheet sales × margin) − ((LP + ship) × V L30). Price $0 is skipped (not −LP − ship).">GPFT: 0%</span>
+                                title="L30 GPFT % = PFT ÷ Sales. PFT = (sheet sales × margin) − (LP × V L30). Price $0 is skipped (not −LP).">GPFT: 0%</span>
                             <span class="badge bg-success fs-6 p-2" id="dp-total-profit-badge"
-                                title="PFT = Σ ((Vinted sheet sales × marketplace margin) − (LP + ship) × V L30). Unpriced SKUs do not subtract LP or ship.">PFT: $0</span>
+                                title="PFT = Σ ((Vinted sheet sales × marketplace margin) − LP × V L30). Unpriced SKUs do not subtract LP.">PFT: $0</span>
                             <span class="badge fs-6 p-2" id="dp-avg-roi-badge"
                                 style="background-color:#6f42c1;color:#fff;"
-                                title="L30 GROI % = PFT ÷ COGS. PFT subtracts ship. COGS = Σ (LP × V L30) only on SKUs with sheet sales.">GROI: 0%</span>
+                                title="L30 GROI % = PFT ÷ COGS. COGS = Σ (LP × V L30) only on SKUs with sheet sales.">GROI: 0%</span>
                             @include('partials.analytics-dil-badge', ['dilChannel' => 'vinted'])
                             <span class="badge bg-success fs-6 p-2 dp-filter-badge" id="dp-sold-pct-badge"
                                 data-filter="more_sold" style="cursor:pointer;"
@@ -228,7 +228,7 @@
                         </div>
 
                         <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
-                            title="Target SGROI% — S PRC = (LP × (1 + Target%/100) + ship) / margin.">
+                            title="Target SGROI% — S PRC = (LP × (1 + Target%/100)) / margin.">
                             <label for="dp-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                                 <span aria-hidden="true">🎯</span> SGROI:
                             </label>
@@ -239,7 +239,7 @@
                             </button>
                         </div>
                         <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
-                            title="Target GPFT% — S PRC = (LP + ship) / (margin − Target GPFT%/100).">
+                            title="Target GPFT% — S PRC = LP / (margin − Target GPFT%/100).">
                             <label for="dp-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                                 <span aria-hidden="true">🎯</span> GPFT%:
                             </label>
@@ -343,19 +343,19 @@
                                 </td>
                             </tr>
                             <tr>
-                                <th title="SGPFT% = ((price × margin − ship − LP) / price) × 100.">SGPFT%</th>
+                                <th title="SGPFT% = ((price × margin − LP) / price) × 100.">SGPFT%</th>
                                 <td class="vn-op-metric-cell" id="vnOpSgpft">-</td>
                             </tr>
                             <tr>
-                                <th title="SGROI% = ((price × margin − LP − ship) / LP) × 100.">SGROI%</th>
+                                <th title="SGROI% = ((price × margin − LP) / LP) × 100.">SGROI%</th>
                                 <td class="vn-op-metric-cell" id="vnOpSgroi">-</td>
                             </tr>
                             <tr>
-                                <th title="SPFT% = SGPFT% − Ads%. SGPFT subtracts ship.">SPFT%</th>
+                                <th title="SPFT% = SGPFT% − Ads%.">SPFT%</th>
                                 <td class="vn-op-metric-cell" id="vnOpSpft">-</td>
                             </tr>
                             <tr>
-                                <th title="SNROI% = ((price × margin − LP − ship − price × Ads%) / LP) × 100.">SNROI%</th>
+                                <th title="SNROI% = ((price × margin − LP − price × Ads%) / LP) × 100.">SNROI%</th>
                                 <td class="vn-op-metric-cell" id="vnOpSnroi">-</td>
                             </tr>
                         </tbody>
@@ -544,17 +544,8 @@
     }
     window.dpHasBlueTriangle = dpHasBlueTriangle;
     function dpShip(data) {
-        if (typeof chPromoShipCost === 'function') {
-            const n = Number(chPromoShipCost(data));
-            if (isFinite(n) && n >= 0) return n;
-        }
-        const raw = data && (
-            data.Ship_productmaster != null && data.Ship_productmaster !== ''
-                ? data.Ship_productmaster
-                : data.ship
-        );
-        const n = parseFloat(raw);
-        return (isFinite(n) && n > 0) ? n : 0;
+        // Ship is not used on Vinted analytics.
+        return 0;
     }
     function dpSpriceMetrics(data, spriceOpt) {
         const sprice = spriceOpt != null ? Number(spriceOpt) : dpRowSprice(data);
@@ -725,8 +716,8 @@
             const lp = parseFloat(row.lp) || 0;
             const ship = dpShip(row);
             const margin = parseFloat(row._margin) || DP_MARGIN;
-            // L30 PFT from the Vinted sheet: (sales × margin) − ((LP + ship) × qty).
-            // Never do (Price $0 × margin) − LP − ship — that made GROI −100%.
+            // L30 PFT from the Vinted sheet: (sales × margin) − (LP × qty).
+            // Never do (Price $0 × margin) − LP — that made GROI −100%.
             if (sales > 0 && al30 > 0) {
                 totalSales += sales;
                 totalProfit += (sales * margin) - ((lp + ship) * al30);
@@ -925,7 +916,7 @@
                     sorter: "number",
                     hozAlign: "center",
                     width: 55,
-                    headerTooltip: "GPFT = ((Price × margin) − LP − ship) ÷ Price.",
+                    headerTooltip: "GPFT = ((Price × margin) − LP) ÷ Price.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         const v = parseFloat(cell.getValue());
@@ -953,7 +944,7 @@
                     sorter: "number",
                     hozAlign: "center",
                     width: 55,
-                    headerTooltip: "GROI = ((Price × margin) − LP − ship) ÷ LP. Margin from marketplace Vinted.",
+                    headerTooltip: "GROI = ((Price × margin) − LP) ÷ LP. Margin from marketplace Vinted.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -980,7 +971,7 @@
                     hozAlign: "center",
                     visible: false,
                     width: 70,
-                    headerTooltip: "Unit profit = (Price × margin) − LP − ship.",
+                    headerTooltip: "Unit profit = (Price × margin) − LP.",
                     formatter: function(cell) {
                         const v = parseFloat(cell.getValue()) || 0;
                         const color = v >= 0 ? '#28a745' : '#dc3545';
@@ -1005,16 +996,6 @@
                     visible: false,
                     formatter: function(cell) { return money(cell.getValue()); }
                 },
-                {
-                    title: "Ship",
-                    field: "Ship_productmaster",
-                    sorter: "number",
-                    hozAlign: "right",
-                    visible: false,
-                    width: 70,
-                    headerTooltip: "Product master ship. Subtracted in GPFT, GROI, PFT, S PRC, and Offer Sprice.",
-                    formatter: function(cell) { return money(cell.getValue()); }
-                },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "SPRICE",
@@ -1022,7 +1003,7 @@
                     sorter: "number",
                     hozAlign: "center",
                     width: 88,
-                    headerTooltip: "S PRC. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP. SGROI/SGPFT subtract ship.",
+                    headerTooltip: "S PRC. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP. Final S PRC, no ship.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -1060,7 +1041,7 @@
                     width: 50,
                     headerSort: true,
                     sorter: "number",
-                    headerTooltip: "Offer Sprice calculator — separate from S PRC. Click to view Offer Sprice and SGPFT / SGROI / SPFT / SNROI. Ship is subtracted.",
+                    headerTooltip: "Offer Sprice calculator — separate from S PRC. Click to view Offer Sprice and SGPFT / SGROI / SPFT / SNROI. Ship is not used.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '';
@@ -1079,7 +1060,7 @@
                     sorter: "number",
                     hozAlign: "center",
                     width: 55,
-                    headerTooltip: "SGPFT = ((S PRC × margin) − ship − LP) ÷ S PRC.",
+                    headerTooltip: "SGPFT = ((S PRC × margin) − LP) ÷ S PRC.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -1105,7 +1086,7 @@
                     sorter: "number",
                     hozAlign: "center",
                     width: 55,
-                    headerTooltip: "SNROI = ((S PRC × margin) − LP − ship) ÷ LP.",
+                    headerTooltip: "SNROI = ((S PRC × margin) − LP) ÷ LP.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -1117,7 +1098,7 @@
                     field: "SPRC_DIL",
                     hozAlign: "center",
                     headerSort: true,
-                    headerTooltip: "S PRC from OV Dil % → Target SNROI. Dil = OV L30 ÷ INV, including when V L30 = 0. Dil = 0 uses the 0–0 slab. Formula: (LP × (1 + SNROI%/100) + ship) / margin.",
+                    headerTooltip: "S PRC from OV Dil % → Target SNROI. Dil = OV L30 ÷ INV, including when V L30 = 0. Dil = 0 uses the 0–0 slab. Formula: (LP × (1 + SNROI%/100)) / margin.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (dpIsParentRow(rowData) || typeof ebayDilGroiMetaForRow !== 'function') return '';

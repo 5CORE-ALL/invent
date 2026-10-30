@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Vinted Analytics — same profit formula as /vinted pricing and other marketplaces.
- * unit profit = (price × margin) − LP − ship. Ship is product_master Values.ship.
+ * unit profit = (price × margin) − LP. Ship is not used.
  * Overlay: vinted_pricing. L30/sales from /vinted/sheet (vinted_sales_data).
  */
 class VintedAnalyticsController extends DepopStyleAnalyticsController
@@ -52,7 +52,8 @@ class VintedAnalyticsController extends DepopStyleAnalyticsController
 
     protected static function shipCostForProfit($pm): float
     {
-        return static::extractShip($pm);
+        // Ship is not used on /vinted/analytics — all prices and profit are shown without it.
+        return 0.0;
     }
 
     public function pricingView()
@@ -326,7 +327,7 @@ class VintedAnalyticsController extends DepopStyleAnalyticsController
             $key = strtoupper(trim((string) ($row['sku'] ?? '')));
             $opSprice = $fromStatus[$key] ?? $fromView[$key] ?? null;
             $lp = (float) ($row['lp'] ?? 0);
-            $ship = (float) ($row['ship'] ?? $row['Ship_productmaster'] ?? 0);
+            $ship = 0.0;
             $margin = (float) ($row['_margin'] ?? static::marginFactor());
             $metrics = static::opProfitMetrics($opSprice, $lp, $margin, 0.0, $ship);
             $row['op_sprice'] = $opSprice;

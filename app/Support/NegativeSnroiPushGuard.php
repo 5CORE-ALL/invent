@@ -123,7 +123,7 @@ class NegativeSnroiPushGuard
     {
         return in_array($channel, [
             'wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace',
-            'shopify_b2b', 'mercari_woship', 'depop', 'instagram', 'alibaba',
+            'shopify_b2b', 'mercari_woship', 'depop', 'instagram', 'alibaba', 'vinted',
         ], true);
     }
 
