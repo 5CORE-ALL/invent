@@ -5,6 +5,7 @@ namespace App\Support\Marketplace;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
+use App\Services\Support\EbayTradingReviseItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -731,14 +732,17 @@ class ListingManagerEbayTradingPublisher
         if ($epsHosted) {
             foreach ($newVariations as $i => $row) {
                 $hosted = [];
+                $lastError = '';
                 foreach (array_slice(array_values(array_unique($row['images'] ?? [])), 0, 12) as $url) {
-                    $eps = self::uploadPictureToEps($ctx, (string) $url);
+                    $eps = self::uploadPictureToEps($ctx, (string) $url, $lastError);
                     if ($eps !== null) {
                         $hosted[] = $eps;
                     }
                 }
                 if ($hosted === []) {
-                    return ['success' => false, 'message' => 'Could not copy the Image Master photos of '.$row['sku'].' to eBay, so nothing was added. Try again.'];
+                    return ['success' => false, 'message' => 'Could not copy the Image Master photos of '.$row['sku'].' to eBay'
+                        .($lastError !== '' ? ': '.$lastError : '.')
+                        .' Nothing was added.'];
                 }
                 $newVariations[$i]['images'] = $hosted;
             }
@@ -834,42 +838,42 @@ class ListingManagerEbayTradingPublisher
     }
 
     /**
-     * Copy an image URL onto eBay Picture Services; returns the eBay-hosted URL or null.
+     * Copy an image onto eBay Picture Services and return the eBay-hosted URL.
+     * The photo is downloaded here and sent as a file. Asking eBay to fetch a Shopify
+     * link itself fails, which is what blocked variation photos.
      *
      * @param  array<string, mixed>  $ctx
      */
-    private static function uploadPictureToEps(array $ctx, string $url): ?string
+    private static function uploadPictureToEps(array $ctx, string $url, string &$error = ''): ?string
     {
         $url = trim($url);
         if ($url === '') {
+            $error = 'Image Master photo URL is empty.';
+
             return null;
         }
-        try {
-            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
-            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
-            $xml->addChild('ExternalPictureURL', htmlspecialchars($url, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
-            $xml->addChild('PictureSet', 'Supersize');
-
-            $response = Http::timeout(90)
-                ->withHeaders(self::tradingHeaders($ctx, 'UploadSiteHostedPictures'))
-                ->withBody($xml->asXML(), 'text/xml')
-                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
-
-            libxml_use_internal_errors(true);
-            $xmlResp = simplexml_load_string($response->body());
-            $data = $xmlResp !== false ? (json_decode(json_encode($xmlResp), true) ?: []) : [];
-            $ack = $data['Ack'] ?? 'Failure';
-            $full = trim((string) ($data['SiteHostedPictureDetails']['FullURL'] ?? ''));
-            if (($ack === 'Success' || $ack === 'Warning') && $full !== '') {
-                return $full;
-            }
-            Log::warning(($ctx['label'] ?? 'eBay').' UploadSiteHostedPictures failed', [
-                'url' => $url,
-                'error' => $data['Errors']['LongMessage'] ?? ($data['Errors'][0]['LongMessage'] ?? ''),
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning(($ctx['label'] ?? 'eBay').' UploadSiteHostedPictures error: '.$e->getMessage(), ['url' => $url]);
+        if (preg_match('#ebayimg\.com|ebaystatic\.com#i', $url)) {
+            return $url;
         }
+
+        $result = EbayTradingReviseItem::uploadImageToEps(
+            (string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'),
+            (string) ($ctx['dev_id'] ?? ''),
+            (string) ($ctx['app_id'] ?? ''),
+            (string) ($ctx['cert_id'] ?? ''),
+            (string) ($ctx['token'] ?? ''),
+            $url,
+            'image'
+        );
+        if (! empty($result['success']) && trim((string) ($result['url'] ?? '')) !== '') {
+            return trim((string) $result['url']);
+        }
+
+        $error = trim((string) ($result['message'] ?? 'eBay did not accept the photo.'));
+        Log::warning(($ctx['label'] ?? 'eBay').' UploadSiteHostedPictures failed', [
+            'url' => $url,
+            'error' => $error,
+        ]);
 
         return null;
     }
