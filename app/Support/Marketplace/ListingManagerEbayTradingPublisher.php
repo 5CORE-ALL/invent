@@ -869,7 +869,40 @@ class ListingManagerEbayTradingPublisher
             return trim((string) $result['url']);
         }
 
-        $error = trim((string) ($result['message'] ?? 'eBay did not accept the photo.'));
+        $fileError = trim((string) ($result['message'] ?? 'eBay did not accept the photo.'));
+
+        // Second try: let eBay fetch the link itself.
+        $linkError = '';
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('ExternalPictureURL', htmlspecialchars($url, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            $xml->addChild('PictureSet', 'Supersize');
+
+            $response = Http::timeout(90)
+                ->withHeaders(self::tradingHeaders($ctx, 'UploadSiteHostedPictures'))
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
+
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($response->body());
+            $data = $xmlResp !== false ? (json_decode(json_encode($xmlResp), true) ?: []) : [];
+            $ack = $data['Ack'] ?? 'Failure';
+            $full = trim((string) ($data['SiteHostedPictureDetails']['FullURL'] ?? ''));
+            if (($ack === 'Success' || $ack === 'Warning') && $full !== '') {
+                return $full;
+            }
+            $errors = $data['Errors'] ?? [];
+            $first = isset($errors['LongMessage']) || isset($errors['ShortMessage']) ? $errors : ($errors[0] ?? []);
+            $linkError = $xmlResp === false
+                ? 'HTTP '.$response->status().' '.trim(preg_replace('/\s+/', ' ', strip_tags(substr($response->body(), 0, 200))) ?? '')
+                : trim((string) ($first['LongMessage'] ?? $first['ShortMessage'] ?? 'no picture URL returned'));
+        } catch (\Throwable $e) {
+            $linkError = $e->getMessage();
+        }
+
+        $error = $fileError.' | By link: '.$linkError;
         Log::warning(($ctx['label'] ?? 'eBay').' UploadSiteHostedPictures failed', [
             'url' => $url,
             'error' => $error,

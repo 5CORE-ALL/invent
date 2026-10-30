@@ -214,7 +214,11 @@ final class EbayTradingReviseItem
             libxml_use_internal_errors(true);
             $xmlResp = simplexml_load_string($respBody);
             if ($xmlResp === false) {
-                return ['success' => false, 'message' => 'Invalid EPS upload response: '.substr($respBody, 0, 200)];
+                $host = (string) (parse_url($endpoint, PHP_URL_HOST) ?? $endpoint);
+                $detail = trim(preg_replace('/\s+/', ' ', strip_tags(substr($respBody, 0, 300))) ?? '');
+
+                return ['success' => false, 'message' => 'Invalid EPS upload response (HTTP '.$response->status().' from '.$host
+                    .', '.strlen($imageData).' bytes sent as '.$contentType.'): '.($detail !== '' ? $detail : 'empty reply')];
             }
 
             $arr  = json_decode(json_encode($xmlResp), true);
