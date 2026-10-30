@@ -1333,5 +1333,7 @@ return [
         'email' => env('GOOGLE_SHOPPING_ALERT_EMAIL', 'software5@5core.com'),
         'whatsapp_to' => array_filter(array_map('trim', explode(',', (string) env('GOOGLE_SHOPPING_ALERT_WHATSAPP_TO', '')))),
         'cooldown_hours' => (int) env('GOOGLE_SHOPPING_ALERT_COOLDOWN_HOURS', 24),
+        // Approved Gupshup template (3 variables: count, summary, link). Empty = plain text (24-hour session only).
+        'whatsapp_template_id' => env('GOOGLE_SHOPPING_ALERT_WHATSAPP_TEMPLATE_ID', ''),
     ],
 ];

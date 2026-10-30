@@ -107,7 +107,7 @@ class GoogleShoppingMismatchAlertService
 
         [$body, $included] = $this->buildBody($fresh, count($issues));
 
-        $delivered = $this->deliver($body, $result);
+        $delivered = $this->deliver($body, $included, $result);
         if (! $delivered) {
             return $result; // nothing reached anyone: keep the issues "new" so the next run tries again
         }
@@ -157,7 +157,7 @@ class GoogleShoppingMismatchAlertService
     /**
      * @param  array{found: int, new: int, sent: int, chat: bool, whatsapp: bool}  $result
      */
-    private function deliver(string $body, array &$result): bool
+    private function deliver(string $body, array $included, array &$result): bool
     {
         if (isset($this->hooks['send'])) {
             $out = ($this->hooks['send'])($body);
@@ -196,6 +196,9 @@ class GoogleShoppingMismatchAlertService
             Log::warning('Google Shopping mismatch alert: no WhatsApp number (set GOOGLE_SHOPPING_ALERT_WHATSAPP_TO or users.phone).');
         }
 
+        // Plain text only reaches a phone that messaged the business number in the last 24 hours.
+        // With an approved template id configured, use the template (delivers any time).
+        $templateId = trim((string) config('services.google_shopping_alerts.whatsapp_template_id', ''));
         $wa = app(WhatsAppService::class);
         foreach ($phones as $phone) {
             $clean = WhatsAppService::cleanPhone($phone);
@@ -203,7 +206,10 @@ class GoogleShoppingMismatchAlertService
                 continue;
             }
             try {
-                if ($wa->sendText($clean, $body)) {
+                $ok = $templateId !== ''
+                    ? $wa->sendTemplate($clean, $templateId, self::templateParams($included))
+                    : $wa->sendText($clean, $body);
+                if ($ok) {
                     $result['whatsapp'] = true;
                 }
             } catch (Throwable $e) {
@@ -212,6 +218,27 @@ class GoogleShoppingMismatchAlertService
         }
 
         return $result['chat'] || $result['whatsapp'];
+    }
+
+    /**
+     * WhatsApp template variables (no line breaks allowed): {{1}} issue count, {{2}} one-line summary, {{3}} page link.
+     *
+     * @param  list<array{key: string, cid: string, name: string, kind: string, label: string, text: string}>  $included
+     * @return list<string>
+     */
+    public static function templateParams(array $included): array
+    {
+        $parts = [];
+        foreach ($included as $i) {
+            $parts[] = $i['name'].' — '.$i['label'].' — '.$i['text'];
+        }
+        $summary = trim((string) preg_replace('/\s+/', ' ', implode(' | ', $parts)));
+
+        return [
+            (string) count($included),
+            mb_strimwidth($summary, 0, 700, '…'),
+            url('/google/shopping/google-shopping'),
+        ];
     }
 
     /**

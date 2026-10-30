@@ -141,6 +141,21 @@ class GoogleShoppingMismatchAlertServiceTest extends TestCase
         $this->assertLessThanOrEqual(60 - $one['sent'], $two['sent']);
     }
 
+    public function test_template_params_are_single_line(): void
+    {
+        $issues = $this->service()->findIssues(
+            ['9' => ['sbid' => null, 'sbgt' => 0, 'name' => 'PARENT 18 FR', 'inventory' => 0]],
+            ['9' => ['live_bgt' => 5]],
+            fn () => false
+        );
+        $params = GoogleShoppingMismatchAlertService::templateParams($issues);
+
+        $this->assertSame('1', $params[0]);
+        $this->assertStringNotContainsString("\n", $params[1]);
+        $this->assertStringContainsString('PARENT 18 FR', $params[1]);
+        $this->assertStringContainsString('/google/shopping/google-shopping', $params[2]);
+    }
+
     public function test_pull_failure_is_one_alert(): void
     {
         $svc = $this->service();
