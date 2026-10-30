@@ -42,18 +42,31 @@
         var title = String(p.title || '').trim();
         var count = Number(p.sku_count || (p.skus || []).length || 0);
         var text = 'Parent ' + (parent || '—') + ' · ID ' + p.id + ' · ' + count + ' variation(s)' + (title ? ' · ' + title : '');
-        var tip = (title ? title + '\n' : '') + 'SKUs: ' + (p.skus || []).join(', ');
+        var tip = ((title ? title + ' — ' : '') + 'SKUs: ' + (p.skus || []).join(', ')).replace(/\s+/g, ' ');
         return '<option value="' + esc(p.id) + '" data-parent-name="' + esc(parent) + '" title="' + esc(tip) + '"' + (selected ? ' selected' : '') + '>' + esc(text) + '</option>';
     }
 
-    // A list box (select size>1) paints its first row as highlighted while selectedIndex
-    // stays -1 and .value stays empty. That happens here because the list is parsed inside
-    // a hidden panel, so the selected attribute never sticks. Read the option element itself.
+    // The list box paints a row blue while selectedIndex stays -1 and .value stays empty.
+    // The id is also written on the picker itself, and recovered from the row text if needed.
+    function optionId(opt) {
+        if (!opt) return '';
+        var v = String(opt.getAttribute('value') || opt.value || '').trim();
+        if (v) return v;
+        var m = String(opt.textContent || '').match(/ID\s+([0-9A-Za-z_-]+)/);
+        return m ? m[1] : '';
+    }
+
+    function rememberChoice(select, id, parent) {
+        var box = select && select.closest ? select.closest('.lp-parent') : null;
+        if (!box) return;
+        box.setAttribute('data-chosen-id', id || '');
+        box.setAttribute('data-chosen-parent', parent || '');
+    }
+
     function chosenExisting(select, parentName) {
         if (!select || !select.options || !select.options.length) return { id: '', parent: '' };
         var idx = select.selectedIndex;
-        var current = idx >= 0 && select.options[idx] ? String(select.options[idx].value || '').trim() : '';
-        if (!current) {
+        if (idx < 0 || !optionId(select.options[idx])) {
             idx = -1;
             if (select.options.length === 1) {
                 idx = 0;
@@ -66,16 +79,16 @@
                     }
                 }
             }
-            if (idx >= 0) {
-                select.options[idx].selected = true;
-                select.selectedIndex = idx;
-            }
         }
         if (idx < 0 || !select.options[idx]) return { id: '', parent: '' };
-        return {
-            id: String(select.options[idx].value || '').trim(),
+        select.options[idx].selected = true;
+        try { select.selectedIndex = idx; } catch (e) {}
+        var chosen = {
+            id: optionId(select.options[idx]),
             parent: String(select.options[idx].getAttribute('data-parent-name') || '').trim()
         };
+        rememberChoice(select, chosen.id, chosen.parent);
+        return chosen;
     }
 
     /**
@@ -96,14 +109,22 @@
         var name = 'lp-parent-' + gi;
         var options = '';
         var only = existing.length === 1;
+        var presetId = '';
+        var presetParent = '';
         existing.forEach(function (p) {
-            var parent = String(p.parent || parentName || '').trim().toLowerCase();
-            var match = parent !== '' && parent === parentName.toLowerCase();
-            options += optionHtml(p, parentName, only || match);
+            var parent = String(p.parent || parentName || '').trim();
+            var match = parent !== '' && parent.toLowerCase() === parentName.toLowerCase();
+            var picked = only || match;
+            if (picked && !presetId) {
+                presetId = String(p.id || '').trim();
+                presetParent = parent || parentName;
+            }
+            options += optionHtml(p, parentName, picked);
         });
 
         return '<div class="lp-parent" data-channel="' + esc(opts.channel || '') + '" data-group-parent="' + esc(parentName) + '"' +
-            ' data-attach-supported="' + (opts.attachSupported ? '1' : '0') + '" data-required="' + (required ? '1' : '0') + '">' +
+            ' data-attach-supported="' + (opts.attachSupported ? '1' : '0') + '" data-required="' + (required ? '1' : '0') + '"' +
+            ' data-chosen-id="' + esc(presetId) + '" data-chosen-parent="' + esc(presetParent) + '">' +
             '<div class="lp-parent-title">Parent listing on ' + esc(opts.label || 'the marketplace') + '</div>' +
             '<label class="lp-opt"><input type="radio" class="lp-parent-radio" name="' + name + '" value="existing"' + (startExisting ? ' checked' : '') + '> Add to an existing parent listing</label>' +
             '<div class="lp-existing"' + (startExisting ? '' : ' hidden') + '>' +
@@ -124,13 +145,24 @@
         var box = $(groupEl).find('.lp-parent').get(0);
         if (!box) return null;
         var $box = $(box);
-        var attach = String($box.find('.lp-parent-radio:checked').val() || '');
-        var supported = $box.attr('data-attach-supported') === '1';
-        var required = $box.attr('data-required') === '1';
-        var select = $box.find('.lp-parent-select').get(0);
-        var chosen = attach === 'existing' ? chosenExisting(select, $box.attr('data-group-parent')) : { id: '', parent: '' };
-        var existingId = chosen.id;
-        var existingParent = chosen.parent;
+        var attach = '';
+        var radios = box.querySelectorAll('.lp-parent-radio');
+        for (var i = 0; i < radios.length; i++) {
+            if (radios[i].checked) { attach = String(radios[i].value || ''); break; }
+        }
+        // The list can be showing while the radio's checked property is still unset.
+        if (!attach) {
+            var existingPanel = box.querySelector('.lp-existing');
+            var newPanel = box.querySelector('.lp-new');
+            if (existingPanel && !existingPanel.hidden && !(newPanel && !newPanel.hidden)) attach = 'existing';
+            else if (newPanel && !newPanel.hidden) attach = 'new';
+        }
+        var supported = box.getAttribute('data-attach-supported') === '1';
+        var required = box.getAttribute('data-required') === '1';
+        var select = box.querySelector('.lp-parent-select');
+        var chosen = attach === 'existing' ? chosenExisting(select, box.getAttribute('data-group-parent')) : { id: '', parent: '' };
+        var existingId = chosen.id || (attach === 'existing' ? String(box.getAttribute('data-chosen-id') || '').trim() : '');
+        var existingParent = chosen.parent || (attach === 'existing' ? String(box.getAttribute('data-chosen-parent') || '').trim() : '');
         var newParent = String($box.find('.lp-parent-name').val() || '').trim();
         var ready = attach === 'new' ? newParent !== ''
             : attach === 'existing' ? existingId !== ''
@@ -192,10 +224,14 @@
         })
         .on('mousedown.lpParent', '.lp-parent-select option', function () {
             this.selected = true;
+            rememberChoice(this.parentNode, optionId(this), String(this.getAttribute('data-parent-name') || ''));
         })
         .on('change.lpParent click.lpParent', '.lp-parent-select', function () {
-            var opt = this.options && this.selectedIndex >= 0 ? this.options[this.selectedIndex] : null;
-            if (opt) opt.selected = true;
+            var opt = this.options && this.selectedIndex >= 0 ? this.options[this.selectedIndex] : this.querySelector('option');
+            if (opt) {
+                opt.selected = true;
+                rememberChoice(this, optionId(opt), String(opt.getAttribute('data-parent-name') || ''));
+            }
             $(document).trigger('lp-parent:changed');
         })
         .on('input.lpParent', '.lp-parent-name', function () {
