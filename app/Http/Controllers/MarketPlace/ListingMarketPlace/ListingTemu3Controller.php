@@ -112,6 +112,8 @@ class ListingTemu3Controller extends Controller
             ], 500);
         }
 
+        \App\Support\Marketplace\ListingChannelCounts::refreshAfterPublish('temu3', $result);
+
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }
 

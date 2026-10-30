@@ -74,6 +74,8 @@ class ListingAmazonController extends Controller
             return $item;
         })->values();
 
+        \App\Support\Marketplace\AutomatedListingPage::syncCountsFromRows('amazon', $processedData);
+
         return response()->json([
             'status' => 200,
             'data' => LmpStdPrice::attach($processedData),

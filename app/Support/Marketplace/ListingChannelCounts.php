@@ -723,6 +723,35 @@ class ListingChannelCounts
     }
 
     /**
+     * Run after any publish: recount that marketplace so /missing-listing, the sidebar total and the
+     * daily snapshot move right away instead of waiting for the next page rebuild.
+     * Runs after the response is sent (or inline in a console / queue job).
+     *
+     * @param  array<string, mixed>  $result  the publish result
+     */
+    public static function refreshAfterPublish(string $channel, array $result = []): void
+    {
+        $published = ! empty($result['success']) || ! empty($result['goods_id']) || ! empty($result['submitted']);
+        if (! $published || ! self::hasListingSource($channel) || ! self::showsComputedCounts($channel)) {
+            return;
+        }
+
+        $run = static function () use ($channel): void {
+            try {
+                self::refreshChannelOnMissingListingPage($channel);
+            } catch (\Throwable $e) {
+                Log::warning('ListingChannelCounts refresh after publish failed ('.$channel.'): '.$e->getMessage());
+            }
+        };
+
+        if (app()->runningInConsole()) {
+            $run();
+        } else {
+            app()->terminating($run);
+        }
+    }
+
+    /**
      * @param  array{REQ: int, NRL: int, Listed: int, Pending: int}  $counts
      */
     private static function snapshotMissingListing(string $normalizedKey, array $counts): void

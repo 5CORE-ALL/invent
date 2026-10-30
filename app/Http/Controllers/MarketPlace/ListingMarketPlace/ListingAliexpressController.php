@@ -91,6 +91,8 @@ class ListingAliexpressController extends Controller
             return $item;
         })->values();
 
+        \App\Support\Marketplace\AutomatedListingPage::syncCountsFromRows('aliexpress', $processedData);
+
         return response()->json([
             'status' => 200,
             'data' => LmpStdPrice::attach($processedData),

@@ -113,6 +113,9 @@ class ListingEbayTwoController extends Controller
             return $item;
         })->values();
 
+        // /missing-listing and the sidebar must show the same Missing L as this page.
+        \App\Support\Marketplace\AutomatedListingPage::syncCountsFromRows('ebaytwo', $processedData);
+
         return response()->json([
             'status' => 200,
             'data' => LmpStdPrice::attach($processedData),
