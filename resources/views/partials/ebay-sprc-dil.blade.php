@@ -986,7 +986,8 @@
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
         }
         function ebayDgAutoApplies() {
-            return false;
+            // Vinted analytics: with Sprc Dil ON, save the calculated rule price into S PRC so it always equals the target.
+            return EBAY_DIL_GROI_CHANNEL === 'vinted';
         }
         function ebayDgExcludeShip() {
             // Purchasing Power uses Ship BB in the Amazon invert — do not drop it here.
