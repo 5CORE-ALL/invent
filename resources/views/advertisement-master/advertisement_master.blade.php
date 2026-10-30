@@ -51,6 +51,61 @@
             align-items: center;
             gap: 4px;
         }
+        /* Grouped yellow badge panels (same look as /all-marketplace-master). */
+        .adm-panels {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: stretch;
+            margin-bottom: 10px;
+        }
+        .adm-panel {
+            background: #fef9c3;
+            border: 1px solid #fde68a;
+            border-radius: 6px;
+            padding: 6px 8px 8px;
+            min-width: 0;
+        }
+        .adm-panel-title {
+            font-size: 11px;
+            font-weight: 800;
+            color: #854d0e;
+            text-transform: uppercase;
+            letter-spacing: .3px;
+            margin-bottom: 5px;
+        }
+        .adm-panel-grid { display: grid; gap: 4px; }
+        .adm-panel-grid.cols-1 { grid-template-columns: minmax(130px, 1fr); }
+        .adm-panel-grid.cols-2 { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+        .adm-panel-grid.cols-4 { grid-template-columns: repeat(4, minmax(104px, 1fr)); }
+        .adm-panel--l30 { flex: 2 1 460px; }
+        .adm-panel--projected { flex: 1 1 250px; }
+        .adm-panel--view { flex: 1 1 250px; }
+        .adm-panel--yesterday, .adm-panel--l7 { flex: 0 1 170px; }
+        .adm-panel .adm-stat-badge {
+            display: flex;
+            align-items: center;
+            background: #d1d5db;
+            color: #1f2937;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 5px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .adm-panel .adm-stat-badge.adm-good { background: #22c55e; color: #fff; }
+        .adm-panel .adm-stat-badge.adm-bad  { background: #ef4444; color: #fff; }
+        .adm-panel .adm-trend-dot,
+        .adm-panel .adm-trend-dot.is-up,
+        .adm-panel .adm-trend-dot.is-down,
+        .adm-panel .adm-trend-dot.is-flat {
+            width: 7px;
+            height: 7px;
+            margin-right: 5px;
+            background: transparent;
+            border: 1.5px solid currentColor;
+        }
         .adm-badge-link { cursor: pointer; transition: transform .1s ease, filter .1s ease; }
         .adm-badge-link:hover { transform: translateY(-1px); filter: brightness(1.1); }
 
@@ -399,19 +454,64 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1" style="min-width:0;">
-                            <span class="adm-stat-badge adm-stat-badge--missing adm-badge-link" data-metric="missing_ads" data-label="Missing" title="Sum of missing ads — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="missing_ads" title="vs previous day"></span>MISSING: <span id="adm-badge-missing">0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--active" title="Active campaigns in the ACTIVE column"><span class="adm-trend-dot is-flat" data-badge-metric="active" title="vs previous day"></span>ACTIVE: <span id="adm-badge-active">0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--clicks" title="Sum of the CLICKS column">CLICKS: <span id="adm-badge-col-clicks">0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--spend adm-badge-link" data-metric="spend" data-label="Spend" title="Same Spend badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="spend" title="vs previous day"></span>SPEND: <span id="adm-badge-spend">$0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--sales adm-badge-link" data-metric="ad_sales" data-label="Ad Sales" title="Active Channel Ad Sales total — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="ad_sales" title="vs previous day"></span>AD SALES: <span id="adm-badge-ad-sales">$0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--ssales adm-badge-link" data-metric="ssales" data-label="Total Sales" title="Active Channel L30 Sales total — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="ssales" title="vs previous day"></span>TOTAL SALES: <span id="adm-badge-total-sales">$0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--acos adm-badge-link" data-metric="acos" data-label="ACOS" title="Active Channel ACOS: Total Ad Spend ÷ Ad Sales"><span class="adm-trend-dot is-flat" data-badge-metric="acos" title="vs previous day"></span>ACOS: <span id="adm-badge-acos">0%</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--tcos adm-badge-link" data-metric="tcos" data-label="TCOS" title="Same Ads % as Active Channel: Spend ÷ Sales"><span class="adm-trend-dot is-flat" data-badge-metric="tcos" title="vs previous day"></span>TCOS: <span id="adm-badge-tcos">0%</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--clicks adm-badge-link" data-metric="clicks" data-label="Clicks" title="Same Clicks badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="clicks" title="vs previous day"></span>CLICKS: <span id="adm-badge-clicks">0</span></span>
-                            <span class="adm-stat-badge adm-stat-badge--cvr adm-badge-link" data-metric="cvr" data-label="CVR" title="Same CVR badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="cvr" title="vs previous day"></span>CVR: <span id="adm-badge-cvr">0.00%</span></span>
+                    {{-- Badge panels: same grouped yellow-box layout as /all-marketplace-master.
+                         Green = better than the L30 daily average / rate, red = worse, grey = neutral. --}}
+                    <div class="adm-panels">
+                        <div class="adm-panel adm-panel--view">
+                            <div class="adm-panel-title">TABLE</div>
+                            <div class="adm-panel-grid cols-2">
+                                <span class="adm-stat-badge adm-badge-link" data-metric="missing_ads" data-label="Missing" title="Sum of missing ads — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="missing_ads" title="vs previous day"></span>Missing: <span id="adm-badge-missing">0</span></span>
+                                <span class="adm-stat-badge" title="Active campaigns in the ACTIVE column"><span class="adm-trend-dot is-flat" data-badge-metric="active" title="vs previous day"></span>Active: <span id="adm-badge-active">0</span></span>
+                                <span class="adm-stat-badge" title="Sum of the CLICKS column"><span class="adm-trend-dot"></span>Clicks: <span id="adm-badge-col-clicks">0</span></span>
+                            </div>
                         </div>
+
+                        <div class="adm-panel adm-panel--yesterday">
+                            <div class="adm-panel-title">YESTERDAY</div>
+                            <div class="adm-panel-grid cols-1">
+                                <span class="adm-stat-badge" id="adm-pb-y-sales" title="Yesterday's sales across active channels. Green when at or above the L30 daily average."><span class="adm-trend-dot"></span>Sales: <span class="v">-</span></span>
+                                <span class="adm-stat-badge" id="adm-pb-y-spend" title="Yesterday's measured ad spend (channels with a daily ad report only)."><span class="adm-trend-dot"></span>Spend: <span class="v">-</span></span>
+                                <span class="adm-stat-badge" id="adm-pb-y-ads" title="Yesterday's Ads% = measured spend ÷ sales on those channels. Green when at or below L30 Ads%."><span class="adm-trend-dot"></span>Ads%: <span class="v">-</span></span>
+                            </div>
+                        </div>
+
+                        <div class="adm-panel adm-panel--l7">
+                            <div class="adm-panel-title">L7</div>
+                            <div class="adm-panel-grid cols-1">
+                                <span class="adm-stat-badge" id="adm-pb-l7-sales" title="Last 7 days sales across active channels."><span class="adm-trend-dot"></span>Sales: <span class="v">-</span></span>
+                                <span class="adm-stat-badge" id="adm-pb-l7-avg" title="L7 sales ÷ 7 (average per day)."><span class="adm-trend-dot"></span>Avg/Day: <span class="v">-</span></span>
+                                <span class="adm-stat-badge" id="adm-pb-l7-pace" title="L7 daily average vs L30 daily average. Green at 100% or above."><span class="adm-trend-dot"></span>Pace: <span class="v">-</span></span>
+                            </div>
+                        </div>
+
+                        <div class="adm-panel adm-panel--l30">
+                            <div class="adm-panel-title">L30</div>
+                            <div class="adm-panel-grid cols-4">
+                                <span class="adm-stat-badge adm-badge-link" data-metric="spend" data-label="Spend" title="Same Spend badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="spend" title="vs previous day"></span>Spend: <span id="adm-badge-spend">$0</span></span>
+                                <span class="adm-stat-badge adm-badge-link" data-metric="ad_sales" data-label="Ad Sales" title="Active Channel Ad Sales total — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="ad_sales" title="vs previous day"></span>Ad Sales: <span id="adm-badge-ad-sales">$0</span></span>
+                                <span class="adm-stat-badge adm-badge-link" data-metric="ssales" data-label="Total Sales" title="Active Channel L30 Sales total — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="ssales" title="vs previous day"></span>Total Sales: <span id="adm-badge-total-sales">$0</span></span>
+                                <span class="adm-stat-badge adm-badge-link" data-metric="acos" data-label="ACOS" title="Active Channel ACOS: Total Ad Spend ÷ Ad Sales"><span class="adm-trend-dot is-flat" data-badge-metric="acos" title="vs previous day"></span>ACOS: <span id="adm-badge-acos">0%</span></span>
+                                <span class="adm-stat-badge adm-badge-link" data-metric="tcos" data-label="TCOS" title="Same Ads % as Active Channel: Spend ÷ Sales"><span class="adm-trend-dot is-flat" data-badge-metric="tcos" title="vs previous day"></span>TCOS: <span id="adm-badge-tcos">0%</span></span>
+                                <span class="adm-stat-badge adm-badge-link" data-metric="clicks" data-label="Clicks" title="Same Clicks badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="clicks" title="vs previous day"></span>Clicks: <span id="adm-badge-clicks">0</span></span>
+                                <span class="adm-stat-badge adm-badge-link" data-metric="cvr" data-label="CVR" title="Same CVR badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="cvr" title="vs previous day"></span>CVR: <span id="adm-badge-cvr">0.00%</span></span>
+                                <span class="adm-stat-badge" id="adm-pb-l30-spend-day" title="Average: L30 spend ÷ 30"><span class="adm-trend-dot"></span>Spend/Day: <span class="v">-</span></span>
+                                <span class="adm-stat-badge" id="adm-pb-l30-sales-day" title="Average: L30 sales ÷ 30"><span class="adm-trend-dot"></span>Sales/Day: <span class="v">-</span></span>
+                            </div>
+                        </div>
+
+                        <div class="adm-panel adm-panel--projected">
+                            <div class="adm-panel-title">PROJECTED</div>
+                            <div class="adm-panel-grid cols-2">
+                                <span class="adm-stat-badge" id="adm-pb-p-sales" title="P-Sales = (L7 ÷ 7) × 30. Green when above L30 sales."><span class="adm-trend-dot"></span>Sales: <span class="v">-</span></span>
+                                <span class="adm-stat-badge" id="adm-pb-p-spend" title="Spend held at the current L30 ad spend."><span class="adm-trend-dot"></span>Spend: <span class="v">-</span></span>
+                                <span class="adm-stat-badge" id="adm-pb-p-ads" title="P Ads% = L30 ad spend ÷ P-Sales. Green when at or below L30 Ads%."><span class="adm-trend-dot"></span>Ads%: <span class="v">-</span></span>
+                                <span class="adm-stat-badge" id="adm-pb-p-clicks" title="P Clicks = Σ (Clicks × P-Sales ÷ L30 Sales). Green when above L30 clicks."><span class="adm-trend-dot"></span>Clicks: <span class="v">-</span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <div class="flex-grow-1" style="min-width:0;"></div>
                         <div class="d-flex align-items-center gap-1" style="flex-shrink:0;">
                             <select id="adm-filter-kind" class="form-select form-select-sm" style="width:140px;" aria-label="Row view" title="Row view">
                                 <option value="">All</option>
@@ -631,8 +731,76 @@
                 document.querySelectorAll('.adm-trend-dot[data-badge-metric]').forEach(function (el) {
                     const field = el.getAttribute('data-badge-metric');
                     el.classList.remove('is-up', 'is-down', 'is-flat');
-                    el.classList.add(admTrendClass(admBadgeDir(rows, field), !!ADM_INVERTED_METRICS[field]));
+                    const cls = admTrendClass(admBadgeDir(rows, field), !!ADM_INVERTED_METRICS[field]);
+                    el.classList.add(cls);
+                    // Tint the whole badge like the all-marketplace panels: green = better, red = worse.
+                    const badge = el.closest('.adm-stat-badge');
+                    if (badge) {
+                        badge.classList.remove('adm-good', 'adm-bad');
+                        if (field === 'missing_ads') {
+                            // Missing is a count of gaps: any missing ad reads red, zero reads green.
+                            const n = Number((document.getElementById('adm-badge-missing') || {}).textContent.replace(/,/g, '')) || 0;
+                            badge.classList.add(n > 0 ? 'adm-bad' : 'adm-good');
+                        } else if (cls === 'is-up') {
+                            badge.classList.add('adm-good');
+                        } else if (cls === 'is-down') {
+                            badge.classList.add('adm-bad');
+                        }
+                    }
                 });
+            }
+
+            function admSetPeriodBadge(id, text, state) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const v = el.querySelector('.v');
+                if (v) v.textContent = text;
+                el.classList.remove('adm-good', 'adm-bad');
+                if (state === 'good') el.classList.add('adm-good');
+                else if (state === 'bad') el.classList.add('adm-bad');
+            }
+
+            // Totals + averages for the Yesterday / L7 / L30-average / Projected panels.
+            function paintPeriodBadges(pb, l30) {
+                pb = pb || {};
+                l30 = l30 || {};
+                const has = function (x) { return x !== null && x !== undefined && !isNaN(Number(x)); };
+                const money = function (x) { return '$' + Math.round(Number(x)).toLocaleString(); };
+                const pct = function (x, d) { return Number(x).toFixed(d == null ? 1 : d) + '%'; };
+                const perDay = pb.l30_per_day || {};
+                const y = pb.yesterday || {};
+                const l7 = pb.l7 || {};
+                const p = pb.projected || {};
+                const l30Ads = has(perDay.ads_pct) ? Number(perDay.ads_pct) : null;
+
+                // Yesterday
+                admSetPeriodBadge('adm-pb-y-sales', has(y.sales) ? money(y.sales) : '-',
+                    has(y.sales) && has(perDay.sales) && Number(perDay.sales) > 0
+                        ? (Number(y.sales) >= Number(perDay.sales) ? 'good' : 'bad') : '');
+                admSetPeriodBadge('adm-pb-y-spend', has(y.spend) ? money(y.spend) : '-', '');
+                admSetPeriodBadge('adm-pb-y-ads', has(y.ads_pct) ? pct(y.ads_pct) : '-',
+                    has(y.ads_pct) && l30Ads !== null ? (Number(y.ads_pct) <= l30Ads ? 'good' : 'bad') : '');
+
+                // L7
+                admSetPeriodBadge('adm-pb-l7-sales', has(l7.sales) ? money(l7.sales) : '-', '');
+                admSetPeriodBadge('adm-pb-l7-avg', has(l7.avg_day) ? money(l7.avg_day) : '-', '');
+                admSetPeriodBadge('adm-pb-l7-pace', has(l7.pace_pct) ? pct(l7.pace_pct, 0) : '-',
+                    has(l7.pace_pct) ? (Number(l7.pace_pct) >= 100 ? 'good' : 'bad') : '');
+
+                // L30 averages (per day)
+                admSetPeriodBadge('adm-pb-l30-spend-day', has(perDay.spend) ? money(perDay.spend) : '-', '');
+                admSetPeriodBadge('adm-pb-l30-sales-day', has(perDay.sales) ? money(perDay.sales) : '-', '');
+
+                // Projected
+                admSetPeriodBadge('adm-pb-p-sales', has(p.sales) ? money(p.sales) : '-',
+                    has(p.sales) && has(l30.ssales) && Number(l30.ssales) > 0
+                        ? (Number(p.sales) >= Number(l30.ssales) ? 'good' : 'bad') : '');
+                admSetPeriodBadge('adm-pb-p-spend', has(p.spend) ? money(p.spend) : '-', '');
+                admSetPeriodBadge('adm-pb-p-ads', has(p.ads_pct) ? pct(p.ads_pct) : '-',
+                    has(p.ads_pct) && l30Ads !== null ? (Number(p.ads_pct) <= l30Ads ? 'good' : 'bad') : '');
+                admSetPeriodBadge('adm-pb-p-clicks', has(p.clicks) ? Math.round(Number(p.clicks)).toLocaleString() : '-',
+                    has(p.clicks) && has(l30.clicks) && Number(l30.clicks) > 0
+                        ? (Number(p.clicks) >= Number(l30.clicks) ? 'good' : 'bad') : '');
             }
 
             function wholeMoneyFormatter(cell) {
@@ -1098,6 +1266,7 @@
                     admAllRows = rows;
                     admBadgeTrends = (response && response.badge_trends) || {};
                     paintActiveChannelAdBadges((response && response.active_channel_badges) || {});
+                    paintPeriodBadges((response && response.period_badges) || {}, (response && response.active_channel_badges) || {});
                     updateBadges(rows);
                     buildAdmChannelOptions(rows);
                     fillAdmChannelFilter(rows);

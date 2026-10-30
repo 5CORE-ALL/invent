@@ -293,6 +293,73 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
+     * Totals / averages for the Yesterday, L7 and Projected badge panels,
+     * summed over the same Active Channel grid rows as the L30 badges.
+     *
+     * - Yesterday: Y Sales, measured one-day ad spend (channels with a daily
+     *   ad report only) and the Ads% on those same channels' sales.
+     * - L7: L7 Sales, per-day average and pace against the L30 daily average.
+     * - Projected: P-Sales = (L7 ÷ 7) × 30, spend held at current L30 spend,
+     *   clicks paced by P-Sales ÷ L30 Sales.
+     *
+     * @return array<string, array<string, float|null>>
+     */
+    private function activeChannelPeriodBadges(): array
+    {
+        $rows = $this->activeChannelGridRows();
+        if ($rows === []) {
+            return [];
+        }
+
+        $agg = AllMarketplaceMasterBadgeAggregator::aggregate($rows);
+        $projected = AllMarketplaceMasterBadgeAggregator::projectedMetrics($rows);
+
+        $l30Sales = (float) ($agg['l30_sales'] ?? 0);
+        $l30Spend = round((float) ($agg['ad_spend'] ?? 0) + $this->missingReverbBumpSpend($rows), 2);
+        $l30Ads = $l30Sales > 0 ? ($l30Spend / $l30Sales) * 100 : 0.0;
+
+        $l7Sales = 0.0;
+        $ySpend = 0.0;
+        $yMeasuredSales = 0.0;
+        foreach ($rows as $row) {
+            $l7Sales += $this->gridNumber($row, 'L7 Sales');
+            if (! empty($row['Y Ads Measured'])) {
+                $ySpend += $this->gridNumber($row, 'Y Ad Spend');
+                $yMeasuredSales += $this->gridNumber($row, 'Y Day Sales');
+            }
+        }
+
+        $ySales = (float) ($agg['y_sales'] ?? 0);
+        $pSales = (float) ($agg['p_sales'] ?? 0);
+        $l30PerDay = $l30Sales / 30;
+        $l7PerDay = $l7Sales / 7;
+
+        return [
+            'l30_per_day' => [
+                'sales' => round($l30PerDay, 2),
+                'spend' => round($l30Spend / 30, 2),
+                'ads_pct' => round($l30Ads, 2),
+            ],
+            'yesterday' => [
+                'sales' => round($ySales, 2),
+                'spend' => $yMeasuredSales > 0 ? round($ySpend, 2) : null,
+                'ads_pct' => $yMeasuredSales > 0 ? round(($ySpend / $yMeasuredSales) * 100, 2) : null,
+            ],
+            'l7' => [
+                'sales' => round($l7Sales, 2),
+                'avg_day' => round($l7PerDay, 2),
+                'pace_pct' => $l30PerDay > 0 ? round(($l7PerDay / $l30PerDay) * 100, 1) : null,
+            ],
+            'projected' => [
+                'sales' => round($pSales, 2),
+                'spend' => $l30Spend,
+                'ads_pct' => $pSales > 0 ? round(($l30Spend / $pSales) * 100, 2) : null,
+                'clicks' => (float) ($projected['p_views'] ?? 0),
+            ],
+        ];
+    }
+
+    /**
      * Same rows Active Channel draws in its header badges.
      *
      * @return list<array<string, mixed>>
@@ -872,6 +939,13 @@ class AdvertisementMasterController extends Controller
                 \Log::warning('Advertisement Master missing-ads snapshot failed: '.$e->getMessage());
             }
 
+            try {
+                $periodBadges = $this->activeChannelPeriodBadges();
+            } catch (\Throwable $e) {
+                \Log::warning('Advertisement Master period badges failed: '.$e->getMessage());
+                $periodBadges = [];
+            }
+
             return response()->json([
                 'status' => 200,
                 'message' => 'Advertisement Master data fetched successfully',
@@ -889,6 +963,7 @@ class AdvertisementMasterController extends Controller
                 'active_channel_clicks' => $chartClicks,
                 'active_channel_badges' => $adBadges['values'],
                 'badge_trends' => $badgeTrends,
+                'period_badges' => $periodBadges,
             ]);
         } catch (\Throwable $e) {
             \Log::error('Advertisement Master data failed: '.$e->getMessage(), [
