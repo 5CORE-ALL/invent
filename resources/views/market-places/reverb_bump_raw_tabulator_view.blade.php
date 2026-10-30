@@ -110,6 +110,7 @@
             let keyField = {};           // path -> tabulator field
             let stopPull = false;
             let pulling = false;
+            const rawStore = new Map();  // listing_id -> { raw, raw_text }
 
             // ---------- helpers ----------
             function toast(msg, ok = true) {
@@ -162,20 +163,32 @@
                 return keyField[path];
             }
 
-            /** Attach flattened raw values to a row; returns list of newly seen paths. */
-            function hydrateRow(row) {
-                const fresh = [];
-                if (!row.raw) return fresh;
-                const flat = flatten(row.raw, '', {});
+            /**
+             * Copy flattened raw values onto `target` (a plain object). Returns true when new paths appeared.
+             * The nested raw JSON is kept out of the table rows (rawStore) so Tabulator stays light.
+             */
+            function hydrateRow(target, raw) {
+                let fresh = false;
+                if (!raw) return fresh;
+                const flat = flatten(raw, '', {});
                 Object.keys(flat).forEach(path => {
                     if (!keyField[path]) {
                         if (rawKeys.length >= MAX_RAW_COLUMNS) return;
-                        fresh.push(path);
+                        fresh = true;
                         rawKeys.push(path);
                     }
-                    row[fieldFor(path)] = flat[path];
+                    target[fieldFor(path)] = flat[path];
                 });
                 return fresh;
+            }
+
+            function searchText(r) {
+                return ((r.sku || '') + ' ' + (r.listing_id || '') + ' ' + (r.title || '')).toLowerCase();
+            }
+
+            function debounce(fn, ms) {
+                let t = null;
+                return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
             }
 
             function rawCellFormatter(cell) {
@@ -239,22 +252,36 @@
                 ];
             }
 
-            function applyPullResult(res) {
-                const row = table.getRows().find(r => r.getData().listing_id === String(res.listing_id));
-                if (!row) return;
-                const d = row.getData();
-                d.http_status = res.status;
-                d.error = res.success ? null : res.message;
-                d.fetched_at = res.fetched_at;
-                d.raw = res.raw || d.raw;
-                if (res.raw) {
-                    const fresh = hydrateRow(d);
-                    fresh.forEach(p => table.addColumn(rawColumnDef(p), false));
-                    const live = res.raw?.current_bid ?? res.raw?.bump_v2_stats?.current_bid;
-                    if (live && typeof live === 'object' && live.display) d.bump_bid = live.display;
-                }
-                row.update(d);
-                updateSummary();
+            /** Apply a whole batch of pull results with ONE table update (per-row updates froze the page). */
+            function applyPullResults(results) {
+                const updates = [];
+                let newColumns = false;
+                results.forEach(res => {
+                    const id = String(res.listing_id);
+                    const u = {
+                        listing_id: id,
+                        http_status: res.status,
+                        error: res.success ? null : res.message,
+                        fetched_at: res.fetched_at,
+                    };
+                    if (res.raw) {
+                        rawStore.set(id, { raw: res.raw, raw_text: null });
+                        if (hydrateRow(u, res.raw)) newColumns = true;
+                        const live = res.raw.current_bid ?? res.raw.bump_v2_stats?.current_bid;
+                        if (live && typeof live === 'object' && live.display) u.bump_bid = live.display;
+                    }
+                    updates.push(u);
+                });
+                if (newColumns) refreshColumns();
+                table.updateData(updates);
+                scheduleSummary();
+            }
+
+            /** Rebuild the column set (base + every raw field seen so far). */
+            function refreshColumns() {
+                table.setColumns(baseColumns().concat(rawKeys.map(rawColumnDef)));
+                applySavedColVis();
+                buildColumnMenu();
             }
 
             async function pushRow(row, btn) {
@@ -269,7 +296,7 @@
                 btn.disabled = false;
                 if (r.ok && r.json.success) {
                     toast(r.json.message || 'Pushed');
-                    if (r.json.pulled) applyPullResult(r.json.pulled);
+                    if (r.json.pulled) applyPullResults([r.json.pulled]);
                     if (r.json.display) row.update({ bump_bid: r.json.display });
                 } else {
                     toast('Push failed: ' + (r.json.message || ('HTTP ' + r.status)), false);
@@ -278,8 +305,9 @@
 
             function showJson(d) {
                 document.getElementById('raw-json-title').textContent = d.sku + ' — listing ' + d.listing_id;
-                const body = d.raw ? JSON.stringify(d.raw, null, 2)
-                    : (d.raw_text || (d.error ? 'Error: ' + d.error : 'Not pulled yet.'));
+                const stored = rawStore.get(String(d.listing_id)) || {};
+                const body = stored.raw ? JSON.stringify(stored.raw, null, 2)
+                    : (stored.raw_text || (d.error ? 'Error: ' + d.error : 'Not pulled yet.'));
                 document.getElementById('raw-json-body').textContent = body;
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('rawJsonModal')).show();
             }
@@ -301,7 +329,8 @@
                     prog.textContent = label + ': ' + done + '/' + listingIds.length + ' (' + fail + ' failed)';
                     const r = await post(URLS.pull, { listing_ids: chunk });
                     if (r.json && r.json.results) {
-                        r.json.results.forEach(res => { applyPullResult(res); res.success ? done++ : (done++, fail++); });
+                        applyPullResults(r.json.results);
+                        r.json.results.forEach(res => { done++; if (!res.success) fail++; });
                     } else {
                         done += chunk.length; fail += chunk.length;
                     }
@@ -326,23 +355,29 @@
 
             function applyFilters() {
                 const q = document.getElementById('sku-search').value.trim().toLowerCase();
-                table.setFilter(data => {
-                    if (!statusFilterFn(data)) return false;
-                    if (!q) return true;
-                    return ((data.sku || '') + ' ' + (data.listing_id || '') + ' ' + (data.title || '')).toLowerCase().includes(q);
-                });
-                updateSummary();
+                const mode = document.getElementById('filter-status').value;
+                if (!q && mode === 'all') {
+                    table.clearFilter();
+                } else {
+                    table.setFilter(data => statusFilterFn(data) && (!q || searchText(data).includes(q)));
+                }
             }
 
             function updateSummary() {
+                if (!table) return;
+                let pulled = 0, failed = 0;
                 const all = table.getData();
-                const pulled = all.filter(r => Number(r.http_status) >= 200 && Number(r.http_status) < 300).length;
-                const failed = all.filter(r => r.http_status !== null && r.http_status !== undefined && !(Number(r.http_status) >= 200 && Number(r.http_status) < 300)).length;
+                for (let i = 0; i < all.length; i++) {
+                    const s = all[i].http_status;
+                    if (s === null || s === undefined) continue;
+                    (Number(s) >= 200 && Number(s) < 300) ? pulled++ : failed++;
+                }
                 document.getElementById('summary-line').textContent =
                     all.length + ' listings · ' + pulled + ' pulled · ' + failed + ' failed · ' +
                     (all.length - pulled - failed) + ' never pulled · ' + table.getDataCount('active') + ' shown · ' +
                     rawKeys.length + ' raw fields';
             }
+            const scheduleSummary = debounce(updateSummary, 300);
 
             // Saved per-column visibility: { field: true(visible) | false(hidden) }
             function loadColVis() {
@@ -402,7 +437,13 @@
                     toast('reverb_bump_raw table is missing — run php artisan migrate', false);
                 }
                 const rows = payload.rows || [];
-                rows.forEach(r => { r.listing_id = String(r.listing_id); hydrateRow(r); });
+                rows.forEach(r => {
+                    r.listing_id = String(r.listing_id);
+                    rawStore.set(r.listing_id, { raw: r.raw, raw_text: r.raw_text });
+                    hydrateRow(r, r.raw);
+                    delete r.raw;        // keep nested JSON out of the table rows
+                    delete r.raw_text;
+                });
 
                 const columns = baseColumns().concat(rawKeys.map(rawColumnDef));
                 table = new Tabulator('#bump-table', {
@@ -423,9 +464,9 @@
                     buildColumnMenu();
                     updateSummary();
                 });
-                table.on('dataFiltered', updateSummary);
+                table.on('dataFiltered', scheduleSummary);
 
-                document.getElementById('sku-search').addEventListener('input', applyFilters);
+                document.getElementById('sku-search').addEventListener('input', debounce(applyFilters, 300));
                 document.getElementById('filter-status').addEventListener('change', applyFilters);
                 document.getElementById('pull-all-btn').addEventListener('click', () => {
                     const ids = table.getData().map(r => r.listing_id);
