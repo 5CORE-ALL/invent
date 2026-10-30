@@ -129,7 +129,7 @@
             '<label class="lp-opt"><input type="radio" class="lp-parent-radio" name="' + name + '" value="existing"' + (startExisting ? ' checked' : '') + '> Add to an existing parent listing</label>' +
             '<div class="lp-existing"' + (startExisting ? '' : ' hidden') + '>' +
                 '<input type="search" class="form-control form-control-sm lp-parent-search" placeholder="Search parent name, SKU, listing ID or title…" autocomplete="off">' +
-                '<select class="form-select form-select-sm lp-parent-select" size="5">' + options + '</select>' +
+                '<select class="form-select form-select-sm lp-parent-select">' + options + '</select>' +
                 '<div class="lp-parent-note">' + (existing.length ? existing.length + ' parent(s) of this group. Type to search all parents.' : 'Type to search the parent listings on this marketplace.') + '</div>' +
             '</div>' +
             '<label class="lp-opt"><input type="radio" class="lp-parent-radio" name="' + name + '" value="new"' + (startExisting ? '' : ' checked') + '> Create a new parent listing</label>' +
