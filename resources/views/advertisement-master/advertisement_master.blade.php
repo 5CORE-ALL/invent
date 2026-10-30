@@ -52,45 +52,52 @@
             gap: 4px;
         }
         /* Grouped yellow badge panels (same look as /all-marketplace-master). */
+        /* All five panels share ONE row (compact), so the grid stays in the first screen.
+           They only wrap on narrow windows. */
         .adm-panels {
             display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
+            flex-wrap: nowrap;
+            gap: 6px;
             align-items: stretch;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         .adm-panel {
             background: #fef9c3;
             border: 1px solid #fde68a;
             border-radius: 6px;
-            padding: 6px 8px 8px;
+            padding: 4px 6px 6px;
             min-width: min-content;
+            flex: 0 1 auto;
         }
         .adm-panel-title {
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 800;
             color: #854d0e;
             text-transform: uppercase;
             letter-spacing: .3px;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
+            line-height: 1.1;
         }
-        .adm-panel-grid { display: grid; gap: 4px; }
+        .adm-panel-grid { display: grid; gap: 3px; }
         .adm-panel-grid.cols-1 { grid-template-columns: minmax(max-content, 1fr); }
         .adm-panel-grid.cols-2 { grid-template-columns: repeat(2, minmax(max-content, 1fr)); }
         .adm-panel-grid.cols-4 { grid-template-columns: repeat(4, minmax(max-content, 1fr)); }
-        .adm-panel--l30 { flex: 2 1 460px; }
-        .adm-panel--projected { flex: 1 1 250px; }
-        .adm-panel--view { flex: 1 1 250px; }
-        .adm-panel--yesterday, .adm-panel--l7 { flex: 0 1 170px; }
+        .adm-panel--l30 { flex: 1 1 auto; }
+        .adm-panel--projected, .adm-panel--view { flex: 0 1 auto; }
+        .adm-panel--yesterday, .adm-panel--l7 { flex: 0 1 auto; }
+        @media (max-width: 1280px) {
+            .adm-panels { flex-wrap: wrap; }
+        }
         .adm-panel .adm-stat-badge {
             display: flex;
             align-items: center;
             background: #d1d5db;
             color: #1f2937;
-            font-size: 11px;
+            font-size: 10.5px;
             font-weight: 700;
-            padding: 4px 8px;
-            border-radius: 5px;
+            padding: 2px 6px;
+            line-height: 1.25;
+            border-radius: 4px;
             white-space: nowrap;
         }
         .adm-panel .adm-stat-badge.adm-good { background: #22c55e; color: #fff; }
@@ -99,9 +106,9 @@
         .adm-panel .adm-trend-dot.is-up,
         .adm-panel .adm-trend-dot.is-down,
         .adm-panel .adm-trend-dot.is-flat {
-            width: 7px;
-            height: 7px;
-            margin-right: 5px;
+            width: 6px;
+            height: 6px;
+            margin-right: 4px;
             background: transparent;
             border: 1.5px solid currentColor;
         }
