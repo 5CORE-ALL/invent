@@ -42,6 +42,7 @@ use App\Models\MarketplaceDailyMetric;
 use App\Models\ChannelMasterCalculatedData;
 use App\Support\Ads\ChannelListingMissingAds;
 use App\Support\AmazonAdsAdvertisementMasterHistory;
+use App\Support\EbayAdsAdvertisementMasterHistory;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -906,7 +907,7 @@ class AdvertisementMasterController extends Controller
             // pseudo-channel so the TCOS / S SALES badges get a trend too. Never
             // let a snapshot write break the data feed.
             try {
-                $this->snapshotChannels($this->flattenRows($rows), $totalNetSales);
+                $this->snapshotChannels($this->flattenRows($rows), $totalNetSales, false);
             } catch (\Throwable $e) {
                 \Log::warning('Advertisement Master snapshot failed: ' . $e->getMessage());
             }
@@ -2760,7 +2761,7 @@ class AdvertisementMasterController extends Controller
      *
      * @param  array<int, array<string, mixed>>  $rows  flattened channel rows
      */
-    private function snapshotChannels(array $rows, float $netSales = 0.0): void
+    private function snapshotChannels(array $rows, float $netSales = 0.0, bool $withCellAcos = true): void
     {
         $now   = Carbon::now(self::SNAPSHOT_TIMEZONE);
         $today = $now->toDateString();
@@ -2770,15 +2771,17 @@ class AdvertisementMasterController extends Controller
             if ($channel === '' || $this->isActiveChannelSnapshot($channel)) {
                 continue;
             }
-            $this->saveSnapshotRow($today, $channel, $this->snapshotMeasures($row), $now);
+            $this->saveSnapshotRow($today, $channel, $this->snapshotMeasures($row, $withCellAcos), $now);
         }
     }
 
     /**
      * @param  array<string, mixed>  $row
+     * @param  bool  $withCellAcos  save the ACOS the cell shows. Only the final pass (after
+     *                              Active Channel ads + total-row ACOS are applied) has it.
      * @return array<string, float|int>
      */
-    private function snapshotMeasures(array $row): array
+    private function snapshotMeasures(array $row, bool $withCellAcos = false): array
     {
         $measures = [
             'spend' => (float) ($row['spend'] ?? 0),
@@ -2790,8 +2793,26 @@ class AdvertisementMasterController extends Controller
         if ($this->snapshotsHaveMissingAdsColumn()) {
             $measures['missing_ads'] = (int) ($row['missing_ads'] ?? 0);
         }
+        if ($withCellAcos && $this->snapshotsHaveAcosColumn() && is_numeric($row['acos'] ?? null)) {
+            $measures['acos'] = round((float) $row['acos'], 2);
+        }
 
         return $measures;
+    }
+
+    private function snapshotsHaveAcosColumn(): bool
+    {
+        static $has = null;
+        if ($has !== null) {
+            return $has;
+        }
+        try {
+            $has = Schema::hasColumn('advertisement_master_metric_snapshots', 'acos');
+        } catch (\Throwable $e) {
+            $has = false;
+        }
+
+        return $has;
     }
 
     private function snapshotsHaveMissingAdsColumn(): bool
@@ -3393,6 +3414,14 @@ class AdvertisementMasterController extends Controller
         // the page was loaded).
         if (! $this->historyIsAllChannels($channel)) {
             $byDate = $this->overlayAmazonRollingL30($channel, $byDate, $from, $today);
+
+            // ACOS graph must plot the number the cell shows, not Spend / Ads Sales recomputed
+            // from the saved columns (cells use Active Channel ACOS; total rows use Spend / T Sales).
+            foreach ($this->savedCellAcosByDate($channel, $from, $today) as $date => $acos) {
+                if (isset($byDate[$date])) {
+                    $byDate[$date]['cell_acos'] = $acos;
+                }
+            }
         }
 
         $built = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
@@ -3412,44 +3441,91 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
+     * ACOS saved from the grid cell itself, per Pacific day, for exactly this row.
+     *
+     * @return array<string, float>
+     */
+    private function savedCellAcosByDate(string $channel, Carbon $from, Carbon $today): array
+    {
+        if (! $this->snapshotsHaveAcosColumn()) {
+            return [];
+        }
+
+        $out = [];
+        try {
+            $rows = DB::table('advertisement_master_metric_snapshots')
+                ->where('channel', trim($channel))
+                ->whereNotNull('acos')
+                ->whereDate('snapshot_date', '>=', $from->toDateString())
+                ->whereDate('snapshot_date', '<=', $today->toDateString())
+                ->get(['snapshot_date', 'acos']);
+            foreach ($rows as $row) {
+                $date = $row->snapshot_date instanceof \DateTimeInterface
+                    ? $row->snapshot_date->format('Y-m-d')
+                    : substr((string) $row->snapshot_date, 0, 10);
+                $out[$date] = (float) $row->acos;
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master saved cell ACOS read failed: '.$e->getMessage());
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array<string, array<string, float>>  $byDate
      * @return array<string, array<string, float>>
      */
     private function overlayAmazonRollingL30(string $channel, array $byDate, Carbon $from, Carbon $today): array
     {
-        $name = $this->snapshotChannelNames($channel)[0] ?? '';
-        if (! in_array($name, AmazonAdsAdvertisementMasterHistory::amazonChannels(), true)) {
+        $names = $this->snapshotChannelNames($channel);
+        $name = count($names) === 1 ? $names[0] : '';
+        $isAmazon = in_array($name, AmazonAdsAdvertisementMasterHistory::amazonChannels(), true);
+        if (! $isAmazon && ! EbayAdsAdvertisementMasterHistory::supports($name)) {
             return $byDate;
         }
 
         try {
-            $latest = AmazonAdsAdvertisementMasterHistory::latestReportDate();
+            $latest = $isAmazon
+                ? AmazonAdsAdvertisementMasterHistory::latestReportDate()
+                : EbayAdsAdvertisementMasterHistory::latestReportDate($name);
             if ($latest === null) {
                 return $byDate;
             }
-            // Never plot a day whose 30-day window is not yet complete.
+            // Never plot a day whose rolling window is not yet complete.
             $to = min($today->toDateString(), $latest);
             if ($to < $from->toDateString()) {
                 return $byDate;
             }
-            $computed = AmazonAdsAdvertisementMasterHistory::computedL30ByChannel($from->toDateString(), $to)[$name] ?? [];
+            $computed = $isAmazon
+                ? (AmazonAdsAdvertisementMasterHistory::computedL30ByChannel($from->toDateString(), $to)[$name] ?? [])
+                : EbayAdsAdvertisementMasterHistory::rolling($name, $from->toDateString(), $to);
         } catch (\Throwable $e) {
-            \Log::warning('Advertisement Master Amazon rolling L30 overlay failed: '.$e->getMessage());
+            \Log::warning('Advertisement Master rolling L30 overlay failed: '.$e->getMessage());
 
             return $byDate;
         }
 
+        $todayYmd = $today->toDateString();
         foreach ($computed as $date => $m) {
-            // Keep the value already saved for a past day when the reports hold nothing for it.
-            if ((float) $m['spend'] <= 0 && (float) $m['sales'] <= 0 && isset($byDate[$date])) {
-                continue;
+            if (isset($byDate[$date])) {
+                // Today's saved snapshot is exactly what the cell shows: never replace it.
+                // eBay has no stale-L30 problem, so only fill days that have no snapshot.
+                if ($date === $todayYmd || ! $isAmazon) {
+                    continue;
+                }
+                // Keep the value already saved for a past day when the reports hold nothing for it.
+                if ((float) $m['spend'] <= 0 && (float) $m['sales'] <= 0) {
+                    continue;
+                }
             }
             $byDate[$date] = [
                 'spend' => round((float) $m['spend'], 2),
                 'clicks' => (float) $m['clicks'],
                 'sold' => (float) $m['sold'],
                 'sales' => round((float) $m['sales'], 2),
-                'active' => (float) $m['active'],
+                // eBay reports carry no per-day active count: keep whatever was saved.
+                'active' => (float) ($m['active'] ?? ($byDate[$date]['active'] ?? 0)),
                 'missing_ads' => (float) ($byDate[$date]['missing_ads'] ?? 0),
             ];
         }
@@ -3503,9 +3579,12 @@ class AdvertisementMasterController extends Controller
             $series['sales'][]  = round($m['sales'], 2);
             $series['active'][] = (int) round($m['active'] ?? 0);
             $series['cvr'][]    = $m['clicks'] > 0 ? round(($m['sold'] / $m['clicks']) * 100, 1) : 0;
-            $series['acos'][]   = $m['sales'] > 0
-                ? round(($m['spend'] / $m['sales']) * 100, 0)
-                : ($m['spend'] > 0 ? 100 : 0);
+            // Cell ACOS saved with the snapshot wins; otherwise Spend / Ads Sales (1 decimal like the cell).
+            $series['acos'][]   = isset($m['cell_acos'])
+                ? round((float) $m['cell_acos'], 1)
+                : ($m['sales'] > 0
+                    ? round(($m['spend'] / $m['sales']) * 100, 1)
+                    : ($m['spend'] > 0 ? 100 : 0));
             // TCOS = Spend / S Sales (combined store net sales).
             $ss = $ssalesByDate[$d] ?? 0;
             $series['tcos'][]   = $ss > 0
