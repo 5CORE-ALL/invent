@@ -122,7 +122,41 @@ class GoogleShoppingMismatchAlertServiceTest extends TestCase
         $this->assertCount(2, $this->sent);
     }
 
-    public function test_long_digest_is_split_across_runs(): void
+    public function test_one_message_lists_every_campaign_with_all_four_values(): void
+    {
+        $targets = [
+            '1' => ['sbid' => 0.75, 'sbgt' => 4, 'name' => 'HW 18 WP', 'inventory' => 5],
+            '2' => ['sbid' => null, 'sbgt' => 0, 'name' => 'PARENT 18 FR', 'inventory' => 0],
+        ];
+        $states = [
+            '1' => ['live_bid' => 0.5, 'live_bgt' => 1],
+            '2' => ['live_bgt' => 5],
+        ];
+        $svc = $this->service();
+        $issues = $svc->findIssues($targets, $states, fn () => false);
+        $rows = $svc->campaignRows($issues, $targets, $states);
+
+        $this->assertCount(2, $rows);
+        $this->assertTrue($rows[0]['can_push_bgt']);
+        $this->assertTrue($rows[0]['can_push_bid']);
+        $this->assertFalse($rows[0]['blocked']);
+        $this->assertTrue($rows[1]['blocked']);
+        $this->assertFalse($rows[1]['can_push_bgt']);
+
+        $result = $svc->notify($issues, $rows);
+        $this->assertSame(3, $result['sent']);
+        $this->assertCount(1, $this->sent);
+
+        $body = $this->sent[0];
+        $this->assertStringContainsString('2 campaigns not matching', $body);
+        $this->assertStringContainsString('HW 18 WP (1)', $body);
+        $this->assertStringContainsString('SBGT 4 | LBgt $1.00 | SBID $0.75 | LBid $0.50', $body);
+        $this->assertStringContainsString('PARENT 18 FR (2)', $body);
+        $this->assertStringContainsString('SBGT 0 | LBgt $5.00 | SBID — | LBid —', $body);
+        $this->assertStringContainsString('/google/shopping/google-shopping/mismatches', $body);
+    }
+
+    public function test_many_campaigns_still_go_in_a_single_message(): void
     {
         $targets = [];
         $states = [];
@@ -130,15 +164,12 @@ class GoogleShoppingMismatchAlertServiceTest extends TestCase
             $targets[(string) $i] = ['sbid' => null, 'sbgt' => 0, 'name' => 'PARENT CAMPAIGN NUMBER '.$i, 'inventory' => 0];
             $states[(string) $i] = ['live_bgt' => 5];
         }
-        $issues = $this->service()->findIssues($targets, $states, fn () => false);
+        $svc = $this->service();
+        $issues = $svc->findIssues($targets, $states, fn () => false);
+        $svc->notify($issues, $svc->campaignRows($issues, $targets, $states));
 
-        $one = $this->service()->notify($issues);
-        $this->assertLessThan(60, $one['sent']);
-        $this->assertLessThanOrEqual(3300 + 600, mb_strlen($this->sent[0]));
-
-        $two = $this->service()->notify($issues);
-        $this->assertGreaterThan(0, $two['sent']);
-        $this->assertLessThanOrEqual(60 - $one['sent'], $two['sent']);
+        $this->assertCount(1, $this->sent);
+        $this->assertStringContainsString('PARENT CAMPAIGN NUMBER 60 (60)', $this->sent[0]);
     }
 
     public function test_pull_failure_is_one_alert(): void

@@ -52,6 +52,7 @@ use App\Http\Controllers\Campaigns\EbayRunningAdsController;
 use App\Http\Controllers\Campaigns\GoogleSerpCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleYoutubeAdsCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleShoppingCampaignsController;
+use App\Http\Controllers\Campaigns\GoogleShoppingMismatchController;
 use App\Http\Controllers\Campaigns\GoogleShoppingAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleSerpAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleYoutubeAdsMissingController;
@@ -7318,6 +7319,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/missing/create', 'create')->name('google.shopping.ads.missing.create');
         Route::post('/google/shopping/missing/ai-negatives', 'aiNegativeKeywords')->name('google.shopping.ads.missing.ai-negatives');
         Route::post('/google/shopping/missing/push-negatives', 'pushNegativeKeywords')->name('google.shopping.ads.missing.push-negatives');
+    });
+
+    // Campaigns whose SBGT/SBID do not match the live LBgt/LBid: pick rows and push them (opened from the alert message).
+    Route::controller(GoogleShoppingMismatchController::class)->group(function () {
+        Route::get('/google/shopping/google-shopping/mismatches', 'index')->name('google.shopping.campaigns.mismatches');
+        Route::get('/google/shopping/google-shopping/mismatches/data', 'data')->name('google.shopping.campaigns.mismatches.data');
+        Route::post('/google/shopping/google-shopping/mismatches/push', 'push')->name('google.shopping.campaigns.mismatches.push');
     });
 
     Route::controller(GoogleShoppingCampaignsController::class)->group(function () {

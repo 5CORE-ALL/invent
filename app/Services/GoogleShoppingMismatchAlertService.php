@@ -89,77 +89,136 @@ class GoogleShoppingMismatchAlertService
     }
 
     /**
-     * Send one digest with the issues that were not already alerted within the cooldown.
+     * One row per campaign for the message and the select-and-push page: names plus SBGT, LBgt, SBID, LBid
+     * and the reasons. `can_push_bgt` / `can_push_bid` say which side the page may push; `blocked` is an
+     * SBGT 0 campaign (a $0 budget cannot be pushed, so it is shown but never pushed).
      *
      * @param  list<array{key: string, cid: string, name: string, kind: string, label: string, text: string}>  $issues
+     * @param  array<string, array<string, mixed>>  $targets
+     * @param  array<string, array<string, mixed>>  $states
+     * @return list<array{cid: string, name: string, sbgt: int, lbgt: ?float, sbid: ?float, lbid: ?float, reasons: list<string>, kinds: list<string>, can_push_bgt: bool, can_push_bid: bool, blocked: bool}>
+     */
+    public function campaignRows(array $issues, array $targets, array $states): array
+    {
+        $rows = [];
+        foreach ($issues as $issue) {
+            $cid = $issue['cid'];
+            if (! isset($targets[$cid])) {
+                continue;
+            }
+            if (! isset($rows[$cid])) {
+                $t = $targets[$cid];
+                $s = $states[$cid] ?? [];
+                $rows[$cid] = [
+                    'cid' => $cid,
+                    'name' => $issue['name'],
+                    'sbgt' => (int) (self::positive($t['sbgt'] ?? null) ?? 0),
+                    'lbgt' => self::positive($s['live_bgt'] ?? null),
+                    'sbid' => self::positive($t['sbid'] ?? null),
+                    'lbid' => self::positive($s['live_bid'] ?? null),
+                    'reasons' => [],
+                    'kinds' => [],
+                    'can_push_bgt' => false,
+                    'can_push_bid' => false,
+                    'blocked' => false,
+                ];
+            }
+            $rows[$cid]['reasons'][] = $issue['text'];
+            $rows[$cid]['kinds'][] = $issue['kind'];
+            if ($issue['kind'] === 'bgt_mismatch') {
+                $rows[$cid]['can_push_bgt'] = true;
+            }
+            if ($issue['kind'] === 'bid_mismatch') {
+                $rows[$cid]['can_push_bid'] = true;
+            }
+            if ($issue['kind'] === 'sbgt_zero') {
+                $rows[$cid]['blocked'] = true;
+            }
+        }
+
+        return array_values($rows);
+    }
+
+    public static function pageUrl(): string
+    {
+        return url('/google/shopping/google-shopping/mismatches');
+    }
+
+    /**
+     * Send ONE message with every campaign that still does not match (names, SBGT, LBgt, SBID, LBid, reason).
+     * It is sent when at least one issue was not alerted within the cooldown; all issues are then marked.
+     *
+     * @param  list<array{key: string, cid: string, name: string, kind: string, label: string, text: string}>  $issues
+     * @param  list<array<string, mixed>>  $rows  from campaignRows(); empty = describe the issues themselves
      * @return array{found: int, new: int, sent: int, chat: bool, whatsapp: bool}
      */
-    public function notify(array $issues): array
+    public function notify(array $issues, array $rows = []): array
     {
         $result = ['found' => count($issues), 'new' => 0, 'sent' => 0, 'chat' => false, 'whatsapp' => false];
         if ($issues === [] || ! (bool) config('services.google_shopping_alerts.enabled', true)) {
             return $result;
         }
 
-        $fresh = array_values(array_filter($issues, fn (array $i) => ! Cache::has(self::cacheKey($i['key']))));
+        $fresh = array_filter($issues, fn (array $i) => ! Cache::has(self::cacheKey($i['key'])));
         $result['new'] = count($fresh);
         if ($fresh === []) {
             return $result;
         }
 
-        [$body, $included] = $this->buildBody($fresh, count($issues));
+        $body = $this->buildBody($issues, $rows);
 
-        $delivered = $this->deliver($body, $included, $result);
+        $delivered = $this->deliver($body, count($rows) > 0 ? count($rows) : count($issues), $result);
         if (! $delivered) {
             return $result; // nothing reached anyone: keep the issues "new" so the next run tries again
         }
 
         $ttl = now()->addHours(max(1, (int) config('services.google_shopping_alerts.cooldown_hours', 24)));
-        foreach ($included as $issue) {
+        foreach ($issues as $issue) {
             Cache::put(self::cacheKey($issue['key']), 1, $ttl);
         }
-        $result['sent'] = count($included);
+        $result['sent'] = count($issues);
 
         return $result;
     }
 
     /**
-     * @param  list<array{key: string, cid: string, name: string, kind: string, label: string, text: string}>  $fresh
-     * @return array{0: string, 1: list<array{key: string, cid: string, name: string, kind: string, label: string, text: string}>}
+     * @param  list<array{key: string, cid: string, name: string, kind: string, label: string, text: string}>  $issues
+     * @param  list<array<string, mixed>>  $rows
      */
-    public function buildBody(array $fresh, int $totalIssues): array
+    public function buildBody(array $issues, array $rows = []): string
     {
-        $head = "⚠️ Google Shopping — SBGT/SBID not matching LBgt/LBid\n"
-            .now('Asia/Kolkata')->format('d M Y, h:i A').' IST'."\n";
-        $foot = "\nOpen: ".url('/google/shopping/google-shopping');
-
-        $included = [];
-        $lines = '';
-        foreach ($fresh as $i => $issue) {
-            $block = "\n".($i + 1).'. '.$issue['name'].' ('.$issue['cid'].")\n"
-                .'   '.$issue['label']."\n"
-                .'   Reason: '.$issue['text']."\n";
-            if ($included !== [] && mb_strlen($head.$lines.$block.$foot) > self::MAX_BODY_CHARS) {
-                break;
+        $items = [];
+        if ($rows !== []) {
+            foreach ($rows as $r) {
+                $items[] = [
+                    'title' => $r['name'].' ('.$r['cid'].')',
+                    'values' => 'SBGT '.$r['sbgt']
+                        .' | LBgt '.($r['lbgt'] !== null ? '$'.self::money($r['lbgt']) : '—')
+                        .' | SBID '.($r['sbid'] !== null ? '$'.self::money($r['sbid']) : '—')
+                        .' | LBid '.($r['lbid'] !== null ? '$'.self::money($r['lbid']) : '—'),
+                    'reason' => implode(' ', $r['reasons']),
+                ];
             }
-            $lines .= $block;
-            $included[] = $issue;
+        } else {
+            foreach ($issues as $i) {
+                $items[] = ['title' => $i['name'].' ('.$i['cid'].')', 'values' => $i['label'], 'reason' => $i['text']];
+            }
         }
 
-        $more = count($fresh) - count($included);
-        $summary = count($included).' new issue'.(count($included) === 1 ? '' : 's')
-            .' ('.$totalIssues.' campaign check'.($totalIssues === 1 ? '' : 's').' not matching in total)';
-        if ($more > 0) {
-            $summary .= ' — '.$more.' more will follow in the next run';
+        $n = count($items);
+        $body = '⚠️ Google Shopping — '.$n.' campaign'.($n === 1 ? '' : 's')." not matching live Google Ads\n"
+            .now('Asia/Kolkata')->format('d M Y, h:i A').' IST'."\n";
+        foreach ($items as $i => $item) {
+            $body .= "\n".($i + 1).'. '.$item['title']."\n   ".$item['values']."\n   Reason: ".$item['reason']."\n";
         }
 
-        return [$head.$summary."\n".$lines.$foot, $included];
+        return $body."\nSelect the campaigns and push them here: ".self::pageUrl();
     }
 
     /**
      * @param  array{found: int, new: int, sent: int, chat: bool, whatsapp: bool}  $result
      */
-    private function deliver(string $body, array $included, array &$result): bool
+    private function deliver(string $body, int $campaignCount, array &$result): bool
     {
         if (isset($this->hooks['send'])) {
             $out = ($this->hooks['send'])($body);
@@ -194,7 +253,7 @@ class GoogleShoppingMismatchAlertService
         // WhatsApp template (delivers at any time), which plain WhatsApp text does not.
         if ($user !== null) {
             try {
-                $task = $this->createAlertTask($user, $body, $included);
+                $task = $this->createAlertTask($user, $body, $campaignCount);
                 $status = app(TaskWhatsAppNotificationService::class)->notifyNewTaskAssigned($task);
                 $result['whatsapp'] = $status === 'sent';
                 if (! $result['whatsapp']) {
@@ -213,7 +272,10 @@ class GoogleShoppingMismatchAlertService
                 continue;
             }
             try {
-                if ($wa->sendText($clean, $body)) {
+                $text = mb_strlen($body) > self::MAX_BODY_CHARS
+                    ? mb_substr($body, 0, self::MAX_BODY_CHARS)."…\nFull list: ".self::pageUrl()
+                    : $body;
+                if ($wa->sendText($clean, $text)) {
                     $result['whatsapp'] = true;
                 }
             } catch (Throwable $e) {
@@ -226,18 +288,13 @@ class GoogleShoppingMismatchAlertService
 
     /**
      * One task per digest, assigned to the alert user. The title goes into the WhatsApp template as one
-     * line, so it stays short; the full per-campaign reasons are in the description.
-     *
-     * @param  list<array{key: string, cid: string, name: string, kind: string, label: string, text: string}>  $included
+     * line, so it is just the count and the page link; the full list is in the description.
      */
-    private function createAlertTask(User $user, string $body, array $included): Task
+    private function createAlertTask(User $user, string $body, int $campaignCount): Task
     {
-        $first = $included[0] ?? null;
-        $title = 'Google Shopping: '.count($included).' campaign'.(count($included) === 1 ? '' : 's').' SBGT/SBID not matching live';
-        if ($first !== null) {
-            $title .= ' — '.$first['name'].': '.$first['label'];
-        }
-        $title = mb_strimwidth(trim((string) preg_replace('/\s+/', ' ', $title)), 0, 200, '…');
+        $title = 'Google Shopping: '.$campaignCount.' campaign'.($campaignCount === 1 ? '' : 's')
+            .' SBGT/SBID not matching live. Select and push: '.self::pageUrl();
+        $title = mb_strimwidth(trim((string) preg_replace('/\s+/', ' ', $title)), 0, 250, '…');
 
         $start = now();
         $due = $start->copy()->addDay();
@@ -263,7 +320,7 @@ class GoogleShoppingMismatchAlertService
             'workspace' => 0,
             'order' => 0,
             'task_id' => '',
-            'link1' => url('/google/shopping/google-shopping'),
+            'link1' => self::pageUrl(),
             'link2' => '', 'link3' => '', 'link4' => '', 'link5' => '', 'link6' => '', 'link7' => '',
             'link8' => 'google-shopping-mismatch',
             'link9' => '',
