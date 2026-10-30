@@ -254,6 +254,36 @@ class ListingVariationPreviewService
     }
 
     /**
+     * Parent choice from the publish window, in the shape the Temu publishers take.
+     *
+     * @param  array<string, mixed>  $overrides
+     * @return array{mode: string, goods_id: string}
+     */
+    public static function temuAttach(array $overrides): array
+    {
+        return [
+            'mode' => (string) ($overrides['attach_mode'] ?? ''),
+            'goods_id' => (string) ($overrides['existing_listing_id'] ?? ''),
+        ];
+    }
+
+    /**
+     * Same, read straight from a publish request (the Temu pages post to their own routes).
+     *
+     * @return array{mode: string, goods_id: string}
+     */
+    public static function temuAttachFromRequest(\Illuminate\Http\Request $request): array
+    {
+        $mode = strtolower(trim((string) $request->input('attach', '')));
+        if (! in_array($mode, ['existing', 'new'], true)) {
+            return ['mode' => '', 'goods_id' => ''];
+        }
+        $id = trim((string) $request->input('existing_listing_id', ''));
+
+        return ['mode' => $mode, 'goods_id' => $mode === 'existing' && preg_match('/^[0-9]{3,32}$/', $id) ? $id : ''];
+    }
+
+    /**
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
@@ -290,13 +320,13 @@ class ListingVariationPreviewService
             ];
         }
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
-            return $this->temu2->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
+            return $this->temu2->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $this->temuAttach($overrides));
         }
         if (in_array($channel, ['temu3', 'temuthree'], true)) {
-            return $this->temu3->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
+            return $this->temu3->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $this->temuAttach($overrides));
         }
         if (in_array($channel, ['temu', 'temu1'], true)) {
-            return $this->temu->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
+            return $this->temu->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $this->temuAttach($overrides));
         }
         if ($channel === 'faire') {
             return $this->faire->publishSkus($skus, $expandSiblings, $mode, $overrides);

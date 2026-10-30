@@ -149,7 +149,14 @@ class ListingTemuController extends Controller
                 ? 'single'
                 : 'variation';
             $parentHint = trim((string) $request->input('parent', $request->input('parent_hint', '')));
-            $result = $publisher->publishSkus($skus, ! $request->boolean('confirmed'), $mode, $parentHint);
+            $result = $publisher->publishSkus(
+                $skus,
+                ! $request->boolean('confirmed'),
+                $mode,
+                $parentHint,
+                null,
+                $mode === 'variation' ? \App\Services\MarketplaceManager\ListingVariationPreviewService::temuAttachFromRequest($request) : []
+            );
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,

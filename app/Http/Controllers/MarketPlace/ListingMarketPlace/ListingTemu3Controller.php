@@ -103,7 +103,9 @@ class ListingTemu3Controller extends Controller
                 $validatedSkus,
                 ! $request->boolean('confirmed'),
                 $mode,
-                $parentHint
+                $parentHint,
+                null,
+                $mode === 'variation' ? \App\Services\MarketplaceManager\ListingVariationPreviewService::temuAttachFromRequest($request) : []
             );
         } catch (\Throwable $e) {
             return response()->json([
