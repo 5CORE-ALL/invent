@@ -1958,9 +1958,20 @@
                     tip += ' · Prev (' + (row.sbgt_prev_date || '') + '): ' + prevTxt + ' → today ' + valTxt;
                 }
                 var cid = (row.campaign_id != null) ? String(row.campaign_id) : '';
-                var dot = '<span class="gac-sbgt-dot" role="button" tabindex="0" data-sbgt-cid="' + gacRawEscAttr(cid) + '"'
+                // SBGT equals the verified live budget (LBgt) → green triangle instead of the trend dot.
+                // Same class + data attribute, so clicking it still opens the daily history.
+                var lbgtMatch = (row.lbgt_green === true || row.lbgt_green === 1 || row.lbgt_green === '1')
+                    && isFinite(v) && v > 0;
+                var dot;
+                if (lbgtMatch) {
+                    dot = '<span class="gac-sbgt-dot gac-sbgt-tri" role="button" tabindex="0" data-sbgt-cid="' + gacRawEscAttr(cid) + '"'
+                        + ' title="' + gacRawEscAttr('Matches LBgt · ' + tip) + '"'
+                        + ' style="display:inline-block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid #22c55e;margin-left:6px;cursor:pointer;vertical-align:middle;flex-shrink:0;"></span>';
+                } else {
+                    dot = '<span class="gac-sbgt-dot" role="button" tabindex="0" data-sbgt-cid="' + gacRawEscAttr(cid) + '"'
                         + ' title="' + gacRawEscAttr(tip) + '"'
                         + ' style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + color + ';margin-left:6px;cursor:pointer;vertical-align:middle;flex-shrink:0;"></span>';
+                }
                 return '<span style="display:inline-flex;align-items:center;justify-content:center;" title="' + gacRawEscAttr(tip) + '">' + valTxt + dot + '</span>';
             }
             function gacRawBgtPartFormatter(cell, colorKey, extraTip) {
