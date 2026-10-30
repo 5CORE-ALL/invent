@@ -744,7 +744,7 @@
         index: 'id',
         layout: 'fitColumns',
         placeholder: 'Loading orders…',
-        initialSort: [{ column: 'order_date', dir: 'asc' }],
+        initialSort: [{ column: 'order_date', dir: 'desc' }],
         ajaxURL: @json(route('order.fulfillment.data')),
         ajaxConfig: 'GET',
         ajaxRequestFunc: function (url, config, params) {
@@ -793,7 +793,7 @@
             return rows;
         },
         dataLoaded: function () {
-            table.setSort([{ column: 'order_date', dir: 'asc' }]);
+            table.setSort([{ column: 'order_date', dir: 'desc' }]);
             renderStatusOptions(table.getData());
             applyFilters(table);
             setTimeout(function () {
