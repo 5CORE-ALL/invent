@@ -475,7 +475,8 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 return -1;
             }
 
-            return strcmp($ak, $bk);
+            // Newest order first.
+            return strcmp($bk, $ak);
         });
 
         return array_values($rows);
