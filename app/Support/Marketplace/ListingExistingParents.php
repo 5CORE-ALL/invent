@@ -20,6 +20,8 @@ final class ListingExistingParents
         'ebay2', 'ebaytwo',
         'ebay3', 'ebaythree',
         'aliexpress',
+        // Temu adds the new SKU to the chosen goods id (see Temu2ListingPublishService::publishSkus).
+        'temu', 'temu2', 'temu3',
     ];
 
     public static function supports(string $channel): bool

@@ -189,7 +189,7 @@ class Temu3ListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $preferredCatId = null): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $preferredCatId = null, array $attach = []): array
     {
         $skus = $this->uniqueTrimmedSkus($skus);
         if ($skus === []) {
@@ -440,7 +440,17 @@ class Temu3ListingPublishService
         $prepared = $stillPrepared;
         $skuList = $stillSkuList;
 
-        $existingGoodsId = $mode === 'single' ? '' : $this->siblingGoodsId($parentKey);
+        // The parent picked in the publish window: "existing" + that goods id joins exactly that goods,
+        // "new" never joins a goods that merely shares the parent name.
+        $attachMode = strtolower(trim((string) ($attach['mode'] ?? '')));
+        $targetGoodsId = $attachMode === 'existing' ? trim((string) ($attach['goods_id'] ?? '')) : '';
+        if ($mode === 'single' || $attachMode === 'new') {
+            $existingGoodsId = '';
+        } elseif ($targetGoodsId !== '') {
+            $existingGoodsId = $targetGoodsId;
+        } else {
+            $existingGoodsId = $this->siblingGoodsId($parentKey);
+        }
         if ($existingGoodsId !== '') {
             $added = $this->addSkusToExistingGoods($existingGoodsId, $skuList);
             if ($added['success'] ?? false) {
@@ -452,6 +462,20 @@ class Temu3ListingPublishService
                     'goods_id' => $existingGoodsId,
                     'sku_id' => $firstSkuId !== '' ? $firstSkuId : null,
                     'skus' => array_values(array_map(static fn ($row) => $row['sku'], $prepared)),
+                ];
+            }
+            if ($targetGoodsId !== '') {
+                // The user chose this parent: never create a separate parent with a different goods id.
+                Log::warning('Temu3 publish: add SKU to the chosen goods failed, nothing created', [
+                    'parent' => $parentKey,
+                    'goods_id' => $targetGoodsId,
+                    'message' => $added['message'] ?? '',
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'Could not add the variation(s) to the selected '.$this->shopLabel().' parent (goods '.$targetGoodsId.'). '
+                        .'No new listing was created. '.trim((string) ($added['message'] ?? '')),
                 ];
             }
             Log::warning('Temu3 publish: add SKU to existing goods failed, creating a new listing', [
@@ -1003,13 +1027,42 @@ class Temu3ListingPublishService
             }
         }
 
-        return [
+        return $this->withExistingParents([
             'parent' => $parent,
             'children' => $rows,
             'publish_skus' => $publishSkus,
             'publish_count' => $selectedCount > 0 ? $selectedCount : count($publishSkus),
             'single_child' => count($rows) === 1,
-        ];
+        ], $rows);
+    }
+
+    /**
+     * Lets the publish window offer "Add to an existing parent listing" (the chosen goods id is sent back on publish).
+     *
+     * @param  array<string, mixed>  $group
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, mixed>
+     */
+    private function withExistingParents(array $group, array $rows): array
+    {
+        $skus = [];
+        $listed = [];
+        foreach ($rows as $row) {
+            $sku = (string) ($row['sku'] ?? '');
+            $skus[] = $sku;
+            $goodsId = $this->localGoodsId($sku);
+            if ($goodsId !== '' && ($row['status'] ?? '') === 'skipped_listed') {
+                $listed[strtolower($sku)] = $goodsId;
+            }
+        }
+        $group['attach_supported'] = true;
+        try {
+            $group['existing_parents'] = \App\Support\Marketplace\ListingExistingParents::forGroup($this->shopConfigKey(), $skus, $listed);
+        } catch (\Throwable) {
+            $group['existing_parents'] = [];
+        }
+
+        return $group;
     }
 
     /**
@@ -3441,6 +3494,7 @@ class Temu3ListingPublishService
             'bg.local.goods.partial.update',
         ];
         $lastMsg = '';
+        $seen = [];
         foreach ($attempts as $type) {
             $data = $this->temuCallBody([
                 'type' => $type,
@@ -3451,7 +3505,11 @@ class Temu3ListingPublishService
             if ($data['success'] ?? false) {
                 return ['success' => true, 'data' => $data];
             }
-            $lastMsg = $this->apiErrorMessage($data);
+            $msg = $this->apiErrorMessage($data);
+            if ($msg !== '' && ! in_array($msg, $seen, true)) {
+                $seen[] = $msg;
+            }
+            $lastMsg = implode(' | ', array_slice($seen, 0, 3));
             Log::info('Temu3 add SKU to existing goods failed', [
                 'type' => $type,
                 'goods_id' => $goodsId,
