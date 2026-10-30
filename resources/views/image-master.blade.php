@@ -1477,7 +1477,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('exportBtn')?.addEventListener('click', () => {
         const rows = tableData.map(row => {
-            const o = { SKU: row.SKU, Product: row.Parent||'', Preview: row.preview_thumb||'' };
+            const o = {
+                SKU: row.SKU,
+                'Image Count': pmImageUrls(row).length,
+                Product: row.Parent||'',
+                Preview: row.preview_thumb||'',
+            };
             const im = row.image_master||{};
             MARKETPLACES.forEach(mp => { o[LABELS[mp]] = im[mp]||''; });
             return o;
