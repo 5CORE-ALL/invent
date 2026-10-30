@@ -692,6 +692,16 @@
 
                             function onSubmit() {
                                 let value = parseFloat(input.value);
+                                if (input.value.trim() === '') {
+                                    // Emptied the box = delete this cell's data (wrong entry)
+                                    cancel();
+                                    const existing = cell.getValue();
+                                    if (!input._clearing && existing !== 'N/A' && existing !== '' && existing !== null && existing !== undefined) {
+                                        input._clearing = true;
+                                        setTimeout(function() { deleteCellData(cell); }, 0);
+                                    }
+                                    return;
+                                }
                                 if (isNaN(value) || value < 0 || value > 100) {
                                     cancel();
                                     return;
@@ -782,6 +792,16 @@
 
                             function onSubmit() {
                                 let value = parseFloat(input.value);
+                                if (input.value.trim() === '') {
+                                    // Emptied the box = delete this cell's data (wrong entry)
+                                    cancel();
+                                    const existing = cell.getValue();
+                                    if (!input._clearing && existing !== 'N/A' && existing !== '' && existing !== null && existing !== undefined) {
+                                        input._clearing = true;
+                                        setTimeout(function() { deleteCellData(cell); }, 0);
+                                    }
+                                    return;
+                                }
                                 if (isNaN(value) || value < 0 || value > 100) {
                                     cancel();
                                     return;
@@ -872,6 +892,16 @@
 
                             function onSubmit() {
                                 let value = parseFloat(input.value);
+                                if (input.value.trim() === '') {
+                                    // Emptied the box = delete this cell's data (wrong entry)
+                                    cancel();
+                                    const existing = cell.getValue();
+                                    if (!input._clearing && existing !== 'N/A' && existing !== '' && existing !== null && existing !== undefined) {
+                                        input._clearing = true;
+                                        setTimeout(function() { deleteCellData(cell); }, 0);
+                                    }
+                                    return;
+                                }
                                 if (isNaN(value) || value < 0 || value > 100) {
                                     cancel();
                                     return;
@@ -962,6 +992,16 @@
 
                             function onSubmit() {
                                 let value = parseFloat(input.value);
+                                if (input.value.trim() === '') {
+                                    // Emptied the box = delete this cell's data (wrong entry)
+                                    cancel();
+                                    const existing = cell.getValue();
+                                    if (!input._clearing && existing !== 'N/A' && existing !== '' && existing !== null && existing !== undefined) {
+                                        input._clearing = true;
+                                        setTimeout(function() { deleteCellData(cell); }, 0);
+                                    }
+                                    return;
+                                }
                                 if (isNaN(value) || value < 0 || value > 100) {
                                     cancel();
                                     return;
@@ -1052,6 +1092,16 @@
 
                             function onSubmit() {
                                 let value = parseFloat(input.value);
+                                if (input.value.trim() === '') {
+                                    // Emptied the box = delete this cell's data (wrong entry)
+                                    cancel();
+                                    const existing = cell.getValue();
+                                    if (!input._clearing && existing !== 'N/A' && existing !== '' && existing !== null && existing !== undefined) {
+                                        input._clearing = true;
+                                        setTimeout(function() { deleteCellData(cell); }, 0);
+                                    }
+                                    return;
+                                }
                                 if (isNaN(value) || value < 0 || value > 100) {
                                     cancel();
                                     return;
@@ -1142,6 +1192,16 @@
 
                             function onSubmit() {
                                 let value = parseFloat(input.value);
+                                if (input.value.trim() === '') {
+                                    // Emptied the box = delete this cell's data (wrong entry)
+                                    cancel();
+                                    const existing = cell.getValue();
+                                    if (!input._clearing && existing !== 'N/A' && existing !== '' && existing !== null && existing !== undefined) {
+                                        input._clearing = true;
+                                        setTimeout(function() { deleteCellData(cell); }, 0);
+                                    }
+                                    return;
+                                }
                                 if (isNaN(value) || value < 0 || value > 100) {
                                     cancel();
                                     return;
@@ -1232,6 +1292,16 @@
 
                             function onSubmit() {
                                 let value = parseFloat(input.value);
+                                if (input.value.trim() === '') {
+                                    // Emptied the box = delete this cell's data (wrong entry)
+                                    cancel();
+                                    const existing = cell.getValue();
+                                    if (!input._clearing && existing !== 'N/A' && existing !== '' && existing !== null && existing !== undefined) {
+                                        input._clearing = true;
+                                        setTimeout(function() { deleteCellData(cell); }, 0);
+                                    }
+                                    return;
+                                }
                                 if (isNaN(value) || value < 0 || value > 100) {
                                     cancel();
                                     return;
@@ -1322,6 +1392,16 @@
 
                             function onSubmit() {
                                 let value = parseFloat(input.value);
+                                if (input.value.trim() === '') {
+                                    // Emptied the box = delete this cell's data (wrong entry)
+                                    cancel();
+                                    const existing = cell.getValue();
+                                    if (!input._clearing && existing !== 'N/A' && existing !== '' && existing !== null && existing !== undefined) {
+                                        input._clearing = true;
+                                        setTimeout(function() { deleteCellData(cell); }, 0);
+                                    }
+                                    return;
+                                }
                                 if (isNaN(value) || value < 0 || value > 100) {
                                     cancel();
                                     return;
