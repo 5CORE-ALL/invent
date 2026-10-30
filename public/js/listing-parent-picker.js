@@ -46,25 +46,36 @@
         return '<option value="' + esc(p.id) + '" data-parent-name="' + esc(parent) + '" title="' + esc(tip) + '"' + (selected ? ' selected' : '') + '>' + esc(text) + '</option>';
     }
 
-    // A list box can paint the only row as highlighted while its value is still empty.
-    // Treat that row — or the row whose parent name matches this group — as the choice.
-    function ensureSelected($select, parentName) {
-        if (!$select || !$select.length) return;
-        if (String($select.val() || '').trim() !== '') return;
-        var $opts = $select.find('option');
-        if (!$opts.length) return;
-        if ($opts.length === 1) {
-            $select.prop('selectedIndex', 0);
-            return;
-        }
-        var want = String(parentName || '').trim().toLowerCase();
-        if (!want) return;
-        $opts.each(function () {
-            if (String($(this).attr('data-parent-name') || '').trim().toLowerCase() === want) {
-                $select.val(this.value);
-                return false;
+    // A list box (select size>1) paints its first row as highlighted while selectedIndex
+    // stays -1 and .value stays empty. That happens here because the list is parsed inside
+    // a hidden panel, so the selected attribute never sticks. Read the option element itself.
+    function chosenExisting(select, parentName) {
+        if (!select || !select.options || !select.options.length) return { id: '', parent: '' };
+        var idx = select.selectedIndex;
+        var current = idx >= 0 && select.options[idx] ? String(select.options[idx].value || '').trim() : '';
+        if (!current) {
+            idx = -1;
+            if (select.options.length === 1) {
+                idx = 0;
+            } else {
+                var want = String(parentName || '').trim().toLowerCase();
+                for (var i = 0; i < select.options.length && want; i++) {
+                    if (String(select.options[i].getAttribute('data-parent-name') || '').trim().toLowerCase() === want) {
+                        idx = i;
+                        break;
+                    }
+                }
             }
-        });
+            if (idx >= 0) {
+                select.options[idx].selected = true;
+                select.selectedIndex = idx;
+            }
+        }
+        if (idx < 0 || !select.options[idx]) return { id: '', parent: '' };
+        return {
+            id: String(select.options[idx].value || '').trim(),
+            parent: String(select.options[idx].getAttribute('data-parent-name') || '').trim()
+        };
     }
 
     /**
@@ -79,6 +90,9 @@
         if (parentName.toLowerCase() === 'standalone') parentName = '';
         var existing = (group && group.existing_parents) || [];
         var required = !!opts.required;
+        // One parent already on the marketplace: start on "add to existing" with the list
+        // visible, so the row is a real selection and Publish can turn on without an extra click.
+        var startExisting = required && existing.length > 0;
         var name = 'lp-parent-' + gi;
         var options = '';
         var only = existing.length === 1;
@@ -91,14 +105,14 @@
         return '<div class="lp-parent" data-channel="' + esc(opts.channel || '') + '" data-group-parent="' + esc(parentName) + '"' +
             ' data-attach-supported="' + (opts.attachSupported ? '1' : '0') + '" data-required="' + (required ? '1' : '0') + '">' +
             '<div class="lp-parent-title">Parent listing on ' + esc(opts.label || 'the marketplace') + '</div>' +
-            '<label class="lp-opt"><input type="radio" class="lp-parent-radio" name="' + name + '" value="existing"> Add to an existing parent listing</label>' +
-            '<div class="lp-existing" hidden>' +
+            '<label class="lp-opt"><input type="radio" class="lp-parent-radio" name="' + name + '" value="existing"' + (startExisting ? ' checked' : '') + '> Add to an existing parent listing</label>' +
+            '<div class="lp-existing"' + (startExisting ? '' : ' hidden') + '>' +
                 '<input type="search" class="form-control form-control-sm lp-parent-search" placeholder="Search parent name, SKU, listing ID or title…" autocomplete="off">' +
                 '<select class="form-select form-select-sm lp-parent-select" size="5">' + options + '</select>' +
                 '<div class="lp-parent-note">' + (existing.length ? existing.length + ' parent(s) of this group. Type to search all parents.' : 'Type to search the parent listings on this marketplace.') + '</div>' +
             '</div>' +
-            '<label class="lp-opt"><input type="radio" class="lp-parent-radio" name="' + name + '" value="new"' + (required ? '' : ' checked') + '> Create a new parent listing</label>' +
-            '<div class="lp-new"' + (required ? ' hidden' : '') + '>' +
+            '<label class="lp-opt"><input type="radio" class="lp-parent-radio" name="' + name + '" value="new"' + (startExisting ? '' : ' checked') + '> Create a new parent listing</label>' +
+            '<div class="lp-new"' + (startExisting ? ' hidden' : '') + '>' +
                 '<input type="text" class="form-control form-control-sm lp-parent-name" maxlength="120" value="' + esc(parentName) + '" placeholder="Parent name (you choose)">' +
                 '<div class="lp-parent-note">This name is used as the parent of the SKUs you tick.</div>' +
             '</div>' +
@@ -113,11 +127,10 @@
         var attach = String($box.find('.lp-parent-radio:checked').val() || '');
         var supported = $box.attr('data-attach-supported') === '1';
         var required = $box.attr('data-required') === '1';
-        var $select = $box.find('.lp-parent-select');
-        if (attach === 'existing') ensureSelected($select, $box.attr('data-group-parent'));
-        var $opt = $select.find('option:selected');
-        var existingId = String($select.val() || '').trim();
-        var existingParent = String($opt.attr('data-parent-name') || '').trim();
+        var select = $box.find('.lp-parent-select').get(0);
+        var chosen = attach === 'existing' ? chosenExisting(select, $box.attr('data-group-parent')) : { id: '', parent: '' };
+        var existingId = chosen.id;
+        var existingParent = chosen.parent;
         var newParent = String($box.find('.lp-parent-name').val() || '').trim();
         var ready = attach === 'new' ? newParent !== ''
             : attach === 'existing' ? existingId !== ''
@@ -150,7 +163,7 @@
             parents.forEach(function (p) { html += optionHtml(p, ''); });
             $select.html(html);
             if (keep && $select.find('option[value="' + keep.replace(/"/g, '') + '"]').length) $select.val(keep);
-            else ensureSelected($select, $box.attr('data-group-parent'));
+            else chosenExisting($select.get(0), $box.attr('data-group-parent'));
             $note.text(parents.length
                 ? parents.length + ' parent listing(s) found' + (parents.length >= 60 ? ' (showing the first 60 — type to narrow)' : '') + '.'
                 : 'No parent listing matches' + (q ? ' “' + q + '”' : '') + '. Use "Create a new parent listing" to start one.');
@@ -167,7 +180,7 @@
             $box.find('.lp-existing').prop('hidden', !existing);
             $box.find('.lp-new').prop('hidden', existing);
             if (existing && !$box.find('.lp-parent-select option').length) search($box, '');
-            else if (existing) ensureSelected($box.find('.lp-parent-select'), $box.attr('data-group-parent'));
+            else if (existing) chosenExisting($box.find('.lp-parent-select').get(0), $box.attr('data-group-parent'));
             $(document).trigger('lp-parent:changed');
         })
         .on('input.lpParent', '.lp-parent-search', function () {
@@ -177,7 +190,12 @@
             clearTimeout(timers[id]);
             timers[id] = setTimeout(function () { search($box, q); }, 300);
         })
+        .on('mousedown.lpParent', '.lp-parent-select option', function () {
+            this.selected = true;
+        })
         .on('change.lpParent click.lpParent', '.lp-parent-select', function () {
+            var opt = this.options && this.selectedIndex >= 0 ? this.options[this.selectedIndex] : null;
+            if (opt) opt.selected = true;
             $(document).trigger('lp-parent:changed');
         })
         .on('input.lpParent', '.lp-parent-name', function () {
