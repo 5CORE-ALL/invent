@@ -5,6 +5,7 @@ namespace App\Services\MarketplaceManager;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\Marketplace\ChannelListingRegistry;
+use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingExistingParents;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
@@ -257,6 +258,20 @@ class ListingVariationPreviewService
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
     public function publishSkus(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryUuid = null, ?string $categoryName = null, ?float $weightLb = null, ?float $weightKg = null, array $overrides = []): array
+    {
+        $result = $this->publishSkusNow($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId, $categoryUuid, $categoryName, $weightLb, $weightKg, $overrides);
+
+        // Every marketplace: the Missing L / Listed counts must move as soon as something is published.
+        ListingChannelCounts::refreshAfterPublish($channel, $result);
+
+        return $result;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
+     */
+    private function publishSkusNow(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryUuid = null, ?string $categoryName = null, ?float $weightLb = null, ?float $weightKg = null, array $overrides = []): array
     {
         $variation = strtolower(trim($mode)) !== 'single';
         if ($variation) {

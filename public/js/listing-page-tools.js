@@ -1765,6 +1765,23 @@
         });
     }
 
+    /** Reload the rows from the server so Listed and the Missing L badge match what was really published. */
+    function reloadTableAfterPublish(table) {
+        if (!table || typeof table.replaceData !== 'function') return;
+        setTimeout(function () {
+            const recount = function () {
+                if (typeof calculateTotals === 'function') calculateTotals();
+            };
+            try {
+                const p = table.replaceData();
+                if (p && typeof p.then === 'function') p.then(recount, recount);
+                else recount();
+            } catch (e) {
+                recount();
+            }
+        }, 1500);
+    }
+
     function markListed(table, skus, goodsId) {
         if (!table || !skus || !skus.length) return;
         const want = {};
@@ -2255,8 +2272,11 @@
             const ok = [];
             const fail = [];
             let submitted = false;
+            let needsReload = false;
             function next() {
                 if (index >= groups.length) {
+                    // Take Listed / Missing L from the server when the push did not hand back a listing id.
+                    if (needsReload) reloadTableAfterPublish(table);
                     $btn.prop('disabled', false).html(originalHtml);
                     $('#listingPublishModal .btn-close, #listingPublishModal [data-bs-dismiss="modal"]').prop('disabled', false);
                     $('#listing-publish-mode-box input').prop('disabled', false);
@@ -2281,6 +2301,7 @@
                     const goodsId = String((response && response.goods_id) || '').trim();
                     const listedSkus = (response && response.skus) || group.skus;
                     if (goodsId) markListed(table, listedSkus, goodsId);
+                    else needsReload = true;
                     if (response && response.submitted) {
                         submitted = true;
                         followSubmittedPublish(group, payload, 0);
@@ -2288,6 +2309,8 @@
                     ok.push((response && response.message) ? response.message : ('Published ' + group.parent + '.'));
                     next();
                 }).fail(function (xhr) {
+                    // Part of a group may already be live even when the push reports an error.
+                    needsReload = true;
                     fail.push(group.parent + ': ' + ajaxError(xhr));
                     next();
                 });

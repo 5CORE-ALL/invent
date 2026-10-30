@@ -32,6 +32,25 @@ class AutomatedListingPage
     }
 
     /**
+     * For listing pages that build their own rows (eBay 2, Amazon, AliExpress): bring /missing-listing,
+     * the sidebar total and the daily snapshot in line with the rows the page just loaded.
+     *
+     * @param  iterable<int, object>  $rows
+     */
+    public static function syncCountsFromRows(string $channelKey, iterable $rows): void
+    {
+        try {
+            $rows = $rows instanceof Collection ? $rows : collect($rows);
+            if ($rows->isEmpty()) {
+                return;
+            }
+            ListingChannelCounts::syncChannelCounts($channelKey, self::countsFromRows($rows));
+        } catch (\Throwable $e) {
+            // counts sync must never break a listing page
+        }
+    }
+
+    /**
      * REQ / NRL / Listed / Missing L using the exact rules the listing pages use
      * (CP Master SKUs with stock, PARENT rows left out, NRL never counts as Listed or Missing L,
      * pages created but not yet live are neither Listed nor Missing L).
