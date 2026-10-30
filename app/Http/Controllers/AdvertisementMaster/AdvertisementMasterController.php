@@ -238,8 +238,8 @@ class AdvertisementMasterController extends Controller
     private function activeChannelAdBadgePack(): array
     {
         $empty = [
-            'values' => ['spend' => null, 'tcos' => null, 'acos' => null, 'clicks' => null, 'cvr' => null],
-            'trends' => ['spend' => 'flat', 'tcos' => 'flat', 'acos' => 'flat', 'clicks' => 'flat', 'cvr' => 'flat'],
+            'values' => ['spend' => null, 'tcos' => null, 'acos' => null, 'clicks' => null, 'cvr' => null, 'ad_sales' => null, 'ssales' => null],
+            'trends' => ['spend' => 'flat', 'tcos' => 'flat', 'acos' => 'flat', 'clicks' => 'flat', 'cvr' => 'flat', 'ad_sales' => 'flat', 'ssales' => 'flat'],
         ];
         $rows = $this->activeChannelGridRows();
         if ($rows === []) {
@@ -277,8 +277,12 @@ class AdvertisementMasterController extends Controller
                 'acos' => $acos,
                 'clicks' => $clicks,
                 'cvr' => $cvr,
+                'ad_sales' => round($adSales, 2),
+                'ssales' => round($l30, 2),
             ],
             'trends' => [
+                'ad_sales' => $this->liveVsPriorDirection(round($adSales, 2), $priorAdSales),
+                'ssales' => $this->liveVsPriorDirection(round($l30, 2), $priorSales),
                 'spend' => $this->liveVsPriorDirection($spend, $priorSpend),
                 'tcos' => $this->liveVsPriorDirection($tcos, $priorTcos),
                 'acos' => $this->liveVsPriorDirection($acos, $priorAcos),
@@ -792,12 +796,13 @@ class AdvertisementMasterController extends Controller
             $chartClicks = $savedClicks['last'];
             $adBadges = $this->activeChannelAdBadgePack();
             $badgeTrends = [
-                'ssales' => $savedSales['dir'],
+                'ssales' => $adBadges['trends']['ssales'],
                 'spend' => $adBadges['trends']['spend'],
                 'clicks' => $adBadges['trends']['clicks'],
                 'tcos' => $adBadges['trends']['tcos'],
                 'cvr' => $adBadges['trends']['cvr'],
                 'acos' => $adBadges['trends']['acos'],
+                'ad_sales' => $adBadges['trends']['ad_sales'],
             ];
             $liveSpend = $adBadges['values']['spend'];
             $activeChannelSpend = $liveSpend !== null
@@ -3022,6 +3027,7 @@ class AdvertisementMasterController extends Controller
         return match ($metric) {
             'spend' => 'ad_spend',
             'ssales' => 'l30_sales',
+            'ad_sales' => 'ad_sales',
             'clicks' => 'total_views',
             'tcos' => 'ads_pct',
             'cvr' => 'cvr',
@@ -3045,7 +3051,7 @@ class AdvertisementMasterController extends Controller
 
         $badge = $this->activeChannelAdBadgePack()['values'][$metric] ?? null;
         $badgeValue = $badge === null ? null : match ($metric) {
-            'spend', 'clicks', 'ssales' => (float) round((float) $badge),
+            'spend', 'clicks', 'ssales', 'ad_sales' => (float) round((float) $badge),
             'tcos', 'acos' => round((float) $badge, 1),
             'cvr' => round((float) $badge, 2),
             default => (float) $badge,

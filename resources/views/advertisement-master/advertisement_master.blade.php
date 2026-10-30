@@ -405,6 +405,8 @@
                             <span class="adm-stat-badge adm-stat-badge--active" title="Active campaigns in the ACTIVE column"><span class="adm-trend-dot is-flat" data-badge-metric="active" title="vs previous day"></span>ACTIVE: <span id="adm-badge-active">0</span></span>
                             <span class="adm-stat-badge adm-stat-badge--clicks" title="Sum of the CLICKS column">CLICKS: <span id="adm-badge-col-clicks">0</span></span>
                             <span class="adm-stat-badge adm-stat-badge--spend adm-badge-link" data-metric="spend" data-label="Spend" title="Same Spend badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="spend" title="vs previous day"></span>SPEND: <span id="adm-badge-spend">$0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--sales adm-badge-link" data-metric="ad_sales" data-label="Ad Sales" title="Active Channel Ad Sales total — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="ad_sales" title="vs previous day"></span>AD SALES: <span id="adm-badge-ad-sales">$0</span></span>
+                            <span class="adm-stat-badge adm-stat-badge--ssales adm-badge-link" data-metric="ssales" data-label="Total Sales" title="Active Channel L30 Sales total — click for trend"><span class="adm-trend-dot is-flat" data-badge-metric="ssales" title="vs previous day"></span>TOTAL SALES: <span id="adm-badge-total-sales">$0</span></span>
                             <span class="adm-stat-badge adm-stat-badge--acos adm-badge-link" data-metric="acos" data-label="ACOS" title="Active Channel ACOS: Total Ad Spend ÷ Ad Sales"><span class="adm-trend-dot is-flat" data-badge-metric="acos" title="vs previous day"></span>ACOS: <span id="adm-badge-acos">0%</span></span>
                             <span class="adm-stat-badge adm-stat-badge--tcos adm-badge-link" data-metric="tcos" data-label="TCOS" title="Same Ads % as Active Channel: Spend ÷ Sales"><span class="adm-trend-dot is-flat" data-badge-metric="tcos" title="vs previous day"></span>TCOS: <span id="adm-badge-tcos">0%</span></span>
                             <span class="adm-stat-badge adm-stat-badge--clicks adm-badge-link" data-metric="clicks" data-label="Clicks" title="Same Clicks badge as Active Channel"><span class="adm-trend-dot is-flat" data-badge-metric="clicks" title="vs previous day"></span>CLICKS: <span id="adm-badge-clicks">0</span></span>
@@ -709,6 +711,14 @@
                 const spendEl = document.getElementById('adm-badge-spend');
                 if (spendEl && badges.spend != null && !isNaN(Number(badges.spend))) {
                     spendEl.textContent = '$' + Math.round(Number(badges.spend)).toLocaleString();
+                }
+                const adSalesEl = document.getElementById('adm-badge-ad-sales');
+                if (adSalesEl && badges.ad_sales != null && !isNaN(Number(badges.ad_sales))) {
+                    adSalesEl.textContent = '$' + Math.round(Number(badges.ad_sales)).toLocaleString();
+                }
+                const totalSalesEl = document.getElementById('adm-badge-total-sales');
+                if (totalSalesEl && badges.ssales != null && !isNaN(Number(badges.ssales))) {
+                    totalSalesEl.textContent = '$' + Math.round(Number(badges.ssales)).toLocaleString();
                 }
                 const tcosEl = document.getElementById('adm-badge-tcos');
                 if (tcosEl && badges.tcos != null && !isNaN(Number(badges.tcos))) {
@@ -1737,7 +1747,7 @@
 
             function fmtAdmValue(metric, v) {
                 if (v === null || v === undefined || isNaN(v)) return '—';
-                if (metric === 'spend' || metric === 'sales' || metric === 'ssales') return '$' + Math.round(v).toLocaleString('en-US');
+                if (metric === 'spend' || metric === 'sales' || metric === 'ssales' || metric === 'ad_sales') return '$' + Math.round(v).toLocaleString('en-US');
                 if (metric === 'acos' || metric === 'cvr' || metric === 'tcos') return Number(v).toFixed(1) + '%';
                 return Math.round(v).toLocaleString('en-US');
             }
