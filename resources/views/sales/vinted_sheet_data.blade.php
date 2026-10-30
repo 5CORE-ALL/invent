@@ -25,7 +25,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Vinted Sales Data',
-        'sub_title' => 'Upload Vinted sales export (TSV/Excel). Margin ' . number_format($vintedPercentage ?? 95, 0) . '%.',
+        'sub_title' => 'Vinted sales synced from Shopify (Fluf). Margin ' . number_format($vintedPercentage ?? 95, 0) . '%.',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -36,16 +36,9 @@
                     <a href="{{ route('vinted.pricing') }}" class="btn btn-sm btn-outline-primary">
                         <i class="fa fa-tags"></i> Analytics / Pricing
                     </a>
-                    <form id="upload-form-vinted" class="d-flex align-items-center gap-2 me-2">
-                        @csrf
-                        <input type="file" name="file" id="upload-file-vinted" accept=".txt,.csv,.tsv,.xlsx,.xls" class="form-control form-control-sm" style="max-width: 220px;">
-                        <button type="submit" class="btn btn-sm btn-primary" id="upload-btn-vinted">
-                            <i class="fa fa-upload"></i> Upload (Truncate & Replace)
-                        </button>
-                    </form>
                     <button type="button" class="btn btn-sm btn-warning" id="sync-shopify-btn" title="Vinted orders reach Shopify through Fluf"><i class="fa fa-sync"></i> Sync from Shopify (Fluf)</button>
                     <button type="button" class="btn btn-sm btn-success" id="export-btn"><i class="fa fa-file-excel"></i> Export</button>
-                    <span class="text-muted small">Upload syncs L30 orders onto the Analytics page by SKU</span>
+                    <span class="text-muted small">Shopify sync updates L30 on the Analytics page by SKU</span>
                 </div>
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <div class="d-flex flex-wrap gap-2">
@@ -145,18 +138,6 @@
             });
         });
         $('#export-btn').on('click', function() { table.download("csv", "vinted_sheet_data.csv"); });
-        $('#upload-form-vinted').on('submit', function(e) {
-            e.preventDefault();
-            if (!document.getElementById('upload-file-vinted').files.length) { showToast('Select a file', 'error'); return; }
-            var fd = new FormData(this);
-            fd.append('file', document.getElementById('upload-file-vinted').files[0]);
-            $('#upload-btn-vinted').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Uploading...');
-            $.ajax({ url: "{{ url('/vinted/upload') }}", type: 'POST', data: fd, processData: false, contentType: false,
-                success: function(res) { showToast(res.message || 'Upload complete.', 'success'); table.setData(); },
-                error: function(xhr) { showToast((xhr.responseJSON && xhr.responseJSON.error) || 'Upload failed', 'error'); },
-                complete: function() { $('#upload-btn-vinted').prop('disabled', false).html('<i class="fa fa-upload"></i> Upload (Truncate & Replace)'); }
-            });
-        });
     });
 </script>
 @endsection
