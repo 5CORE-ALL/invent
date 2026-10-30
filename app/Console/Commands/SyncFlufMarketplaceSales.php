@@ -10,6 +10,7 @@ class SyncFlufMarketplaceSales extends Command
     protected $signature = 'fluf:sync-sales
                             {channel=all : vinted, depop or all}
                             {--days=60 : How many days of Shopify orders to read}
+                            {--replace-uploads : Also delete CSV-uploaded rows dated on/after the first Shopify sale (they would double count)}
                             {--inspect : Only list how Fluf/Vinted/Depop orders look in Shopify, change nothing}';
 
     protected $description = 'Copy Vinted and Depop sales (Shopify orders created by Fluf) into /vinted/sheet and /depop/sheet.';
@@ -41,7 +42,7 @@ class SyncFlufMarketplaceSales extends Command
         $failed = 0;
         foreach ($channels as $channel) {
             try {
-                $result = $sync->sync($channel, $days);
+                $result = $sync->sync($channel, $days, (bool) $this->option('replace-uploads'));
                 $this->info($result['message']);
             } catch (\Throwable $e) {
                 $failed++;

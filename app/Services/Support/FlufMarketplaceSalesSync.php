@@ -32,6 +32,8 @@ class FlufMarketplaceSalesSync
      */
     public static function channelFor(?string $sourceName, ?string $tags): ?string
     {
+        // Only the tag (or source) naming the channel matters: Fluf orders and the manual draft orders
+        // created before Fluf was connected are both counted.
         $text = strtolower(trim((string) $sourceName.' '.(string) $tags));
         if ($text === '') {
             return null;
@@ -51,7 +53,7 @@ class FlufMarketplaceSalesSync
     /**
      * @return array{channel: string, label: string, found: int, added: int, updated: int, removed: int, skipped: int, manual_overlap: int, from: string, to: string, message: string}
      */
-    public function sync(string $channel, int $days = 60): array
+    public function sync(string $channel, int $days = 60, bool $replaceUploads = false): array
     {
         $channel = strtolower(trim($channel));
         $cfg = self::CHANNELS[$channel] ?? null;
@@ -153,19 +155,23 @@ class FlufMarketplaceSalesSync
         // count the same sale twice, so say so.
         $first = DB::table($table)->whereNotNull('shopify_order_id')->min('sale_date');
         if ($first !== null) {
-            $result['manual_overlap'] = (int) DB::table($table)
-                ->whereNull('shopify_order_id')
-                ->where('sale_date', '>=', $first)
-                ->count();
+            $overlap = DB::table($table)->whereNull('shopify_order_id')->where('sale_date', '>=', $first);
+            if ($replaceUploads) {
+                $result['replaced_uploads'] = (int) $overlap->delete();
+            } else {
+                $result['manual_overlap'] = (int) $overlap->count();
+            }
         }
 
         $this->refreshDependents($channel);
 
         $result['message'] = $cfg['label'].': '.$result['found'].' Shopify order line(s) in '.$from->toDateString().' → '.$to->toDateString()
             .' (added '.$result['added'].', updated '.$result['updated'].', removed '.$result['removed'].')'
-            .($result['manual_overlap'] > 0
-                ? '. '.$result['manual_overlap'].' uploaded row(s) fall on or after the first Shopify sale and may double count.'
-                : '.');
+            .(($result['replaced_uploads'] ?? 0) > 0
+                ? '. Removed '.$result['replaced_uploads'].' uploaded row(s) dated on or after the first Shopify sale (Shopify now covers them).'
+                : ($result['manual_overlap'] > 0
+                    ? '. '.$result['manual_overlap'].' uploaded row(s) fall on or after the first Shopify sale and may double count (run fluf:sync-sales '.$channel.' --replace-uploads to drop them).'
+                    : '.'));
 
         return $result;
     }
