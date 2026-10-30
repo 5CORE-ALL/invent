@@ -414,6 +414,12 @@
                     <div class="col-6"><label class="form-label small">Other</label><input type="number" name="other" class="form-control form-control-sm" step="0.01"></div>
                     <div class="col-6"><label class="form-label small">Advance</label><input type="number" name="adv_inc_other" class="form-control form-control-sm" step="0.01"></div>
                     <div class="col-6"><label class="form-label small">Incentive</label><input type="number" name="incentive" class="form-control form-control-sm" step="0.01"></div>
+                    <div class="col-6"><label class="form-label small">Deduction</label><input type="number" name="deduction" id="editDeduction" class="form-control form-control-sm" step="0.01" min="0"></div>
+                    <div class="col-12">
+                        <label class="form-label small">Deduction reason <span class="text-muted">(required if deduction is entered)</span></label>
+                        <textarea name="deduction_reason" id="editDeductionReason" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="Why is this amount being deducted?"></textarea>
+                        <small class="text-muted" style="font-size: 11px;">Subtracted from the final salary and shown on the payslip.</small>
+                    </div>
                     <div class="col-6">
                         <label class="form-label small">Hours worked</label>
                         <input type="number" name="hours_worked" class="form-control form-control-sm bg-light" step="0.01" disabled title="Edit hours from the table row (pen icon). This field is read-only here so saving other fields does not affect live API hours.">
@@ -787,6 +793,16 @@
             { title: 'Docs', field: 'documents', hozAlign: 'center', headerSort: false, width: 70, minWidth: 70,
                 formatter: (c) => formatDocumentsCell(c.getRow().getData(), !!c.getRow().getData()._locked) },
             { title: 'Advance', field: 'adv_inc_other', minWidth: 100, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Deduction', field: 'deduction', minWidth: 130, hozAlign: 'right', headerSort: false,
+                headerTooltip: 'Amount deducted from the final salary, with the reason',
+                formatter: (c) => {
+                    const d = c.getRow().getData();
+                    const amt = parseFloat(d.deduction);
+                    if (isNaN(amt) || amt <= 0) return '—';
+                    const reason = d.deduction_reason ? String(d.deduction_reason) : '';
+                    return '<span class="text-danger" title="' + esc(reason).replace(/"/g, '&quot;') + '">&minus;' + fmt(amt, d.salary_region) + '</span>'
+                        + (reason ? '<div class="text-muted" style="font-size:11px;line-height:1.2;white-space:normal;">' + esc(reason) + '</div>' : '');
+                } },
             { title: 'Amount', field: 'gross_amount', minWidth: 110, hozAlign: 'right', formatter: (c) => {
                 const d = c.getRow().getData();
                 return fmt(d.gross_amount ?? d.amount_lm, d.salary_region);
@@ -1099,9 +1115,10 @@
             if (!row) return;
             document.getElementById('editRowId').value = row.id;
             const f = document.getElementById('formEditSalary');
-            ['salary_pp','increment','other','adv_inc_other','incentive','hours_worked'].forEach(k => {
+            ['salary_pp','increment','other','adv_inc_other','incentive','deduction','deduction_reason','hours_worked'].forEach(k => {
                 if (f[k]) f[k].value = row[k] ?? '';
             });
+            if (f.deduction && parseFloat(f.deduction.value) === 0) f.deduction.value = '';
             const statusSelect = document.getElementById('editAccountStatus');
             if (statusSelect) {
                 statusSelect.disabled = false;

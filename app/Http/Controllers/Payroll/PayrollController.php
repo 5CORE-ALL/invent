@@ -673,6 +673,8 @@ class PayrollController extends Controller
             'other' => 'nullable|numeric|min:0',
             'adv_inc_other' => 'nullable|numeric|min:0',
             'incentive' => 'nullable|numeric|min:0',
+            'deduction' => 'nullable|numeric|min:0',
+            'deduction_reason' => 'nullable|string|max:500',
             'hours_worked' => 'nullable|numeric|min:0',
             'bank_1' => 'nullable|string|max:255',
             'bank_2' => 'nullable|string|max:255',
@@ -690,10 +692,30 @@ class PayrollController extends Controller
 
         // Empty numeric inputs come through as null; treat a blank as 0 so the
         // sheet never stores nulls and recalculation has real numbers to work with.
-        foreach (['salary_pp', 'increment', 'other', 'adv_inc_other', 'incentive', 'hours_worked'] as $numericField) {
+        foreach (['salary_pp', 'increment', 'other', 'adv_inc_other', 'incentive', 'deduction', 'hours_worked'] as $numericField) {
             if (array_key_exists($numericField, $validated)) {
                 $validated[$numericField] = $validated[$numericField] ?? 0;
             }
+        }
+
+        // A deduction must always say why it was taken; clearing it clears the note too.
+        if (array_key_exists('deduction', $validated) || array_key_exists('deduction_reason', $validated)) {
+            $deductionAmount = array_key_exists('deduction', $validated)
+                ? (float) $validated['deduction']
+                : (float) $payrollEmployeeSalary->deduction;
+            $reason = trim((string) (array_key_exists('deduction_reason', $validated)
+                ? $validated['deduction_reason']
+                : $payrollEmployeeSalary->deduction_reason));
+
+            if ($deductionAmount > 0 && $reason === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please enter the reason for the deduction.',
+                    'errors' => ['deduction_reason' => ['Reason is required when a deduction is entered.']],
+                ], 422);
+            }
+
+            $validated['deduction_reason'] = $deductionAmount > 0 ? $reason : null;
         }
 
         // A manually edited Salary PP is locked in: flag it so the month-over-month
@@ -866,6 +888,8 @@ class PayrollController extends Controller
             'other' => $r->other,
             'adv_inc_other' => $r->adv_inc_other,
             'incentive' => $r->incentive,
+            'deduction' => $r->deduction,
+            'deduction_reason' => $r->deduction_reason,
             'incentive_document_path' => $r->incentive_document_path,
             'incentive_document_name' => $r->incentive_document_name,
             'bill_document_path' => $r->bill_document_path,

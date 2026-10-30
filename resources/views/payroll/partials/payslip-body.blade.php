@@ -113,6 +113,12 @@
                 <label>Less Advance / Deductions</label>
                 <span style="color: #c41e24;">&minus;₹{{ number_format($data['adv_inc_other'] ?? 0, 0) }}</span>
             </div>
+            @if(($data['deduction'] ?? 0) > 0)
+            <div class="ps-field">
+                <label>Less Deduction{{ !empty($data['deduction_reason']) ? ' ('.$data['deduction_reason'].')' : '' }}</label>
+                <span style="color: #c41e24;">&minus;₹{{ number_format($data['deduction'], 0) }}</span>
+            </div>
+            @endif
             <div class="ps-field">
                 <label>Amount</label>
                 <span>₹{{ number_format($data['amount_p'] ?? $net, 0) }}</span>

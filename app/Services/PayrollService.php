@@ -1067,7 +1067,8 @@ class PayrollService
                 (float) $row->increment,
                 (float) $row->other,
                 (float) $row->adv_inc_other,
-                (float) $row->incentive
+                (float) $row->incentive,
+                (float) $row->deduction
             );
 
             $userId = $row->user_id;
@@ -1081,7 +1082,7 @@ class PayrollService
                 ->where('user_id', $userId)->where('entry_type', 'deduction')->sum('amount');
             $arrears = $this->appliedArrearsTotal($month->id, $userId);
 
-            // "Amount" = ((PP + Increment) * Hours / 200) - Advance + Other + Incentive.
+            // "Amount" = ((PP + Increment) * Hours / 200) - Advance + Other + Incentive - Deduction.
             // "Payable" (net) layers the month's components, payments and arrears on top.
             $amount = $calc['amount_p'];
             $hasExtras = $componentsEarning > 0 || $componentsDeduction > 0 || $payments > 0 || $deductions > 0 || abs($arrears) > 0.001;
@@ -1450,7 +1451,8 @@ class PayrollService
             (float) $row->increment,
             (float) $row->other,
             (float) $row->adv_inc_other,
-            (float) $row->incentive
+            (float) $row->incentive,
+            (float) $row->deduction
         );
 
         $components = PayrollSalaryComponent::where('payroll_month_id', $month->id)
@@ -1478,6 +1480,8 @@ class PayrollService
             'other' => $calc['other'],
             'adv_inc_other' => $calc['adv_inc_other'],
             'incentive' => $calc['incentive'],
+            'deduction' => $calc['deduction'],
+            'deduction_reason' => $row->deduction_reason,
             'hours_worked' => $calc['hours_lm'],
             'amount_lm' => $calc['amount_lm'],
             'amount_lm_display' => $calc['amount_lm_display'],
