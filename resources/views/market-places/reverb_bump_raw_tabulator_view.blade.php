@@ -479,9 +479,20 @@
                     head.querySelector('span.text-muted').textContent = shown + '/' + cols.length;
                     gcb.checked = shown === cols.length;
                     gcb.indeterminate = shown > 0 && shown < cols.length;
-                    gcb.addEventListener('change', () => {
-                        cols.forEach(c => gcb.checked ? c.show() : c.hide());
+                    const applyGroup = (on) => {
+                        // one redraw for the whole group, not one per column
+                        try { table.blockRedraw(); } catch (e) { /* older build */ }
+                        try { cols.forEach(c => on ? c.show() : c.hide()); }
+                        finally { try { table.restoreRedraw(); } catch (e) { /* ignore */ } }
                         saveVis(); buildColumnMenu();
+                    };
+                    gcb.addEventListener('change', () => applyGroup(gcb.checked));
+                    // Clicking the group name toggles it too, not only the small checkbox
+                    head.style.cursor = 'pointer';
+                    head.addEventListener('click', e => {
+                        if (e.target === gcb) return;
+                        e.preventDefault();
+                        applyGroup(!(shown === cols.length));
                     });
                     panel.appendChild(head);
 
