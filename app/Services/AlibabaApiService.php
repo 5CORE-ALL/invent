@@ -1314,6 +1314,71 @@ class AlibabaApiService extends AliExpressApiService
         return $last;
     }
 
+    /** Microtime of the last Alibaba REST call in this process (all instances share it). */
+    private static float $lastGatewayCallAt = 0.0;
+
+    /** Gap kept between two Alibaba REST calls; grows each time Alibaba says "too fast". */
+    private static float $gatewayGapSeconds = 0.30;
+
+    /**
+     * Alibaba bans a seller app for a second when it calls too fast ("Api access frequency exceeds the limit").
+     * One inventory push is three calls per product, so a long mismatch pass hit that ban on almost every SKU
+     * and nothing synced. Space the calls out and, when the ban still comes, wait it out and try again.
+     *
+     * @param  array<string, mixed>  $businessParams
+     * @return array<string, mixed>
+     */
+    protected function callRestGateway(string $method, array $businessParams = []): array
+    {
+        $tries = 0;
+        while (true) {
+            $this->waitForGatewaySlot();
+            $raw = parent::callRestGateway($method, $businessParams);
+            self::$lastGatewayCallAt = microtime(true);
+
+            if (! $this->isFrequencyLimit($raw)) {
+                return $raw;
+            }
+
+            self::$gatewayGapSeconds = min(1.0, self::$gatewayGapSeconds + 0.1);
+            if (++$tries > 5) {
+                return $raw;
+            }
+            \Illuminate\Support\Facades\Log::info('Alibaba API rate limit hit, waiting before retry', [
+                'method' => $method,
+                'try' => $tries,
+                'gap' => self::$gatewayGapSeconds,
+            ]);
+            if (! app()->runningUnitTests()) {
+                usleep((int) ((1.2 + 0.4 * $tries) * 1000000));
+            }
+        }
+    }
+
+    private function waitForGatewaySlot(): void
+    {
+        if (app()->runningUnitTests() || self::$lastGatewayCallAt <= 0) {
+            return;
+        }
+        $wait = self::$gatewayGapSeconds - (microtime(true) - self::$lastGatewayCallAt);
+        if ($wait > 0) {
+            usleep((int) ($wait * 1000000));
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    protected function isFrequencyLimit(array $result): bool
+    {
+        if (! empty($result['success'])) {
+            return false;
+        }
+        $text = strtolower((string) ($result['message'] ?? '').' '.json_encode($result['data'] ?? $result['raw'] ?? []));
+
+        return str_contains($text, 'access frequency') || str_contains($text, 'frequency exceeds');
+    }
+
     /**
      * @param  array<string, mixed>  $result
      */
