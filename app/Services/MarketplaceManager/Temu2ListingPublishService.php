@@ -2317,6 +2317,48 @@ class Temu2ListingPublishService
     }
 
     /**
+     * Temu 1 only. For SKUs that Temu knows (SKU id) but that have no live goods link, ask Temu which goods holds
+     * them and whether that goods is Incomplete. Used by the status refresh because the goods list does not always
+     * return Incomplete goods.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string> sku => goods id of the Incomplete goods
+     */
+    public function probeIncompleteSkus(array $skus, int $budgetSeconds = 100): array
+    {
+        if ($this->shopLabel() !== 'Temu' || ! $this->api->isConfigured()) {
+            return [];
+        }
+        $deadline = microtime(true) + max(10, $budgetSeconds);
+        $lifeByGoods = [];
+        $found = [];
+        foreach ($skus as $sku) {
+            if (microtime(true) > $deadline) {
+                break;
+            }
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            try {
+                $remote = $this->remoteSkuDuplicate($sku);
+                if ($remote === null) {
+                    continue;
+                }
+                $gid = $remote['goodsId'];
+                $lifeByGoods[$gid] ??= $this->remoteGoodsLifecycle($gid);
+                if ($lifeByGoods[$gid] === 'incomplete') {
+                    $found[$sku] = $gid;
+                }
+            } catch (\Throwable $e) {
+                Log::debug('Temu1 incomplete probe skipped', ['sku' => $sku, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return $found;
+    }
+
+    /**
      * Temu 1 only. Find the Incomplete goods a SKU sits in and the SKUs that belong to it.
      *
      * @return array{goods_id: string, source: string, skus: array<string, string>}  skus = sku => skuId
