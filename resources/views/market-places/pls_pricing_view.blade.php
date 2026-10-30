@@ -296,6 +296,8 @@
 <script>
     // S PRC is saved + pushed by the server (pls:sprc-dil-auto-push). The page only shows it.
     window.CH_STD_SERVER_OWNED = true;
+    // The server job pushes every S PRC. The page never queues a push on open (no client-side push queue).
+    window.CH_PUSH_SPRICE_SERVER_ONLY = true;
     // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes.
     window.CH_CLEARANCE_KEEPS_RULES = true;
     // The SNROI% column here is (S PRC x PLS% - Ship - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
@@ -385,9 +387,11 @@
     window.plsLiveRuleSprice = plsLiveRuleSprice;
     /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
     function plsVisibleSprice(data) {
+        // The S PRC shown, compared with Price for the blue triangle and pushed, is ONLY the one the server saved
+        // (pls:sprc-dil-auto-push / pls:push-blue-prices). The page used to work out its own rule price in the browser;
+        // any difference from the server's maths (it once read Dil as 0) made ~500 SKUs blue and queued ~500 pushes on
+        // every open that fought the server. One calculation, one owner: the server.
         if (!data || plsIsParentRow(data)) return 0;
-        const live = plsLiveRuleSprice(data);
-        if (live > 0) return live;
         return plsSavedSprice(data);
     }
     function plsShownSprice(d) { return plsVisibleSprice(d); }

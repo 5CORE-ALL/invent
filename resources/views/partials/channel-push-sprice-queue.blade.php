@@ -189,7 +189,9 @@
              * The runner only pushes a price equal to the S PRC saved for that SKU.
              */
             function chPushSpriceServerOnly() {
-                return false;
+                // A page can set window.CH_PUSH_SPRICE_SERVER_ONLY = true: the headless server job (pls:push-blue-prices
+                // etc.) owns every push, the page never queues one on open or on its own rule maths.
+                return global.CH_PUSH_SPRICE_SERVER_ONLY === true;
             }
             function chPushClientBusy() {
                 return chPushClientInflight > 0 || chPushClientQ.length > 0;
