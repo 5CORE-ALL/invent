@@ -2622,6 +2622,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // /reverb-bump raw Bump API pull (GET /listings/{id}/bump, non-ended listings) — once a day,
+        // after reverb:fetch (09:50) and the listing-status sync (10:00) so listing states are fresh.
+        $ist($schedule->command('reverb:pull-bump-raw')
+            ->dailyAt('10:30')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-pull-bump-raw')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('reverb:sync-listing-statuses')
             ->dailyAt('10:00')
             ->timezone('Asia/Kolkata')
