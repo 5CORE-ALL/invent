@@ -35,6 +35,11 @@ class ReverbBumpController extends Controller
         $products = ReverbProduct::query()
             ->whereNotNull('reverb_listing_id')
             ->where('reverb_listing_id', '!=', '')
+            // Ended listings can't carry a Bump bid — hide them (also keeps them out of Pull All).
+            ->where(function ($q) {
+                $q->whereNull('listing_state')
+                    ->orWhereRaw('LOWER(TRIM(listing_state)) != ?', ['ended']);
+            })
             ->orderBy('sku')
             ->get(['id', 'sku', 'reverb_listing_id', 'product_title', 'listing_state', 'bump_bid']);
 
