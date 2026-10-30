@@ -874,6 +874,11 @@ class GoogleShoppingCampaignsController extends Controller
                 'sbid' => $arr['sbid'] ?? null,
                 'sbgt' => $arr['sbgt'] ?? null,
                 'status' => strtoupper(trim((string) ($arr['campaign_status'] ?? ''))),
+                // Context only used to explain a mismatch in the alert message.
+                'name' => (string) ($arr['campaign_name'] ?? ''),
+                'inventory' => $arr['inventory'] ?? null,
+                'price' => $arr['price'] ?? null,
+                'dil' => $arr['dil'] ?? null,
             ];
         }
 

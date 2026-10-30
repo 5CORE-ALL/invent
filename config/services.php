@@ -1319,4 +1319,19 @@ return [
         ],
         'use_template_for_tasks' => env('WHATSAPP_USE_TEMPLATE_FOR_TASKS', true),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Google Shopping SBGT/SBID vs LBgt/LBid mismatch alerts
+    |--------------------------------------------------------------------------
+    | Sent by google-shopping:match-live-bid-bgt to the user with `email` (5Core Chat bot inbox)
+    | and by WhatsApp. WhatsApp goes to `whatsapp_to` (digits, comma separated) when set,
+    | otherwise to that user's `phone`. The same issue is not repeated within `cooldown_hours`.
+    */
+    'google_shopping_alerts' => [
+        'enabled' => env('GOOGLE_SHOPPING_ALERT_ENABLED', true),
+        'email' => env('GOOGLE_SHOPPING_ALERT_EMAIL', 'software5@5core.com'),
+        'whatsapp_to' => array_filter(array_map('trim', explode(',', (string) env('GOOGLE_SHOPPING_ALERT_WHATSAPP_TO', '')))),
+        'cooldown_hours' => (int) env('GOOGLE_SHOPPING_ALERT_COOLDOWN_HOURS', 24),
+    ],
 ];
