@@ -27,7 +27,6 @@ class ChatChannel extends Model
         'dm_key',
         'task_id',
         'created_by',
-        'image_path',
         'is_archived',
     ];
 
