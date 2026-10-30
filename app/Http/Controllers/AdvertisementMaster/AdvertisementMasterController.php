@@ -3388,6 +3388,13 @@ class AdvertisementMasterController extends Controller
             }
         }
 
+        // Amazon (+ KW / PT / HL): rebuild rolling L30 from the dated daily ad reports so
+        // days nobody opened this page still have a point (snapshots only exist for days
+        // the page was loaded).
+        if (! $this->historyIsAllChannels($channel)) {
+            $byDate = $this->overlayAmazonRollingL30($channel, $byDate, $from, $today);
+        }
+
         $built = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
         if ($metric === 'ssales') {
             $series = array_map(
@@ -3402,6 +3409,52 @@ class AdvertisementMasterController extends Controller
             array_map(fn ($d) => date('M d', strtotime($d)), $labels),
             $series,
         ];
+    }
+
+    /**
+     * @param  array<string, array<string, float>>  $byDate
+     * @return array<string, array<string, float>>
+     */
+    private function overlayAmazonRollingL30(string $channel, array $byDate, Carbon $from, Carbon $today): array
+    {
+        $name = $this->snapshotChannelNames($channel)[0] ?? '';
+        if (! in_array($name, AmazonAdsAdvertisementMasterHistory::amazonChannels(), true)) {
+            return $byDate;
+        }
+
+        try {
+            $latest = AmazonAdsAdvertisementMasterHistory::latestReportDate();
+            if ($latest === null) {
+                return $byDate;
+            }
+            // Never plot a day whose 30-day window is not yet complete.
+            $to = min($today->toDateString(), $latest);
+            if ($to < $from->toDateString()) {
+                return $byDate;
+            }
+            $computed = AmazonAdsAdvertisementMasterHistory::computedL30ByChannel($from->toDateString(), $to)[$name] ?? [];
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master Amazon rolling L30 overlay failed: '.$e->getMessage());
+
+            return $byDate;
+        }
+
+        foreach ($computed as $date => $m) {
+            // Keep the value already saved for a past day when the reports hold nothing for it.
+            if ((float) $m['spend'] <= 0 && (float) $m['sales'] <= 0 && isset($byDate[$date])) {
+                continue;
+            }
+            $byDate[$date] = [
+                'spend' => round((float) $m['spend'], 2),
+                'clicks' => (float) $m['clicks'],
+                'sold' => (float) $m['sold'],
+                'sales' => round((float) $m['sales'], 2),
+                'active' => (float) $m['active'],
+                'missing_ads' => (float) ($byDate[$date]['missing_ads'] ?? 0),
+            ];
+        }
+
+        return $byDate;
     }
 
     /**

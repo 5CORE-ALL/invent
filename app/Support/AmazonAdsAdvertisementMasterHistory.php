@@ -138,6 +138,27 @@ final class AmazonAdsAdvertisementMasterHistory
     }
 
     /**
+     * Newest day that has a daily SP/SB report row (rolling L30 is only complete up to here).
+     */
+    public static function latestReportDate(): ?string
+    {
+        $latest = null;
+        foreach (['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'] as $table) {
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'report_date_range')) {
+                continue;
+            }
+            $max = DB::table($table)
+                ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) = 10')
+                ->max('report_date_range');
+            if (is_string($max) && $max !== '' && ($latest === null || $max > $latest)) {
+                $latest = $max;
+            }
+        }
+
+        return $latest;
+    }
+
+    /**
      * @return array<string, array<string, array{spend: float, clicks: float, sold: float, sales: float, active: float}>>
      */
     public static function computedL30ByChannel(string $from, string $to): array
