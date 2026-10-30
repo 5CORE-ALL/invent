@@ -36,9 +36,8 @@
                     <a href="{{ route('vinted.pricing') }}" class="btn btn-sm btn-outline-primary">
                         <i class="fa fa-tags"></i> Analytics / Pricing
                     </a>
-                    <button type="button" class="btn btn-sm btn-warning" id="sync-shopify-btn" title="Vinted orders reach Shopify through Fluf"><i class="fa fa-sync"></i> Sync from Shopify (Fluf)</button>
                     <button type="button" class="btn btn-sm btn-success" id="export-btn"><i class="fa fa-file-excel"></i> Export</button>
-                    <span class="text-muted small">Shopify sync updates L30 on the Analytics page by SKU</span>
+                    <span class="text-muted small">Syncs automatically from Shopify (Fluf) every hour; updates L30 on the Analytics page by SKU</span>
                 </div>
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <div class="d-flex flex-wrap gap-2">
@@ -129,14 +128,6 @@
         }
         table.on('dataProcessed', updateSummary);
         table.on('dataFiltered', updateSummary);
-        $('#sync-shopify-btn').on('click', function() {
-            var $b = $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing...');
-            $.ajax({ url: "{{ url('/vinted/sync-shopify') }}", type: 'POST', data: { days: 60 },
-                success: function(res) { showToast(res.message || 'Synced.', 'success'); table.setData(); },
-                error: function(xhr) { showToast((xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Shopify sync failed', 'error'); },
-                complete: function() { $b.prop('disabled', false).html('<i class="fa fa-sync"></i> Sync from Shopify (Fluf)'); }
-            });
-        });
         $('#export-btn').on('click', function() { table.download("csv", "vinted_sheet_data.csv"); });
     });
 </script>

@@ -76,21 +76,6 @@ class VintedSalesController extends Controller
         }
     }
 
-    /** Pull Vinted sales (Shopify orders created by Fluf) into the sheet. */
-    public function syncFromShopify(Request $request)
-    {
-        try {
-            $result = app(\App\Services\Support\FlufMarketplaceSalesSync::class)
-                ->sync('vinted', max(1, min(365, (int) $request->input('days', 60))));
-
-            return response()->json(['success' => true] + $result);
-        } catch (\Throwable $e) {
-            Log::error('Vinted Shopify sync error: '.$e->getMessage());
-
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-
     public function getColumnVisibility()
     {
         $visibility = Cache::get('vinted_sheet_column_visibility', []);
