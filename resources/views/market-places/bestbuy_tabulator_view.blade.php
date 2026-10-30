@@ -2319,6 +2319,37 @@
                 },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
+                    title: "Sprc Dil",
+                    field: "SPRC_DIL",
+                    hozAlign: "center",
+                    headerSort: true,
+                    editable: false,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            if (isBestbuyParentRow(row)) return 0;
+                            return (typeof bestbuyDilRawSprice === 'function') ? (bestbuyDilRawSprice(row) || 0) : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: "Dil suggestion only (display). Dil = OV L30 ÷ INV. The Dil slab Target SNROI plus the Diff points, with Ship BB in the price, before the LMP cap and the Amz floor. Hover for the Dil, slab and GROI used.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isBestbuyParentRow(rowData)) return '';
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta) return '';
+                        const shown = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || 0;
+                        if (!(shown > 0)) return '';
+                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            + ' → ' + meta.label
+                            + ' → GROI ' + meta.groi + '%'
+                            + ' → $' + shown.toFixed(2);
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + shown.toFixed(2) + '</span>';
+                    },
+                    width: 78
+                },
+                {
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
