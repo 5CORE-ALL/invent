@@ -142,14 +142,14 @@ class ReverbBumpController extends Controller
     }
 
     /**
-     * Drop every "description", "_links", "deleted_bid" and "bids" key (any depth) from a raw response before it goes to the page.
+     * Drop every "description", "_links", "deleted_bid", "bids" and "budgets" key (any depth) from a raw response before it goes to the page.
      * The stored reverb_bump_raw row stays untouched; only what the table receives is trimmed.
      */
     private static function withoutHiddenFields(array $data): array
     {
         $out = [];
         foreach ($data as $key => $value) {
-            if (is_string($key) && in_array(strtolower($key), ['description', '_links', 'deleted_bid', 'bids'], true)) {
+            if (is_string($key) && in_array(strtolower($key), ['description', '_links', 'deleted_bid', 'bids', 'budgets'], true)) {
                 continue;
             }
             $out[$key] = is_array($value) ? self::withoutHiddenFields($value) : $value;

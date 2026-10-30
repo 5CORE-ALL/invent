@@ -103,8 +103,8 @@
             };
             const PULL_CHUNK = 10;
             const MAX_RAW_COLUMNS = 250;
-            // Raw fields that never become columns (the server drops them too): description, _links, deleted_bid, bids
-            const HIDDEN_RAW_PATH = /(^|\.)(description|_links|deleted_bid)(\.|$)|^bids(\.|$)/;
+            // Raw fields that never become columns (the server drops them too): description, _links, deleted_bid, bids, budgets
+            const HIDDEN_RAW_PATH = /(^|\.)(description|_links|deleted_bid|budgets)(\.|$)|^bids(\.|$)/;
             const COL_VIS_KEY = 'reverb_bump_raw_cols_v2';
 
             // The basic column groups (description fields get their own area) shown in the Columns menu.
