@@ -635,8 +635,8 @@
         #summary-stats .amm-inv-band--red2 { background: #fee2e2; color: #991b1b; }
         #summary-stats .amm-inv-band--green { background: #dcfce7; color: #14532d; }
         #summary-stats .amm-inv-band--pink { background: #fce7f3; color: #9d174d; }
-        #summary-stats .amm-inv-band-name { font-size: 11px; font-weight: 800; white-space: nowrap; }
-        #summary-stats .amm-inv-band-meta { font-size: 12px; font-weight: 700; white-space: nowrap; }
+        #summary-stats .amm-inv-band-name { font-size: 12px; font-weight: 800; white-space: nowrap; }
+        #summary-stats .amm-inv-band-meta { font-size: 13px; font-weight: 700; white-space: nowrap; }
         #summary-stats .amm-badge-block--today .ebay2-summary-badge-row,
         #summary-stats .amm-badge-block--yesterday .ebay2-summary-badge-row,
         #summary-stats .amm-badge-block--projected .ebay2-summary-badge-row,
@@ -666,11 +666,13 @@
             width: 100%;
             min-width: 0;
             max-width: none;
+            /* Badge box stays fixed (31.5px tall, grid-width); only the text is larger. */
             min-height: 31.5px;
-            height: 100%;
-            font-size: 0.675rem !important;
-            line-height: 1.2;
-            padding: 0.3rem 0.375rem !important;
+            height: 31.5px;
+            max-height: 31.5px;
+            font-size: 0.8rem !important;
+            line-height: 1;
+            padding: 0.1rem 0.2rem !important;
             border-radius: 0.375rem;
             font-weight: bold;
             box-sizing: border-box;
