@@ -856,6 +856,14 @@ class ListingManagerEbayTradingPublisher
             return $url;
         }
 
+        // eBay's Trading UploadSiteHostedPictures answers HTTP 404 for this account, so the picture
+        // goes through eBay's Media API first (it returns an i.ebayimg.com address).
+        $mediaError = '';
+        $media = self::uploadPictureViaMediaApi($ctx, $url, $mediaError);
+        if ($media !== null) {
+            return $media;
+        }
+
         $result = EbayTradingReviseItem::uploadImageToEps(
             (string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'),
             (string) ($ctx['dev_id'] ?? ''),
@@ -871,42 +879,93 @@ class ListingManagerEbayTradingPublisher
 
         $fileError = trim((string) ($result['message'] ?? 'eBay did not accept the photo.'));
 
-        // Second try: let eBay fetch the link itself.
-        $linkError = '';
-        try {
-            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
-            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
-            $xml->addChild('ErrorLanguage', 'en_US');
-            $xml->addChild('ExternalPictureURL', htmlspecialchars($url, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
-            $xml->addChild('PictureSet', 'Supersize');
-
-            $response = Http::timeout(90)
-                ->withHeaders(self::tradingHeaders($ctx, 'UploadSiteHostedPictures'))
-                ->withBody($xml->asXML(), 'text/xml')
-                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
-
-            libxml_use_internal_errors(true);
-            $xmlResp = simplexml_load_string($response->body());
-            $data = $xmlResp !== false ? (json_decode(json_encode($xmlResp), true) ?: []) : [];
-            $ack = $data['Ack'] ?? 'Failure';
-            $full = trim((string) ($data['SiteHostedPictureDetails']['FullURL'] ?? ''));
-            if (($ack === 'Success' || $ack === 'Warning') && $full !== '') {
-                return $full;
-            }
-            $errors = $data['Errors'] ?? [];
-            $first = isset($errors['LongMessage']) || isset($errors['ShortMessage']) ? $errors : ($errors[0] ?? []);
-            $linkError = $xmlResp === false
-                ? 'HTTP '.$response->status().' '.trim(preg_replace('/\s+/', ' ', strip_tags(substr($response->body(), 0, 200))) ?? '')
-                : trim((string) ($first['LongMessage'] ?? $first['ShortMessage'] ?? 'no picture URL returned'));
-        } catch (\Throwable $e) {
-            $linkError = $e->getMessage();
-        }
-
-        $error = $fileError.' | By link: '.$linkError;
-        Log::warning(($ctx['label'] ?? 'eBay').' UploadSiteHostedPictures failed', [
+        $error = 'Media API: '.$mediaError.' | Trading API: '.$fileError;
+        Log::warning(($ctx['label'] ?? 'eBay').' picture upload failed', [
             'url' => $url,
             'error' => $error,
         ]);
+
+        return null;
+    }
+
+    /**
+     * eBay Media API: copy a picture onto eBay's servers (needs the sell.inventory OAuth scope).
+     * First asks eBay to fetch the link, then uploads the downloaded file.
+     *
+     * @param  array<string, mixed>  $ctx
+     */
+    private static function uploadPictureViaMediaApi(array $ctx, string $url, string &$error): ?string
+    {
+        $token = trim((string) ($ctx['token'] ?? ''));
+        if ($token === '') {
+            $error = 'no OAuth token.';
+
+            return null;
+        }
+        $base = 'https://apim.ebay.com/commerce/media/v1_beta/image';
+        $auth = ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json'];
+        $notes = [];
+
+        $read = static function ($response) use ($auth, $base): string {
+            $body = $response->json();
+            $found = is_array($body) ? trim((string) ($body['imageUrl'] ?? '')) : '';
+            if ($found !== '') {
+                return $found;
+            }
+            $location = trim((string) $response->header('Location'));
+            if ($location !== '') {
+                $get = Http::timeout(30)->withHeaders($auth)->get($location);
+                $data = $get->json();
+
+                return is_array($data) ? trim((string) ($data['imageUrl'] ?? '')) : '';
+            }
+
+            return '';
+        };
+
+        $summary = static function ($response): string {
+            $text = trim(preg_replace('/\s+/', ' ', strip_tags(substr((string) $response->body(), 0, 220))) ?? '');
+
+            return 'HTTP '.$response->status().($text !== '' ? ' '.$text : '');
+        };
+
+        try {
+            $response = Http::timeout(60)->withHeaders($auth)->asJson()
+                ->post($base.'/create_image_from_url', ['imageUrl' => $url]);
+            if ($response->successful()) {
+                $hosted = $read($response);
+                if ($hosted !== '') {
+                    return $hosted;
+                }
+            }
+            $notes[] = 'by link '.$summary($response);
+        } catch (\Throwable $e) {
+            $notes[] = 'by link '.$e->getMessage();
+        }
+
+        try {
+            $file = Http::timeout(30)->connectTimeout(10)->get($url);
+            if ($file->successful() && $file->body() !== '') {
+                $mime = strtolower(trim(explode(';', (string) $file->header('Content-Type'))[0]));
+                $ext = str_contains($mime, 'png') ? 'png' : 'jpg';
+                $response = Http::timeout(90)->withHeaders($auth)
+                    ->attach('image', $file->body(), 'photo.'.$ext)
+                    ->post($base.'/create_image_from_file');
+                if ($response->successful()) {
+                    $hosted = $read($response);
+                    if ($hosted !== '') {
+                        return $hosted;
+                    }
+                }
+                $notes[] = 'by file '.$summary($response);
+            } else {
+                $notes[] = 'photo download HTTP '.$file->status();
+            }
+        } catch (\Throwable $e) {
+            $notes[] = 'by file '.$e->getMessage();
+        }
+
+        $error = implode('; ', $notes);
 
         return null;
     }
