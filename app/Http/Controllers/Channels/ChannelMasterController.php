@@ -76,6 +76,8 @@ use App\Http\Controllers\Sales\EbaySalesController;
 use App\Http\Controllers\Sales\Ebay2SalesController;
 use App\Http\Controllers\Sales\Ebay3SalesController;
 use App\Http\Controllers\Sales\DepopSalesController;
+use App\Http\Controllers\Sales\VintedSalesController;
+use App\Http\Controllers\MarketPlace\VintedController;
 use App\Http\Controllers\Sales\WayfairSalesController;
 use App\Http\Controllers\Sales\WalmartSalesController;
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
@@ -209,6 +211,7 @@ class ChannelMasterController extends Controller
             'Tiktok Shop 2' => '/tiktok-2-pricing',
             'CJdropshipping' => '/listing-cjdropshipping',
             'Depop' => '/depop/pricing',
+            'Vinted' => '/vinted/pricing',
             'Shopify' => '/shopify-b2c-pricing',
             'Shopify B2C' => '/shopify-b2c-pricing',
             'ShopifyB2C' => '/shopify-b2c-pricing',
@@ -2458,6 +2461,12 @@ class ChannelMasterController extends Controller
         }
 
         try {
+            $rows = $this->overlayLiveVintedDailySalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Vinted GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
             $rows = $this->overlayLiveWayfairDailySalesOnChannelRows($rows);
         } catch (\Throwable $e) {
             Log::warning('Fast-path Wayfair GPFT overlay failed: '.$e->getMessage());
@@ -4416,6 +4425,52 @@ class ChannelMasterController extends Controller
             $row['N PFT'] = $badge['gpft'].'%';
             $row['N ROI'] = $badge['groi'];
             $row['sales_page_link'] = '/depop/sheet';
+            if ($l60 > 0) {
+                $row['Growth'] = round((($l30 - $l60) / $l60) * 100, 2).'%';
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Vinted L30 / G PFT % from /vinted/sheet badges. PFT = (sale × margin) − LP. No ship, no Vinted fee.
+     * Sales come from Shopify orders tagged vinted (Fluf), synced into vinted_sales_data.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveVintedDailySalesOnChannelRows(array $rows): array
+    {
+        try {
+            $badge = app(VintedSalesController::class)->dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            Log::warning('Vinted daily-sales badge failed: '.$e->getMessage());
+
+            return $rows;
+        }
+        if ($badge === null) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'vinted') {
+                continue;
+            }
+            $l30 = (float) $badge['l30'];
+            $l60 = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L-60 Sales'] ?? 0));
+            $row['L30 Sales'] = (int) $badge['l30'];
+            $row['L30 Orders'] = (int) $badge['orders'];
+            $row['Qty'] = (int) $badge['qty'];
+            $row['Total PFT'] = (int) $badge['pft'];
+            $row['cogs'] = (int) $badge['cogs'];
+            $row['Gprofit%'] = $badge['gpft'].'%';
+            $row['G Roi'] = $badge['groi'];
+            $row['N PFT'] = $badge['gpft'].'%';
+            $row['N ROI'] = $badge['groi'];
+            $row['sales_page_link'] = '/vinted/sheet';
             if ($l60 > 0) {
                 $row['Growth'] = round((($l30 - $l60) / $l60) * 100, 2).'%';
             }
@@ -10023,6 +10078,7 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveEbayMetricsOnChannelRows($finalData);
         $finalData = $this->overlayLiveEbayTwoAdsOnChannelRows($finalData);
         $finalData = $this->overlayLiveDepopDailySalesOnChannelRows($finalData);
+        $finalData = $this->overlayLiveVintedDailySalesOnChannelRows($finalData);
         $finalData = $this->overlayLiveWayfairDailySalesOnChannelRows($finalData);
         $finalData = $this->overlayLiveWalmartSalesOnChannelRows($finalData);
         $finalData = $this->overlayLivePurchasingPowerMetricsOnChannelRows($finalData);
@@ -16076,17 +16132,19 @@ class ChannelMasterController extends Controller
     public function getVintedChannelData(Request $request)
     {
         $result = [];
-        $latestSaleDate = VintedSalesData::whereNotNull('sale_date')->max('sale_date');
-        $l60Orders = 0;
-        $l60Sales = 0;
-        $l30Orders = 0;
-        $l30Sales = 0;
-        $totalQuantity = 0;
-        $totalProfit = 0;
-        $totalCogs = 0;
-        $gProfitPct = 0;
-        $gRoi = 0;
+        $empty = [
+            'orders' => 0,
+            'sales' => 0.0,
+            'qty' => 0,
+            'pft' => 0.0,
+            'cogs' => 0.0,
+            'gpft' => 0.0,
+            'groi' => 0.0,
+        ];
+        $l30 = $empty;
+        $l60 = $empty;
 
+        $latestSaleDate = VintedSalesData::whereNotNull('sale_date')->max('sale_date');
         if ($latestSaleDate) {
             $latestCarbon = \Carbon\Carbon::parse($latestSaleDate);
             $l30Start = $latestCarbon->copy()->subDays(29)->format('Y-m-d');
@@ -16094,96 +16152,49 @@ class ChannelMasterController extends Controller
             $l60Start = $latestCarbon->copy()->subDays(59)->format('Y-m-d');
             $l60End = $latestCarbon->copy()->subDays(30)->format('Y-m-d');
 
-            $l60Rows = VintedSalesData::whereBetween('sale_date', [$l60Start, $l60End])->get();
-            $l60Orders = $l60Rows->count();
-            $l60Sales = $l60Rows->sum(function ($r) {
-                return (float) $r->item_price * (int) ($r->quantity ?: 1);
-            });
+            $productMasters = ProductMaster::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get()
+                ->keyBy(function ($item) {
+                    return strtoupper(trim((string) $item->sku));
+                });
+            $margin = VintedController::marginFactor();
 
-            $productMasters = \App\Models\ProductMaster::all()->keyBy(function ($item) {
-                return strtoupper($item->sku);
-            });
-
-            $rows = VintedSalesData::whereBetween('sale_date', [$l30Start, $l30End])->get();
-
-            foreach ($rows as $row) {
-                $quantity = (int) ($row->quantity ?: 1);
-                $unitPrice = (float) $row->item_price;
-                $revenue = $unitPrice * $quantity;
-                $l30Sales += $revenue;
-                $l30Orders++;
-                $totalQuantity += $quantity;
-
-                $sku = strtoupper($row->sku_code ?? '');
-                $lp = 0;
-                $ship = 0;
-
-                $pm = $productMasters->get($sku);
-                if ($sku && $pm) {
-                    $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    if (is_array($values)) {
-                        foreach ($values as $k => $v) {
-                            if (strtolower($k) === 'lp') {
-                                $lp = floatval($v);
-                                break;
-                            }
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-                    if (is_array($values) && isset($values['ship'])) {
-                        $ship = floatval($values['ship']);
-                    } elseif (isset($pm->ship)) {
-                        $ship = floatval($pm->ship);
-                    }
-                }
-
-                $vintedFee = (float) ($row->vinted_fee ?? 0);
-                $uspsCost = (float) ($row->usps_cost ?? 0);
-
-                if ($lp == 0) {
-                    $lp = $revenue * 0.13 / max($quantity, 1);
-                }
-
-                if ($ship == 0 && $uspsCost > 0) {
-                    $ship = $uspsCost;
-                }
-
-                $cogs = $lp * $quantity;
-                $totalShipping = $ship > 0 ? $ship : $uspsCost;
-                $profit = $revenue - $cogs - $totalShipping - $vintedFee;
-
-                $totalCogs += $cogs;
-                $totalProfit += $profit;
-            }
-
-            $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-            $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+            // Same PFT as /vinted/sheet: (sale × margin) − (LP × qty). No ship, no Vinted fee.
+            $l30 = DepopController::aggregateSalesWindow(
+                VintedSalesData::whereBetween('sale_date', [$l30Start, $l30End])->get(),
+                $productMasters,
+                $margin
+            );
+            $l60 = DepopController::aggregateSalesWindow(
+                VintedSalesData::whereBetween('sale_date', [$l60Start, $l60End])->get(),
+                $productMasters,
+                $margin
+            );
         }
 
+        $l30Sales = (float) $l30['sales'];
+        $l60Sales = (float) $l60['sales'];
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $mapMissCounts = $this->getMapAndMissCounts('vinted');
         $channelData = ChannelMaster::where('channel', 'Vinted')->first();
-
-        $nPft = $gProfitPct;
-        $nRoi = $gRoi;
 
         $result[] = [
             'Channel '   => 'Vinted',
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval($l30Sales),
             'Growth'     => round($growth, 2) . '%',
-            'L60 Orders' => $l60Orders,
-            'L30 Orders' => $l30Orders,
-            'Qty'        => intval($totalQuantity),
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60' => 0,
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'   => 0,
-            'Total PFT'  => round($totalProfit, 2),
-            'N PFT'      => round($nPft, 2) . '%',
-            'N ROI'      => round($nRoi, 2),
+            'L60 Orders' => (int) $l60['orders'],
+            'L30 Orders' => (int) $l30['orders'],
+            'Qty'        => (int) $l30['qty'],
+            'Gprofit%'   => round($l30['gpft'], 2) . '%',
+            'gprofitL60' => round($l60['gpft'], 2) . '%',
+            'G Roi'      => round($l30['groi'], 2),
+            'G RoiL60'   => round($l60['groi'], 2),
+            'Total PFT'  => round($l30['pft'], 2),
+            'N PFT'      => round($l30['gpft'], 2) . '%',
+            'N ROI'      => round($l30['groi'], 2),
             'Ads%'       => 0,
             'TikTok Ad Spend' => 0,
             'KW Spent'   => 0,
@@ -16197,11 +16208,12 @@ class ChannelMasterController extends Controller
             'W/Ads'      => optional($channelData)->w_ads ?? 0,
             'NR'         => optional($channelData)->nr ?? 0,
             'Update'     => optional($channelData)->update ?? 0,
-            'cogs'       => round($totalCogs, 2),
+            'cogs'       => round($l30['cogs'], 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'base'       => optional($channelData)->base ?? 0,
             'sheet_link' => optional($channelData)->sheet_link ?? '/vinted/sheet',
+            'missing_link' => optional($channelData)->missing_link ?? $this->defaultMissingLinkForChannel('Vinted'),
             'ra'         => optional($channelData)->ra ?? 0,
         ];
 
