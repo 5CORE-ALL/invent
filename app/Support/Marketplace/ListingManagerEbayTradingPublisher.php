@@ -729,16 +729,20 @@ class ListingManagerEbayTradingPublisher
 
         // eBay refuses a listing that mixes eBay-hosted (EPS) and self-hosted pictures. When the live
         // listing uses EPS pictures, copy our new images onto eBay's servers first and use those URLs.
+        $photoNotes = [];
         if ($epsHosted) {
             foreach ($newVariations as $i => $row) {
                 $hosted = [];
                 $lastError = '';
-                foreach (array_slice(array_values(array_unique($row['images'] ?? [])), 0, 12) as $url) {
+                $wanted = array_slice(array_values(array_unique($row['images'] ?? [])), 0, 12);
+                foreach ($wanted as $url) {
                     $eps = self::uploadPictureToEps($ctx, (string) $url, $lastError);
                     if ($eps !== null) {
                         $hosted[] = $eps;
                     }
                 }
+                $photoNotes[] = $row['sku'].': '.count($hosted).' of '.count($wanted).' photo(s) copied to eBay'
+                    .(count($hosted) < count($wanted) && $lastError !== '' ? ' ('.$lastError.')' : '');
                 if ($hosted === []) {
                     return ['success' => false, 'message' => 'Could not copy the Image Master photos of '.$row['sku'].' to eBay'
                         .($lastError !== '' ? ': '.$lastError : '.')
@@ -814,7 +818,13 @@ class ListingManagerEbayTradingPublisher
             $data = json_decode(json_encode($xmlResp), true) ?: [];
             $ack = $data['Ack'] ?? 'Failure';
             if ($ack === 'Success' || $ack === 'Warning') {
-                return ['success' => true, 'message' => 'Added '.count($newVariations).' variation(s) to eBay item '.$itemId.'.'];
+                if ($photoNotes === []) {
+                    foreach ($newVariations as $row) {
+                        $photoNotes[] = $row['sku'].': '.count(array_slice(array_values(array_unique($row['images'] ?? [])), 0, 12)).' photo(s) sent';
+                    }
+                }
+
+                return ['success' => true, 'message' => 'Added '.count($newVariations).' variation(s) to eBay item '.$itemId.'. Photos — '.implode('; ', $photoNotes).'.'];
             }
 
             $errors = $data['Errors'] ?? [];
