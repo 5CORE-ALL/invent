@@ -3414,6 +3414,7 @@ class AdvertisementMasterController extends Controller
         // the page was loaded).
         if (! $this->historyIsAllChannels($channel)) {
             $byDate = $this->overlayAmazonRollingL30($channel, $byDate, $from, $today);
+            $byDate = $this->fillGapsFromChannelMasterDaily($channel, $metric, $byDate, $from, $today);
 
             // ACOS graph must plot the number the cell shows, not Spend / Ads Sales recomputed
             // from the saved columns (cells use Active Channel ACOS; total rows use Spend / T Sales).
@@ -3438,6 +3439,74 @@ class AdvertisementMasterController extends Controller
             array_map(fn ($d) => date('M d', strtotime($d)), $labels),
             $series,
         ];
+    }
+
+    /**
+     * Days nobody opened this page have no snapshot. The channel cells themselves are
+     * Active Channel values (channel_master_calculated_data), which are saved every day
+     * in channel_master_daily_data, so fill the remaining gaps for a single parent channel
+     * (eBay 2, Temu, TikTok, Shopify, ...) from there. Saved snapshots are never replaced.
+     *
+     * @param  array<string, array<string, float>>  $byDate
+     * @return array<string, array<string, float>>
+     */
+    private function fillGapsFromChannelMasterDaily(string $channel, string $metric, array $byDate, Carbon $from, Carbon $today): array
+    {
+        // No per-day value exists there for these.
+        if (in_array($metric, ['active', 'missing_ads'], true)) {
+            return $byDate;
+        }
+        $channel = trim($channel);
+        if ($channel === '' || str_contains($channel, self::SUBROW_SEPARATOR) || preg_match('/\bTotal$/i', $channel)) {
+            return $byDate;
+        }
+        $wanted = $this->normalizeChannelMatchKey($channel);
+        if ($wanted === '' || ! Schema::hasTable('channel_master_daily_data')) {
+            return $byDate;
+        }
+
+        try {
+            $rows = DB::table('channel_master_daily_data')
+                ->whereDate('snapshot_date', '>=', $from->toDateString())
+                ->whereDate('snapshot_date', '<=', $today->toDateString())
+                ->orderBy('id')
+                ->get(['channel', 'snapshot_date', 'summary_data']);
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master channel-master gap fill failed: '.$e->getMessage());
+
+            return $byDate;
+        }
+
+        $picked = [];
+        foreach ($rows as $row) {
+            if ($this->normalizeChannelMatchKey((string) $row->channel) !== $wanted) {
+                continue;
+            }
+            $summary = ChannelMasterSummary::decodeSummaryData($row->summary_data);
+            if (! array_key_exists('l30_sales', $summary)) {
+                continue; // listing-only writers, not a full channel snapshot
+            }
+            $date = $row->snapshot_date instanceof \DateTimeInterface
+                ? $row->snapshot_date->format('Y-m-d')
+                : substr((string) $row->snapshot_date, 0, 10);
+            $picked[$date] = $summary; // later id wins
+        }
+
+        foreach ($picked as $date => $summary) {
+            if (isset($byDate[$date])) {
+                continue;
+            }
+            $byDate[$date] = [
+                'spend' => round((float) ($summary['total_ad_spend'] ?? 0), 2),
+                'clicks' => (float) ($summary['clicks'] ?? 0),
+                'sold' => (float) ($summary['ad_sold'] ?? 0),
+                'sales' => round((float) ($summary['ad_sales'] ?? 0), 2),
+                'active' => 0.0,
+                'missing_ads' => 0.0,
+            ];
+        }
+
+        return $byDate;
     }
 
     /**
