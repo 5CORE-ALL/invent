@@ -103,7 +103,42 @@
             };
             const PULL_CHUNK = 10;
             const MAX_RAW_COLUMNS = 250;
-            const COL_VIS_KEY = 'reverb_bump_raw_cols_v1';
+            const COL_VIS_KEY = 'reverb_bump_raw_cols_v2';
+            const COL_COLLAPSE_KEY = 'reverb_bump_raw_col_groups_v1';
+
+            // The 5 basic column groups shown in the Columns menu.
+            const COL_GROUPS = [
+                { id: 'basic',   label: 'Basic (listing & pull status)' },
+                { id: 'bid',     label: 'Bump Bid' },
+                { id: 'stats',   label: 'Bump Stats (bump_v2_stats)' },
+                { id: 'budgets', label: 'Budgets' },
+                { id: 'other',   label: 'Other raw fields' },
+            ];
+            const BASE_FIELD_GROUP = {
+                sku: 'basic', listing_id: 'basic', title: 'basic', listing_state: 'basic',
+                http_status: 'basic', fetched_at: 'basic',
+                bump_bid: 'bid', push_bump: 'bid',
+            };
+
+            /** Group of a column definition: base fields by name, raw fields by their data path. */
+            function groupOfDef(def) {
+                const p = def.rawPath;
+                if (!p) return BASE_FIELD_GROUP[def.field] || 'basic';
+                if (p === 'current_bid' || p.startsWith('current_bid.') || p.startsWith('bump_v2_stats.current_bid')) return 'bid';
+                if (p.startsWith('bump_v2_stats')) return 'stats';
+                if (p === 'budgets' || p.startsWith('budgets.') || p.includes('.budgets')) return 'budgets';
+                return 'other';
+            }
+
+            /** Stable key for saving visibility: the data path for raw fields (rk1, rk2… can shift), field name otherwise. */
+            function colKey(col) {
+                const def = col.getDefinition();
+                return def.rawPath || def.field;
+            }
+
+            function loadCollapsed() {
+                try { return JSON.parse(localStorage.getItem(COL_COLLAPSE_KEY) || '{}'); } catch (e) { return {}; }
+            }
 
             let table = null;
             let rawKeys = [];            // ordered union of flattened raw paths
@@ -201,6 +236,8 @@
             function rawColumnDef(path) {
                 return {
                     title: path,
+                    rawPath: path,
+                    headerTooltip: path,
                     field: fieldFor(path),
                     formatter: rawCellFormatter,
                     headerFilter: 'input',
@@ -387,8 +424,8 @@
             function applySavedColVis() {
                 const saved = loadColVis();
                 table.getColumns().forEach(c => {
-                    const f = c.getField();
-                    if (f in saved) { saved[f] ? c.show() : c.hide(); }
+                    const k = colKey(c);
+                    if (k in saved) { saved[k] ? c.show() : c.hide(); }
                 });
             }
 
@@ -406,26 +443,72 @@
                 mk('Hide all raw fields', () => { rawKeys.forEach(p => table.getColumn(keyField[p])?.hide()); saveVis(); buildColumnMenu(); });
                 const hr = document.createElement('li'); hr.innerHTML = '<hr class="dropdown-divider">'; menu.appendChild(hr);
 
+                // Split the columns into the 5 groups
+                const byGroup = {};
+                COL_GROUPS.forEach(g => { byGroup[g.id] = []; });
                 table.getColumns().forEach(col => {
                     const def = col.getDefinition();
                     if (!def.title || def.field === 'actions') return;
-                    const li = document.createElement('li');
-                    const id = 'cv_' + def.field;
-                    li.className = 'px-3 py-1';
-                    li.innerHTML = '<div class="form-check"><input class="form-check-input" type="checkbox" id="' + id + '">' +
-                        '<label class="form-check-label small" for="' + id + '"></label></div>';
-                    li.querySelector('label').textContent = def.title;
-                    const cb = li.querySelector('input');
-                    cb.checked = col.isVisible();
-                    cb.addEventListener('change', () => { cb.checked ? col.show() : col.hide(); saveVis(); });
-                    menu.appendChild(li);
+                    byGroup[groupOfDef(def)].push(col);
+                });
+
+                const collapsed = loadCollapsed();
+                COL_GROUPS.forEach(g => {
+                    const cols = byGroup[g.id];
+                    if (!cols.length) return;
+                    const shown = cols.filter(c => c.isVisible()).length;
+
+                    // Group header: caret (collapse), tri-state checkbox (show/hide the whole group), count
+                    const head = document.createElement('li');
+                    head.className = 'px-3 py-1 bg-light border-top border-bottom d-flex align-items-center gap-2';
+                    head.innerHTML = '<i class="fa fa-caret-down small text-muted" style="cursor:pointer;width:10px"></i>' +
+                        '<input class="form-check-input mt-0" type="checkbox">' +
+                        '<span class="fw-semibold small flex-grow-1" style="cursor:pointer"></span>' +
+                        '<span class="small text-muted"></span>';
+                    const caret = head.querySelector('i');
+                    const gcb = head.querySelector('input');
+                    const label = head.querySelector('span.fw-semibold');
+                    label.textContent = g.label;
+                    head.querySelector('span.text-muted').textContent = shown + '/' + cols.length;
+                    gcb.checked = shown === cols.length;
+                    gcb.indeterminate = shown > 0 && shown < cols.length;
+                    gcb.addEventListener('change', () => {
+                        cols.forEach(c => gcb.checked ? c.show() : c.hide());
+                        saveVis(); buildColumnMenu();
+                    });
+                    const isCollapsed = !!collapsed[g.id];
+                    caret.className = 'fa ' + (isCollapsed ? 'fa-caret-right' : 'fa-caret-down') + ' small text-muted';
+                    const toggleCollapse = () => {
+                        const c = loadCollapsed();
+                        c[g.id] = !c[g.id];
+                        localStorage.setItem(COL_COLLAPSE_KEY, JSON.stringify(c));
+                        buildColumnMenu();
+                    };
+                    caret.addEventListener('click', toggleCollapse);
+                    label.addEventListener('click', toggleCollapse);
+                    menu.appendChild(head);
+                    if (isCollapsed) return;
+
+                    cols.forEach(col => {
+                        const def = col.getDefinition();
+                        const li = document.createElement('li');
+                        const id = 'cv_' + def.field;
+                        li.className = 'px-3 py-1 ps-4';
+                        li.innerHTML = '<div class="form-check"><input class="form-check-input" type="checkbox" id="' + id + '">' +
+                            '<label class="form-check-label small" for="' + id + '"></label></div>';
+                        li.querySelector('label').textContent = def.title;
+                        const cb = li.querySelector('input');
+                        cb.checked = col.isVisible();
+                        cb.addEventListener('change', () => { cb.checked ? col.show() : col.hide(); saveVis(); buildColumnMenu(); });
+                        menu.appendChild(li);
+                    });
                 });
             }
 
             function saveVis() {
-                // raw fields are keyed rk1, rk2… in first-seen order, so the field name is stable across pulls
+                // keyed by data path for raw fields (rk1, rk2… can shift between pulls), field name for base columns
                 const vis = {};
-                table.getColumns().forEach(c => { if (c.getField()) vis[c.getField()] = c.isVisible(); });
+                table.getColumns().forEach(c => { const k = colKey(c); if (k) vis[k] = c.isVisible(); });
                 localStorage.setItem(COL_VIS_KEY, JSON.stringify(vis));
             }
 
