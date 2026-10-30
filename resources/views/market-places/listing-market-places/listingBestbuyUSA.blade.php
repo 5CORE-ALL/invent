@@ -531,8 +531,8 @@
                                 <option value="parent">Parent</option>
                             </select>
                             <select id="inv-filter" class="form-select form-select-sm filter-select" aria-label="INV">
-                                <option value="all">INV: All</option>
-                                <option value="inv-only" selected>INV Only</option>
+                                <option value="all" selected>INV: All</option>
+                                <option value="inv-only">INV Only</option>
                             </select>
                             <select id="nr-req-filter" class="form-select form-select-sm filter-select" aria-label="NRL/REQ">
                                 <option value="all" selected>NRL/REQ</option>
@@ -704,7 +704,7 @@
                 };
 
                 rows.forEach(item => {
-                    if (parseFloat(item.INV) > 0 && !isParentSku(item.sku)) {
+                    if ((($('#inv-filter').val() !== 'inv-only') || parseFloat(item.INV) > 0) && !isParentSku(item.sku)) {
                         metrics.invTotal += parseFloat(item.INV) || 0;
 
                         if (item.nr_req === 'REQ') {
@@ -1024,7 +1024,6 @@
                 const $badge = $('#missing-l-badge');
                 if (missingLFilterActive) {
                     $('#row-data-type').val('sku');
-                    $('#inv-filter').val('inv-only');
                     $('#nr-req-filter').val('REQ');
                     $('#link-filter').val('all');
                     $('#listed-filter').val('Pending');
@@ -1050,7 +1049,6 @@
                 const stillMissing =
                     $('#listed-filter').val() === 'Pending' &&
                     $('#nr-req-filter').val() === 'REQ' &&
-                    $('#inv-filter').val() === 'inv-only' &&
                     $('#row-data-type').val() === 'sku';
                 if (!stillMissing) {
                     missingLFilterActive = false;

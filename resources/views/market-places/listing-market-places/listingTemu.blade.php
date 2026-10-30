@@ -713,8 +713,8 @@
                                 <option value="sku">SKU</option>
                             </select>
                             <select id="inv-filter" class="form-select form-select-sm filter-select" aria-label="INV">
-                                <option value="all">INV: All</option>
-                                <option value="inv-only" selected>INV Only</option>
+                                <option value="all" selected>INV: All</option>
+                                <option value="inv-only">INV Only</option>
                             </select>
                             <select id="listed-filter" class="form-select form-select-sm filter-select" aria-label="Listed">
                                 <option value="all" selected>Listed</option>
