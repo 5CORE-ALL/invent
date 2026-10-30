@@ -208,7 +208,7 @@
                 if (!raw) return fresh;
                 const flat = flatten(raw, '', {});
                 Object.keys(flat).forEach(path => {
-                    if (HIDDEN_RAW_PATH.test(path)) return;   // fields that are not wanted in the table
+                    if (!path || HIDDEN_RAW_PATH.test(path)) return;   // no-name path or a field that is not wanted in the table
                     if (!keyField[path]) {
                         if (rawKeys.length >= MAX_RAW_COLUMNS) return;
                         fresh = true;

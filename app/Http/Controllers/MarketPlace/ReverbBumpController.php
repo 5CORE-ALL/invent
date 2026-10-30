@@ -149,6 +149,9 @@ class ReverbBumpController extends Controller
     {
         $out = [];
         foreach ($data as $key => $value) {
+            if ($key === '' || $key === null) {
+                continue; // a nameless key would become a column with no header
+            }
             if (is_string($key) && in_array(strtolower($key), ['description', '_links', 'deleted_bid', 'bids', 'budgets'], true)) {
                 continue;
             }
