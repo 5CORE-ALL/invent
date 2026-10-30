@@ -2963,6 +2963,7 @@
                     if (table) {
                         applyL30FallbackDots();
                         paintMetricDots(Object.keys(channels));
+                        if (typeof window.fitAmmColumnsToData === 'function') window.fitAmmColumnsToData();
                     }
                 }
             });
@@ -6111,9 +6112,22 @@
                         if (!col.isVisible()) return;
                         var def = col.getDefinition() || {};
                         if (def.field === 'logo') return;
-                        try { col.setWidth(true); } catch (e) { /* ignore */ }
+                        try {
+                            // Re-measure from the cell contents, then add breathing room so
+                            // value + trend dot never touch the neighbouring column.
+                            col.setWidth(true);
+                            var fitted = col.getWidth();
+                            if (fitted > 0) col.setWidth(Math.ceil(fitted) + 10);
+                        } catch (e) { /* ignore */ }
                     });
                 }, 60);
+            }
+            // Cell content changes after first paint (Y Orders / Y Views / dots / fonts), so widths
+            // measured at load time are too narrow. Re-fit once those late updates have landed.
+            window.fitAmmColumnsToData = fitAmmColumnsToData;
+            window.addEventListener('load', function() { setTimeout(fitAmmColumnsToData, 400); });
+            if (document.fonts && document.fonts.ready) {
+                document.fonts.ready.then(function() { setTimeout(fitAmmColumnsToData, 100); });
             }
 
             function ammStickyPort(el) {
@@ -9479,6 +9493,8 @@
                     });
                 });
                 applyL30FallbackDots();
+                // Y Orders / Y Views / Y CVR cells just changed width — re-fit columns to the new data.
+                if (typeof window.fitAmmColumnsToData === 'function') window.fitAmmColumnsToData();
             }
 
             // Y CVR badge = Σ yesterday qty ÷ Σ yesterday views, using the same settled channels
