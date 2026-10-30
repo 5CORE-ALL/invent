@@ -4401,11 +4401,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/depop/sheet', [\App\Http\Controllers\Sales\DepopSalesController::class, 'index'])->name('depop.sheet');
     Route::get('/depop/sheet-data', [\App\Http\Controllers\Sales\DepopSalesController::class, 'getData'])->name('depop.sheet.data');
     Route::post('/depop/upload', [\App\Http\Controllers\Sales\DepopSalesController::class, 'upload'])->name('depop.upload');
+    Route::post('/depop/sync-shopify', [\App\Http\Controllers\Sales\DepopSalesController::class, 'syncFromShopify'])->name('depop.sync.shopify');
 
     // Vinted Sheet Routes (margin 0.87)
     Route::get('/vinted/sheet', [\App\Http\Controllers\Sales\VintedSalesController::class, 'index'])->name('vinted.sheet');
     Route::get('/vinted/sheet-data', [\App\Http\Controllers\Sales\VintedSalesController::class, 'getData'])->name('vinted.sheet.data');
     Route::post('/vinted/upload', [\App\Http\Controllers\Sales\VintedSalesController::class, 'upload'])->name('vinted.upload');
+    Route::post('/vinted/sync-shopify', [\App\Http\Controllers\Sales\VintedSalesController::class, 'syncFromShopify'])->name('vinted.sync.shopify');
 
     // Depop Pricing — editable Price / L30 per SKU, with CSV export/import round-trip
     Route::get('/depop/pricing',         [\App\Http\Controllers\MarketPlace\DepopController::class, 'pricingView'])->name('depop.pricing');

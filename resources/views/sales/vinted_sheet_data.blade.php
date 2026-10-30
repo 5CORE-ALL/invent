@@ -43,6 +43,7 @@
                             <i class="fa fa-upload"></i> Upload (Truncate & Replace)
                         </button>
                     </form>
+                    <button type="button" class="btn btn-sm btn-warning" id="sync-shopify-btn" title="Vinted orders reach Shopify through Fluf"><i class="fa fa-sync"></i> Sync from Shopify (Fluf)</button>
                     <button type="button" class="btn btn-sm btn-success" id="export-btn"><i class="fa fa-file-excel"></i> Export</button>
                     <span class="text-muted small">Upload syncs L30 orders onto the Analytics page by SKU</span>
                 </div>
@@ -96,6 +97,7 @@
             columns: [
                 { title: "Sale Date", field: "sale_date", width: 100 },
                 { title: "Buyer", field: "buyer", width: 120 },
+                { title: "Source", field: "source", width: 110 },
                 { title: "Product", field: "product_name", width: 280 },
                 { title: "Size", field: "size", width: 80 },
                 { title: "SKU", field: "sku", width: 120, cssClass: "text-primary fw-bold" },
@@ -134,6 +136,14 @@
         }
         table.on('dataProcessed', updateSummary);
         table.on('dataFiltered', updateSummary);
+        $('#sync-shopify-btn').on('click', function() {
+            var $b = $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing...');
+            $.ajax({ url: "{{ url('/vinted/sync-shopify') }}", type: 'POST', data: { days: 60 },
+                success: function(res) { showToast(res.message || 'Synced.', 'success'); table.setData(); },
+                error: function(xhr) { showToast((xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Shopify sync failed', 'error'); },
+                complete: function() { $b.prop('disabled', false).html('<i class="fa fa-sync"></i> Sync from Shopify (Fluf)'); }
+            });
+        });
         $('#export-btn').on('click', function() { table.download("csv", "vinted_sheet_data.csv"); });
         $('#upload-form-vinted').on('submit', function(e) {
             e.preventDefault();

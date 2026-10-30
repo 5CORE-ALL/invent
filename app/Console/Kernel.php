@@ -574,6 +574,23 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Vinted / Depop sales arrive in Shopify through Fluf; copy them into /vinted/sheet and /depop/sheet.
+        $schedule->command('fluf:sync-sales all --days=7')
+            ->hourlyAt(25)
+            ->timezone('America/Los_Angeles')
+            ->name('fluf-sync-sales-recent')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('fluf:sync-sales all --days=60')
+            ->dailyAt('09:30')
+            ->timezone('Asia/Kolkata')
+            ->name('fluf-sync-sales-backfill')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('shopify:sync-orders --days=60')
             ->dailyAt('09:08')
             ->timezone('Asia/Kolkata')

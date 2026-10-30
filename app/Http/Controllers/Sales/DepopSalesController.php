@@ -71,6 +71,7 @@ class DepopSalesController extends Controller
                     'sale_amount' => round($saleAmount, 2),
                     'sale_date' => $row->sale_date?->format('Y-m-d'),
                     'buyer' => $row->buyer,
+                    'source' => ($row->source ?? 'upload') === 'shopify' ? 'Shopify (Fluf)' : 'Upload',
                     'lp' => round($lp, 2),
                     'ship' => 0,
                     'ship_cost' => 0,
@@ -195,7 +196,12 @@ class DepopSalesController extends Controller
             }
 
             DB::beginTransaction();
-            DepopSalesData::query()->delete();
+            // Rows that came from Shopify (Fluf) stay; only earlier uploaded rows are replaced.
+            $replace = DepopSalesData::query();
+            if (\Illuminate\Support\Facades\Schema::hasColumn('depop_sales_data', 'shopify_order_id')) {
+                $replace->whereNull('shopify_order_id');
+            }
+            $replace->delete();
 
             $inserted = 0;
             while (($cells = fgetcsv($handle, 0, $delimiter)) !== false) {
@@ -279,6 +285,21 @@ class DepopSalesController extends Controller
                 DB::rollBack();
             }
             Log::error('Depop Sales Upload Error: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /** Pull Depop sales (Shopify orders created by Fluf) into the sheet. */
+    public function syncFromShopify(Request $request)
+    {
+        try {
+            $result = app(\App\Services\Support\FlufMarketplaceSalesSync::class)
+                ->sync('depop', max(1, min(365, (int) $request->input('days', 60))));
+
+            return response()->json(['success' => true] + $result);
+        } catch (\Throwable $e) {
+            Log::error('Depop Shopify sync error: '.$e->getMessage());
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }

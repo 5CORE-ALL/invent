@@ -19,6 +19,10 @@ class VintedSalesData extends Model
         'usps_cost',
         'vinted_fee',
         'sku_code',
+        'source',
+        'shopify_order_id',
+        'shopify_line_item_id',
+        'shopify_order_number',
     ];
 
     protected $casts = [
