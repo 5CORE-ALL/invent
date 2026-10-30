@@ -161,13 +161,18 @@ final class EbayTradingReviseItem
             return ['success' => false, 'message' => "Image file is empty: {$imageUrl}"];
         }
 
-        // Build UploadSiteHostedPictures XML payload
+        // Build UploadSiteHostedPictures XML payload.
+        // An OAuth token belongs in X-EBAY-API-IAF-TOKEN. Putting it inside the multipart
+        // body makes eBay's gateway answer "Resource not found" and no photo is stored.
         $tokenEsc = htmlspecialchars($authToken, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $nameEsc  = htmlspecialchars($pictureName, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $oauth = str_starts_with($authToken, 'v^');
         $xmlPayload = '<?xml version="1.0" encoding="utf-8"?>'
-            .'<UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
-            .'<RequesterCredentials><eBayAuthToken>'.$tokenEsc.'</eBayAuthToken></RequesterCredentials>'
-            .'<ErrorLanguage>en_US</ErrorLanguage>'
+            .'<UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents">';
+        if (! $oauth) {
+            $xmlPayload .= '<RequesterCredentials><eBayAuthToken>'.$tokenEsc.'</eBayAuthToken></RequesterCredentials>';
+        }
+        $xmlPayload .= '<ErrorLanguage>en_US</ErrorLanguage>'
             .'<PictureName>'.$nameEsc.'</PictureName>'
             .'<PictureSet>Supersize</PictureSet>'
             .'</UploadSiteHostedPicturesRequest>';
@@ -180,6 +185,9 @@ final class EbayTradingReviseItem
             'X-EBAY-API-CALL-NAME'            => 'UploadSiteHostedPictures',
             'X-EBAY-API-SITEID'               => '0',
         ];
+        if ($oauth) {
+            $headers['X-EBAY-API-IAF-TOKEN'] = $authToken;
+        }
 
         // eBay EPS upload uses multipart/form-data with XML payload + image binary
         $boundary = '----eBayEPSBoundary'.uniqid();
