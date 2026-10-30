@@ -45,6 +45,7 @@ class CronMonitorDashboardController extends Controller
                 CronExecutionLog::STATUS_TIMED_OUT,
                 CronExecutionLog::STATUS_MISSED,
                 CronExecutionLog::STATUS_STUCK,
+                CronExecutionLog::STATUS_INTERRUPTED,
                 CronExecutionLog::STATUS_CANCELLED,
             ])->count(),
             'running' => $allLatest->where('status', CronExecutionLog::STATUS_RUNNING)->count(),

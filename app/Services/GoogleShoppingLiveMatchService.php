@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Http\Controllers\Campaigns\GoogleShoppingCampaignsController;
 use App\Support\GoogleShoppingLiveSyncStatus;
+use App\Support\SchedulerLease;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -17,7 +19,10 @@ use Throwable;
  * campaigns that differ, pull again to confirm. The push is the same code the page buttons use.
  * SBGT below 1 is never pushed here, because the page button turns that into a campaign pause.
  *
- * Hooks (tests): targets, pull, states, pushBid, pushBgt.
+ * One run at a time is enforced by the caller with a SchedulerLease; the run renews it between steps and
+ * stops pushing if it was taken over. Campaigns are pushed in chunks, so one failure never stops the rest.
+ *
+ * Hooks (tests): targets, pull, states, pushBid, pushBgt, sleep.
  */
 class GoogleShoppingLiveMatchService
 {
@@ -27,19 +32,69 @@ class GoogleShoppingLiveMatchService
     /** @param  array<string, callable>  $hooks */
     public function __construct(private array $hooks = []) {}
 
+    /** Campaigns per push call: one bad campaign or one failed call never stops the rest of the run. */
+    public const PUSH_CHUNK = 10;
+
+    /** A live value read longer ago than this is read again right before it is pushed. */
+    public const FRESH_SECONDS = 60;
+
+    /** Wait before the single in-run retry of a temporary Google Ads failure. */
+    public const RETRY_BACKOFF_SECONDS = 3;
+
+    private ?SchedulerLease $lease = null;
+
+    private string $execution = '';
+
+    /** @var array<string, float> campaign id => when its live value was last read from Google Ads */
+    private array $freshAt = [];
+
     /**
      * @return array{
      *   checked: int, bid_mismatch: int, bgt_mismatch: int,
      *   bid_pushed: int, bgt_pushed: int, bid_left: int, bgt_left: int, waiting: int,
-     *   push_errors: list<string>, error: ?string
+     *   push_errors: list<string>, error: ?string,
+     *   execution: string, retried: int,
+     *   pushed_ids: array{bid: list<string>, bgt: list<string>},
+     *   held_ids: list<string>, skipped: array<string, string>, failed: array<string, string>
      * }
      */
-    public function run(bool $dryRun = false, ?string $onlyCampaignId = null, bool $retryFailed = false): array
+    public function run(bool $dryRun = false, ?string $onlyCampaignId = null, bool $retryFailed = false, ?SchedulerLease $lease = null): array
+    {
+        $this->lease = $lease;
+        $this->execution = $lease?->token ?? (string) Str::uuid();
+        $this->freshAt = [];
+        $t0 = microtime(true);
+
+        $stats = $this->execute($dryRun, $onlyCampaignId, $retryFailed);
+        $stats['execution'] = $this->execution;
+
+        Log::log($stats['error'] === null ? 'info' : 'error', '[GoogleShoppingLiveMatch] finished', [
+            'execution' => $this->execution,
+            'dry_run' => $dryRun,
+            'status' => $stats['error'] === null ? 'success' : 'failed',
+            'duration_s' => round(microtime(true) - $t0, 2),
+            'checked' => $stats['checked'],
+            'mismatch' => ['bid' => $stats['bid_mismatch'], 'bgt' => $stats['bgt_mismatch']],
+            'pushed_and_confirmed' => $stats['pushed_ids'],
+            'still_different' => ['bid' => $stats['bid_left'], 'bgt' => $stats['bgt_left']],
+            'held_after_failed_push' => $stats['held_ids'],
+            'skipped' => $stats['skipped'],
+            'failed' => $stats['failed'],
+            'retried_temporary_failures' => $stats['retried'],
+            'error' => $stats['error'],
+        ]);
+
+        return $stats;
+    }
+
+    private function execute(bool $dryRun, ?string $onlyCampaignId, bool $retryFailed): array
     {
         $stats = [
             'checked' => 0, 'bid_mismatch' => 0, 'bgt_mismatch' => 0,
             'bid_pushed' => 0, 'bgt_pushed' => 0, 'bid_left' => 0, 'bgt_left' => 0, 'waiting' => 0,
             'push_errors' => [], 'error' => null,
+            'execution' => $this->execution, 'retried' => 0,
+            'pushed_ids' => ['bid' => [], 'bgt' => []], 'held_ids' => [], 'skipped' => [], 'failed' => [],
         ];
 
         $targets = $this->enabledTargets($onlyCampaignId);
@@ -48,11 +103,14 @@ class GoogleShoppingLiveMatchService
             return $stats;
         }
 
+        if (! $this->leaseAlive()) {
+            return $this->leaseLost($stats);
+        }
         try {
             $this->pull($targets);
         } catch (Throwable $e) {
             $stats['error'] = 'Live pull failed: '.$e->getMessage();
-            Log::error('Google Shopping live match: pull failed', ['error' => $e->getMessage()]);
+            Log::error('Google Shopping live match: pull failed', ['execution' => $this->execution, 'error' => $e->getMessage()]);
 
             return $stats;
         }
@@ -62,6 +120,10 @@ class GoogleShoppingLiveMatchService
         $stats['bgt_mismatch'] = count($bgtIds);
         $stats['bid_left'] = $stats['bid_mismatch'];
         $stats['bgt_left'] = $stats['bgt_mismatch'];
+        Log::info('[GoogleShoppingLiveMatch] compared', [
+            'execution' => $this->execution, 'checked' => $stats['checked'],
+            'bid_mismatch' => $stats['bid_mismatch'], 'bgt_mismatch' => $stats['bgt_mismatch'], 'dry_run' => $dryRun,
+        ]);
         if ($dryRun || ($bidIds === [] && $bgtIds === [])) {
             return $stats;
         }
@@ -71,6 +133,10 @@ class GoogleShoppingLiveMatchService
             $bidWait = array_values(array_filter($bidIds, fn (string $id) => $this->isWaiting('bid', $id)));
             $bgtWait = array_values(array_filter($bgtIds, fn (string $id) => $this->isWaiting('bgt', $id)));
             $stats['waiting'] = count($bidWait) + count($bgtWait);
+            $stats['held_ids'] = array_values(array_unique(array_merge(
+                array_map(fn ($id) => 'bid:'.$id, $bidWait),
+                array_map(fn ($id) => 'bgt:'.$id, $bgtWait)
+            )));
             $bidIds = array_values(array_diff($bidIds, $bidWait));
             $bgtIds = array_values(array_diff($bgtIds, $bgtWait));
             if ($bidIds === [] && $bgtIds === []) {
@@ -78,47 +144,237 @@ class GoogleShoppingLiveMatchService
             }
         }
 
+        // Push in small chunks; every chunk is isolated, so a failing campaign never blocks the others.
+        $outcomes = ['bid' => [], 'bgt' => []];
         foreach ([['bid', $bidIds], ['bgt', $bgtIds]] as [$field, $ids]) {
-            if ($ids === []) {
-                continue;
-            }
-            try {
-                $result = $field === 'bid' ? $this->pushBid($ids) : $this->pushBgt($ids);
-            } catch (Throwable $e) {
-                $stats['push_errors'][] = $field.': '.$e->getMessage();
-                Log::error('Google Shopping live match: push failed', ['field' => $field, 'error' => $e->getMessage()]);
-
-                continue;
-            }
-            if (! ($result['ok'] ?? false)) {
-                $stats['push_errors'][] = $field.': '.trim((string) ($result['message'] ?? 'push failed'));
+            if (! $this->pushField($field, $ids, $targets, $stats, $outcomes)) {
+                return $this->leaseLost($stats);
             }
         }
 
         // Pull again so the page dots and the numbers below reflect what Google Ads now holds.
-        $pushedTargets = array_intersect_key($targets, array_flip(array_merge($bidIds, $bgtIds)));
-        try {
-            $this->pull($pushedTargets);
-        } catch (Throwable $e) {
-            $stats['push_errors'][] = 'verify pull failed: '.$e->getMessage();
-
+        $pushedIds = ['bid' => $bidIds, 'bgt' => $bgtIds];
+        if (! $this->verify($targets, $pushedIds, $stats, $bidStill, $bgtStill)) {
             return $stats;
         }
 
-        [$bidStill, $bgtStill] = $this->mismatches($pushedTargets);
+        // One retry of temporary failures (rate limit, timeout, 5xx). Only campaigns that the live re-read
+        // still shows as different are pushed again, so nothing is ever pushed twice with the same result.
+        $retry = ['bid' => [], 'bgt' => []];
+        foreach ([['bid', $bidStill], ['bgt', $bgtStill]] as [$field, $still]) {
+            foreach ($still as $id) {
+                $o = $outcomes[$field][$id] ?? null;
+                if ($o !== null && $o['status'] === 'error' && self::isTemporary($o['message'])) {
+                    $retry[$field][] = $id;
+                }
+            }
+        }
+        if ($retry['bid'] !== [] || $retry['bgt'] !== []) {
+            $stats['retried'] = count($retry['bid']) + count($retry['bgt']);
+            Log::info('[GoogleShoppingLiveMatch] retrying temporary failures', ['execution' => $this->execution, 'bid' => $retry['bid'], 'bgt' => $retry['bgt']]);
+            $this->sleep(self::RETRY_BACKOFF_SECONDS);
+            foreach ($retry as $field => $ids) {
+                if (! $this->pushField($field, $ids, $targets, $stats, $outcomes)) {
+                    return $this->leaseLost($stats);
+                }
+            }
+            if (! $this->verify($targets, $pushedIds, $stats, $bidStill, $bgtStill)) {
+                return $stats;
+            }
+        }
+
         $stats['bid_left'] = count($bidStill) + $this->waitingCount('bid', $stats['bid_mismatch'], $bidIds);
         $stats['bgt_left'] = count($bgtStill) + $this->waitingCount('bgt', $stats['bgt_mismatch'], $bgtIds);
         $stats['bid_pushed'] = count($bidIds) - count(array_intersect($bidIds, $bidStill));
         $stats['bgt_pushed'] = count($bgtIds) - count(array_intersect($bgtIds, $bgtStill));
 
-        foreach ($bidIds as $id) {
-            in_array($id, $bidStill, true) ? $this->markFailed('bid', $id) : $this->clearFailed('bid', $id);
-        }
-        foreach ($bgtIds as $id) {
-            in_array($id, $bgtStill, true) ? $this->markFailed('bgt', $id) : $this->clearFailed('bgt', $id);
+        foreach (['bid' => [$bidIds, $bidStill], 'bgt' => [$bgtIds, $bgtStill]] as $field => [$ids, $still]) {
+            foreach ($ids as $id) {
+                if (in_array($id, $still, true)) {
+                    $o = $outcomes[$field][$id] ?? null;
+                    if ($o !== null && $o['status'] === 'busy') {
+                        // Another push (a manual one from the page) holds this campaign: not a Google rejection,
+                        // so no failed-push hold; the next scheduled run looks at it again.
+                        $stats['skipped'][$field.':'.$id] = 'busy: '.$o['message'];
+
+                        continue;
+                    }
+                    $this->markFailed($field, $id);
+                    $reason = $o !== null && $o['message'] !== '' ? $o['message'] : 'Google Ads still shows a different value after the push.';
+                    if ($o !== null && $o['status'] === 'skip') {
+                        $stats['skipped'][$field.':'.$id] = $reason;
+                    } else {
+                        $stats['failed'][$field.':'.$id] = $reason;
+                    }
+                } else {
+                    $this->clearFailed($field, $id);
+                    if (isset($outcomes[$field][$id])) {
+                        $stats['pushed_ids'][$field][] = $id;
+                    }
+                }
+            }
         }
 
         return $stats;
+    }
+
+    /**
+     * Push $ids for one field in chunks. Returns false only when this run lost its lease and must stop.
+     *
+     * @param  list<string>  $ids
+     * @param  array<string, array<string, mixed>>  $targets
+     * @param  array<string, mixed>  $stats
+     * @param  array{bid: array<string, array{status: string, message: string}>, bgt: array<string, array{status: string, message: string}>}  $outcomes
+     */
+    private function pushField(string $field, array $ids, array $targets, array &$stats, array &$outcomes): bool
+    {
+        foreach (array_chunk($ids, self::PUSH_CHUNK) as $chunk) {
+            if (! $this->leaseAlive()) {
+                return false;
+            }
+            $chunk = $this->stillDifferent($field, $chunk, $targets);
+            if ($chunk === []) {
+                continue;
+            }
+
+            try {
+                $result = $field === 'bid' ? $this->pushBid($chunk) : $this->pushBgt($chunk);
+            } catch (Throwable $e) {
+                $stats['push_errors'][] = $field.': '.$e->getMessage();
+                Log::error('Google Shopping live match: push failed', ['execution' => $this->execution, 'field' => $field, 'ids' => $chunk, 'error' => $e->getMessage()]);
+                foreach ($chunk as $id) {
+                    $outcomes[$field][$id] = ['status' => 'error', 'message' => $e->getMessage()];
+                }
+
+                continue;
+            }
+
+            if (! ($result['ok'] ?? false)) {
+                $stats['push_errors'][] = $field.': '.trim((string) ($result['message'] ?? 'push failed'));
+            }
+            foreach ($this->parseOutcomes($result, $chunk) as $id => $outcome) {
+                $outcomes[$field][$id] = $outcome;
+            }
+            Log::info('[GoogleShoppingLiveMatch] pushed chunk', ['execution' => $this->execution, 'field' => $field, 'ids' => $chunk, 'ok' => (bool) ($result['ok'] ?? false)]);
+        }
+
+        return true;
+    }
+
+    /**
+     * Right before pushing, read again any campaign whose live value is older than FRESH_SECONDS and drop
+     * the ones that already match, so a stale comparison never produces a duplicate or wrong push.
+     *
+     * @param  list<string>  $ids
+     * @param  array<string, array<string, mixed>>  $targets
+     * @return list<string>
+     */
+    private function stillDifferent(string $field, array $ids, array $targets): array
+    {
+        $stale = array_values(array_filter($ids, fn (string $id) => (microtime(true) - ($this->freshAt[$id] ?? 0)) > self::FRESH_SECONDS));
+        if ($stale === []) {
+            return $ids;
+        }
+
+        $subset = array_intersect_key($targets, array_flip($stale));
+        try {
+            $this->pull($subset);
+        } catch (Throwable $e) {
+            // Cannot confirm the live value: do not push blind.
+            Log::warning('[GoogleShoppingLiveMatch] live re-read before push failed, campaigns left for the next run', ['execution' => $this->execution, 'ids' => $stale, 'error' => $e->getMessage()]);
+
+            return array_values(array_diff($ids, $stale));
+        }
+        [$bid, $bgt] = $this->mismatches($subset);
+        $stillDiffer = $field === 'bid' ? $bid : $bgt;
+        $matchedNow = array_values(array_diff($stale, $stillDiffer));
+        if ($matchedNow !== []) {
+            Log::info('[GoogleShoppingLiveMatch] already matches live, not pushed', ['execution' => $this->execution, 'field' => $field, 'ids' => $matchedNow]);
+        }
+
+        return array_values(array_diff($ids, $matchedNow));
+    }
+
+    /**
+     * Pull the pushed campaigns again and list the ones that still differ.
+     *
+     * @param  array<string, array<string, mixed>>  $targets
+     * @param  array{bid: list<string>, bgt: list<string>}  $pushedIds
+     * @param  array<string, mixed>  $stats
+     * @param  list<string>|null  $bidStill
+     * @param  list<string>|null  $bgtStill
+     */
+    private function verify(array $targets, array $pushedIds, array &$stats, ?array &$bidStill, ?array &$bgtStill): bool
+    {
+        $pushedTargets = array_intersect_key($targets, array_flip(array_merge($pushedIds['bid'], $pushedIds['bgt'])));
+        try {
+            $this->pull($pushedTargets);
+        } catch (Throwable $e) {
+            $stats['push_errors'][] = 'verify pull failed: '.$e->getMessage();
+
+            return false;
+        }
+        [$bidStill, $bgtStill] = $this->mismatches($pushedTargets);
+        // `mismatches()` looks at both fields of every pushed campaign; only count the field that was pushed.
+        $bidStill = array_values(array_intersect($bidStill, $pushedIds['bid']));
+        $bgtStill = array_values(array_intersect($bgtStill, $pushedIds['bgt']));
+
+        return true;
+    }
+
+    /**
+     * Per-campaign result of one push call, read from the `[OK] / [SKIP] / [BUSY] / [ERROR] name (id): text` lines.
+     *
+     * @param  array<string, mixed>  $result
+     * @param  list<string>  $ids
+     * @return array<string, array{status: string, message: string}>
+     */
+    private function parseOutcomes(array $result, array $ids): array
+    {
+        $out = [];
+        foreach (preg_split('/\R/', (string) ($result['output'] ?? '')) ?: [] as $line) {
+            if (preg_match('/^\[(OK|SKIP|ERROR|PAUSED|BUSY)\]\s.*\((\d+)\):\s*(.*)$/', $line, $m) && in_array($m[2], $ids, true)) {
+                $out[$m[2]] = [
+                    'status' => match ($m[1]) {'OK' => 'ok', 'SKIP' => 'skip', 'BUSY' => 'busy', default => 'error'},
+                    'message' => trim($m[3]),
+                ];
+            }
+        }
+        foreach ($ids as $id) {
+            $out[$id] ??= ['status' => ($result['ok'] ?? false) ? 'ok' : 'error', 'message' => ($result['ok'] ?? false) ? '' : trim((string) ($result['message'] ?? ''))];
+        }
+
+        return $out;
+    }
+
+    /** Rate limits, timeouts and Google/network 5xx are worth one more try; validation errors are not. */
+    private static function isTemporary(string $message): bool
+    {
+        return (bool) preg_match('/rate|quota|RESOURCE_EXHAUSTED|UNAVAILABLE|INTERNAL|DEADLINE|timeout|timed out|temporar|try again|\b(429|500|502|503|504)\b|cURL error|connection (reset|refused)/i', $message);
+    }
+
+    /** Renew the lease between steps. False = another run owns it now, stop without pushing anything more. */
+    private function leaseAlive(): bool
+    {
+        // Forced: renews AND re-verifies, with the owner token, that this run still owns the lease before each step.
+        return $this->lease === null || $this->lease->beat(true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $stats
+     * @return array<string, mixed>
+     */
+    private function leaseLost(array $stats): array
+    {
+        $stats['error'] = 'Lease lost: another run took over, this execution stopped before pushing more.';
+        Log::error('[GoogleShoppingLiveMatch] stopped: lease lost', ['execution' => $this->execution]);
+
+        return $stats;
+    }
+
+    private function sleep(int $seconds): void
+    {
+        isset($this->hooks['sleep']) ? ($this->hooks['sleep'])($seconds) : sleep($seconds);
     }
 
     /**
@@ -158,6 +414,7 @@ class GoogleShoppingLiveMatchService
         }
         if (isset($this->hooks['pull'])) {
             ($this->hooks['pull'])($targets);
+            $this->markFresh($targets);
 
             return;
         }
@@ -165,6 +422,16 @@ class GoogleShoppingLiveMatchService
         $stats = app(GoogleShoppingLiveBidBgtService::class)->verifyAndStore($customerId, $targets, 'shopping');
         if (($stats['error'] ?? null) !== null) {
             throw new \RuntimeException((string) $stats['error']);
+        }
+        $this->markFresh($targets);
+    }
+
+    /** @param  array<string, array<string, mixed>>  $targets */
+    private function markFresh(array $targets): void
+    {
+        $now = microtime(true);
+        foreach (array_keys($targets) as $id) {
+            $this->freshAt[(string) $id] = $now;
         }
     }
 

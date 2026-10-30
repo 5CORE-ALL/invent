@@ -2509,7 +2509,9 @@ class Kernel extends ConsoleKernel
 
                 return $m >= 1740 && $m <= 1815;
             })
-            ->withoutOverlapping(15)
+            // No withoutOverlapping() here on purpose: its cache mutex outlives a killed background process
+            // and blocked every run for 15 minutes. The command holds a database lease (SchedulerLease) that
+            // is renewed while it works and expires on its own if the process dies.
             ->runInBackground()
             ->appendOutputTo($log);
 

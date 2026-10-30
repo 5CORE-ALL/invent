@@ -121,6 +121,7 @@
             'timed_out' => 'Timed out',
             'missed' => 'Missed',
             'stuck' => 'Stuck',
+            'interrupted' => 'Interrupted',
             'partial_success' => 'Partial success',
             'running' => 'Running',
             'success' => 'Success',
@@ -236,7 +237,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const alertsData = @json($alertsTableData);
     let activeStatus = @json($filters['status'] ?? '');
     if (activeStatus === 'recovered') activeStatus = 'success';
-    if (!['failed', 'timed_out', 'missed', 'stuck', 'partial_success', 'running', 'success'].includes(activeStatus)) {
+    if (!['failed', 'timed_out', 'missed', 'stuck', 'interrupted', 'partial_success', 'running', 'success'].includes(activeStatus)) {
         activeStatus = '';
     }
     let jobsSearch = '';
@@ -281,7 +282,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function statusRank(status) {
         const s = String(status || '');
-        if (['failed', 'timed_out', 'missed', 'stuck', 'cancelled'].includes(s)) return 1;
+        if (['failed', 'timed_out', 'missed', 'stuck', 'interrupted', 'cancelled'].includes(s)) return 1;
         if (s === 'partial_success') return 2;
         if (s === 'running') return 3;
         if (['success', 'recovered'].includes(s)) return 4;
@@ -345,7 +346,7 @@ document.addEventListener('DOMContentLoaded', function () {
         rowFormatter: function (row) {
             const s = row.getData().status;
             if (s === 'running') row.getElement().style.background = '#eff6ff';
-            else if (['failed', 'timed_out', 'missed', 'cancelled'].includes(s)) row.getElement().style.background = '#fef2f2';
+            else if (['failed', 'timed_out', 'missed', 'interrupted', 'cancelled'].includes(s)) row.getElement().style.background = '#fef2f2';
             else if (['partial_success', 'stuck'].includes(s)) row.getElement().style.background = '#fffbeb';
         },
     });
@@ -405,7 +406,7 @@ document.addEventListener('DOMContentLoaded', function () {
         rowFormatter: function (row) {
             const s = row.getData().status;
             if (s === 'running') row.getElement().style.background = '#eff6ff';
-            else if (['failed', 'timed_out', 'missed', 'cancelled'].includes(s)) row.getElement().style.background = '#fef2f2';
+            else if (['failed', 'timed_out', 'missed', 'interrupted', 'cancelled'].includes(s)) row.getElement().style.background = '#fef2f2';
             else if (['partial_success', 'stuck'].includes(s)) row.getElement().style.background = '#fffbeb';
         },
     });

@@ -332,6 +332,10 @@ class GoogleAdsSbidService
                 $metrics = $row['metrics'] ?? [];
                 $adGroupResource = $adGroup['resourceName'] ?? null;
 
+                // One campaign can take many sequential Google calls (every ad group and product group). Renew
+                // the push lease of this process between them so a long push never lets it expire (no-op otherwise).
+                \App\Support\SchedulerLease::pulse();
+
                 if ($adGroupResource) {
                     try {
                         $this->updateAdGroupSbid($customerId, $adGroupResource, $sbidFactor);
@@ -362,6 +366,7 @@ class GoogleAdsSbidService
                         
                         foreach ($productGroups as $pgRow) {
                             $pgResource = $pgRow['adGroupCriterion']['resourceName'] ?? null;
+                            \App\Support\SchedulerLease::pulse();
                             if ($pgResource) {
                                 try {
                                     $this->updateProductGroupSbid($customerId, $pgResource, $sbidFactor);

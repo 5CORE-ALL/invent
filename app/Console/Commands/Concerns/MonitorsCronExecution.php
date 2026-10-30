@@ -130,6 +130,7 @@ trait MonitorsCronExecution
             CronExecutionLog::STATUS_TIMED_OUT,
             CronExecutionLog::STATUS_MISSED,
             CronExecutionLog::STATUS_STUCK,
+            CronExecutionLog::STATUS_INTERRUPTED,
             CronExecutionLog::STATUS_CANCELLED => self::FAILURE,
             default => self::SUCCESS,
         };

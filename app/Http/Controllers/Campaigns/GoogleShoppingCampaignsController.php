@@ -17,6 +17,7 @@ use App\Support\GoogleShoppingBgtPrcRule;
 use App\Support\GoogleShoppingBgtSkuMetrics;
 use App\Support\GoogleShoppingBgtViewsRule;
 use App\Support\GoogleShoppingCampaignsRawRule;
+use App\Support\SchedulerLease;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -999,6 +1000,12 @@ class GoogleShoppingCampaignsController extends Controller
         ], $exitCode === 0 ? 200 : 422);
     }
 
+    /** Lease name shared by every SBID/SBGT push path, so one campaign is never pushed twice at once. */
+    public static function campaignPushLease(string $campaignId): string
+    {
+        return 'google-shopping:push:'.preg_replace('/\D+/', '', $campaignId);
+    }
+
     /**
      * @param  list<string>  $campaignIds
      */
@@ -1028,72 +1035,98 @@ class GoogleShoppingCampaignsController extends Controller
         $paused = 0;
         $skipped = 0;
         $errors = 0;
+        $locksReady = SchedulerLease::available();
 
         $lines[] = 'Pushing SBGT for '.count($campaignIds).' campaign id(s) from grid (direct, no SKU matching)...';
         $lines[] = 'SBGT 0 cannot be pushed as daily budget — those ENABLED campaigns are paused instead.';
 
         foreach ($campaignIds as $campaignId) {
-            $row = $rowsById[$campaignId] ?? null;
-            if ($row === null) {
-                $lines[] = "[SKIP] {$campaignId}: not found in grid data (no L30 rows or outside page scope).";
+            // One push per campaign at a time, whichever path starts it (page button or the scheduled match).
+            // A busy campaign is skipped, not queued: the other push is already doing the same work.
+            try {
+                $campaignLease = $locksReady ? SchedulerLease::acquire(self::campaignPushLease((string) $campaignId), 300) : false;
+            } catch (\Throwable $e) {
+                // Never push a campaign without being able to take its lock.
+                $lines[] = "[ERROR] {$campaignId} ({$campaignId}): could not take the campaign lock — ".$e->getMessage();
+                $errors++;
+
+                continue;
+            }
+            if ($campaignLease === null) {
+                $lines[] = "[BUSY] {$campaignId} ({$campaignId}): another push for this campaign is running — skipped, nothing changed.";
                 $skipped++;
 
                 continue;
             }
-
-            $name = (string) ($row['campaign_name'] ?? $campaignId);
-            $status = strtoupper(trim((string) ($row['campaign_status'] ?? '')));
-            if ($status !== 'ENABLED') {
-                $lines[] = "[SKIP] {$name} ({$campaignId}): campaign status is {$status}, not ENABLED.";
-                $skipped++;
-
-                continue;
-            }
-
-            $currentBudget = (float) ($row['bgt'] ?? 0);
-            $newBudget = (int) ($row['sbgt'] ?? 0);
-            $acos = round((float) ($row['acos_l30'] ?? 0), 1);
-            $inv = (int) ($row['inventory'] ?? 0);
-
-            if ($newBudget < 1) {
-                try {
-                    $campaignResourceName = "customers/{$customerId}/campaigns/{$campaignId}";
-                    $sbidService->pauseCampaign($customerId, $campaignResourceName);
-                    GoogleAdsCampaign::where('campaign_id', $campaignId)
-                        ->update(['campaign_status' => 'PAUSED']);
-                    $reason = $inv <= 0 ? 'INV ≤ 0 zeros SBGT' : 'SBGT 0';
-                    $lines[] = "[PAUSED] {$name} ({$campaignId}): {$reason} — cannot push \$0 budget.";
-                    $paused++;
-                } catch (\Throwable $e) {
-                    $lines[] = "[ERROR] {$name} ({$campaignId}): pause failed — ".$e->getMessage();
-                    $errors++;
-                }
-
-                continue;
-            }
-
-            $budgetId = $this->normalizeBudgetId($row['budget_id'] ?? null);
-            if ($budgetId === '') {
-                $budgetId = $fallbackBudgetIds[$campaignId] ?? '';
-            }
-            if ($budgetId === '') {
-                $lines[] = "[SKIP] {$name} ({$campaignId}): missing budget_id.";
-                $skipped++;
-
-                continue;
-            }
+            SchedulerLease::pulse();
 
             try {
-                $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
-                $sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
-                $unchanged = (int) round($currentBudget) === $newBudget;
-                $changeNote = $unchanged ? ' (already at SBGT — confirmed in Google Ads)' : '';
-                $lines[] = "[OK] {$name} ({$campaignId}): Budget=\${$currentBudget} → \${$newBudget}{$changeNote} (ACOS={$acos}%, SBGT={$newBudget})";
-                $this->rememberShoppingPush('bgt', $campaignId, (float) $newBudget);
-                $updated++;
-            } catch (\Throwable $e) {
-                $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
-                $errors++;
+                $row = $rowsById[$campaignId] ?? null;
+                if ($row === null) {
+                    $lines[] = "[SKIP] {$campaignId}: not found in grid data (no L30 rows or outside page scope).";
+                    $skipped++;
+
+                    continue;
+                }
+
+                $name = (string) ($row['campaign_name'] ?? $campaignId);
+                $status = strtoupper(trim((string) ($row['campaign_status'] ?? '')));
+                if ($status !== 'ENABLED') {
+                    $lines[] = "[SKIP] {$name} ({$campaignId}): campaign status is {$status}, not ENABLED.";
+                    $skipped++;
+
+                    continue;
+                }
+
+                $currentBudget = (float) ($row['bgt'] ?? 0);
+                $newBudget = (int) ($row['sbgt'] ?? 0);
+                $acos = round((float) ($row['acos_l30'] ?? 0), 1);
+                $inv = (int) ($row['inventory'] ?? 0);
+
+                if ($newBudget < 1) {
+                    try {
+                        $campaignResourceName = "customers/{$customerId}/campaigns/{$campaignId}";
+                        $sbidService->pauseCampaign($customerId, $campaignResourceName);
+                        GoogleAdsCampaign::where('campaign_id', $campaignId)
+                            ->update(['campaign_status' => 'PAUSED']);
+                        $reason = $inv <= 0 ? 'INV ≤ 0 zeros SBGT' : 'SBGT 0';
+                        $lines[] = "[PAUSED] {$name} ({$campaignId}): {$reason} — cannot push \$0 budget.";
+                        $paused++;
+                    } catch (\Throwable $e) {
+                        $lines[] = "[ERROR] {$name} ({$campaignId}): pause failed — ".$e->getMessage();
+                        $errors++;
+                    }
+
+                    continue;
+                }
+
+                $budgetId = $this->normalizeBudgetId($row['budget_id'] ?? null);
+                if ($budgetId === '') {
+                    $budgetId = $fallbackBudgetIds[$campaignId] ?? '';
+                }
+                if ($budgetId === '') {
+                    $lines[] = "[SKIP] {$name} ({$campaignId}): missing budget_id.";
+                    $skipped++;
+
+                    continue;
+                }
+
+                try {
+                    $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
+                    $sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
+                    $unchanged = (int) round($currentBudget) === $newBudget;
+                    $changeNote = $unchanged ? ' (already at SBGT — confirmed in Google Ads)' : '';
+                    $lines[] = "[OK] {$name} ({$campaignId}): Budget=\${$currentBudget} → \${$newBudget}{$changeNote} (ACOS={$acos}%, SBGT={$newBudget})";
+                    $this->rememberShoppingPush('bgt', $campaignId, (float) $newBudget);
+                    $updated++;
+                } catch (\Throwable $e) {
+                    $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
+                    $errors++;
+                }
+            } finally {
+                if ($campaignLease instanceof SchedulerLease) {
+                    $campaignLease->release('done');
+                }
             }
         }
 
@@ -1154,50 +1187,76 @@ class GoogleShoppingCampaignsController extends Controller
         $updated = 0;
         $skipped = 0;
         $errors = 0;
+        $locksReady = SchedulerLease::available();
 
         $lines[] = 'Pushing SBID for '.count($campaignIds).' campaign id(s) from grid (direct, no SKU matching)...';
 
         foreach ($campaignIds as $campaignId) {
-            $row = $rowsById[$campaignId] ?? null;
-            if ($row === null) {
-                $lines[] = "[SKIP] {$campaignId}: not found in grid data (no L30 rows or outside page scope).";
+            // One push per campaign at a time, whichever path starts it (page button or the scheduled match).
+            // A busy campaign is skipped, not queued: the other push is already doing the same work.
+            try {
+                $campaignLease = $locksReady ? SchedulerLease::acquire(self::campaignPushLease((string) $campaignId), 300) : false;
+            } catch (\Throwable $e) {
+                // Never push a campaign without being able to take its lock.
+                $lines[] = "[ERROR] {$campaignId} ({$campaignId}): could not take the campaign lock — ".$e->getMessage();
+                $errors++;
+
+                continue;
+            }
+            if ($campaignLease === null) {
+                $lines[] = "[BUSY] {$campaignId} ({$campaignId}): another push for this campaign is running — skipped, nothing changed.";
                 $skipped++;
 
                 continue;
             }
-
-            $name = (string) ($row['campaign_name'] ?? $campaignId);
-            $status = strtoupper(trim((string) ($row['campaign_status'] ?? '')));
-            if ($status !== 'ENABLED') {
-                $lines[] = "[SKIP] {$name} ({$campaignId}): campaign status is {$status}, not ENABLED.";
-                $skipped++;
-
-                continue;
-            }
-
-            $sbid = $row['sbid'] ?? null;
-            if ($sbid === null || $sbid === '' || (float) $sbid <= 0) {
-                $ub7 = round((float) ($row['ub7'] ?? 0), 1);
-                $ub1 = round((float) ($row['ub1'] ?? 0), 1);
-                $lines[] = "[SKIP] {$name} ({$campaignId}): no SBID to push (7UB={$ub7}%, 1UB={$ub1}% — mid band shows —).";
-                $skipped++;
-
-                continue;
-            }
-
-            $sbid = round((float) $sbid, 2);
-            $ub7 = round((float) ($row['ub7'] ?? 0), 1);
-            $ub1 = round((float) ($row['ub1'] ?? 0), 1);
+            SchedulerLease::pulse();
 
             try {
-                $pushNote = $this->pushSbidToGoogleAds($sbidService, $customerId, $campaignId, $sbid, $row);
-                $noteSuffix = $pushNote !== '' ? " — {$pushNote}" : '';
-                $lines[] = "[OK] {$name} ({$campaignId}): SBID=\${$sbid} (7UB={$ub7}%, 1UB={$ub1}%){$noteSuffix}";
-                $this->rememberShoppingPush('bid', $campaignId, $sbid);
-                $updated++;
-            } catch (\Throwable $e) {
-                $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
-                $errors++;
+                $row = $rowsById[$campaignId] ?? null;
+                if ($row === null) {
+                    $lines[] = "[SKIP] {$campaignId}: not found in grid data (no L30 rows or outside page scope).";
+                    $skipped++;
+
+                    continue;
+                }
+
+                $name = (string) ($row['campaign_name'] ?? $campaignId);
+                $status = strtoupper(trim((string) ($row['campaign_status'] ?? '')));
+                if ($status !== 'ENABLED') {
+                    $lines[] = "[SKIP] {$name} ({$campaignId}): campaign status is {$status}, not ENABLED.";
+                    $skipped++;
+
+                    continue;
+                }
+
+                $sbid = $row['sbid'] ?? null;
+                if ($sbid === null || $sbid === '' || (float) $sbid <= 0) {
+                    $ub7 = round((float) ($row['ub7'] ?? 0), 1);
+                    $ub1 = round((float) ($row['ub1'] ?? 0), 1);
+                    $lines[] = "[SKIP] {$name} ({$campaignId}): no SBID to push (7UB={$ub7}%, 1UB={$ub1}% — mid band shows —).";
+                    $skipped++;
+
+                    continue;
+                }
+
+                $sbid = round((float) $sbid, 2);
+                $ub7 = round((float) ($row['ub7'] ?? 0), 1);
+                $ub1 = round((float) ($row['ub1'] ?? 0), 1);
+
+                try {
+                    $pushNote = $this->pushSbidToGoogleAds($sbidService, $customerId, $campaignId, $sbid, $row);
+                    $noteSuffix = $pushNote !== '' ? " — {$pushNote}" : '';
+                    $lines[] = "[OK] {$name} ({$campaignId}): SBID=\${$sbid} (7UB={$ub7}%, 1UB={$ub1}%){$noteSuffix}";
+                    $this->rememberShoppingPush('bid', $campaignId, $sbid);
+                    $updated++;
+                } catch (\Throwable $e) {
+                    $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
+                    $errors++;
+                }
+            } finally {
+                if ($campaignLease instanceof SchedulerLease) {
+                    $campaignLease->release('done');
+                }
             }
         }
 

@@ -26,11 +26,92 @@ class CronWatchdogService
         }
 
         $alerts = [];
+        // First: close runs whose process is gone, so they are not reported later as "stuck" / "timed out".
+        $alerts = array_merge($alerts, $this->reapAbandonedRunning());
         $alerts = array_merge($alerts, $this->stuckDetector->detect());
         $alerts = array_merge($alerts, $this->checkStaleRunning());
         $alerts = array_merge($alerts, $this->checkWatchedJobs());
 
         return $alerts;
+    }
+
+    /**
+     * A `running` log whose process no longer exists (crash, kill -9, restart) can never finish by itself.
+     * Close it as `interrupted` based on the real process state. A run that is genuinely still processing
+     * (process alive) is never touched here. Only logs of this host are judged: another host's pid is unknown.
+     *
+     * @return list<CronMonitorAlert>
+     */
+    protected function reapAbandonedRunning(): array
+    {
+        $grace = (int) config('cron-monitor.leases.abandoned_grace_seconds', 120);
+        $host = gethostname() ?: php_uname('n');
+        $alerts = [];
+
+        $candidates = CronExecutionLog::query()
+            ->where('status', CronExecutionLog::STATUS_RUNNING)
+            ->whereNotNull('pid')
+            ->where('execution_server', $host)
+            ->where('started_at', '<=', now()->subSeconds($grace))
+            ->get();
+
+        foreach ($candidates as $log) {
+            if (self::processAlive((int) $log->pid)) {
+                continue;
+            }
+
+            $duration = $log->started_at ? now()->diffInSeconds($log->started_at) : null;
+            // Atomic: only the run that is still `running` is closed (never one that just finished).
+            $closed = CronExecutionLog::query()
+                ->where('id', $log->id)
+                ->where('status', CronExecutionLog::STATUS_RUNNING)
+                ->update([
+                    'status' => CronExecutionLog::STATUS_INTERRUPTED,
+                    'finished_at' => now(),
+                    'duration_seconds' => $duration,
+                    'error_message' => "Process {$log->pid} is gone (crash, kill or restart) — closed by watchdog.",
+                    'root_cause' => 'Interrupted: process ended without finishing.',
+                    'updated_at' => now(),
+                ]);
+            if ($closed !== 1) {
+                continue;
+            }
+
+            Log::warning('[CronMonitor] Abandoned run closed as interrupted', [
+                'job' => $log->job_name, 'log_id' => $log->id, 'pid' => $log->pid, 'ran_for_s' => $duration,
+            ]);
+            $alerts[] = $this->storeAlert(
+                $log->refresh(),
+                'interrupted',
+                'warning',
+                "Interrupted: {$log->job_name}",
+                "Execution #{$log->id} (pid {$log->pid}) ended without finishing; the next scheduled run takes over."
+            );
+        }
+
+        return $alerts;
+    }
+
+    /** True unless `$pid` is provably gone (no such process, zombie, or reused by a non-PHP program). */
+    public static function processAlive(int $pid): bool
+    {
+        if ($pid <= 0) {
+            return false;
+        }
+        if (is_dir('/proc')) {
+            $cmdline = @file_get_contents("/proc/{$pid}/cmdline");
+            if ($cmdline === false || $cmdline === '') {
+                return false; // no such process, or a zombie
+            }
+            // The pid exists. A PHP process (artisan, queue worker, php-fpm) is treated as the run itself;
+            // a pid reused by a non-PHP program means our process is gone.
+            return str_contains($cmdline, 'php') || str_contains($cmdline, 'artisan');
+        }
+        if (function_exists('posix_kill')) {
+            return posix_kill($pid, 0);
+        }
+
+        return true; // cannot tell: never close a run we cannot prove is dead
     }
 
     /**

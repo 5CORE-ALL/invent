@@ -145,6 +145,19 @@ return [
         'prefix' => 'cron-monitor:lock:',
     ],
 
+    /*
+    | Database leases (App\Support\SchedulerLease). A running job renews its lease every
+    | `heartbeat_seconds`; if it dies the lease expires after `ttl_seconds` and the next run takes over.
+    | `abandoned_grace_seconds`: a `running` log whose process is gone is closed as `interrupted`.
+    */
+    'leases' => [
+        'ttl_seconds' => (int) env('SCHEDULER_LEASE_TTL', 300),
+        'heartbeat_seconds' => (int) env('SCHEDULER_LEASE_HEARTBEAT', 30),
+        'abandoned_grace_seconds' => (int) env('CRON_MONITOR_ABANDONED_GRACE', 120),
+        // A hung run stops being renewed after this long, so its lease expires and the next run takes over.
+        'max_run_seconds' => (int) env('SCHEDULER_LEASE_MAX_RUN', 1800),
+    ],
+
     'stuck' => [
         'enabled' => env('CRON_MONITOR_STUCK_ENABLED', true),
         'multiplier' => (float) env('CRON_MONITOR_STUCK_MULTIPLIER', 3.0),

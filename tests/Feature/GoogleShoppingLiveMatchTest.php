@@ -50,6 +50,8 @@ class GoogleShoppingLiveMatchTest extends TestCase
             $t->timestamps();
             $t->unique(['channel', 'campaign_id']);
         });
+        // The command takes a database lease (SchedulerLease) around the run.
+        (require base_path('database/migrations/2026_10_31_020000_create_scheduler_leases_table.php'))->up();
 
         $this->grid = [];
         $this->google = [];

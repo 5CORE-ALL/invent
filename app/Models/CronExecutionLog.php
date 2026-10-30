@@ -16,6 +16,8 @@ class CronExecutionLog extends Model
     public const STATUS_STUCK = 'stuck';
     public const STATUS_RECOVERED = 'recovered';
     public const STATUS_CANCELLED = 'cancelled';
+    /** The process died (crash, kill, restart) without finishing; closed by the watchdog. */
+    public const STATUS_INTERRUPTED = 'interrupted';
 
     public const RECOVERY_NONE = 'none';
     public const RECOVERY_ATTEMPTING = 'attempting';
@@ -101,6 +103,7 @@ class CronExecutionLog extends Model
             self::STATUS_TIMED_OUT,
             self::STATUS_MISSED,
             self::STATUS_STUCK,
+            self::STATUS_INTERRUPTED,
             self::STATUS_CANCELLED => 1,
             self::STATUS_PARTIAL_SUCCESS => 2,
             self::STATUS_RUNNING => 3,
