@@ -464,6 +464,36 @@
         var rows = $('bconds').querySelectorAll('.ace-cond');
         rows.forEach(function (r) { r.querySelector('.ace-c-del').style.visibility = rows.length > 1 ? 'visible' : 'hidden'; });
         $('bmode').classList.toggle('d-none', rows.length < 2);
+        autoGroup();
+    }
+    // Rule name: "Group - first task - assignee(s)" until the user types their own name (still editable).
+    function autoName() {
+        var n = $('name');
+        if (!n || n.dataset.auto === '0') return;
+        var parts = [];
+        var g = $('group').value.trim(); if (g) parts.push(g);
+        var t = readTitles()[0]; if (t) parts.push(t);
+        if ($('amode').value === 'fixed') {
+            var ids = readAssignees();
+            var names = (meta && meta.users ? meta.users : []).filter(function (u) { return ids.indexOf(u.id) !== -1; }).map(function (u) { return u.name; });
+            if (names.length) parts.push(names.length > 2 ? names.slice(0, 2).join(', ') + ' +' + (names.length - 2) : names.join(', '));
+        } else {
+            var o = $('amode').options[$('amode').selectedIndex];
+            if (o && o.text) parts.push(o.text);
+        }
+        n.value = parts.join(' \u00b7 ').slice(0, 120); // the field's max length
+        n.dataset.auto = '1';
+    }
+    // Badge rules: fill the task Group with the selected badge name(s) until the user types their own group.
+    function autoGroup() {
+        var g = $('group');
+        if (!g || kind !== 'badge' || g.dataset.auto === '0') return;
+        var seen = {}, names = [];
+        readBadgeConds().forEach(function (c) {
+            var l = String(c.label || '').trim();
+            if (l && !seen[l]) { seen[l] = 1; names.push(l); }
+        });
+        if (names.length) { g.value = names.join(', ').slice(0, 255); g.dataset.auto = '1'; autoName(); }
     }
     function readBadgeConds() {
         return Array.prototype.map.call($('bconds').querySelectorAll('.ace-cond'), function (r) {
@@ -509,6 +539,7 @@
         $('newSub').textContent = kind === 'badge' ? 'Create a task automatically when a badge at the top of the page meets a condition' : 'Create a one-time task automatically when a column matches';
         var msg = kind === 'badge' ? 'A task is created once per checked period (day / week / month) when the badge condition is met.' : 'A task is created once per matching row in each checked period.';
         $('freqHint').textContent = msg; $('foot').textContent = msg;
+        autoGroup();
     }
 
     // ---- task titles (+ Add task) ----
@@ -521,6 +552,7 @@
     function syncTitles() {
         var rows = $('titles').querySelectorAll('.ace-trow');
         rows.forEach(function (r) { r.querySelector('.ace-t-del').style.visibility = rows.length > 1 ? 'visible' : 'hidden'; });
+        autoName();
     }
     function readTitles() {
         return Array.prototype.map.call($('titles').querySelectorAll('.ace-t-input'), function (i) { return i.value.trim(); }).filter(Boolean);
@@ -541,6 +573,7 @@
         var n = readAssignees().length;
         $('acount').textContent = n ? n + ' selected' : 'None selected';
         $('splitWrap').classList.toggle('d-none', n < 2);
+        autoName();
     }
     function readTFreq() {
         return Array.prototype.map.call($('newModal').querySelectorAll('.ace-tfreq:checked'), function (c) { return c.value; });
@@ -561,12 +594,14 @@
 
     function syncForm() {
         $('aUserWrap').style.display = $('amode').value === 'fixed' ? '' : 'none';
+        autoName();
     }
 
     function showErr(msg) { var e = $('err'); e.textContent = msg || ''; e.classList.toggle('d-none', !msg); }
 
     function resetForm() {
         ['name', 'desc', 'group'].forEach(function (k) { $(k).value = ''; });
+        $('group').dataset.auto = '1'; $('name').dataset.auto = '1';
         $('titles').innerHTML = ''; addTitle('');
         OPT_KEYS.forEach(function (k) { $('o_' + k).value = ''; });
         $('etc').value = 10; $('ca').checked = false; $('sj').checked = true;
@@ -634,6 +669,7 @@
     function applyForm(f) {
         var o = f.task_options || {};
         $('name').value = f.name || '';
+        $('name').dataset.auto = f.name ? '0' : '1'; // a saved name is kept as-is
         var fr = f.frequencies && f.frequencies.length ? f.frequencies : ['daily'];
         $('fd').checked = fr.indexOf('daily') !== -1; $('fw').checked = fr.indexOf('weekly') !== -1; $('fm').checked = fr.indexOf('monthly') !== -1;
 
@@ -641,6 +677,7 @@
         (o.titles && o.titles.length ? o.titles : [f.task_title || '']).forEach(function (t) { addTitle(t); });
         $('desc').value = f.task_description || '';
         $('group').value = f.task_group || '';
+        $('group').dataset.auto = f.task_group ? '0' : '1'; // a saved group is kept as-is
         $('link').value = f.task_link || '';
 
         if (Array.prototype.some.call($('amode').options, function (x) { return x.value === f.assignee_mode; })) $('amode').value = f.assignee_mode;
@@ -813,6 +850,9 @@
         if (e.target.closest('.ace-cpick')) return;
         var c = $('conds'); if (c) c.querySelectorAll('.ace-cp-menu').forEach(function (m) { m.classList.add('d-none'); });
     });
+    $('group').addEventListener('input', function () { this.dataset.auto = this.value.trim() === '' ? '1' : '0'; autoName(); });
+    $('name').addEventListener('input', function () { this.dataset.auto = this.value.trim() === '' ? '1' : '0'; if (this.dataset.auto === '1') autoName(); });
+    $('titles').addEventListener('input', autoName);
     $('addBadge').addEventListener('click', addBadgeCond);
     $('bpreviewBtn').addEventListener('click', badgeCheckNow);
     $('bconds').addEventListener('change', syncBadgeConds);
