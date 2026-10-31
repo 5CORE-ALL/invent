@@ -922,6 +922,48 @@ class AmazonFbmTargetingController extends Controller
     }
 
     /**
+     * Lifetime (LT) clicks and units sold per keyword of one campaign, accumulated from the stored DAILY Amazon Ads
+     * keyword reports (rows whose report_date_range is a date). The L1 / L7 / L15 / L30 windows are left out because
+     * they overlap the daily rows. Units sold = unitsSoldClicks30d, the same field the rest of the ads pages use.
+     * Keyed "keyword_key|MATCH" (keyword lower-cased, spaces collapsed) so the page can match its target labels.
+     */
+    public function targetMetrics(Request $request): JsonResponse
+    {
+        $cid = trim((string) $request->query('campaign_id', ''));
+        $metrics = [];
+        if ($cid !== '' && $this->hasTable(self::KW_TABLE)) {
+            $cols = $this->columnsOf(self::KW_TABLE);
+            $labelCol = in_array('keyword', $cols, true) ? 'keyword' : (in_array('targeting', $cols, true) ? 'targeting' : null);
+            $soldCol = in_array('unitsSoldClicks30d', $cols, true) ? 'unitsSoldClicks30d' : (in_array('purchases30d', $cols, true) ? 'purchases30d' : null);
+            if ($labelCol !== null && in_array('campaign_id', $cols, true) && in_array('report_date_range', $cols, true)) {
+                $matchCol = in_array('matchType', $cols, true) ? 'matchType' : null;
+                $clicks = in_array('clicks', $cols, true) ? 'SUM(COALESCE(`clicks`, 0))' : '0';
+                $sold = $soldCol !== null ? 'SUM(COALESCE(`'.$soldCol.'`, 0))' : '0';
+                $rows = DB::table(self::KW_TABLE)
+                    ->where('campaign_id', $cid)
+                    ->where('report_date_range', 'like', '____-__-__')
+                    ->whereNotNull($labelCol)
+                    ->selectRaw("`{$labelCol}` as label, ".($matchCol ? "`{$matchCol}`" : "''")." as mt, {$clicks} as clicks, {$sold} as sold")
+                    ->groupBy($labelCol)
+                    ->when($matchCol, fn ($q) => $q->groupBy($matchCol))
+                    ->get();
+                foreach ($rows as $r) {
+                    $text = trim((string) $r->label);
+                    if ($text === '') {
+                        continue;
+                    }
+                    $key = AmazonKwTargetingKeyword::normalizeKey($text).'|'.strtoupper(trim((string) $r->mt));
+                    $metrics[$key] ??= ['clicks' => 0, 'sold' => 0];
+                    $metrics[$key]['clicks'] += (int) $r->clicks;
+                    $metrics[$key]['sold'] += (int) $r->sold;
+                }
+            }
+        }
+
+        return response()->json(['success' => true, 'metrics' => (object) $metrics]);
+    }
+
+    /**
      * Bulk edit / delete / ignore on targets (or negative keywords) from the targets modal. The action is applied to
      * the campaign and to every campaign sharing its keywords (KW cousins + same-parent siblings), because the
      * KW-cousin sync would otherwise copy the keywords straight back.

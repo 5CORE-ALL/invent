@@ -42,7 +42,7 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
-     * Missing PT + Missing KW + Missing HL for in-stock parents (same rules as the page badges).
+     * Missing PT + Missing KW + Missing HL across all parents (same rules as the page badges).
      * Cached briefly for the left-sidebar badge.
      */
     public static function missingTotalCount(bool $computeIfMissing = false): int
@@ -2650,7 +2650,7 @@ PROMPT;
     }
 
     /**
-     * Count Missing PT + Missing KW + Missing HL across in-stock parent rows (inventory > 0).
+     * Count Missing PT + Missing KW + Missing HL across all parent rows (in-stock or not).
      */
     private function computeMissingTotal(): int
     {
@@ -2676,8 +2676,6 @@ PROMPT;
             ->orderBy('sku')
             ->get();
 
-        $inventoryByParent = $this->buildInventorySumByParent($rows);
-
         $parents = [];
         foreach ($rows as $r) {
             $sku = trim((string) ($r->sku ?? ''));
@@ -2700,9 +2698,7 @@ PROMPT;
             });
 
         foreach ($parents as $parentKey => $parent) {
-            if ((int) round($inventoryByParent[$parentKey] ?? 0) <= 0) {
-                continue;
-            }
+            // All parents count (in-stock and out-of-stock), matching the page badges.
             $types = $linkedTypesBySku->get('PARENT '.$parent, []);
             if (! in_array('PT', $types, true)) {
                 $counts['PT']++;

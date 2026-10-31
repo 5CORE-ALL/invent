@@ -46,15 +46,20 @@
     #aftTargetsModal .modal-dialog { height: 100%; margin: 0 auto; max-width: 820px; }
     #aftTargetsModal .modal-content { height: 100%; border-radius: 0; }
     #aftTargetsModal .modal-body { display: flex; flex-direction: column; min-height: 0; overflow: hidden; padding: 12px 16px; }
-    #aft-modal-targets.aft-modal-list {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow-y: auto;
-        padding-right: 4px;
-    }
+    #aftTargetsModal { --aft-cols: 22px minmax(0, 1fr) 96px 84px 84px 76px 100px; }
+    #aftTargetsModal.is-neg { --aft-cols: 22px minmax(0, 1fr) 150px 100px; }
+    #aftTargetsModal.is-neg .aft-metric { display: none; }
+    #aft-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
+    #aft-modal-targets.aft-modal-list { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }
+    #aftTargetsModal .aft-head { position: sticky; top: 0; z-index: 2; background: #fff; padding-bottom: 2px; border-bottom: 2px solid #c7d2fe; }
+    #aftTargetsModal .aft-head-row { display: grid; grid-template-columns: var(--aft-cols); align-items: center; gap: 10px; padding: 4px 10px; }
+    #aftTargetsModal .aft-head-titles { font-size: 12px; font-weight: 700; color: #334155; }
+    #aftTargetsModal .aft-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+    #aftTargetsModal .aft-sort:hover { color: #1d4ed8; }
+    #aftTargetsModal .aft-sort .aft-arrow { display: inline-block; width: 10px; color: #1d4ed8; }
+    #aftTargetsModal .aft-metric { text-align: right; }
+    #aftTargetsModal .aft-head-filters .form-control, #aftTargetsModal .aft-head-filters .form-select { padding: 2px 6px; font-size: 12px; height: 26px; }
+    #aftTargetsModal .aft-head-filters input.is-bad { border-color: #dc2626; background: #fef2f2; }
     #aftTargetsModal .aft-stats { width: 100%; margin-bottom: 8px; font-size: 12px; text-align: center; border-collapse: collapse; }
     #aftTargetsModal .aft-stats th, #aftTargetsModal .aft-stats td { border: 1px solid #e2e8f0; padding: 3px 8px; }
     #aftTargetsModal .aft-stats thead th { background: #f1f5f9; color: #475569; font-weight: 700; }
@@ -66,7 +71,8 @@
     #aftTargetsModal .aft-editpanel.show { display: block; }
     #aftTargetsModal .aft-editpanel label { font-size: 12px; font-weight: 600; color: #92400e; margin-bottom: 2px; }
     #aft-modal-targets .aft-chip {
-        display: flex;
+        display: grid;
+        grid-template-columns: var(--aft-cols);
         align-items: center;
         gap: 10px;
         width: 100%;
@@ -78,13 +84,16 @@
         font-size: 13px;
         line-height: 1.35;
     }
+    #aft-modal-targets .aft-chip .aft-metric { font-variant-numeric: tabular-nums; }
+    #aft-modal-targets .aft-chip .aft-cvr { font-weight: 700; color: #047857; }
+    #aft-modal-targets .aft-chip .aft-acts { display: flex; gap: 2px; justify-content: flex-end; }
     #aft-modal-targets .aft-chip.is-selected { background: #dbeafe; border-color: #60a5fa; }
     #aft-modal-targets .aft-chip.is-ignored { opacity: .6; background: #f1f5f9; border-color: #cbd5e1; }
     #aft-modal-targets .aft-chip.is-ignored .aft-chip-text { text-decoration: line-through; }
     #aft-modal-targets .aft-chip input[type=checkbox], #aftTargetsModal .aft-toolbar input[type=checkbox] { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; }
-    #aft-modal-targets .aft-chip-text { flex: 1; min-width: 0; word-break: break-word; }
+    #aft-modal-targets .aft-chip-text { min-width: 0; word-break: break-word; }
     #aft-modal-targets .aft-chip-match {
-        flex-shrink: 0;
+        justify-self: start;
         padding: 2px 8px;
         border-radius: 999px;
         background: #1d4ed8;
@@ -209,7 +218,6 @@
                 <div id="aft-modal-msg" class="small mb-1" style="display:none;"></div>
                 <table class="aft-stats" id="aft-modal-stats"></table>
                 <div class="aft-toolbar">
-                    <input type="checkbox" id="aft-sel-all" title="Select all">
                     <span class="aft-sel-text" id="aft-sel-text"></span>
                     <button type="button" class="aft-ico aft-ico-edit" id="aft-bulk-edit" title="Edit selected"><i class="fas fa-pen"></i></button>
                     <button type="button" class="aft-ico aft-ico-del" id="aft-bulk-del" title="Delete selected"><i class="fas fa-trash"></i></button>
@@ -240,7 +248,29 @@
                         </div>
                     </div>
                 </div>
-                <div id="aft-modal-targets" class="aft-modal-list"></div>
+                <div id="aft-scroll">
+                    <div class="aft-head">
+                        <div class="aft-head-row aft-head-titles">
+                            <input type="checkbox" id="aft-sel-all" title="Select all shown">
+                            <span class="aft-sort" data-sort="text">Keyword <span class="aft-arrow"></span></span>
+                            <span class="aft-sort" data-sort="match">Match <span class="aft-arrow"></span></span>
+                            <span class="aft-sort aft-metric" data-sort="clicks" title="Total clicks, lifetime (sum of the stored daily Amazon Ads keyword reports)">Clicks LT <span class="aft-arrow"></span></span>
+                            <span class="aft-sort aft-metric" data-sort="sold" title="Total units sold, lifetime (sum of the stored daily Amazon Ads keyword reports)">Sold LT <span class="aft-arrow"></span></span>
+                            <span class="aft-sort aft-metric" data-sort="cvr" title="CVR % = Sold LT / Clicks LT x 100">CVR % <span class="aft-arrow"></span></span>
+                            <span></span>
+                        </div>
+                        <div class="aft-head-row aft-head-filters">
+                            <span></span>
+                            <input type="text" class="form-control form-control-sm" data-filter="text" placeholder="Filter keyword" autocomplete="off">
+                            <select class="form-select form-select-sm" data-filter="match"></select>
+                            <input type="text" class="form-control form-control-sm aft-metric" data-filter="clicks" placeholder="e.g. >10" autocomplete="off" title="Number, >n, >=n, <n, <=n, =n or a-b">
+                            <input type="text" class="form-control form-control-sm aft-metric" data-filter="sold" placeholder="e.g. >=1" autocomplete="off" title="Number, >n, >=n, <n, <=n, =n or a-b">
+                            <input type="text" class="form-control form-control-sm aft-metric" data-filter="cvr" placeholder="e.g. >5" autocomplete="off" title="Number, >n, >=n, <n, <=n, =n or a-b (in %)">
+                            <span></span>
+                        </div>
+                    </div>
+                    <div id="aft-modal-targets" class="aft-modal-list"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -686,7 +716,13 @@
 
     // ---- Targets modal: select, edit, delete, ignore (all work on the whole selection) ----
     const TGT_URL = @json(route('amazon.ads.fbm-targeting.targets.bulk'));
-    const tgt = { campaignId: '', name: '', kind: 'kw', items: [], selected: new Set(), busy: false };
+    const TGT_METRICS_URL = @json(route('amazon.ads.fbm-targeting.targets.metrics'));
+    const tgt = {
+        campaignId: '', name: '', kind: 'kw', items: [], selected: new Set(), busy: false,
+        raw: { targets: [], ignored: [] }, metrics: {}, metricsLoading: false,
+        sort: { col: 'cvr', dir: 'desc' },
+        filters: { text: '', match: '', clicks: '', sold: '', cvr: '' },
+    };
 
     function parseTargetLabel(raw) {
         raw = String(raw || '').trim();
@@ -694,14 +730,105 @@
         return { text: m ? m[1].trim() : raw, match: m ? m[2].trim().toUpperCase() : '' };
     }
 
-    function setTargetItems(targets, ignored) {
-        const ign = new Set((ignored || []).map(String));
-        tgt.items = (targets || []).map(function (label) {
+    function targetKey(text, match) {
+        return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim() + '|' + String(match || '').toUpperCase();
+    }
+
+    function buildTargetItems() {
+        const ign = new Set((tgt.raw.ignored || []).map(String));
+        tgt.items = (tgt.raw.targets || []).map(function (label) {
             const p = parseTargetLabel(label);
-            return { label: String(label), text: p.text, match: p.match, ignored: ign.has(String(label)) };
+            const m = tgt.metrics[targetKey(p.text, p.match)] || { clicks: 0, sold: 0 };
+            const clicks = Number(m.clicks || 0), sold = Number(m.sold || 0);
+            return {
+                label: String(label), text: p.text, match: p.match, ignored: ign.has(String(label)),
+                clicks: clicks, sold: sold, cvr: clicks > 0 ? (sold / clicks) * 100 : null,
+            };
         });
         const have = new Set(tgt.items.map(function (i) { return i.label; }));
         tgt.selected.forEach(function (l) { if (!have.has(l)) tgt.selected.delete(l); });
+    }
+
+    function setTargetItems(targets, ignored) {
+        tgt.raw = { targets: targets || [], ignored: ignored || [] };
+        buildTargetItems();
+    }
+
+    function loadTargetMetrics() {
+        if (tgt.kind === 'neg' || !tgt.campaignId) return Promise.resolve();
+        const cid = tgt.campaignId;
+        tgt.metricsLoading = true;
+        renderTargetsModal();
+        return fetch(TGT_METRICS_URL + '?campaign_id=' + encodeURIComponent(cid), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        }).then(function (res) { return res.json(); }).then(function (b) {
+            if (cid !== tgt.campaignId) return;
+            tgt.metrics = (b && b.metrics) || {};
+        }).catch(function () {
+            showModalMsg('Could not load clicks / sold. Showing zeros.', false);
+        }).finally(function () {
+            tgt.metricsLoading = false;
+            buildTargetItems();
+            renderTargetsModal();
+        });
+    }
+
+    // "5", ">5", ">=5", "<5", "<=5", "=5", "2-8" -> test function; null = empty, false = invalid
+    function numTest(expr) {
+        expr = String(expr || '').replace(/%/g, '').trim();
+        if (!expr) return null;
+        let m = expr.match(/^(>=|<=|>|<|=)?\s*(-?\d+(?:\.\d+)?)$/);
+        if (m) {
+            const n = parseFloat(m[2]), op = m[1] || '=';
+            return function (v) {
+                if (v === null) return false;
+                if (op === '>') return v > n;
+                if (op === '>=') return v >= n;
+                if (op === '<') return v < n;
+                if (op === '<=') return v <= n;
+                return Math.abs(v - n) < 1e-9 || (op === '=' && Math.round(v * 10) / 10 === n);
+            };
+        }
+        m = expr.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
+        if (m) {
+            const lo = Math.min(parseFloat(m[1]), parseFloat(m[2])), hi = Math.max(parseFloat(m[1]), parseFloat(m[2]));
+            return function (v) { return v !== null && v >= lo && v <= hi; };
+        }
+        return false;
+    }
+
+    function visibleTargetItems() {
+        const f = tgt.filters;
+        const text = f.text.trim().toLowerCase();
+        const tests = {};
+        ['clicks', 'sold', 'cvr'].forEach(function (k) {
+            const t = numTest(f[k]);
+            tests[k] = typeof t === 'function' ? t : null;
+        });
+        const list = tgt.items.filter(function (i) {
+            if (text && i.text.toLowerCase().indexOf(text) < 0) return false;
+            if (f.match && (i.match || '-') !== f.match) return false;
+            if (tests.clicks && !tests.clicks(i.clicks)) return false;
+            if (tests.sold && !tests.sold(i.sold)) return false;
+            if (tests.cvr && !tests.cvr(i.cvr)) return false;
+            return true;
+        });
+        const col = tgt.sort.col, dir = tgt.sort.dir === 'asc' ? 1 : -1;
+        list.sort(function (a, b) {
+            let r;
+            if (col === 'text' || col === 'match') {
+                r = String(a[col]).localeCompare(String(b[col]), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+            } else {
+                const av = a[col], bv = b[col];
+                if (av === null && bv === null) r = 0;
+                else if (av === null) return 1; // no data always last
+                else if (bv === null) return -1;
+                else r = (av - bv) * dir;
+            }
+            if (r) return r;
+            return (b.clicks - a.clicks) || a.text.localeCompare(b.text, undefined, { sensitivity: 'base' });
+        });
+        return list;
     }
 
     function nounFor(n) {
@@ -709,64 +836,102 @@
     }
 
     function renderTargetsModal() {
+        const modalEl = document.getElementById('aftTargetsModal');
+        modalEl.classList.toggle('is-neg', tgt.kind === 'neg');
+        const isNeg = tgt.kind === 'neg';
         const items = tgt.items;
         const selItems = items.filter(function (i) { return tgt.selected.has(i.label); });
+        const shown = visibleTargetItems();
 
-        const countMatch = function (list) {
-            const o = { total: list.length, ignored: 0, by: {} };
+        // ---- counts table (All / Selected) ----
+        const sumUp = function (list) {
+            const o = { total: list.length, ignored: 0, clicks: 0, sold: 0, by: {} };
             list.forEach(function (i) {
                 if (i.ignored) o.ignored++;
+                o.clicks += i.clicks;
+                o.sold += i.sold;
                 const k = i.match || '-';
                 o.by[k] = (o.by[k] || 0) + 1;
             });
+            o.cvr = o.clicks > 0 ? (o.sold / o.clicks) * 100 : null;
             return o;
         };
-        const all = countMatch(items);
-        const sel = countMatch(selItems);
+        const all = sumUp(items);
+        const sel = sumUp(selItems);
         const order = ['EXACT', 'PHRASE', 'BROAD', 'NEGATIVE_EXACT', 'NEGATIVE_PHRASE'];
         const types = Object.keys(all.by).sort(function (a, b) {
             const ia = order.indexOf(a), ib = order.indexOf(b);
             return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
         });
         const typeLabel = function (t) { return t === '-' ? 'No match' : t.charAt(0) + t.slice(1).toLowerCase().replace(/_/g, ' '); };
+        const fmtCvr = function (v) { return v === null ? '-' : v.toFixed(1) + '%'; };
         const row = function (cls, label, c) {
             return '<tr class="' + cls + '"><th>' + label + '</th><td>' + c.total.toLocaleString() + '</td>' +
                 types.map(function (t) { return '<td>' + (c.by[t] || 0).toLocaleString() + '</td>'; }).join('') +
-                '<td>' + c.ignored.toLocaleString() + '</td></tr>';
+                '<td>' + c.ignored.toLocaleString() + '</td>' +
+                (isNeg ? '' : '<td>' + c.clicks.toLocaleString() + '</td><td>' + c.sold.toLocaleString() + '</td><td>' + fmtCvr(c.cvr) + '</td>') + '</tr>';
         };
         document.getElementById('aft-modal-stats').innerHTML =
-            '<thead><tr><th></th><th>Total</th>' + types.map(function (t) { return '<th>' + escapeHtml(typeLabel(t)) + '</th>'; }).join('') + '<th>Ignored</th></tr></thead>' +
+            '<thead><tr><th></th><th>Total</th>' + types.map(function (t) { return '<th>' + escapeHtml(typeLabel(t)) + '</th>'; }).join('') + '<th>Ignored</th>' +
+            (isNeg ? '' : '<th>Clicks LT</th><th>Sold LT</th><th>CVR %</th>') + '</tr></thead>' +
             '<tbody>' + row('', 'All', all) + row('aft-stats-sel', 'Selected', sel) + '</tbody>';
 
         const titleEl = document.getElementById('aft-modal-title');
-        if (titleEl) titleEl.textContent = tgt.name + (tgt.kind === 'neg' ? ' - Negative KW' : '');
+        if (titleEl) titleEl.textContent = tgt.name + (isNeg ? ' - Negative KW' : '');
 
+        // ---- header: sort arrows + match filter options ----
+        modalEl.querySelectorAll('.aft-sort').forEach(function (el) {
+            const on = el.dataset.sort === tgt.sort.col;
+            el.querySelector('.aft-arrow').textContent = on ? (tgt.sort.dir === 'asc' ? '▲' : '▼') : '';
+        });
+        const matchSel = modalEl.querySelector('select[data-filter="match"]');
+        const present = Object.keys(all.by).sort();
+        if (tgt.filters.match && present.indexOf(tgt.filters.match) < 0) tgt.filters.match = '';
+        matchSel.innerHTML = '<option value="">All</option>' + present.map(function (t) {
+            return '<option value="' + escapeHtml(t) + '"' + (tgt.filters.match === t ? ' selected' : '') + '>' + escapeHtml(typeLabel(t)) + '</option>';
+        }).join('');
+        ['clicks', 'sold', 'cvr'].forEach(function (k) {
+            const inp = modalEl.querySelector('input[data-filter="' + k + '"]');
+            inp.classList.toggle('is-bad', numTest(tgt.filters[k]) === false);
+        });
+
+        // ---- rows ----
         const listEl = document.getElementById('aft-modal-targets');
         if (items.length === 0) {
-            listEl.innerHTML = '<span class="aft-empty">' + (tgt.kind === 'neg' ? 'No negative keywords yet' : 'No targets yet') + '</span>';
+            listEl.innerHTML = '<span class="aft-empty">' + (isNeg ? 'No negative keywords yet' : 'No targets yet') + '</span>';
+        } else if (shown.length === 0) {
+            listEl.innerHTML = '<span class="aft-empty">No rows match the filters</span>';
         } else {
-            listEl.innerHTML = items.map(function (i, idx) {
+            listEl.innerHTML = shown.map(function (i) {
+                const idx = items.indexOf(i);
                 const on = tgt.selected.has(i.label);
                 return '<div class="aft-chip' + (on ? ' is-selected' : '') + (i.ignored ? ' is-ignored' : '') + '" data-idx="' + idx + '">' +
                     '<input type="checkbox" class="aft-pick"' + (on ? ' checked' : '') + '>' +
                     '<span class="aft-chip-text">' + escapeHtml(i.text) + '</span>' +
-                    (i.match ? '<span class="aft-chip-match">' + escapeHtml(i.match) + '</span>' : '') +
+                    '<span>' + (i.match ? '<span class="aft-chip-match">' + escapeHtml(i.match) + '</span>' : '') + '</span>' +
+                    '<span class="aft-metric">' + (tgt.metricsLoading ? '…' : i.clicks.toLocaleString()) + '</span>' +
+                    '<span class="aft-metric">' + (tgt.metricsLoading ? '…' : i.sold.toLocaleString()) + '</span>' +
+                    '<span class="aft-metric aft-cvr">' + (tgt.metricsLoading ? '…' : fmtCvr(i.cvr)) + '</span>' +
+                    '<span class="aft-acts">' +
                     '<button type="button" class="aft-ico aft-ico-edit" data-act="edit" title="Edit"><i class="fas fa-pen"></i></button>' +
                     '<button type="button" class="aft-ico aft-ico-del" data-act="delete" title="Delete"><i class="fas fa-trash"></i></button>' +
                     '<button type="button" class="aft-ico aft-ico-ign' + (i.ignored ? ' is-on' : '') + '" data-act="ignore" title="' + (i.ignored ? 'Un-ignore' : 'Ignore') + '"><i class="fas fa-ban"></i></button>' +
-                    '</div>';
+                    '</span></div>';
             }).join('');
         }
 
+        // ---- select-all (rows shown), toolbar ----
         const n = selItems.length;
+        const shownSel = shown.filter(function (i) { return tgt.selected.has(i.label); }).length;
         const allBox = document.getElementById('aft-sel-all');
-        allBox.checked = items.length > 0 && n === items.length;
-        allBox.indeterminate = n > 0 && n < items.length;
-        allBox.disabled = items.length === 0;
-        document.getElementById('aft-sel-text').textContent = n ? n.toLocaleString() + ' selected' : 'Select ' + nounFor(2) + ' to edit, delete or ignore in bulk';
+        allBox.checked = shown.length > 0 && shownSel === shown.length;
+        allBox.indeterminate = shownSel > 0 && shownSel < shown.length;
+        allBox.disabled = shown.length === 0;
+        document.getElementById('aft-sel-text').textContent = (n ? n.toLocaleString() + ' selected - ' : '') +
+            shown.length.toLocaleString() + ' of ' + items.length.toLocaleString() + ' shown' +
+            (n ? '' : ' - select ' + nounFor(2) + ' to edit, delete or ignore in bulk');
         ['aft-bulk-edit', 'aft-bulk-del', 'aft-bulk-ign'].forEach(function (id) {
-            const b = document.getElementById(id);
-            b.disabled = n === 0 || tgt.busy;
+            document.getElementById(id).disabled = n === 0 || tgt.busy;
         });
         const ign = document.getElementById('aft-bulk-ign');
         const allIgn = n > 0 && selItems.every(function (i) { return i.ignored; });
@@ -789,10 +954,15 @@
         tgt.campaignId = String(row.campaign_id || '');
         tgt.name = row.campaign_name || 'Campaign';
         tgt.selected = new Set();
+        tgt.metrics = {};
+        tgt.sort = tgt.kind === 'neg' ? { col: 'text', dir: 'asc' } : { col: 'cvr', dir: 'desc' }; // CVR highest to lowest by default
+        tgt.filters = { text: '', match: '', clicks: '', sold: '', cvr: '' };
+        document.querySelectorAll('#aftTargetsModal [data-filter]').forEach(function (el) { el.value = ''; });
         showModalMsg('', true);
         setTargetItems(tgt.kind === 'neg' ? row.negatives : row.targets, tgt.kind === 'neg' ? row.ignored_negatives : row.ignored_targets);
         closeEditPanel();
         renderTargetsModal();
+        loadTargetMetrics();
         const modalEl = document.getElementById('aftTargetsModal');
         if (modalEl && window.bootstrap && bootstrap.Modal) {
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -868,6 +1038,7 @@
             closeEditPanel();
             if (b.message) showModalMsg(b.message, true);
             if (typeof table !== 'undefined' && table && table.replaceData) table.replaceData(); // refresh the grid counts / badges
+            if (action === 'edit') loadTargetMetrics(); // edited keywords have a new text
         }).catch(function () {
             alert('Network error. Please try again.');
         }).finally(function () {
@@ -907,8 +1078,28 @@
             }
         });
         document.getElementById('aft-sel-all').addEventListener('change', function (e) {
-            tgt.selected = e.target.checked ? new Set(tgt.items.map(function (i) { return i.label; })) : new Set();
+            // selects / clears the rows currently shown (after filters); other selections are kept
+            visibleTargetItems().forEach(function (i) {
+                if (e.target.checked) tgt.selected.add(i.label); else tgt.selected.delete(i.label);
+            });
             renderTargetsModal();
+        });
+        document.querySelectorAll('#aftTargetsModal .aft-sort').forEach(function (el) {
+            el.addEventListener('click', function () {
+                const col = el.dataset.sort;
+                if (tgt.sort.col === col) {
+                    tgt.sort.dir = tgt.sort.dir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    tgt.sort = { col: col, dir: (col === 'text' || col === 'match') ? 'asc' : 'desc' };
+                }
+                renderTargetsModal();
+            });
+        });
+        document.querySelectorAll('#aftTargetsModal [data-filter]').forEach(function (el) {
+            el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', function () {
+                tgt.filters[el.dataset.filter] = el.value;
+                renderTargetsModal();
+            });
         });
         const selected = function () { return tgt.items.filter(function (i) { return tgt.selected.has(i.label); }); };
         document.getElementById('aft-bulk-edit').addEventListener('click', function () { actOn('edit', selected()); });
