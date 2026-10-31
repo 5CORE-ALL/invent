@@ -1091,23 +1091,39 @@ class AmazonFbmTargetingController extends Controller
     /**
      * Lifetime (LT) clicks and units sold per keyword of one campaign, accumulated from the stored DAILY Amazon Ads
      * keyword reports (rows whose report_date_range is a date). The L1 / L7 / L15 / L30 windows are left out because
-     * they overlap the daily rows. Units sold = unitsSoldClicks30d, the same field the rest of the ads pages use.
+     * they overlap the daily rows. Sold = purchases30d (same as LT Sold on /amazon-ads/all).
+     * The figures are totals over every campaign in the campaign's KW cousin group (the campaign, its same-parent
+     * siblings and its cousins), because they share the same keywords.
      * Keyed "keyword_key|MATCH" (keyword lower-cased, spaces collapsed) so the page can match its target labels.
      */
     public function targetMetrics(Request $request): JsonResponse
     {
         $cid = trim((string) $request->query('campaign_id', ''));
         $metrics = [];
+        $campaignCount = 0;
         if ($cid !== '' && $this->hasTable(self::KW_TABLE)) {
+            // Whole cousin group (ids de-duplicated; a campaign id shared by renamed campaigns counts once).
+            $ids = [$cid => true];
+            foreach ($this->campaignIndex() as $c) {
+                if ($c['campaign_id'] === $cid) {
+                    foreach (array_keys($this->groupMembers($cid, $c['campaign_name'])) as $mid) {
+                        $ids[(string) $mid] = true;
+                    }
+                    break;
+                }
+            }
+            $groupIds = array_map('strval', array_keys($ids));
+            $campaignCount = count($groupIds);
+
             $cols = $this->columnsOf(self::KW_TABLE);
             $labelCol = in_array('keyword', $cols, true) ? 'keyword' : (in_array('targeting', $cols, true) ? 'targeting' : null);
-            $soldCol = in_array('unitsSoldClicks30d', $cols, true) ? 'unitsSoldClicks30d' : (in_array('purchases30d', $cols, true) ? 'purchases30d' : null);
+            $soldCol = in_array('purchases30d', $cols, true) ? 'purchases30d' : (in_array('unitsSoldClicks30d', $cols, true) ? 'unitsSoldClicks30d' : null);
             if ($labelCol !== null && in_array('campaign_id', $cols, true) && in_array('report_date_range', $cols, true)) {
                 $matchCol = in_array('matchType', $cols, true) ? 'matchType' : null;
                 $clicks = in_array('clicks', $cols, true) ? 'SUM(COALESCE(`clicks`, 0))' : '0';
                 $sold = $soldCol !== null ? 'SUM(COALESCE(`'.$soldCol.'`, 0))' : '0';
                 $rows = DB::table(self::KW_TABLE)
-                    ->where('campaign_id', $cid)
+                    ->whereIn('campaign_id', $groupIds)
                     ->where('report_date_range', 'like', '____-__-__')
                     ->whereNotNull($labelCol)
                     ->selectRaw("`{$labelCol}` as label, ".($matchCol ? "`{$matchCol}`" : "''")." as mt, {$clicks} as clicks, {$sold} as sold")
@@ -1127,7 +1143,7 @@ class AmazonFbmTargetingController extends Controller
             }
         }
 
-        return response()->json(['success' => true, 'metrics' => (object) $metrics]);
+        return response()->json(['success' => true, 'metrics' => (object) $metrics, 'campaigns' => $campaignCount]);
     }
 
     /**

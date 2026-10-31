@@ -260,8 +260,8 @@
                             <input type="checkbox" id="aft-sel-all" title="Select all shown">
                             <span class="aft-sort" data-sort="text">Keyword <span class="aft-arrow"></span></span>
                             <span class="aft-sort" data-sort="match">Match <span class="aft-arrow"></span></span>
-                            <span class="aft-sort aft-metric" data-sort="clicks" title="Total clicks, lifetime (sum of the stored daily Amazon Ads keyword reports)">Clicks LT <span class="aft-arrow"></span></span>
-                            <span class="aft-sort aft-metric" data-sort="sold" title="Total units sold, lifetime (sum of the stored daily Amazon Ads keyword reports)">Sold LT <span class="aft-arrow"></span></span>
+                            <span class="aft-sort aft-metric" data-sort="clicks" title="Total clicks, lifetime, across all campaigns in the KW cousin group (stored daily Amazon Ads keyword reports)">Clicks LT <span class="aft-arrow"></span></span>
+                            <span class="aft-sort aft-metric" data-sort="sold" title="Total sold, lifetime, across all campaigns in the KW cousin group (stored daily Amazon Ads keyword reports)">Sold LT <span class="aft-arrow"></span></span>
                             <span class="aft-sort aft-metric" data-sort="cvr" title="CVR % = Sold LT / Clicks LT x 100">CVR % <span class="aft-arrow"></span></span>
                             <span></span>
                         </div>
@@ -808,6 +808,8 @@
         }).then(function (res) { return res.json(); }).then(function (b) {
             if (cid !== tgt.campaignId) return;
             tgt.metrics = (b && b.metrics) || {};
+            const n = Number((b && b.campaigns) || 0);
+            if (n > 1) showModalMsg('Clicks LT / Sold LT are lifetime totals across ' + n.toLocaleString() + ' campaigns in this KW cousin group.', true);
         }).catch(function () {
             showModalMsg('Could not load clicks / sold. Showing zeros.', false);
         }).finally(function () {
