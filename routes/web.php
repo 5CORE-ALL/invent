@@ -4548,6 +4548,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/promotions/columns', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'storeColumn'])->name('promotions.columns.store');
     Route::get('/promotions/amazon-coupon', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponShow'])->name('promotions.amazon.coupon.show');
     Route::post('/promotions/amazon-coupon', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponSave'])->name('promotions.amazon.coupon.save');
+    Route::get('/promotions/amazon-coupon/push/preview', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponPushPreview'])->name('promotions.amazon.coupon.push.preview');
+    Route::post('/promotions/amazon-coupon/push', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponPushStart'])->name('promotions.amazon.coupon.push.start');
+    Route::get('/promotions/amazon-coupon/push/status', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponPushStatus'])->name('promotions.amazon.coupon.push.status');
+    Route::post('/promotions/amazon-coupon/push/cancel', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponPushCancel'])->name('promotions.amazon.coupon.push.cancel');
     Route::post('/promotions/save-row', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'saveRow'])->name('promotions.save.row');
 
     // Doba Sales Routes

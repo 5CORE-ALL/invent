@@ -10,6 +10,8 @@ use App\Models\ChannelMaster;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\AmazonDilPriceCouponPushService;
+use App\Services\Support\AmazonDilPriceCouponPushStore;
 use App\Support\AmazonDilPriceCoupon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -326,7 +328,7 @@ class PromotionsController extends Controller
     /**
      * Save the rule rows. Optional counts = [{dmin,dmax,pmin,pmax,count}] (the page's live
      * per-rule SKU counts) are stored as today's history point.
-     * Stores the rule only: nothing is pushed to Amazon.
+     * Saving only stores the rule; pushing is the separate "Push to Amazon" action.
      */
     public function amazonCouponSave(Request $request)
     {
@@ -491,6 +493,20 @@ class PromotionsController extends Controller
      */
     private function amazonCouponSkus(): array
     {
+        return array_map(
+            static fn (array $r) => [$r['l30'], $r['inv'], $r['price']],
+            $this->amazonCouponSkuRows()
+        );
+    }
+
+    /**
+     * Same SKUs as amazonCouponSkus(), with their names (needed to push).
+     * seller_sku = the Amazon datasheet SKU when there is one, else the product SKU.
+     *
+     * @return list<array{sku:string,seller_sku:string,l30:int,inv:float,price:float}>
+     */
+    private function amazonCouponSkuRows(): array
+    {
         $productSkus = ProductMaster::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
@@ -542,9 +558,140 @@ class PromotionsController extends Controller
             }
 
             $l30 = AmazonOrder::unitsSoldForProductSku((string) $sku, $l30BySku, $sheet->sku ?? null);
-            $out[] = [(int) $l30, round($inv, 2), round($price, 2)];
+            $out[] = [
+                'sku' => (string) $sku,
+                'seller_sku' => trim((string) ($sheet->sku ?? $sku)),
+                'l30' => (int) $l30,
+                'inv' => round($inv, 2),
+                'price' => round($price, 2),
+            ];
         }
 
         return $out;
+    }
+
+    // ------------------------------------------------------------------
+    // Amazon: push the rule through the API
+    // ------------------------------------------------------------------
+
+    /**
+     * Dry run: what a push would do right now (saved rules). No Amazon calls, no writes.
+     */
+    public function amazonCouponPushPreview()
+    {
+        @ini_set('memory_limit', '768M');
+        @set_time_limit(300);
+
+        try {
+            $plan = app(AmazonDilPriceCouponPushService::class)
+                ->plan($this->amazonCouponSkuRows(), $this->amazonCouponRules());
+
+            return response()->json(['success' => true, 'summary' => $plan['summary']]);
+        } catch (\Throwable $e) {
+            Log::error('Promotions Amazon coupon push preview failed: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Queue the push and start the background worker. Uses the SAVED rules, recomputed now.
+     */
+    public function amazonCouponPushStart(Request $request)
+    {
+        @ini_set('memory_limit', '768M');
+        @set_time_limit(300);
+
+        $store = new AmazonDilPriceCouponPushStore;
+        if ($store->isActive($store->load())) {
+            return response()->json(['success' => false, 'message' => 'A push is already running.'] + $store->toApiResponse($store->load()), 409);
+        }
+
+        try {
+            $plan = app(AmazonDilPriceCouponPushService::class)
+                ->plan($this->amazonCouponSkuRows(), $this->amazonCouponRules());
+        } catch (\Throwable $e) {
+            Log::error('Promotions Amazon coupon push plan failed: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        if ($plan['tasks'] === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nothing to push: every SKU is already at its rule price or has no coupon.',
+                'summary' => $plan['summary'],
+            ], 422);
+        }
+
+        $state = $store->start($plan['tasks']);
+        $store->appendMessage('Started by '.(optional($request->user())->name ?: 'user').' — '.$state['total'].' SKU(s).');
+        $spawned = $this->spawnAmazonCouponPushWorker();
+        $store->update(function (array $s) use ($spawned) {
+            $s['last_message'] = $spawned
+                ? 'Worker started — pushing '.$s['total'].' SKU(s)…'
+                : 'Queued, but the worker could not be started (run: php artisan amazon:dil-price-coupon-push-run).';
+
+            return $s;
+        });
+
+        return response()->json($store->toApiResponse($store->load()) + [
+            'worker_spawned' => $spawned,
+            'summary' => $plan['summary'],
+        ]);
+    }
+
+    public function amazonCouponPushStatus()
+    {
+        $store = new AmazonDilPriceCouponPushStore;
+        $state = $store->load();
+
+        // Worker died (deploy/restart) while the job is still "running": restart it.
+        if ($store->isActive($state) && ! $store->runnerLockHeld()
+            && $state['updated_at'] && now()->diffInSeconds(\Illuminate\Support\Carbon::parse($state['updated_at'])) > 120) {
+            $this->spawnAmazonCouponPushWorker();
+            $store->appendMessage('Worker restarted after a stall.', false);
+            $state = $store->load();
+        }
+
+        return response()->json($store->toApiResponse($state));
+    }
+
+    public function amazonCouponPushCancel()
+    {
+        $store = new AmazonDilPriceCouponPushStore;
+
+        return response()->json($store->toApiResponse($store->cancel()));
+    }
+
+    private function spawnAmazonCouponPushWorker(): bool
+    {
+        try {
+            if ((new AmazonDilPriceCouponPushStore)->runnerLockHeld()) {
+                return true;
+            }
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/amazon-dil-price-coupon-push.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' amazon:dil-price-coupon-push-run', 'r'));
+
+                return true;
+            }
+            exec('nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' amazon:dil-price-coupon-push-run >> '.escapeshellarg($log).' 2>&1 &');
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Promotions Amazon coupon push worker spawn failed: '.$e->getMessage());
+
+            return false;
+        }
     }
 }

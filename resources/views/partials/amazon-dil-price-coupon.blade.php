@@ -26,6 +26,15 @@
         color: color-mix(in srgb, var(--c, #7c3aed) 80%, #1f2937); background: color-mix(in srgb, var(--c, #7c3aed) 14%, #fff);
         border: 2px solid color-mix(in srgb, var(--c, #7c3aed) 35%, #fff); }
     .el30cpn .amz-th-both { color: #be185d; }
+    .el30cpn .amz-push-btn { margin: 6px 0 0 8px; border: 0; border-radius: 999px; padding: 8px 18px; font-weight: 700; color: #fff;
+        background: linear-gradient(135deg, #f59e0b, #ef4444); box-shadow: 0 4px 12px rgba(239, 68, 68, .3); }
+    .el30cpn .amz-push-btn:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
+    .el30cpn .amz-push-cancel { margin: 6px 0 0 8px; border: 2px solid #ef4444; background: #fff; color: #ef4444; border-radius: 999px; padding: 6px 14px; font-weight: 700; }
+    .el30cpn .amz-push-box { margin-top: 10px; padding: 10px 14px; border-radius: 12px; background: #fff7ed; border: 1px solid #fed7aa; }
+    .el30cpn .amz-push-bar { height: 8px; border-radius: 99px; background: #ffedd5; overflow: hidden; }
+    .el30cpn .amz-push-fill { height: 100%; width: 0; background: linear-gradient(90deg, #f59e0b, #ef4444); transition: width .4s; }
+    .el30cpn .amz-push-msg { margin-top: 6px; font-size: .85rem; font-weight: 600; color: #9a3412; }
+    .el30cpn .amz-push-fails { margin-top: 4px; font-size: .78rem; color: #b91c1c; max-height: 90px; overflow: auto; }
 </style>
 <div class="modal fade el30cpn" id="{{ $amazonCouponPrefix }}-modal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-xl">
@@ -42,7 +51,7 @@
             <div class="modal-body">
                 <div class="el30cpn-note">
                     <i class="fas fa-lightbulb"></i>
-                    <div>A SKU must match <b>both</b> the Dil % range <b>and</b> the Price range. Rules are checked top to bottom and the first match wins. INV must be above 0. The <b>0–0</b> Dil range is A L30 = 0. Coupon % of <b>0</b> leaves that rule off; Amazon accepts <b>5–80</b>. <b>Dil Count</b> and <b>Price Count</b> show how many SKUs fall in that one range alone; <b>Count (Both)</b> is where both apply. Click a colored dot next to Count (Both) to see that rule's history. Changes save automatically and are not pushed to Amazon.</div>
+                    <div>A SKU must match <b>both</b> the Dil % range <b>and</b> the Price range. Rules are checked top to bottom and the first match wins. INV must be above 0. The <b>0–0</b> Dil range is A L30 = 0. Coupon % of <b>0</b> leaves that rule off; Amazon accepts <b>5–80</b>. <b>Dil Count</b> and <b>Price Count</b> show how many SKUs fall in that one range alone; <b>Count (Both)</b> is where both apply. Click a colored dot next to Count (Both) to see that rule's history. Changes save automatically; nothing reaches Amazon until you click <b>Push to Amazon</b>. Amazon's API cannot create Seller Central coupons, so a coupon is applied as the listing price × (1 − %), the same way CVR vs CPN does it.</div>
                 </div>
                 <div class="table-responsive">
                     <table class="el30cpn-table">
@@ -63,7 +72,14 @@
                     </table>
                 </div>
                 <button type="button" class="el30cpn-add" id="{{ $amazonCouponPrefix }}-add"><i class="fas fa-plus me-1"></i> Add rule</button>
+                <button type="button" class="amz-push-btn" id="{{ $amazonCouponPrefix }}-push"><i class="fas fa-cloud-upload-alt me-1"></i> Push to Amazon</button>
+                <button type="button" class="amz-push-cancel" id="{{ $amazonCouponPrefix }}-push-cancel" hidden>Cancel push</button>
                 <div class="el30cpn-status" id="{{ $amazonCouponPrefix }}-status"></div>
+                <div class="amz-push-box" id="{{ $amazonCouponPrefix }}-push-box" hidden>
+                    <div class="amz-push-bar"><div class="amz-push-fill" id="{{ $amazonCouponPrefix }}-push-fill"></div></div>
+                    <div class="amz-push-msg" id="{{ $amazonCouponPrefix }}-push-msg"></div>
+                    <div class="amz-push-fails" id="{{ $amazonCouponPrefix }}-push-fails"></div>
+                </div>
                 <div class="el30cpn-hist" id="{{ $amazonCouponPrefix }}-hist">
                     <div class="el30cpn-hist-head">
                         <div class="el30cpn-hist-title"><span class="el30cpn-hist-name"></span><small>SKUs per day (daily snapshot)</small></div>
@@ -352,14 +368,27 @@
             data: JSON.stringify({ slabs: state.slabs, counts: countsPayload }),
         }).done(function(res) {
             if (res && res.days) state.hist = { today: res.today, days: res.days };
-            $('#' + prefix + '-status').text('Saved. The rule is stored only; nothing is pushed to Amazon.');
+            $('#' + prefix + '-status').text('Saved. Click Push to Amazon to apply the rules to the listings.');
             paintChrome();
         }).fail(function(xhr) {
+            saveFailed = true;
             $('#' + prefix + '-status').text((xhr.responseJSON && xhr.responseJSON.message) || 'Could not save the rule.');
         }).always(function() {
             state.saving = false;
-            if (state.pending) { state.pending = false; persist(); }
+            if (state.pending) { state.pending = false; persist(); return; }
+            const waiters = saveWaiters; saveWaiters = [];
+            waiters.forEach(function(fn) { fn(!saveFailed); });
         });
+    }
+    let saveWaiters = [];
+    let saveFailed = false;
+    // Save right now (skipping the debounce) and call back with true/false once the server has the rules.
+    function flushSave(cb) {
+        clearTimeout(saveTimer);
+        state.slabs = readSlabs();
+        saveFailed = false;
+        saveWaiters.push(cb);
+        persist();
     }
     function scheduleSave() {
         clearTimeout(saveTimer);
@@ -404,6 +433,116 @@
         const modalEl = document.getElementById(prefix + '-modal');
         if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).show();
     }
+
+    // ---- push to Amazon ----
+    const pushUrls = {
+        preview: @json(route('promotions.amazon.coupon.push.preview')),
+        start: @json(route('promotions.amazon.coupon.push.start')),
+        status: @json(route('promotions.amazon.coupon.push.status')),
+        cancel: @json(route('promotions.amazon.coupon.push.cancel')),
+    };
+    let pushTimer = null;
+    let pushBusy = false;
+
+    function errMsg(xhr, fallback) {
+        return (xhr && xhr.responseJSON && xhr.responseJSON.message) || fallback;
+    }
+    function paintPush(res) {
+        const $box = $('#' + prefix + '-push-box');
+        const active = !!(res && res.active);
+        const total = Number(res && res.total) || 0;
+        const done = Number(res && res.done) || 0;
+        const show = active || (res && (res.status === 'completed' || res.status === 'cancelled') && total > 0);
+        $box.prop('hidden', !show);
+        $('#' + prefix + '-push').prop('disabled', active || pushBusy);
+        $('#' + prefix + '-push-cancel').prop('hidden', !active);
+        if (!show) return;
+        $('#' + prefix + '-push-fill').css('width', (total > 0 ? Math.round(done / total * 100) : 0) + '%');
+        $('#' + prefix + '-push-msg').text((res.last_message || '') + (total ? '  (' + done + '/' + total + ', ' + (res.fail_count || 0) + ' failed)' : ''));
+        const fails = (res.failed || []).map(function(f) {
+            return $('<div>').text(f.sku + ': ' + f.error).prop('outerHTML');
+        }).join('');
+        $('#' + prefix + '-push-fails').html(fails);
+    }
+    function stopPushPoll() { if (pushTimer) { clearInterval(pushTimer); pushTimer = null; } }
+    function pollPush() {
+        $.get(pushUrls.status).done(function(res) {
+            paintPush(res);
+            if (!res.active) stopPushPoll();
+        }).fail(function() { stopPushPoll(); });
+    }
+    function startPushPoll() {
+        stopPushPoll();
+        pushTimer = setInterval(pollPush, 1500);
+        pollPush();
+    }
+    function confirmText(s) {
+        const by = Object.keys(s.by_pct || {}).map(function(p) { return (p === '0' ? 'restore to base' : p + '%') + ' × ' + s.by_pct[p]; }).join(', ');
+        const sk = s.skipped || {};
+        return 'Push to Amazon?\n\n'
+            + s.to_push + ' SKU price(s) will change on live listings:\n'
+            + '  • ' + s.discounts + ' discounted (' + by + ')\n'
+            + '  • ' + s.restores + ' put back to base (their rule is now 0%)\n'
+            + '  • Biggest discount: ' + s.max_pct + '%\n\n'
+            + 'Left alone: ' + ((sk.unchanged || 0) + (sk.already_lower || 0)) + ' already at or below the coupon price, '
+            + (sk.no_coupon || 0) + ' with no coupon, '
+            + (sk.one_per_day || 0) + ' already changed today, '
+            + ((sk.no_base || 0) + (sk.no_datasheet || 0) + (sk.negative_snroi || 0) + (sk.invalid || 0)) + ' skipped for other reasons.\n\n'
+            + 'Amazon cannot create Seller Central coupons through its API, so each coupon is applied as the listing price × (1 − %).';
+    }
+    function pushToAmazon() {
+        if (pushBusy) return;
+        pushBusy = true;
+        $('#' + prefix + '-push').prop('disabled', true);
+        $('#' + prefix + '-status').text('Saving rules and checking what would change…');
+        flushSave(function(saved) {
+            if (!saved) { pushBusy = false; $('#' + prefix + '-push').prop('disabled', false); return; }
+            $.get(pushUrls.preview).done(function(res) {
+                if (!res || !res.success) {
+                    $('#' + prefix + '-status').text((res && res.message) || 'Could not check the push.');
+                    return;
+                }
+                const s = res.summary;
+                if (!s.to_push) {
+                    $('#' + prefix + '-status').text('Nothing to push: every SKU is already at its rule price or has no coupon.');
+                    return;
+                }
+                if (!window.confirm(confirmText(s))) {
+                    $('#' + prefix + '-status').text('Push cancelled. Nothing was sent to Amazon.');
+                    return;
+                }
+                $('#' + prefix + '-status').text('Starting push…');
+                $.ajax({ url: pushUrls.start, method: 'POST', headers: { 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' } })
+                    .done(function(r) {
+                        $('#' + prefix + '-status').text('Push started in the background; you can close this window.');
+                        paintPush(r);
+                        startPushPoll();
+                    })
+                    .fail(function(xhr) {
+                        $('#' + prefix + '-status').text(errMsg(xhr, 'Could not start the push.'));
+                        if (xhr.status === 409) startPushPoll();
+                    });
+            }).fail(function(xhr) {
+                $('#' + prefix + '-status').text(errMsg(xhr, 'Could not check the push.'));
+            }).always(function() {
+                pushBusy = false;
+                $('#' + prefix + '-push').prop('disabled', false);
+            });
+        });
+    }
+    $('#' + prefix + '-push').on('click', pushToAmazon);
+    $('#' + prefix + '-push-cancel').on('click', function() {
+        if (!window.confirm('Cancel the push? SKUs already pushed stay pushed.')) return;
+        $.ajax({ url: pushUrls.cancel, method: 'POST', headers: { 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' } })
+            .done(function(r) { paintPush(r); stopPushPoll(); });
+    });
+    $('#' + prefix + '-modal').on('shown.bs.modal', function() {
+        // Resume the progress display if a push is running (or just finished).
+        $.get(pushUrls.status).done(function(res) {
+            paintPush(res);
+            if (res.active) startPushPoll();
+        });
+    }).on('hidden.bs.modal', stopPushPoll);
 
     $('#' + prefix + '-btn').on('click', function() {
         if (state.ready) { openModal(); return; }
