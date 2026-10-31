@@ -18,6 +18,7 @@
     .amz-fbm-targeting .tabulator-cell { padding: 6px 8px !important; }
     .amz-fbm-targeting .aft-loadbar { background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-bottom:10px; }
     .amz-fbm-targeting .aft-loadbar-top { display:flex; justify-content:space-between; gap:12px; font-size:.85rem; font-weight:600; color:#1e3a8a; margin-bottom:6px; }
+    .amz-fbm-targeting .aft-status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.06); vertical-align: middle; }
     .amz-fbm-targeting .aft-low-badge { font-size: .78rem; cursor: pointer; user-select: none; border: 2px solid transparent; }
     .amz-fbm-targeting .aft-low-badge.is-active { border-color: #111827; box-shadow: 0 0 0 2px #fde68a; }
     .amz-fbm-targeting .aft-count-badge {
@@ -376,7 +377,7 @@
     })();
 
     const table = new Tabulator('#aft-table', {
-        layout: 'fitColumns',
+        layout: 'fitDataFill', // every column sizes to its data (capped below for long text); the table fills any space left
         placeholder: 'Loading campaigns…',
         pagination: true,
         paginationMode: 'remote',
@@ -475,8 +476,8 @@
             {
                 title: 'KWC Cousin',
                 field: 'cousin_name',
-                minWidth: 150,
-                widthGrow: 1,
+                minWidth: 110,
+                maxWidth: 240,
                 headerSort: false,
                 formatter: function (cell) {
                     const n = String(cell.getValue() || '').trim();
@@ -486,8 +487,8 @@
             {
                 title: 'Parents',
                 field: 'parent',
-                minWidth: 180,
-                widthGrow: 1,
+                minWidth: 90,
+                maxWidth: 220,
                 headerSort: false,
                 formatter: function (cell) {
                     // Autofilled on every campaign row; the first row of a parent group is bold, the rest are lighter.
@@ -502,8 +503,8 @@
             {
                 title: 'Title',
                 field: 'title',
-                minWidth: 260,
-                widthGrow: 2,
+                minWidth: 180,
+                maxWidth: 420,
                 headerSort: false,
                 formatter: function (cell) {
                     const d = cell.getRow().getData() || {};
@@ -519,13 +520,15 @@
             {
                 title: 'Campaign name',
                 field: 'campaign_name',
-                minWidth: 280,
-                widthGrow: 2,
+                minWidth: 150,
+                maxWidth: 260,
                 headerSort: false,
                 formatter: function (cell) {
-                    const name = escapeHtml(cell.getValue() || '');
+                    const raw = String(cell.getValue() || '');
+                    const name = escapeHtml(raw);
                     const id = escapeHtml((cell.getRow().getData() || {}).campaign_id || '');
-                    return '<div><strong>' + name + '</strong>' +
+                    // One line each; a longer name is cut with "…" (hover for the full name).
+                    return '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + name + '"><strong>' + name + '</strong>' +
                         (id ? '<div class="text-muted" style="font-size:11px;">' + id + '</div>' : '') +
                         '</div>';
                 },
@@ -533,24 +536,23 @@
             {
                 title: 'Status',
                 field: 'status',
+                minWidth: 80,
                 hozAlign: 'center',
-                minWidth: 100,
-                width: 120,
                 headerSort: false,
                 formatter: function (cell) {
                     const st = String(cell.getValue() || '').trim().toUpperCase();
                     if (!st) return '<span class="aft-empty">-</span>';
-                    const cls = st === 'ENABLED' ? 'bg-success' : (st === 'PAUSED' ? 'bg-warning text-dark' : 'bg-secondary');
+                    // Dot only: Enabled = green, Paused = yellow, anything else = gray (hover for the text).
+                    const color = st === 'ENABLED' ? '#16a34a' : (st === 'PAUSED' ? '#eab308' : '#9ca3af');
                     const label = st.charAt(0) + st.slice(1).toLowerCase();
-                    return '<span class="badge ' + cls + '">' + escapeHtml(label) + '</span>';
+                    return '<span class="aft-status-dot" style="background:' + color + ';" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '"></span>';
                 },
             },
             {
                 title: 'KW cousins',
                 field: 'cousin_count',
+                minWidth: 100,
                 hozAlign: 'center',
-                minWidth: 110,
-                width: 130,
                 headerSort: false,
                 formatter: function (cell) {
                     const n = Number(cell.getValue() || 0);
@@ -563,9 +565,8 @@
             {
                 title: 'Targets',
                 field: 'target_count',
+                minWidth: 80,
                 hozAlign: 'center',
-                minWidth: 100,
-                width: 120,
                 headerSort: false,
                 formatter: function (cell) {
                     const n = Number(cell.getValue() || 0);
@@ -578,9 +579,8 @@
             {
                 title: 'Negative KW',
                 field: 'negative_count',
+                minWidth: 100,
                 hozAlign: 'center',
-                minWidth: 110,
-                width: 130,
                 headerSort: false,
                 formatter: function (cell) {
                     const n = Number(cell.getValue() || 0);
@@ -593,9 +593,8 @@
             {
                 title: 'Specific KW',
                 field: 'specific_count',
+                minWidth: 100,
                 hozAlign: 'center',
-                minWidth: 110,
-                width: 130,
                 headerSort: false,
                 formatter: function (cell) {
                     const n = Number(cell.getValue() || 0);
@@ -608,9 +607,8 @@
             {
                 title: 'S Negative KW',
                 field: 'specific_neg_count',
+                minWidth: 110,
                 hozAlign: 'center',
-                minWidth: 120,
-                width: 140,
                 headerSort: false,
                 formatter: function (cell) {
                     const n = Number(cell.getValue() || 0);
@@ -1207,6 +1205,11 @@
             searchTimer = setTimeout(function () { table.setPage(1); }, 300);
         });
     }
+
+    // Re-fit the column widths to each newly loaded page / search result.
+    table.on('dataLoaded', function () {
+        setTimeout(function () { try { table.redraw(true); } catch (e) { /* table not ready */ } }, 0);
+    });
 
     // Click a "low count" badge to show only those campaigns; click again to clear.
     lowBadgeEls.forEach(function (el) {
