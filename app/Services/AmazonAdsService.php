@@ -477,6 +477,95 @@ class AmazonAdsService
     }
 
     /**
+     * Fast variant of listKeywordsByCampaignIdsBulk for big campaign lists: one access token for the whole run,
+     * several 50-campaign chunks in flight at once (each still walks its own nextToken), and only the fields the
+     * keyword push needs are kept in memory. Same 429 back-off and "truncated" failure as the sequential version.
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array{campaignId: string, adGroupId: string, keywordId: string, keywordText: string, matchType: string, state: string}>
+     */
+    public function listKeywordsByCampaignIdsConcurrent(array $campaignIds, int $concurrency = 4, int $maxPages = 40): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $campaignIds
+        ), static fn (string $id) => $id !== '')));
+        if ($ids === []) {
+            return [];
+        }
+
+        $this->assertProfileScope();
+        $accept = 'application/vnd.spKeyword.v3+json';
+        $url = $this->resolveUrl('/sp/keywords/list');
+        $headers = [
+            'Authorization' => 'Bearer '.$this->getFreshAccessToken(),
+            'Amazon-Advertising-API-ClientId' => $this->clientId,
+            'Amazon-Advertising-API-Scope' => $this->resolvedProfileId(),
+            'Content-Type' => $accept,
+            'Accept' => $accept,
+        ];
+
+        $out = [];
+        $fetchPage = null;
+        $fetchPage = function (array $chunk, ?string $nextToken, int $pages, int $try, int $delayMs) use (&$fetchPage, &$out, $url, $headers, $maxPages) {
+            $body = [
+                'campaignIdFilter' => ['include' => $chunk],
+                'stateFilter' => ['include' => ['ENABLED', 'PAUSED']],
+                'maxResults' => 1000,
+            ];
+            if ($nextToken !== null && $nextToken !== '') {
+                $body['nextToken'] = $nextToken;
+            }
+
+            return $this->client->requestAsync('POST', $url, ['headers' => $headers, 'json' => $body, 'delay' => $delayMs])->then(
+                function ($response) use (&$fetchPage, &$out, $chunk, $pages, $maxPages) {
+                    $data = $this->decodeResponseBody((string) $response->getBody());
+                    foreach ((array) ($data['keywords'] ?? []) as $row) {
+                        if (is_array($row)) {
+                            $out[] = [
+                                'campaignId' => (string) ($row['campaignId'] ?? ''),
+                                'adGroupId' => (string) ($row['adGroupId'] ?? ''),
+                                'keywordId' => (string) ($row['keywordId'] ?? ''),
+                                'keywordText' => (string) ($row['keywordText'] ?? ''),
+                                'matchType' => (string) ($row['matchType'] ?? ''),
+                                'state' => (string) ($row['state'] ?? ''),
+                            ];
+                        }
+                    }
+                    $next = $data['nextToken'] ?? null;
+                    if (is_string($next) && $next !== '') {
+                        if ($pages >= $maxPages) {
+                            throw new RuntimeException('Amazon Ads /sp/keywords/list list truncated after '.$pages.' pages');
+                        }
+
+                        return $fetchPage($chunk, $next, $pages + 1, 0, 0);
+                    }
+
+                    return null;
+                },
+                function ($e) use (&$fetchPage, $chunk, $nextToken, $pages, $try) {
+                    $status = $e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse() ? $e->getResponse()->getStatusCode() : 0;
+                    if ($status === 429 && $try < 3) {
+                        // Amazon throttles when called too fast: wait (2 / 4 / 6 s) and retry this page.
+                        return $fetchPage($chunk, $nextToken, $pages, $try + 1, (2 + 2 * $try) * 1000);
+                    }
+
+                    throw $e;
+                }
+            );
+        };
+
+        $promises = (function () use ($ids, $fetchPage) {
+            foreach (array_chunk($ids, 50) as $chunk) {
+                yield $fetchPage($chunk, null, 1, 0, 0);
+            }
+        })();
+        (new \GuzzleHttp\Promise\EachPromise($promises, ['concurrency' => max(1, $concurrency)]))->promise()->wait();
+
+        return $out;
+    }
+
+    /**
      * SP keywords for one or more campaigns (walks nextToken).
      *
      * @param  list<string>  $campaignIds

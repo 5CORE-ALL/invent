@@ -69,7 +69,10 @@ class AmazonKwTargetingPushService
         $liveSp = [];
         $adGroupSp = [];
         try {
-            foreach ($this->ads->listKeywordsByCampaignIdsBulk($kwIds) as $kw) {
+            // Only campaigns that have app keywords can be missing something, so only those are read from Amazon
+            // (and in parallel, with one access token) - this is what made the check so slow.
+            $liveIds = array_values(array_filter($kwIds, static fn (string $id) => ! empty($appByCampaign[$id])));
+            foreach ($this->ads->listKeywordsByCampaignIdsConcurrent($liveIds) as $kw) {
                 $cid = trim((string) ($kw['campaignId'] ?? ''));
                 $text = trim((string) ($kw['keywordText'] ?? ''));
                 if ($cid === '' || $text === '') {
