@@ -969,7 +969,8 @@ class AmazonFbmTargetingController extends Controller
     /**
      * Lifetime clicks and units sold per campaign, summed from the stored DAILY Amazon Ads SP campaign reports
      * (report_date_range = YYYY-MM-DD; the L1 / L7 / L15 / L30 summary rows overlap them and are left out).
-     * Sold = unitsSoldClicks30d, the same field as the keyword LT figures in the targets modal.
+     * Same rows and fields as the LT Sold / LT CVR columns on /amazon-ads/all (AmazonAdsController::
+     * prefetchLifetimeSpendSalesForPageRows): clicks = SUM(clicks), sold = SUM(purchases30d).
      * Campaigns with no daily rows are absent from the result.
      *
      * @param  list<string>  $campaignIds
@@ -985,10 +986,10 @@ class AmazonFbmTargetingController extends Controller
         if (! in_array('campaign_id', $cols, true) || ! in_array('report_date_range', $cols, true) || ! in_array('clicks', $cols, true)) {
             return [];
         }
-        $soldCol = in_array('unitsSoldClicks30d', $cols, true) ? 'unitsSoldClicks30d' : (in_array('purchases30d', $cols, true) ? 'purchases30d' : null);
+        $soldCol = in_array('purchases30d', $cols, true) ? 'purchases30d' : (in_array('unitsSoldClicks30d', $cols, true) ? 'unitsSoldClicks30d' : null);
 
         sort($campaignIds);
-        $key = 'amz_fbm_lt_totals:'.md5(implode(',', $campaignIds));
+        $key = 'amz_fbm_lt_totals_v2:'.md5(implode(',', $campaignIds));
 
         try {
             return Cache::remember($key, now()->addMinutes(5), function () use ($campaignIds, $soldCol) {
