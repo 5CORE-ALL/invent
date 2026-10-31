@@ -271,11 +271,7 @@ class ShopifyB2cSprcDilAutoPushService
         // Shopify B2C has no L60 CVR: Down / Up follow the thresholds. No views or B2C L30 = 0 skips the overlay.
         if ((float) ($row['views'] ?? 0) > 0 && (float) ($row['b2c_l30'] ?? 0) > 0) {
             $cvr = (float) ($row['cvr'] ?? 0);
-            if ($cvr < $cvrCfg['down_lt']) {
-                $cvrAdj = $cvrCfg['down_adj'];
-            } elseif ($cvr > $cvrCfg['up_gt']) {
-                $cvrAdj = $cvrCfg['up_adj'];
-            }
+            $cvrAdj = AmazonDilGroiRule::cvrAdjPointsLevel($cvr, $cvrCfg);
         }
         // Floor at 0 after the CVR overlay, then add the Diff points (same order as the page).
         $afterCvr = max(0.0, round($slabTarget + $cvrAdj, 2));

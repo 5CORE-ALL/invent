@@ -245,6 +245,57 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 12, 'up', $cfg));
     }
 
+    public function test_cvr_overlay_without_slabs_gets_down_7_to_10_up_slabs_and_prices_as_before(): void
+    {
+        $cfg = AmazonDilGroiRule::normalizeCvrAdj(['down_lt' => 7, 'down_adj' => -12, 'up_gt' => 10, 'up_adj' => 11]);
+        $this->assertSame([
+            ['arrow' => 'down', 'from' => null, 'to' => 7.0, 'adj' => -12.0],
+            ['arrow' => 'any', 'from' => 7.0, 'to' => 10.0, 'adj' => 0.0],
+            ['arrow' => 'up', 'from' => 10.0, 'to' => null, 'adj' => 11.0],
+        ], $cfg['slabs']);
+        $this->assertSame(38.0, AmazonDilGroiRule::adjustGroiForCvr(50, 6.9, 'down', $cfg));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 7, 'down', $cfg));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 10, 'up', $cfg));
+        $this->assertSame(61.0, AmazonDilGroiRule::adjustGroiForCvr(50, 10.1, 'up', $cfg));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 5, 'up', $cfg));
+    }
+
+    public function test_cvr_overlay_dynamic_slabs_first_match_wins_and_any_ignores_arrow(): void
+    {
+        $cfg = AmazonDilGroiRule::normalizeCvrAdj(['slabs' => [
+            ['arrow' => 'down', 'to' => 7, 'adj' => -12],
+            ['arrow' => 'any', 'from' => 7, 'to' => 10, 'adj' => 3],
+            ['arrow' => 'up', 'from' => 10, 'adj' => 11],
+            ['arrow' => 'any', 'from' => 15, 'to' => 20, 'adj' => 99],
+            ['arrow' => 'up', 'from' => 9, 'to' => 3, 'adj' => 5], // From above To: dropped
+        ]]);
+        $this->assertCount(4, $cfg['slabs']);
+        // Legacy keys follow the first Down / Up slab.
+        $this->assertSame(7.0, $cfg['down_lt']);
+        $this->assertSame(-12.0, $cfg['down_adj']);
+        $this->assertSame(10.0, $cfg['up_gt']);
+        $this->assertSame(11.0, $cfg['up_adj']);
+
+        $this->assertSame(3.0, AmazonDilGroiRule::cvrAdjPoints(8.5, 'flat', $cfg));
+        $this->assertSame(3.0, AmazonDilGroiRule::cvrAdjPoints(7, 'down', $cfg));
+        $this->assertSame(3.0, AmazonDilGroiRule::cvrAdjPoints(10, 'up', $cfg));
+        $this->assertSame(-12.0, AmazonDilGroiRule::cvrAdjPoints(6.9, 'down', $cfg));
+        $this->assertSame(0.0, AmazonDilGroiRule::cvrAdjPoints(6.9, 'up', $cfg));
+        // Up slab is listed before the 15–20 Any slab, but a flat arrow skips it and falls to Any.
+        $this->assertSame(11.0, AmazonDilGroiRule::cvrAdjPoints(16, 'up', $cfg));
+        $this->assertSame(99.0, AmazonDilGroiRule::cvrAdjPoints(16, 'flat', $cfg));
+        // Survives another normalize (what the page re-sends).
+        $this->assertSame($cfg, AmazonDilGroiRule::normalizeCvrAdj($cfg));
+    }
+
+    public function test_cvr_overlay_saved_empty_slab_list_turns_the_overlay_off(): void
+    {
+        $cfg = AmazonDilGroiRule::normalizeCvrAdj(['slabs' => []]);
+        $this->assertSame([], $cfg['slabs']);
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 2, 'down', $cfg));
+        $this->assertSame(0.0, AmazonDilGroiRule::cvrAdjPointsLevel(2, $cfg));
+    }
+
     public function test_unpack_stored_keeps_legacy_slab_list_and_cvr_adj_wrapper(): void
     {
         $legacy = AmazonDilGroiRule::unpackStored([

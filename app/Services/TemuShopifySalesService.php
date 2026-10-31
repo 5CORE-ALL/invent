@@ -173,13 +173,23 @@ class TemuShopifySalesService
      */
     public static function newTemuonePriceFromBase(float $basePrice): float
     {
+        $recovery = self::newTemuoneRecoveryFromBase($basePrice);
+
+        return $recovery > 0 ? round($recovery / self::S_RECOVERY_RATE, 2) : 0.0;
+    }
+
+    /**
+     * What Temu pays the seller for a live base: Base + $2.99 when that is under $30, else Base.
+     * The exact inverse of newTemuoneSBasePrice(); /new-temuone and /temu3-decrease both run GPFT / GROI / NPFT / NROI on it.
+     */
+    public static function newTemuoneRecoveryFromBase(float $basePrice): float
+    {
         if (! ($basePrice > 0) || ! is_finite($basePrice)) {
             return 0.0;
         }
         $sR = round($basePrice + self::NTO_SBASE_DEDUCT, 2);
-        $recovery = $sR < self::NTO_SBASE_SR_THRESHOLD ? $sR : $basePrice;
 
-        return round($recovery / self::S_RECOVERY_RATE, 2);
+        return $sR < self::NTO_SBASE_SR_THRESHOLD ? $sR : $basePrice;
     }
 
     /**

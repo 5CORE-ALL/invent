@@ -678,6 +678,10 @@ class NewTemuoneSuggestedPriceStore
         if ($agePoints != 0.0) {
             $payload['age_points'] = round($agePoints, 2);
         }
+        // Only when the CVR slabs differ from the four keys above (extra / edited slabs), so default rows keep their saved fingerprint.
+        if ($cvr['slabs'] !== AmazonDilGroiRule::cvrSlabsFromLegacy($cvr)) {
+            $payload['cvr_slabs'] = $cvr['slabs'];
+        }
 
         return hash('sha1', (string) json_encode($payload, JSON_PRESERVE_ZERO_FRACTION));
     }

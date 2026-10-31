@@ -136,7 +136,9 @@
             const notes = [];
             const price = Number(o.price) || 0;
             steps.push(temuRuleStep('info', '1 · Source',
-                'Temu Price = <b>Base × 1.1364</b> (+$2.99 when that is $26.99 or less), from the base price last pulled from Temu. It changes only when a new price is pushed.'));
+                (typeof window.temuPriceSourceHtml === 'string' && window.temuPriceSourceHtml)
+                    ? window.temuPriceSourceHtml
+                    : 'Temu Price = <b>Base × 1.1364</b> (+$2.99 when that is $26.99 or less), from the base price last pulled from Temu. It changes only when a new price is pushed.'));
             if (o.push > 0) {
                 if (o.live > 0 && Math.abs(o.push - o.live) <= 0.009) {
                     steps.push(temuRuleStep('ok', '2 · ' + o.pushLabel, o.pushLabel + ' ' + temuRuleMoney(o.push) + ' is already live on Temu.'));

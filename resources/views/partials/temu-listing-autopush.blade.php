@@ -117,7 +117,10 @@
                 const full = (typeof temu2FullPriceFromBase === 'function')
                     ? +temu2FullPriceFromBase(base).toFixed(2)
                     : +(base * 1.1364).toFixed(2);
-                const rPrice = base <= 26.99 ? +(base + 2.99).toFixed(2) : base;
+                // /temu3-decrease (like /new-temuone) keeps Price = the S PRC that gives this base in temu_price; other pages keep the R Price.
+                const rPrice = window.TEMU_PRICE_IS_S_PRC_EQUIV
+                    ? full
+                    : (base <= 26.99 ? +(base + 2.99).toFixed(2) : base);
                 const patch = {
                     base_price: base,
                     temu_price: rPrice,

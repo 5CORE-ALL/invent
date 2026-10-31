@@ -444,6 +444,8 @@
                                 patch.temu_price = base <= 26.99 ? +(base + 2.99).toFixed(2) : base;
                                 if (typeof temu2FullPriceFromBase === 'function') {
                                     patch.temu_price_display = +temu2FullPriceFromBase(base).toFixed(2);
+                                    // /temu3-decrease keeps Price (S PRC equivalent of the base) in temu_price, like /new-temuone.
+                                    if (window.TEMU_PRICE_IS_S_PRC_EQUIV) patch.temu_price = patch.temu_price_display;
                                 }
                                 patch.push_status = 'pushed';
                                 priceChanged = true;

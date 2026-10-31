@@ -269,11 +269,7 @@ class ShopifyB2bSprcDilAutoPushService
         // No L60 CVR on B2B: Down / Up follow the thresholds. No Views or B2B L30 = 0 skips the overlay.
         if ((float) ($row['views'] ?? 0) > 0 && (float) ($row['b2b_l30'] ?? 0) > 0) {
             $cvr = ((float) $row['b2b_l30'] / (float) $row['views']) * 100;
-            if ($cvr < $cvrCfg['down_lt']) {
-                $cvrAdj = $cvrCfg['down_adj'];
-            } elseif ($cvr > $cvrCfg['up_gt']) {
-                $cvrAdj = $cvrCfg['up_adj'];
-            }
+            $cvrAdj = AmazonDilGroiRule::cvrAdjPointsLevel($cvr, $cvrCfg);
         }
         $afterCvr = max(0.0, round($slabTarget + $cvrAdj, 2));
         // Ageing Rule: the SKU's age band points, after the CVR overlay and before the Diff rule (same as the page).

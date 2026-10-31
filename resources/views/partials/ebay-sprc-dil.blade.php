@@ -169,9 +169,22 @@
             text-align: right;
             font-weight: 600;
         }
+        #ebay-cvr-groi-table select.ebay-cvr-groi-input {
+            max-width: 84px;
+            text-align: left;
+            font-weight: 600;
+        }
         #ebay-cvr-groi-table .ebay-dg-count {
             font-weight: 700;
             text-align: center;
+        }
+        #ebay-cvr-groi-table .ebay-cvr-groi-del {
+            border: 0;
+            background: transparent;
+            color: #dc3545;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
         }
         #ebay-age-adj-table .ebay-age-adj-input {
             max-width: 72px;
@@ -713,41 +726,29 @@
                         </div>
                     </div>
                     @if(!empty($ebaySprcDilCvrGroiAdj))
-                    <div class="ebay-dg-rules-title mt-2">CVR overlay — Target {{ $ebaySprcDilTargetLabel }}</div>
+                    <div class="ebay-dg-rules-title mt-2 d-flex justify-content-between align-items-center">
+                        <span>CVR overlay — Target {{ $ebaySprcDilTargetLabel }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary ebay-dg-add-btn py-0 px-2" id="ebay-cvr-groi-add-btn">
+                            <i class="fas fa-plus me-1"></i> Add slab
+                        </button>
+                    </div>
+                    <div class="small text-muted mb-1">
+                        A SKU takes the <strong>first slab</strong> (top to bottom) whose CVR range fits. <strong>From + To</strong>: From ≤ CVR ≤ To.
+                        Only <strong>To</strong>: CVR &lt; To. Only <strong>From</strong>: CVR &gt; From. Down / Up also need that CVR arrow; Any ignores the arrow.
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="ebay-cvr-groi-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th>When</th>
-                                    <th class="text-center">CVR%</th>
+                                    <th style="width:100px;" title="Down / Up: the SKU's CVR arrow must go that way (vs its previous compared data). Any: ignore the arrow.">When</th>
+                                    <th class="text-center" title="Leave blank for no lower limit">CVR% From</th>
+                                    <th class="text-center" title="Leave blank for no upper limit">CVR% To</th>
                                     <th class="text-end">Adj {{ $ebaySprcDilTargetLabel }}</th>
-                                    <th class="text-center" style="width:80px;" title="Down: CVR &lt; threshold and down-arrow only (not up or horizontal). Up: CVR &gt; threshold and up-arrow only.">Count</th>
+                                    <th class="text-center" style="width:80px;" title="SKUs (INV &gt; 0, not on clearance) that take this slab: first matching slab wins. Down / Up count only the SKUs whose arrow really goes down / up.">Count</th>
+                                    <th style="width:36px;"></th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <tr data-row="down">
-                                    <td>Down</td>
-                                    <td class="text-center">
-                                        &lt;
-                                        <input type="number" min="0" step="0.1" class="form-control form-control-sm ebay-cvr-groi-input ebay-cvr-groi-down-lt" value="7">
-                                    </td>
-                                    <td class="text-end">
-                                        <input type="number" step="1" class="form-control form-control-sm ebay-cvr-groi-input ebay-cvr-groi-down-adj" value="-10">
-                                    </td>
-                                    <td class="ebay-dg-count"><span class="ebay-cvr-groi-down-count">0</span></td>
-                                </tr>
-                                <tr data-row="up">
-                                    <td>Up</td>
-                                    <td class="text-center">
-                                        &gt;
-                                        <input type="number" min="0" step="0.1" class="form-control form-control-sm ebay-cvr-groi-input ebay-cvr-groi-up-gt" value="10">
-                                    </td>
-                                    <td class="text-end">
-                                        <input type="number" step="1" class="form-control form-control-sm ebay-cvr-groi-input ebay-cvr-groi-up-adj" value="10">
-                                    </td>
-                                    <td class="ebay-dg-count"><span class="ebay-cvr-groi-up-count">0</span></td>
-                                </tr>
-                            </tbody>
+                            <tbody id="ebay-cvr-groi-tbody"></tbody>
                         </table>
                     </div>
                     @endif
@@ -1034,41 +1035,127 @@
             '#eab308', '#f59e0b', '#ea580c', '#dc3545', '#e83e8c',
             '#7c3aed', '#0ea5e9',
         ];
-        let ebayCvrGroiAdj = { down_lt: 7, down_adj: -10, up_gt: 10, up_adj: 10 };
-        function ebayNormalizeCvrGroiAdj(raw) {
-            const out = { down_lt: 7, down_adj: -10, up_gt: 10, up_adj: 10 };
-            if (!raw) return out;
-            const downLt = Number(raw.down_lt);
-            const downAdj = Number(raw.down_adj);
-            const upGt = Number(raw.up_gt);
-            const upAdj = Number(raw.up_adj);
-            if (isFinite(downLt) && downLt >= 0) out.down_lt = ebayDgRound2(downLt);
-            if (isFinite(downAdj)) out.down_adj = ebayDgRound2(downAdj);
-            if (isFinite(upGt) && upGt >= 0) out.up_gt = ebayDgRound2(upGt);
-            if (isFinite(upAdj)) out.up_adj = ebayDgRound2(upAdj);
+        /**
+         * CVR overlay = dynamic slabs { arrow: down|up|any, from, to (null = open), adj }. The first slab that fits wins (same as the server:
+         * AmazonDilGroiRule::cvrAdjPoints). From + To: From ≤ CVR ≤ To; only To: CVR < To; only From: CVR > From. Down / Up also need the arrow.
+         * down_lt / down_adj / up_gt / up_adj stay as the first Down / Up slab so the pies and the level-only pages keep working.
+         */
+        function ebayCvrSlabsFromLegacy(l) {
+            const slabs = [{ arrow: 'down', from: null, to: l.down_lt, adj: l.down_adj }];
+            if (l.down_lt <= l.up_gt) slabs.push({ arrow: 'any', from: l.down_lt, to: l.up_gt, adj: 0 });
+            slabs.push({ arrow: 'up', from: l.up_gt, to: null, adj: l.up_adj });
+            return slabs;
+        }
+        function ebayNormalizeCvrSlabs(list) {
+            const out = [];
+            (Array.isArray(list) ? list : []).forEach(function(r) {
+                if (!r) return;
+                const arrow = (r.arrow === 'down' || r.arrow === 'up') ? r.arrow : 'any';
+                const bound = function(v) {
+                    if (v === null || v === undefined || v === '') return null;
+                    const n = Number(v);
+                    return isFinite(n) ? Math.max(0, ebayDgRound2(n)) : null;
+                };
+                const from = bound(r.from);
+                const to = bound(r.to);
+                if (from !== null && to !== null && from > to) return;
+                const adj = Number(r.adj);
+                out.push({ arrow: arrow, from: from, to: to, adj: (r.adj === '' || r.adj == null || !isFinite(adj)) ? 0 : ebayDgRound2(adj) });
+            });
             return out;
         }
-        function ebayCvrGroiAdjNow() {
-            const $tbl = $('#ebay-cvr-groi-table');
-            if ($tbl.length) {
-                return ebayNormalizeCvrGroiAdj({
-                    down_lt: parseFloat($tbl.find('.ebay-cvr-groi-down-lt').val()),
-                    down_adj: parseFloat($tbl.find('.ebay-cvr-groi-down-adj').val()),
-                    up_gt: parseFloat($tbl.find('.ebay-cvr-groi-up-gt').val()),
-                    up_adj: parseFloat($tbl.find('.ebay-cvr-groi-up-adj').val()),
-                });
+        function ebayNormalizeCvrGroiAdj(raw) {
+            const out = { down_lt: 7, down_adj: -10, up_gt: 10, up_adj: 10 };
+            if (raw) {
+                const downLt = Number(raw.down_lt);
+                const downAdj = Number(raw.down_adj);
+                const upGt = Number(raw.up_gt);
+                const upAdj = Number(raw.up_adj);
+                if (isFinite(downLt) && downLt >= 0) out.down_lt = ebayDgRound2(downLt);
+                if (isFinite(downAdj)) out.down_adj = ebayDgRound2(downAdj);
+                if (isFinite(upGt) && upGt >= 0) out.up_gt = ebayDgRound2(upGt);
+                if (isFinite(upAdj)) out.up_adj = ebayDgRound2(upAdj);
             }
-            return ebayNormalizeCvrGroiAdj(ebayCvrGroiAdj);
+            if (raw && Array.isArray(raw.slabs)) {
+                const slabs = ebayNormalizeCvrSlabs(raw.slabs);
+                out.down_adj = 0;
+                out.up_adj = 0;
+                for (let i = 0; i < slabs.length; i++) {
+                    if (slabs[i].arrow === 'down' && slabs[i].to !== null) { out.down_lt = slabs[i].to; out.down_adj = slabs[i].adj; break; }
+                }
+                for (let i = 0; i < slabs.length; i++) {
+                    if (slabs[i].arrow === 'up' && slabs[i].from !== null) { out.up_gt = slabs[i].from; out.up_adj = slabs[i].adj; break; }
+                }
+                out.slabs = slabs;
+                return out;
+            }
+            out.slabs = ebayCvrSlabsFromLegacy(out);
+            return out;
+        }
+        function ebayCvrSlabMatches(s, cvr, trend) {
+            if (s.arrow !== 'any' && s.arrow !== trend) return false;
+            if (s.from === null && s.to === null) return true;
+            if (s.from === null) return cvr < s.to;
+            if (s.to === null) return cvr > s.from;
+            return cvr >= s.from && cvr <= s.to;
+        }
+        /** Index of the first slab that fits this CVR + arrow, or -1. */
+        function ebayCvrSlabIdx(cvr, trend, cfg) {
+            const slabs = (cfg || ebayCvrGroiAdjNow()).slabs;
+            for (let i = 0; i < slabs.length; i++) {
+                if (ebayCvrSlabMatches(slabs[i], cvr, trend)) return i;
+            }
+            return -1;
+        }
+        function ebayCvrAdjPoints(cvr, trend, cfg) {
+            cfg = cfg || ebayCvrGroiAdjNow();
+            const i = ebayCvrSlabIdx(cvr, trend, cfg);
+            return i >= 0 ? cfg.slabs[i].adj : 0;
+        }
+        let ebayCvrGroiAdj = ebayNormalizeCvrGroiAdj(null);
+        /** The slab list kept in memory (always normalized). The table inputs write into it; it is read per row, so no DOM access here. */
+        function ebayCvrGroiAdjNow() {
+            return ebayCvrGroiAdj;
+        }
+        function ebayRenderCvrGroiTable() {
+            const $tb = $('#ebay-cvr-groi-tbody');
+            if (!$tb.length) return;
+            const val = function(v) { return v === null || v === undefined ? '' : v; };
+            const arrowOpt = function(cur, key, label) { return '<option value="' + key + '"' + (cur === key ? ' selected' : '') + '>' + label + '</option>'; };
+            $tb.empty();
+            ebayCvrGroiAdj.slabs.forEach(function(s, idx) {
+                $tb.append('<tr data-idx="' + idx + '">'
+                    + '<td><select class="form-select form-select-sm ebay-cvr-groi-input ebay-cvr-groi-arrow">'
+                    + arrowOpt(s.arrow, 'down', 'Down') + arrowOpt(s.arrow, 'up', 'Up') + arrowOpt(s.arrow, 'any', 'Any')
+                    + '</select></td>'
+                    + '<td class="text-center"><input type="number" min="0" step="0.1" placeholder="—" class="form-control form-control-sm ebay-cvr-groi-input ebay-cvr-groi-from" value="' + val(s.from) + '"></td>'
+                    + '<td class="text-center"><input type="number" min="0" step="0.1" placeholder="—" class="form-control form-control-sm ebay-cvr-groi-input ebay-cvr-groi-to" value="' + val(s.to) + '"></td>'
+                    + '<td class="text-end"><input type="number" step="1" class="form-control form-control-sm ebay-cvr-groi-input ebay-cvr-groi-adj" value="' + s.adj + '"></td>'
+                    + '<td class="ebay-dg-count"><span class="ebay-cvr-groi-count">0</span></td>'
+                    + '<td class="text-center"><button type="button" class="ebay-cvr-groi-del" data-idx="' + idx + '" title="Remove slab">&times;</button></td>'
+                    + '</tr>');
+            });
+        }
+        /** Read the slab inputs into the in-memory list. A row whose From is above its To is ignored (and marked) until it is fixed. */
+        function ebayReadCvrGroiFromTable() {
+            const slabs = [];
+            $('#ebay-cvr-groi-tbody tr').each(function() {
+                const $r = $(this);
+                const one = ebayNormalizeCvrSlabs([{
+                    arrow: $r.find('.ebay-cvr-groi-arrow').val(),
+                    from: $r.find('.ebay-cvr-groi-from').val(),
+                    to: $r.find('.ebay-cvr-groi-to').val(),
+                    adj: $r.find('.ebay-cvr-groi-adj').val(),
+                }]);
+                $r.toggleClass('table-warning', !one.length).attr('title', one.length ? '' : 'From is above To: this slab is ignored');
+                if (one.length) slabs.push(one[0]);
+            });
+            ebayCvrGroiAdj = ebayNormalizeCvrGroiAdj({ slabs: slabs });
+            return ebayCvrGroiAdj;
         }
         function ebayPaintCvrGroiAdjTable(cfg) {
-            cfg = ebayNormalizeCvrGroiAdj(cfg);
-            ebayCvrGroiAdj = cfg;
-            const $tbl = $('#ebay-cvr-groi-table');
-            if (!$tbl.length) return;
-            $tbl.find('.ebay-cvr-groi-down-lt').val(cfg.down_lt);
-            $tbl.find('.ebay-cvr-groi-down-adj').val(cfg.down_adj);
-            $tbl.find('.ebay-cvr-groi-up-gt').val(cfg.up_gt);
-            $tbl.find('.ebay-cvr-groi-up-adj').val(cfg.up_adj);
+            ebayCvrGroiAdj = ebayNormalizeCvrGroiAdj(cfg);
+            ebayRenderCvrGroiTable();
         }
         /** Sprc Dil LMP cap: S PRC = LMP − x% where x follows the SKU's Dil band (ebay1 / ebay2 / ebay3). */
         const EBAY_LMP_CAP_DEFAULT = { low_lt: 25, high_gt: 50, low_pct: 2, mid_pct: 2, high_pct: 2 };
@@ -1358,7 +1445,11 @@
                         : d.cvr_45));
             return Number(raw) || 0;
         }
-        function ebayDgCvrTrend(d) {
+        /**
+         * @param {boolean} [movedOnly] true = the Count rule: Down / Up only when CVR really moved below / above its previous
+         *   compared data (CVR 0 with nothing to fall from is not Down). The price rule keeps "CVR 0 is Down" like the server.
+         */
+        function ebayDgCvrTrend(d, movedOnly) {
             const cvr = ebayDgCvr30(d);
             const hasCvr60 = !!(d && ((d.CVR_60 != null && d.CVR_60 !== '')
                 || (d.cvr_60 != null && d.cvr_60 !== '')
@@ -1374,7 +1465,7 @@
             }
             const cvr60 = ebayDgCvr60(d);
             const tol = 0.1;
-            if (cvr === 0 || cvr < cvr60 - tol) return 'down';
+            if ((!movedOnly && cvr === 0) || cvr < cvr60 - tol) return 'down';
             if (cvr > cvr60 + tol) return 'up';
             return 'flat';
         }
@@ -1402,11 +1493,7 @@
             if ((ebayDgIsShein() || ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b() || ebayDgIsFaire()) && !(ebayDgViews(d) > 0)) return 0;
             if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && ebayDgIsZeroSold(d)) return 0;
             const cvr = ebayDgCvr30(d);
-            const cfg = ebayCvrGroiAdjNow();
-            const trend = ebayDgCvrTrend(d);
-            if (trend === 'down' && cvr < cfg.down_lt) return cfg.down_adj;
-            if (trend === 'up' && cvr > cfg.up_gt) return cfg.up_adj;
-            return 0;
+            return ebayCvrAdjPoints(cvr, ebayDgCvrTrend(d), ebayCvrGroiAdjNow());
         }
         /** Diff rule: Diff = (LMP − Price) / Price (Std Prc when no LMP) above gt_pct adds `points` to the Target. Both are saved in the modal (default 20 / +10). */
         const EBAY_DIFF_ADJ_DEFAULT = { gt_pct: 20, points: 10 };
@@ -2002,11 +2089,7 @@
             let tip = head + ' → ' + meta.label + ' → ' + metric + ' ' + slabGroi + '%';
             if (meta.cvrAdj) {
                 const sign = meta.cvrAdj > 0 ? '+' : '';
-                const cfg = ebayCvrGroiAdjNow();
-                const why = meta.cvrAdj > 0
-                    ? ('CVR Up > ' + cfg.up_gt + '% and up arrow')
-                    : ('CVR Down < ' + cfg.down_lt + '% and down arrow');
-                tip += ' ' + sign + meta.cvrAdj + ' (' + why + ')';
+                tip += ' ' + sign + meta.cvrAdj + ' (CVR slab)';
             }
             if (meta.ageAdj) {
                 tip += ' ' + (meta.ageAdj > 0 ? '+' : '') + meta.ageAdj + ' (Age)';
@@ -2104,17 +2187,18 @@
             return !!ebayClearanceYesSet[ebayClearanceSkuKey(sku)];
         }
         function ebayDilGroiCollectCvrAdjCounts() {
-            const counts = { down: 0, up: 0 };
-            if (!EBAY_DIL_GROI_CVR_ADJ) return counts;
             const cfg = ebayCvrGroiAdjNow();
+            const counts = cfg.slabs.map(function() { return 0; });
+            if (!EBAY_DIL_GROI_CVR_ADJ) return counts;
             ebayDgEachInvChild(function(d) {
                 if (ebayDgIsShein() && !(ebayDgViews(d) > 0)) return;
                 // Count only the SKUs the CVR overlay really applies to (same rule as ebayDilGroiMetaForRow).
                 if (ebayDgIsClearanceSku(d)) return;
+                if (!(ebayDgInv(d) > 0)) return; // 0 INV is never counted
                 const cvr = ebayDgCvr30(d);
-                const trend = ebayDgCvrTrend(d);
-                if (trend === 'down' && cvr < cfg.down_lt) counts.down++;
-                else if (trend === 'up' && cvr > cfg.up_gt) counts.up++;
+                // The slab this SKU takes (first match). Down / Up slabs only take a SKU whose arrow really moved that way.
+                const i = ebayCvrSlabIdx(cvr, ebayDgCvrTrend(d, true), cfg);
+                if (i >= 0) counts[i]++;
             });
             return counts;
         }
@@ -2125,8 +2209,11 @@
                 ebayEnsureClearanceYesSet().then(function() { ebayPaintCvrGroiAdjCounts(); });
             }
             const counts = ebayDilGroiCollectCvrAdjCounts();
-            $('#ebay-cvr-groi-table .ebay-cvr-groi-down-count').text(counts.down);
-            $('#ebay-cvr-groi-table .ebay-cvr-groi-up-count').text(counts.up);
+            let k = 0;
+            $('#ebay-cvr-groi-tbody tr').each(function() {
+                // A row ignored for From > To has no slab (and no count).
+                $(this).find('.ebay-cvr-groi-count').text($(this).hasClass('table-warning') ? 0 : (counts[k++] || 0));
+            });
         }
         /** LMP cap block Count: SKUs (INV > 0, not on clearance) per Dil band, same split as ebayLmpReducePctForRow. */
         function ebayDilGroiCollectLmpCapCounts() {
@@ -3641,9 +3728,35 @@
                     ebayAfterDilGroiRulesChanged();
                     ebayScheduleDilGroiAutosave();
                 });
+            ebayRenderCvrGroiTable();
             $(document).off('input.ebayCvrGroi change.ebayCvrGroi', '#ebay-cvr-groi-table .ebay-cvr-groi-input')
                 .on('input.ebayCvrGroi change.ebayCvrGroi', '#ebay-cvr-groi-table .ebay-cvr-groi-input', function() {
-                    ebayCvrGroiAdj = ebayCvrGroiAdjNow();
+                    ebayReadCvrGroiFromTable();
+                    renderEbayDilGroiCounts();
+                    ebayAfterDilGroiRulesChanged();
+                    ebayScheduleDilGroiAutosave();
+                });
+            $(document).off('click.ebayCvrGroiAdd', '#ebay-cvr-groi-add-btn')
+                .on('click.ebayCvrGroiAdd', '#ebay-cvr-groi-add-btn', function(e) {
+                    e.preventDefault();
+                    ebayReadCvrGroiFromTable();
+                    // New slab starts above the highest limit already used: From = that limit, To = +3, Any arrow, no adjustment yet.
+                    let top = 0;
+                    ebayCvrGroiAdj.slabs.forEach(function(s) {
+                        if (s.to !== null && s.to > top) top = s.to;
+                        else if (s.to === null && s.from !== null && s.from > top) top = s.from;
+                    });
+                    ebayCvrGroiAdj = ebayNormalizeCvrGroiAdj({ slabs: ebayCvrGroiAdj.slabs.concat([{ arrow: 'any', from: top, to: ebayDgRound2(top + 3), adj: 0 }]) });
+                    ebayRenderCvrGroiTable();
+                    renderEbayDilGroiCounts();
+                    ebayAfterDilGroiRulesChanged();
+                    ebayScheduleDilGroiAutosave();
+                });
+            $(document).off('click.ebayCvrGroiDel', '#ebay-cvr-groi-table .ebay-cvr-groi-del')
+                .on('click.ebayCvrGroiDel', '#ebay-cvr-groi-table .ebay-cvr-groi-del', function() {
+                    $(this).closest('tr').remove();
+                    ebayReadCvrGroiFromTable();
+                    ebayRenderCvrGroiTable();
                     renderEbayDilGroiCounts();
                     ebayAfterDilGroiRulesChanged();
                     ebayScheduleDilGroiAutosave();

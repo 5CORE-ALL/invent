@@ -561,10 +561,10 @@
                         <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-sales-amt-badge"
                             data-badge-metric="total_sales" data-badge-label="Sales"
                             style="color: black; font-weight: bold; cursor: pointer;"
-                            title="L30 sales from the Temu 3 API orders. Full Temu Price: (Base × 1.1364) + $2.99 if ≤ $26.99">Sales: $0</span>
+                            title="L30 sales from the Temu 3 API orders. Temu Price = (Base + $2.99) ÷ 0.88 when that is under $30, else Base ÷ 0.88 (same as /new-temuone)">Sales: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-recovery-badge"
                             style="color: white; font-weight: bold;"
-                            title="Recovery Price = Sales × 0.88 (Full Temu Price × 0.88 × Qty)">Recovery: $0</span>
+                            title="Recovery Price = Sales × 0.88 (Temu Price × 0.88 × Qty)">Recovery: $0</span>
                         <span class="badge fs-6 p-2 temu-badge-history" id="qty-sold-badge"
                             data-badge-metric="total_quantity" data-badge-label="QTY"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
@@ -1042,48 +1042,52 @@
         const marginRaw = parseFloat(rowData && rowData.percentage);
         return (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
     }
-    const TEMU_FULL_PRICE_MULT = 1.1364;
     function temuClampSpriceBand2699(sprice) {
         const n = parseFloat(sprice);
         if (!isFinite(n) || !(n > 0)) return n > 0 ? n : 0;
         return +n.toFixed(2);
     }
     window.temuClampSpriceBand2699 = temuClampSpriceBand2699;
-    function temu2RPriceFromRow(rowData) {
-        const basePrice = parseFloat(rowData && rowData.base_price) || 0;
-        if (basePrice > 0) return basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
-        return parseFloat(rowData && rowData.temu_price) || 0;
+    // Price / Base Price chain = /new-temuone (Temu 1), the exact inverse of S Base Prc:
+    //   S side : S R prc = S PRC × 0.88, S Base Prc = S R prc − $2.99 when S R prc < $30.
+    //   Price side: recovery = Base + $2.99 when that is under $30 (else Base), Price = recovery ÷ 0.88.
+    // So an equal Base and S Base Prc give an equal Price and S PRC, and equal GPFT / SPFT, GROI / SGROI, NPFT / SNPFT, NROI / SNROI.
+    const TEMU3_PRICE_SR_THRESHOLD = 30;
+    const TEMU3_PRICE_SHIP_DEDUCT = 2.99;
+    window.TEMU_PRICE_IS_S_PRC_EQUIV = true;
+    window.temuPriceSourceHtml = 'Temu Price = the S PRC that gives this base = <b>(Base + $2.99) ÷ 0.88</b> when that is under $30, else <b>Base ÷ 0.88</b>. Exact inverse of S Base Prc, from the base price last pulled from Temu. It changes only when a new price is pushed.';
+    /** What Temu pays the seller for a base: Base + $2.99 when that is under $30, else Base. Same as /new-temuone ntoRecoveryFromBase. */
+    function temu3RecoveryFromBase(basePrice) {
+        const b = parseFloat(basePrice);
+        if (!isFinite(b) || b <= 0) return 0;
+        const sR = Math.round((b + TEMU3_PRICE_SHIP_DEDUCT) * 100) / 100;
+        return sR < TEMU3_PRICE_SR_THRESHOLD ? sR : b;
     }
-    /** Full Temu Price from Base: (base × 1.1364), then +$2.99 if ≤ $26.99 */
+    /** R prc of the live base (its recovery). Replaces the old listing R Price (+$2.99 at ≤ $26.99). */
+    function temu2RPriceFromRow(rowData) {
+        return temu3RecoveryFromBase(rowData && rowData.base_price);
+    }
+    /** Temu Price from Base = recovery ÷ 0.88 (same as TemuShopifySalesService::newTemuonePriceFromBase). */
     function temu2FullPriceFromBase(basePrice) {
-        const b = parseFloat(basePrice) || 0;
-        if (b <= 0) return 0;
-        let full = b * TEMU_FULL_PRICE_MULT;
-        if (full <= 26.99) full += 2.99;
-        return full;
+        const recovery = temu3RecoveryFromBase(basePrice);
+        if (!(recovery > 0)) return 0;
+        return Math.round((recovery / 0.88) * 100) / 100;
     }
     function temu2FullPriceFromRow(rowData) {
         return temu2FullPriceFromBase(parseFloat(rowData && rowData.base_price) || 0);
     }
+    /** The Price the Gpft / Npft percentages and the Ads cut are taken on: recovery ÷ 0.88 of the live base (unrounded, like S Profit ÷ S PRC). */
+    function temu3PriceBasis(rowData) {
+        const recovery = temu3RecoveryFromBase(rowData && rowData.base_price);
+        return recovery > 0 ? recovery / 0.88 : 0;
+    }
+    /** Base that gives this Price (= S Base Prc of that S PRC). */
     function temu2BaseFromFullPrice(full) {
         const f = parseFloat(full) || 0;
         if (!(f > 0)) return 0;
-        const candidates = [(f - 2.99) / TEMU_FULL_PRICE_MULT, f / TEMU_FULL_PRICE_MULT];
-        let best = 0;
-        let bestErr = Infinity;
-        candidates.forEach(function(base) {
-            if (!(base > 0)) return;
-            const rebuilt = temu2FullPriceFromBase(base);
-            const err = Math.abs(rebuilt - f);
-            if (err < bestErr - 1e-6) {
-                bestErr = err;
-                best = base;
-            } else if (Math.abs(err - bestErr) <= 1e-6 && base > best) {
-                best = base;
-            }
-        });
-        if (!(best > 0) || bestErr > 0.05) return 0;
-        return best;
+        const sR = Math.round(f * 0.88 * 100) / 100;
+        const base = sR < TEMU3_PRICE_SR_THRESHOLD ? Math.round((sR - TEMU3_PRICE_SHIP_DEDUCT) * 100) / 100 : sR;
+        return base > 0 ? base : 0;
     }
     // Temu 3 has no ads (channel master Ads% = 0). Net columns match gross: SNROI = SGROI, SNPFT = SGPRFT.
     function temuAdsPercentForNet() {
@@ -1170,30 +1174,42 @@
         return +(p - (temu3ShipDisc(d) || 0)).toFixed(2);
     }
     /**
-     * Price side, same chain as the S side: R prc = Temu Price × 0.88, Gpft = R prc × margin − Temu Ship − LP.
-     * (S side: S R prc = S PRC × 0.88, S Profit = S R prc × margin − LP − Ship.) null without a Price.
+     * Price side, same chain as /new-temuone and the S side: Gpft = recovery of the live base × margin − Temu Ship − LP,
+     * recovery = Base + $2.99 when under $30 (exact inverse of S Base Prc).
+     * (S side: S R prc = S PRC × 0.88, S Profit = S R prc × margin − LP − Ship.) null without a Base.
      */
     function temu2PftDollars(rowData) {
-        const price = temu2FullPriceFromRow(rowData);
-        if (!(price > 0)) return null;
+        const recovery = temu3RecoveryFromBase(rowData && rowData.base_price);
+        if (!(recovery > 0)) return null;
         const lp = parseFloat(rowData && rowData.lp) || 0;
         const ship = parseFloat(rowData && rowData.temu_ship) || 0;
-        return (price * TEMU2_S_RECOVERY_RATE * temuSpriceMargin(rowData)) - ship - lp;
+        return (recovery * temuSpriceMargin(rowData)) - ship - lp;
     }
     function temu2GpftDollar(rowData) {
         return temu2PftDollars(rowData);
     }
-    /** NPFT$ = Gpft − (Temu Price × Ads%). Ads% is the channel Ads badge (0 on Temu 3, so NPFT = Gpft). */
+    /** GPRFT% = Gpft ÷ Price basis (the S PRC equivalent of the live base, like SGPRFT% ÷ S PRC). */
+    function temu2GpftPercent(rowData) {
+        const gpft = temu2PftDollars(rowData);
+        const basis = temu3PriceBasis(rowData);
+        return (gpft != null && basis > 0) ? (gpft / basis) * 100 : null;
+    }
+    /** GROI% = Gpft ÷ LP. */
+    function temu2GroiPercent(rowData) {
+        const gpft = temu2PftDollars(rowData);
+        const lp = parseFloat(rowData && rowData.lp) || 0;
+        return (gpft != null && lp > 0) ? (gpft / lp) * 100 : null;
+    }
+    /** NPFT$ = Gpft − (Price basis × Ads%). Ads% is the channel Ads badge (0 on Temu 3, so NPFT = Gpft). */
     function temu2NpftDollars(rowData) {
         const pft = temu2PftDollars(rowData);
         if (pft == null) return null;
-        const temuPrice = temu2FullPriceFromRow(rowData);
-        return pft - (temuPrice * (temuAdsPercentForNet() / 100));
+        return pft - (temu3PriceBasis(rowData) * (temuAdsPercentForNet() / 100));
     }
     function temu2NpftPercent(rowData) {
         const npft = temu2NpftDollars(rowData);
-        const price = temu2FullPriceFromRow(rowData);
-        return (npft != null && price > 0) ? (npft / price) * 100 : null;
+        const basis = temu3PriceBasis(rowData);
+        return (npft != null && basis > 0) ? (npft / basis) * 100 : null;
     }
     function temu2NroiPercent(rowData) {
         const npft = temu2NpftDollars(rowData);
@@ -1215,24 +1231,8 @@
     function temu2SRPriceFromRow(rowData, spriceOverride) {
         const sprice = temu2RowSpriceValue(rowData, spriceOverride);
         if (!(sprice > 0)) return 0;
-        const rPrice = temu2RPriceFromRow(rowData);
-        const fullPrice = temu2FullPriceFromRow(rowData);
-        if (fullPrice > 0 && Math.abs(sprice - fullPrice) < 0.02) return rPrice;
-        if (rPrice > 0 && Math.abs(sprice - rPrice) < 0.02) return rPrice;
-        const candidates = [(sprice - 2.99) / TEMU_FULL_PRICE_MULT, sprice / TEMU_FULL_PRICE_MULT];
-        let best = 0;
-        let bestErr = Infinity;
-        candidates.forEach(function(base) {
-            if (!(base > 0)) return;
-            const rebuilt = temu2FullPriceFromBase(base);
-            const err = Math.abs(rebuilt - sprice);
-            if (err < bestErr) {
-                bestErr = err;
-                best = base;
-            }
-        });
-        if (!(best > 0) || bestErr > 0.05) return 0;
-        return best <= 26.99 ? best + 2.99 : best;
+        // S R prc = S PRC × 0.88 (same as /new-temuone temuSRPriceFromSprice).
+        return Math.round(sprice * TEMU2_S_RECOVERY_RATE * 100) / 100;
     }
     function temu2SpftDollars(rowData, spriceOverride) {
         const recovery = temu2SRecovery(temu2RowSpriceValue(rowData, spriceOverride));
@@ -3527,13 +3527,16 @@
 
                 const hasSales = temuL30 > 0 && price > 0;
                 if (hasSales) {
-                    const fbPrice = temu2RPriceFromRow(row); // Temu R Price
-                    const fullPrice = temu2FullPriceFromBase(price);
+                    // Same chain as the Price / GPFT$ columns (and /new-temuone): recovery of the live base,
+                    // Price = recovery ÷ 0.88, Gpft = recovery × margin − LP − Temu Ship.
+                    const recovery = temu3RecoveryFromBase(price);
+                    const fullPrice = temu3PriceBasis(row);
                     const margin = temuSpriceMargin(row);
+                    const unitPft = recovery * margin - lpPerUnit - temuShip;
                     totalRevenue += fullPrice * temuL30;
-                    totalProfit += (fbPrice * margin - lpPerUnit - temuShip) * temuL30;
+                    totalProfit += unitPft * temuL30;
                     totalRevenueFull += fullPrice * temuL30;
-                    totalProfitFull += (fullPrice * margin - lpPerUnit - temuShip) * temuL30;
+                    totalProfitFull += unitPft * temuL30;
                     totalLp += lpPerUnit * temuL30;
                 }
 
@@ -3996,14 +3999,14 @@
                             ? temu2FullPriceFromBase(base)
                             : 0;
                     }),
-                    headerTooltip: "From uploaded Temu 3 price sheet only (not API). Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
+                    headerTooltip: "Temu Price = the S PRC that gives this base = (Base + $2.99) ÷ 0.88 when that is under $30, else Base ÷ 0.88. Exact inverse of S Base Prc (same as /new-temuone).",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const basePrice = parseFloat(rowData['base_price']) || 0;
                         if (basePrice === 0) return '$0.00';
                         const displayPrice = +temu2FullPriceFromBase(basePrice).toFixed(2);
-                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
-                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
                         return `<span>$${displayPrice.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                     }
                 },
@@ -4107,7 +4110,7 @@
                         const n = typeof temu2GpftDollar === 'function' ? temu2GpftDollar(d) : null;
                         return n == null ? 0 : n;
                     }),
-                    headerTooltip: "GPFT$ = (Price × 0.88) × margin − LP − Temu Ship. Same chain as S Profit, run on Price instead of S PRC.",
+                    headerTooltip: "GPFT$ = recovery of the live Temu base × margin − LP − Temu Ship (recovery = base + $2.99 when under $27.01, the exact inverse of S Base Prc). Same chain as S Profit, so equal S Base Prc and Base give equal GPFT$ and SPFT$.",
                     formatter: function(cell) {
                         const n = typeof temu2GpftDollar === 'function' ? temu2GpftDollar(cell.getRow().getData()) : null;
                         if (n == null) return '';
@@ -4137,7 +4140,7 @@
                         const lp = parseFloat(d.lp) || 0;
                         return (pft != null && lp > 0) ? (pft / lp) * 100 : (parseFloat(d.roi_percent) || 0);
                     }),
-                    headerTooltip: "GROI% = Gpft / LP. Gpft = (Price × 0.88 R prc) × margin − Temu Ship − LP, same as S Profit on S PRC",
+                    headerTooltip: "GROI% = Gpft / LP. Gpft = recovery of the live Temu base (base + $2.99 under $27.01) × margin − Temu Ship − LP, same chain as S Profit on S PRC",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
@@ -4154,22 +4157,19 @@
                     field: "profit_percent",
                     hozAlign: "center",
                     minWidth: 80,
-                    headerTooltip: "GPRFT% = Gpft / Temu Price. Gpft = (Price × 0.88 R prc) × margin − Temu Ship − LP, same as S Profit on S PRC",
+                    headerTooltip: "GPRFT% = Gpft / Price (S PRC equivalent of the live base). Gpft = recovery of the live Temu base (base + $2.99 under $27.01) × margin − Temu Ship − LP, same chain as S Profit on S PRC",
                     sorter: function(a, b, aRow, bRow) {
                         const calc = (row) => {
-                            const gpft = typeof temu2PftDollars === 'function' ? temu2PftDollars(row) : null;
-                            const fullPrice = temu2FullPriceFromRow(row);
-                            if (gpft == null || !(fullPrice > 0)) return 0;
-                            return (gpft / fullPrice) * 100;
+                            const v = temu2GpftPercent(row);
+                            return v == null ? 0 : v;
                         };
                         return calc(aRow.getData()) - calc(bRow.getData());
                     },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
-                        const gpft = typeof temu2PftDollars === 'function' ? temu2PftDollars(rowData) : null;
-                        const fullPrice = temu2FullPriceFromRow(rowData);
-                        const value = (gpft != null && fullPrice > 0) ? (gpft / fullPrice) * 100 : 0;
+                        const gpftPct = temu2GpftPercent(rowData);
+                        const value = gpftPct == null ? 0 : gpftPct;
                         const colorClass = getPftColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="profit_percent" title="View GPRFT% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff1493;"></span></button>` : '';
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
@@ -4180,14 +4180,14 @@
                     field: "npft_percent",
                     hozAlign: "center",
                     minWidth: 80,
-                    headerTooltip: "NPFT% = NPFT$ ÷ Temu Price. NPFT$ = Gpft − (Temu Price × Ads%). Gpft = (Price × 0.88 R prc) × margin − Temu Ship − LP. Ads% is the channel Ads badge (0 on Temu 3).",
+                    headerTooltip: "NPFT% = NPFT$ ÷ Price. NPFT$ = Gpft − (Price × Ads%), Price = S PRC equivalent of the live base. Gpft = recovery of the live Temu base (base + $2.99 under $27.01) × margin − Temu Ship − LP. Ads% is the channel Ads badge (0 on Temu 3).",
                     sorter: temuSortBy(function(d) { const v = temu2NpftPercent(d); return v == null ? 0 : v; }),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const value = temu2NpftPercent(rowData);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
                         const tip = 'NPFT $' + temu2NpftDollars(rowData).toFixed(2) + ' (Gpft $' + temu2PftDollars(rowData).toFixed(2)
-                            + ' − Ads ' + temuAdsPercentForNet().toFixed(1) + '% of Temu Price) ÷ Temu Price $' + temu2FullPriceFromRow(rowData).toFixed(2);
+                            + ' − Ads ' + temuAdsPercentForNet().toFixed(1) + '% of Price) ÷ Price $' + temu3PriceBasis(rowData).toFixed(2);
                         return `<span class="dil-percent-value ${getPftColor(value)}" title="${tip}">${Math.round(value)}%</span>`;
                     }
                 },
@@ -4196,7 +4196,7 @@
                     field: "nroi_percent",
                     hozAlign: "center",
                     minWidth: 80,
-                    headerTooltip: "NROI% = NPFT$ ÷ LP. NPFT$ = Gpft − (Temu Price × Ads%). Ads% is the channel Ads badge (0 on Temu 3).",
+                    headerTooltip: "NROI% = NPFT$ ÷ LP. NPFT$ = Gpft − (Price × Ads%). Ads% is the channel Ads badge (0 on Temu 3).",
                     sorter: temuSortBy(function(d) { const v = temu2NroiPercent(d); return v == null ? 0 : v; }),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -4704,10 +4704,8 @@
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
                     if (isTemu3ParentRow(data) && parentRowsBypassDataFilters) return true;
-                    const price = parseFloat(data.temu_price) || 0;
-                    const gpft = price > 0
-                        ? ((price * TEMU_MARGIN - (parseFloat(data.lp) || 0) - (parseFloat(data.temu_ship) || 0)) / price) * 100
-                        : 0;
+                    const gpftLive = temu2GpftPercent(data);
+                    const gpft = gpftLive == null ? 0 : gpftLive;
                     if (gpftFilter === 'negative') return gpft < 0;
                     if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
                     if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
@@ -4721,7 +4719,8 @@
             if (groiFilter !== 'all') {
                 table.addFilter(function(data) {
                     if (isTemu3ParentRow(data) && parentRowsBypassDataFilters) return true;
-                    const groi = parseFloat(data.roi_percent) || 0;
+                    const groiLive = temu2GroiPercent(data);
+                    const groi = groiLive == null ? 0 : groiLive;
                     if (groiFilter === 'lt40') return groi < 40;
                     if (groiFilter === '40-75') return groi >= 40 && groi < 75;
                     if (groiFilter === '75-125') return groi >= 75 && groi < 125;
@@ -6273,14 +6272,11 @@
                                 temuApplyPushedListingPrice(row, pushPrice, data);
                             } else {
                                 const base = +Number(pushPrice).toFixed(2);
-                                const rPrice = base <= 26.99 ? +(base + 2.99).toFixed(2) : base;
-                                const full = (typeof temu2FullPriceFromBase === 'function')
-                                    ? +temu2FullPriceFromBase(base).toFixed(2)
-                                    : +(base * 1.1364).toFixed(2);
+                                const full = +temu2FullPriceFromBase(base).toFixed(2);
                                 row.update({
                                     push_status: 'pushed',
                                     base_price: base,
-                                    temu_price: rPrice,
+                                    temu_price: full,
                                     temu_price_display: full,
                                 });
                                 row.reformat();

@@ -2816,7 +2816,11 @@ class TemuController extends Controller
                 $salesTotalQuantity += $qty;
 
                 // Full Temu Price = (base × 1.1364); +$2.99 if that ≤ $26.99 — Sales / GPFT
-                $fullPrice = TemuShopifySalesService::computeFullTemuPrice($base);
+                // Temu 3: Price = recovery ÷ 0.88 of the base (same as the Price column and /new-temuone).
+                $orderRecovery = $isTemu3 ? TemuShopifySalesService::newTemuoneRecoveryFromBase($base) : 0.0;
+                $fullPrice = $isTemu3
+                    ? ($orderRecovery > 0 ? $orderRecovery / TemuShopifySalesService::S_RECOVERY_RATE : 0.0)
+                    : TemuShopifySalesService::computeFullTemuPrice($base);
                 $salesTotalRevenue += $fullPrice * $qty;
 
                 if ($qty > 0 && $base > 0) {
@@ -2845,9 +2849,15 @@ class TemuController extends Controller
                     }
                     // Same as /temu2-decrease and /temu3-decrease:
                     // GPFT $ on Full Price; GROI $ on Temu R Price
-                    $rPrice = TemuShopifySalesService::computeRPrice($base);
-                    $salesTotalPftFull += ($fullPrice * $percentage - $orderLp - $orderTemuShip) * $qty;
-                    $salesTotalPft += TemuShopifySalesService::computeGroiProfit($rPrice, $percentage, $orderLp, $orderTemuShip) * $qty;
+                    if ($isTemu3) {
+                        $orderPft = TemuShopifySalesService::computeGroiProfit($orderRecovery, $percentage, $orderLp, $orderTemuShip);
+                        $salesTotalPftFull += $orderPft * $qty;
+                        $salesTotalPft += $orderPft * $qty;
+                    } else {
+                        $rPrice = TemuShopifySalesService::computeRPrice($base);
+                        $salesTotalPftFull += ($fullPrice * $percentage - $orderLp - $orderTemuShip) * $qty;
+                        $salesTotalPft += TemuShopifySalesService::computeGroiProfit($rPrice, $percentage, $orderLp, $orderTemuShip) * $qty;
+                    }
                     $salesTotalCogs += $orderLp * $qty;
                 }
             }
@@ -3344,7 +3354,22 @@ class TemuController extends Controller
                     ? (($temuFullPrice * $percentage - $lp - $temuShip) / $temuFullPrice) * 100
                     : 0;
                 $roiPercent = TemuShopifySalesService::computeGroiPercent((float) $temuPrice, (float) $percentage, (float) $lp, (float) $temuShip);
-                
+
+                // Temu 3 uses the /new-temuone chain, the exact inverse of S Base Prc: recovery = Base + $2.99 (under $30),
+                // Price = recovery ÷ 0.88, Gpft = recovery × margin − Ship − LP. GPRFT% / NPFT% are taken on Price.
+                // Equal Base and S Base Prc then give equal GPFT/SPFT, GROI/SGROI, NPFT/SNPFT and NROI/SNROI.
+                if ($isTemu3) {
+                    $t3Recovery = ($item && $basePrice > 0)
+                        ? TemuShopifySalesService::newTemuoneRecoveryFromBase((float) $basePrice)
+                        : 0.0;
+                    $t3Basis = $t3Recovery > 0 ? $t3Recovery / TemuShopifySalesService::S_RECOVERY_RATE : 0.0;
+                    $temuPrice = $t3Basis > 0 ? round($t3Basis, 2) : 0;
+                    $temuFullPrice = $t3Basis;
+                    $profit = TemuShopifySalesService::computeGroiProfit($t3Recovery, (float) $percentage, (float) $lp, (float) $temuShip);
+                    $profitPercent = $t3Basis > 0 ? ($profit / $t3Basis) * 100 : 0;
+                    $roiPercent = ($t3Recovery > 0 && $lp > 0) ? ($profit / $lp) * 100 : 0;
+                }
+
                 // CVR% = Temu L30 / Views × 100.
                 // Views = same as the Views column: o_clicks (temu_view_data) or product_clicks.
                 $tClicks = (int) $productClicks + (int) $adClicks;

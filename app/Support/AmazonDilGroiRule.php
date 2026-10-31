@@ -781,30 +781,168 @@ class AmazonDilGroiRule
     }
 
     /**
+     * CVR overlay slabs. Each slab: arrow (down | up | any), CVR From / To (null = open) and the points added to the Target.
+     * The first slab that matches a SKU wins. Match: From and To both set → From ≤ CVR ≤ To; only To → CVR < To; only From → CVR > From.
+     * Down / Up slabs also need the matching CVR arrow; Any ignores the arrow.
+     *
+     * @param  array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}  $legacy
+     * @return list<array{arrow:string,from:?float,to:?float,adj:float}>
+     */
+    public static function cvrSlabsFromLegacy(array $legacy): array
+    {
+        $lo = (float) $legacy['down_lt'];
+        $hi = (float) $legacy['up_gt'];
+        $slabs = [['arrow' => 'down', 'from' => null, 'to' => $lo, 'adj' => (float) $legacy['down_adj']]];
+        if ($lo <= $hi) {
+            $slabs[] = ['arrow' => 'any', 'from' => $lo, 'to' => $hi, 'adj' => 0.0];
+        }
+        $slabs[] = ['arrow' => 'up', 'from' => $hi, 'to' => null, 'adj' => (float) $legacy['up_adj']];
+
+        return $slabs;
+    }
+
+    /**
+     * @param  array<int, mixed>  $raw
+     * @return list<array{arrow:string,from:?float,to:?float,adj:float}>
+     */
+    public static function normalizeCvrSlabs(array $raw): array
+    {
+        $out = [];
+        foreach ($raw as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $arrow = strtolower(trim((string) ($row['arrow'] ?? 'any')));
+            if (! in_array($arrow, ['down', 'up', 'any'], true)) {
+                $arrow = 'any';
+            }
+            $bounds = [];
+            foreach (['from', 'to'] as $key) {
+                $v = $row[$key] ?? null;
+                $bounds[$key] = (is_numeric($v) && is_finite((float) $v)) ? max(0.0, round((float) $v, 2)) : null;
+            }
+            if ($bounds['from'] !== null && $bounds['to'] !== null && $bounds['from'] > $bounds['to']) {
+                continue;
+            }
+            $adj = $row['adj'] ?? 0;
+            $adj = (is_numeric($adj) && is_finite((float) $adj)) ? round((float) $adj, 2) : 0.0;
+            $out[] = ['arrow' => $arrow, 'from' => $bounds['from'], 'to' => $bounds['to'], 'adj' => $adj];
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array<string, mixed>|null  $raw
-     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}
+     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float,slabs:list<array{arrow:string,from:?float,to:?float,adj:float}>}
      */
     public static function normalizeCvrAdj(?array $raw): array
     {
         $out = self::defaultCvrAdj();
-        if (! is_array($raw)) {
-            return $out;
-        }
-        foreach (['down_lt', 'down_adj', 'up_gt', 'up_adj'] as $key) {
-            if (! isset($raw[$key]) || ! is_numeric($raw[$key])) {
-                continue;
+        if (is_array($raw)) {
+            foreach (['down_lt', 'down_adj', 'up_gt', 'up_adj'] as $key) {
+                if (! isset($raw[$key]) || ! is_numeric($raw[$key])) {
+                    continue;
+                }
+                $n = round((float) $raw[$key], 2);
+                if (! is_finite($n)) {
+                    continue;
+                }
+                if (($key === 'down_lt' || $key === 'up_gt') && $n < 0) {
+                    $n = 0.0;
+                }
+                $out[$key] = $n;
             }
-            $n = round((float) $raw[$key], 2);
-            if (! is_finite($n)) {
-                continue;
-            }
-            if (($key === 'down_lt' || $key === 'up_gt') && $n < 0) {
-                $n = 0.0;
-            }
-            $out[$key] = $n;
         }
 
+        if (is_array($raw) && array_key_exists('slabs', $raw) && is_array($raw['slabs'])) {
+            // Dynamic slabs saved: they are the rule. The four legacy keys follow the first Down / Up slab for older readers.
+            $slabs = self::normalizeCvrSlabs($raw['slabs']);
+            $out['down_adj'] = 0.0;
+            $out['up_adj'] = 0.0;
+            foreach ($slabs as $s) {
+                if ($s['arrow'] === 'down' && $s['to'] !== null) {
+                    $out['down_lt'] = $s['to'];
+                    $out['down_adj'] = $s['adj'];
+                    break;
+                }
+            }
+            foreach ($slabs as $s) {
+                if ($s['arrow'] === 'up' && $s['from'] !== null) {
+                    $out['up_gt'] = $s['from'];
+                    $out['up_adj'] = $s['adj'];
+                    break;
+                }
+            }
+            $out['slabs'] = $slabs;
+
+            return $out;
+        }
+
+        $out['slabs'] = self::cvrSlabsFromLegacy($out);
+
         return $out;
+    }
+
+    /**
+     * Does one CVR slab apply to this SKU (CVR L30 and its arrow)?
+     *
+     * @param  array{arrow:string,from:?float,to:?float,adj:float}  $slab
+     */
+    public static function cvrSlabMatches(array $slab, float $cvr, string $trend): bool
+    {
+        if ($slab['arrow'] !== 'any' && $slab['arrow'] !== $trend) {
+            return false;
+        }
+        $from = $slab['from'];
+        $to = $slab['to'];
+        if ($from === null && $to === null) {
+            return true;
+        }
+        if ($from === null) {
+            return $cvr < $to;
+        }
+        if ($to === null) {
+            return $cvr > $from;
+        }
+
+        return $cvr >= $from && $cvr <= $to;
+    }
+
+    /**
+     * Points the CVR overlay adds to the Target for a SKU: the first matching slab, else 0.
+     *
+     * @param  array<string, mixed>|null  $cvrAdj
+     * @param  'down'|'up'|'flat'  $trend
+     */
+    public static function cvrAdjPoints(float $cvr, string $trend, ?array $cvrAdj = null): float
+    {
+        $cfg = self::normalizeCvrAdj($cvrAdj);
+        foreach ($cfg['slabs'] as $slab) {
+            if (self::cvrSlabMatches($slab, $cvr, $trend)) {
+                return (float) $slab['adj'];
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Same as cvrAdjPoints() for pages with no prior-period CVR: the arrow is Down below the first Down limit, Up above the first Up limit.
+     *
+     * @param  array<string, mixed>|null  $cvrAdj
+     */
+    public static function cvrAdjPointsLevel(float $cvr, ?array $cvrAdj = null): float
+    {
+        $cfg = self::normalizeCvrAdj($cvrAdj);
+        $trend = 'flat';
+        if ($cvr < $cfg['down_lt']) {
+            $trend = 'down';
+        } elseif ($cvr > $cfg['up_gt']) {
+            $trend = 'up';
+        }
+
+        return self::cvrAdjPoints($cvr, $trend, $cfg);
     }
 
     /**
@@ -960,13 +1098,7 @@ class AmazonDilGroiRule
      */
     public static function adjustGroiForCvr(float $groi, float $cvrL30, string $trend, ?array $cvrAdj = null): float
     {
-        $cfg = self::normalizeCvrAdj($cvrAdj);
-        $adj = 0.0;
-        if ($trend === 'down' && $cvrL30 < $cfg['down_lt']) {
-            $adj = $cfg['down_adj'];
-        } elseif ($trend === 'up' && $cvrL30 > $cfg['up_gt']) {
-            $adj = $cfg['up_adj'];
-        }
+        $adj = self::cvrAdjPoints($cvrL30, $trend, $cvrAdj);
         $out = $groi + $adj;
         if (! is_finite($out) || $out < 0) {
             return 0.0;
