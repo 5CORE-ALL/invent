@@ -122,6 +122,7 @@ class Kernel extends ConsoleKernel
         FetchShopifyProductViews::class,
         \App\Console\Commands\SyncStoreWebsitePrices::class,
         \App\Console\Commands\CollectYesterdayViews::class,
+        \App\Console\Commands\RefetchAmazonYesterdayViews::class,
         \App\Console\Commands\UpdateEbayCompetitorPrices::class,
         \App\Console\Commands\UpdateEbaySkuCompetitorPrices::class,
         \App\Console\Commands\UpdateAmazonCompetitorPrices::class,

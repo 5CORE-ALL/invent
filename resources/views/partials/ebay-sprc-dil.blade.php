@@ -287,6 +287,17 @@
             box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
         }
         #ebayDilGroiModal .ebay-dg-hist-dot:hover { transform: scale(1.35); }
+        /* History dot next to the Count of the CVR overlay, Ageing Rule and LMP cap rows. */
+        #ebay-cvr-groi-table .ebay-dg-count,
+        #ebay-age-adj-table .ebay-dg-count,
+        #ebay-lmp-cap-table .ebay-dg-count { white-space: nowrap; font-weight: 700; text-align: center; }
+        #ebay-cvr-groi-table .ebay-dg-count .ebay-dg-hist-dot,
+        #ebay-age-adj-table .ebay-dg-count .ebay-dg-hist-dot,
+        #ebay-lmp-cap-table .ebay-dg-count .ebay-dg-hist-dot {
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 6px;
+        }
         #ebayDilGroiModal .ebay-dg-hist-wrap {
             display: none;
             margin: 0 0 10px;
@@ -1029,6 +1040,7 @@
         let ebayDgDilLiveCounts = {};
         let ebayDgCvrLiveCounts = {};
         let ebayDgClearanceLiveCounts = {};
+        let ebayDgRuleLiveCounts = {};
         let ebayDgDilSlices = [];
         const EBAY_DG_SLAB_COLORS = [
             '#6f42c1', '#3b82f6', '#14b8a6', '#22c55e', '#84cc16',
@@ -1645,6 +1657,7 @@
             $rows.each(function(i) {
                 $(this).find('.ebay-age-adj-count').text(counts[i] || 0);
             });
+            ebayPaintRuleHistDots();
         }
         /** Default Diff inputs for a page that sets no window.ebayDiffStdPrice / ebayDiffLivePrice: the first positive price column the grid row has. */
         function ebayDiffDefaultStd(d) {
@@ -2214,6 +2227,7 @@
                 // A row ignored for From > To has no slab (and no count).
                 $(this).find('.ebay-cvr-groi-count').text($(this).hasClass('table-warning') ? 0 : (counts[k++] || 0));
             });
+            ebayPaintRuleHistDots();
         }
         /** LMP cap block Count: SKUs (INV > 0, not on clearance) per Dil band, same split as ebayLmpReducePctForRow. */
         function ebayDilGroiCollectLmpCapCounts() {
@@ -2238,6 +2252,7 @@
             $tbl.find('.ebay-lmp-cap-low-count').text(counts.low);
             $tbl.find('.ebay-lmp-cap-mid-count').text(counts.mid);
             $tbl.find('.ebay-lmp-cap-high-count').text(counts.high);
+            ebayPaintRuleHistDots();
         }
         function ebayDgSlabColor(idx) {
             return EBAY_DG_SLAB_COLORS[idx % EBAY_DG_SLAB_COLORS.length];
@@ -2247,6 +2262,123 @@
                 + 'data-band="' + String(key).replace(/"/g, '&quot;') + '" '
                 + 'style="background:' + color + ';" title="' + String(label).replace(/"/g, '&quot;') + ' daily history"></button>';
         }
+        /**
+         * History dots for the CVR overlay, Ageing Rule and LMP cap counts (same as the Dil slab dots and /amazon-tabulator-view).
+         * Each count has a dot that opens a 30-day line of that count. The points are saved in this browser each time the modal
+         * is opened, so the line fills in over the days it is used. A slab / band is tracked by its own definition (arrow + range,
+         * age days), so editing a rule starts a new line.
+         */
+        function ebayDgCvrSlabKey(s) {
+            return 'cvr-' + s.arrow + '-' + (s.from === null || s.from === undefined ? '' : s.from) + '-' + (s.to === null || s.to === undefined ? '' : s.to);
+        }
+        function ebayDgCvrSlabLabel(s) {
+            const arrow = s.arrow === 'down' ? 'Down' : (s.arrow === 'up' ? 'Up' : 'Any');
+            const hasFrom = s.from !== null && s.from !== undefined;
+            const hasTo = s.to !== null && s.to !== undefined;
+            let range = 'all CVR';
+            if (hasFrom && hasTo) range = s.from + '–' + s.to + '%';
+            else if (hasTo) range = '< ' + s.to + '%';
+            else if (hasFrom) range = '> ' + s.from + '%';
+            return 'CVR overlay · ' + arrow + ' ' + range;
+        }
+        function ebayDgAgeBandKey(b) { return 'age-' + b.min + '-' + b.max; }
+        function ebayDgRuleSlices() {
+            const out = [];
+            const seen = {};
+            const add = function(key, label, color) {
+                if (seen[key]) return;
+                seen[key] = true;
+                out.push({ key: key, label: label, color: color });
+            };
+            if (EBAY_DIL_GROI_CVR_ADJ) {
+                ebayCvrGroiAdjNow().slabs.forEach(function(s, i) { add(ebayDgCvrSlabKey(s), ebayDgCvrSlabLabel(s), ebayDgSlabColor(i)); });
+            }
+            if (EBAY_AGE_ADJ_ON) {
+                ebayAgeAdj.forEach(function(row, i) {
+                    const b = ebayAgeAdjBand(row);
+                    if (b) add(ebayDgAgeBandKey(b), 'Ageing Rule · ' + b.min + '–' + b.max + ' days', ebayDgSlabColor(i));
+                });
+            }
+            if ($('#ebay-lmp-cap-table').length) {
+                add('lmp-low', 'LMP cap · Below', '#0d6efd');
+                add('lmp-mid', 'LMP cap · Between', '#6f42c1');
+                add('lmp-high', 'LMP cap · Above', '#fd7e14');
+            }
+            return out;
+        }
+        /** Live counts of every rule row. CVR / LMP counts leave out clearance SKUs, so they wait for the clearance list. */
+        function ebayDgCollectRuleCounts() {
+            const out = {};
+            const ready = !!ebayClearanceYesSet;
+            if (EBAY_DIL_GROI_CVR_ADJ && ready) {
+                const counts = ebayDilGroiCollectCvrAdjCounts();
+                ebayCvrGroiAdjNow().slabs.forEach(function(s, i) {
+                    const k = ebayDgCvrSlabKey(s);
+                    if (!(k in out)) out[k] = counts[i] || 0;
+                });
+            }
+            if (EBAY_AGE_ADJ_ON) {
+                const counts = ebayAgeAdjCollectCounts();
+                ebayAgeAdj.forEach(function(row, i) {
+                    const b = ebayAgeAdjBand(row);
+                    if (!b) return;
+                    const k = ebayDgAgeBandKey(b);
+                    if (!(k in out)) out[k] = counts[i] || 0;
+                });
+            }
+            if ($('#ebay-lmp-cap-table').length && ready) {
+                const lmp = ebayDilGroiCollectLmpCapCounts();
+                out['lmp-low'] = lmp.low;
+                out['lmp-mid'] = lmp.mid;
+                out['lmp-high'] = lmp.high;
+            }
+            return out;
+        }
+        /** Save today's rule counts for the history dots (merged into today's saved record). Only a loaded page counts. */
+        let ebayDgRuleSnapPending = false;
+        function ebayDgSnapRuleCounts() {
+            try {
+                // Once per modal open (not on every edit, which would save half-typed rules); retried until the clearance list is in.
+                if (!ebayDgRuleSnapPending || window._ebayDilRulesLoaded !== true) return;
+                ebayDgRuleLiveCounts = ebayDgCollectRuleCounts();
+                ebayDgSnapLocal(ebayDgHistKey('rule'), ebayDgRuleLiveCounts, true);
+                if (ebayClearanceYesSet) ebayDgRuleSnapPending = false;
+            } catch (e) { /* ignore */ }
+        }
+        function ebayDgPutRuleDot($host, key, label, color) {
+            if (!$host.length) return;
+            const $old = $host.find('.ebay-dg-hist-dot[data-chart="rule"]');
+            if ($old.length === 1 && $old.attr('data-band') === key) return;
+            $old.remove();
+            $host.append(ebayDgHistDotHtml('rule', key, color, label));
+        }
+        function ebayPaintRuleHistDots() {
+            try {
+                const spec = {};
+                ebayDgRuleSlices().forEach(function(sl) { spec[sl.key] = sl; });
+                const put = function($host, key) {
+                    if (key && spec[key]) ebayDgPutRuleDot($host, key, spec[key].label, spec[key].color);
+                    else $host.find('.ebay-dg-hist-dot[data-chart="rule"]').remove();
+                };
+                if (EBAY_DIL_GROI_CVR_ADJ) {
+                    const slabs = ebayCvrGroiAdjNow().slabs;
+                    let k = 0;
+                    $('#ebay-cvr-groi-tbody tr').each(function() {
+                        // A row ignored for From > To has no slab (and no dot).
+                        put($(this).find('.ebay-dg-count').first(), $(this).hasClass('table-warning') || !slabs[k] ? null : ebayDgCvrSlabKey(slabs[k++]));
+                    });
+                }
+                if (EBAY_AGE_ADJ_ON) {
+                    $('#ebay-age-adj-tbody tr').each(function(i) {
+                        const b = ebayAgeAdjBand(ebayAgeAdj[i]);
+                        put($(this).find('.ebay-dg-count').first(), b ? ebayDgAgeBandKey(b) : null);
+                    });
+                }
+                ['low', 'mid', 'high'].forEach(function(row) {
+                    put($('#ebay-lmp-cap-table tr[data-row="' + row + '"] .ebay-dg-count').first(), 'lmp-' + row);
+                });
+            } catch (e) { /* ignore */ }
+        }
         function ebayDgTodayKey() {
             try {
                 return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
@@ -2254,12 +2386,12 @@
                 return new Date().toISOString().slice(0, 10);
             }
         }
-        function ebayDgSnapLocal(storeKey, counts) {
+        function ebayDgSnapLocal(storeKey, counts, merge) {
             try {
                 const today = ebayDgTodayKey();
                 let hist = {};
                 try { hist = JSON.parse(localStorage.getItem(storeKey) || '{}') || {}; } catch (e) { hist = {}; }
-                hist[today] = counts;
+                hist[today] = merge ? Object.assign({}, hist[today] || {}, counts) : counts;
                 const keys = Object.keys(hist).sort();
                 while (keys.length > 90) delete hist[keys.shift()];
                 localStorage.setItem(storeKey, JSON.stringify(hist));
@@ -2340,14 +2472,15 @@
             return out;
         }
         function ebayDgDrawHist(chart, band, rows) {
-            const slices = chart === 'cvr' ? ebayDgCvrBands()
-                : (chart === 'clearance' ? [{ key: 'count', label: 'Clearance', color: '#dc3545' }] : ebayDgDilSlices);
+            const slices = chart === 'rule' ? ebayDgRuleSlices()
+                : (chart === 'cvr' ? ebayDgCvrBands()
+                : (chart === 'clearance' ? [{ key: 'count', label: 'Clearance', color: '#dc3545' }] : ebayDgDilSlices));
             const spec = slices.find(function(s) { return s.key === band; })
                 || { key: band, label: band, color: '#6f42c1' };
             const plot = ebayDgPadHistoryDays(rows, 30);
             const labels = plot.map(function(r) { return r.label || r.date; });
             const values = plot.map(function(r) { return Number(r[band]) || 0; });
-            $('#ebay-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : (chart === 'clearance' ? '' : 'Dil ')) + spec.label + ' count · last 30 days');
+            $('#ebay-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : ((chart === 'clearance' || chart === 'rule') ? '' : 'Dil ')) + spec.label + ' count · last 30 days');
             const $wrap = $('#ebay-dg-hist-wrap').addClass('is-open');
             if ($wrap.length && $wrap[0].scrollIntoView) {
                 $wrap[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -2439,8 +2572,11 @@
             });
         }
         function ebayDgOpenHist(chart, band) {
-            const storeKey = chart === 'cvr' ? ebayDgHistKey('cvr') : (chart === 'clearance' ? ebayDgHistKey('clr') : ebayDgHistKey('dil'));
-            const live = chart === 'cvr' ? ebayDgCvrLiveCounts : (chart === 'clearance' ? ebayDgClearanceLiveCounts : ebayDgDilLiveCounts);
+            if (chart === 'rule') ebayDgRuleLiveCounts = ebayDgCollectRuleCounts();
+            const storeKey = chart === 'rule' ? ebayDgHistKey('rule')
+                : (chart === 'cvr' ? ebayDgHistKey('cvr') : (chart === 'clearance' ? ebayDgHistKey('clr') : ebayDgHistKey('dil')));
+            const live = chart === 'rule' ? ebayDgRuleLiveCounts
+                : (chart === 'cvr' ? ebayDgCvrLiveCounts : (chart === 'clearance' ? ebayDgClearanceLiveCounts : ebayDgDilLiveCounts));
             const applyToday = function(rows) {
                 const list = ebayDgPadHistoryDays(rows, 30);
                 const today = ebayDgTodayKey();
@@ -2583,6 +2719,8 @@
             ebayDgClearanceLiveCounts = { count: n };
             // Daily history dot (same graph as the slab counts). Only a loaded page counts: a half-loaded table would save a wrong day.
             if (window._ebayDilRulesLoaded === true) ebayDgSnapLocal(ebayDgHistKey('clr'), ebayDgClearanceLiveCounts);
+            // The CVR / LMP rule counts wait for this list (they leave out clearance SKUs): save them once it is here.
+            if ($('#ebayDilGroiModal').hasClass('show')) ebayDgSnapRuleCounts();
             const slot = document.querySelector('#ebay-dg-clearance-block .ebay-dg-clearance-dot-slot');
             if (slot && !slot.firstChild) slot.innerHTML = ebayDgHistDotHtml('clearance', 'count', '#dc3545', 'Clearance');
         }
@@ -2621,7 +2759,11 @@
                         }
                     });
                     ebayPaintClearanceSlabCount();
+                    ebayPaintCvrGroiAdjCounts();
+                    ebayPaintAgeAdjCounts();
                     ebayPaintLmpCapCounts();
+                    ebayDgSnapRuleCounts();
+                    ebayPaintRuleHistDots();
                     return;
                 }
 
@@ -2647,6 +2789,8 @@
                     }
                 });
                 ebayPaintClearanceSlabCount();
+                ebayDgSnapRuleCounts();
+                ebayPaintRuleHistDots();
             } catch (e) {
                 console.warn('Sprc Dil pies', e);
             }
@@ -3804,6 +3948,7 @@
                     ebayScheduleDilGroiAutosave();
                 });
             $('#ebayDilGroiModal').off('shown.bs.modal.ebaydg').on('shown.bs.modal.ebaydg', function() {
+                ebayDgRuleSnapPending = true;
                 setTimeout(function() { renderEbayDilGroiPies(); }, 50);
             });
             $('#ebayDilGroiModal').off('hidden.bs.modal.ebaydg').on('hidden.bs.modal.ebaydg', function() {

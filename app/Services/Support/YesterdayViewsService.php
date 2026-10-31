@@ -419,6 +419,46 @@ class YesterdayViewsService
     }
 
     /**
+     * Re-fetch the given settled Pacific days from SP-API and overwrite channel_yesterday_views,
+     * then rebuild the Amazon Y Views / Y CVR history for those days. Used once to replace the
+     * doubled values saved before amazonSessionsByAsin() asked for a single date.
+     *
+     * @param  list<string>  $dates  Y-m-d
+     * @param  bool  $write  false = fetch and report only, nothing is saved
+     * @param  null|callable(string, ?int, ?int): void  $progress  (date, stored views, fetched views)
+     * @return array<string, int> date => fetched sessions
+     */
+    public function refetchAmazonSettled(array $dates, bool $write = true, ?callable $progress = null): array
+    {
+        $stored = [];
+        if ($dates !== []) {
+            $stored = $this->storedAmazonViews(min($dates));
+        }
+
+        $done = [];
+        foreach ($dates as $d) {
+            $byAsin = $this->amazonSessionsWithRetry($d);
+            $sum = $byAsin === null ? 0 : (int) array_sum($byAsin);
+            if ($progress) {
+                $progress($d, $stored[$d] ?? null, $byAsin === null ? null : $sum);
+            }
+            if ($byAsin === null || $sum <= 0) {
+                continue;
+            }
+            if ($write) {
+                $this->store('amazon', $d, $sum, 'sp_api_settled');
+            }
+            $done[$d] = $sum;
+        }
+
+        if ($write && $done !== []) {
+            $this->rebuildAmazonYHistory(array_keys($done));
+        }
+
+        return $done;
+    }
+
+    /**
      * @return array<string, int> Pacific date => stored Amazon views (> 0 only)
      */
     private function storedAmazonViews(string $since): array
@@ -551,9 +591,12 @@ class YesterdayViewsService
             return null;
         }
 
-        $day = Carbon::parse($date, self::TZ);
-        $start = $day->copy()->startOfDay()->utc()->toIso8601ZuluString();
-        $end = $day->copy()->endOfDay()->utc()->toIso8601ZuluString();
+        // The Sales & Traffic report works in whole dates and truncates the timestamps. A Pacific day
+        // converted to UTC (07:00Z → 06:59:59Z next day) therefore spanned TWO dates and returned the sum
+        // of both, so every stored 1-day value was about double. Ask for exactly one date instead.
+        $ymd = Carbon::parse($date, self::TZ)->toDateString();
+        $start = $ymd.'T00:00:00Z';
+        $end = $ymd.'T23:59:59Z';
 
         $create = Http::withHeaders([
             'x-amz-access-token' => $accessToken,
@@ -586,6 +629,13 @@ class YesterdayViewsService
         }
         if (($status['processingStatus'] ?? '') !== 'DONE') {
             throw new \RuntimeException('Amazon L1 report timed out');
+        }
+
+        // Guard against the two-date regression: Amazon echoes the range it actually used.
+        $echoStart = substr((string) ($status['dataStartTime'] ?? ''), 0, 10);
+        $echoEnd = substr((string) ($status['dataEndTime'] ?? ''), 0, 10);
+        if ($echoStart !== '' && $echoEnd !== '' && ($echoStart !== $ymd || $echoEnd !== $ymd)) {
+            Log::warning("Amazon L1 report for {$ymd} covered {$echoStart}..{$echoEnd}; expected a single date");
         }
 
         $documentId = $status['reportDocumentId'] ?? null;

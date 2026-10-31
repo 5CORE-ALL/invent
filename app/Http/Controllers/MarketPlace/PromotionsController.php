@@ -42,7 +42,11 @@ class PromotionsController extends Controller
      * Yes/No saved from the pen button overrides it.
      */
     private const COUPON_SUPPORT = [
-        // Sellers can create coupons / discount codes
+        // Sellers can create coupons / promo codes.
+        // Checked against seller docs (Oct 2026): newegg (Seller Portal > Marketing > Promotion Code),
+        // macys (Mirakl seller promotions with promo_code), walmart (Promo Code / Extra Savings
+        // discounts, eligibility applies), temu (Marketing Center > Coupons), shein (store coupons;
+        // may need account permission).
         'amazon' => true,
         'ebay' => true,
         'shopify' => true,
@@ -52,22 +56,18 @@ class PromotionsController extends Controller
         'etsy' => true,
         'reverb' => true,
         'google' => true,
-        // Pricing / promotions controlled by the platform, no seller coupons
-        'temu' => false,
-        'bestbuy' => false,
-        'doba' => false,
-        'macys' => false,
-        'wayfair' => false,
-        'shein' => false,
-        'newegg' => false,
-        'walmart' => false,
-        'purchasingpower' => false,
-        'pls' => false,
-        'mercari' => false,
-        'poshmark' => false,
-        'depop' => false,
-        'vinted' => false,
-        'instagram' => false,
+        'newegg' => true,
+        'macy' => true,       // matches "Macy", "Macy's", "Macys"
+        'walmart' => true,
+        'temu' => true,
+        'shein' => true,
+        // Confirmed no seller-created coupons
+        'wayfair' => false,   // suppliers only join Wayfair-run promotions
+        'mercari' => false,   // platform-issued coupons only
+        'poshmark' => false,  // no seller coupon codes
+        // Not confirmed either way -> left out so they show "—" (unknown) instead of a guessed ✖:
+        // bestbuy (sellers set a Discount Price, no promo code found), doba, purchasingpower,
+        // pls, depop, vinted, instagram.
     ];
 
     private function couponSupport(string $channel): ?bool
