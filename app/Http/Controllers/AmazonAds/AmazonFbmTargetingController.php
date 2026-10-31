@@ -1344,7 +1344,8 @@ class AmazonFbmTargetingController extends Controller
             $ph = implode(',', array_fill(0, count($chunk), '?'));
             $rows = DB::table('product_master')
                 ->whereNull('deleted_at')
-                ->whereRaw('UPPER(TRIM(REPLACE(parent, CHAR(160), " "))) IN ('.$ph.')', $chunk)
+                // A plain bound string (U+00A0) takes the column's collation; CHAR(160) / UNHEX() would not convert or would clash.
+                ->whereRaw('UPPER(TRIM(REPLACE(parent, ?, " "))) IN ('.$ph.')', array_merge(["\u{00A0}"], $chunk))
                 ->orderBy('sku')
                 ->get(array_merge(['parent', 'sku'], $cols));
 
