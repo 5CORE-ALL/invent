@@ -36,6 +36,7 @@
     #mlf-table td.mlf-aplus { min-width: 340px; max-width: 420px; white-space: normal; }
     .mlf-aplus-box { max-height: 120px; overflow: auto; font-size: 12px; line-height: 1.4; }
     .mlf-aplus-box img { max-width: 90px; max-height: 70px; height: auto; margin: 0 4px 4px 0; vertical-align: top; border-radius: 4px; }
+    .mlf-aplus-box.mlf-code { font-family: Consolas, monospace; font-size: 11px; white-space: pre-wrap; word-break: break-all; }
     .mlf-aplus-box table { max-width: 100%; }
     .mlf-aplus-box * { max-width: 100%; }
     #mlf-table tr:hover td { background: #f1f5f9; }
@@ -115,8 +116,14 @@
             html += '<tr>';
             keys.forEach(function (key) {
                 var v = row[key] == null ? '' : String(row[key]);
-                var empty = v === '' && ['title', 'description', 'aplus', 'images', 'price', 'inventory'].indexOf(key) !== -1;
+                var empty = v === '' && ['title', 'bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5', 'description', 'aplus', 'aplus_html', 'images', 'price', 'inventory'].indexOf(key) !== -1;
                 var shown = key === 'images' && v ? (v.split(', ').length + ' image link(s): ' + v) : v;
+                if (key === 'aplus_html') {
+                    // Exact stored A+ HTML source.
+                    html += '<td class="mlf-aplus' + (empty ? ' mlf-empty' : '') + '">' +
+                        (v ? '<div class="mlf-aplus-box mlf-code">' + esc(v) + '</div>' : '') + '</td>';
+                    return;
+                }
                 if (key === 'aplus') {
                     // A+ is a full HTML page: show it rendered (as in Description Master); the CSV keeps the HTML.
                     html += '<td class="mlf-aplus' + (empty ? ' mlf-empty' : '') + '">' +
