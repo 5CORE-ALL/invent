@@ -7,14 +7,14 @@ use PHPUnit\Framework\TestCase;
 
 class VariationListingAplusTest extends TestCase
 {
-    private function pack(string $text, string $aplus, string $mode): array
+    private function pack(string $text, string $aplus): array
     {
-        return ['description' => $text, 'aplus' => $aplus, 'mode' => $mode];
+        return ['description' => $text, 'aplus' => $aplus];
     }
 
-    public function test_a_plus_is_sent_as_html_to_ebay_when_chosen(): void
+    public function test_a_plus_is_sent_as_html_to_ebay_when_saved(): void
     {
-        $pack = $this->pack('Plain text', '<div><h2>Big</h2><p>Page</p></div>', 'aplus');
+        $pack = $this->pack('Plain text', '<div><h2>Big</h2><p>Page</p></div>');
 
         $this->assertSame('<div><h2>Big</h2><p>Page</p></div>', VariationListingContent::pickDescription($pack, 'ebaytwo'));
         $this->assertSame('<div><h2>Big</h2><p>Page</p></div>', VariationListingContent::pickDescription($pack, 'ebay'));
@@ -22,22 +22,22 @@ class VariationListingAplusTest extends TestCase
 
     public function test_marketplaces_without_html_keep_the_text_description(): void
     {
-        $pack = $this->pack('Plain text', '<div>Page</div>', 'aplus');
+        $pack = $this->pack('Plain text', '<div>Page</div>');
 
         $this->assertSame('Plain text', VariationListingContent::pickDescription($pack, 'temu'));
         $this->assertSame('Plain text', VariationListingContent::pickDescription($pack, 'amazon'));
     }
 
-    public function test_text_mode_ignores_the_a_plus_page(): void
+    public function test_the_text_description_is_used_when_there_is_no_a_plus(): void
     {
-        $pack = $this->pack('Plain text', '<div>Page</div>', 'text');
+        $pack = $this->pack('Plain text', '');
 
         $this->assertSame('Plain text', VariationListingContent::pickDescription($pack, 'ebay'));
     }
 
     public function test_a_plus_text_is_used_when_there_is_no_text_description(): void
     {
-        $pack = $this->pack('', '<p>First</p><p>Second &amp; more</p>', 'text');
+        $pack = $this->pack('', '<p>First</p><p>Second &amp; more</p>');
 
         $this->assertSame('<p>First</p><p>Second &amp; more</p>', VariationListingContent::pickDescription($pack, 'ebay'));
         $this->assertSame("First\nSecond & more", VariationListingContent::pickDescription($pack, 'temu'));

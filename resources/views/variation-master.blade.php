@@ -186,6 +186,30 @@
             border-style: dashed;
         }
 
+        #vm-tabulator .vm-img-cell {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 0;
+        }
+
+        #vm-tabulator .vm-img-count {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f766e;
+        }
+
+        #vm-tabulator .vm-img-count.is-zero {
+            color: #94a3b8;
+            font-weight: 600;
+        }
+
+        #vm-tabulator .vm-img-actions {
+            display: inline-flex;
+            gap: 4px;
+        }
+
         #vm-tabulator .vm-thumbs {
             display: inline-flex;
             align-items: center;
@@ -244,6 +268,22 @@
             cursor: pointer;
         }
 
+        .vm-img-tile .vm-img-dl {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, .75);
+            color: #fff;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+        }
+
         .vm-img-tile .vm-img-no {
             position: absolute;
             left: 3px;
@@ -288,7 +328,7 @@
                             <i class="bi bi-arrow-repeat me-1"></i>Update
                         </button>
                         <input type="file" id="vm-upload-file" class="d-none" accept=".xlsx,.xls,.csv">
-                        <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Title, Description, A+ Content, Bullet 1–5 and Parent Images are shared by every child of that parent and are used when a variation listing is published from Listing Manager or Missing L. Listing Content picks Text or A+ where the marketplace takes A+ (eBay); other marketplaces use the text. Amazon keeps each child's own content and images.</span>
+                        <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Title, Description, A+ Content, Bullet 1–5 and Parent Images are shared by every child of that parent and are used when a variation listing is published from Listing Manager or Missing L. Where the marketplace takes A+ (eBay) a saved A+ Content is sent instead of the Description; other marketplaces use the Description. Amazon keeps each child's own content and images.</span>
                         <span class="small ms-auto" id="vm-status"></span>
                     </div>
                 </div>
@@ -337,16 +377,6 @@
                         </div>
                     </div>
                     <div class="vm-bulk-field">
-                        <input class="form-check-input vm-apply" type="checkbox" data-field="desc_mode" title="Apply this field">
-                        <div class="vm-bulk-body">
-                            <label class="vm-bulk-label">Listing Content</label>
-                            <select class="form-select form-select-sm vm-bulk-input" data-field="desc_mode">
-                                <option value="text">Text description</option>
-                                <option value="aplus">A+ content</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="vm-bulk-field">
                         <input class="form-check-input vm-apply" type="checkbox" data-field="aplus" title="Apply this field">
                         <div class="vm-bulk-body">
                             <label class="vm-bulk-label">A+ Content (HTML)</label>
@@ -381,7 +411,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted">HTML for the parent's A+ page. It replaces the text description on marketplaces that accept HTML (eBay) when Listing Content is set to A+. Other marketplaces keep using the text description. Shared by every child of the parent.</p>
+                    <p class="small text-muted">HTML for the parent's A+ page. It replaces the text description on marketplaces that accept HTML (eBay). Other marketplaces keep using the Description. Shared by every child of the parent.</p>
                     <div class="row g-3">
                         <div class="col-lg-6">
                             <label class="form-label small fw-semibold mb-1">A+ HTML</label>
@@ -413,8 +443,13 @@
                 <div class="modal-body">
                     <p class="small text-muted">Photos of the parent listing. A variation listing on eBay, Temu and AliExpress shows these first in its shared gallery; each child keeps its own Image Master photos for its variation. Amazon always uses each child's own images.</p>
                     <div class="mb-3">
-                        <input type="file" class="form-control form-control-sm" id="vm-images-file" accept="image/*" multiple>
-                        <div class="small text-muted mt-1">JPG, PNG, WEBP or GIF, up to 12 MB each, 20 photos per parent.</div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="file" class="form-control form-control-sm" id="vm-images-file" accept="image/*" multiple>
+                            <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="vm-images-download">
+                                <i class="bi bi-download me-1"></i>Download all (ZIP)
+                            </button>
+                        </div>
+                        <div class="small text-muted mt-1">JPG, PNG, WEBP or GIF, up to 12 MB each, 20 photos per parent. <strong id="vm-images-count"></strong></div>
                     </div>
                     <div class="vm-img-grid" id="vm-images-grid"></div>
                 </div>
@@ -574,28 +609,6 @@
                         cssClass: 'vm-editable vm-text',
                         formatter: textFormatter
                     },
-                    bulletColumn(1),
-                    bulletColumn(2),
-                    bulletColumn(3),
-                    bulletColumn(4),
-                    bulletColumn(5),
-                    {
-                        title: 'Listing Content',
-                        field: 'desc_mode',
-                        editor: 'list',
-                        editorParams: { values: { text: 'Text description', aplus: 'A+ content' }, clearable: false },
-                        headerFilter: 'list',
-                        headerFilterParams: { values: { text: 'Text', aplus: 'A+' }, clearable: true },
-                        headerFilterFunc: '=',
-                        headerFilterPlaceholder: 'Text / A+',
-                        minWidth: 140,
-                        cssClass: 'vm-editable',
-                        formatter: function (cell) {
-                            return String(cell.getValue() || '') === 'aplus'
-                                ? '<span class="vm-chip is-aplus">A+ content</span>'
-                                : '<span class="vm-chip">Text</span>';
-                        }
-                    },
                     {
                         title: 'A+ Content',
                         field: 'aplus',
@@ -613,6 +626,11 @@
                             openAplusModal(cell.getRow().getData());
                         }
                     },
+                    bulletColumn(1),
+                    bulletColumn(2),
+                    bulletColumn(3),
+                    bulletColumn(4),
+                    bulletColumn(5),
                     {
                         title: 'Parent Images',
                         field: 'parent_images',
@@ -620,18 +638,28 @@
                         minWidth: 150,
                         formatter: function (cell) {
                             const list = Array.isArray(cell.getValue()) ? cell.getValue() : [];
-                            if (!list.length) {
-                                return '<button type="button" class="vm-pill-btn is-empty"><i class="bi bi-upload"></i> Upload</button>';
+                            let html = '<div class="vm-img-cell">';
+                            html += '<span class="vm-img-count' + (list.length ? '' : ' is-zero') + '" title="Images uploaded for this parent">' + list.length + (list.length === 1 ? ' image' : ' images') + '</span>';
+                            if (list.length) {
+                                html += '<span class="vm-thumbs">';
+                                list.slice(0, 3).forEach(function (url) {
+                                    html += '<img src="' + escapeHtml(url) + '" alt="" loading="lazy">';
+                                });
+                                html += '</span>';
                             }
-                            let html = '<span class="vm-thumbs">';
-                            list.slice(0, 3).forEach(function (url) {
-                                html += '<img src="' + escapeHtml(url) + '" alt="" loading="lazy">';
-                            });
-                            html += '</span> <button type="button" class="vm-pill-btn" title="Manage parent images">' + list.length + (list.length === 1 ? ' photo' : ' photos') + '</button>';
+                            html += '<span class="vm-img-actions">'
+                                + '<button type="button" class="vm-pill-btn vm-img-up" title="Upload images"><i class="bi bi-upload"></i></button>'
+                                + (list.length ? '<button type="button" class="vm-pill-btn vm-img-down" title="Download all images (ZIP)"><i class="bi bi-download"></i></button>' : '')
+                                + '</span></div>';
                             return html;
                         },
-                        cellClick: function (_e, cell) {
-                            openImagesModal(cell.getRow().getData());
+                        cellClick: function (e, cell) {
+                            const data = cell.getRow().getData();
+                            if (e.target.closest('.vm-img-down')) {
+                                downloadParentImages(data);
+                                return;
+                            }
+                            openImagesModal(data);
                         }
                     },
                     {
@@ -768,8 +796,7 @@
             function listingSnapshot(row) {
                 const snapshot = {
                     title: row.title || '',
-                    description: row.description || '',
-                    desc_mode: row.desc_mode === 'aplus' ? 'aplus' : 'text'
+                    description: row.description || ''
                 };
                 bulletFields.forEach(function (field) {
                     snapshot[field] = row[field] || '';
@@ -779,7 +806,7 @@
 
             table.on('cellEdited', function (cell) {
                 const field = cell.getField();
-                const listingFields = ['title', 'description', 'desc_mode'].concat(bulletFields);
+                const listingFields = ['title', 'description'].concat(bulletFields);
                 const childFields = ['variation_type', 'variation_name'];
                 if (childFields.indexOf(field) === -1 && listingFields.indexOf(field) === -1) return;
                 const row = cell.getRow().getData();
@@ -824,6 +851,7 @@
             // ---- A+ content and parent images (shared by every child of the parent) ----
             const imagesUrl = @json(route('variation.master.parent.images.upload'));
             const imageDeleteUrl = @json(route('variation.master.parent.images.delete'));
+            const imagesDownloadUrl = @json(route('variation.master.parent.images.download'));
             const aplusModalEl = document.getElementById('vm-aplus-modal');
             const imagesModalEl = document.getElementById('vm-images-modal');
             const aplusInput = document.getElementById('vm-aplus-input');
@@ -900,6 +928,8 @@
             function renderImagesGrid() {
                 const grid = document.getElementById('vm-images-grid');
                 const list = (panelRow && Array.isArray(panelRow.parent_images)) ? panelRow.parent_images : [];
+                document.getElementById('vm-images-count').textContent = list.length + (list.length === 1 ? ' image' : ' images') + ' uploaded';
+                document.getElementById('vm-images-download').disabled = !list.length;
                 if (!list.length) {
                     grid.innerHTML = '<div class="small text-muted">No parent images yet. Choose files above to upload.</div>';
                     return;
@@ -907,9 +937,48 @@
                 grid.innerHTML = list.map(function (url, i) {
                     return '<div class="vm-img-tile"><a href="' + escapeHtml(url) + '" target="_blank" rel="noopener"><img src="' + escapeHtml(url) + '" alt=""></a>'
                         + '<span class="vm-img-no">' + (i + 1) + '</span>'
+                        + '<a class="vm-img-dl" href="' + escapeHtml(url) + '" download title="Download this image"><i class="bi bi-download"></i></a>'
                         + '<button type="button" class="vm-img-del" data-url="' + escapeHtml(url) + '" title="Remove this image">&times;</button></div>';
                 }).join('');
             }
+
+            function downloadParentImages(row, statusTarget) {
+                const target = statusTarget || null;
+                const say = function (text, ok) {
+                    if (target) {
+                        target.className = 'small me-auto ' + (ok ? 'text-success' : 'text-danger');
+                        target.textContent = text;
+                    } else {
+                        setStatus(text, ok);
+                    }
+                };
+                say('Preparing the ZIP…', true);
+                fetch(imagesDownloadUrl + '?parent=' + encodeURIComponent(parentLabel(row)), {
+                    headers: { 'X-CSRF-TOKEN': csrf }
+                }).then(function (res) {
+                    if (!res.ok) {
+                        return res.json().catch(function () { return null; }).then(function (json) {
+                            throw new Error((json && json.message) || 'Download failed.');
+                        });
+                    }
+                    return res.blob();
+                }).then(function (blob) {
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = parentLabel(row).replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') + '-images.zip';
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    setTimeout(function () { URL.revokeObjectURL(link.href); }, 2000);
+                    say('Downloaded the images of ' + parentLabel(row) + '.', true);
+                }).catch(function (err) {
+                    say(err.message || 'Download failed.', false);
+                });
+            }
+
+            document.getElementById('vm-images-download')?.addEventListener('click', function () {
+                if (panelRow) downloadParentImages(panelRow, imagesStatus);
+            });
 
             function openImagesModal(row) {
                 panelRow = row;

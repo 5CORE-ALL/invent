@@ -20,9 +20,6 @@ class VariationListingContent
     /** A+ (HTML) description of the parent, used instead of the text description on marketplaces that accept it. */
     public const APLUS_KEY = 'variation_listing_aplus';
 
-    /** 'text' or 'aplus': which description a variation listing sends when the marketplace takes both. */
-    public const DESC_MODE_KEY = 'variation_listing_desc_mode';
-
     /** Parent gallery (public URLs) shared by every child of the parent. */
     public const IMAGES_KEY = 'variation_listing_images';
 
@@ -34,7 +31,7 @@ class VariationListingContent
     /** @var list<string> marketplace of each active variation run (innermost last) */
     private static array $channels = [];
 
-    /** @var array<string, array{title: string, description: string, bullets: list<string>, aplus: string, mode: string, images: list<string>}> */
+    /** @var array<string, array{title: string, description: string, bullets: list<string>, aplus: string, images: list<string>}> */
     private static array $cache = [];
 
     public static function activate(string $channel = ''): void
@@ -74,16 +71,16 @@ class VariationListingContent
     }
 
     /**
-     * The description a listing sends for this parent: the A+ page when it is chosen (or the only one)
-     * and the marketplace takes HTML, otherwise the text description (the A+ text when no text exists).
+     * The description a listing sends for this parent: the A+ page when one is saved and the
+     * marketplace takes HTML, otherwise the text description (the A+ text when no text exists).
      *
-     * @param  array{description: string, aplus: string, mode: string}  $pack
+     * @param  array{description: string, aplus: string}  $pack
      */
     public static function pickDescription(array $pack, string $channel): string
     {
         $text = (string) $pack['description'];
         $aplus = (string) $pack['aplus'];
-        if ($aplus !== '' && ($pack['mode'] === 'aplus' || $text === '')) {
+        if ($aplus !== '') {
             if (self::channelSupportsAplus($channel)) {
                 return $aplus;
             }
@@ -135,13 +132,13 @@ class VariationListingContent
     }
 
     /**
-     * @return array{title: string, description: string, bullets: list<string>, aplus: string, mode: string, images: list<string>}
+     * @return array{title: string, description: string, bullets: list<string>, aplus: string, images: list<string>}
      */
     public static function forParent(string $parent): array
     {
         $parent = ListingManagerFamily::normalizeParentKey($parent);
         if ($parent === '') {
-            return ['title' => '', 'description' => '', 'bullets' => [], 'aplus' => '', 'mode' => 'text', 'images' => []];
+            return ['title' => '', 'description' => '', 'bullets' => [], 'aplus' => '', 'images' => []];
         }
 
         $cacheKey = strtoupper($parent);
@@ -185,7 +182,6 @@ class VariationListingContent
             'description' => $description,
             'bullets' => $bullets,
             'aplus' => trim((string) ($values[self::APLUS_KEY] ?? '')),
-            'mode' => strtolower(trim((string) ($values[self::DESC_MODE_KEY] ?? ''))) === 'aplus' ? 'aplus' : 'text',
             'images' => $images,
         ];
         self::$cache[$cacheKey] = $pack;
