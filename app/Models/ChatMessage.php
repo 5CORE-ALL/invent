@@ -22,6 +22,7 @@ class ChatMessage extends Model
         'forwarded_from_id',
         'client_id',
         'parent_id',
+        'reply_to_id',
         'edited_at',
         'pinned_at',
         'pinned_by',

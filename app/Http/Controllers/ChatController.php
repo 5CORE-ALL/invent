@@ -308,6 +308,7 @@ class ChatController extends Controller
             'file' => 'nullable|file|max:'.ChatWorkspace::ATTACH_MAX_KB.'|mimes:'.implode(',', ChatWorkspace::ATTACH_EXT),
             'client_id' => 'nullable|string|max:64',
             'parent_id' => 'nullable|integer',
+            'reply_to_id' => 'nullable|integer',
         ]);
 
         $body = trim((string) ($validated['body'] ?? ''));
@@ -337,13 +338,21 @@ class ChatController extends Controller
             abort_unless($parent, 422, 'Thread parent was not found.');
         }
 
+        // WhatsApp-style quoted reply: the message being answered must be in this same chat.
+        $replyToId = 0;
+        if (! empty($validated['reply_to_id']) && Schema::hasColumn('chat_messages', 'reply_to_id')) {
+            $quoted = ChatMessage::query()->where('channel_id', $row->id)->where('id', (int) $validated['reply_to_id'])->first();
+            abort_unless($quoted, 422, 'The message you are replying to was not found.');
+            $replyToId = (int) $quoted->id;
+        }
+
         $lower = strtolower($body);
         if ((str_contains($lower, '@everyone') || str_contains($lower, '@channel')) && ! ChatWorkspace::canAnnounce($user)) {
             return response()->json(['message' => '@everyone and @channel are limited to channel managers.'], 403);
         }
 
         try {
-            $created = DB::transaction(function () use ($user, $row, $body, $file, $clientId, $parentId) {
+            $created = DB::transaction(function () use ($user, $row, $body, $file, $clientId, $parentId, $replyToId) {
                 $path = null;
                 $orig = null;
                 $mime = null;
@@ -377,6 +386,9 @@ class ChatController extends Controller
                 }
                 if ($parentId > 0 && Schema::hasColumn('chat_messages', 'parent_id')) {
                     $attrs['parent_id'] = $parentId;
+                }
+                if ($replyToId > 0) {
+                    $attrs['reply_to_id'] = $replyToId;
                 }
                 if ($mime && Schema::hasColumn('chat_messages', 'attachment_mime')) {
                     $attrs['attachment_mime'] = $mime;
@@ -1259,7 +1271,20 @@ class ChatController extends Controller
                 ->pluck('message_id');
         }
 
+        $quotes = [];
+        if (Schema::hasColumn('chat_messages', 'reply_to_id')) {
+            $quoteIds = collect($messages)->pluck('reply_to_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+            if ($quoteIds !== []) {
+                foreach (ChatMessage::query()->with('user:id,name')->whereIn('id', $quoteIds)->get() as $orig) {
+                    $quotes[(int) $orig->id] = ChatWorkspace::replyPreview($orig);
+                }
+            }
+        }
+
         foreach ($messages as $message) {
+            if (! empty($message->reply_to_id)) {
+                $message->reply_to_preview = $quotes[(int) $message->reply_to_id] ?? null;
+            }
             $message->reply_count = (int) ($counts[$message->id] ?? 0);
             $summary = [];
             foreach ($rx->get($message->id, collect()) as $reaction) {
