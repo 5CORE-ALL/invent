@@ -345,6 +345,18 @@
                 return col(title, field, Object.assign({ headerFilter: false, headerSort: false }, extra || {}));
             }
 
+            // SKU of the row's order, on every platform and in every view. Always shown (not in the column picker).
+            function skuColumn() {
+                return plain('SKU', 'sku', {
+                    frozen: true,
+                    minWidth: 170,
+                    formatter: c => {
+                        const v = String(c.getValue() || '').trim();
+                        return v ? '<strong>' + esc(v) + '</strong>' : '<span class="text-muted">—</span>';
+                    },
+                });
+            }
+
             let upsSheet = false;
             let directionBeforeUps = 'debit';
 
@@ -365,6 +377,7 @@
                         formatter: () => '<button type="button" class="btn btn-sm btn-outline-info py-0 px-1" title="Full UPS row"><i class="fas fa-eye"></i></button>',
                         cellClick: (e, cell) => openRaw(cell.getRow().getData()),
                     },
+                    skuColumn(),
                     text('Account Number', 'accountnumber', { minWidth: 120 }),
                     text('Invoice Number', 'invoicenumber', { minWidth: 160 }),
                     text('Invoice Date', 'invoicedate', { minWidth: 110 }),
@@ -396,6 +409,7 @@
                     },
                     col('Posted', 'posted_at', { frozen: true, minWidth: 130 }),
                     col('Order #', 'order_number', { frozen: true, minWidth: 150 }),
+                    skuColumn(),
                     moneyCol('Chargeback', 'total_amount'),
                     col('Reason', 'reason', { minWidth: 170 }),
                     col('Source', 'source', { minWidth: 100, formatter: c => SOURCE_BADGES[c.getValue()] || esc(c.getValue() || '') }),
@@ -419,7 +433,6 @@
                     plain('Labels', 'v_labels', { hozAlign: 'right', minWidth: 60 }),
                     plain('Weight', 'v_weight'),
                     plain('Tracking Status', 'v_status'),
-                    plain('SKUs', 'v_skus', { minWidth: 160 }),
                     col('Amazon Order', 'amazon_order_id', { minWidth: 150 }),
                     col('Settlement ID', 'settlement_id', { minWidth: 120 }),
                     col('Event Group ID', 'financial_event_group_id', { minWidth: 200 }),
@@ -440,7 +453,7 @@
                 menu.innerHTML = '';
                 table.getColumns().forEach(function (c) {
                     const def = c.getDefinition();
-                    if (!def.field || def.field === '_view') return;
+                    if (!def.field || def.field === '_view' || def.field === 'sku') return;
                     if (hidden.has(def.field)) c.hide();
                     const row = document.createElement('label');
                     const cb = document.createElement('input');
