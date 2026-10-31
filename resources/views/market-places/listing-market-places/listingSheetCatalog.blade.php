@@ -246,4 +246,5 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 @include('partials.listing-sku-search')
+@include('partials.master-listing-form', ['channel' => $channel, 'label' => $label])
 @endsection
