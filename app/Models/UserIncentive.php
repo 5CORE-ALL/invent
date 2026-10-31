@@ -17,12 +17,18 @@ class UserIncentive extends Model
         'sort_order',
         'is_active',
         'updated_by_user_id',
+        'achieved_at',
+        'achieved_notified_at',
+        'closed_notified_at',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'sort_order' => 'integer',
         'is_active' => 'boolean',
+        'achieved_at' => 'datetime',
+        'achieved_notified_at' => 'datetime',
+        'closed_notified_at' => 'datetime',
     ];
 
     protected static function booted(): void

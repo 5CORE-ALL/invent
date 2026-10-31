@@ -270,6 +270,11 @@
                 }).join('');
             }
 
+            // Sort helper: members without ratings always sort below rated ones.
+            function nullLast(a, b) {
+                return (a == null ? -1 : a) - (b == null ? -1 : b);
+            }
+
             function esc(s) {
                 return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
                     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -345,6 +350,24 @@
                     {
                         title: 'Ratings', field: 'ratings', minWidth: 230, widthGrow: 2, headerSort: false,
                         formatter: function (cell) { return ratingsHtml(cell.getValue()); }
+                    },
+                    {
+                        title: 'Overall Rating', field: 'overall_avg', width: 150, sorter: nullLast,
+                        formatter: function (cell) {
+                            var v = cell.getValue();
+                            if (v == null) return '<span class="text-muted">No ratings</span>';
+                            return '<div class="tv-rate-row" style="justify-content:center">' + starsHtml(v) +
+                                '<span class="tv-rate-num">' + Number(v).toFixed(1) + '</span></div>';
+                        }
+                    },
+                    {
+                        title: 'Reviews', field: 'reviewers', width: 100, sorter: 'number',
+                        formatter: function (cell) {
+                            var n = cell.getValue() || 0;
+                            return n
+                                ? '<span title="' + n + ' team member' + (n === 1 ? '' : 's') + ' reviewed this person"><b>' + n + '</b></span>'
+                                : '<span class="text-muted">0</span>';
+                        }
                     },
                     {
                         title: 'R&R', field: 'rr', minWidth: 200, widthGrow: 2, headerSort: false,
@@ -448,7 +471,7 @@
                     .then(function (res) {
                         if (!res.ok || !res.d.ok) throw new Error(res.d.message || 'Could not save review');
                         var row = table.getRows().find(function (r) { return r.getData().id === current.id; });
-                        if (row) { row.update({ ratings: res.d.ratings }); row.reformat(); }
+                        if (row) { row.update({ ratings: res.d.ratings, overall_avg: res.d.overall_avg, reviewers: res.d.reviewers }); row.reformat(); }
                         modal.hide();
                     })
                     .catch(function (err) {

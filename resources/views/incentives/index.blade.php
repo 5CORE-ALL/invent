@@ -288,6 +288,11 @@
                                                     <input class="form-check-input inc-active" type="checkbox" name="items[{{ $idx }}][is_active]" value="1" id="inc-active-{{ $person['id'] }}-{{ $idx }}" {{ $activeOn ? 'checked' : '' }}>
                                                     <label class="form-check-label small" for="inc-active-{{ $person['id'] }}-{{ $idx }}">Active</label>
                                                 </div>
+                                                <div class="form-check mt-1" title="Tick when the target is achieved. The user gets a congratulations message in chat asking them to claim it.">
+                                                    <input type="hidden" name="items[{{ $idx }}][is_achieved]" value="0">
+                                                    <input class="form-check-input inc-achieved" type="checkbox" name="items[{{ $idx }}][is_achieved]" value="1" id="inc-achieved-{{ $person['id'] }}-{{ $idx }}" {{ ! empty($row['is_achieved']) ? 'checked' : '' }}>
+                                                    <label class="form-check-label small" for="inc-achieved-{{ $person['id'] }}-{{ $idx }}">Achieved</label>
+                                                </div>
                                             </td>
                                             <td class="inc-days {{ $left !== null && $left <= 1 ? 'inc-cutoff-hot' : '' }}">{{ $daysLeftText($left) }}</td>
                                             <td class="text-end">
@@ -330,10 +335,11 @@
                                     @php
                                         $iso = $cutoffInput($row['additional_condition'] ?? '');
                                         $left = $daysLeft($iso);
-                                        $hot = $left !== null && $left <= 1;
+                                        $achieved = ! empty($row['is_achieved']);
+                                        $hot = ! $achieved && $left !== null && $left <= 1;
                                     @endphp
                                     <tr class="{{ $hot ? 'is-cutoff' : '' }}">
-                                        <td>{{ $row['title'] ?: '—' }}</td>
+                                        <td>{{ $row['title'] ?: '—' }}@if ($achieved) <span class="badge bg-success ms-1">Achieved</span>@endif</td>
                                         <td class="inc-amt">{{ $row['amount'] !== null && $row['amount'] !== '' ? $rupee($row['amount']) : '—' }}</td>
                                         <td>{!! nl2br(e($row['body'] ?: '—')) !!}</td>
                                         <td class="{{ $hot ? 'inc-cutoff-hot' : '' }}">{{ $cutoffLabel($row['additional_condition'] ?? '') }}</td>
@@ -377,6 +383,11 @@
                         <input type="hidden" data-name="is_active" value="0">
                         <input class="form-check-input inc-active" type="checkbox" data-name="is_active" value="1" checked>
                         <label class="form-check-label small">Active</label>
+                    </div>
+                    <div class="form-check mt-1" title="Tick when the target is achieved. The user gets a congratulations message in chat asking them to claim it.">
+                        <input type="hidden" data-name="is_achieved" value="0">
+                        <input class="form-check-input inc-achieved" type="checkbox" data-name="is_achieved" value="1">
+                        <label class="form-check-label small">Achieved</label>
                     </div>
                 </td>
                 <td class="inc-days">—</td>

@@ -415,7 +415,7 @@ class ChatController extends Controller
 
         $this->forgetPeerUnread($row, (int) $user->id);
 
-        // ACE (Automated Chat Event): keyword rules may create a one-time task. Never block sending.
+        // ATE (Auto Task Event): keyword rules may create a one-time task. Never block sending.
         try {
             $sent = $created->first();
             if ($sent instanceof ChatMessage) {

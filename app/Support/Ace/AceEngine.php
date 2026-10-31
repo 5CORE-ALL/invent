@@ -8,13 +8,16 @@ use App\Models\ChatChannel;
 use App\Models\ChatMessage;
 use App\Models\Task;
 use App\Models\User;
+use App\Support\AutomatedTaskSchedule;
+use App\Support\TaskBusinessTime;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
- * ACE (Automated Chat Event) engine.
+ * ATE (Auto Task Event) engine.
  *
  *  - trigger "column":       the scheduler (ace:run) tests the page's rows against the rule's
  *                            column condition and creates a one-time task per matching row.
@@ -77,13 +80,65 @@ class AceEngine
     }
 
     /**
+     * The rule's column conditions: the `conditions` list when set, else the legacy single
+     * column_key / operator / value.
+     *
+     * @return list<array{column_key: string, operator: string, value: string|null}>
+     */
+    public static function conditionsOf(AutoChatEvent $ace): array
+    {
+        $list = is_array($ace->conditions) ? $ace->conditions : [];
+        $list = array_values(array_filter($list, fn ($c) => is_array($c) && ! empty($c['column_key']) && ! empty($c['operator'])));
+        if ($list !== []) {
+            return array_map(fn ($c) => [
+                'column_key' => (string) $c['column_key'],
+                'operator' => (string) $c['operator'],
+                'value' => isset($c['value']) ? (string) $c['value'] : null,
+                'label' => isset($c['label']) && $c['label'] !== '' ? (string) $c['label'] : null,
+            ], $list);
+        }
+        if ($ace->column_key && $ace->operator) {
+            return [['column_key' => (string) $ace->column_key, 'operator' => (string) $ace->operator, 'value' => $ace->value]];
+        }
+
+        return [];
+    }
+
+    /**
+     * Does a row satisfy all (AND) or any (OR) of the conditions? No conditions = every row.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  list<array{column_key: string, operator: string, value: string|null}>  $conditions
+     */
+    public static function rowMatches(array $row, array $conditions, string $mode = 'all'): bool
+    {
+        if ($conditions === []) {
+            return true;
+        }
+        foreach ($conditions as $c) {
+            $hit = self::matches($row, $c['column_key'], $c['operator'], $c['value'] ?? null);
+            if ($mode === 'any' && $hit) {
+                return true;
+            }
+            if ($mode !== 'any' && ! $hit) {
+                return false;
+            }
+        }
+
+        return $mode !== 'any';
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public static function matchingRows(AutoChatEvent $ace): array
     {
-        $rows = AcePages::rows($ace->page);
+        $conditions = self::conditionsOf($ace);
+        $mode = $ace->match_mode === 'any' ? 'any' : 'all';
 
-        return array_values(array_filter($rows, fn ($r) => self::matches($r, $ace->column_key, $ace->operator, $ace->value)));
+        $rows = AcePages::rows((string) $ace->page, $ace->source_url ?: null, $ace->created_by ? (int) $ace->created_by : null);
+
+        return array_values(array_filter($rows, fn ($r) => self::rowMatches($r, $conditions, $mode)));
     }
 
     // ------------------------------------------------------------------
@@ -106,10 +161,24 @@ class AceEngine
 
         $created = 0;
         foreach ($q->get() as $ace) {
+            // Rules on analytics pages read a (large) page data feed: check them at most hourly,
+            // unless the last run hit the per-run cap and more rows are waiting.
+            $feed = ! empty($ace->source_url);
+            $gate = 'ate:checked:'.$ace->id;
+            if ($feed && ! $aceId && Cache::has($gate)) {
+                continue;
+            }
             try {
-                $created += self::fireForRows($ace, self::matchingRows($ace), 'column', null);
+                $n = self::fireForRows($ace, self::matchingRows($ace), 'column', null);
+                $created += $n;
+                if ($feed && $n < self::MAX_PER_RUN) {
+                    Cache::put($gate, 1, now()->addMinutes(55));
+                }
             } catch (\Throwable $e) {
                 Log::warning('ACE #'.$ace->id.' column run failed: '.$e->getMessage());
+                if ($feed) {
+                    Cache::put($gate, 1, now()->addMinutes(10));
+                }
             }
         }
 
@@ -188,6 +257,25 @@ class AceEngine
     // Firing
     // ------------------------------------------------------------------
 
+    public const FREQUENCIES = ['daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'];
+
+    /** @return list<string> the checked frequencies (valid ones only); empty = legacy once-per-row */
+    public static function frequenciesOf(AutoChatEvent $ace): array
+    {
+        $f = is_array($ace->frequencies ?? null) ? $ace->frequencies : [];
+
+        return array_values(array_filter(array_keys(self::FREQUENCIES), fn ($k) => in_array($k, $f, true)));
+    }
+
+    /** @return list<string> subject-key suffixes for the current day / ISO week / month */
+    private static function periodSuffixes(AutoChatEvent $ace): array
+    {
+        $now = now();
+        $map = ['daily' => 'd:'.$now->format('Y-m-d'), 'weekly' => 'w:'.$now->format('o-\\WW'), 'monthly' => 'm:'.$now->format('Y-m')];
+
+        return array_map(fn ($f) => $map[$f], self::frequenciesOf($ace));
+    }
+
     /**
      * @param  list<array<string, mixed>>  $rows
      * @param  array<string, mixed>|null  $ctx  chat context (message, sender, channel...)
@@ -198,21 +286,46 @@ class AceEngine
             return 0;
         }
 
-        $done = AutoChatEventRun::query()->where('ace_id', $ace->id)
-            ->whereIn('subject_key', array_map(fn ($r) => 'row:'.$r['id'], $rows))
-            ->pluck('subject_key')->flip();
+        // Periods this rule repeats on. Empty = legacy rule: one task per row, ever.
+        $periods = self::periodSuffixes($ace);
+        $keysFor = fn ($r) => $periods === []
+            ? ['row:'.AcePages::rowId($r)]
+            : array_map(fn ($p) => 'row:'.AcePages::rowId($r).':'.$p, $periods);
+
+        $allKeys = [];
+        foreach ($rows as $r) {
+            $allKeys = array_merge($allKeys, $keysFor($r));
+        }
+        $done = [];
+        foreach (array_chunk($allKeys, 500) as $chunk) {
+            $done += AutoChatEventRun::query()->where('ace_id', $ace->id)
+                ->whereIn('subject_key', $chunk)->pluck('subject_key')->flip()->all();
+        }
 
         $created = 0;
         foreach ($rows as $row) {
             if ($created >= self::MAX_PER_RUN) {
                 break;
             }
-            $key = 'row:'.$row['id'];
-            if (isset($done[$key])) {
+            // Keys whose day / week / month has no task yet for this row.
+            $due = array_values(array_filter($keysFor($row), fn ($k) => ! isset($done[$k])));
+            if ($due === []) {
                 continue;
             }
-            if (self::fireOne($ace, $key, (string) ($row['label'] ?? $key), $row, $source, $ctx)) {
+            $label = AcePages::rowLabel($row) ?: $due[0];
+            if (self::fireOne($ace, $due[0], $label, $row, $source, $ctx)) {
                 $created++;
+                // One task covers every due period (e.g. daily + monthly on the 1st).
+                foreach (array_slice($due, 1) as $extraKey) {
+                    try {
+                        AutoChatEventRun::query()->create([
+                            'ace_id' => $ace->id, 'subject_key' => $extraKey, 'subject_label' => mb_substr($label, 0, 255),
+                            'source' => $source, 'status' => 'skipped',
+                        ]);
+                    } catch (\Throwable $e) {
+                        // already claimed
+                    }
+                }
             }
         }
         $ace->forceFill(['last_run_at' => now()])->save();
@@ -242,8 +355,9 @@ class AceEngine
         }
 
         try {
-            $task = self::createTask($ace, $row ?? [], $ctx ?? [], $label);
-            $run->forceFill(['task_id' => $task->id])->save();
+            $tasks = self::createTasks($ace, $row ?? [], $ctx ?? [], $label);
+            // task_id = first task created (null when only recurring templates were scheduled).
+            $run->forceFill(['task_id' => $tasks[0]->id ?? null])->save();
             $ace->forceFill(['last_run_at' => now()])->save();
 
             return true;
@@ -260,13 +374,25 @@ class AceEngine
     // ------------------------------------------------------------------
 
     /**
+     * Build the task(s) from the rule's template: one per title (x one per assignee when "split"),
+     * plus recurring templates (automate_tasks) for the Daily / Weekly / Monthly frequencies.
+     *
      * @param  array<string, mixed>  $row
      * @param  array<string, mixed>  $ctx
+     * @return list<Task>
      */
-    private static function createTask(AutoChatEvent $ace, array $row, array $ctx, string $label): Task
+    private static function createTasks(AutoChatEvent $ace, array $row, array $ctx, string $label): array
     {
+        // {placeholders}: every scalar column, plus a [a-z0-9_] alias for names like "(Child) sku" -> {Child_sku}.
+        $cols = array_map(fn ($v) => is_scalar($v) ? (string) $v : '', $row);
+        foreach ($cols as $k => $v) {
+            $alias = trim((string) preg_replace('/[^a-z0-9_]+/i', '_', (string) $k), '_');
+            if ($alias !== '' && ! array_key_exists($alias, $cols)) {
+                $cols[$alias] = $v;
+            }
+        }
         $vars = array_merge(
-            array_map(fn ($v) => is_scalar($v) ? (string) $v : '', $row),
+            $cols,
             [
                 'row' => $label,
                 'message' => (string) ($ctx['message'] ?? ''),
@@ -275,26 +401,57 @@ class AceEngine
                 'date' => now()->toDateString(),
             ]
         );
+        $opt = is_array($ace->task_options ?? null) ? $ace->task_options : [];
 
         $creator = $ace->created_by ? User::query()->find($ace->created_by) : null;
-        $assignee = self::resolveAssignee($ace, $row, $ctx) ?? $creator;
-        if (! $assignee) {
+        $assignees = self::resolveAssignees($ace, $row, $ctx, $opt);
+        if ($assignees === [] && $creator) {
+            $assignees = [$creator];
+        }
+        if ($assignees === []) {
             throw new \RuntimeException('No assignee could be resolved for this rule.');
         }
+        $assignor = (! empty($opt['assignor_id']) ? User::query()->find((int) $opt['assignor_id']) : null) ?? $creator ?? $assignees[0];
+
+        $r = fn (string $key) => mb_substr(self::render((string) ($opt[$key] ?? ''), $vars), 0, 2048);
+        $link1 = mb_substr(self::render((string) ($ace->task_link ?? ''), $vars), 0, 2048);
+
+        $titles = [];
+        foreach ((array) ($opt['titles'] ?? []) as $t) {
+            $t = mb_substr(self::render((string) $t, $vars), 0, 1000);
+            if ($t !== '') {
+                $titles[] = $t;
+            }
+        }
+        if ($titles === []) {
+            $titles = [mb_substr(self::render((string) $ace->task_title, $vars), 0, 1000)];
+        }
+
+        $freqs = array_values(array_unique(array_map('strval', (array) ($opt['task_frequency'] ?? ['one_time']))));
+        $recurring = array_values(array_intersect(['daily', 'weekly', 'monthly'], $freqs));
+        $includeOneTime = in_array('one_time', $freqs, true) || $recurring === [];
+        $split = ! empty($opt['split']) && count($assignees) > 1;
 
         $due = now()->addDays((int) $ace->due_in_days);
-        $data = [
-            'title' => mb_substr(self::render($ace->task_title, $vars), 0, 1000),
-            'description' => self::render((string) $ace->task_description, $vars) ?: null,
+        $priority = in_array($ace->priority, ['low', 'normal', 'high'], true) ? $ace->priority : 'normal';
+        $links = [
+            'link1' => $link1, 'link2' => $r('l2'), 'link3' => $r('training_link'), 'link4' => $r('video_link'),
+            'link5' => $r('form_link'), 'link6' => $r('form_report_link'), 'link7' => $r('checklist_link'),
+            'link8' => $r('pl'), 'link9' => $r('process'),
+        ];
+        $description = self::render((string) $ace->task_description, $vars) ?: null;
+        $etc = max(0, (int) ($opt['etc_minutes'] ?? 10));
+
+        $base = $links + [
+            'description' => $description,
             'group' => $ace->task_group ?: null,
-            'priority' => in_array($ace->priority, ['low', 'normal', 'high'], true) ? $ace->priority : 'normal',
-            'assignor' => $creator?->email ?? $assignee->email,
-            'assign_to' => $assignee->email,
+            'priority' => $priority,
+            'assignor' => $assignor->email,
             'split_tasks' => 0,
             'parent_task_id' => null,
             'subtask_order' => 0,
             'status' => 'Todo',
-            'eta_time' => 10,
+            'eta_time' => $etc ?: 10,
             'start_date' => now(),
             'completion_date' => $due,
             'due_date' => $due,
@@ -305,8 +462,6 @@ class AceEngine
             'workspace' => 0,
             'order' => 0,
             'task_id' => '',
-            'link1' => '', 'link2' => '', 'link3' => '', 'link4' => '', 'link5' => '',
-            'link6' => '', 'link7' => '', 'link8' => '', 'link9' => '',
             'image' => null,
             'is_data_from' => 0,
             'is_automate_task' => 0,
@@ -316,9 +471,39 @@ class AceEngine
             'delete_feedback' => '',
         ];
         if (Schema::hasColumn('tasks', 'screenshots')) {
-            $data['screenshots'] = [];
+            $base['screenshots'] = [];
+        }
+        if (Schema::hasColumn('tasks', 'is_corrective_action')) {
+            $base['is_corrective_action'] = ! empty($opt['is_corrective_action']) ? 1 : 0;
         }
 
+        $joinedEmails = implode(', ', array_map(fn ($u) => $u->email, $assignees));
+        $created = [];
+
+        if ($includeOneTime) {
+            foreach ($titles as $title) {
+                if ($split) {
+                    foreach ($assignees as $person) {
+                        $created[] = self::saveTask(array_merge($base, ['title' => $title, 'assign_to' => $person->email, 'split_tasks' => 1]));
+                    }
+                } else {
+                    $created[] = self::saveTask(array_merge($base, ['title' => $title, 'assign_to' => $joinedEmails]));
+                }
+            }
+        }
+
+        if ($recurring !== [] && Schema::hasTable('automate_tasks')) {
+            foreach ($recurring as $freq) {
+                self::scheduleRecurring($freq, $titles, $assignees, $split, $joinedEmails, $assignor->email, $base, $links, $description, $etc ?: 10, $priority, $ace->task_group ?: null);
+            }
+        }
+
+        return $created;
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private static function saveTask(array $data): Task
+    {
         return DB::transaction(function () use ($data) {
             $task = new Task($data);
             if (! self::tasksIdAutoIncrements()) {
@@ -335,6 +520,48 @@ class AceEngine
         });
     }
 
+    /**
+     * Daily / Weekly / Monthly: same automate_tasks templates the task manager creates. Skipped when an
+     * identical template (title + assignee + schedule + group) already exists, so a rule that fires
+     * every period never piles up duplicate templates.
+     *
+     * @param  list<string>  $titles
+     * @param  list<User>  $assignees
+     * @param  array<string, mixed>  $base
+     * @param  array<string, string>  $links
+     */
+    private static function scheduleRecurring(string $freq, array $titles, array $assignees, bool $split, string $joinedEmails, string $assignorEmail, array $base, array $links, ?string $description, int $etc, string $priority, ?string $group): void
+    {
+        $tpl = $links + [
+            'group' => $group,
+            'priority' => ucfirst($priority),
+            'description' => $description ?? '',
+            'assignor' => $assignorEmail,
+            'eta_time' => $etc,
+            'start_date' => now(),
+            'due_date' => now(),
+            'schedule_type' => $freq,
+            'schedule_time' => $freq === 'daily' ? TaskBusinessTime::dailyGenerateTime() : '12:00',
+            'schedule_days' => $freq === 'weekly' ? AutomatedTaskSchedule::resolveWeeklyDays(null) : ($freq === 'monthly' ? '1' : ''),
+            'status' => 'Todo',
+            'workspace' => 0,
+            'order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+
+        $targets = $split ? array_map(fn ($u) => [$u->email, 1], $assignees) : [[$joinedEmails, 0]];
+        foreach ($titles as $title) {
+            foreach ($targets as [$email, $isSplit]) {
+                $exists = DB::table('automate_tasks')->where('title', $title)->where('assign_to', $email)->where('schedule_type', $freq)
+                    ->when($group, fn ($q) => $q->where('group', $group), fn ($q) => $q->whereNull('group'))->exists();
+                if (! $exists) {
+                    DB::table('automate_tasks')->insert($tpl + ['title' => $title, 'assign_to' => $email, 'split_tasks' => $isSplit]);
+                }
+            }
+        }
+    }
+
     private static function tasksIdAutoIncrements(): bool
     {
         try {
@@ -349,13 +576,24 @@ class AceEngine
     /**
      * @param  array<string, mixed>  $row
      * @param  array<string, mixed>  $ctx
+     * @param  array<string, mixed>  $opt
+     * @return list<User>
      */
-    private static function resolveAssignee(AutoChatEvent $ace, array $row, array $ctx): ?User
+    private static function resolveAssignees(AutoChatEvent $ace, array $row, array $ctx, array $opt): array
     {
+        $one = fn (?User $u) => $u ? [$u] : [];
+
         return match ($ace->assignee_mode) {
-            'row_user' => isset($row['user_id']) ? User::query()->find((int) $row['user_id']) : null,
-            'chat_sender' => isset($ctx['sender_id']) ? User::query()->find((int) $ctx['sender_id']) : null,
-            default => $ace->assignee_id ? User::query()->find($ace->assignee_id) : null,
+            'row_user' => $one(isset($row['user_id']) ? User::query()->find((int) $row['user_id']) : null),
+            'chat_sender' => $one(isset($ctx['sender_id']) ? User::query()->find((int) $ctx['sender_id']) : null),
+            default => (function () use ($ace, $opt) {
+                $ids = array_values(array_filter(array_map('intval', (array) ($opt['assignee_ids'] ?? []))));
+                if ($ids === [] && $ace->assignee_id) {
+                    $ids = [(int) $ace->assignee_id];
+                }
+
+                return $ids === [] ? [] : User::query()->whereIn('id', $ids)->get()->all();
+            })(),
         };
     }
 

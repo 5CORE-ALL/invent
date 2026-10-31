@@ -84,6 +84,7 @@ class AppServiceProvider extends ServiceProvider
         // storage/framework/cache/data; recreate before any Cache::put/lock.
         StoragePathGuard::ensure();
         AlibabaEnv::apply();
+        $this->registerAcePageComposer();
 
         // Override default "file" driver so missing shard dirs retry instead of 500.
         Cache::extend('file', function ($app, array $config) {
@@ -539,5 +540,36 @@ class AppServiceProvider extends ServiceProvider
             'ico' => 'image/x-icon',
             default => 'image/x-icon',
         };
+    }
+    /**
+     * Auto Task Events: give the analytics / active-channels pages listed in config/ace.php the
+     * "+ ATE" and "ATE" top-bar buttons (rendered by layouts/shared/topbar via $aceEnabled).
+     */
+    protected function registerAcePageComposer(): void
+    {
+        $pages = (array) config('ace.pages', []);
+        if ($pages === []) {
+            return;
+        }
+
+        View::composer(array_keys($pages), function (ViewInstance $view) use ($pages) {
+            $cfg = $pages[$view->name()] ?? [];
+            $source = null;
+            if (! empty($cfg['route'])) {
+                try {
+                    $source = route($cfg['route'], [], false);
+                } catch (\Throwable $e) {
+                    $source = null;
+                }
+            } elseif (! empty($cfg['url'])) {
+                $source = (string) $cfg['url'];
+            }
+
+            $view->with([
+                'aceEnabled' => true,
+                'acePage' => \App\Support\Ace\AcePages::pageKey(request()->path()),
+                'aceSource' => $source,
+            ]);
+        });
     }
 }

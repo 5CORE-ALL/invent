@@ -80,11 +80,108 @@
     /* Metric tiles */
     .ts-udash-metrics {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
         gap: 0.5rem;
     }
-    @media (max-width: 575.98px) {
-        .ts-udash-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    /* Performance report chrome */
+    #ts-udash-kicker {
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #7dd3fc;
+        margin-bottom: 0.1rem;
+    }
+    .ts-udash-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.6rem;
+        position: sticky;
+        top: -1rem;
+        z-index: 3;
+        background: #fff;
+        margin: -1rem -1rem 0;
+        padding: 0.65rem 1rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .ts-udash-toolbar .lbl {
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+    }
+    .ts-udash-range-btn {
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #475569;
+        font-size: 0.78rem;
+        font-weight: 700;
+        padding: 0.2rem 0.7rem;
+        border-radius: 999px;
+        cursor: pointer;
+    }
+    .ts-udash-range-btn.is-active {
+        background: #0f172a;
+        border-color: #0f172a;
+        color: #fff;
+    }
+    .ts-udash-group {
+        margin-top: 1.1rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.2rem 0.85rem 0.9rem;
+        background: #fcfdff;
+    }
+    .ts-udash-group > .ts-udash-section-label { margin-top: 0.75rem; }
+    .ts-udash-charts {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.65rem;
+        margin-top: 0.7rem;
+    }
+    @media (max-width: 767.98px) {
+        .ts-udash-charts { grid-template-columns: minmax(0, 1fr); }
+    }
+    .ts-udash-chart-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 0.5rem 0.65rem 0.25rem;
+        min-width: 0;
+    }
+    .ts-udash-chart-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 0.5rem;
+    }
+    .ts-udash-chart-title {
+        font-size: 0.78rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .ts-udash-chart-sub {
+        font-size: 0.68rem;
+        color: #64748b;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+    }
+    .ts-udash-chart-mount { min-height: 200px; }
+    .ts-udash-chart-empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 200px;
+        font-size: 0.78rem;
+        color: #94a3b8;
+    }
+    .ts-udash-note {
+        font-size: 0.7rem;
+        color: #94a3b8;
+        margin-top: 0.5rem;
     }
     .ts-udash-tile {
         background: #fff;
@@ -244,6 +341,7 @@
                 <div id="ts-udash-user-header" class="flex-grow-1 min-w-0">
                     <img id="ts-udash-user-avatar" src="" alt="" />
                     <div class="flex-grow-1 min-w-0">
+                        <div id="ts-udash-kicker">PFMS &middot; Performance Report</div>
                         <div id="ts-udash-user-name">User Dashboard</div>
                         <div id="ts-udash-user-meta">
                             <span id="ts-udash-user-des"></span>
@@ -263,15 +361,18 @@
                 <div id="ts-udash-error" class="alert alert-danger d-none" role="alert"></div>
 
                 <div id="ts-udash-content" class="d-none">
-                    <div class="ts-udash-section-label">
-                        <i class="ri-pie-chart-line"></i> Task metrics
+                    <div class="ts-udash-toolbar">
+                        <span class="lbl"><i class="ri-line-chart-line me-1"></i>History</span>
+                        <div class="d-flex gap-1" id="ts-udash-range" role="group" aria-label="History range">
+                            <button type="button" class="ts-udash-range-btn is-active" data-days="30">30 days</button>
+                            <button type="button" class="ts-udash-range-btn" data-days="60">60 days</button>
+                            <button type="button" class="ts-udash-range-btn" data-days="90">90 days</button>
+                        </div>
+                        <span class="small text-muted ms-auto" id="ts-udash-history-status"></span>
                     </div>
-                    <div class="ts-udash-metrics" id="ts-udash-self-metrics"></div>
 
-                    <div class="ts-udash-section-label">
-                        <i class="ri-bar-chart-grouped-line"></i> Scores
-                    </div>
-                    <div class="ts-udash-scores" id="ts-udash-self-scores"></div>
+                    {{-- Filled by JS: Basics, Attendance, R&R and CL, Tasks, Other (same groups as the table) --}}
+                    <div id="ts-udash-report"></div>
 
                     <div class="ts-udash-section-label" id="ts-udash-juniors-label">
                         <i class="ri-team-line"></i> Team tagged under this person <span id="ts-udash-juniors-count" class="badge bg-secondary ms-1">0</span>

@@ -62,6 +62,7 @@ class TeamViewController extends Controller
             ->get(['id', 'name', 'email', 'phone', 'avatar', 'designation', 'org_level']);
 
         $ratings = $this->ratingSummary();
+        $overall = $this->overallSummary();
         $rrByDesignation = $this->rrTitlesByDesignation();
         $defaultAvatar = asset('images/users/avatar-2.jpg');
 
@@ -135,7 +136,7 @@ class TeamViewController extends Controller
 
         // Flat rows (depth-first, so people stay next to their manager).
         $rows = [];
-        $toRows = function (array $m) use (&$rows, &$toRows, $ratings) {
+        $toRows = function (array $m) use (&$rows, &$toRows, $ratings, $overall) {
             $rows[] = [
                 'id' => $m['id'],
                 'name' => $m['name'],
@@ -145,6 +146,8 @@ class TeamViewController extends Controller
                 'email' => $m['email'],
                 'phone' => $m['phone'],
                 'ratings' => $ratings[$m['id']] ?? $this->emptyRatings(),
+                'overall_avg' => $overall[$m['id']]['avg'] ?? null,
+                'reviewers' => $overall[$m['id']]['reviewers'] ?? 0,
                 'rr' => $m['rr'],
                 // "Contact For": the first few R&R titles, i.e. what to reach this person about.
                 'contact_for' => array_slice($m['rr'], 0, 3),
@@ -388,11 +391,46 @@ class TeamViewController extends Controller
             }
         }
 
+        $overallMine = $this->overallSummary([(int) $member->id])[(int) $member->id] ?? [];
+
         return response()->json([
             'ok' => true,
             'saved' => $saved,
             'ratings' => $this->ratingSummary([(int) $member->id])[(int) $member->id] ?? $this->emptyRatings(),
+            'overall_avg' => $overallMine['avg'] ?? null,
+            'reviewers' => $overallMine['reviewers'] ?? 0,
         ]);
+    }
+
+    /**
+     * Per-member overall average star rating (all sections and factors) and
+     * the number of distinct reviewers who rated them.
+     *
+     * @param  list<int>|null  $userIds  limit to these reviewees (null = everyone)
+     * @return array<int, array{avg: float|null, reviewers: int}>
+     */
+    private function overallSummary(?array $userIds = null): array
+    {
+        if (! Schema::hasTable('team_reviews')) {
+            return [];
+        }
+
+        $q = DB::table('team_reviews')
+            ->groupBy('reviewee_id')
+            ->selectRaw('reviewee_id, AVG(rating) as avg_rating, COUNT(DISTINCT reviewer_id) as reviewers');
+        if ($userIds !== null) {
+            $q->whereIn('reviewee_id', $userIds);
+        }
+
+        $out = [];
+        foreach ($q->get() as $r) {
+            $out[(int) $r->reviewee_id] = [
+                'avg' => round((float) $r->avg_rating, 1),
+                'reviewers' => (int) $r->reviewers,
+            ];
+        }
+
+        return $out;
     }
 
     /**

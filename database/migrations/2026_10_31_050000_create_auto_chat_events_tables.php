@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * ACE = Automated Chat Event.
+ * ATE = Auto Task Event.
  *
  * A rule watches a page's table (column condition) and/or a chat (keyword in a
  * channel) and creates a ONE-TIME task in the task manager. `auto_chat_event_runs`

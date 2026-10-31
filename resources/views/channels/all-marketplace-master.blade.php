@@ -2229,23 +2229,26 @@
         // Null for the rest, which fall back to the channel's L30 Ads%.
         function measuredYAdsRateFromRow(row) {
             if (!row || row['Y Ads Measured'] !== true) return null;
-            const sales = parseNumber(row['Y Day Sales'] || 0);
+            // Same basis as the Y Ads% column: real Y ad spend ÷ Y Sales.
+            const ySales = parseNumber(row['Y Sales'] || 0);
+            const sales = ySales > 0 ? ySales : parseNumber(row['Y Day Sales'] || 0);
             if (sales <= 0) return null;
             return (parseNumber(row['Y Ad Spend'] || 0) / sales) * 100;
         }
+        // Y Ads% = Y ad spend ÷ Y Sales (the Y Sales column), so the total is
+        // Σ Y ad spend ÷ Σ Y Sales. Spend is the real one-day campaign spend where a
+        // daily ad report exists, else Y Sales × the channel's L30 Ads%.
         function yAdsPartsFromRow(row) {
-            if (row && row['Y Ads Measured'] === true) {
-                const mSales = parseNumber(row['Y Day Sales'] || 0);
-                if (mSales > 0) return { spend: parseNumber(row['Y Ad Spend'] || 0), sales: mSales };
-            }
-            const m = yMeasuredFromRow(row);
-            if (m && m.sales > 0) {
-                return { spend: m.spend, sales: m.sales };
-            }
+            if (!row) return { spend: 0, sales: 0 };
             const ySales = parseNumber(row['Y Sales'] || 0);
-            if (ySales <= 0) return { spend: 0, sales: 0 };
+            const daySales = parseNumber(row['Y Day Sales'] || 0);
+            const sales = ySales > 0 ? ySales : daySales;
+            if (sales <= 0) return { spend: 0, sales: 0 };
+            if (row['Y Ads Measured'] === true && daySales > 0) {
+                return { spend: parseNumber(row['Y Ad Spend'] || 0), sales: sales };
+            }
             const ads = parseNumber(row['Ads%'] != null ? row['Ads%'] : (row['TACOS'] || 0));
-            return { spend: ySales * ads / 100, sales: ySales };
+            return { spend: sales * ads / 100, sales: sales };
         }
         function todayPartsFromRow(row) {
             const sales = parseNumber(row['Today Sales'] || 0);
@@ -2761,6 +2764,7 @@
             var tCvrFooterBelowAvg = false;
             var yViewsExact = null;
             var yCvrExact = null;
+            var todayCvrExact = null;
             var l30CvrPct = null;
             var l30DailyOrders = null;
             var l30DailyViews = null;
@@ -6502,6 +6506,7 @@
                 let totalTCvrUnits = 0;
                 let totalTCvrViews = 0;
                 const todayDotVals = {};
+                const yesterdayPctVals = {};
                 let totalPSales = 0;
                 let totalPGross = 0;
                 let totalL30Orders = 0;
@@ -6742,22 +6747,20 @@
                         'T Orders = Σ (L30 Orders × Today Sales ÷ L30 Sales). Same pace as Today Sales. ' + orders.toLocaleString('en-US'));
                     // Colour each Today dot/badge from the same series its graph shows.
                     prefetchAllBadgeChartDot('t_orders', orders);
-                    prefetchAllBadgeChartDot('t_npft_pct', pct1(npft));
-                    prefetchAllBadgeChartDot('t_groi_pct', pct1(groi));
-                    prefetchAllBadgeChartDot('t_nroi_pct', pct1(nroi));
-                    prefetchAllBadgeChartDot('t_ads_pct', pct1(ads));
+                    // Today % badges (Nprft / Groi / NROI / Ads / CVR) are coloured against the
+                    // Yesterday % badges in pinSummaryDot(), not from their own graph series.
                     prefetchAllBadgeChartDot('t_views', views);
 
                     // Today CVR badge
                     const $tCvr = $('#avg-t-cvr');
                     const tCvr = totalTCvrViews > 0 ? (totalTCvrUnits / totalTCvrViews) * 100 : null;
                     todayDotVals.t_cvr = tCvr;
+                    todayCvrExact = tCvr;
                     if (tCvr !== null && isFinite(tCvr)) {
                         const tCvrVal = Math.round(tCvr * 100) / 100;
                         $tCvr.text(tCvrVal.toFixed(2) + '%');
                         setBadgeExact($tCvr, tCvrVal);
                         $tCvr.closest('.badge').attr('title', 'T CVR = Σ T Orders ÷ Σ T Views (same as the T CVR column, summed across channels). ' + tCvrVal.toFixed(2) + '%');
-                        prefetchAllBadgeChartDot('t_cvr', tCvrVal);
                     } else {
                         $tCvr.text('-');
                         setBadgeExact($tCvr, null);
@@ -7115,21 +7118,28 @@
                     pinSummaryDot('y_views', l30DailyViews, yViewsExact,
                         'Green when yesterday views are above the L30 daily average (L30 Views ÷ 30).');
                 }
-                // Today badges vs L30 baselines (same rule as the Yesterday badges).
-                pinSummaryDot('t_npft', avgNpft, todayDotVals.t_npft,
-                    'Green when today NPFT% is above the L30 NPFT%.');
-                pinSummaryDot('t_groi', avgGroi, todayDotVals.t_groi,
-                    'Green when today GROI% is above the L30 G ROI%.');
-                pinSummaryDot('t_nroi', avgNroi, todayDotVals.t_nroi,
-                    'Green when today NROI% is above the L30 NROI%.');
-                pinSummaryDot('t_ads', avgAdsPercent, todayDotVals.t_ads,
-                    'Green when today Ads% is below the L30 Ads%.');
+                // Today % badges vs the matching Yesterday % badge: red when today is worse
+                // than yesterday (Ads% is inverted: higher is worse), green when better.
+                yesterdayPctVals.npft = totalYPctSales > 0 ? (totalYNet / totalYPctSales) * 100 : null;
+                yesterdayPctVals.groi = totalYCogs > 0 ? (totalYGross / totalYCogs) * 100 : null;
+                yesterdayPctVals.nroi = totalYCogs > 0 ? (totalYNet / totalYCogs) * 100 : null;
+                yesterdayPctVals.ads = totalYAdSales > 0 ? (totalYAdSpend / totalYAdSales) * 100 : null;
+                pinSummaryDot('t_npft', yesterdayPctVals.npft, todayDotVals.t_npft,
+                    'Green when today Nprft% is above yesterday’s Nprft%.');
+                pinSummaryDot('t_groi', yesterdayPctVals.groi, todayDotVals.t_groi,
+                    'Green when today Groi% is above yesterday’s Groi%.');
+                pinSummaryDot('t_nroi', yesterdayPctVals.nroi, todayDotVals.t_nroi,
+                    'Green when today NROI% is above yesterday’s NROI%.');
+                pinSummaryDot('t_ads', yesterdayPctVals.ads, todayDotVals.t_ads,
+                    'Green when today Ads% is below yesterday’s Ads%.');
                 pinSummaryDot('t_orders', totalL30Orders / 30, todayDotVals.t_orders,
                     'Green when today orders are above the L30 daily average (L30 Orders ÷ 30).');
                 pinSummaryDot('t_views', totalViews / 30, todayDotVals.t_views,
                     'Green when today views are above the L30 daily average (L30 Views ÷ 30).');
-                pinSummaryDot('t_cvr', cvrPct, todayDotVals.t_cvr,
-                    'Green when today CVR is above the L30 listing CVR.');
+                if (yCvrExact != null) {
+                    pinSummaryDot('t_cvr', yCvrExact, todayDotVals.t_cvr,
+                        'Green when today CVR is above yesterday’s CVR.');
+                }
                 l30CvrPct = cvrPct;
                 if (yCvrExact != null) {
                     pinSummaryDot('y_cvr', l30CvrPct, yCvrExact,
@@ -7918,6 +7928,8 @@
             // from a different snapshot table and could disagree (green dot, red graph).
             function syncAllBadgeDotWithChart(metric, values) {
                 if (!metric || !Array.isArray(values) || values.length < 2) return;
+                // Today % badges are coloured against the Yesterday % badges, never from their graph.
+                if (['t_npft_pct', 't_groi_pct', 't_nroi_pct', 't_ads_pct', 't_cvr'].indexOf(metric) >= 0) return;
                 // Today badges: the graph metric key differs from the dot's data-metric.
                 var dotMetricByChart = { t_npft_pct: 't_npft', t_groi_pct: 't_groi', t_nroi_pct: 't_nroi', t_ads_pct: 't_ads' };
                 var dotMetric = dotMetricByChart[metric] || metric;
@@ -9520,6 +9532,8 @@
                         pinSummaryDot('y_cvr', l30CvrPct, val,
                             'Green when yesterday CVR is above the L30 listing CVR.');
                     }
+                    pinSummaryDot('t_cvr', val, todayCvrExact,
+                        'Green when today CVR is above yesterday’s CVR.');
                     prefetchAllBadgeChartDot('y_cvr', val);
                     if (typeof colorSummaryBadgeDots === 'function') colorSummaryBadgeDots(channelKeysFromTableData());
                 } else {

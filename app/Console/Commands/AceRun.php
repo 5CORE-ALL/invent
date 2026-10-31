@@ -9,7 +9,7 @@ class AceRun extends Command
 {
     protected $signature = 'ace:run {--id= : Only run this ACE rule id}';
 
-    protected $description = 'Run active ACE (Automated Chat Event) column rules and create their one-time tasks';
+    protected $description = 'Run active ATE (Auto Task Event) column rules and create their one-time tasks';
 
     public function handle(): int
     {

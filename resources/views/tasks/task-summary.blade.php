@@ -1386,6 +1386,141 @@
                             </div>
                            
                         </div>
+                        {{-- Column groups: each header owns a checkbox that shows/hides its columns --}}
+                        @php
+                            // 1-based column index per group. The optional bot column (after ATT) shifts later columns by 1.
+                            $tsBotShift = $tsShowBotCol ? 1 : 0;
+                            $tsColGroups = [
+                                'basics' => [
+                                    'label' => 'Basics',
+                                    'icon' => 'ri-user-3-line',
+                                    'cols' => [1, 2, 3, 4, 5, 6, 34 + $tsBotShift],
+                                ],
+                                'attendance' => [
+                                    'label' => 'Attendance',
+                                    'icon' => 'ri-time-line',
+                                    'cols' => [14, 20 + $tsBotShift],
+                                ],
+                                'rrcl' => [
+                                    'label' => 'R&R and CL',
+                                    'icon' => 'ri-checkbox-multiple-line',
+                                    'cols' => [7, 8, 9, 10],
+                                ],
+                                'tasks' => [
+                                    'label' => 'Tasks',
+                                    'icon' => 'ri-task-line',
+                                    'cols' => array_merge(
+                                        [11, 12, 13],
+                                        range(18 + $tsBotShift, 19 + $tsBotShift),
+                                        range(21 + $tsBotShift, 28 + $tsBotShift)
+                                    ),
+                                ],
+                                'other' => [
+                                    'label' => 'Other',
+                                    'icon' => 'ri-more-2-line',
+                                    'cols' => array_merge(
+                                        $tsShowBotCol ? [15] : [],
+                                        range(15 + $tsBotShift, 17 + $tsBotShift),
+                                        range(29 + $tsBotShift, 33 + $tsBotShift)
+                                    ),
+                                ],
+                            ];
+                        @endphp
+                        <style>
+                            @foreach ($tsColGroups as $tsGroupKey => $tsGroup)
+                                @foreach ($tsGroup['cols'] as $tsColIdx)
+                                    .task-summary-table.ts-hide-{{ $tsGroupKey }} > thead > tr > th:nth-child({{ $tsColIdx }}),
+                                    .task-summary-table.ts-hide-{{ $tsGroupKey }} > tbody > tr.task-summary-row > td:nth-child({{ $tsColIdx }}) { display: none; }
+                                @endforeach
+                            @endforeach
+                            .ts-colgroups-bar {
+                                display: flex;
+                                flex-wrap: wrap;
+                                align-items: center;
+                                gap: 0.5rem;
+                            }
+                            .ts-colgroups-bar__title {
+                                font-size: 0.72rem;
+                                font-weight: 700;
+                                letter-spacing: 0.04em;
+                                text-transform: uppercase;
+                                color: #64748b;
+                                margin-right: 0.25rem;
+                            }
+                            .ts-colgroup-chip {
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 0.4rem;
+                                margin: 0;
+                                padding: 0.25rem 0.7rem;
+                                border: 1px solid #e2e8f0;
+                                border-radius: 999px;
+                                background: #fff;
+                                font-size: 0.82rem;
+                                font-weight: 600;
+                                color: #475569;
+                                cursor: pointer;
+                                user-select: none;
+                                transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+                            }
+                            .ts-colgroup-chip:hover { border-color: #93c5fd; }
+                            .ts-colgroup-chip.is-on {
+                                background: #eff6ff;
+                                border-color: #93c5fd;
+                                color: #1d4ed8;
+                            }
+                            .ts-colgroup-chip input { margin: 0; cursor: pointer; }
+                        </style>
+                        <div class="ts-colgroups-bar mb-2" id="ts-colgroups-bar" role="group" aria-label="Show or hide column groups">
+                            <span class="ts-colgroups-bar__title">Show columns</span>
+                            @foreach ($tsColGroups as $tsGroupKey => $tsGroup)
+                                <label class="ts-colgroup-chip is-on" for="ts-colgroup-{{ $tsGroupKey }}">
+                                    <input type="checkbox"
+                                           class="form-check-input ts-colgroup-checkbox"
+                                           id="ts-colgroup-{{ $tsGroupKey }}"
+                                           data-group="{{ $tsGroupKey }}"
+                                           checked />
+                                    <i class="{{ $tsGroup['icon'] }}" aria-hidden="true"></i>
+                                    {{ $tsGroup['label'] }}
+                                </label>
+                            @endforeach
+                        </div>
+                        <script>
+                            (function () {
+                                var STORAGE_KEY = 'taskSummaryColumnGroups';
+                                var boxes = document.querySelectorAll('#ts-colgroups-bar .ts-colgroup-checkbox');
+                                var saved = {};
+                                try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {}; } catch (e) { saved = {}; }
+
+                                function apply() {
+                                    var table = document.querySelector('.task-summary-table');
+                                    boxes.forEach(function (box) {
+                                        var group = box.getAttribute('data-group');
+                                        if (table) table.classList.toggle('ts-hide-' + group, !box.checked);
+                                        var chip = box.closest('.ts-colgroup-chip');
+                                        if (chip) chip.classList.toggle('is-on', box.checked);
+                                    });
+                                }
+
+                                function persist() {
+                                    var state = {};
+                                    boxes.forEach(function (box) { state[box.getAttribute('data-group')] = box.checked; });
+                                    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+                                }
+
+                                boxes.forEach(function (box) {
+                                    var group = box.getAttribute('data-group');
+                                    if (Object.prototype.hasOwnProperty.call(saved, group)) box.checked = !!saved[group];
+                                    box.addEventListener('change', function () { apply(); persist(); });
+                                });
+
+                                if (document.readyState === 'loading') {
+                                    document.addEventListener('DOMContentLoaded', apply);
+                                } else {
+                                    apply();
+                                }
+                            })();
+                        </script>
                         {{-- Single-row top controls: Group toggle · Search (flex grow) · Avatar size --}}
                         <div class="task-summary-topbar d-flex flex-wrap align-items-center mb-3 gap-2">
                             <div class="d-flex flex-wrap align-items-center gap-2 task-summary-topbar-left">
@@ -7479,29 +7614,295 @@
                     + '</div>';
             }
 
-            function renderMetricsGrid(m) {
+            // ---- Performance report: tiles per group -------------------------
+            function fmtHM(seconds) {
+                seconds = Math.max(0, parseInt(seconds, 10) || 0);
+                return Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
+            }
+
+            function attendanceTiles(m) {
                 var attHours = Math.round(Number(m.l30_hrs) || 0);
                 var attTarget = parseInt(m.att_l30_target, 10) || 200;
                 var attPct = (m.att_l30_pct !== undefined && m.att_l30_pct !== null)
                     ? parseInt(m.att_l30_pct, 10)
                     : Math.round((attHours / attTarget) * 100);
-                var l30 = attHours + '/' + attTarget + ' · ' + attPct + '%';
+                return renderMetricTile('ATT', attPct + '%')
+                    + renderMetricTile('Hours L30', attHours + '/' + attTarget)
+                    + renderMetricTile('Y Time', fmtHM(m.y_time_seconds));
+            }
+
+            function taskTiles(m) {
                 var tat = (m.tat_l30_days === null || m.tat_l30_days === undefined)
                     ? '—'
                     : (Number(m.tat_l30_days).toFixed(1) + 'd');
-                var html = ''
-                    + renderMetricTile('Task', m.task || 0)
-                    + renderMetricTile('ATT', l30)
+                var darTarget = parseInt(m.dar_l30_target, 10) || 25;
+                return renderMetricTile('Task', m.task || 0)
+                    + renderMetricTile('O-Due', m.overdue || 0, 'is-overdue')
                     + renderMetricTile('Task-G', m.assignor_task || 0)
                     + renderMetricTile('Done', m.done || 0, 'is-done')
-                    + renderMetricTile('O-Due', m.overdue || 0, 'is-overdue')
+                    + renderMetricTile('Y Done', m.y_done || 0, 'is-done')
+                    + renderMetricTile('DAR', (m.dar_l30_pct || 0) + '% (' + (m.dar_l30_count || 0) + '/' + darTarget + ')')
                     + renderMetricTile('TAT', tat)
                     + renderMetricTile('ETC P', (m.etc_pending_h || 0) + 'h')
                     + renderMetricTile('ETC', (m.etc_l30_h || 0) + 'h')
                     + renderMetricTile('ATC', (m.atc_l30_h || 0) + 'h')
-                    + renderMetricTile('Miss', (m.missed_p30 || 0), 'is-overdue');
+                    + renderMetricTile('Miss', (m.missed_p30 || 0), 'is-overdue')
+                    + renderMetricTile('A Task H', (m.a_task_h || 0) + 'h');
+            }
+
+            function otherTiles(m) {
+                var inc = Number(m.incentive_amount) || 0;
+                var incLabel = inc <= 0 ? '0' : (Math.round(inc / 100) / 10) + 'K';
+                var html = renderMetricTile('Chat red', m.chat_red || 0, (m.chat_red || 0) > 0 ? 'is-overdue' : '')
+                    + renderMetricTile('Chat yellow', m.chat_yellow || 0)
+                    + renderMetricTile('Ann unseen', m.ann_unseen || 0)
+                    + renderMetricTile('SI', m.soi_count || 0)
+                    + renderMetricTile('Incentive', incLabel);
+                (m.kpis || []).forEach(function (k) {
+                    var v = (k.value === null || k.value === undefined || k.value === '') ? '—' : k.value;
+                    html += renderMetricTile(k.label || 'KPI', v);
+                });
                 return html;
             }
+
+            function chartCard(key, title) {
+                return '<div class="ts-udash-chart-card">'
+                    + '<div class="ts-udash-chart-head">'
+                    +   '<span class="ts-udash-chart-title">' + escapeHtml(title) + '</span>'
+                    +   '<span class="ts-udash-chart-sub" id="ts-udash-sub-' + key + '"></span>'
+                    + '</div>'
+                    + '<div class="ts-udash-chart-mount" id="ts-udash-chart-' + key + '">'
+                    +   '<div class="ts-udash-chart-empty">Loading history…</div>'
+                    + '</div>'
+                    + '</div>';
+            }
+
+            function groupBlock(icon, title, bodyHtml) {
+                return '<div class="ts-udash-group">'
+                    + '<div class="ts-udash-section-label"><i class="' + icon + '"></i> ' + escapeHtml(title) + '</div>'
+                    + bodyHtml
+                    + '</div>';
+            }
+
+            function buildReportHtml(u, mgr) {
+                var m = u.metrics || {};
+                var s = u.scores || {};
+                var pill = rolePill(u.org_level);
+
+                var basics = '<div class="ts-udash-metrics">'
+                    + renderMetricTile('Designation', u.designation || '—')
+                    + renderMetricTile('Role', pill.text)
+                    + '</div>';
+
+                var attendance = '<div class="ts-udash-metrics">' + attendanceTiles(m) + '</div>'
+                    + '<div class="ts-udash-charts">' + chartCard('att', 'Daily active hours') + '</div>';
+
+                var rrcl = '<div class="ts-udash-scores">' + renderScoresGrid(s, mgr) + '</div>'
+                    + '<div class="ts-udash-charts">' + chartCard('scores', 'CL score history') + '</div>'
+                    + '<div class="ts-udash-note">R&amp;R % is a live value only — it has no history. CL scores are snapshots saved when a checkpoint changes.</div>';
+
+                var tasks = '<div class="ts-udash-metrics">' + taskTiles(m) + '</div>'
+                    + '<div class="ts-udash-charts">'
+                    +   chartCard('flow', 'Tasks assigned vs done')
+                    +   chartCard('dar', 'DAR submitted')
+                    +   chartCard('tat', 'TAT (avg days per day closed)')
+                    +   chartCard('time', 'ETC vs ATC (hours)')
+                    +   chartCard('missed', 'Missed tasks')
+                    +   chartCard('given', 'Tasks given (Task-G)')
+                    + '</div>'
+                    + '<div class="ts-udash-note">Overdue and Y Done are live values — Y Done is the last point of the Done chart.</div>';
+
+                var other = '<div class="ts-udash-metrics">' + otherTiles(m) + '</div>'
+                    + '<div class="ts-udash-charts">' + chartCard('si', 'Scope of Improvement added') + '</div>'
+                    + '<div class="ts-udash-note">Chat dots, announcements, incentives and KPIs are live values only.</div>';
+
+                return groupBlock('ri-user-3-line', 'Basics', basics)
+                    + groupBlock('ri-time-line', 'Attendance', attendance)
+                    + groupBlock('ri-checkbox-multiple-line', 'R&R and CL', rrcl)
+                    + groupBlock('ri-task-line', 'Tasks', tasks)
+                    + groupBlock('ri-more-2-line', 'Other', other);
+            }
+
+            // ---- History charts ---------------------------------------------
+            var historyEndpoint = @json(route('tasks.userPerformanceHistory.get'));
+            var udashCharts = [];
+            var udashState = { userId: null, days: 30, token: 0, history: null };
+
+            function destroyUdashCharts() {
+                udashCharts.forEach(function (c) { try { c.destroy(); } catch (e) { /* ignore */ } });
+                udashCharts = [];
+            }
+
+            function sumArr(a) { return (a || []).reduce(function (t, v) { return t + (Number(v) || 0); }, 0); }
+
+            function setSub(key, text) {
+                var sub = el('ts-udash-sub-' + key);
+                if (sub) sub.textContent = text || '';
+            }
+
+            function drawChart(key, labels, series, o) {
+                var mount = el('ts-udash-chart-' + key);
+                if (!mount) return;
+                mount.innerHTML = '';
+                var hasData = series.some(function (s) {
+                    return (s.data || []).some(function (v) { return v !== null && v !== undefined; });
+                });
+                if (!hasData) {
+                    mount.innerHTML = '<div class="ts-udash-chart-empty">No history recorded for this period</div>';
+                    return;
+                }
+                if (typeof ApexCharts === 'undefined') {
+                    mount.innerHTML = '<div class="ts-udash-chart-empty">Charts unavailable</div>';
+                    return;
+                }
+                o = o || {};
+                var chart = new ApexCharts(mount, {
+                    chart: {
+                        type: o.type || 'line',
+                        height: 210,
+                        toolbar: { show: false },
+                        zoom: { enabled: false },
+                        fontFamily: 'inherit',
+                        animations: { enabled: false }
+                    },
+                    series: series,
+                    colors: o.colors || ['#0d9488', '#6366f1', '#f59e0b'],
+                    stroke: { curve: 'smooth', width: o.type === 'bar' ? 0 : 2 },
+                    markers: { size: o.type === 'bar' ? 0 : 2.5, hover: { size: 5 } },
+                    plotOptions: { bar: { columnWidth: '70%', borderRadius: 2 } },
+                    dataLabels: { enabled: false },
+                    grid: { borderColor: '#e2e8f0', strokeDashArray: 4 },
+                    legend: { show: series.length > 1, fontSize: '11px', position: 'top', horizontalAlign: 'right' },
+                    xaxis: {
+                        categories: labels,
+                        tickAmount: Math.min(labels.length - 1, 10),
+                        labels: { rotate: -45, rotateAlways: false, hideOverlappingLabels: true, style: { fontSize: '10px' } }
+                    },
+                    yaxis: {
+                        min: 0,
+                        max: o.max,
+                        forceNiceScale: true,
+                        decimalsInFloat: o.decimals === undefined ? 0 : o.decimals,
+                        labels: { style: { fontSize: '10px' } }
+                    },
+                    tooltip: { shared: true, intersect: false }
+                });
+                chart.render();
+                udashCharts.push(chart);
+            }
+
+            function renderHistory(h) {
+                destroyUdashCharts();
+                var L = h.labels || [];
+                var S = h.series || {};
+                var T = h.totals || {};
+                var n = L.length || 1;
+
+                setSub('att', 'Total ' + (T.att_hours || 0) + 'h · avg ' + ((T.att_hours || 0) / n).toFixed(1) + 'h/day');
+                drawChart('att', L, [{ name: 'Active hours', data: S.att_hours || [] }],
+                    { type: 'bar', decimals: 1, colors: ['#0d9488'] });
+
+                setSub('scores', 'Lifetime snapshots, carried forward');
+                drawChart('scores', L, [
+                    { name: 'CL R&R', data: S.clrr || [] },
+                    { name: 'CL Mgr', data: S.clmgr || [] },
+                    { name: 'CL Gen', data: S.clgen || [] }
+                ], { max: 100, colors: ['#0e7490', '#1d4ed8', '#b45309'] });
+
+                setSub('flow', 'Assigned ' + (T.assigned || 0) + ' · Done ' + (T.done || 0));
+                drawChart('flow', L, [
+                    { name: 'Assigned', data: S.assigned || [] },
+                    { name: 'Done', data: S.done || [] }
+                ], { colors: ['#6366f1', '#16a34a'] });
+
+                setSub('dar', (T.dar_days || 0) + ' of ' + n + ' days submitted');
+                drawChart('dar', L, [{ name: 'DAR', data: S.dar || [] }],
+                    { type: 'bar', max: 1, colors: ['#0f766e'] });
+
+                setSub('tat', T.avg_tat_days === null || T.avg_tat_days === undefined ? 'No closed tasks' : ('Avg ' + T.avg_tat_days + 'd'));
+                drawChart('tat', L, [{ name: 'TAT (days)', data: S.tat_days || [] }],
+                    { decimals: 1, colors: ['#dc2626'] });
+
+                setSub('time', 'ETC ' + (T.etc_h || 0) + 'h · ATC ' + (T.atc_h || 0) + 'h');
+                drawChart('time', L, [
+                    { name: 'ETC', data: S.etc_h || [] },
+                    { name: 'ATC', data: S.atc_h || [] }
+                ], { decimals: 1, colors: ['#b45309', '#0f766e'] });
+
+                setSub('missed', 'Total ' + (T.missed || 0));
+                drawChart('missed', L, [{ name: 'Missed', data: S.missed || [] }],
+                    { type: 'bar', colors: ['#dc2626'] });
+
+                setSub('given', 'Total ' + (T.given || 0));
+                drawChart('given', L, [{ name: 'Tasks given', data: S.given || [] }],
+                    { type: 'bar', colors: ['#6366f1'] });
+
+                setSub('si', 'Total ' + (T.si || 0));
+                drawChart('si', L, [{ name: 'SI added', data: S.si || [] }],
+                    { type: 'bar', colors: ['#f59e0b'] });
+            }
+
+            function setHistoryStatus(text) {
+                var st = el('ts-udash-history-status');
+                if (st) st.textContent = text || '';
+            }
+
+            function loadHistory() {
+                if (!udashState.userId) return;
+                var token = ++udashState.token;
+                setHistoryStatus('Loading history…');
+                var url = historyEndpoint + (historyEndpoint.indexOf('?') >= 0 ? '&' : '?')
+                    + 'user_id=' + encodeURIComponent(udashState.userId) + '&days=' + udashState.days;
+                fetch(url, {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                    .then(function (r) {
+                        return r.json().then(function (data) {
+                            if (!r.ok || data.success === false) {
+                                throw new Error((data && data.message) || ('Request failed (HTTP ' + r.status + ')'));
+                            }
+                            return data;
+                        });
+                    })
+                    .then(function (data) {
+                        if (token !== udashState.token) return;
+                        udashState.history = data;
+                        setHistoryStatus('Last ' + data.days + ' days');
+                        renderHistory(data);
+                    })
+                    .catch(function (err) {
+                        if (token !== udashState.token) return;
+                        setHistoryStatus('');
+                        document.querySelectorAll('#ts-udash-report .ts-udash-chart-mount').forEach(function (m) {
+                            m.innerHTML = '<div class="ts-udash-chart-empty">'
+                                + escapeHtml(err && err.message ? err.message : 'Failed to load history.') + '</div>';
+                        });
+                    });
+            }
+
+            (function bindRange() {
+                var wrap = el('ts-udash-range');
+                if (!wrap) return;
+                wrap.addEventListener('click', function (e) {
+                    var btn = e.target && e.target.closest && e.target.closest('.ts-udash-range-btn');
+                    if (!btn) return;
+                    var days = parseInt(btn.getAttribute('data-days'), 10) || 30;
+                    if (days === udashState.days) return;
+                    udashState.days = days;
+                    wrap.querySelectorAll('.ts-udash-range-btn').forEach(function (b) {
+                        b.classList.toggle('is-active', b === btn);
+                    });
+                    loadHistory();
+                });
+                var modal = getModalEl();
+                if (modal) {
+                    modal.addEventListener('hidden.bs.modal', function () {
+                        udashState.token++;
+                        destroyUdashCharts();
+                    });
+                }
+            })();
 
             function renderScoreCard(modCls, label, pct) {
                 pct = parseInt(pct, 10) || 0;
@@ -7554,13 +7955,10 @@
                     rp.textContent = pill.text;
                 }
 
-                // Self metrics.
-                var mWrap = el('ts-udash-self-metrics');
-                if (mWrap) mWrap.innerHTML = renderMetricsGrid(u.metrics || {});
-
-                // Self scores.
-                var sWrap = el('ts-udash-self-scores');
-                if (sWrap) sWrap.innerHTML = renderScoresGrid(u.scores || {}, data.mgr || null);
+                // Performance report: every factor of the page, grouped like the table.
+                destroyUdashCharts();
+                var report = el('ts-udash-report');
+                if (report) report.innerHTML = buildReportHtml(u, data.mgr || null);
 
                 // Juniors.
                 var jWrap = el('ts-udash-juniors-list');
@@ -7577,6 +7975,9 @@
                     console.warn('[UserDashboard] no user id for', userName);
                     return;
                 }
+                udashState.token++;
+                udashState.userId = null;
+                destroyUdashCharts();
                 var loading = el('ts-udash-loading');
                 var content = el('ts-udash-content');
                 var errEl = el('ts-udash-error');
@@ -7608,6 +8009,8 @@
                         if (loading) loading.classList.add('d-none');
                         if (content) content.classList.remove('d-none');
                         applyPayload(data);
+                        udashState.userId = userId;
+                        loadHistory();
                     })
                     .catch(function (err) {
                         if (loading) loading.classList.add('d-none');

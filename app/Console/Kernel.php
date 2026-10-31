@@ -859,7 +859,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
      
-        // ACE (Automated Chat Event): column rules -> one-time tasks
+        // ATE (Auto Task Event): column rules -> one-time tasks
         $schedule->command('ace:run')
             ->everyFiveMinutes()
             ->name('ace-run')
@@ -1922,6 +1922,14 @@ class Kernel extends ConsoleKernel
 
    
         $taskTz = config('tasks.business_timezone', 'Asia/Kolkata');
+
+        $schedule->command('chat:incentive-notices')
+            ->dailyAt('10:30')
+            ->timezone(\App\Support\TaskBusinessTime::tz())
+            ->name('chat-incentive-notices')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         $schedule->command('chat:daily-nudges')
             ->dailyAt('10:00')

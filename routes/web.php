@@ -7728,11 +7728,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::match(['get', 'post'], '/ebay/token-callback', [\App\Http\Controllers\EbayTokenController::class, 'callback'])->name('ebay.token.callback');
     // Team directory + hierarchy (read-only, visible to all logged-in team members)
     Route::get('/team-view', [\App\Http\Controllers\TeamViewController::class, 'index'])->name('team.view');
-    // ACE (Automated Chat Event): rules that create one-time tasks from a page column and/or a chat keyword
+    // ATE (Auto Task Event): rules that create one-time tasks from a page column and/or a chat keyword
     Route::get('/ace/meta', [\App\Http\Controllers\AceController::class, 'meta'])->name('ace.meta');
     Route::get('/ace', [\App\Http\Controllers\AceController::class, 'index'])->name('ace.index');
     Route::post('/ace/preview', [\App\Http\Controllers\AceController::class, 'preview'])->name('ace.preview');
     Route::post('/ace', [\App\Http\Controllers\AceController::class, 'store'])->name('ace.store');
+    Route::put('/ace/{id}', [\App\Http\Controllers\AceController::class, 'update'])->whereNumber('id')->name('ace.update');
     Route::post('/ace/{id}/toggle', [\App\Http\Controllers\AceController::class, 'toggle'])->whereNumber('id')->name('ace.toggle');
     Route::post('/ace/{id}/run', [\App\Http\Controllers\AceController::class, 'runNow'])->whereNumber('id')->name('ace.run');
     Route::delete('/ace/{id}', [\App\Http\Controllers\AceController::class, 'destroy'])->whereNumber('id')->name('ace.destroy');
@@ -7854,6 +7855,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/users/name', [\App\Http\Controllers\TaskController::class, 'updateUserName'])->name('tasks.users.name');
     Route::get('/tasks/mgr-tags', [\App\Http\Controllers\TaskController::class, 'getManagerJuniorsForTags'])->name('tasks.mgrTags.get');
     Route::get('/tasks/user-dashboard', [\App\Http\Controllers\TaskController::class, 'getUserDashboard'])->name('tasks.userDashboard.get');
+    Route::get('/tasks/user-performance-history', [\App\Http\Controllers\TaskController::class, 'getUserPerformanceHistory'])->name('tasks.userPerformanceHistory.get');
     Route::get('/tasks/user-score-history', [\App\Http\Controllers\TaskController::class, 'getUserScoreHistory'])->name('tasks.userScoreHistory.get');
     // KPI — page badges from badges_data (Task Summary "KPI" column)
     Route::get('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'getUserKpis'])->name('tasks.userKpis.get');

@@ -48,6 +48,18 @@
                 <i class="ri-team-fill"></i>
                 <span class="topbar-team-btn__label">Team</span>
             </a>
+            {{-- ATE (Auto Task Event) "+ ATE" / "ATE" pills on analytics + active-channels pages (config/ace.php) --}}
+            @if(! empty($aceEnabled ?? null) && ! empty($acePage ?? null))
+                <div class="topbar-ace d-inline-flex align-items-center">
+                    @include('partials.ace-buttons', ['acePage' => $acePage, 'aceSource' => $aceSource ?? null])
+                </div>
+                <style>
+                    .topbar-ace { margin: 0 .5rem 0 .35rem; }
+                    .topbar-ace .ace-buttons { flex-wrap: nowrap !important; gap: .35rem !important; }
+                    .topbar-ace .ace-btn { padding: 4px 11px; font-size: .74rem; line-height: 1.5; }
+                    @media (max-width: 767.98px) { .topbar-ace { display: none !important; } }
+                </style>
+            @endif
         @endauth
 
         @include('layouts.shared.world-clocks-inline')

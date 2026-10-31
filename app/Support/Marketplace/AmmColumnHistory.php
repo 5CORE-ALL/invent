@@ -72,7 +72,11 @@ class AmmColumnHistory
         if (empty($row['Y Ads Measured'])) {
             return null;
         }
-        $sales = self::num($row['Y Day Sales'] ?? 0);
+        // Same basis as the Y Ads% column: real Y ad spend ÷ Y Sales (Y Day Sales only as a fallback).
+        $sales = self::num($row['Y Sales'] ?? 0);
+        if ($sales <= 0) {
+            $sales = self::num($row['Y Day Sales'] ?? 0);
+        }
         if ($sales <= 0) {
             return null;
         }

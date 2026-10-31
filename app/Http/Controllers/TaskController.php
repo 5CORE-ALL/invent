@@ -9710,6 +9710,357 @@ class TaskController extends Controller
     }
 
     /**
+     * Day-by-day history for the Performance Report modal (Summ column).
+     *
+     * Rebuilds, for one user, the trend behind each factor shown on
+     * /tasks/summary using the same sources as the page: attendance hours,
+     * DAR days, tasks assigned / given / done, TAT, ETC / ATC, missed tasks,
+     * Scope of Improvement entries and the lifetime CL score snapshots.
+     * Overdue, chat dots, announcements, incentives and the R&R % are only
+     * known "right now", so they are not part of the history.
+     */
+    public function getUserPerformanceHistory(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'days' => 'nullable|integer|in:30,60,90',
+        ]);
+        $days = (int) ($validated['days'] ?? 30);
+
+        $viewer = Auth::user();
+        $visible = $this->getTaskSummaryVisibleUserIds($viewer);
+        if ($visible !== null && ! in_array((int) $validated['user_id'], $visible, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have access to this user.',
+            ], 403);
+        }
+
+        $user = User::find($validated['user_id']);
+        if (! $user) {
+            return response()->json(['success' => false, 'message' => 'User not found.'], 404);
+        }
+
+        $email = trim((string) $user->email);
+        $emailLc = strtolower($email);
+
+        $tz = \App\Services\Attendance\AttendanceTimelineService::defaultTimezone();
+        $endDay = now()->timezone($tz)->startOfDay();
+        $startDay = $endDay->copy()->subDays($days - 1);
+        $fromDate = $startDay->toDateString();
+        $toDate = $endDay->toDateString();
+
+        $dates = [];
+        $labels = [];
+        $cursor = $startDay->copy();
+        for ($i = 0; $i < $days; $i++) {
+            $dates[] = $cursor->format('Y-m-d');
+            $labels[] = $cursor->format('d M');
+            $cursor->addDay();
+        }
+        $blank = array_fill_keys($dates, 0);
+
+        // Normalise any DB value to a Y-m-d key that exists inside the window (else null).
+        $dayKey = function ($value) use ($blank): ?string {
+            if ($value === null || $value === '') {
+                return null;
+            }
+            try {
+                $key = \Carbon\Carbon::parse((string) $value)->format('Y-m-d');
+            } catch (\Throwable $e) {
+                return null;
+            }
+
+            return array_key_exists($key, $blank) ? $key : null;
+        };
+
+        // ---- Attendance hours per day ------------------------------------
+        $attHours = $blank;
+        if (Schema::hasTable('attendance_daily_summaries')) {
+            AttendanceDailySummary::query()
+                ->where('user_id', $user->id)
+                ->whereBetween('work_date', [$fromDate, $toDate])
+                ->get(['work_date', 'total_work_seconds', 'active_seconds'])
+                ->each(function ($row) use (&$attHours, $dayKey) {
+                    $key = $dayKey(optional($row->work_date)->format('Y-m-d') ?: (string) $row->work_date);
+                    if ($key === null) {
+                        return;
+                    }
+                    $h = AttL30Metrics::dayHoursFromSeconds(
+                        (int) ($row->active_seconds ?? 0),
+                        (int) ($row->total_work_seconds ?? 0)
+                    );
+                    $attHours[$key] = max($attHours[$key], $h);
+                });
+        }
+        if (Schema::hasTable('attendance_sessions')) {
+            $dbTz = config('app.timezone');
+            $sessionSeconds = $blank;
+            AttendanceSession::query()
+                ->where('user_id', $user->id)
+                ->where('started_at', '>=', $startDay->copy()->timezone($dbTz))
+                ->where('started_at', '<', $endDay->copy()->addDay()->timezone($dbTz))
+                ->get(['started_at', 'total_active_seconds'])
+                ->each(function ($row) use (&$sessionSeconds, $tz, $dayKey) {
+                    if (! $row->started_at) {
+                        return;
+                    }
+                    $key = $dayKey($row->started_at->copy()->timezone($tz)->toDateString());
+                    if ($key !== null) {
+                        $sessionSeconds[$key] += (int) ($row->total_active_seconds ?? 0);
+                    }
+                });
+            foreach ($sessionSeconds as $key => $seconds) {
+                if ($seconds > 0) {
+                    $attHours[$key] = max($attHours[$key], AttL30Metrics::dayHoursFromSeconds((int) $seconds));
+                }
+            }
+        }
+        if (Schema::hasTable('team_logger_daily_hours') && AttL30Metrics::usesTeamLogger($user->name, $user->email)) {
+            $mapper = new TeamSalaryCalculator();
+            $tlEmails = array_values(array_unique([$emailLc, strtolower($mapper->teamLoggerEmail($email))]));
+            TeamLoggerDailyHours::query()
+                ->whereBetween('work_date', [$fromDate, $toDate])
+                ->whereIn('employee_email', $tlEmails)
+                ->get(['work_date', 'productive_hours', 'active_hours'])
+                ->each(function ($row) use (&$attHours, $dayKey) {
+                    $key = $dayKey(optional($row->work_date)->format('Y-m-d') ?: (string) $row->work_date);
+                    if ($key === null) {
+                        return;
+                    }
+                    $h = min((float) ($row->productive_hours ?? $row->active_hours ?? 0), AttL30Metrics::MAX_DAY_HOURS);
+                    $attHours[$key] = max($attHours[$key], $h);
+                });
+        }
+
+        // ---- DAR submitted per day ---------------------------------------
+        $dar = $blank;
+        if (Schema::hasTable('dars')) {
+            Dar::query()
+                ->where('user_id', $user->id)
+                ->whereDate('report_date', '>=', $fromDate)
+                ->get(['report_date'])
+                ->each(function ($row) use (&$dar, $dayKey) {
+                    $key = $dayKey(optional($row->report_date)->format('Y-m-d'));
+                    if ($key !== null) {
+                        $dar[$key] = 1;
+                    }
+                });
+        }
+
+        // ---- Task based series -------------------------------------------
+        $assigned = $blank;
+        $given = $blank;
+        $done = $blank;
+        $missed = $blank;
+        $etcMin = $blank;
+        $atcMin = $blank;
+        $tatSum = array_fill_keys($dates, 0.0);
+        $tatCnt = $blank;
+
+        $inList = function (?string $list) use ($emailLc): bool {
+            foreach (explode(',', (string) $list) as $part) {
+                if (strtolower(trim($part)) === $emailLc) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        $tasks = $this->taskManagerVisibilityQuery()
+            ->where(function ($q) use ($email) {
+                $q->where('assign_to', 'LIKE', '%' . $email . '%')
+                    ->orWhere('assignor', $email);
+            })
+            ->where(function ($q) use ($fromDate) {
+                $q->where('start_date', '>=', $fromDate)
+                    ->orWhere('completion_date', '>=', $fromDate)
+                    ->orWhere('updated_at', '>=', $fromDate)
+                    ->orWhere('created_at', '>=', $fromDate);
+            })
+            ->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'created_at', 'updated_at', 'completion_date', 'is_missed', 'eta_time', 'etc_done']);
+
+        foreach ($tasks as $task) {
+            $isAssignee = $inList($task->assign_to);
+            $isGiver = strtolower(trim((string) $task->assignor)) === $emailLc && ! $isAssignee;
+
+            if ($isGiver) {
+                $k = $dayKey($task->created_at);
+                if ($k !== null) {
+                    $given[$k]++;
+                }
+            }
+            if (! $isAssignee) {
+                continue;
+            }
+
+            $k = $dayKey($task->start_date ?: $task->created_at);
+            if ($k !== null) {
+                $assigned[$k]++;
+            }
+
+            if (($task->status ?? '') === 'Done') {
+                $closedKey = $dayKey($task->completion_date ?: $task->updated_at);
+                if ($closedKey !== null) {
+                    $done[$closedKey]++;
+                    $etcMin[$closedKey] += (float) ($task->eta_time ?? 0);
+                    $atcMin[$closedKey] += (float) ($task->etc_done ?? 0);
+                }
+                if (! empty($task->start_date) && ! empty($task->completion_date)) {
+                    try {
+                        $s = \Carbon\Carbon::parse($task->start_date);
+                        $e = \Carbon\Carbon::parse($task->completion_date);
+                        $tk = $dayKey($task->completion_date);
+                        if ($tk !== null && $e->greaterThanOrEqualTo($s)) {
+                            $tatSum[$tk] += ($e->getTimestamp() - $s->getTimestamp()) / 86400.0;
+                            $tatCnt[$tk]++;
+                        }
+                    } catch (\Throwable $ex) {
+                        // Malformed timestamp — skip this row's TAT.
+                    }
+                }
+            }
+
+            if (! empty($task->is_missed)) {
+                $mk = $dayKey($task->start_date);
+                if ($mk !== null) {
+                    $missed[$mk]++;
+                }
+            }
+        }
+
+        if (Schema::hasTable('deleted_tasks')) {
+            DeletedTask::query()
+                ->where('assign_to', 'LIKE', '%' . $email . '%')
+                ->where(function ($q) use ($fromDate) {
+                    $q->where('deleted_at', '>=', $fromDate)
+                        ->orWhere('start_date', '>=', $fromDate);
+                })
+                ->get(['assign_to', 'status', 'is_missed', 'eta_time', 'etc_done', 'start_date', 'deleted_at'])
+                ->each(function ($row) use ($inList, $dayKey, &$etcMin, &$atcMin, &$missed) {
+                    if (! $inList($row->assign_to)) {
+                        return;
+                    }
+                    $dk = $dayKey($row->deleted_at);
+                    if ($dk !== null) {
+                        $etcMin[$dk] += (float) ($row->eta_time ?? 0);
+                        $atcMin[$dk] += (float) ($row->etc_done ?? 0);
+                    }
+                    $notDone = ! empty($row->is_missed) || ($row->status ?? '') !== 'Done';
+                    if ($notDone) {
+                        $mk = $dayKey($row->start_date ?: $row->deleted_at);
+                        if ($mk !== null) {
+                            $missed[$mk]++;
+                        }
+                    }
+                });
+        }
+
+        // ---- Scope of Improvement entries per day ------------------------
+        $si = $blank;
+        if (Schema::hasTable('scope_of_improvements')) {
+            ScopeOfImprovement::query()
+                ->where('user_id', $user->id)
+                ->where('created_at', '>=', $fromDate)
+                ->get(['created_at'])
+                ->each(function ($row) use (&$si, $dayKey) {
+                    $key = $dayKey($row->created_at);
+                    if ($key !== null) {
+                        $si[$key]++;
+                    }
+                });
+        }
+
+        // ---- CL score history (carry the last known value forward) -------
+        $scoreSeries = [];
+        foreach (UserScoreHistory::TYPES as $type) {
+            $scoreSeries[$type] = array_fill_keys($dates, null);
+        }
+        if (Schema::hasTable('user_score_history')) {
+            $snapshots = UserScoreHistory::query()
+                ->where('user_id', $user->id)
+                ->orderBy('captured_at')
+                ->orderBy('id')
+                ->limit(5000)
+                ->get(['score_type', 'percent', 'captured_at']);
+            foreach (UserScoreHistory::TYPES as $type) {
+                $rowsOfType = $snapshots->where('score_type', $type)->values();
+                $idx = 0;
+                $count = $rowsOfType->count();
+                $last = null;
+                foreach ($dates as $d) {
+                    $dayEnd = \Carbon\Carbon::parse($d, $tz)->endOfDay();
+                    while ($idx < $count) {
+                        $row = $rowsOfType[$idx];
+                        if (! $row->captured_at || $row->captured_at->copy()->timezone($tz)->greaterThan($dayEnd)) {
+                            break;
+                        }
+                        $last = (int) $row->percent;
+                        $idx++;
+                    }
+                    $scoreSeries[$type][$d] = $last;
+                }
+            }
+        }
+        // Today's point is always the live score so the line ends at "now".
+        $designation = (string) ($user->designation ?? '');
+        $mgrPayload = $this->buildMgrChecklistPayload(
+            $designation,
+            $designation === ''
+                ? collect()
+                : DesignationMgrCheckpoint::forDesignation($designation)->orderBy('sort_order')->orderBy('id')->get(),
+            $user
+        );
+        $scoreSeries[UserScoreHistory::TYPE_CLRR][$toDate] = $this->computeUserClrrPercent($user);
+        $scoreSeries[UserScoreHistory::TYPE_CLGEN][$toDate] = $this->computeUserClGenPercent($user);
+        $scoreSeries[UserScoreHistory::TYPE_CLMGR][$toDate] = (int) ($mgrPayload['combined_score']['percent'] ?? 0);
+
+        // ---- Shape the response ------------------------------------------
+        $round1 = fn ($v) => round((float) $v, 1);
+        $tatDays = [];
+        foreach ($dates as $d) {
+            $tatDays[] = $tatCnt[$d] > 0 ? $round1($tatSum[$d] / $tatCnt[$d]) : null;
+        }
+        $totalTatCnt = array_sum($tatCnt);
+
+        return response()->json([
+            'success' => true,
+            'user' => ['id' => $user->id, 'name' => $user->name],
+            'days' => $days,
+            'dates' => $dates,
+            'labels' => $labels,
+            'series' => [
+                'att_hours' => array_map($round1, array_values($attHours)),
+                'dar' => array_values($dar),
+                'assigned' => array_values($assigned),
+                'given' => array_values($given),
+                'done' => array_values($done),
+                'tat_days' => $tatDays,
+                'etc_h' => array_map(fn ($v) => $round1($v / 60), array_values($etcMin)),
+                'atc_h' => array_map(fn ($v) => $round1($v / 60), array_values($atcMin)),
+                'missed' => array_values($missed),
+                'si' => array_values($si),
+                'clrr' => array_values($scoreSeries[UserScoreHistory::TYPE_CLRR]),
+                'clmgr' => array_values($scoreSeries[UserScoreHistory::TYPE_CLMGR]),
+                'clgen' => array_values($scoreSeries[UserScoreHistory::TYPE_CLGEN]),
+            ],
+            'totals' => [
+                'att_hours' => $round1(array_sum($attHours)),
+                'dar_days' => array_sum($dar),
+                'assigned' => array_sum($assigned),
+                'given' => array_sum($given),
+                'done' => array_sum($done),
+                'avg_tat_days' => $totalTatCnt > 0 ? $round1(array_sum($tatSum) / $totalTatCnt) : null,
+                'etc_h' => $round1(array_sum($etcMin) / 60),
+                'atc_h' => $round1(array_sum($atcMin) / 60),
+                'missed' => array_sum($missed),
+                'si' => array_sum($si),
+            ],
+        ]);
+    }
+
+    /**
      * Compose a per-user snapshot (used for the user being viewed and each
      * of their tagged juniors in the dashboard modal).
      */
@@ -9765,11 +10116,30 @@ class TaskController extends Controller
                 'a_task' => (int) ($row['a_task'] ?? 0),
                 'a_task_h' => (int) ($row['a_task_h'] ?? 0),
                 'need_approval' => (int) ($row['need_approval'] ?? 0),
+                // Extra factors so the Performance Report covers every column of the page.
+                'dar_l30_count' => (int) ($row['dar_l30_count'] ?? 0),
+                'dar_l30_target' => (int) ($row['dar_l30_target'] ?? 25),
+                'dar_l30_pct' => (int) ($row['dar_l30_pct'] ?? 0),
+                'y_time_seconds' => (int) ($row['y_time_seconds'] ?? 0),
+                'y_done' => (int) ($row['y_done'] ?? 0),
+                'chat_red' => (int) ($row['chat_red'] ?? 0),
+                'chat_yellow' => (int) ($row['chat_yellow'] ?? 0),
+                'ann_unseen' => (int) ($row['ann_unseen'] ?? 0),
+                'soi_count' => (int) ($row['soi_count'] ?? 0),
+                'incentive_amount' => (float) ($row['incentive_amount'] ?? 0),
+                'incentive_count' => (int) ($row['incentive_count'] ?? 0),
+                'kpis' => collect(range(1, 5))->map(fn ($k) => [
+                    'label' => $row['kpi_' . $k . '_label'] ?? null,
+                    'value' => $row['kpi_' . $k] ?? null,
+                ])->filter(fn ($k) => $k['label'] !== null)->values()->all(),
             ] : [
                 'task' => 0, 'l30_hrs' => 0, 'att_l30_pct' => 0, 'att_l30_target' => 200, 'assignor_task' => 0,
                 'done' => 0, 'overdue' => 0, 'tat_l30_days' => null, 'tat_l30_count' => 0,
                 'atc_l30_h' => 0, 'etc_l30_h' => 0, 'etc_pending_h' => 0,
                 'missed_l30' => 0, 'missed_p30' => 0, 'a_task' => 0, 'a_task_h' => 0, 'need_approval' => 0,
+                'dar_l30_count' => 0, 'dar_l30_target' => 25, 'dar_l30_pct' => 0,
+                'y_time_seconds' => 0, 'y_done' => 0, 'chat_red' => 0, 'chat_yellow' => 0, 'ann_unseen' => 0,
+                'soi_count' => 0, 'incentive_amount' => 0, 'incentive_count' => 0, 'kpis' => [],
             ],
             'scores' => [
                 'rr_percent' => $rrPercent,
@@ -10792,6 +11162,7 @@ class TaskController extends Controller
             'items.*.additional_condition' => 'nullable|string|max:5000',
             'items.*.amount' => 'nullable|numeric|min:0',
             'items.*.is_active' => 'nullable|boolean',
+            'items.*.is_achieved' => 'nullable|boolean',
         ]);
 
         $items = [];
@@ -10872,6 +11243,9 @@ class TaskController extends Controller
                     continue;
                 }
                 $personTotal += (float) ($item['amount'] ?? 0);
+                if (! empty($item['is_achieved'])) {
+                    continue; // achieved incentives are not "cutoff" alerts
+                }
                 $raw = trim((string) ($item['additional_condition'] ?? ''));
                 if ($raw === '') {
                     continue;
@@ -11016,6 +11390,7 @@ class TaskController extends Controller
             'items.*.amount' => 'nullable|numeric|min:0',
             'items.*.sort_order' => 'nullable|integer|min:0|max:999',
             'items.*.is_active' => 'nullable|boolean',
+            'items.*.is_achieved' => 'nullable|boolean',
         ]);
 
         $userId = (int) ($validated['user_id'] ?? 0);
@@ -11088,13 +11463,16 @@ class TaskController extends Controller
         $keptIds = [];
 
         foreach ($items as $index => $item) {
-            $payload = $this->incentiveItemPayload($item, $index, $viewer);
-
+            $row = null;
             if (! empty($item['id'])) {
                 $row = UserIncentive::query()
                     ->where('user_id', $userId)
                     ->where('id', (int) $item['id'])
                     ->first();
+            }
+            $payload = $this->incentiveItemPayload($item, $index, $viewer, $row);
+
+            if (! empty($item['id'])) {
                 if ($row) {
                     $row->update($payload);
                     $keptIds[] = (int) $row->id;
@@ -11109,6 +11487,8 @@ class TaskController extends Controller
             ->where('user_id', $userId)
             ->when(count($keptIds) > 0, fn ($q) => $q->whereNotIn('id', $keptIds))
             ->delete();
+
+        $this->sendIncentiveChatNotices($userId);
 
         return UserIncentive::query()
             ->where('user_id', $userId)
@@ -11157,7 +11537,7 @@ class TaskController extends Controller
      * @param  array<string, mixed>  $item
      * @return array<string, mixed>
      */
-    protected function incentiveItemPayload(array $item, int $index, ?User $viewer): array
+    protected function incentiveItemPayload(array $item, int $index, ?User $viewer, ?UserIncentive $existing = null): array
     {
         $payload = [
             'title' => trim((string) ($item['title'] ?? '')),
@@ -11175,7 +11555,36 @@ class TaskController extends Controller
                 : null;
         }
 
+        if (Schema::hasColumn('user_incentives', 'achieved_at')) {
+            // A new cutoff date re-opens the incentive, so the "closed" chat notice may fire again.
+            if ($existing && array_key_exists('additional_condition', $payload)
+                && trim((string) $existing->additional_condition) !== (string) $payload['additional_condition']) {
+                $payload['closed_notified_at'] = null;
+            }
+
+            // Only touch achievement when the form sent it (the JS sync API omits it).
+            if (array_key_exists('is_achieved', $item)) {
+                $achieved = filter_var($item['is_achieved'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) === true;
+                if ($achieved) {
+                    $payload['achieved_at'] = $existing?->achieved_at ?? now();
+                } else {
+                    $payload['achieved_at'] = null;
+                    $payload['achieved_notified_at'] = null;
+                }
+            }
+        }
+
         return $payload;
+    }
+
+    /** Post any pending "closed" / "achieved" 5 Core Bot DMs for this user right away. */
+    protected function sendIncentiveChatNotices(int $userId): void
+    {
+        try {
+            \App\Support\IncentiveChatNotices::sweep($userId);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**
@@ -11194,6 +11603,8 @@ class TaskController extends Controller
             $payload['sort_order'] = $nextOrder + $index + 1;
             UserIncentive::create(array_merge($payload, ['user_id' => $userId]));
         }
+
+        $this->sendIncentiveChatNotices($userId);
     }
 
     /**
@@ -11260,6 +11671,7 @@ class TaskController extends Controller
             'amount_display' => $row->amount !== null ? '₹'.number_format((float) $row->amount, 0) : null,
             'sort_order' => (int) $row->sort_order,
             'is_active' => (bool) $row->is_active,
+            'is_achieved' => Schema::hasColumn('user_incentives', 'achieved_at') && $row->achieved_at !== null,
             'updated_at' => $row->updated_at?->toDateTimeString(),
         ];
     }
