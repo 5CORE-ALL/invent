@@ -26,7 +26,11 @@ class PlatformChargebackCsvImport
         'temu1' => ['source' => 'temu1_csv', 'name' => 'Temu 1', 'required' => ['Date', 'Transaction type', 'Order ID', 'Total']],
         'temu2' => ['source' => 'temu2_csv', 'name' => 'Temu 2', 'required' => ['Date', 'Transaction type', 'Order ID', 'Total']],
         'temu3' => ['source' => 'temu3_csv', 'name' => 'Temu 3', 'required' => ['Date', 'Transaction type', 'Order ID', 'Total']],
+        // UPS Billing Center invoice data (headers are matched ignoring case, spaces and punctuation).
+        'ups' => ['source' => 'ups_csv', 'name' => 'UPS', 'required' => ['Charge Description', 'Net Amount', 'Tracking Number']],
     ];
+
+    public const UPS_ADJUSTMENT = 'UPS Billing Adjustment';
 
     public const SHOPIFY_LABEL = 'Shopify Shipping Label';
 
@@ -48,7 +52,17 @@ class PlatformChargebackCsvImport
             return ['ok' => false, 'message' => 'Could not open the CSV file.', 'rows' => 0, 'saved' => 0];
         }
         $head = array_map(fn ($h) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $h)), (array) fgetcsv($fh));
+        if ($platform === 'ups') {
+            $head = array_map(fn ($h) => $this->norm($h), $head);
+            $cfg['required'] = array_map(fn ($h) => $this->norm($h), $cfg['required']);
+        }
         $missing = array_diff($cfg['required'], $head);
+        if ($missing !== [] && $platform === 'ups') {
+            $missing = array_map(fn ($m) => $m === 'chargedescription' ? 'Charge Description' : ($m === 'netamount' ? 'Net Amount' : 'Tracking Number'), $missing);
+            fclose($fh);
+
+            return ['ok' => false, 'message' => 'This is not a UPS invoice file with a header row (missing columns: '.implode(', ', $missing).'). In UPS Billing Center, download the invoice data as CSV with column headings.', 'rows' => 0, 'saved' => 0];
+        }
         if ($missing !== []) {
             fclose($fh);
 
@@ -66,7 +80,11 @@ class PlatformChargebackCsvImport
             }
             $rows++;
             $r = array_combine($head, array_slice(array_pad($line, count($head), ''), 0, count($head)));
-            $row = str_starts_with($platform, 'temu') ? $this->temuRow($cfg, $r) : $this->shopifyRow($cfg, $r);
+            $row = match (true) {
+                str_starts_with($platform, 'temu') => $this->temuRow($cfg, $r),
+                $platform === 'ups' => $this->upsRow($r),
+                default => $this->shopifyRow($cfg, $r),
+            };
             if ($row === null) {
                 continue;
             }
@@ -78,7 +96,7 @@ class PlatformChargebackCsvImport
                 'source' => $cfg['source'],
                 'marketplace_name' => $cfg['name'],
                 'currency' => 'USD',
-                'raw' => json_encode($r),
+                'raw' => json_encode($platform === 'ups' ? array_filter($r, fn ($v) => trim((string) $v) !== '') : $r),
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
@@ -153,6 +171,61 @@ class PlatformChargebackCsvImport
             'service' => null,
             'item_types' => null,
         ];
+    }
+
+    /**
+     * UPS invoice data: one line per charge. Only carrier adjustments are kept (Charge Category Code ADJ,
+     * or a description such as "Address Correction" / "... Adjustment"); the normal freight lines are not.
+     * Net Amount is positive for a charge and negative for a credit.
+     *
+     * @param  array<string, mixed>  $r  row keyed by normalised header
+     */
+    private function upsRow(array $r): ?array
+    {
+        $net = trim((string) ($r['netamount'] ?? ''));
+        if ($net === '' || ! is_numeric($net)) {
+            return null;
+        }
+        $description = trim((string) ($r['chargedescription'] ?? ''));
+        $category = strtoupper(trim((string) ($r['chargecategorycode'] ?? '')));
+        $class = strtoupper(trim((string) ($r['chargeclassificationcode'] ?? '')));
+        $invoiceType = strtoupper(trim((string) ($r['invoicetypedetailcode'] ?? '')));
+        $isAdjustment = $category === 'ADJ' || $class === 'ADJ' || $invoiceType === 'ADJ'
+            || preg_match('/adjust|correction|audit|dispute|chargeback/i', $description);
+        if (! $isAdjustment) {
+            return null;
+        }
+
+        $tracking = trim((string) ($r['trackingnumber'] ?? ''));
+        $order = trim((string) ($r['packagereferencenumber1'] ?? ''));
+        if ($order === '') {
+            $order = trim((string) ($r['shipmentreferencenumber1'] ?? ''));
+        }
+        $invoice = trim((string) ($r['invoicenumber'] ?? ''));
+        $dateRaw = trim((string) ($r['transactiondate'] ?? '')) ?: trim((string) ($r['invoicedate'] ?? ''));
+        $total = round(-(float) $net, 2);
+        $service = trim((string) ($r['originalservicedescription'] ?? '')) ?: trim((string) ($r['servicedescription'] ?? ''));
+
+        return [
+            '_key' => implode('|', [$invoice, $tracking, $category, $class, $description, $net, $dateRaw, $order]),
+            'transaction_type' => $this->str($category !== '' ? $category : 'ADJ', 64),
+            'description' => self::UPS_ADJUSTMENT,
+            'reason' => $this->str($description, 150),
+            'transaction_status' => null,
+            'posted_at' => $this->date($dateRaw, ['Y-m-d', 'm/d/Y', 'Y/m/d', 'm/d/y', 'd-m-Y', 'Ymd']),
+            'order_number' => $this->str($order, 100),
+            'settlement_id' => $this->str($invoice, 64),
+            'total_amount' => $total,
+            'direction' => $total < 0 ? 'debit' : 'credit',
+            'carrier' => 'UPS',
+            'service' => $this->str($service, 150),
+            'item_types' => $this->str($tracking, 500),
+        ];
+    }
+
+    private function norm(mixed $header): string
+    {
+        return strtolower((string) preg_replace('/[^a-z0-9]/i', '', (string) $header));
     }
 
     /**
