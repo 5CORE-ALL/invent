@@ -4545,6 +4545,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Promotions — active channel_master rows (Img + Channels + Status)
     Route::get('/promotions', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'index'])->name('promotions');
     Route::get('/promotions/data', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'data'])->name('promotions.data');
+    Route::post('/promotions/columns', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'storeColumn'])->name('promotions.columns.store');
+    Route::post('/promotions/save-row', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'saveRow'])->name('promotions.save.row');
 
     // Doba Sales Routes
     Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');
