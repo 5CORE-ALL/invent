@@ -500,9 +500,27 @@ class ChannelPushedPricePullService
                     AlibabaMetric::query()->where('product_id', $productId)->update(['price' => $price]);
                 }
                 if (\Illuminate\Support\Facades\Schema::hasTable('alibaba_pricing_prices')) {
+                    // A pack listing is stored as "DM E9 GLD 9PCS" on the sheet but the product master (and the page row
+                    // that carries INV) is "DM E9 GLD". Both pricing rows hold the live price: updating only the
+                    // suffixed one left the INV row on its old price (blue badge stuck for ever, 56 SKUs).
+                    $variants = [$want];
+                    $base = strtoupper(trim((string) preg_replace('/\s+\d+\s*(?:PCS?|PIECES?)$/i', '', $want)));
+                    // Only the same Alibaba product: a real single-unit listing keeps its own price.
+                    if ($base !== '' && $base !== $want && \Illuminate\Support\Facades\Schema::hasTable('alibaba_metrics')
+                        && AlibabaMetric::query()->where('product_id', $productId)->whereRaw('UPPER(TRIM(sku)) = ?', [$base])->exists()) {
+                        $variants[] = $base;
+                    }
                     AlibabaPricingPrice::query()
-                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$want])
+                        ->where(function ($q) use ($variants) {
+                            foreach ($variants as $v) {
+                                $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$v]);
+                            }
+                        })
                         ->update(['price' => $price]);
+                }
+                if ($sheet === null && $productId !== '') {
+                    // The sheet row can carry the pack suffix the SKU lookup did not match: keep its Price in step too.
+                    AlibabaSheetPrice::query()->where('product_id', $productId)->update(['sku_price' => $price]);
                 }
 
                 $out[] = [
