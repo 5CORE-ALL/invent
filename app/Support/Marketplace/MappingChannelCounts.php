@@ -62,6 +62,9 @@ class MappingChannelCounts
             if (is_array($row) && self::isNotCounted((string) ($row['channel_slug'] ?? ''))) {
                 $rows[$i]['missing_mapping_titas'] = 0;
                 $rows[$i]['not_counted'] = true;
+                $rows[$i]['inventory_push'] = 'failed';
+                $rows[$i]['inventory_push_label'] = 'Inventory push failed';
+                $rows[$i]['inventory_push_detail'] = 'The TopDawg API rejects inventory updates (403 Forbidden), so Shopify quantity cannot be pushed. Its mismatch SKUs are not counted here.';
             }
         }
 
@@ -655,6 +658,8 @@ class MappingChannelCounts
                 'api_label' => $api['api_label'],
             ];
         }
+
+        $rows = self::withoutUncounted($rows);
 
         if (! $store) {
             return $rows;

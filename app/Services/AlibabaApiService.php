@@ -1340,8 +1340,9 @@ class AlibabaApiService extends AliExpressApiService
                 return $raw;
             }
 
-            self::$gatewayGapSeconds = min(1.0, self::$gatewayGapSeconds + 0.1);
-            if (++$tries > 5) {
+            self::$gatewayGapSeconds = min(1.2, self::$gatewayGapSeconds + 0.1);
+            $this->noteGatewayBan($tries);
+            if (++$tries > 6) {
                 return $raw;
             }
             \Illuminate\Support\Facades\Log::info('Alibaba API rate limit hit, waiting before retry', [
@@ -1349,20 +1350,80 @@ class AlibabaApiService extends AliExpressApiService
                 'try' => $tries,
                 'gap' => self::$gatewayGapSeconds,
             ]);
-            if (! app()->runningUnitTests()) {
-                usleep((int) ((1.2 + 0.4 * $tries) * 1000000));
+        }
+    }
+
+    private const GATEWAY_LOCK = 'alibaba:gateway:slot';
+
+    private const GATEWAY_LAST = 'alibaba:gateway:last';
+
+    private const GATEWAY_GAP = 'alibaba:gateway:gap';
+
+    private const GATEWAY_BAN = 'alibaba:gateway:ban_until';
+
+    /**
+     * Every queue worker, the scheduler and the web button call Alibaba with the same app key, and Alibaba
+     * counts them together. A per-process gap did nothing against that, so the spacing and the ban are
+     * kept in the shared cache: one call starts at a time across all processes, and when Alibaba says
+     * "too fast" every process waits out the ban.
+     */
+    private function waitForGatewaySlot(): void
+    {
+        if (app()->runningUnitTests()) {
+            return;
+        }
+
+        $lock = null;
+        try {
+            $lock = \Illuminate\Support\Facades\Cache::lock(self::GATEWAY_LOCK, 20);
+            $lock->block(25);
+        } catch (\Throwable $e) {
+            $lock = null;
+            // No shared lock available: fall back to this process's own spacing.
+            if (self::$lastGatewayCallAt > 0) {
+                $wait = self::$gatewayGapSeconds - (microtime(true) - self::$lastGatewayCallAt);
+                if ($wait > 0) {
+                    usleep((int) ($wait * 1000000));
+                }
+            }
+
+            return;
+        }
+
+        try {
+            $cache = \Illuminate\Support\Facades\Cache::getFacadeRoot();
+            $gap = max(self::$gatewayGapSeconds, (float) $cache->get(self::GATEWAY_GAP, 0.35));
+            $last = (float) $cache->get(self::GATEWAY_LAST, 0);
+            $banUntil = (float) $cache->get(self::GATEWAY_BAN, 0);
+            $wait = max($last + $gap, $banUntil) - microtime(true);
+            if ($wait > 0) {
+                usleep((int) (min($wait, 12) * 1000000));
+            }
+            $cache->put(self::GATEWAY_LAST, microtime(true), 120);
+        } catch (\Throwable $e) {
+            // ignore
+        } finally {
+            try {
+                $lock->release();
+            } catch (\Throwable $e) {
+                // ignore
             }
         }
     }
 
-    private function waitForGatewaySlot(): void
+    /** Alibaba banned the app: widen the shared gap and make every process wait out the ban. */
+    private function noteGatewayBan(int $tries): void
     {
-        if (app()->runningUnitTests() || self::$lastGatewayCallAt <= 0) {
+        if (app()->runningUnitTests()) {
             return;
         }
-        $wait = self::$gatewayGapSeconds - (microtime(true) - self::$lastGatewayCallAt);
-        if ($wait > 0) {
-            usleep((int) ($wait * 1000000));
+        try {
+            $cache = \Illuminate\Support\Facades\Cache::getFacadeRoot();
+            $gap = min(1.2, max(self::$gatewayGapSeconds, (float) $cache->get(self::GATEWAY_GAP, 0.35)) + 0.1);
+            $cache->put(self::GATEWAY_GAP, $gap, 900);
+            $cache->put(self::GATEWAY_BAN, microtime(true) + 1.4 + 0.5 * $tries, 60);
+        } catch (\Throwable $e) {
+            usleep((int) ((1.2 + 0.4 * $tries) * 1000000));
         }
     }
 
