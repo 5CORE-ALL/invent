@@ -26,6 +26,55 @@ class PromotionsController extends Controller
         return view('market-places.promotions');
     }
 
+    /**
+     * Whether a seller can issue a coupon on a marketplace. Matched on the
+     * normalized channel name by prefix (so "Temu 2", "eBay 3" etc. follow their
+     * parent). Channels not listed return null (shown as "—", not guessed).
+     *
+     * Auto-fills any dynamic column whose header contains "coupon"; a manual
+     * Yes/No saved from the pen button overrides it.
+     */
+    private const COUPON_SUPPORT = [
+        // Sellers can create coupons / discount codes
+        'amazon' => true,
+        'ebay' => true,
+        'shopify' => true,
+        'tiktok' => true,
+        'aliexpress' => true,
+        'faire' => true,
+        'etsy' => true,
+        'reverb' => true,
+        'google' => true,
+        // Pricing / promotions controlled by the platform, no seller coupons
+        'temu' => false,
+        'bestbuy' => false,
+        'doba' => false,
+        'macys' => false,
+        'wayfair' => false,
+        'shein' => false,
+        'newegg' => false,
+        'walmart' => false,
+        'purchasingpower' => false,
+        'pls' => false,
+        'mercari' => false,
+        'poshmark' => false,
+        'depop' => false,
+        'vinted' => false,
+        'instagram' => false,
+    ];
+
+    private function couponSupport(string $channel): ?bool
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', strtolower($channel));
+        foreach (self::COUPON_SUPPORT as $prefix => $allowed) {
+            if (str_starts_with($key, $prefix)) {
+                return $allowed;
+            }
+        }
+
+        return null;
+    }
+
     private function storageReady(): bool
     {
         return Schema::hasTable('promotion_columns') && Schema::hasTable('promotion_channel_data');
@@ -88,6 +137,7 @@ class PromotionsController extends Controller
                     'alias' => $hasAlias ? ($row->alias ?? null) : null,
                     'seller_link' => $hasSellerLink ? ($row->seller_link ?? null) : null,
                     'status' => 'Active',
+                    'coupon_allowed' => $this->couponSupport((string) $row->channel),
                     'notes_remarks' => $stored->notes_remarks ?? '',
                     'values' => (object) $values,
                 ];

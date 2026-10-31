@@ -79,6 +79,23 @@
         .promo-empty {
             color: #cbd5e1;
         }
+        .promo-tick, .promo-cross {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            font-size: 14px;
+        }
+        .promo-tick {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .promo-cross {
+            background: #fee2e2;
+            color: #dc2626;
+        }
         .promo-edit-btn {
             border: 1px solid #cbd5e1;
             background: #fff;
@@ -269,9 +286,50 @@
         return `<span class="${cls}" title="${escapeHtml(v)}">${escapeHtml(v)}</span>`;
     }
 
+    // A column whose header contains "coupon" is auto-filled with ✔ / ✖ per marketplace.
+    function isCouponColumn(col) {
+        return /coupon/i.test(String(col && col.name || ''));
+    }
+
+    // Manual override ('yes'/'no') wins; otherwise the server's per-channel default.
+    // Returns true / false / null (unknown).
+    function effectiveCoupon(rowData, col) {
+        const manual = String(rowData['dyn_' + col.id] || '').trim().toLowerCase();
+        if (manual === 'yes') return true;
+        if (manual === 'no') return false;
+        return rowData.coupon_allowed === true ? true : (rowData.coupon_allowed === false ? false : null);
+    }
+
+    function couponCell(state) {
+        if (state === true) {
+            return '<span class="promo-tick" title="Coupons can be given"><i class="fas fa-check"></i></span>';
+        }
+        if (state === false) {
+            return '<span class="promo-cross" title="Coupons cannot be given"><i class="fas fa-times"></i></span>';
+        }
+        return '<span class="promo-empty" title="Unknown">—</span>';
+    }
+
     // Img | Channels | Status | <created columns…> | Notes and Remarks | Edit (pen)
     function buildColumns() {
         const created = dynamicColumns.map(function (col) {
+            if (isCouponColumn(col)) {
+                return {
+                    title: col.name,
+                    field: 'dyn_' + col.id,
+                    minWidth: 150,
+                    hozAlign: 'center',
+                    headerHozAlign: 'center',
+                    headerSort: true,
+                    sorter: function (a, b, aRow, bRow) {
+                        const rank = function (s) { return s === true ? 2 : (s === false ? 1 : 0); };
+                        return rank(effectiveCoupon(aRow.getData(), col)) - rank(effectiveCoupon(bRow.getData(), col));
+                    },
+                    formatter: function (cell) {
+                        return couponCell(effectiveCoupon(cell.getRow().getData(), col));
+                    },
+                };
+            }
             return {
                 title: col.name,
                 field: 'dyn_' + col.id,
@@ -418,9 +476,21 @@
             const val = row['dyn_' + col.id] != null ? row['dyn_' + col.id] : '';
             const $group = $('<div class="mb-3"></div>');
             $group.append($('<label class="form-label fw-semibold"></label>').text(col.name));
-            $group.append($('<input type="text" class="form-control promo-edit-input" maxlength="2000">')
-                .attr('data-col-id', col.id)
-                .val(val));
+            if (isCouponColumn(col)) {
+                const auto = row.coupon_allowed === true ? 'Yes' : (row.coupon_allowed === false ? 'No' : 'Unknown');
+                const $sel = $('<select class="form-select promo-edit-input"></select>')
+                    .attr('data-col-id', col.id)
+                    .append($('<option value=""></option>').text('Auto (' + auto + ')'))
+                    .append('<option value="yes">Yes ✔</option>')
+                    .append('<option value="no">No ✖</option>');
+                const cur = String(val).trim().toLowerCase();
+                $sel.val(cur === 'yes' || cur === 'no' ? cur : '');
+                $group.append($sel);
+            } else {
+                $group.append($('<input type="text" class="form-control promo-edit-input" maxlength="2000">')
+                    .attr('data-col-id', col.id)
+                    .val(val));
+            }
             $fields.append($group);
         });
 
