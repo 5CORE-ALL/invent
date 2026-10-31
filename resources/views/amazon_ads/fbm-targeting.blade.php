@@ -496,6 +496,7 @@
         ajaxURL: dataUrl,
         ajaxConfig: 'GET',
         filterMode: 'remote',
+        sortMode: 'remote',
         ajaxRequestFunc: function (url, _config, params) {
             const q = new URLSearchParams();
             q.set('page', String(params.page || 1));
@@ -511,6 +512,11 @@
             const scope = scopeEl ? scopeEl.value : 'all';
             if (scope && scope !== 'all') q.set('scope', scope);
             if (lowFilter) q.set('low', lowFilter);
+            const srt = Array.isArray(params.sort) && params.sort.length ? params.sort[0] : null;
+            if (srt && (srt.field === 'lt_clicks' || srt.field === 'lt_sold')) {
+                q.set('sort', srt.field);
+                q.set('dir', srt.dir === 'asc' ? 'asc' : 'desc');
+            }
             loadBar.start();
             return fetch(url + '?' + q.toString(), {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
@@ -686,7 +692,9 @@
                 field: 'lt_clicks',
                 minWidth: 90,
                 hozAlign: 'right',
-                headerSort: false,
+                headerSort: true,
+                headerSortStartingDir: 'desc',
+                sorter: 'number',
                 headerTooltip: 'Total clicks, lifetime, across every campaign in this row\'s KW cousin group (its own parent + cousin parents). From the stored daily Amazon Ads campaign reports.',
                 formatter: ltFormatter,
             },
@@ -695,7 +703,9 @@
                 field: 'lt_sold',
                 minWidth: 90,
                 hozAlign: 'right',
-                headerSort: false,
+                headerSort: true,
+                headerSortStartingDir: 'desc',
+                sorter: 'number',
                 headerTooltip: 'Total units sold, lifetime, across every campaign in this row\'s KW cousin group. From the stored daily Amazon Ads campaign reports.',
                 formatter: ltFormatter,
             },

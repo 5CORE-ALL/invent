@@ -245,6 +245,19 @@ class AmazonFbmTargetingController extends Controller
             }));
         }
 
+        $groups = $this->hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+
+        // Sort by Clicks LT / Sold LT (cousin-group totals): ranked over every filtered campaign, then paged.
+        $sortKey = strtolower(trim((string) $request->query('sort', '')));
+        $ltAll = null;
+        if ($sortKey === 'lt_clicks' || $sortKey === 'lt_sold') {
+            $ltAll = $this->lifetimeForRows($all, $groups);
+            $field = $sortKey === 'lt_clicks' ? 'clicks' : 'sold';
+            $dirMul = strtolower(trim((string) $request->query('dir', 'desc'))) === 'asc' ? 1 : -1;
+            // usort is stable, so equal totals keep their parent / name order.
+            usort($all, static fn (array $a, array $b) => $dirMul * (($ltAll[$a['campaign_name']][$field] ?? 0) <=> ($ltAll[$b['campaign_name']][$field] ?? 0)));
+        }
+
         $total = count($all);
         $rows = array_slice($all, ($page - 1) * $size, $size);
 
@@ -275,31 +288,10 @@ class AmazonFbmTargetingController extends Controller
         $titlesByParent = $this->parentTitles(array_map(static fn (array $r) => $r['parent'], $rows));
         $mark('titles');
 
-        $groups = $this->hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
         $nameMap = $this->cousinNameMap();
 
         // Lifetime clicks / sold of every campaign in each row's KW cousin group (own parent + cousin parents).
-        $groupCampaignIds = [];
-        $allGroupIds = [];
-        try {
-            $index = $this->campaignIndex();
-            foreach ($rows as $row) {
-                $ids = $row['campaign_id'] !== '' ? [$row['campaign_id'] => true] : [];
-                foreach ($this->effectiveGroup($row['campaign_name'], $groups) as $member) {
-                    $cid = $index[$this->cousins->normalize((string) $member)]['campaign_id'] ?? '';
-                    if ($cid !== '') {
-                        $ids[$cid] = true; // keyed by id: a campaign id shared by renamed campaigns counts once
-                    }
-                }
-                $groupCampaignIds[$row['campaign_name']] = array_keys($ids);
-                foreach ($ids as $cid => $_) {
-                    $allGroupIds[(string) $cid] = true;
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::warning('AmazonFbmTargetingController: cousin group lookup for LT failed', ['error' => $e->getMessage()]);
-        }
-        $ltTotals = $this->lifetimeCampaignTotals(array_map('strval', array_keys($allGroupIds)));
+        $lt = $ltAll ?? $this->lifetimeForRows($rows, $groups);
         $mark('lifetime');
 
         $data = [];
@@ -320,23 +312,12 @@ class AmazonFbmTargetingController extends Controller
 
             $cousinParents = $cousinNames === [] ? [] : $this->cousinParents($cousinNames);
 
-            $ltClicks = 0;
-            $ltSold = 0;
-            $ltWithData = 0;
-            $memberIds = $groupCampaignIds[$name] ?? [];
-            foreach ($memberIds as $mid) {
-                $t = $ltTotals[(string) $mid] ?? null;
-                if ($t !== null) {
-                    $ltClicks += $t['clicks'];
-                    $ltSold += $t['sold'];
-                    $ltWithData++;
-                }
-            }
+            $ltRow = $lt[$name] ?? ['clicks' => 0, 'sold' => 0, 'campaigns' => 0, 'with_data' => 0];
             $data[] = [
-                'lt_clicks' => $ltClicks,
-                'lt_sold' => $ltSold,
-                'lt_campaigns' => count($memberIds),
-                'lt_campaigns_with_data' => $ltWithData,
+                'lt_clicks' => $ltRow['clicks'],
+                'lt_sold' => $ltRow['sold'],
+                'lt_campaigns' => $ltRow['campaigns'],
+                'lt_campaigns_with_data' => $ltRow['with_data'],
                 // id / name give the Auto Task Events (ATE) rules one trackable key + label per campaign row.
                 'id' => $name !== '' ? $name : $id, // campaign names are unique per row (a campaign id can repeat across renamed campaigns)
                 'name' => $name,
@@ -964,6 +945,54 @@ class AmazonFbmTargetingController extends Controller
             'negatives' => $negatives[$campaignId] ?? [],
             'ignored_negatives' => $ignoredN[$campaignId] ?? [],
         ];
+    }
+
+    /**
+     * Lifetime clicks / sold of each campaign's whole KW cousin group (the campaign, its same-parent siblings and its
+     * cousins), keyed by campaign name. Group members are de-duplicated by campaign id.
+     *
+     * @param  list<array{campaign_id: string, campaign_name: string}>  $campaigns
+     * @param  array<string, list<string>>  $groups  groupsMap()
+     * @return array<string, array{clicks: int, sold: int, campaigns: int, with_data: int}>
+     */
+    protected function lifetimeForRows(array $campaigns, array $groups): array
+    {
+        $memberIds = [];
+        $allIds = [];
+        try {
+            $index = $this->campaignIndex();
+            foreach ($campaigns as $c) {
+                $ids = $c['campaign_id'] !== '' ? [(string) $c['campaign_id'] => true] : [];
+                foreach ($this->effectiveGroup($c['campaign_name'], $groups) as $member) {
+                    $cid = $index[$this->cousins->normalize((string) $member)]['campaign_id'] ?? '';
+                    if ($cid !== '') {
+                        $ids[(string) $cid] = true;
+                    }
+                }
+                $memberIds[$c['campaign_name']] = array_map('strval', array_keys($ids));
+                foreach ($ids as $cid => $_) {
+                    $allIds[(string) $cid] = true;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: cousin group lookup for LT failed', ['error' => $e->getMessage()]);
+        }
+
+        $totals = $this->lifetimeCampaignTotals(array_map('strval', array_keys($allIds)));
+        $out = [];
+        foreach ($memberIds as $name => $ids) {
+            $o = ['clicks' => 0, 'sold' => 0, 'campaigns' => count($ids), 'with_data' => 0];
+            foreach ($ids as $mid) {
+                if (isset($totals[$mid])) {
+                    $o['clicks'] += $totals[$mid]['clicks'];
+                    $o['sold'] += $totals[$mid]['sold'];
+                    $o['with_data']++;
+                }
+            }
+            $out[(string) $name] = $o;
+        }
+
+        return $out;
     }
 
     /**
