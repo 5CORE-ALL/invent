@@ -22,6 +22,13 @@ class AmazonAdsService
 
     protected string $profileId;
 
+    /** When set (see reuseAccessToken()), request() reuses one access token instead of refreshing it per call. */
+    protected bool $reuseToken = false;
+
+    protected ?string $reusedToken = null;
+
+    protected int $reusedTokenAt = 0;
+
     public function __construct(?Client $client = null)
     {
         $this->client = $client ?? new Client([
@@ -63,6 +70,31 @@ class AmazonAdsService
         }
 
         return $token;
+    }
+
+    /**
+     * Opt in to reusing one access token for the following requests (refreshed after 40 minutes; tokens last 60).
+     * For long batch jobs that make hundreds of calls; every other caller keeps a fresh token per request.
+     */
+    public function reuseAccessToken(bool $on = true): void
+    {
+        $this->reuseToken = $on;
+        if (! $on) {
+            $this->reusedToken = null;
+        }
+    }
+
+    protected function accessTokenForRequest(): string
+    {
+        if (! $this->reuseToken) {
+            return $this->getFreshAccessToken();
+        }
+        if ($this->reusedToken === null || (time() - $this->reusedTokenAt) > 2400) {
+            $this->reusedToken = $this->getFreshAccessToken();
+            $this->reusedTokenAt = time();
+        }
+
+        return $this->reusedToken;
     }
 
     /**
@@ -665,6 +697,96 @@ class AmazonAdsService
             $campaignIds,
             'enabled,paused'
         );
+    }
+
+    /**
+     * Fast variant of listSbKeywordsByCampaignIds: one access token, one campaign per request chain with several
+     * campaigns in flight at once, big pages, and only the fields the keyword push needs. A campaign is read until a
+     * page brings no new keyword, so it stays correct even if Amazon caps the page size.
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array{campaignId: string, adGroupId: string, keywordId: string, keywordText: string, matchType: string, state: string}>
+     */
+    public function listSbKeywordsByCampaignIdsConcurrent(array $campaignIds, int $concurrency = 6, int $pageSize = 1000, int $maxPages = 200): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $campaignIds
+        ), static fn (string $id) => $id !== '')));
+        if ($ids === []) {
+            return [];
+        }
+
+        $this->assertProfileScope();
+        $accept = 'application/vnd.sbkeyword.v3.2+json';
+        $url = $this->resolveUrl('/sb/keywords');
+        $headers = [
+            'Authorization' => 'Bearer '.$this->getFreshAccessToken(),
+            'Amazon-Advertising-API-ClientId' => $this->clientId,
+            'Amazon-Advertising-API-Scope' => $this->resolvedProfileId(),
+            'Accept' => $accept,
+        ];
+
+        $out = [];
+        $fetchPage = null;
+        $fetchPage = function (string $cid, int $start, int $pages, array $seen, int $try, int $delayMs) use (&$fetchPage, &$out, $url, $headers, $pageSize, $maxPages) {
+            $query = ['campaignIdFilter' => $cid, 'stateFilter' => 'enabled,paused', 'startIndex' => $start, 'count' => $pageSize];
+
+            return $this->client->requestAsync('GET', $url, ['headers' => $headers, 'query' => $query, 'delay' => $delayMs])->then(
+                function ($response) use (&$fetchPage, &$out, $cid, $start, $pages, $seen, $maxPages) {
+                    $data = $this->decodeResponseBody((string) $response->getBody());
+                    $batch = array_is_list($data) ? $data : (array) ($data['keywords'] ?? []);
+                    $n = 0;
+                    $new = 0;
+                    foreach ($batch as $row) {
+                        if (! is_array($row)) {
+                            continue;
+                        }
+                        $n++;
+                        $kid = trim((string) ($row['keywordId'] ?? ''));
+                        $mark = $kid !== '' ? $kid : md5((string) json_encode($row));
+                        if (isset($seen[$mark])) {
+                            continue;
+                        }
+                        $seen[$mark] = true;
+                        $new++;
+                        $out[] = [
+                            'campaignId' => (string) ($row['campaignId'] ?? $cid),
+                            'adGroupId' => (string) ($row['adGroupId'] ?? ''),
+                            'keywordId' => $kid,
+                            'keywordText' => (string) ($row['keywordText'] ?? ''),
+                            'matchType' => (string) ($row['matchType'] ?? ''),
+                            'state' => (string) ($row['state'] ?? ''),
+                        ];
+                    }
+                    if ($new === 0) {
+                        return null; // nothing new on this page: the campaign is fully read
+                    }
+                    if ($pages >= $maxPages) {
+                        throw new RuntimeException('Amazon Ads /sb/keywords list truncated after '.$pages.' pages for campaign '.$cid);
+                    }
+
+                    return $fetchPage($cid, $start + $n, $pages + 1, $seen, 0, 0);
+                },
+                function ($e) use (&$fetchPage, $cid, $start, $pages, $seen, $try) {
+                    $status = $e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse() ? $e->getResponse()->getStatusCode() : 0;
+                    if ($status === 429 && $try < 3) {
+                        return $fetchPage($cid, $start, $pages, $seen, $try + 1, (2 + 2 * $try) * 1000);
+                    }
+
+                    throw $e;
+                }
+            );
+        };
+
+        $promises = (function () use ($ids, $fetchPage) {
+            foreach ($ids as $cid) {
+                yield $fetchPage($cid, 0, 1, [], 0, 0);
+            }
+        })();
+        (new \GuzzleHttp\Promise\EachPromise($promises, ['concurrency' => max(1, $concurrency)]))->promise()->wait();
+
+        return $out;
     }
 
     /**
@@ -2670,7 +2792,7 @@ class AmazonAdsService
     protected function request(string $method, string $path, array $options = [], bool $withProfileScope = true): array
     {
         $url = $this->resolveUrl($path);
-        $token = $this->getFreshAccessToken();
+        $token = $this->accessTokenForRequest();
 
         $headers = array_merge([
             'Authorization' => 'Bearer '.$token,

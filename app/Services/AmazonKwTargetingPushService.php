@@ -29,10 +29,17 @@ class AmazonKwTargetingPushService
      * @param  list<array{parent: string, campaign_id: string, campaign_name: string}>  $kwCampaigns  non-PT SP campaigns
      * @return array{rows: list<array<string, mixed>>, totals: array<string, int>, errors: list<string>}
      */
-    public function run(array $kwCampaigns, bool $dryRun): array
+    public function run(array $kwCampaigns, bool $dryRun, ?callable $progress = null): array
     {
         $errors = [];
         $rows = [];
+        // One access token for the whole run (hundreds of calls) instead of a token refresh per call.
+        $this->ads->reuseAccessToken();
+        $report = function (string $note) use (&$rows, $progress): void {
+            if ($progress !== null) {
+                $progress($rows, $this->totals($rows), $note);
+            }
+        };
 
         if (! Schema::hasTable(self::STORE_TABLE)) {
             return ['rows' => [], 'totals' => $this->totals([]), 'errors' => ['Keyword table is missing. Run php artisan migrate.']];
@@ -134,6 +141,9 @@ class AmazonKwTargetingPushService
                 }
             }
             $rows[] = $row;
+            if (! $dryRun) {
+                $report('Pushed to KW campaign '.$row['campaign_name']);
+            }
         }
 
         // ---- HL campaigns (SB), one per parent ----
@@ -149,7 +159,7 @@ class AmazonKwTargetingPushService
         $adGroupSb = [];
         if ($hlIds !== []) {
             try {
-                foreach ($this->ads->listSbKeywordsByCampaignIds(array_keys($hlIds)) as $kw) {
+                foreach ($this->ads->listSbKeywordsByCampaignIdsConcurrent(array_map('strval', array_keys($hlIds))) as $kw) {
                     $cid = trim((string) ($kw['campaignId'] ?? ''));
                     $text = trim((string) ($kw['keywordText'] ?? ''));
                     if ($cid === '' || $text === '') {
@@ -218,6 +228,9 @@ class AmazonKwTargetingPushService
                 }
             }
             $rows[] = $row;
+            if (! $dryRun) {
+                $report('Pushed to HL campaign '.$row['campaign_name']);
+            }
         }
 
         return ['rows' => $rows, 'totals' => $this->totals($rows), 'errors' => $errors];

@@ -1573,7 +1573,14 @@
         } else if (window.jQuery) {
             window.jQuery(pkModalEl).modal('show');
         }
-        pkPost(true).then(function (r) {
+        fetch(@json(route('amazon.ads.fbm-targeting.push-status')), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (res) { return res.json(); })
+            .catch(function () { return {}; })
+            .then(function (st) {
+                if (st && st.status === 'running') { pkPollPush(); return null; }
+                return pkPost(true);
+            }).then(function (r) {
+            if (!r) return;
             const b = r.body || {};
             if (!r.ok) {
                 pkSummary.className = 'fw-semibold mb-2 text-danger';
@@ -1600,19 +1607,62 @@
             pkConfirm.disabled = true;
             pkConfirm.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Pushing…';
             pkSummary.className = 'fw-semibold mb-2';
-            pkSummary.textContent = 'Pushing keywords to Amazon, this can take a few minutes…';
+            pkSummary.textContent = 'Starting the push…';
+            // The push runs in the background on the server (it takes many minutes); poll its progress here.
             pkPost(false).then(function (r) {
                 const b = r.body || {};
-                pkSummary.className = 'fw-semibold mb-2 ' + (r.ok ? ((b.totals && b.totals.failed) ? 'text-warning' : 'text-success') : 'text-danger');
-                pkSummary.textContent = b.message || (r.ok ? 'Done.' : 'Push failed.');
-                if (r.ok) pkRender(b, true); else pkWrap.innerHTML = '';
+                if (!r.ok) {
+                    pkSummary.className = 'fw-semibold mb-2 text-danger';
+                    pkSummary.textContent = b.message || 'Push failed.';
+                    pkWrap.innerHTML = '';
+                    pkConfirm.disabled = false;
+                    pkConfirm.innerHTML = original;
+                    return;
+                }
+                pkPollPush(original);
             }).catch(function (e) {
                 pkSummary.className = 'fw-semibold mb-2 text-danger';
                 pkSummary.textContent = 'Push failed: ' + e.message;
-            }).finally(function () {
+                pkConfirm.disabled = false;
                 pkConfirm.innerHTML = original;
             });
         });
+    }
+
+    // Poll the background push until it is done / failed; shows live progress against the keywords found by the check.
+    const pushStatusUrl = @json(route('amazon.ads.fbm-targeting.push-status'));
+    let pkPollTimer = null;
+    function pkPollPush(originalBtnHtml) {
+        clearTimeout(pkPollTimer);
+        pkConfirm.disabled = true;
+        pkConfirm.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Pushing…';
+        const tick = function () {
+            fetch(pushStatusUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (res) { return res.json(); })
+                .then(function (b) {
+                    const t = b.totals || {};
+                    if (b.status === 'running') {
+                        const sent = Number(t.added || 0) + Number(t.failed || 0);
+                        pkSummary.className = 'fw-semibold mb-2';
+                        pkSummary.textContent = 'Pushing to Amazon in the background… ' + sent.toLocaleString() + ' keyword(s) processed' +
+                            (t.failed ? ' (' + Number(t.failed).toLocaleString() + ' rejected)' : '') + (b.message ? ' · ' + b.message : '') +
+                            '. You can close this window; reopen it to check progress.';
+                        pkPollTimer = setTimeout(tick, 4000);
+                        return;
+                    }
+                    if (b.status === 'done' || b.status === 'error') {
+                        pkSummary.className = 'fw-semibold mb-2 ' + (b.status === 'error' ? 'text-danger' : (t.failed ? 'text-warning' : 'text-success'));
+                        pkSummary.textContent = b.message || (b.status === 'done' ? 'Done.' : 'Push failed.');
+                        if (b.status === 'done') pkRender(b, true); else pkWrap.innerHTML = '';
+                        pkConfirm.innerHTML = originalBtnHtml || '<i class="fas fa-upload"></i> Push now';
+                        pkConfirm.disabled = b.status === 'done';
+                        return;
+                    }
+                    pkPollTimer = setTimeout(tick, 4000);
+                })
+                .catch(function () { pkPollTimer = setTimeout(tick, 6000); }); // transient network error: keep polling
+        };
+        tick();
     }
 
     // ---------- Specific KW (manual, independent of cousins) ----------

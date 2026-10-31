@@ -639,33 +639,156 @@ class AmazonFbmTargetingController extends Controller
     {
         $dryRun = filter_var($request->input('dry_run', true), FILTER_VALIDATE_BOOLEAN);
 
-        @set_time_limit(900);
+        // The real push sends tens of thousands of keywords - far longer than a web request may last - so it runs
+        // in a background process; the page polls pushStatus() for progress.
+        if (! $dryRun) {
+            return $this->startBackgroundPush();
+        }
 
-        $kw = array_values(array_filter(
+        @set_time_limit(300);
+
+        $r = $push->run($this->kwCampaignsForPush(), true);
+        if ($r['errors'] !== [] && $r['rows'] === []) {
+            return response()->json(['success' => false, 'message' => implode(' ', $r['errors']), 'dry_run' => true], 502);
+        }
+
+        return response()->json($this->pushPayload($r, true));
+    }
+
+    /** Non-PT SP campaigns that can receive keywords. */
+    public function kwCampaignsForPush(): array
+    {
+        return array_values(array_filter(
             $this->campaignsGroupedByParent(),
             fn (array $c) => $c['campaign_id'] !== '' && ! $this->isProductTargetingCampaign($c['campaign_name'])
         ));
+    }
 
-        $r = $push->run($kw, $dryRun);
+    /**
+     * @param  array{rows: list<array<string, mixed>>, totals: array<string, int>, errors: list<string>}  $r
+     * @return array<string, mixed>
+     */
+    public function pushPayload(array $r, bool $dryRun): array
+    {
         $t = $r['totals'];
-
-        if ($r['errors'] !== [] && $r['rows'] === []) {
-            return response()->json(['success' => false, 'message' => implode(' ', $r['errors']), 'dry_run' => $dryRun], 502);
-        }
-
         $message = $dryRun
             ? 'Ready to push '.$t['kw_to_add'].' keyword(s) to '.$t['kw_campaigns'].' KW campaign(s) and '
                 .$t['hl_to_add'].' to '.$t['hl_campaigns'].' HL campaign(s).'
             : 'Pushed '.$t['added'].' keyword(s)'.($t['failed'] > 0 ? ', '.$t['failed'].' rejected/failed' : '').'.';
 
-        return response()->json([
+        return [
             'success' => true,
             'dry_run' => $dryRun,
             'message' => $message,
             'totals' => $t,
             'rows' => $r['rows'],
             'errors' => $r['errors'],
-        ]);
+        ];
+    }
+
+    private const PUSH_STATE = 'amz_fbm_push_state';
+
+    private const PUSH_LOCK = 'amz_fbm_push_lock';
+
+    /** The push is treated as dead when its background process has not reported progress for this long. */
+    private const PUSH_STALE_SECONDS = 300;
+
+    /**
+     * Start the real push in the background (one at a time) and return at once.
+     */
+    protected function startBackgroundPush(): JsonResponse
+    {
+        $state = Cache::get(self::PUSH_STATE);
+        $alive = is_array($state) && ($state['status'] ?? '') === 'running'
+            && (time() - (int) ($state['heartbeat'] ?? 0)) < self::PUSH_STALE_SECONDS;
+        if ($alive) {
+            return response()->json(['success' => true, 'started' => true, 'already' => true, 'message' => 'A push is already running.'] + $this->pushStatusBody());
+        }
+
+        Cache::forget(self::PUSH_LOCK);
+        Cache::put(self::PUSH_LOCK, 1, now()->addHours(3));
+        Cache::put(self::PUSH_STATE, [
+            'status' => 'running', 'started_at' => now()->toDateTimeString(), 'heartbeat' => time(),
+            'by' => Auth::user()?->name,
+            'message' => 'Starting…', 'totals' => null, 'rows' => [], 'errors' => [],
+        ], now()->addHours(6));
+
+        try {
+            $this->spawnArtisan('app:amazon-kw-targeting-push', 'fbm-targeting-push.log');
+        } catch (\Throwable $e) {
+            Cache::forget(self::PUSH_LOCK);
+            Cache::forget(self::PUSH_STATE);
+            Log::warning('AmazonFbmTargetingController: push spawn failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Could not start the push: '.$e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true, 'started' => true, 'message' => 'Push started in the background.'] + $this->pushStatusBody());
+    }
+
+    /**
+     * Progress of the background push (polled by the page).
+     */
+    public function pushStatus(): JsonResponse
+    {
+        return response()->json(['success' => true] + $this->pushStatusBody());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function pushStatusBody(): array
+    {
+        $s = Cache::get(self::PUSH_STATE);
+        if (! is_array($s)) {
+            return ['status' => 'idle'];
+        }
+        if (($s['status'] ?? '') === 'running' && (time() - (int) ($s['heartbeat'] ?? 0)) >= self::PUSH_STALE_SECONDS) {
+            $s['status'] = 'error';
+            $s['message'] = 'The background push stopped reporting progress (see storage/logs/fbm-targeting-push.log). Keywords already sent are kept; run the check again and push the rest.';
+            Cache::put(self::PUSH_STATE, $s, now()->addHours(6));
+            Cache::forget(self::PUSH_LOCK);
+        }
+        unset($s['heartbeat']);
+
+        return $s;
+    }
+
+    /**
+     * Run an artisan command detached from the web request.
+     */
+    protected function spawnArtisan(string $command, string $logFile): void
+    {
+        $php = PHP_BINARY ?: 'php';
+        if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+            $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+            if ($cli !== '') {
+                $php = $cli;
+            }
+        }
+        $artisan = base_path('artisan');
+        $log = storage_path('logs/'.$logFile);
+        if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+            pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' '.$command, 'r'));
+
+            return;
+        }
+        exec('nohup '.escapeshellarg($php).' '.escapeshellarg($artisan).' '.$command.' >> '.escapeshellarg($log).' 2>&1 &');
+    }
+
+    /**
+     * Called by the background command: store progress / the final result where pushStatus() reads it.
+     *
+     * @param  array<string, mixed>  $patch
+     */
+    public function recordPushState(array $patch, bool $finished = false): void
+    {
+        $s = Cache::get(self::PUSH_STATE);
+        $s = array_merge(is_array($s) ? $s : [], $patch, ['heartbeat' => time()]);
+        Cache::put(self::PUSH_STATE, $s, now()->addHours(6));
+        if ($finished) {
+            Cache::forget(self::PUSH_LOCK);
+        }
     }
 
     /**
