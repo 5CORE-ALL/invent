@@ -164,6 +164,7 @@
                                 <button type="button" class="btn btn-sm btn-success" id="promo-add-column-btn">
                                     <i class="fas fa-plus me-1"></i> Add Column
                                 </button>
+                                @include('partials.ace-buttons', ['acePage' => 'active_channels'])
                             </div>
                         </div>
                     </div>

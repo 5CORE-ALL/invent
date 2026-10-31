@@ -415,6 +415,16 @@ class ChatController extends Controller
 
         $this->forgetPeerUnread($row, (int) $user->id);
 
+        // ACE (Automated Chat Event): keyword rules may create a one-time task. Never block sending.
+        try {
+            $sent = $created->first();
+            if ($sent instanceof ChatMessage) {
+                \App\Support\Ace\AceEngine::onChatMessage($sent);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         return response()->json([
             'messages' => $this->serializeMessages($row, $created, (int) $user->id, false),
         ]);

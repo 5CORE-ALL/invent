@@ -187,6 +187,16 @@
                 background: #fecaca;
                 color: #991b1b;
             }
+            .topbar-review-btn.is-review-none { background: #e0e7ff; color: #3730a3; box-shadow: 0 2px 6px rgba(55, 48, 163, 0.18); }
+            .topbar-review-btn.is-review-none:hover { background: #c7d2fe; color: #3730a3; }
+            .topbar-review-btn.is-review-high { background: #dcfce7; color: #166534; box-shadow: 0 2px 6px rgba(22, 101, 52, 0.18); }
+            .topbar-review-btn.is-review-high:hover { background: #bbf7d0; color: #166534; }
+            .topbar-review-btn.is-review-mid { background: #fef3c7; color: #92400e; box-shadow: 0 2px 6px rgba(146, 64, 14, 0.18); }
+            .topbar-review-btn.is-review-mid:hover { background: #fde68a; color: #92400e; }
+            .topbar-review-btn.is-review-low { background: #fee2e2; color: #991b1b; box-shadow: 0 2px 6px rgba(153, 27, 27, 0.18); }
+            .topbar-review-btn.is-review-low:hover { background: #fecaca; color: #991b1b; }
+            .topbar-review-btn i { color: #f59e0b; }
+
             .topbar-incentive-dollar-btn {
                 display: inline-flex;
                 align-items: center;
@@ -584,6 +594,16 @@
                 <span class="topbar-dar-btn__pct">{{ $topbarDarPct }}%</span>
             @endif
         </button>
+
+        @auth
+            {{-- My Review: average of all peer reviews I have received (filled by my-review-modal script) --}}
+            <button type="button" id="myReviewTopbarBtn" class="topbar-dar-btn topbar-review-btn is-review-none"
+                title="My Review — average of reviews received" aria-label="My Review">
+                <i class="ri-star-fill"></i>
+                <span class="topbar-dar-btn__label">REVIEW</span>
+                <span class="topbar-dar-btn__pct" id="myReviewTopbarAvg">&hellip;</span>
+            </button>
+        @endauth
 
         @auth
             @if (auth()->user()->is5CoreMember())

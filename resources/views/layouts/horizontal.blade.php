@@ -52,6 +52,9 @@
 
     {{-- Shared DAR quick-entry modal (opened from the topbar DAR button). --}}
     @include('layouts.shared.dar-modal')
+    @auth
+        @include('layouts.shared.my-review-modal')
+    @endauth
 
     {{-- Shared "Add Scope of Improvement" modal (opened from the topbar
          Ideas / Activity buttons on every page). --}}

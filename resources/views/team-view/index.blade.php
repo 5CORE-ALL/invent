@@ -5,7 +5,7 @@
     <style>
         /* ---------- Hero ---------- */
         .tv-hero {
-            position: relative; overflow: hidden; border-radius: 16px; padding: 16px 26px; color: #fff; margin-bottom: 14px;
+            position: relative; overflow: hidden; border-radius: 14px; padding: 10px 22px; color: #fff; margin-bottom: 12px;
             background: linear-gradient(120deg, #6d28d9, #3b82f6, #06b6d4, #8b5cf6);
             background-size: 300% 300%; animation: tvGradient 14s ease infinite;
             box-shadow: 0 12px 30px rgba(79, 70, 229, .28);
@@ -13,18 +13,18 @@
         .tv-hero::before, .tv-hero::after {
             content: ''; position: absolute; border-radius: 50%; background: rgba(255, 255, 255, .12); pointer-events: none;
         }
-        .tv-hero::before { width: 260px; height: 260px; right: -60px; top: -90px; animation: tvFloat 9s ease-in-out infinite; }
-        .tv-hero::after { width: 160px; height: 160px; right: 180px; bottom: -80px; animation: tvFloat 11s ease-in-out infinite reverse; }
-        .tv-hero-grid { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+        .tv-hero::before { width: 200px; height: 200px; right: -50px; top: -80px; animation: tvFloat 9s ease-in-out infinite; }
+        .tv-hero::after { width: 120px; height: 120px; right: 180px; bottom: -70px; animation: tvFloat 11s ease-in-out infinite reverse; }
+        .tv-hero-grid { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; }
         .tv-hero-text { flex: 1 1 420px; min-width: 0; }
-        .tv-group { flex: 0 1 460px; display: flex; flex-direction: column; align-items: center; }
+        .tv-group { flex: 0 1 560px; display: flex; flex-direction: column; align-items: center; }
         .tv-group-pics {
-            display: flex; flex-wrap: wrap; justify-content: center; padding: 6px 12px 8px 20px;
-            background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .3); border-radius: 22px; backdrop-filter: blur(8px);
-            box-shadow: 0 10px 28px rgba(0, 0, 0, .18);
+            display: flex; flex-wrap: wrap; justify-content: center; padding: 4px 10px 6px 18px;
+            background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .3); border-radius: 16px; backdrop-filter: blur(8px);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
         }
         .tv-group-pic {
-            width: 38px; height: 38px; border-radius: 50%; object-fit: cover; margin: 0 0 -4px -9px; background: #fff;
+            width: 32px; height: 32px; border-radius: 50%; object-fit: cover; margin: 0 0 -4px -8px; background: #fff;
             border: 2px solid #fff; box-shadow: 0 0 0 2px var(--gp, #94a3b8), 0 3px 8px rgba(0, 0, 0, .25);
             transition: transform .2s ease; animation: tvPop .5s cubic-bezier(.2, 1.4, .4, 1) both; position: relative;
         }
@@ -32,20 +32,24 @@
         .tv-gp-director { --gp: #a855f7; }
         .tv-gp-mgr { --gp: #60a5fa; }
         .tv-gp-exec { --gp: #34d399; }
-        .tv-group-caption { margin-top: 5px; font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .9; }
+        .tv-group-caption { margin-top: 3px; font-size: .62rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .9; }
         @keyframes tvPop { from { opacity: 0; transform: scale(.3) translateY(10px); } to { opacity: 1; transform: none; } }
-        .tv-hero-top { font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; opacity: .85; }
-        .tv-slogan { font-size: clamp(1.15rem, 2vw, 1.7rem); font-weight: 800; line-height: 1.25; margin: 4px 0 2px; max-width: 900px; text-shadow: 0 2px 10px rgba(0, 0, 0, .15); animation: tvRise .8s ease both; }
-        .tv-slogan-by { font-size: .9rem; opacity: .85; font-style: italic; animation: tvRise 1s .15s ease both; }
-        .tv-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; position: relative; z-index: 1; }
+        .tv-hero-top { font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; opacity: .85; }
+        .tv-slogan { font-size: clamp(1.05rem, 1.7vw, 1.4rem); font-weight: 800; line-height: 1.25; margin: 2px 0 0; max-width: 900px; text-shadow: 0 2px 10px rgba(0, 0, 0, .15); animation: tvRise .8s ease both; }
+        .tv-slogan-by { font-size: .78rem; opacity: .85; font-style: italic; animation: tvRise 1s .15s ease both; }
+        .tv-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; position: relative; z-index: 1; }
         .tv-stat {
             background: rgba(255, 255, 255, .18); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, .3);
-            border-radius: 12px; padding: 4px 14px; min-width: 100px; transition: transform .2s ease, background .2s ease;
+            border-radius: 10px; padding: 2px 12px; min-width: 88px; transition: transform .2s ease, background .2s ease;
             animation: tvRise .8s ease both;
         }
         .tv-stat:hover { transform: translateY(-3px) scale(1.04); background: rgba(255, 255, 255, .28); }
-        .tv-stat b { display: block; font-size: 1.25rem; line-height: 1.1; }
-        .tv-stat span { font-size: .75rem; opacity: .9; font-weight: 600; letter-spacing: .03em; }
+        .tv-stat b { display: block; font-size: 1.05rem; line-height: 1.1; }
+        .tv-stat span { font-size: .66rem; opacity: .9; font-weight: 600; letter-spacing: .03em; }
+        .tv-stat-avg { background: linear-gradient(135deg, rgba(251, 191, 36, .38), rgba(255, 255, 255, .18)); border-color: rgba(253, 224, 71, .7); min-width: 150px; }
+        .tv-stat-avg b { display: flex; align-items: center; gap: 6px; }
+        .tv-stat-avg b .tv-avg-star { color: #fde047; text-shadow: 0 0 8px rgba(253, 224, 71, .7); }
+        .tv-stat-avg .tv-avg-sec { display: block; font-size: .6rem; opacity: .95; letter-spacing: .02em; white-space: nowrap; }
         @keyframes tvGradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         @keyframes tvFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(18px); } }
         @keyframes tvRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
@@ -172,6 +176,13 @@
                         <div class="tv-stat" style="animation-delay:.2s"><b>{{ $counts['director'] }}</b><span>Directors</span></div>
                         <div class="tv-stat" style="animation-delay:.3s"><b>{{ $counts['mgr'] }}</b><span>Managers</span></div>
                         <div class="tv-stat" style="animation-delay:.4s"><b>{{ $counts['exec'] }}</b><span>Executives</span></div>
+                        @php $fmtAvg = fn ($v) => $v === null ? '—' : number_format($v, 1); @endphp
+                        <div class="tv-stat tv-stat-avg" style="animation-delay:.5s"
+                             title="Average of all {{ $teamAvg['reviews'] }} review ratings across {{ $teamAvg['reviewees'] }} reviewed member(s)">
+                            <b><span class="tv-avg-star">&#9733;</span>{{ $fmtAvg($teamAvg['avg']) }}</b>
+                            <span>Team Avg Review</span>
+                            <span class="tv-avg-sec">Personal {{ $fmtAvg($teamAvg['sections']['personal'] ?? null) }} &middot; Team {{ $fmtAvg($teamAvg['sections']['team'] ?? null) }} &middot; R&amp;R {{ $fmtAvg($teamAvg['sections']['rr'] ?? null) }}</span>
+                        </div>
                     </div>
                 </div>
 

@@ -1313,6 +1313,9 @@
          Included after Vite so jQuery/Bootstrap are ready, and before the page's
          own script-after-vite so window.DarModal is defined first. --}}
     @include('layouts.shared.dar-modal')
+    @auth
+        @include('layouts.shared.my-review-modal')
+    @endauth
 
     {{-- Shared "Add Scope of Improvement" modal (opened from the topbar
          Ideas / Activity buttons on every page). --}}

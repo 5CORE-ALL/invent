@@ -859,6 +859,14 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
      
+        // ACE (Automated Chat Event): column rules -> one-time tasks
+        $schedule->command('ace:run')
+            ->everyFiveMinutes()
+            ->name('ace-run')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $ist($schedule->command('app:fetch-wayfair-data')
             ->everyFiveMinutes()
             ->name('fetch-wayfair-data')

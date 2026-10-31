@@ -430,6 +430,7 @@
                         <input type="text" id="usersSearch" class="form-control border-0 bg-light"
                             placeholder="Search by name, phone, email, designation, R&amp;R, resources, training">
                     </div>
+                    @include('partials.ace-buttons', ['acePage' => 'users'])
                     <div class="btn-group status-toggle" role="group" aria-label="Filter by one or more statuses">
                         <button type="button" class="btn btn-success active" id="statusActiveBtn" data-status="active" title="Toggle Active">
                             <i class="ri-checkbox-blank-circle-fill me-1"></i>Active
@@ -2286,6 +2287,7 @@
                     'bank_2' => $u->userSalary?->bank_2 ?? '',
                     'upi_id' => $u->userSalary?->upi_id ?? '',
                     'has_docs' => $u->docs->isNotEmpty(),
+                    'is_director' => $u->isDirector(),
                     'docs' => $u->docs->map(function ($d) use ($u) {
                         return [
                             'id' => $d->id,
@@ -2352,15 +2354,6 @@
                 { title: 'Designation', field: 'designation', minWidth: 150, formatter: (c) => c.getValue() ? '<span class="designation-badge">' + esc(c.getValue()) + '</span>' : '<span class="text-muted">-</span>' },
                 { title: 'Joined', field: 'date_of_joining', width: 110, hozAlign: 'center', formatter: (c) => c.getValue() ? esc(c.getValue()) : '<span class="text-muted">-</span>' },
                 {
-                    title: 'Hours', field: 'working_hours', width: 90, hozAlign: 'center', headerSort: true,
-                    titleFormatter: () => '<span title="Productive working hours ({{ $currentMonth }})">Hours</span>',
-                    formatter: (c) => {
-                        const v = parseFloat(c.getValue());
-                        if (!v || isNaN(v)) return '<span class="text-muted">—</span>';
-                        return '<span class="badge bg-info" title="{{ $currentMonth }}">' + v + 'h</span>';
-                    }
-                },
-                {
                     title: 'Active', field: 'account_status', width: 80, hozAlign: 'center', headerSort: false,
                     formatter: (c) => {
                         const d = c.getRow().getData();
@@ -2389,24 +2382,6 @@
                         toggleActive(d, cell.getRow());
                     }
                 },
-                {
-                    title: 'Stay In', field: 'stay_logged_in', width: 80, hozAlign: 'center', headerSort: false,
-                    titleFormatter: () => '<span title="Stay logged in — skip scheduled auto-logout">Stay In</span>',
-                    formatter: (c) => {
-                        const on = !!c.getValue();
-                        const clickable = canEdit;
-                        const tip = on
-                            ? (clickable ? 'Stay logged in (1) — click to turn off' : 'Stay logged in (1)')
-                            : (clickable ? 'Normal logout (0) — click to stay logged in' : 'Normal logout (0)');
-                        const cls = on ? 'stay-login-badge--on' : 'stay-login-badge--off';
-                        const style = clickable ? 'cursor:pointer;' : '';
-                        return '<span class="stay-login-badge ' + cls + '" style="' + style + '" title="' + tip + '">' + (on ? '1' : '0') + '</span>';
-                    },
-                    cellClick: function (e, cell) {
-                        if (!canEdit) return;
-                        toggleStayLoggedIn(cell.getRow().getData(), cell.getRow());
-                    }
-                },
             ];
 
             if (canViewResume) {
@@ -2414,10 +2389,14 @@
                     title: 'Docs', field: 'has_docs', width: 90, hozAlign: 'center', headerSort: false,
                     formatter: (c) => {
                         const d = c.getRow().getData();
+                        // Directors are exempt from submitting docs, so they always show green.
+                        const exempt = !!d.is_director && !d.has_docs;
                         const tip = d.has_docs
                             ? (canEditResume ? 'Docs attached — click to view/manage' : 'View docs')
-                            : (canEditResume ? 'No docs — click to add' : 'No docs');
-                        const cls = d.has_docs ? 'tbl-dot--green' : 'tbl-dot--red';
+                            : (exempt
+                                ? 'Director — docs exempted' + (canEditResume ? ' (click to add anyway)' : '')
+                                : (canEditResume ? 'No docs — click to add' : 'No docs'));
+                        const cls = (d.has_docs || d.is_director) ? 'tbl-dot--green' : 'tbl-dot--red';
                         return '<span class="tbl-dot docs-dot ' + cls + '" style="cursor:pointer;" title="' + esc(tip) + '"></span>';
                     },
                     cellClick: function (e, cell) {

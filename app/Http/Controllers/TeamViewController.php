@@ -178,7 +178,108 @@ class TeamViewController extends Controller
             'total' => count($members),
             'counts' => $counts,
             'slogan' => $this->dailySlogan(),
+            'teamAvg' => $this->teamAverage(array_keys($members)),
             'meId' => (int) auth()->id(),
+        ]);
+    }
+
+    /**
+     * Average star rating across all reviews received by the (active) team, overall and per section.
+     *
+     * @param  list<int>  $userIds
+     * @return array{avg: float|null, reviews: int, reviewees: int, sections: array<string, float|null>}
+     */
+    private function teamAverage(array $userIds): array
+    {
+        $out = ['avg' => null, 'reviews' => 0, 'reviewees' => 0, 'sections' => []];
+        foreach (self::REVIEW_SECTIONS as $key => $def) {
+            $out['sections'][$key] = null;
+        }
+        if (! $userIds || ! Schema::hasTable('team_reviews')) {
+            return $out;
+        }
+
+        $all = DB::table('team_reviews')->whereIn('reviewee_id', $userIds)
+            ->selectRaw('AVG(rating) as avg_rating, COUNT(*) as n, COUNT(DISTINCT reviewee_id) as reviewees')->first();
+        if ($all && (int) $all->n > 0) {
+            $out['avg'] = round((float) $all->avg_rating, 1);
+            $out['reviews'] = (int) $all->n;
+            $out['reviewees'] = (int) $all->reviewees;
+        }
+
+        DB::table('team_reviews')->whereIn('reviewee_id', $userIds)
+            ->groupBy('section')->selectRaw('section, AVG(rating) as avg_rating')->get()
+            ->each(function ($r) use (&$out) {
+                if (array_key_exists($r->section, $out['sections'])) {
+                    $out['sections'][$r->section] = round((float) $r->avg_rating, 1);
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * The logged-in user's own received reviews: overall average plus per-section / per-factor
+     * averages. Reviewers stay anonymous (only counts are returned).
+     */
+    public function myReview()
+    {
+        $meId = (int) auth()->id();
+        abort_unless($meId > 0, 403);
+
+        $factorRows = [];
+        $overall = ['avg' => null, 'reviewers' => 0];
+        $sectionStats = [];
+
+        if (Schema::hasTable('team_reviews')) {
+            $all = DB::table('team_reviews')->where('reviewee_id', $meId)
+                ->selectRaw('AVG(rating) as avg_rating, COUNT(DISTINCT reviewer_id) as reviewers')->first();
+            if ($all && (int) $all->reviewers > 0) {
+                $overall = ['avg' => round((float) $all->avg_rating, 1), 'reviewers' => (int) $all->reviewers];
+            }
+
+            DB::table('team_reviews')->where('reviewee_id', $meId)
+                ->groupBy('section')
+                ->selectRaw('section, AVG(rating) as avg_rating, COUNT(DISTINCT reviewer_id) as reviewers')
+                ->get()
+                ->each(function ($r) use (&$sectionStats) {
+                    $sectionStats[$r->section] = ['avg' => round((float) $r->avg_rating, 1), 'reviewers' => (int) $r->reviewers];
+                });
+
+            DB::table('team_reviews')->where('reviewee_id', $meId)
+                ->groupBy('section', 'factor')
+                ->selectRaw('section, factor, AVG(rating) as avg_rating, COUNT(*) as n')
+                ->get()
+                ->each(function ($r) use (&$factorRows) {
+                    $factorRows[$r->section][$r->factor] = ['avg' => round((float) $r->avg_rating, 1), 'n' => (int) $r->n];
+                });
+        }
+
+        $sections = [];
+        foreach (self::REVIEW_SECTIONS as $key => $def) {
+            $factors = [];
+            foreach ($def['factors'] as $fKey => $fLabel) {
+                $factors[] = [
+                    'label' => $fLabel,
+                    'avg' => $factorRows[$key][$fKey]['avg'] ?? null,
+                    'n' => $factorRows[$key][$fKey]['n'] ?? 0,
+                ];
+            }
+            $sections[] = [
+                'key' => $key,
+                'label' => $def['label'],
+                'avg' => $sectionStats[$key]['avg'] ?? null,
+                'reviewers' => $sectionStats[$key]['reviewers'] ?? 0,
+                'factors' => $factors,
+            ];
+        }
+
+        return response()->json([
+            'ok' => true,
+            'name' => (string) (auth()->user()->name ?? ''),
+            'avg' => $overall['avg'],
+            'reviewers' => $overall['reviewers'],
+            'sections' => $sections,
         ]);
     }
 

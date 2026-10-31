@@ -7728,7 +7728,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::match(['get', 'post'], '/ebay/token-callback', [\App\Http\Controllers\EbayTokenController::class, 'callback'])->name('ebay.token.callback');
     // Team directory + hierarchy (read-only, visible to all logged-in team members)
     Route::get('/team-view', [\App\Http\Controllers\TeamViewController::class, 'index'])->name('team.view');
+    // ACE (Automated Chat Event): rules that create one-time tasks from a page column and/or a chat keyword
+    Route::get('/ace/meta', [\App\Http\Controllers\AceController::class, 'meta'])->name('ace.meta');
+    Route::get('/ace', [\App\Http\Controllers\AceController::class, 'index'])->name('ace.index');
+    Route::post('/ace/preview', [\App\Http\Controllers\AceController::class, 'preview'])->name('ace.preview');
+    Route::post('/ace', [\App\Http\Controllers\AceController::class, 'store'])->name('ace.store');
+    Route::post('/ace/{id}/toggle', [\App\Http\Controllers\AceController::class, 'toggle'])->whereNumber('id')->name('ace.toggle');
+    Route::post('/ace/{id}/run', [\App\Http\Controllers\AceController::class, 'runNow'])->whereNumber('id')->name('ace.run');
+    Route::delete('/ace/{id}', [\App\Http\Controllers\AceController::class, 'destroy'])->whereNumber('id')->name('ace.destroy');
     // Peer star-reviews (Personal / Team / R&R) given by any logged-in team member
+    // Logged-in user's own review summary (topbar "Review" pill + modal)
+    Route::get('/team-view/my-review', [\App\Http\Controllers\TeamViewController::class, 'myReview'])->name('team.view.my-review');
     // Open (or create) a 1:1 chat with a team member, then redirect into it
     Route::get('/team-view/chat/{user}', [\App\Http\Controllers\TeamViewController::class, 'chatWith'])->whereNumber('user')->name('team.view.chat');
     Route::get('/team-view/reviews/{user}', [\App\Http\Controllers\TeamViewController::class, 'reviewShow'])->whereNumber('user')->name('team.view.review.show');
