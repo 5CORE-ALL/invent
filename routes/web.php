@@ -4654,6 +4654,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/variation-master/data', [VariationMasterController::class, 'getData'])->name('variation.master.data');
     Route::post('/variation-master/save', [VariationMasterController::class, 'save'])->name('variation.master.save');
     Route::post('/variation-master/bulk-update', [VariationMasterController::class, 'bulkUpdate'])->name('variation.master.bulk.update');
+    Route::post('/variation-master/parent-images', [VariationMasterController::class, 'uploadParentImages'])->name('variation.master.parent.images.upload');
+    Route::post('/variation-master/parent-images/delete', [VariationMasterController::class, 'deleteParentImage'])->name('variation.master.parent.images.delete');
     Route::post('/variation-master/update-from-sku', [VariationMasterController::class, 'updateFromSku'])->name('variation.master.update.from.sku');
     Route::get('/variation-master/download', [VariationMasterController::class, 'download'])->name('variation.master.download');
     Route::post('/variation-master/import', [VariationMasterController::class, 'import'])->name('variation.master.import');

@@ -17,19 +17,92 @@ class VariationListingContent
 
     public const BULLETS_KEY = 'variation_listing_bullets';
 
+    /** A+ (HTML) description of the parent, used instead of the text description on marketplaces that accept it. */
+    public const APLUS_KEY = 'variation_listing_aplus';
+
+    /** 'text' or 'aplus': which description a variation listing sends when the marketplace takes both. */
+    public const DESC_MODE_KEY = 'variation_listing_desc_mode';
+
+    /** Parent gallery (public URLs) shared by every child of the parent. */
+    public const IMAGES_KEY = 'variation_listing_images';
+
+    /** Most parent photos kept per parent. */
+    public const MAX_IMAGES = 20;
+
     private static int $depth = 0;
 
-    /** @var array<string, array{title: string, description: string, bullets: list<string>}> */
+    /** @var list<string> marketplace of each active variation run (innermost last) */
+    private static array $channels = [];
+
+    /** @var array<string, array{title: string, description: string, bullets: list<string>, aplus: string, mode: string, images: list<string>}> */
     private static array $cache = [];
 
-    public static function activate(): void
+    public static function activate(string $channel = ''): void
     {
         self::$depth++;
+        self::$channels[] = strtolower(trim($channel));
     }
 
     public static function deactivate(): void
     {
         self::$depth = max(0, self::$depth - 1);
+        array_pop(self::$channels);
+    }
+
+    public static function currentChannel(): string
+    {
+        return self::$channels === [] ? '' : (string) end(self::$channels);
+    }
+
+    /**
+     * Marketplaces whose listing description is HTML, so a parent A+ page can replace the text.
+     * Amazon is not here on purpose: each Amazon child keeps its own content and images.
+     */
+    public static function channelSupportsAplus(string $channel): bool
+    {
+        return str_starts_with(strtolower(trim($channel)), 'ebay');
+    }
+
+    public static function plainText(string $html): string
+    {
+        $html = preg_replace('#<\s*(br|/p|/div|/li|/h[1-6]|/tr)\b[^>]*>#i', "\n", $html) ?? $html;
+        $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace("/[ \t]+/", ' ', str_replace(["\r\n", "\r"], "\n", $text)) ?? $text;
+        $text = preg_replace("/ ?\n ?/", "\n", $text) ?? $text;
+
+        return trim(preg_replace("/\n{3,}/", "\n\n", $text) ?? $text);
+    }
+
+    /**
+     * The description a listing sends for this parent: the A+ page when it is chosen (or the only one)
+     * and the marketplace takes HTML, otherwise the text description (the A+ text when no text exists).
+     *
+     * @param  array{description: string, aplus: string, mode: string}  $pack
+     */
+    public static function pickDescription(array $pack, string $channel): string
+    {
+        $text = (string) $pack['description'];
+        $aplus = (string) $pack['aplus'];
+        if ($aplus !== '' && ($pack['mode'] === 'aplus' || $text === '')) {
+            if (self::channelSupportsAplus($channel)) {
+                return $aplus;
+            }
+            if ($text === '') {
+                return self::plainText($aplus);
+            }
+        }
+
+        return $text;
+    }
+
+    /**
+     * Parent gallery from Variation Master (public URLs), or [] when none was uploaded.
+     *
+     * @return list<string>
+     */
+    public static function parentImagesFor(ProductMaster $product): array
+    {
+        return self::forParent(self::parentKeyFor($product))['images'];
     }
 
     public static function active(): bool
@@ -62,13 +135,13 @@ class VariationListingContent
     }
 
     /**
-     * @return array{title: string, description: string, bullets: list<string>}
+     * @return array{title: string, description: string, bullets: list<string>, aplus: string, mode: string, images: list<string>}
      */
     public static function forParent(string $parent): array
     {
         $parent = ListingManagerFamily::normalizeParentKey($parent);
         if ($parent === '') {
-            return ['title' => '', 'description' => '', 'bullets' => []];
+            return ['title' => '', 'description' => '', 'bullets' => [], 'aplus' => '', 'mode' => 'text', 'images' => []];
         }
 
         $cacheKey = strtoupper($parent);
@@ -98,10 +171,22 @@ class VariationListingContent
         $title = preg_replace('/\s+/', ' ', trim((string) ($values[self::TITLE_KEY] ?? ''))) ?? '';
         $description = trim(str_replace(["\r\n", "\r"], "\n", (string) ($values[self::DESCRIPTION_KEY] ?? '')));
 
+        $images = [];
+        $rawImages = $values[self::IMAGES_KEY] ?? [];
+        foreach (is_array($rawImages) ? $rawImages : [] as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && preg_match('#^https?://#i', $url) && ! in_array($url, $images, true)) {
+                $images[] = $url;
+            }
+        }
+
         $pack = [
             'title' => trim($title),
             'description' => $description,
             'bullets' => $bullets,
+            'aplus' => trim((string) ($values[self::APLUS_KEY] ?? '')),
+            'mode' => strtolower(trim((string) ($values[self::DESC_MODE_KEY] ?? ''))) === 'aplus' ? 'aplus' : 'text',
+            'images' => $images,
         ];
         self::$cache[$cacheKey] = $pack;
 
@@ -133,7 +218,7 @@ class VariationListingContent
             return null;
         }
 
-        return self::forParent(self::parentKeyFor($product))['description'];
+        return self::pickDescription(self::forParent(self::parentKeyFor($product)), self::currentChannel());
     }
 
     /**
@@ -185,7 +270,7 @@ class VariationListingContent
             return self::descriptionFor($product);
         }
 
-        return self::forParent(ListingManagerFamily::parentKey($sku))['description'];
+        return self::pickDescription(self::forParent(ListingManagerFamily::parentKey($sku)), self::currentChannel());
     }
 
     public static function preferDescription(ProductMaster $product, string $fallback): string

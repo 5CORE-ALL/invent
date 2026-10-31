@@ -308,6 +308,11 @@ class Temu3ListingPublishService
             ];
         }
 
+        // Variation listing: the parent photos from Variation Master lead the shared gallery.
+        $parentImages = $mode === 'variation' ? \App\Support\Marketplace\VariationListingContent::parentImagesFor($primary) : [];
+        foreach ($parentImages as $parentImage) {
+            $gallerySources[] = $parentImage;
+        }
         $gallerySources = array_values(array_unique($gallerySources));
         if ($gallerySources === []) {
             return ['success' => false, 'message' => 'No Image Master photos found. Add images on Image Master before publishing.'];
@@ -344,6 +349,16 @@ class Temu3ListingPublishService
         }
         if ($hostedImages === []) {
             return ['success' => false, 'message' => 'Failed to upload images to '.$this->shopLabel().'. Check API credentials and image URLs.'];
+        }
+        $parentHosted = [];
+        foreach ($parentImages as $parentImage) {
+            $hosted = trim((string) ($hostedBySource[$parentImage] ?? ''));
+            if ($hosted !== '' && ! in_array($hosted, $parentHosted, true)) {
+                $parentHosted[] = $hosted;
+            }
+        }
+        if ($parentHosted !== []) {
+            $hostedImages = array_values(array_unique(array_merge($parentHosted, $hostedImages)));
         }
         while (count($hostedImages) < 3) {
             $hostedImages[] = $hostedImages[0];

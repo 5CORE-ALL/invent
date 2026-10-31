@@ -114,6 +114,13 @@ class EbayListingPublishService
         }
 
         $images = $this->publicImages($details['images'] ?? $hydrated['images'] ?? [], $product, $primarySku);
+        if ($mode === 'variation') {
+            // eBay shows one gallery for the whole variation listing: the parent photos uploaded in Variation Master lead it.
+            $parentImages = \App\Support\Marketplace\VariationListingContent::parentImagesFor($product);
+            if ($parentImages !== []) {
+                $images = array_slice(array_values(array_unique(array_merge($parentImages, $images))), 0, 12);
+            }
+        }
         if ($images === []) {
             return [
                 'success' => false,

@@ -1387,20 +1387,28 @@ class ListingManagerController extends Controller
 
         \App\Support\Marketplace\VariationListingContent::forget($parent);
         $content = \App\Support\Marketplace\VariationListingContent::forParent($parent);
-        if ($content['title'] === '' && $content['description'] === '' && $content['bullets'] === []) {
+        if ($content['title'] === '' && $content['description'] === '' && $content['bullets'] === [] && $content['aplus'] === '' && $content['images'] === []) {
             return response()->json([
                 'success' => false,
-                'message' => 'Variation Master has no title, description, or bullets for '.$parent.'.',
+                'message' => 'Variation Master has no title, description, A+ content, bullets or images for '.$parent.'.',
             ]);
         }
+
+        // Same rule as a Missing L publish: A+ HTML where the marketplace takes it, the text description elsewhere.
+        $channel = trim((string) $request->query('channel', ''));
+        $description = \App\Support\Marketplace\VariationListingContent::pickDescription($content, $channel);
+        $usedAplus = $content['aplus'] !== '' && $description === $content['aplus'];
 
         return response()->json([
             'success' => true,
             'parent' => $parent,
             'title' => $content['title'],
-            'description' => $content['description'],
+            'description' => $description,
+            'description_kind' => $usedAplus ? 'aplus' : 'text',
+            'aplus' => $content['aplus'],
             'bullets' => $content['bullets'],
-            'message' => 'Loaded from Variation Master ('.$parent.').',
+            'images' => $content['images'],
+            'message' => 'Loaded from Variation Master ('.$parent.')'.($usedAplus ? ' with the A+ content' : '').'.',
         ]);
     }
 

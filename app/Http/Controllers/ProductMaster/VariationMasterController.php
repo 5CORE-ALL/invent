@@ -49,6 +49,8 @@ class VariationMasterController extends Controller
             'bullet_3' => 'nullable|string|max:1000',
             'bullet_4' => 'nullable|string|max:1000',
             'bullet_5' => 'nullable|string|max:1000',
+            'aplus' => 'nullable|string|max:200000',
+            'desc_mode' => 'nullable|in:text,aplus',
         ]);
 
         $product = ProductMaster::query()->find($request->integer('id'));
@@ -69,7 +71,8 @@ class VariationMasterController extends Controller
             $product->save();
         }
 
-        $listingChanged = $request->exists('title') || $request->exists('description') || $this->requestHasBullet($request);
+        $listingChanged = $request->exists('title') || $request->exists('description') || $this->requestHasBullet($request)
+            || $request->exists('aplus') || $request->exists('desc_mode');
         $listing = null;
         if ($listingChanged) {
             $parent = ListingManagerFamily::normalizeParentKey((string) ($request->input('parent') ?: $product->parent));
@@ -77,7 +80,8 @@ class VariationMasterController extends Controller
                 $parent,
                 $request->exists('title') ? $this->normalizeDisplay($request->input('title')) : null,
                 $request->exists('description') ? $this->keepLines($request->input('description')) : null,
-                $this->requestHasBullet($request) ? $this->joinBullets($this->bulletSlotsFromRequest($request)) : null
+                $this->requestHasBullet($request) ? $this->joinBullets($this->bulletSlotsFromRequest($request)) : null,
+                $this->extraFromRequest($request)
             );
             if ($error !== null) {
                 return response()->json(['success' => false, 'message' => $error], 422);
@@ -100,7 +104,127 @@ class VariationMasterController extends Controller
             'bullet_3' => $listing['bullet_3'] ?? '',
             'bullet_4' => $listing['bullet_4'] ?? '',
             'bullet_5' => $listing['bullet_5'] ?? '',
+            'aplus' => $listing['aplus'] ?? '',
+            'desc_mode' => $listing['desc_mode'] ?? 'text',
+            'parent_images' => $listing['parent_images'] ?? [],
         ]);
+    }
+
+    /**
+     * Upload parent photos (shared gallery of every child of the parent).
+     */
+    public function uploadParentImages(Request $request): JsonResponse
+    {
+        $request->validate([
+            'parent' => 'required|string|max:255',
+            'images' => 'required|array|min:1|max:20',
+            'images.*' => 'file|image|mimes:jpg,jpeg,png,webp,gif|max:12288',
+        ]);
+
+        $parent = ListingManagerFamily::normalizeParentKey((string) $request->input('parent'));
+        $row = $parent !== '' ? VariationListingContent::parentProduct($parent) : null;
+        if (! $row) {
+            return response()->json(['success' => false, 'message' => 'Add a PARENT row for '.$parent.' on CP master before uploading parent images.'], 422);
+        }
+
+        $values = is_array($row->Values) ? $row->Values : [];
+        $images = $this->storedParentImages($values);
+        $slug = trim((string) preg_replace('/[^a-z0-9]+/i', '-', $parent), '-') ?: 'parent';
+        $added = 0;
+        foreach ((array) $request->file('images', []) as $file) {
+            if (count($images) >= VariationListingContent::MAX_IMAGES) {
+                break;
+            }
+            $name = date('YmdHis').'-'.\Illuminate\Support\Str::random(8).'.'.strtolower($file->getClientOriginalExtension() ?: 'jpg');
+            $path = $file->storeAs('variation-parent-images/'.$slug, $name, 'public');
+            if ($path === false) {
+                continue;
+            }
+            $images[] = url(\Illuminate\Support\Facades\Storage::disk('public')->url($path));
+            $added++;
+        }
+        if ($added === 0) {
+            return response()->json(['success' => false, 'message' => 'No image was saved (a parent keeps up to '.VariationListingContent::MAX_IMAGES.' photos).'], 422);
+        }
+
+        $values[VariationListingContent::IMAGES_KEY] = array_values($images);
+        $row->Values = $values;
+        $row->save();
+        VariationListingContent::forget($parent);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Added '.$added.' parent image'.($added === 1 ? '' : 's').' to '.$parent.'.',
+            'parent_images' => array_values($images),
+        ]);
+    }
+
+    public function deleteParentImage(Request $request): JsonResponse
+    {
+        $request->validate([
+            'parent' => 'required|string|max:255',
+            'url' => 'required|string|max:2000',
+        ]);
+
+        $parent = ListingManagerFamily::normalizeParentKey((string) $request->input('parent'));
+        $row = $parent !== '' ? VariationListingContent::parentProduct($parent) : null;
+        if (! $row) {
+            return response()->json(['success' => false, 'message' => 'PARENT row not found on CP master.'], 404);
+        }
+
+        $url = trim((string) $request->input('url'));
+        $values = is_array($row->Values) ? $row->Values : [];
+        $images = array_values(array_filter($this->storedParentImages($values), static fn (string $u): bool => $u !== $url));
+        $values[VariationListingContent::IMAGES_KEY] = $images;
+        $row->Values = $values;
+        $row->save();
+        VariationListingContent::forget($parent);
+
+        if (preg_match('#/storage/(variation-parent-images/[^?\#]+)$#', $url, $m) && ! str_contains($m[1], '..')) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete(urldecode($m[1]));
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Removed the parent image.',
+            'parent_images' => $images,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @return list<string>
+     */
+    private function storedParentImages(array $values): array
+    {
+        $out = [];
+        $raw = $values[VariationListingContent::IMAGES_KEY] ?? [];
+        foreach (is_array($raw) ? $raw : [] as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && ! in_array($url, $out, true)) {
+                $out[] = $url;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * A+ HTML and the Text / A+ choice sent with a save.
+     *
+     * @return array<string, string>
+     */
+    private function extraFromRequest(Request $request): array
+    {
+        $extra = [];
+        if ($request->exists('aplus')) {
+            $extra['aplus'] = trim(str_replace(["\r\n", "\r"], "\n", (string) $request->input('aplus', '')));
+        }
+        if ($request->exists('desc_mode')) {
+            $extra['desc_mode'] = $request->input('desc_mode') === 'aplus' ? 'aplus' : 'text';
+        }
+
+        return $extra;
     }
 
     /**
@@ -122,6 +246,8 @@ class VariationMasterController extends Controller
             'bullet_3' => 'nullable|string|max:1000',
             'bullet_4' => 'nullable|string|max:1000',
             'bullet_5' => 'nullable|string|max:1000',
+            'aplus' => 'nullable|string|max:200000',
+            'desc_mode' => 'nullable|in:text,aplus',
         ]);
 
         $products = ProductMaster::query()->whereIn('id', array_map('intval', $request->input('ids', [])))->get();
@@ -130,7 +256,8 @@ class VariationMasterController extends Controller
         }
 
         $childChanged = $request->exists('variation_type') || $request->exists('variation_name');
-        $listingChanged = $request->exists('title') || $request->exists('description') || $this->requestHasBullet($request);
+        $listingChanged = $request->exists('title') || $request->exists('description') || $this->requestHasBullet($request)
+            || $request->exists('aplus') || $request->exists('desc_mode');
         if (! $childChanged && ! $listingChanged) {
             return response()->json(['success' => false, 'message' => 'Tick at least one field to apply.'], 422);
         }
@@ -182,7 +309,8 @@ class VariationMasterController extends Controller
                         $parent,
                         $request->exists('title') ? $this->normalizeDisplay($request->input('title')) : null,
                         $request->exists('description') ? $this->keepLines($request->input('description')) : null,
-                        $bullets
+                        $bullets,
+                        $this->extraFromRequest($request)
                     );
                     if ($error !== null) {
                         $errors[] = $error;
@@ -787,6 +915,9 @@ class VariationMasterController extends Controller
                 'bullet_3' => $listing['bullet_3'],
                 'bullet_4' => $listing['bullet_4'],
                 'bullet_5' => $listing['bullet_5'],
+                'aplus' => $listing['aplus'],
+                'desc_mode' => $listing['desc_mode'],
+                'parent_images' => $listing['parent_images'],
             ];
             $sortKeys[] = [strtoupper($key), 2, strtoupper($this->normalizeDisplay($product->sku))];
         }
@@ -810,6 +941,9 @@ class VariationMasterController extends Controller
                 'bullet_3' => $listing['bullet_3'],
                 'bullet_4' => $listing['bullet_4'],
                 'bullet_5' => $listing['bullet_5'],
+                'aplus' => $listing['aplus'],
+                'desc_mode' => $listing['desc_mode'],
+                'parent_images' => $listing['parent_images'],
             ];
             $sortKeys[] = [strtoupper($parent), 1, strtoupper($this->normalizeDisplay($product->sku))];
         }
@@ -841,6 +975,9 @@ class VariationMasterController extends Controller
             'bullet_3' => $slots[2],
             'bullet_4' => $slots[3],
             'bullet_5' => $slots[4],
+            'aplus' => trim((string) ($values[VariationListingContent::APLUS_KEY] ?? '')),
+            'desc_mode' => strtolower(trim((string) ($values[VariationListingContent::DESC_MODE_KEY] ?? ''))) === 'aplus' ? 'aplus' : 'text',
+            'parent_images' => $this->storedParentImages($values),
         ];
     }
 
@@ -857,6 +994,9 @@ class VariationMasterController extends Controller
             'bullet_3' => '',
             'bullet_4' => '',
             'bullet_5' => '',
+            'aplus' => '',
+            'desc_mode' => 'text',
+            'parent_images' => [],
         ];
     }
 
@@ -946,7 +1086,10 @@ class VariationMasterController extends Controller
         return null;
     }
 
-    private function writeListingText(string $parent, ?string $title, ?string $description, ?string $bullets): ?string
+    /**
+     * @param  array<string, string>  $extra  'aplus' (HTML) and/or 'desc_mode' ('text'|'aplus')
+     */
+    private function writeListingText(string $parent, ?string $title, ?string $description, ?string $bullets, array $extra = []): ?string
     {
         $parent = ListingManagerFamily::normalizeParentKey($parent);
         if ($parent === '') {
@@ -967,6 +1110,12 @@ class VariationMasterController extends Controller
         }
         if ($bullets !== null) {
             $values[VariationListingContent::BULLETS_KEY] = $bullets;
+        }
+        if (array_key_exists('aplus', $extra)) {
+            $values[VariationListingContent::APLUS_KEY] = $extra['aplus'];
+        }
+        if (array_key_exists('desc_mode', $extra)) {
+            $values[VariationListingContent::DESC_MODE_KEY] = $extra['desc_mode'];
         }
         $row->Values = $values;
         $row->save();
