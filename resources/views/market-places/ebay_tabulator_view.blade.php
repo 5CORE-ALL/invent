@@ -1107,6 +1107,10 @@
                                 data-metric="lmp_missing_count" data-invert="1" data-live-value="0" data-format="number"
                                 style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                                 title="LMP M.: INV &gt; 0 SKUs with no LMP data. INV = 0 is not counted. Green = 0 missing. Click badge to filter. Click dot for rolling history.">{!! $ebTrendDot('lmp_missing_count') !!}LMP M. 0</span>
+                            <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-el30-cpn-badge"
+                                data-metric="el30_cpn_count" data-live-value="" data-format="number"
+                                style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                                title="EL30 CPN: SKUs on an EL30 Dil % coupon (E L30 ÷ INV × 100 slabs). 0 while the coupon is off. Click badge or dot for rolling history.">{!! $ebTrendDot('el30_cpn_count') !!}EL30 CPN: …</span>
                         </div>
                     </div>
                 </div>
@@ -1824,6 +1828,7 @@
             price_eq_lmp_count: 'Price = LMP',
             sprice_eq_lmp_count: 'S PRC = LMP',
             ended_listing_count: 'Ended listings',
+            el30_cpn_count: 'EL30 CPN (SKUs on an EL30 Dil % coupon)',
         };
         /** Metrics where lower is better → invert 3-color (up=red, down=green) */
         const ebay1BadgeInvertMetrics = {
@@ -6977,7 +6982,13 @@
                     setSummaryBadge($('#ebay-y-cvr-badge'),
                         'Y CVR%: ' + (EBAY_Y_CVR !== null ? EBAY_Y_CVR.toFixed(1) + '%' : 'N/A'), EBAY_Y_CVR);
                 }
+                // EL30 CPN = SKUs on an EL30 Dil % coupon. null until the coupon setting has loaded.
+                const el30CpnCount = (typeof window.ebayZeroSoldCouponCount === 'function') ? window.ebayZeroSoldCouponCount() : null;
+                if (el30CpnCount !== null) {
+                    paintCountBadge('#ebay1-el30-cpn-badge', 'EL30 CPN: ' + el30CpnCount.toLocaleString(), el30CpnCount);
+                }
                 const yReport = {};
+                if (el30CpnCount !== null) yReport.el30_cpn_count = el30CpnCount;
                 if (EBAY_Y_VIEWS !== null) yReport.y_views = EBAY_Y_VIEWS;
                 if (EBAY_Y_CVR !== null) yReport.y_cvr_percent = EBAY_Y_CVR;
                 if (typeof window.EBAY_CLEARANCE_COUNT === 'number') yReport.clearance_count = window.EBAY_CLEARANCE_COUNT;
@@ -7002,6 +7013,15 @@
                 if (!row) return;
                 row.style.removeProperty('--summary-badge-fs');
             }
+
+            // Coupon setting loaded or changed: recount the EL30 CPN badge (and report it for its history dot).
+            let _el30CpnTimer = null;
+            document.addEventListener('ebayZeroSoldChanged', function() {
+                clearTimeout(_el30CpnTimer);
+                _el30CpnTimer = setTimeout(function() {
+                    if (typeof updateSummary === 'function') updateSummary();
+                }, 300);
+            });
 
             let _fitBadgesTimer = null;
             $(window).on('resize', function() {

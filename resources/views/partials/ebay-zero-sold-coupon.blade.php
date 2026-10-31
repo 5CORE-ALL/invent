@@ -9,8 +9,8 @@
 
 @if($ebayZeroSoldPart === 'button')
 <button type="button" id="{{ $ebayZeroSoldPrefix }}-btn" class="btn btn-outline-secondary btn-sm pricing-filter-item"
-    title="Public eBay coupon by Dil slab. Dil = OV L30 ÷ INV. Coupon % of 0 leaves that slab off.">
-    <i class="fas fa-ticket-alt"></i> Dil CPN Off
+    title="Public eBay coupon by EL30 Dil % slab. EL30 Dil % = E L30 ÷ INV × 100. Coupon % of 0 leaves that slab off.">
+    <i class="fas fa-ticket-alt"></i> EL30 CPN Off
 </button>
 @endif
 
@@ -19,11 +19,11 @@
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <div class="modal-header py-2">
-                <h5 class="modal-title fs-6">Dil coupon</h5>
+                <h5 class="modal-title fs-6">EL30 Dil % Coupons</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body py-3">
-                <p class="small text-muted mb-2">Public coupon on eBay by Dil slab. Dil is OV L30 ÷ INV, and INV must be above 0. The 0–0 slab is OV L30 = 0. A SKU moves onto the coupon of the slab its Dil falls in. Coupon % of 0 leaves that slab off. eBay accepts 5–80, letters and numbers only.</p>
+                <p class="small text-muted mb-2">Public coupon on eBay by EL30 Dil % slab. EL30 Dil % is E L30 ÷ INV × 100, and INV must be above 0. The 0–0 slab is E L30 = 0. A SKU moves onto the coupon of the slab its EL30 Dil % falls in. Coupon % of 0 leaves that slab off. eBay accepts 5–80, letters and numbers only.</p>
                 <div class="form-check form-switch mb-3">
                     <input class="form-check-input" type="checkbox" id="{{ $ebayZeroSoldPrefix }}-switch">
                     <label class="form-check-label" for="{{ $ebayZeroSoldPrefix }}-switch" id="{{ $ebayZeroSoldPrefix }}-switch-label">Off</label>
@@ -32,8 +32,8 @@
                     <table class="table table-sm table-bordered align-middle mb-2">
                         <thead>
                             <tr>
-                                <th>From</th>
-                                <th>To</th>
+                                <th>EL30 Dil % From</th>
+                                <th>EL30 Dil % To</th>
                                 <th class="text-center">SKUs</th>
                                 <th>Coupon %</th>
                                 <th>eBay code</th>
@@ -57,7 +57,7 @@
     field: "zero_sold_coupon_code",
     hozAlign: "center",
     width: 92,
-    headerTooltip: "Public eBay coupon from the Dil slab. Dil = OV L30 ÷ INV. INV = 0 is blank. Gray means the code is still sending.",
+    headerTooltip: "Public eBay coupon from the EL30 Dil % slab. EL30 Dil % = E L30 ÷ INV × 100. INV = 0 is blank. Gray means the code is still sending.",
     formatter: function(cell) {
         const data = cell.getRow().getData() || {};
         const code = (typeof window.ebayZeroSoldColumnCode === 'function') ? window.ebayZeroSoldColumnCode(data) : '';
@@ -109,10 +109,11 @@
         if (data.is_parent_summary) return true;
         return rowSku(data).toUpperCase().indexOf('PARENT') !== -1;
     }
+    // EL30 Dil % = E L30 (the eBay L30 column) ÷ INV × 100.
     function rowMetrics(data) {
         const inv = parseFloat(data && data.INV) || 0;
-        const ov = parseFloat(data && data.L30) || 0;
-        return { inv: inv, ov: ov, dil: inv > 0 ? (ov / inv) * 100 : null };
+        const el30 = parseFloat(data && data['eBay L30']) || 0;
+        return { inv: inv, ov: el30, dil: inv > 0 ? (el30 / inv) * 100 : null };
     }
     function contains(dil, ov, slab, prevMax) {
         const min = Number(slab.min) || 0;
@@ -140,6 +141,19 @@
         return slab ? codeFor(slab.pct) : '';
     }
     window.ebayZeroSoldColumnCode = columnCode;
+    // SKUs currently on an EL30 Dil % coupon (null until the setting has loaded). Drives the EL30 CPN history dot.
+    window.ebayZeroSoldCouponCount = function() {
+        if (!state.ready) return null;
+        if (!state.enabled) return 0;
+        let n = 0;
+        rows().forEach(function(data) {
+            if (data && !isParent(data) && columnCode(data)) n++;
+        });
+        return n;
+    };
+    function announce() {
+        try { document.dispatchEvent(new CustomEvent('ebayZeroSoldChanged', { detail: { channel: @json($ebayZeroSoldChannel) } })); } catch (e) {}
+    }
 
     function rows() {
         if (Array.isArray(window.allTableData) && window.allTableData.length) return window.allTableData;
@@ -179,9 +193,9 @@
     function paintChrome() {
         const on = !!state.enabled;
         const codes = activeCodes();
-        let label = 'Dil CPN Off';
-        if (on && codes.length === 1) label = 'Dil ' + codes[0];
-        else if (on && codes.length > 1) label = 'Dil CPN On';
+        let label = 'EL30 CPN Off';
+        if (on && codes.length === 1) label = 'EL30 CPN ' + codes[0];
+        else if (on && codes.length > 1) label = 'EL30 CPN On';
         $('#' + prefix + '-switch').prop('checked', on);
         $('#' + prefix + '-switch-label').text(on ? 'On' : 'Off');
         $('#' + prefix + '-btn')
@@ -194,6 +208,7 @@
             const pct = couponPct($(this).find('.ebay-dil-pct').val());
             $(this).find('.ebay-dil-code').text(codeFor(pct) || '—');
         });
+        announce();
     }
     function paintSlabs() {
         const tally = counts();
@@ -271,7 +286,7 @@
             const want = columnCode(data).toUpperCase();
             if (want && stored === want) return;
             if (!want && stored === '') return;
-            out.push({ sku: sku, on: !!want, pct: want ? couponPct(want.replace(/\D/g, '')) : 0 });
+            out.push({ sku: sku, on: !!want, pct: want ? couponPct(want.replace(/\D/g, '')) : 0, el30: rowMetrics(data).ov });
         });
         return out;
     }
@@ -280,14 +295,14 @@
         if (state.saving) { state.pending = true; return; }
         const list = jobs();
         if (!list.length) {
-            $('#' + prefix + '-status').text(state.enabled ? 'Coupons follow the Dil slabs.' : 'Coupon is off.');
+            $('#' + prefix + '-status').text(state.enabled ? 'Coupons follow the EL30 Dil % slabs.' : 'Coupon is off.');
             return;
         }
         state.saving = true;
         let index = 0, ok = 0, fail = 0;
         function finish() {
             state.saving = false;
-            $('#' + prefix + '-status').text('eBay Dil coupon: ' + ok + ' updated, ' + fail + ' failed.');
+            $('#' + prefix + '-status').text('eBay EL30 Dil % coupon: ' + ok + ' updated, ' + fail + ' failed.');
             if (state.pending) { state.pending = false; sync(); }
         }
         function next() {

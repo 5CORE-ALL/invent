@@ -58,13 +58,13 @@ class EbayController extends Controller
         'y_sales', 'y_sales_percent', 'ads_sales', 'acos_percent', 'l30_spend',
         'p_sales', 'p_qty', 'p_groi_percent', 'p_npft_percent', 'p_nroi_percent', 'p_ads_percent',
         'p_views', 'p_cvr_percent', 'y_views', 'y_cvr_percent', 'clearance_count', 'blue_triangle_count', 'red_triangle_count', 'price_lt80_lmp_count', 'price_eq_lmp_count',
-        'sprice_eq_lmp_count', 'ended_listing_count',
+        'sprice_eq_lmp_count', 'ended_listing_count', 'el30_cpn_count',
     ];
 
     /** Counts only the browser can compute (they need live S PRC / LMP rules). Reported by the page, kept on re-snapshot. */
     private const EBAY_CLIENT_BADGE_METRICS = [
         'p_views', 'p_cvr_percent', 'y_views', 'y_cvr_percent', 'clearance_count', 'blue_triangle_count', 'red_triangle_count', 'price_lt80_lmp_count', 'price_eq_lmp_count',
-        'sprice_eq_lmp_count', 'ended_listing_count',
+        'sprice_eq_lmp_count', 'ended_listing_count', 'el30_cpn_count',
     ];
 
     protected $apiController;
@@ -5514,7 +5514,7 @@ class EbayController extends Controller
         // slow push must still read On, instead of Off and then removing coupons.
         $this->persistZeroSoldCouponSetting($channel, $enabled, $slabs, $promos);
 
-        $payload = $this->dilCouponPayload($items, $enabled, $slabs);
+        $payload = $this->dilCouponPayload($items, $enabled, $slabs, $channel);
         $results = [];
         $ok = true;
         $message = null;
@@ -5583,8 +5583,31 @@ class EbayController extends Controller
      * @param  list<array{min:float,max:float,pct:int}>  $slabs
      * @return list<array{sku:string,on:bool,pct:int}>
      */
-    private function dilCouponPayload(array $items, bool $enabled, array $slabs): array
+    private function dilCouponPayload(array $items, bool $enabled, array $slabs, string $channel = 'ebay1'): array
     {
+        // Slabs follow EL30 Dil % = E L30 ÷ INV × 100. E L30 is the eBay L30 the grid shows for the SKU,
+        // so the page sends it with each item. INV always comes from Shopify here.
+        $el30Fallback = [];
+        $needFallback = [];
+        foreach ($items as $item) {
+            if (is_array($item) && ! is_numeric($item['el30'] ?? null)) {
+                $sku = trim((string) ($item['sku'] ?? ''));
+                if ($sku !== '') {
+                    $needFallback[] = $sku;
+                }
+            }
+        }
+        if ($needFallback !== []) {
+            $metricModel = match ($channel) {
+                'ebay2' => \App\Models\Ebay2Metric::class,
+                'ebay3' => \App\Models\Ebay3Metric::class,
+                default => \App\Models\EbayMetric::class,
+            };
+            foreach ($metricModel::whereIn('sku', $needFallback)->get(['sku', 'ebay_l30']) as $m) {
+                $el30Fallback[strtoupper(trim((string) $m->sku))] = (float) ($m->ebay_l30 ?? 0);
+            }
+        }
+
         $skus = [];
         foreach ($items as $item) {
             if (! is_array($item)) {
@@ -5612,9 +5635,11 @@ class EbayController extends Controller
                 continue;
             }
             $shop = $byUpper[strtoupper($sku)] ?? null;
-            $ov = $shop ? (float) ($shop->quantity ?? 0) : 0.0;
+            $el30 = is_numeric($item['el30'] ?? null)
+                ? max(0.0, (float) $item['el30'])
+                : (float) ($el30Fallback[strtoupper($sku)] ?? 0);
             $inv = $shop ? (float) ($shop->inv ?? 0) : 0.0;
-            $pct = $enabled ? EbayDilCoupon::percentFor($ov, $inv, $slabs) : 0;
+            $pct = $enabled ? EbayDilCoupon::percentFor($el30, $inv, $slabs) : 0;
             $out[] = ['sku' => $sku, 'on' => $pct >= 5, 'pct' => $pct];
         }
 

@@ -304,6 +304,13 @@
                 </a>
             </li>
 
+            <li class="side-nav-item">
+                <a href="{{ route('promotions') }}" class="side-nav-link {{ request()->routeIs('promotions') ? 'active' : '' }}">
+                    <i class="ri-price-tag-3-line"></i>
+                    <span>Promotions</span>
+                </a>
+            </li>
+
             {{-- Marketplace Manager (Shopify ↔ marketplace sync hub) --}}
             <li class="side-nav-item">
                 <a href="{{ route('marketplace.manager.index') }}" class="side-nav-link">

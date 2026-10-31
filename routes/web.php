@@ -4542,6 +4542,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/variations-verify-masters/data', [\App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::class, 'data'])->name('variations.verify.masters.data');
     Route::post('/variations-verify-masters/update-nr-req', [\App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::class, 'updateNrReq'])->name('variations.verify.masters.update.nr.req');
 
+    // Promotions — active channel_master rows (Img + Channels + Status)
+    Route::get('/promotions', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'index'])->name('promotions');
+    Route::get('/promotions/data', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'data'])->name('promotions.data');
+
     // Doba Sales Routes
     Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');
     Route::get('/doba/daily-sales', [DobaSalesController::class, 'index'])->name('doba.daily.sales');

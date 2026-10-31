@@ -3,8 +3,8 @@
 namespace App\Support;
 
 /**
- * Public eBay coupon chosen by Dil slab.
- * Dil = OV L30 ÷ INV. INV 0 is not a Dil. The 0–0 slab is OV L30 = 0.
+ * Public eBay coupon chosen by EL30 Dil % slab.
+ * EL30 Dil % = E L30 (eBay L30 units) ÷ INV × 100. INV 0 is not a Dil. The 0–0 slab is E L30 = 0.
  * A coupon percent below 5 or above 80 is off. eBay codes start at 5%.
  */
 class EbayDilCoupon
@@ -85,19 +85,19 @@ class EbayDilCoupon
     }
 
     /**
-     * Percent for this OV L30 and INV. 0 means no coupon.
+     * Percent for this E L30 and INV. 0 means no coupon.
      *
      * @param  list<array{min:float,max:float,pct:int}>  $slabs
      */
-    public static function percentFor(float $ov, float $inv, array $slabs): int
+    public static function percentFor(float $el30, float $inv, array $slabs): int
     {
         if ($inv <= 0 || $slabs === []) {
             return 0;
         }
-        $dil = ($ov / $inv) * 100;
+        $dil = ($el30 / $inv) * 100;
         $prevMax = null;
         foreach ($slabs as $slab) {
-            if (self::contains($dil, $ov, $slab, $prevMax)) {
+            if (self::contains($dil, $el30, $slab, $prevMax)) {
                 return self::couponPercent($slab['pct'] ?? 0);
             }
             $prevMax = (float) ($slab['max'] ?? 0);
@@ -109,12 +109,12 @@ class EbayDilCoupon
     /**
      * @param  array{min?:float,max?:float,pct?:int}  $slab
      */
-    public static function contains(float $dil, float $ov, array $slab, ?float $prevMax): bool
+    public static function contains(float $dil, float $el30, array $slab, ?float $prevMax): bool
     {
         $min = (float) ($slab['min'] ?? 0);
         $max = (float) ($slab['max'] ?? 0);
         if (abs($min) < 0.0000001 && abs($max) < 0.0000001) {
-            return abs($ov) < 0.0000001;
+            return abs($el30) < 0.0000001;
         }
         $shares = $prevMax !== null && abs($min - $prevMax) < 0.0001;
         $loOk = $shares ? $dil > $min : $dil >= $min;
