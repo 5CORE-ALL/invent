@@ -25,7 +25,8 @@ class DiagnoseMarketplaceMismatch extends Command
         {channel : ebay2, topdawg, alibaba, ... (Marketplace Manager slug)}
         {--limit=8 : How many mismatch SKUs to show / push}
         {--sku=* : Check these SKUs instead of the first mismatch SKUs}
-        {--push : Push the shown SKUs now (exact Shopify qty) and print the marketplace response}';
+        {--push : Push the shown SKUs now (exact Shopify qty) and print the marketplace response}
+        {--live : eBay 2 only: read each SKU\'s eBay item now and list the variation SKUs it really holds}';
 
     protected $description = 'Why is a marketplace stuck on Inv SKU Mismatch? Shows settings, queue, failed jobs, per-SKU qty and (with --push) the real API answer.';
 
@@ -119,6 +120,38 @@ class DiagnoseMarketplaceMismatch extends Command
             if ($channel === 'alibaba' && Schema::hasTable('alibaba_pricing_prices')) {
                 $p = DB::table('alibaba_pricing_prices')->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first(['sku', 'ab_stock', 'updated_at']);
                 $this->line('    alibaba_pricing_prices: '.($p ? json_encode($p) : 'none'));
+            }
+        }
+
+        // 5b. What eBay itself holds on each linked item
+        if ($this->option('live') && $channel === 'ebay2' && Schema::hasTable('ebay_2_metrics')) {
+            $api = app(\App\Services\EbayTwoApiService::class);
+            $itemIds = DB::table('ebay_2_metrics')
+                ->where(function ($q) use ($skus) {
+                    foreach ($skus as $s) {
+                        $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($s)]);
+                    }
+                })
+                ->whereNotNull('item_id')->where('item_id', '!=', '')
+                ->pluck('item_id')->unique()->values();
+            $this->line('');
+            foreach ($itemIds as $itemId) {
+                $raw = $api->getItem((string) $itemId);
+                $item = is_array($raw) && is_array($raw['Item'] ?? null) ? $raw['Item'] : [];
+                if ($item === []) {
+                    $this->line('item '.$itemId.': eBay returned nothing (deleted or not this seller\'s item)');
+                    continue;
+                }
+                $status = $item['SellingStatus']['ListingStatus'] ?? '?';
+                $vars = $item['Variations']['Variation'] ?? [];
+                if (is_array($vars) && ($vars === [] || isset($vars['SKU']) || isset($vars['Quantity']))) {
+                    $vars = $vars === [] ? [] : [$vars];
+                }
+                $list = [];
+                foreach ((array) $vars as $v) {
+                    $list[] = (string) ($v['SKU'] ?? '?').'='.($v['Quantity'] ?? '?');
+                }
+                $this->line('item '.$itemId.': status '.$status.', item SKU "'.($item['SKU'] ?? '').'", '.count($list).' variation(s): '.($list === [] ? '(single listing)' : implode(' | ', $list)));
             }
         }
 

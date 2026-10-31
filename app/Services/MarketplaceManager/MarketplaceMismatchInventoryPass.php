@@ -442,6 +442,16 @@ final class MarketplaceMismatchInventoryPass
                 default => Ebay3Metric::query(),
             };
 
+            // The portal status sync marks a SKU MISSING when neither Active nor Unsold returns it, i.e. it
+            // is gone from eBay. Pushing qty to it always fails ("Variation SKU ... not found"), and it kept
+            // counting as an Inv SKU Mismatch forever. Those SKUs belong under Not on eBay.
+            if (Schema::hasColumn($table, 'listing_status')) {
+                $query->where(function ($q) {
+                    $q->whereNull('listing_status')
+                        ->orWhereNotIn('listing_status', ['MISSING', 'NOT_LISTED']);
+                });
+            }
+
             return $query
                 ->whereNotNull('sku')
                 ->whereNotNull('item_id')
