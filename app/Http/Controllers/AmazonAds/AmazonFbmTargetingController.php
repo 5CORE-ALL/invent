@@ -108,9 +108,59 @@ class AmazonFbmTargetingController extends Controller
         };
     }
 
+    /** @var array<string, mixed> */
+    private static array $schemaMemo = [];
+
+    // Schema lookups hit information_schema (slow on a big database) and the answers rarely change, so they are
+    // remembered for an hour. Only "yes" answers are cached, so a table created by a migration shows up straight away.
+    protected function hasTable(string $table): bool
+    {
+        $k = 't:'.$table;
+        if (self::$schemaMemo[$k] ?? false) {
+            return true;
+        }
+        $yes = Cache::get('amz_kw_schema:'.$k) === 1 || Schema::hasTable($table);
+        if ($yes) {
+            self::$schemaMemo[$k] = true;
+            Cache::put('amz_kw_schema:'.$k, 1, now()->addHour());
+        }
+
+        return $yes;
+    }
+
+    protected function hasColumn(string $table, string $column): bool
+    {
+        return in_array(strtolower($column), array_map('strtolower', $this->columnsOf($table)), true);
+    }
+
+    /** @return list<string> */
+    protected function columnsOf(string $table): array
+    {
+        $k = 'c:'.$table;
+        if (isset(self::$schemaMemo[$k])) {
+            return self::$schemaMemo[$k];
+        }
+        $cols = Cache::get('amz_kw_schema:'.$k);
+        if (! is_array($cols) || $cols === []) {
+            $cols = Schema::getColumnListing($table);
+            if ($cols !== []) {
+                Cache::put('amz_kw_schema:'.$k, $cols, now()->addHour());
+            }
+        }
+
+        return self::$schemaMemo[$k] = array_values($cols);
+    }
+
     protected function loadData(Request $request): JsonResponse
     {
-        if (! Schema::hasTable(self::SP_TABLE) || ! Schema::hasColumn(self::SP_TABLE, 'campaignName')) {
+        $t0 = $tLast = microtime(true);
+        $timing = [];
+        $mark = function (string $name) use (&$timing, &$tLast): void {
+            $now = microtime(true);
+            $timing[$name] = (int) round(($now - $tLast) * 1000);
+            $tLast = $now;
+        };
+        if (! $this->hasTable(self::SP_TABLE) || ! $this->hasColumn(self::SP_TABLE, 'campaignName')) {
             return response()->json(['success' => true, 'data' => [], 'last_page' => 1, 'total' => 0]);
         }
 
@@ -119,10 +169,12 @@ class AmazonFbmTargetingController extends Controller
         $search = trim((string) $request->query('campaign', ''));
 
         $all = $this->campaignsGroupedByParent();
+        $mark('campaigns');
         // Badge figures are cached briefly and can never break the grid (they just show 0 if something fails).
         $badges = $this->badgeFigures($all);
         $missingTitles = $badges['missing_titles'];
         $missingCousins = $badges['missing_cousins'];
+        $mark('badges');
 
         // "Low" badges: campaigns under the keyword-count thresholds (counted over every campaign, ignoring filters).
         $lowCounts = $badges['counts'];
@@ -167,7 +219,7 @@ class AmazonFbmTargetingController extends Controller
         // KW cousin filter: matches the cousin group name, or any cousin campaign / cousin parent.
         $cousinSearch = mb_strtolower(trim((string) $request->query('cousin', '')));
         if ($cousinSearch !== '') {
-            $groupsAll = Schema::hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+            $groupsAll = $this->hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
             $namesAll = $this->cousinNameMap();
             $index = $this->campaignIndex();
             $terms = preg_split('/\s+/', $cousinSearch) ?: [];
@@ -190,8 +242,11 @@ class AmazonFbmTargetingController extends Controller
         $total = count($all);
         $rows = array_slice($all, ($page - 1) * $size, $size);
 
+        $mark('filters');
+
         // Keep keywords / negatives in step across KW cousins before they are read below.
         $this->autoSyncCousins($rows);
+        $mark('cousin_sync');
 
         $campaignIds = array_values(array_filter(array_map(
             static fn (array $r) => $r['campaign_id'],
@@ -207,9 +262,11 @@ class AmazonFbmTargetingController extends Controller
         $specificByCampaign = $this->specificByCampaign($campaignIds);
         $specificNegByCampaign = $this->specificByCampaign($campaignIds, self::SPECIFIC_NEG_TABLE);
 
+        $mark('keywords');
         $titlesByParent = $this->parentTitles(array_map(static fn (array $r) => $r['parent'], $rows));
+        $mark('titles');
 
-        $groups = Schema::hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+        $groups = $this->hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
         $nameMap = $this->cousinNameMap();
 
         $data = [];
@@ -254,6 +311,12 @@ class AmazonFbmTargetingController extends Controller
             $prevParent = $row['parent'];
         }
 
+        $mark('rows');
+        $timing['total'] = (int) round((microtime(true) - $t0) * 1000);
+        if ($timing['total'] > 3000) {
+            Log::warning('AmazonFbmTargetingController: slow grid load', $timing + ['query' => $request->query()]);
+        }
+
         return response()->json([
             'success' => true,
             'data' => $data,
@@ -265,7 +328,8 @@ class AmazonFbmTargetingController extends Controller
             'low_limits' => self::LOW_LIMITS,
             'missing_cousins' => count($missingCousins),
             'missing_cousin_parents' => array_slice($missingCousins, 0, 40),
-        ]);
+            'timing_ms' => $timing,
+        ])->header('Server-Timing', implode(', ', array_map(static fn ($k, $v) => $k.';dur='.$v, array_keys($timing), $timing)));
     }
 
     /**
@@ -295,7 +359,7 @@ class AmazonFbmTargetingController extends Controller
     public function aceBadgeValues(): array
     {
         $all = $this->campaignsGroupedByParent();
-        $b = $this->badgeFigures($all);
+        $b = $this->badgeFigures($all, true); // the daily Auto Task Event check always reads fresh numbers
         $low = $this->lowTotals($all, $b['counts']);
 
         return [
@@ -308,6 +372,13 @@ class AmazonFbmTargetingController extends Controller
         ];
     }
 
+    private const BADGE_CACHE_KEY = 'amz_kw_targeting_badges_v2';
+
+    protected function forgetBadges(): void
+    {
+        Cache::forget(self::BADGE_CACHE_KEY);
+    }
+
     /**
      * Figures behind the toolbar badges (missing titles / cousins, keyword counts per campaign). Cached for a minute
      * and each part is isolated so a failure only blanks that badge instead of failing the whole grid.
@@ -315,11 +386,15 @@ class AmazonFbmTargetingController extends Controller
      * @param  list<array{parent: string, campaign_name: string, campaign_id: string}>  $campaigns
      * @return array{missing_titles: list<string>, missing_cousins: list<string>, counts: array<string, array{kw: int, neg: int, spec: int, sneg: int}>}
      */
-    protected function badgeFigures(array $campaigns): array
+    protected function badgeFigures(array $campaigns, bool $fresh = false): array
     {
         $empty = ['missing_titles' => [], 'missing_cousins' => [], 'counts' => []];
+        if ($fresh) {
+            $this->forgetBadges();
+        }
         try {
-            return Cache::remember('amz_kw_targeting_badges_v1:'.md5((string) count($campaigns)), now()->addMinute(), function () use ($campaigns, $empty) {
+            // Cached for 15 minutes and dropped as soon as keywords / cousins change (forgetBadges), so a search never pays for them.
+            return Cache::remember(self::BADGE_CACHE_KEY, now()->addMinutes(15), function () use ($campaigns, $empty) {
                 $out = $empty;
                 foreach ([
                     'missing_titles' => fn () => $this->missingTitleParents($campaigns),
@@ -359,8 +434,8 @@ class AmazonFbmTargetingController extends Controller
         // kw: union of the keyword reports and the app store, distinct by lower-cased "keyword (MATCH)" - aggregated in SQL
         // (the reports table can be large, so nothing is loaded into PHP).
         $parts = [];
-        if (Schema::hasTable(self::KW_TABLE)) {
-            $cols = Schema::getColumnListing(self::KW_TABLE);
+        if ($this->hasTable(self::KW_TABLE)) {
+            $cols = $this->columnsOf(self::KW_TABLE);
             $labelCol = in_array('keyword', $cols, true) ? 'keyword' : (in_array('targeting', $cols, true) ? 'targeting' : null);
             if ($labelCol !== null && in_array('campaign_id', $cols, true)) {
                 $matchExpr = in_array('matchType', $cols, true) ? "TRIM(COALESCE(`matchType`, ''))" : "''";
@@ -369,7 +444,7 @@ class AmazonFbmTargetingController extends Controller
                     .'FROM `'.self::KW_TABLE."` WHERE `{$labelCol}` IS NOT NULL AND TRIM(`{$labelCol}`) <> '' AND `campaign_id` IS NOT NULL";
             }
         }
-        if (Schema::hasTable(self::STORE_TABLE)) {
+        if ($this->hasTable(self::STORE_TABLE)) {
             $parts[] = 'SELECT CONVERT(CAST(`campaign_id` AS CHAR) USING utf8mb4) AS cid, '
                 ."LOWER(CONVERT(CONCAT(`keyword`, IF(`match_type` = '', '', CONCAT(' (', `match_type`, ')'))) USING utf8mb4)) AS lbl "
                 .'FROM `'.self::STORE_TABLE.'`';
@@ -381,13 +456,13 @@ class AmazonFbmTargetingController extends Controller
             }
         }
 
-        if (Schema::hasTable(self::NEG_TABLE)) {
+        if ($this->hasTable(self::NEG_TABLE)) {
             foreach (DB::table(self::NEG_TABLE)->selectRaw("campaign_id, COUNT(DISTINCT LOWER(CONCAT(keyword, '|', match_type))) as c")->groupBy('campaign_id')->get() as $r) {
                 $bump((string) $r->campaign_id, 'neg', (int) $r->c);
             }
         }
         foreach (['spec' => self::SPECIFIC_TABLE, 'sneg' => self::SPECIFIC_NEG_TABLE] as $k => $table) {
-            if (Schema::hasTable($table)) {
+            if ($this->hasTable($table)) {
                 foreach (DB::table($table)->selectRaw('campaign_id, COUNT(*) as c')->groupBy('campaign_id')->get() as $r) {
                     $bump((string) $r->campaign_id, $k, (int) $r->c);
                 }
@@ -406,7 +481,7 @@ class AmazonFbmTargetingController extends Controller
      */
     protected function missingCousinParents(array $campaigns): array
     {
-        $groups = Schema::hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+        $groups = $this->hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
         $missing = [];
         $seen = [];
         foreach ($campaigns as $c) {
@@ -560,7 +635,7 @@ class AmazonFbmTargetingController extends Controller
     protected function specificByCampaign(array $campaignIds, string $table = self::SPECIFIC_TABLE): array
     {
         $campaignIds = array_values(array_unique(array_filter($campaignIds)));
-        if ($campaignIds === [] || ! Schema::hasTable($table)) {
+        if ($campaignIds === [] || ! $this->hasTable($table)) {
             return [];
         }
 
@@ -601,7 +676,7 @@ class AmazonFbmTargetingController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid match type.'], 422);
         }
 
-        if (! Schema::hasTable($table)) {
+        if (! $this->hasTable($table)) {
             return response()->json(['success' => false, 'message' => 'Table is missing. Run php artisan migrate.'], 500);
         }
 
@@ -649,6 +724,7 @@ class AmazonFbmTargetingController extends Controller
 
         $added = DB::table($table)->insertOrIgnore($rows);
         $skipped = count($rows) - $added;
+        $this->forgetBadges();
 
         return response()->json([
             'success' => true,
@@ -671,12 +747,13 @@ class AmazonFbmTargetingController extends Controller
         ]);
 
         $table = ($v['kind'] ?? 'kw') === 'neg' ? self::SPECIFIC_NEG_TABLE : self::SPECIFIC_TABLE;
-        if (! Schema::hasTable($table)) {
+        if (! $this->hasTable($table)) {
             return response()->json(['success' => false, 'message' => 'Table is missing. Run php artisan migrate.'], 500);
         }
 
         $cid = trim($v['campaign_id']);
         DB::table($table)->where('id', (int) $v['id'])->where('campaign_id', $cid)->delete();
+        $this->forgetBadges();
 
         return response()->json([
             'success' => true,
@@ -713,7 +790,7 @@ class AmazonFbmTargetingController extends Controller
         $label = $kind === 'neg' ? 'negative keyword' : 'keyword';
         $table = $this->storeTable($kind);
 
-        if (! Schema::hasTable(self::SP_TABLE) || ! Schema::hasTable($table)) {
+        if (! $this->hasTable(self::SP_TABLE) || ! $this->hasTable($table)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Required tables are missing. Run php artisan migrate.',
@@ -748,7 +825,7 @@ class AmazonFbmTargetingController extends Controller
         }
 
         $cousinAdded = 0;
-        if (Schema::hasTable(self::COUSIN_TABLE)) {
+        if ($this->hasTable(self::COUSIN_TABLE)) {
             $done = [];
             foreach ($this->cousins->groupsMap() as $group) {
                 $key = implode('|', $group);
@@ -845,6 +922,9 @@ class AmazonFbmTargetingController extends Controller
         foreach (array_chunk($toInsert, 500) as $batch) {
             $added += DB::table($table)->insertOrIgnore($batch);
         }
+        if ($added > 0) {
+            $this->forgetBadges();
+        }
 
         return ['fetched' => count($remote), 'added' => $added, 'skipped' => $skipped];
     }
@@ -860,7 +940,7 @@ class AmazonFbmTargetingController extends Controller
     protected function syncCousinKeywords(array $memberNames, bool $ingestLive = true, string $kind = 'kw'): int
     {
         $table = $this->storeTable($kind);
-        if (! Schema::hasTable($table)) {
+        if (! $this->hasTable($table)) {
             return 0;
         }
 
@@ -932,6 +1012,9 @@ class AmazonFbmTargetingController extends Controller
         foreach (array_chunk($toInsert, 500) as $batch) {
             $added += DB::table($table)->insertOrIgnore($batch);
         }
+        if ($added > 0) {
+            $this->forgetBadges();
+        }
 
         return $added;
     }
@@ -946,7 +1029,7 @@ class AmazonFbmTargetingController extends Controller
      */
     protected function autoSyncCousins(array $rows): void
     {
-        if (! Schema::hasTable(self::COUSIN_TABLE) || ! Schema::hasTable(self::STORE_TABLE)) {
+        if (! $this->hasTable(self::COUSIN_TABLE) || ! $this->hasTable(self::STORE_TABLE)) {
             return;
         }
 
@@ -989,7 +1072,7 @@ class AmazonFbmTargetingController extends Controller
             // Local data only here (no live Amazon calls while the grid loads); live keywords come in with the
             // Pull buttons and "Sync keywords now".
             foreach (['kw', 'neg'] as $kind) {
-                if ($kind === 'neg' && ! Schema::hasTable(self::NEG_TABLE)) {
+                if ($kind === 'neg' && ! $this->hasTable(self::NEG_TABLE)) {
                     continue;
                 }
                 foreach ($todo as $group) {
@@ -1013,10 +1096,10 @@ class AmazonFbmTargetingController extends Controller
      */
     protected function ingestFromReports(array $members): void
     {
-        if ($members === [] || ! Schema::hasTable(self::KW_TABLE)) {
+        if ($members === [] || ! $this->hasTable(self::KW_TABLE)) {
             return;
         }
-        $cols = Schema::getColumnListing(self::KW_TABLE);
+        $cols = $this->columnsOf(self::KW_TABLE);
         $labelCol = in_array('keyword', $cols, true) ? 'keyword' : (in_array('targeting', $cols, true) ? 'targeting' : null);
         if ($labelCol === null || ! in_array('campaign_id', $cols, true)) {
             return;
@@ -1060,8 +1143,12 @@ class AmazonFbmTargetingController extends Controller
                 ];
             }
         }
+        $inserted = 0;
         foreach (array_chunk($toInsert, 500) as $batch) {
-            DB::table(self::STORE_TABLE)->insertOrIgnore($batch);
+            $inserted += DB::table(self::STORE_TABLE)->insertOrIgnore($batch);
+        }
+        if ($inserted > 0) {
+            $this->forgetBadges();
         }
     }
 
@@ -1140,7 +1227,7 @@ class AmazonFbmTargetingController extends Controller
             'name' => ['nullable', 'string', 'max:191'],
         ]);
 
-        if (! Schema::hasTable(self::COUSIN_TABLE)) {
+        if (! $this->hasTable(self::COUSIN_TABLE)) {
             return response()->json(['success' => false, 'message' => 'Cousin table is missing. Run php artisan migrate.'], 500);
         }
 
@@ -1190,6 +1277,7 @@ class AmazonFbmTargetingController extends Controller
         $added = $this->syncCousinKeywords($group);
         $addedNeg = $this->syncCousinKeywords($group, true, 'neg');
 
+        $this->forgetBadges(); // missing-cousin / keyword-count badges changed
         return response()->json([
             'success' => true,
             'message' => 'Cousins saved ('.$picked.' campaigns from '.count($wanted).' parent'.(count($wanted) === 1 ? '' : 's').'). Synced across '.count($group).' campaigns: '
@@ -1236,6 +1324,7 @@ class AmazonFbmTargetingController extends Controller
         }
         // Campaigns that left the group no longer carry its name.
         $this->clearGroupName($toRemove);
+        $this->forgetBadges();
 
         return response()->json([
             'success' => true,
@@ -1318,7 +1407,7 @@ class AmazonFbmTargetingController extends Controller
      */
     protected function effectiveGroup(string $campaign, ?array $groupsMap = null): array
     {
-        $groupsMap ??= Schema::hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+        $groupsMap ??= $this->hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
         $norm = $this->cousins->normalize($campaign);
         $members = $groupsMap[$norm] ?? [$campaign];
 
@@ -1377,13 +1466,13 @@ class AmazonFbmTargetingController extends Controller
                 $keys[$k] = true;
             }
         }
-        if ($keys === [] || ! Schema::hasTable('product_master')) {
+        if ($keys === [] || ! $this->hasTable('product_master')) {
             return [];
         }
 
         $cols = array_values(array_filter(
             ['title150', 'title100', 'title80', 'title60'],
-            static fn (string $c) => Schema::hasColumn('product_master', $c)
+            fn (string $c) => $this->hasColumn('product_master', $c)
         ));
         if ($cols === []) {
             return [];
@@ -1433,7 +1522,7 @@ class AmazonFbmTargetingController extends Controller
      */
     protected function cousinNameMap(): array
     {
-        if (! Schema::hasTable(self::COUSIN_NAME_TABLE)) {
+        if (! $this->hasTable(self::COUSIN_NAME_TABLE)) {
             return [];
         }
 
@@ -1469,7 +1558,7 @@ class AmazonFbmTargetingController extends Controller
      */
     protected function setGroupName(array $group, string $name): void
     {
-        if (! Schema::hasTable(self::COUSIN_NAME_TABLE)) {
+        if (! $this->hasTable(self::COUSIN_NAME_TABLE)) {
             return;
         }
         $name = mb_substr(trim($name), 0, 191);
@@ -1498,7 +1587,7 @@ class AmazonFbmTargetingController extends Controller
      */
     protected function clearGroupName(array $campaigns): void
     {
-        if (! Schema::hasTable(self::COUSIN_NAME_TABLE) || $campaigns === []) {
+        if (! $this->hasTable(self::COUSIN_NAME_TABLE) || $campaigns === []) {
             return;
         }
         $norms = array_values(array_filter(array_map(fn ($c) => $this->cousins->normalize((string) $c), $campaigns)));
@@ -1517,7 +1606,7 @@ class AmazonFbmTargetingController extends Controller
             'name' => ['nullable', 'string', 'max:191'],
         ]);
 
-        if (! Schema::hasTable(self::COUSIN_NAME_TABLE)) {
+        if (! $this->hasTable(self::COUSIN_NAME_TABLE)) {
             return response()->json(['success' => false, 'message' => 'Table is missing. Run php artisan migrate.'], 500);
         }
 
@@ -1575,7 +1664,7 @@ class AmazonFbmTargetingController extends Controller
     protected function cousinRows(array $group): array
     {
         $nameMap = $this->cousinNameMap();
-        $map = Schema::hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+        $map = $this->hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
         $rows = [];
         foreach ($group as $member) {
             $current = $this->effectiveGroup($member, $map);
@@ -1617,7 +1706,7 @@ class AmazonFbmTargetingController extends Controller
     protected function mergeStoredKeywords(array $map, array $campaignIds, string $table = self::STORE_TABLE): array
     {
         $campaignIds = array_values(array_unique(array_filter($campaignIds)));
-        if ($campaignIds === [] || ! Schema::hasTable($table)) {
+        if ($campaignIds === [] || ! $this->hasTable($table)) {
             return $map;
         }
 
@@ -1659,49 +1748,14 @@ class AmazonFbmTargetingController extends Controller
             return [];
         }
 
-        $cacheKey = 'amz_fbm_targeting_v1:'.md5(implode(',', $campaignIds));
-        $cached = Cache::get($cacheKey);
-        if (is_array($cached)) {
-            return $cached;
-        }
-
+        // Local data only (synced keyword reports; the keyword store is merged in by the caller). Live Amazon calls
+        // made every search / page a multi-second wait - live keywords now come in through the Pull buttons.
         $map = $this->targetsFromKeywordReports($campaignIds);
-
-        try {
-            foreach ($this->ads->listKeywordsByCampaignIds($campaignIds) as $kw) {
-                $cid = trim((string) ($kw['campaignId'] ?? ''));
-                $label = $this->formatKeywordTarget($kw);
-                if ($cid === '' || $label === '') {
-                    continue;
-                }
-                $map[$cid] = $map[$cid] ?? [];
-                if (! in_array($label, $map[$cid], true)) {
-                    $map[$cid][] = $label;
-                }
-            }
-            foreach ($this->ads->listTargetsByCampaignIds($campaignIds) as $target) {
-                $cid = trim((string) ($target['campaignId'] ?? ''));
-                $label = $this->formatProductTarget($target);
-                if ($cid === '' || $label === '') {
-                    continue;
-                }
-                $map[$cid] = $map[$cid] ?? [];
-                if (! in_array($label, $map[$cid], true)) {
-                    $map[$cid][] = $label;
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::warning('AmazonFbmTargetingController: Amazon targeting API failed', [
-                'error' => $e->getMessage(),
-            ]);
-        }
 
         foreach ($map as $cid => $labels) {
             sort($labels, SORT_NATURAL | SORT_FLAG_CASE);
             $map[$cid] = array_values($labels);
         }
-
-        Cache::put($cacheKey, $map, now()->addMinutes(10));
 
         return $map;
     }
@@ -1714,11 +1768,11 @@ class AmazonFbmTargetingController extends Controller
      */
     protected function targetsFromKeywordReports(array $campaignIds): array
     {
-        if (! Schema::hasTable(self::KW_TABLE)) {
+        if (! $this->hasTable(self::KW_TABLE)) {
             return [];
         }
 
-        $cols = Schema::getColumnListing(self::KW_TABLE);
+        $cols = $this->columnsOf(self::KW_TABLE);
         $labelCol = in_array('keyword', $cols, true) ? 'keyword' : (in_array('targeting', $cols, true) ? 'targeting' : null);
         if ($labelCol === null || ! in_array('campaign_id', $cols, true)) {
             return [];
