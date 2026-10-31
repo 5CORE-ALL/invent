@@ -15,12 +15,14 @@ class ChatChannelMember extends Model
         'muted',
         'notify_pref',
         'pinned_at',
+        'is_admin',
     ];
 
     protected $casts = [
         'last_read_at' => 'datetime',
         'pinned_at' => 'datetime',
         'muted' => 'boolean',
+        'is_admin' => 'boolean',
     ];
 
     public function channel(): BelongsTo

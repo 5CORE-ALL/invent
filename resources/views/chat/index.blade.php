@@ -565,8 +565,7 @@
                         <option value="dnd">Do not disturb</option>
                     </select>
                     <button type="button" id="slackPrefsBtn">Notify</button>
-                    <button type="button" id="slackAddPeopleBtn" hidden>Add people</button>
-                    <button type="button" id="slackRemovePeopleBtn" class="is-danger" hidden>Remove people</button>
+                    <button type="button" id="slackMembersBtn" hidden>People</button>
                     <button type="button" id="slackEditRoomBtn" hidden>Edit</button>
                     <button type="button" id="slackDeleteRoomBtn" class="is-danger" hidden>Delete</button>
                     @if ($canManageChannels)
@@ -634,10 +633,11 @@
         <div class="modal-dialog modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="slackMembersTitle">Remove people</h5>
+                    <h5 class="modal-title" id="slackMembersTitle">Group members</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <button type="button" class="btn btn-success w-100 mb-2" id="slackMembersAddBtn" hidden>+ Add people</button>
                     <input class="form-control mb-2" type="search" id="slackMembersSearch" placeholder="Search members" autocomplete="off">
                     <div id="slackMembersList"></div>
                     <div class="small text-danger mt-2" id="slackMembersErr" hidden></div>
@@ -1415,15 +1415,18 @@
             dot.title = isDm ? presenceTitle(src) : '';
         }
         bodyEl.placeholder = ch ? 'Message ' + name : 'Message';
-        const addBtn = document.getElementById('slackAddPeopleBtn');
+        const membersBtn = document.getElementById('slackMembersBtn');
         const delBtn = document.getElementById('slackDeleteRoomBtn');
         const canAdd = !!(src.can_manage_members || (ch && ch.can_manage_members));
         const canDel = !!(src.can_delete || (ch && ch.can_delete));
         const editBtn = document.getElementById('slackEditRoomBtn');
         if (editBtn) editBtn.hidden = archived || !(src.can_edit || (ch && ch.can_edit));
-        if (addBtn) addBtn.hidden = archived || !canAdd;
-        const removeBtn = document.getElementById('slackRemovePeopleBtn');
-        if (removeBtn) removeBtn.hidden = archived || !canAdd;
+        if (membersBtn) {
+            const listable = !!(ch && ch.type !== 'dm' && ch.type !== 'bot');
+            membersBtn.hidden = !listable;
+            const n = Number((src.member_count != null ? src.member_count : (ch && ch.member_count)) || 0);
+            membersBtn.textContent = n > 0 ? 'People (' + n + ')' : 'People';
+        }
         if (delBtn) {
             delBtn.hidden = archived || !canDel;
             delBtn.textContent = (ch && ch.type === 'group') ? 'Delete group' : ((ch && (ch.type === 'dm' || ch.type === 'task')) ? 'Delete chat' : 'Delete channel');
@@ -2099,29 +2102,51 @@
     document.getElementById('slackNewGroupBtn').addEventListener('click', function () {
         openPeopleModal('create', []);
     });
-    document.getElementById('slackAddPeopleBtn').addEventListener('click', function () {
+    function openAddPeople() {
         const ch = channels.find(function (c) { return c.id === activeId; }) || {};
         openPeopleModal('add', ch.member_ids || []);
-    });
+    }
     const canManageAll = @json((bool) $canManageChannels);
     function activeChannel() {
         return channels.find(function (c) { return c.id === activeId; }) || null;
+    }
+    function applyMemberResponse(ch, res) {
+        if (res.member_ids) ch.member_ids = res.member_ids;
+        if (res.member_names) ch.member_names = res.member_names;
+        if (typeof res.member_count === 'number') ch.member_count = res.member_count;
+        if (res.admin_ids) ch.admin_ids = res.admin_ids;
+        renderMembers();
+        setHead(ch, ch);
+        if (res.messages && res.messages.length) appendMessages(res.messages, false, false);
+    }
+    function showMembersErr(text) {
+        const err = document.getElementById('slackMembersErr');
+        err.textContent = text || '';
+        err.hidden = !text;
     }
     function renderMembers() {
         const ch = activeChannel();
         const list = document.getElementById('slackMembersList');
         const countEl = document.getElementById('slackMembersCount');
         if (!ch || !list) return;
+        const canManage = !!ch.can_manage_members;
+        document.getElementById('slackMembersAddBtn').hidden = !canManage || !!ch.archived;
         const q = document.getElementById('slackMembersSearch').value.toLowerCase().trim();
         const byId = {};
         directory.forEach(function (u) { byId[Number(u.id)] = u; });
+        const adminIds = (ch.admin_ids || []).map(Number);
+        const creatorId = Number(ch.created_by || 0);
         const ids = (ch.member_ids || []).map(Number);
         const rows = ids.map(function (id) {
-            const u = byId[id] || { id: id, name: 'User #' + id, department: '' };
-            return u;
+            return byId[id] || { id: id, name: 'User #' + id, department: '' };
         }).filter(function (u) {
             return !q || ((u.name || '') + ' ' + (u.email || '') + ' ' + (u.department || '')).toLowerCase().indexOf(q) >= 0;
-        }).sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || '')); });
+        }).sort(function (a, b) {
+            const aa = adminIds.indexOf(Number(a.id)) >= 0 ? 0 : 1;
+            const bb = adminIds.indexOf(Number(b.id)) >= 0 ? 0 : 1;
+            if (aa !== bb) return aa - bb;
+            return String(a.name || '').localeCompare(String(b.name || ''));
+        });
         countEl.textContent = ids.length + ' member' + (ids.length === 1 ? '' : 's');
         if (!rows.length) {
             list.innerHTML = '<div class="text-muted small py-2">No members match.</div>';
@@ -2129,63 +2154,94 @@
         }
         list.innerHTML = rows.map(function (u) {
             const id = Number(u.id);
-            const isCreator = id === Number(ch.created_by || 0);
+            const isCreator = id === creatorId;
+            const isAdmin = adminIds.indexOf(id) >= 0;
             const isMe = id === Number(meId);
-            let action = '<button type="button" class="btn btn-sm btn-outline-danger" data-remove-member="' + id + '">Remove</button>';
-            if (!canManageAll && (isCreator || isMe)) {
-                action = '<span class="small text-muted">' + (isCreator ? 'Creator' : 'You') + '</span>';
+            let actions = '';
+            if (canManage && !ch.archived) {
+                if (!isCreator) {
+                    actions += '<button type="button" class="btn btn-sm btn-outline-secondary me-1" data-admin-member="' + id + '" data-admin-set="' + (isAdmin ? '0' : '1') + '">' + (isAdmin ? 'Remove admin' : 'Make admin') + '</button>';
+                }
+                if (!isCreator && (!isMe || canManageAll)) {
+                    actions += '<button type="button" class="btn btn-sm btn-outline-danger" data-remove-member="' + id + '">Remove</button>';
+                }
             }
-            return '<div class="d-flex align-items-center justify-content-between border-bottom py-2">' +
-                '<div><div class="fw-semibold">' + esc(u.name || '') + (isMe ? ' (you)' : '') + (isCreator ? ' <span class="badge bg-light text-dark">Creator</span>' : '') + '</div>' +
-                (u.department ? '<div class="small text-muted">' + esc(u.department) + '</div>' : '') + '</div>' + action + '</div>';
+            return '<div class="d-flex align-items-center justify-content-between border-bottom py-2 gap-2">' +
+                '<div class="min-w-0"><div class="fw-semibold">' + esc(u.name || '') + (isMe ? ' (you)' : '') +
+                (isAdmin ? ' <span class="badge bg-success-subtle text-success border border-success-subtle">' + (isCreator ? 'Creator · Admin' : 'Group admin') + '</span>' : '') + '</div>' +
+                (u.department ? '<div class="small text-muted">' + esc(u.department) + '</div>' : '') + '</div>' +
+                '<div class="text-nowrap">' + actions + '</div></div>';
         }).join('');
     }
-    document.getElementById('slackRemovePeopleBtn').addEventListener('click', function () {
+    document.getElementById('slackMembersBtn').addEventListener('click', function () {
         const ch = activeChannel();
         if (!ch) return;
-        document.getElementById('slackMembersTitle').textContent = 'Remove people from ' + (ch.name || 'this chat');
+        document.getElementById('slackMembersTitle').textContent = (ch.name || 'Group') + ' · members';
         document.getElementById('slackMembersSearch').value = '';
-        document.getElementById('slackMembersErr').hidden = true;
+        showMembersErr('');
         renderMembers();
         window.bootstrap && window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackMembersModal')).show();
     });
+    document.getElementById('slackMembersAddBtn').addEventListener('click', function () {
+        const modalEl = document.getElementById('slackMembersModal');
+        const inst = window.bootstrap && window.bootstrap.Modal.getOrCreateInstance(modalEl);
+        if (inst) {
+            modalEl.addEventListener('hidden.bs.modal', function once() {
+                modalEl.removeEventListener('hidden.bs.modal', once);
+                openAddPeople();
+            });
+            inst.hide();
+        } else {
+            openAddPeople();
+        }
+    });
     document.getElementById('slackMembersSearch').addEventListener('input', renderMembers);
     document.getElementById('slackMembersList').addEventListener('click', async function (e) {
-        const btn = e.target.closest('[data-remove-member]');
-        if (!btn) return;
         const ch = activeChannel();
         if (!ch) return;
+        const headers = { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json' };
+        const nameOf = function (uid) { return (directory.find(function (u) { return Number(u.id) === uid; }) || {}).name || 'this person'; };
+
+        const adminBtn = e.target.closest('[data-admin-member]');
+        if (adminBtn) {
+            const uid = Number(adminBtn.getAttribute('data-admin-member'));
+            const makeAdmin = adminBtn.getAttribute('data-admin-set') === '1';
+            showMembersErr('');
+            adminBtn.disabled = true;
+            try {
+                const res = await api('/chat/channels/' + ch.id + '/admins', {
+                    method: 'POST', headers: headers, body: JSON.stringify({ user_id: uid, admin: makeAdmin })
+                });
+                applyMemberResponse(ch, res);
+            } catch (ex) {
+                adminBtn.disabled = false;
+                showMembersErr(ex.message || 'Could not change admin.');
+            }
+            return;
+        }
+
+        const btn = e.target.closest('[data-remove-member]');
+        if (!btn) return;
         const uid = Number(btn.getAttribute('data-remove-member'));
-        const person = (directory.find(function (u) { return Number(u.id) === uid; }) || {}).name || 'this person';
-        if (!confirm('Remove ' + person + ' from ' + (ch.name || 'this chat') + '?')) return;
-        const err = document.getElementById('slackMembersErr');
-        err.hidden = true;
+        if (!confirm('Remove ' + nameOf(uid) + ' from ' + (ch.name || 'this chat') + '?')) return;
+        showMembersErr('');
         btn.disabled = true;
         let res;
         try {
             res = await api('/chat/channels/' + ch.id + '/members', {
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ remove: [uid] })
+                method: 'POST', headers: headers, body: JSON.stringify({ remove: [uid] })
             });
         } catch (ex) {
             btn.disabled = false;
-            err.textContent = ex.message || 'Could not remove this person.';
-            err.hidden = false;
+            showMembersErr(ex.message || 'Could not remove this person.');
             return;
         }
         if (!res || (res.removed_ids || []).indexOf(uid) < 0) {
             btn.disabled = false;
-            err.textContent = 'This person could not be removed.';
-            err.hidden = false;
+            showMembersErr('This person could not be removed.');
             return;
         }
-        if (res.member_ids) ch.member_ids = res.member_ids;
-        if (res.member_names) ch.member_names = res.member_names;
-        if (typeof res.member_count === 'number') ch.member_count = res.member_count;
-        renderMembers();
-        setHead(ch, ch);
-        if (res.messages && res.messages.length) appendMessages(res.messages, false, false);
+        applyMemberResponse(ch, res);
     });
     function openEditChannel(id) {
         const ch = channels.find(function (c) { return c.id === id; });
