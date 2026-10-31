@@ -763,10 +763,6 @@
                         </li>
 
                         <li>
-                            <a href="{{ url('fba-ads-keywords') }}">FBA Ads Keywords</a>
-                        </li>
-
-                        <li>
                             <a href="{{ url('fba-ads-pt') }}">FBA Ads Performance</a>
                         </li>
                     </ul>
@@ -1575,7 +1571,7 @@
                                                     <a href="{{ route('amazon.ads.all') }}">Ads All Amz</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('amazon.ads.fbm-targeting') }}">Amz FBM Targeting</a>
+                                                    <a href="{{ route('amazon.ads.fbm-targeting') }}">Keyword Targeting</a>
                                                 </li>
                                                 @if (Route::has('amazon.ads.campaign-link.index'))
                                                 <li>
@@ -2889,23 +2885,23 @@
                     <ul class="side-nav-second-level">
 
                         <li>
-                            <a href="{{ route('product.master') }}">PM CP Masters</a>
+                            <a href="{{ route('product.master') }}">CP Masters</a>
                         </li>
                         <li>
-                            <a href="{{ route('masters.barcode') }}">PM Masters Barcode</a>
+                            <a href="{{ route('masters.barcode') }}">Masters Barcode</a>
                         </li>
                         <li>
                             <a href="{{ route('barcode.image') }}" target="_blank" rel="noopener">Barcode Image</a>
                         </li>
                         <li>
-                            <a href="{{ route('category.masters') }}">PM Category Masters</a>
+                            <a href="{{ route('category.masters') }}">Category Masters</a>
                         </li>
                         <li>
-                            <a href="{{ route('id.master') }}">PM ID Master</a>
+                            <a href="{{ route('id.master') }}">ID Master</a>
                         </li>
                         <li>
                             <a href="{{ route('dim.wt.master') }}">
-                                PM Dim Wt Items
+                                Dim Wt Items
                                 @php $dimWtNotVerifiedCount = \App\Http\Controllers\PurchaseMaster\CategoryController::notVerifiedCountForSidebar(); @endphp
                                 @if($dimWtNotVerifiedCount > 0)
                                     <span class="badge bg-danger rounded-pill">{{ $dimWtNotVerifiedCount }}</span>
@@ -2913,89 +2909,89 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('dim.wt.master.ctn') }}">PM Dim Wt CTN</a>
+                            <a href="{{ route('dim.wt.master.ctn') }}">Dim Wt CTN</a>
                         </li>
                         <li>
-                            <a href="{{ route('qc.upgrade') }}">PM QC Upgrade</a>
+                            <a href="{{ route('qc.upgrade') }}">QC Upgrade</a>
                         </li>
                         <li>
-                            <a href="{{ route('qc.masters') }}">PM QC Masters</a>
+                            <a href="{{ route('qc.masters') }}">QC Masters</a>
                         </li>
                         <li>
-                            <a href="{{ route('shipping.master') }}">PM Shipping Master</a>
+                            <a href="{{ route('shipping.master') }}">Shipping Master</a>
                         </li>
                         <li>
                             <a href="{{ route('shipping.page.issues') }}">Shipping Cost Issue</a>
                         </li>
                         <li>
-                            <a href="{{ route('general.specific.master') }}">PM General Specific Masters</a>
+                            <a href="{{ route('general.specific.master') }}">General Specific Masters</a>
                         </li>
                         <li>
-                            <a href="{{ route('reverb.listing.master') }}">PM Reverb Listing Master</a>
+                            <a href="{{ route('reverb.listing.master') }}">Reverb Listing Master</a>
                         </li>
                         <li>
                             <a href="{{ route('compliance.master') }}">
-                                PM Compliance Masters
+                                Compliance Masters
                                 @php $complianceMissingCount = \App\Http\Controllers\PurchaseMaster\CategoryController::missingComplianceCountForSidebar(); @endphp
                                 <span class="badge bg-danger rounded-pill compliance-missing-sidebar-badge" title="SKUs with any REQ compliance field" @if($complianceMissingCount <= 0) style="display:none" @endif>{{ number_format($complianceMissingCount) }}</span>
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('packing.instructions.master') }}">PM Packing Carton</a>
+                            <a href="{{ route('packing.instructions.master') }}">Packing Carton</a>
                         </li>
                         <li>
-                            <a href="{{ route('a.plus.images.master') }}">PM Listing Audit</a>
+                            <a href="{{ route('a.plus.images.master') }}">Listing Audit</a>
                         </li>
                         <li>
-                            <a href="{{ route('keywords.master') }}">PM Keywords Master</a>
+                            <a href="{{ route('keywords.master') }}">Keywords Master</a>
                         </li>
                         
                         <li>
-                            <a href="{{ route('package.includes.master') }}">PM Package Includes Master</a>
+                            <a href="{{ route('package.includes.master') }}">Package Includes Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('qa.master') }}">PM Q&A Master</a>
+                            <a href="{{ route('qa.master') }}">Q&A Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('competitors.master') }}">PM Competitors Master</a>
+                            <a href="{{ route('competitors.master') }}">Competitors Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('target.keywords.master') }}">PM Target Keywords Master</a>
+                            <a href="{{ route('target.keywords.master') }}">Target Keywords Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('target.products.master') }}">PM Target Products Master</a>
+                            <a href="{{ route('target.products.master') }}">Target Products Master</a>
                         </li>
 
                         <li>
-                            <a href="{{ route('tag.lines.master') }}">PM Tag lines Masters</a>
+                            <a href="{{ route('tag.lines.master') }}">Tag lines Masters</a>
                         </li>
                         <li>
-                            <a href="{{ route('group.master') }}">PM Group Masters</a>
+                            <a href="{{ route('group.master') }}">Group Masters</a>
                         </li>
                         <li>
-                            <a href="{{ route('seo.keywords.master') }}">PM SEO Keywords master</a>
+                            <a href="{{ route('seo.keywords.master') }}">SEO Keywords master</a>
                         </li>
                         <li>
-                            <a href="{{ route('title.master') }}">PM Title Master</a>
+                            <a href="{{ route('title.master') }}">Title Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('sku-images.push-status') }}">PM SKU Image Push Status</a>
+                            <a href="{{ route('sku-images.push-status') }}">SKU Image Push Status</a>
                         </li>
                         <li>
-                            <a href="{{ route('image.master') }}">PM Image Master</a>
+                            <a href="{{ route('image.master') }}">Image Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('image.audit') }}">PM Image Audit</a>
+                            <a href="{{ route('image.audit') }}">Image Audit</a>
                         </li>
                         <li>
-                            <a href="{{ route('variation.name.thumbnail') }}">PM variation name / thumbnail</a>
+                            <a href="{{ route('variation.name.thumbnail') }}">variation name / thumbnail</a>
                         </li>
                         <li>
                             <a href="{{ route('variation.master') }}">Variation Master</a>
                         </li>
                         <li>
                             <a href="{{ route('raw.images') }}">
-                                PM Raw Images
+                                Raw Images
                                 @php $rawImagesMissingCount = \App\Http\Controllers\ProductMaster\RawImagesController::missingCountForSidebar(); @endphp
                                 @if($rawImagesMissingCount > 0)
                                     <span class="badge bg-danger rounded-pill">{{ $rawImagesMissingCount }}</span>
@@ -3004,7 +3000,7 @@
                         </li>
                         <li>
                             <a href="{{ route('raw.images.batch.coo') }}">
-                                PM Raw Images (Batch +COO)
+                                Raw Images (Batch +COO)
                                 @php $rawImagesBatchCooMissingCount = \App\Http\Controllers\ProductMaster\RawImagesController::missingCountForSidebar(\App\Models\ProductRawImage::KIND_BATCH_COO); @endphp
                                 @if($rawImagesBatchCooMissingCount > 0)
                                     <span class="badge bg-danger rounded-pill">{{ $rawImagesBatchCooMissingCount }}</span>
@@ -3013,7 +3009,7 @@
                         </li>
                         <li>
                             <a href="{{ \Illuminate\Support\Facades\Route::has('raw.images.hero.2') ? route('raw.images.hero.2') : url('/raw-images-hero-2') }}">
-                                PM Hero Image 2
+                                Hero Image 2
                                 @php $rawImagesHero2MissingCount = \App\Http\Controllers\ProductMaster\RawImagesController::missingCountForSidebar(\App\Models\ProductRawImage::KIND_HERO_2); @endphp
                                 @if($rawImagesHero2MissingCount > 0)
                                     <span class="badge bg-danger rounded-pill">{{ $rawImagesHero2MissingCount }}</span>
@@ -3021,66 +3017,66 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('video.master') }}">PM Video Master</a>
+                            <a href="{{ route('video.master') }}">Video Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('bullet.points') }}">PM Bullet Points Master</a>
+                            <a href="{{ route('bullet.points') }}">Bullet Points Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('videos.master') }}">PM Videos</a>
+                            <a href="{{ route('videos.master') }}">Videos</a>
                         </li>
                         <li>
-                            <a href="{{ route('videos.for.ads') }}">PM Videos for Ads</a>
+                            <a href="{{ route('videos.for.ads') }}">Videos for Ads</a>
                         </li>
                         <li>
-                            <a href="{{ route('video.for.ds') }}">PM FB Video Ads</a>
+                            <a href="{{ route('video.for.ds') }}">FB Video Ads</a>
                         </li>
                         <li>
-                            <a href="{{ route('product.description') }}">PM Description Master</a>
+                            <a href="{{ route('product.description') }}">Description Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('about.brand') }}">PM About Brand</a>
+                            <a href="{{ route('about.brand') }}">About Brand</a>
                         </li>
                         <li>
-                            <a href="{{ route('technical.specifications') }}">PM Technical Specifications</a>
+                            <a href="{{ route('technical.specifications') }}">Technical Specifications</a>
                         </li>
                         <li>
-                            <a href="{{ route('description.for.html') }}">PM Description For HTML</a>
+                            <a href="{{ route('description.for.html') }}">Description For HTML</a>
                         </li>
                         <li>
-                            <a href="{{ route('images.a.plus.content') }}">PM Images A+ Content</a>
+                            <a href="{{ route('images.a.plus.content') }}">Images A+ Content</a>
                         </li>
                         <li>
-                            <a href="{{ route('a.plus.content') }}">PM A+ Content</a>
+                            <a href="{{ route('a.plus.content') }}">A+ Content</a>
                         </li>
                         <li>
-                            <a href="{{ route('features') }}">PM Features</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ route('costprice.analysis') }}">PM Cost Price Analysis</a>
+                            <a href="{{ route('features') }}">Features</a>
                         </li>
 
                         <li>
-                            <a href="{{ route('movement.analysis') }}">PM Movement Analysis</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('tobedc.list') }}">PM 2BDC</a>
+                            <a href="{{ route('costprice.analysis') }}">Cost Price Analysis</a>
                         </li>
 
                         <li>
-                            <a href="/pages/transit-analysis">PM Transit Analysis</a>                        </li>
-                        <li>
-                            <a href="{{ route('pRoi.analysis') }}">PM Profit & ROI Analysis</a>
+                            <a href="{{ route('movement.analysis') }}">Movement Analysis</a>
                         </li>
                         <li>
-                            <a href="{{ route('return.analysis') }}">PM Returns Analysis</a>
+                            <a href="{{ route('tobedc.list') }}">2BDC</a>
+                        </li>
+
+                        <li>
+                            <a href="/pages/transit-analysis">Transit Analysis</a>                        </li>
+                        <li>
+                            <a href="{{ route('pRoi.analysis') }}">Profit & ROI Analysis</a>
                         </li>
                         <li>
-                            <a href="{{ route('stock.analysis') }}">PM Stock Verification</a>
+                            <a href="{{ route('return.analysis') }}">Returns Analysis</a>
                         </li>
                         <li>
-                            <a href="{{ route('shortfall.analysis') }}">PM Shortfall Analysis</a>
+                            <a href="{{ route('stock.analysis') }}">Stock Verification</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('shortfall.analysis') }}">Shortfall Analysis</a>
                         </li>
                     </ul>
 

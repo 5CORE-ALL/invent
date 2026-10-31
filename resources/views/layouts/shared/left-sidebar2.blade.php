@@ -172,68 +172,68 @@
                     <div class="collapse" id="sidebarPagess">
                         <ul class="side-nav-second-level">
                             <li>
-                                <a href="{{ route('product.master') }}">PM CP Masters</a>
+                                <a href="{{ route('product.master') }}">CP Masters</a>
                             </li>
                             <li>
                                 <a href="{{ route('barcode.image') }}" target="_blank" rel="noopener">Barcode Image</a>
                             </li>
                             <li>
-                                <a href="{{ route('title.master') }}">PM Title Master</a>
+                                <a href="{{ route('title.master') }}">Title Master</a>
                             </li>
                             <li>
-                                <a href="{{ route('image.master') }}">PM Image Master</a>
+                                <a href="{{ route('image.master') }}">Image Master</a>
                             </li>
                             <li>
-                                <a href="{{ route('image.audit') }}">PM Image Audit</a>
+                                <a href="{{ route('image.audit') }}">Image Audit</a>
                             </li>
                             <li>
-                                <a href="{{ route('bullet.points') }}">PM Bullet Points</a>
-                                <a href="{{ route('product.description') }}">PM Description Master</a>
+                                <a href="{{ route('bullet.points') }}">Bullet Points</a>
+                                <a href="{{ route('product.description') }}">Description Master</a>
                             </li>
                             <li>
-                                <a href="{{ route('product.description') }}">PM Product Description</a>
+                                <a href="{{ route('product.description') }}">Product Description</a>
                             </li>
                             <li>
-                                <a href="{{ route('about.brand') }}">PM About Brand</a>
+                                <a href="{{ route('about.brand') }}">About Brand</a>
                             </li>
                             <li>
-                                <a href="{{ route('technical.specifications') }}">PM Technical Specifications</a>
+                                <a href="{{ route('technical.specifications') }}">Technical Specifications</a>
                             </li>
                             <li>
-                                <a href="{{ route('description.for.html') }}">PM Description For HTML</a>
+                                <a href="{{ route('description.for.html') }}">Description For HTML</a>
                             </li>
                             <li>
-                                <a href="{{ route('images.a.plus.content') }}">PM Images A+ Content</a>
+                                <a href="{{ route('images.a.plus.content') }}">Images A+ Content</a>
                             </li>
                             <li>
-                                <a href="{{ route('a.plus.content') }}">PM A+ Content</a>
+                                <a href="{{ route('a.plus.content') }}">A+ Content</a>
                             </li>
                             <li>
-                                <a href="{{ route('features') }}">PM Features</a>
+                                <a href="{{ route('features') }}">Features</a>
                             </li>
                             <li>
-                                <a href="{{ route('costprice.analysis') }}">PM Cost Price Analysis</a>
+                                <a href="{{ route('costprice.analysis') }}">Cost Price Analysis</a>
                             </li>
                             <li>
-                                <a href="{{ route('movement.analysis') }}">PM Movement Analysis</a>
+                                <a href="{{ route('movement.analysis') }}">Movement Analysis</a>
                             </li>
                             <li>
-                                <a href="{{ route('tobedc.list') }}">PM 2BDC</a>
+                                <a href="{{ route('tobedc.list') }}">2BDC</a>
                             </li>
                             <li>
-                                <a href="{{ route('second', ['pages', 'transit-analysis']) }}">PM Transit Analysis</a>
+                                <a href="{{ route('second', ['pages', 'transit-analysis']) }}">Transit Analysis</a>
                             </li>
                             <li>
-                                <a href="{{ route('pRoi.analysis') }}">PM Profit & ROI Analysis</a>
+                                <a href="{{ route('pRoi.analysis') }}">Profit & ROI Analysis</a>
                             </li>
                             <li>
-                                <a href="{{ route('return.analysis') }}">PM Returns Analysis</a>
+                                <a href="{{ route('return.analysis') }}">Returns Analysis</a>
                             </li>
                             <li>
-                                <a href="{{ route('stock.analysis') }}">PM Stock Verification</a>
+                                <a href="{{ route('stock.analysis') }}">Stock Verification</a>
                             </li>
                             <li>
-                                <a href="{{ route('shortfall.analysis') }}">PM Shortfall Analysis</a>
+                                <a href="{{ route('shortfall.analysis') }}">Shortfall Analysis</a>
                             </li>
                         </ul>
                     </div>

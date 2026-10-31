@@ -3,9 +3,15 @@
 namespace App\Http\Controllers\AmazonAds;
 
 use App\Http\Controllers\Controller;
+use App\Models\AmazonKwTargetingKeyword;
 use App\Services\AmazonAdsService;
+use App\Services\AmazonKwCousinLinkService;
+use App\Services\AmazonKwTargetingPushService;
+use App\Support\AmazonAdsCampaignSkuMetrics;
+use App\Support\Marketplace\AmazonAdsMissingLinks;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -21,7 +27,25 @@ class AmazonFbmTargetingController extends Controller
 
     private const KW_TABLE = 'amazon_sp_keyword_reports';
 
-    public function __construct(private AmazonAdsService $ads)
+    private const STORE_TABLE = 'amazon_kw_targeting_keywords';
+
+    private const NEG_TABLE = 'amazon_kw_targeting_negatives';
+
+    private const SPECIFIC_TABLE = 'amazon_kw_targeting_specifics';
+
+    private const SPECIFIC_NEG_TABLE = 'amazon_kw_targeting_specific_negatives';
+
+    private const COUSIN_TABLE = 'amazon_kw_cousin_links';
+
+    private const COUSIN_NAME_TABLE = 'amazon_kw_cousin_names';
+
+    /** @var array<string, array<string, mixed>>|null */
+    private ?array $campaignIndexMemo = null;
+
+    /** @var array<string, list<string>>|null parent key => campaign names */
+    private ?array $siblingsMemo = null;
+
+    public function __construct(private AmazonAdsService $ads, private AmazonKwCousinLinkService $cousins)
     {
     }
 
@@ -40,45 +64,106 @@ class AmazonFbmTargetingController extends Controller
         $size = min(100, max(1, (int) $request->query('size', 50)));
         $search = trim((string) $request->query('campaign', ''));
 
-        $base = DB::table(self::SP_TABLE)
-            ->whereNotNull('campaignName')
-            ->where('campaignName', '!=', '');
+        $all = $this->campaignsGroupedByParent();
 
-        if ($search !== '') {
-            $base->whereRaw('LOWER(campaignName) LIKE ?', ['%'.strtolower($search).'%']);
+        // Parent = "PARENT …" campaigns, SKU = single-SKU campaigns, all = both.
+        $scope = strtolower(trim((string) $request->query('scope', 'all')));
+        if ($scope === 'parent' || $scope === 'sku') {
+            $all = array_values(array_filter($all, static fn (array $c) => $scope === 'parent' ? $c['is_parent'] : ! $c['is_parent']));
         }
 
-        $countQuery = (clone $base)
-            ->select('campaignName')
-            ->groupBy('campaignName');
-        $total = (int) DB::query()->fromSub($countQuery, 't')->count();
+        if ($search !== '') {
+            $needle = mb_strtolower($search);
+            $all = array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['campaign_name']), $needle)
+                || str_contains(mb_strtolower($c['parent']), $needle)));
+        }
 
-        $rows = (clone $base)
-            ->selectRaw('campaignName AS campaign_name, MAX(campaign_id) AS campaign_id')
-            ->groupBy('campaignName')
-            ->orderBy('campaignName')
-            ->forPage($page, $size)
-            ->get();
+        // KW cousin filter: matches the cousin group name, or any cousin campaign / cousin parent.
+        $cousinSearch = mb_strtolower(trim((string) $request->query('cousin', '')));
+        if ($cousinSearch !== '') {
+            $groupsAll = Schema::hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+            $namesAll = $this->cousinNameMap();
+            $index = $this->campaignIndex();
+            $terms = preg_split('/\s+/', $cousinSearch) ?: [];
+            $all = array_values(array_filter($all, function (array $c) use ($groupsAll, $namesAll, $index, $terms) {
+                $group = $this->effectiveGroup($c['campaign_name'], $groupsAll);
+                $hay = mb_strtolower($this->groupNameFor($group, $c['campaign_name'], $namesAll));
+                foreach ($this->cousinCampaignNames($group, $c['campaign_name']) as $member) {
+                    $hay .= ' '.mb_strtolower($member).' '.mb_strtolower($index[$this->cousins->normalize($member)]['parent'] ?? '');
+                }
+                foreach ($terms as $t) {
+                    if ($t !== '' && ! str_contains($hay, $t)) {
+                        return false;
+                    }
+                }
 
-        $campaignIds = $rows->map(static fn ($r) => trim((string) ($r->campaign_id ?? '')))
-            ->filter(static fn (string $id) => $id !== '')
-            ->values()
-            ->all();
+                return true;
+            }));
+        }
 
-        $targetsByCampaign = $this->targetsForCampaignIds($campaignIds);
+        $total = count($all);
+        $rows = array_slice($all, ($page - 1) * $size, $size);
 
-        $data = $rows->map(function ($row) use ($targetsByCampaign) {
-            $id = trim((string) ($row->campaign_id ?? ''));
-            $name = trim((string) ($row->campaign_name ?? ''));
+        // Keep keywords / negatives in step across KW cousins before they are read below.
+        $this->autoSyncCousins($rows);
+
+        $campaignIds = array_values(array_filter(array_map(
+            static fn (array $r) => $r['campaign_id'],
+            $rows
+        ), static fn (string $id) => $id !== ''));
+
+        $targetsByCampaign = $this->mergeStoredKeywords(
+            $this->targetsForCampaignIds($campaignIds),
+            $campaignIds
+        );
+
+        $negativesByCampaign = $this->mergeStoredKeywords([], $campaignIds, self::NEG_TABLE);
+        $specificByCampaign = $this->specificByCampaign($campaignIds);
+        $specificNegByCampaign = $this->specificByCampaign($campaignIds, self::SPECIFIC_NEG_TABLE);
+
+        $titlesByParent = $this->parentTitles(array_map(static fn (array $r) => $r['parent'], $rows));
+
+        $groups = Schema::hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+        $nameMap = $this->cousinNameMap();
+
+        $data = [];
+        $prevParent = null;
+        foreach ($rows as $row) {
+            $id = $row['campaign_id'];
+            $name = $row['campaign_name'];
             $targets = $targetsByCampaign[$id] ?? ($targetsByCampaign[strtolower($name)] ?? []);
+            $negatives = $negativesByCampaign[$id] ?? [];
+            $specific = $specificByCampaign[$id] ?? [];
+            $specificNeg = $specificNegByCampaign[$id] ?? [];
 
-            return [
+            // Campaigns under the same parent share the same KW cousins.
+            $group = $this->effectiveGroup($name, $groups);
+            $cousinNames = $this->cousinCampaignNames($group, $name);
+
+            $cousinParents = $cousinNames === [] ? [] : $this->cousinParents($cousinNames);
+            $data[] = [
+                'cousin_name' => $this->groupNameFor($group, $name, $nameMap),
+                'cousins' => $cousinNames,
+                'cousin_parents' => $cousinParents,
+                'cousin_count' => count($cousinParents),
+                'parent' => $row['parent'],
+                'title' => $titlesByParent[$this->parentKey($row['parent'])] ?? '',
+                // Parent is printed once per group (first row of the group on this page).
+                'parent_first' => $prevParent === null || $prevParent !== $row['parent'],
                 'campaign_id' => $id,
                 'campaign_name' => $name,
+                'status' => $row['status'],
                 'targets' => $targets,
                 'target_count' => count($targets),
+                'negatives' => $negatives,
+                'negative_count' => count($negatives),
+                'specific' => $specific,
+                'specific_count' => count($specific),
+                'specific_neg' => $specificNeg,
+                'specific_neg_count' => count($specificNeg),
             ];
-        })->values()->all();
+            $prevParent = $row['parent'];
+        }
 
         return response()->json([
             'success' => true,
@@ -86,6 +171,1196 @@ class AmazonFbmTargetingController extends Controller
             'last_page' => max(1, (int) ceil($total / $size)),
             'total' => $total,
         ]);
+    }
+
+    /**
+     * Every distinct SP campaign (PT and archived campaigns excluded) with its parent family, ordered so all campaigns of one parent
+     * sit together (parents A-Z, campaigns without a known parent last).
+     *
+     * @return list<array{parent: string, status: string, is_parent: bool, campaign_id: string, campaign_name: string}>
+     */
+    protected function campaignsGroupedByParent(): array
+    {
+        return Cache::remember('amz_kw_targeting_campaigns_by_parent_v5', now()->addMinutes(5), function () {
+            // Latest known status per campaign; archived campaigns are left out everywhere.
+            $status = AmazonAdsMissingLinks::campaignStatusMap();
+
+            // This page is for KW / HL work only: product-targeting (PT) campaigns are left out everywhere.
+            $rows = DB::table(self::SP_TABLE)
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '')
+                ->selectRaw('campaignName AS campaign_name, MAX(campaign_id) AS campaign_id')
+                ->groupBy('campaignName')
+                ->get()
+                ->reject(fn ($r) => $this->isProductTargetingCampaign((string) $r->campaign_name)
+                    || ($status[AmazonAdsMissingLinks::normalizeCampaignName((string) $r->campaign_name)] ?? '') === 'ARCHIVED')
+                ->values();
+
+            $names = $rows->map(static fn ($r) => trim((string) $r->campaign_name))->all();
+            $parents = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames($names);
+
+            $list = [];
+            foreach ($rows as $r) {
+                $name = trim((string) $r->campaign_name);
+                $list[] = [
+                    'parent' => (string) ($parents[$name] ?? ''),
+                    'status' => (string) ($status[AmazonAdsMissingLinks::normalizeCampaignName($name)] ?? ''),
+                    // PARENT … campaigns vs single-SKU campaigns.
+                    'is_parent' => AmazonAdsCampaignSkuMetrics::campaignKeyIsParent(
+                        AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName($name)
+                    ),
+                    'campaign_id' => trim((string) ($r->campaign_id ?? '')),
+                    'campaign_name' => $name,
+                ];
+            }
+
+            usort($list, static function (array $a, array $b) {
+                if (($a['parent'] === '') !== ($b['parent'] === '')) {
+                    return $a['parent'] === '' ? 1 : -1;
+                }
+
+                return strnatcasecmp($a['parent'], $b['parent'])
+                    ?: strnatcasecmp($a['campaign_name'], $b['campaign_name']);
+            });
+
+            return $list;
+        });
+    }
+
+    /**
+     * Push the app's keywords to Amazon: missing keywords go to every KW campaign (SP) and, per parent,
+     * to its linked HL campaign (SB). dry_run=1 only reports what would be sent.
+     */
+    public function pushKeywords(Request $request, AmazonKwTargetingPushService $push): JsonResponse
+    {
+        $dryRun = filter_var($request->input('dry_run', true), FILTER_VALIDATE_BOOLEAN);
+
+        @set_time_limit(900);
+
+        $kw = array_values(array_filter(
+            $this->campaignsGroupedByParent(),
+            fn (array $c) => $c['campaign_id'] !== '' && ! $this->isProductTargetingCampaign($c['campaign_name'])
+        ));
+
+        $r = $push->run($kw, $dryRun);
+        $t = $r['totals'];
+
+        if ($r['errors'] !== [] && $r['rows'] === []) {
+            return response()->json(['success' => false, 'message' => implode(' ', $r['errors']), 'dry_run' => $dryRun], 502);
+        }
+
+        $message = $dryRun
+            ? 'Ready to push '.$t['kw_to_add'].' keyword(s) to '.$t['kw_campaigns'].' KW campaign(s) and '
+                .$t['hl_to_add'].' to '.$t['hl_campaigns'].' HL campaign(s).'
+            : 'Pushed '.$t['added'].' keyword(s)'.($t['failed'] > 0 ? ', '.$t['failed'].' rejected/failed' : '').'.';
+
+        return response()->json([
+            'success' => true,
+            'dry_run' => $dryRun,
+            'message' => $message,
+            'totals' => $t,
+            'rows' => $r['rows'],
+            'errors' => $r['errors'],
+        ]);
+    }
+
+    /**
+     * Manually added keywords per campaign (independent of imports and KW cousins).
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, list<array{id: int, keyword: string, match_type: string}>>
+     */
+    protected function specificByCampaign(array $campaignIds, string $table = self::SPECIFIC_TABLE): array
+    {
+        $campaignIds = array_values(array_unique(array_filter($campaignIds)));
+        if ($campaignIds === [] || ! Schema::hasTable($table)) {
+            return [];
+        }
+
+        $out = [];
+        $rows = DB::table($table)
+            ->whereIn('campaign_id', $campaignIds)
+            ->orderByRaw('LOWER(keyword)')
+            ->get(['id', 'campaign_id', 'keyword', 'match_type']);
+        foreach ($rows as $r) {
+            $out[(string) $r->campaign_id][] = [
+                'id' => (int) $r->id,
+                'keyword' => (string) $r->keyword,
+                'match_type' => (string) $r->match_type,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Add Specific KW by hand to one campaign. One keyword per line (or comma separated).
+     * Existing keywords (same text + match type) are skipped.
+     */
+    public function specificAdd(Request $request): JsonResponse
+    {
+        $v = $request->validate([
+            'campaign_id' => ['required', 'string', 'max:64'],
+            'keywords' => ['required', 'string', 'max:20000'],
+            'match_type' => ['nullable', 'string', 'max:32'],
+            'kind' => ['nullable', 'string', 'in:kw,neg'],
+        ]);
+
+        $neg = ($v['kind'] ?? 'kw') === 'neg';
+        $table = $neg ? self::SPECIFIC_NEG_TABLE : self::SPECIFIC_TABLE;
+        $match = strtoupper(trim((string) ($v['match_type'] ?? '')));
+        $allowed = $neg ? ['', 'NEGATIVE_EXACT', 'NEGATIVE_PHRASE'] : ['', 'BROAD', 'PHRASE', 'EXACT'];
+        if (! in_array($match, $allowed, true)) {
+            return response()->json(['success' => false, 'message' => 'Invalid match type.'], 422);
+        }
+
+        if (! Schema::hasTable($table)) {
+            return response()->json(['success' => false, 'message' => 'Table is missing. Run php artisan migrate.'], 500);
+        }
+
+        $cid = trim($v['campaign_id']);
+        $campaign = null;
+        foreach ($this->campaignsGroupedByParent() as $c) {
+            if ($c['campaign_id'] === $cid) {
+                $campaign = $c;
+                break;
+            }
+        }
+        if ($campaign === null) {
+            return response()->json(['success' => false, 'message' => 'Unknown campaign.'], 422);
+        }
+
+        $now = now();
+        $user = Auth::user()?->name;
+
+        $seen = [];
+        $rows = [];
+        foreach (preg_split('/[\r\n,]+/', $v['keywords']) ?: [] as $raw) {
+            $text = trim((string) preg_replace('/\s+/u', ' ', (string) $raw));
+            if ($text === '') {
+                continue;
+            }
+            $key = AmazonKwTargetingKeyword::normalizeKey($text);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $rows[] = [
+                'campaign_id' => $cid,
+                'campaign_name' => $campaign['campaign_name'],
+                'keyword' => mb_substr($text, 0, 512),
+                'keyword_key' => $key,
+                'match_type' => $match,
+                'added_by' => $user,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        if ($rows === []) {
+            return response()->json(['success' => false, 'message' => 'Enter at least one keyword.'], 422);
+        }
+
+        $added = DB::table($table)->insertOrIgnore($rows);
+        $skipped = count($rows) - $added;
+
+        return response()->json([
+            'success' => true,
+            'message' => $added.' keyword'.($added === 1 ? '' : 's').' added'.($skipped > 0 ? ', '.$skipped.' already existed.' : '.'),
+            'added' => $added,
+            'skipped' => $skipped,
+            'specific' => $this->specificByCampaign([$cid], $table)[$cid] ?? [],
+        ]);
+    }
+
+    /**
+     * Remove one Specific KW.
+     */
+    public function specificRemove(Request $request): JsonResponse
+    {
+        $v = $request->validate([
+            'campaign_id' => ['required', 'string', 'max:64'],
+            'id' => ['required', 'integer'],
+            'kind' => ['nullable', 'string', 'in:kw,neg'],
+        ]);
+
+        $table = ($v['kind'] ?? 'kw') === 'neg' ? self::SPECIFIC_NEG_TABLE : self::SPECIFIC_TABLE;
+        if (! Schema::hasTable($table)) {
+            return response()->json(['success' => false, 'message' => 'Table is missing. Run php artisan migrate.'], 500);
+        }
+
+        $cid = trim($v['campaign_id']);
+        DB::table($table)->where('id', (int) $v['id'])->where('campaign_id', $cid)->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Keyword removed.',
+            'specific' => $this->specificByCampaign([$cid], $table)[$cid] ?? [],
+        ]);
+    }
+
+    private function storeTable(string $kind): string
+    {
+        return $kind === 'neg' ? self::NEG_TABLE : self::STORE_TABLE;
+    }
+
+    /**
+     * Pull keywords from Amazon KW campaigns (SP campaigns that are not PT) and store the
+     * ones the app does not have yet. Keywords already stored are left untouched and never duplicated.
+     * Afterwards every KW-cousin group is synced so cousins share the same keywords.
+     */
+    public function pullKeywords(): JsonResponse
+    {
+        return $this->pullKind('kw');
+    }
+
+    /**
+     * Same as pullKeywords() but for negative keywords.
+     */
+    public function pullNegatives(): JsonResponse
+    {
+        return $this->pullKind('neg');
+    }
+
+    private function pullKind(string $kind): JsonResponse
+    {
+        $label = $kind === 'neg' ? 'negative keyword' : 'keyword';
+        $table = $this->storeTable($kind);
+
+        if (! Schema::hasTable(self::SP_TABLE) || ! Schema::hasTable($table)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Required tables are missing. Run php artisan migrate.',
+            ], 500);
+        }
+
+        @set_time_limit(600);
+
+        $names = [];
+        foreach ($this->campaignsGroupedByParent() as $c) {
+            if ($c['campaign_id'] !== '' && ! $this->isProductTargetingCampaign($c['campaign_name'])) {
+                $names[$c['campaign_id']] = $c['campaign_name'];
+            }
+        }
+        if ($names === []) {
+            return response()->json([
+                'success' => true,
+                'message' => 'No KW campaigns found.',
+                'campaigns' => 0, 'fetched' => 0, 'added' => 0, 'skipped' => 0,
+            ]);
+        }
+
+        try {
+            $r = $this->ingestKeywords($names, $kind);
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: pull '.$label.'s failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not fetch '.$label.'s from Amazon: '.$e->getMessage(),
+            ], 502);
+        }
+
+        $cousinAdded = 0;
+        if (Schema::hasTable(self::COUSIN_TABLE)) {
+            $done = [];
+            foreach ($this->cousins->groupsMap() as $group) {
+                $key = implode('|', $group);
+                if (isset($done[$key])) {
+                    continue;
+                }
+                $done[$key] = true;
+                $cousinAdded += $this->syncCousinKeywords($group, false, $kind);
+            }
+        }
+
+        $message = $r['added'].' new '.$label.($r['added'] === 1 ? '' : 's').' added. '.$r['skipped'].' already in the app.';
+        if ($cousinAdded > 0) {
+            $message .= ' '.$cousinAdded.' copied between KW cousins.';
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'campaigns' => count($names),
+            'fetched' => $r['fetched'],
+            'added' => $r['added'],
+            'skipped' => $r['skipped'],
+            'cousin_added' => $cousinAdded,
+        ]);
+    }
+
+    /**
+     * Fetch live keywords for the given campaigns from Amazon and insert the ones missing in the app.
+     * Existing rows are never touched.
+     *
+     * @param  array<string, string>  $names  campaign_id => campaign name
+     * @return array{fetched: int, added: int, skipped: int}
+     */
+    protected function ingestKeywords(array $names, string $kind = 'kw'): array
+    {
+        $table = $this->storeTable($kind);
+        if ($kind === 'neg') {
+            $ids = array_keys($names);
+            $remote = array_merge(
+                array_map(static fn (array $k) => $k + ['_level' => 'CAMPAIGN'], $this->ads->listSpCampaignNegativeKeywordsByCampaignIds($ids)),
+                array_map(static fn (array $k) => $k + ['_level' => 'AD_GROUP'], $this->ads->listSpAdGroupNegativeKeywordsByCampaignIds($ids))
+            );
+        } else {
+            $remote = $this->ads->listKeywordsByCampaignIdsBulk(array_keys($names));
+        }
+
+        // Keys already in the app, so they are retained as-is.
+        $existing = [];
+        foreach (array_chunk(array_keys($names), 1000) as $chunk) {
+            foreach (DB::table($table)->whereIn('campaign_id', $chunk)->get(['campaign_id', 'keyword_key', 'match_type']) as $row) {
+                $existing[$row->campaign_id.'|'.$row->keyword_key.'|'.$row->match_type] = true;
+            }
+        }
+
+        $now = now();
+        $toInsert = [];
+        $skipped = 0;
+        foreach ($remote as $kw) {
+            $cid = trim((string) ($kw['campaignId'] ?? ''));
+            $text = trim((string) ($kw['keywordText'] ?? $kw['keyword'] ?? ''));
+            if ($cid === '' || $text === '' || ! isset($names[$cid])) {
+                continue;
+            }
+            $match = strtoupper(trim((string) ($kw['matchType'] ?? '')));
+            $key = AmazonKwTargetingKeyword::normalizeKey($text);
+            $dedupe = $cid.'|'.$key.'|'.$match;
+            if (isset($existing[$dedupe])) {
+                $skipped++;
+
+                continue;
+            }
+            $existing[$dedupe] = true;
+            $row = [
+                'campaign_id' => $cid,
+                'campaign_name' => $names[$cid],
+                'ad_group_id' => ($kw['adGroupId'] ?? null) !== null ? (string) $kw['adGroupId'] : null,
+                'keyword_id' => ($kw['keywordId'] ?? null) !== null ? (string) $kw['keywordId'] : null,
+                'keyword' => mb_substr($text, 0, 512),
+                'keyword_key' => $key,
+                'match_type' => $match,
+                'state' => isset($kw['state']) ? strtoupper((string) $kw['state']) : null,
+                'source' => 'amazon',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+            if ($kind === 'neg') {
+                $row['level'] = (string) ($kw['_level'] ?? 'CAMPAIGN');
+            }
+            $toInsert[] = $row;
+        }
+
+        $added = 0;
+        foreach (array_chunk($toInsert, 500) as $batch) {
+            $added += DB::table($table)->insertOrIgnore($batch);
+        }
+
+        return ['fetched' => count($remote), 'added' => $added, 'skipped' => $skipped];
+    }
+
+    /**
+     * Copy keywords between the campaigns of one cousin group so every member ends up with the
+     * union (keyword text + match type, no duplicates). Works on the app's keyword store.
+     * Optionally pulls the members' live Amazon keywords first so nothing is missed.
+     *
+     * @param  list<string>  $memberNames
+     * @return int number of keyword rows added across the group
+     */
+    protected function syncCousinKeywords(array $memberNames, bool $ingestLive = true, string $kind = 'kw'): int
+    {
+        $table = $this->storeTable($kind);
+        if (! Schema::hasTable($table)) {
+            return 0;
+        }
+
+        $index = $this->campaignIndex();
+        $members = [];
+        foreach ($memberNames as $name) {
+            $hit = $index[$this->cousins->normalize((string) $name)] ?? null;
+            if ($hit && $hit['campaign_id'] !== '') {
+                $members[$hit['campaign_id']] = $hit['campaign_name'];
+            }
+        }
+        if (count($members) < 2) {
+            return 0;
+        }
+
+        if ($ingestLive) {
+            try {
+                $this->ingestKeywords($members, $kind);
+            } catch (\Throwable $e) {
+                Log::warning('AmazonFbmTargetingController: cousin live pull failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        $cols = ['campaign_id', 'keyword', 'keyword_key', 'match_type', 'state'];
+        if ($kind === 'neg') {
+            $cols[] = 'level';
+        }
+        $rows = DB::table($table)
+            ->whereIn('campaign_id', array_keys($members))
+            ->get($cols);
+
+        $union = [];
+        $have = [];
+        foreach ($rows as $row) {
+            $uk = $row->keyword_key.'|'.$row->match_type;
+            $union[$uk] ??= $row;
+            $have[$row->campaign_id][$uk] = true;
+        }
+
+        $now = now();
+        $toInsert = [];
+        foreach ($members as $cid => $cname) {
+            foreach ($union as $uk => $row) {
+                if (isset($have[$cid][$uk])) {
+                    continue;
+                }
+                $new = [
+                    'campaign_id' => (string) $cid,
+                    'campaign_name' => $cname,
+                    'ad_group_id' => null,
+                    'keyword_id' => null,
+                    'keyword' => $row->keyword,
+                    'keyword_key' => $row->keyword_key,
+                    'match_type' => $row->match_type,
+                    'state' => $row->state,
+                    'source' => 'cousin',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+                if ($kind === 'neg') {
+                    // Copied negatives are app-level; they sit on the campaign (no ad group on the target).
+                    $new['level'] = 'CAMPAIGN';
+                }
+                $toInsert[] = $new;
+            }
+        }
+
+        $added = 0;
+        foreach (array_chunk($toInsert, 500) as $batch) {
+            $added += DB::table($table)->insertOrIgnore($batch);
+        }
+
+        return $added;
+    }
+
+    /**
+     * Automatic KW-cousin sync for the campaigns on the page being loaded: one live pull per kind for all
+     * members of the touched groups (so nothing on Amazon is missed), then a local union per group
+     * (keyword + match type, no duplicates). Each group is re-synced at most every 5 minutes.
+     * Only groups that have cousins on other parents are synced.
+     *
+     * @param  list<array{parent: string, campaign_name: string}>  $rows
+     */
+    protected function autoSyncCousins(array $rows): void
+    {
+        if (! Schema::hasTable(self::COUSIN_TABLE) || ! Schema::hasTable(self::STORE_TABLE)) {
+            return;
+        }
+
+        try {
+            @set_time_limit(120);
+            $groupsMap = $this->cousins->groupsMap();
+            $index = $this->campaignIndex();
+
+            $todo = [];
+            foreach ($rows as $row) {
+                $group = $this->effectiveGroup($row['campaign_name'], $groupsMap);
+                if ($this->cousinCampaignNames($group, $row['campaign_name']) === []) {
+                    continue;
+                }
+                $norms = array_map(fn ($n) => $this->cousins->normalize((string) $n), $group);
+                sort($norms);
+                $key = 'amz_kw_cousin_autosync:'.md5(implode('|', $norms));
+                if (isset($todo[$key]) || Cache::has($key)) {
+                    continue;
+                }
+                $todo[$key] = $group;
+            }
+            if ($todo === []) {
+                return;
+            }
+
+            $members = [];
+            foreach ($todo as $group) {
+                foreach ($group as $name) {
+                    $hit = $index[$this->cousins->normalize((string) $name)] ?? null;
+                    if ($hit && $hit['campaign_id'] !== '') {
+                        $members[$hit['campaign_id']] = $hit['campaign_name'];
+                    }
+                }
+            }
+
+            // Keywords already shown in the grid come from the synced keyword reports, so bring those into the store too.
+            $this->ingestFromReports($members);
+
+            foreach (['kw', 'neg'] as $kind) {
+                if ($kind === 'neg' && ! Schema::hasTable(self::NEG_TABLE)) {
+                    continue;
+                }
+                try {
+                    $this->ingestKeywords($members, $kind);
+                } catch (\Throwable $e) {
+                    Log::warning('AmazonFbmTargetingController: auto cousin live pull failed', ['kind' => $kind, 'error' => $e->getMessage()]);
+                }
+                foreach ($todo as $group) {
+                    $this->syncCousinKeywords($group, false, $kind);
+                }
+            }
+
+            foreach (array_keys($todo) as $key) {
+                Cache::put($key, 1, now()->addMinutes(5));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: auto cousin sync failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Copy the keywords of the synced SP keyword reports (what the Targets column already shows) into the keyword
+     * store for the given campaigns, retaining what is there (dedupe by campaign + keyword + match type).
+     *
+     * @param  array<string, string>  $members  campaign_id => campaign_name
+     */
+    protected function ingestFromReports(array $members): void
+    {
+        if ($members === [] || ! Schema::hasTable(self::KW_TABLE)) {
+            return;
+        }
+        $cols = Schema::getColumnListing(self::KW_TABLE);
+        $labelCol = in_array('keyword', $cols, true) ? 'keyword' : (in_array('targeting', $cols, true) ? 'targeting' : null);
+        if ($labelCol === null || ! in_array('campaign_id', $cols, true)) {
+            return;
+        }
+        $hasMatch = in_array('matchType', $cols, true);
+        $select = ['campaign_id', $labelCol.' as label'];
+        if ($hasMatch) {
+            $select[] = 'matchType';
+        }
+
+        $now = now();
+        $seen = [];
+        $toInsert = [];
+        foreach (array_chunk(array_keys($members), 1000) as $chunk) {
+            $q = DB::table(self::KW_TABLE)->whereIn('campaign_id', $chunk)->whereNotNull($labelCol)->where($labelCol, '!=', '');
+            foreach ($q->get($select) as $row) {
+                $cid = trim((string) $row->campaign_id);
+                $text = trim((string) $row->label);
+                if ($cid === '' || $text === '' || ! isset($members[$cid])) {
+                    continue;
+                }
+                $match = $hasMatch ? strtoupper(trim((string) ($row->matchType ?? ''))) : '';
+                $key = AmazonKwTargetingKeyword::normalizeKey($text);
+                $dedupe = $cid.'|'.$key.'|'.$match;
+                if (isset($seen[$dedupe])) {
+                    continue;
+                }
+                $seen[$dedupe] = true;
+                $toInsert[] = [
+                    'campaign_id' => $cid,
+                    'campaign_name' => $members[$cid],
+                    'ad_group_id' => null,
+                    'keyword_id' => null,
+                    'keyword' => mb_substr($text, 0, 512),
+                    'keyword_key' => $key,
+                    'match_type' => $match,
+                    'state' => null,
+                    'source' => 'report',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+        foreach (array_chunk($toInsert, 500) as $batch) {
+            DB::table(self::STORE_TABLE)->insertOrIgnore($batch);
+        }
+    }
+
+    /**
+     * Normalized campaign name => campaign row, for resolving cousin names to campaign ids.
+     *
+     * @return array<string, array{parent: string, campaign_id: string, campaign_name: string}>
+     */
+    protected function campaignIndex(): array
+    {
+        if ($this->campaignIndexMemo !== null) {
+            return $this->campaignIndexMemo;
+        }
+        $index = [];
+        foreach ($this->campaignsGroupedByParent() as $c) {
+            $index[$this->cousins->normalize($c['campaign_name'])] = $c;
+        }
+
+        return $this->campaignIndexMemo = $index;
+    }
+
+    /**
+     * Parents for the cousin picker. Picking a parent brings in all of its campaigns automatically.
+     * The campaign's own parent and parents that are already cousins are left out.
+     */
+    public function cousinCampaigns(Request $request): JsonResponse
+    {
+        $q = mb_strtolower(trim((string) $request->query('q', '')));
+        $campaign = (string) $request->query('exclude', '');
+        $index = $this->campaignIndex();
+        $ownParent = strtoupper($index[$this->cousins->normalize($campaign)]['parent'] ?? '');
+
+        $inGroup = [];
+        foreach ($this->effectiveGroup($campaign) as $name) {
+            $inGroup[$this->cousins->normalize($name)] = true;
+        }
+
+        // parent (upper) => [display, campaigns total, campaigns already cousins]
+        $parents = [];
+        foreach ($this->campaignsGroupedByParent() as $c) {
+            if ($c['parent'] === '') {
+                continue;
+            }
+            $key = strtoupper($c['parent']);
+            $parents[$key] ??= ['parent' => $c['parent'], 'campaigns' => 0, 'linked' => 0];
+            $parents[$key]['campaigns']++;
+            if (isset($inGroup[$this->cousins->normalize($c['campaign_name'])])) {
+                $parents[$key]['linked']++;
+            }
+        }
+
+        $out = [];
+        foreach ($parents as $key => $p) {
+            if ($key === $ownParent || $p['linked'] >= $p['campaigns']) {
+                continue;
+            }
+            if ($q !== '' && ! str_contains(mb_strtolower($p['parent']), $q)) {
+                continue;
+            }
+            $out[] = ['parent' => $p['parent'], 'campaigns' => $p['campaigns']];
+        }
+
+        return response()->json(['success' => true, 'parents' => $out]);
+    }
+
+    /**
+     * Add parents as KW cousins of a campaign: every campaign under each chosen parent becomes a cousin,
+     * then keywords are synced across the whole cousin group.
+     */
+    public function addCousins(Request $request): JsonResponse
+    {
+        $v = $request->validate([
+            'campaign' => ['required', 'string', 'max:512'],
+            'parents' => ['required', 'array', 'min:1'],
+            'parents.*' => ['string', 'max:512'],
+            'name' => ['nullable', 'string', 'max:191'],
+        ]);
+
+        if (! Schema::hasTable(self::COUSIN_TABLE)) {
+            return response()->json(['success' => false, 'message' => 'Cousin table is missing. Run php artisan migrate.'], 500);
+        }
+
+        $index = $this->campaignIndex();
+        $campaign = trim($v['campaign']);
+        $self = $index[$this->cousins->normalize($campaign)] ?? null;
+        if (! $self) {
+            return response()->json(['success' => false, 'message' => 'Unknown campaign.'], 422);
+        }
+
+        $wanted = [];
+        foreach ($v['parents'] as $p) {
+            $wanted[strtoupper(trim($p))] = true;
+        }
+
+        // The campaign's siblings (same parent) take part too, so the whole parent gets the same cousins.
+        $names = [$self['campaign_name']];
+        foreach ($this->siblingsByParent()[strtoupper($self['parent'])] ?? [] as $sib) {
+            if ($self['parent'] !== '') {
+                $names[] = $sib;
+            }
+        }
+        $picked = 0;
+        foreach ($this->campaignsGroupedByParent() as $c) {
+            if ($c['parent'] !== '' && isset($wanted[strtoupper($c['parent'])])
+                && strtoupper($c['parent']) !== strtoupper($self['parent'])) {
+                $names[] = $c['campaign_name'];
+                $picked++;
+            }
+        }
+        if ($picked === 0) {
+            return response()->json(['success' => false, 'message' => 'Pick at least one other parent.'], 422);
+        }
+        $names = array_values(array_unique($names));
+
+        // Join with the existing group so everyone stays one connected set.
+        $group = $this->uniqueByNorm(array_merge($this->effectiveGroup($campaign), $names));
+        $this->cousins->syncFullyConnectedGroup($group, Auth::user()?->name ?? 'N/A');
+
+        // Name: the typed one wins, else the campaign's own / an existing member's name; shared by the whole group.
+        $typed = trim((string) ($v['name'] ?? ''));
+        $nameMap = $this->cousinNameMap();
+        $groupName = $typed !== '' ? $typed : $this->groupNameFor($group, $self['campaign_name'], $nameMap);
+        $this->setGroupName($group, $groupName);
+
+        @set_time_limit(300);
+        $added = $this->syncCousinKeywords($group);
+        $addedNeg = $this->syncCousinKeywords($group, true, 'neg');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cousins saved ('.$picked.' campaigns from '.count($wanted).' parent'.(count($wanted) === 1 ? '' : 's').'). Synced across '.count($group).' campaigns: '
+                .$added.' keyword'.($added === 1 ? '' : 's').', '
+                .$addedNeg.' negative keyword'.($addedNeg === 1 ? '' : 's').'.',
+            'added' => $added,
+            'added_negatives' => $addedNeg,
+            'affected' => $this->cousinRows($group),
+        ]);
+    }
+
+    /**
+     * Remove a cousin parent (all of its campaigns) from the cousin group of a campaign.
+     * Keywords already synced stay.
+     */
+    public function removeCousin(Request $request): JsonResponse
+    {
+        $v = $request->validate([
+            'campaign' => ['required', 'string', 'max:512'],
+            'parent' => ['nullable', 'string', 'max:512'],
+            'cousin' => ['nullable', 'string', 'max:512'],
+        ]);
+
+        $campaign = $v['campaign'];
+        $before = $this->effectiveGroup($campaign);
+
+        $toRemove = [];
+        $parent = strtoupper(trim((string) ($v['parent'] ?? '')));
+        if ($parent !== '') {
+            $index = $this->campaignIndex();
+            foreach ($before as $name) {
+                $hit = $index[$this->cousins->normalize($name)] ?? null;
+                if ($hit && strtoupper($hit['parent']) === $parent
+                    && $this->cousins->normalize($name) !== $this->cousins->normalize($campaign)) {
+                    $toRemove[] = $name;
+                }
+            }
+        } elseif (! empty($v['cousin'])) {
+            $toRemove[] = $v['cousin'];
+        }
+
+        foreach ($toRemove as $name) {
+            $this->cousins->unlinkFromGroup($name, $this->effectiveGroup($campaign), Auth::user()?->name ?? 'N/A');
+        }
+        // Campaigns that left the group no longer carry its name.
+        $this->clearGroupName($toRemove);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cousin removed.',
+            'affected' => $this->cousinRows($before),
+        ]);
+    }
+
+    /**
+     * Re-run the keyword sync for the cousin group of a campaign.
+     */
+    public function syncCousins(Request $request): JsonResponse
+    {
+        $v = $request->validate(['campaign' => ['required', 'string', 'max:512']]);
+
+        $group = $this->effectiveGroup($v['campaign']);
+        if ($this->cousinCampaignNames($group, $v['campaign']) === []) {
+            return response()->json(['success' => false, 'message' => 'This campaign has no cousins yet.'], 422);
+        }
+
+        // Apply: make the parent-level cousins permanent for every campaign under the same parent.
+        $this->cousins->syncFullyConnectedGroup($group, Auth::user()?->name ?? 'N/A');
+
+        @set_time_limit(300);
+        $added = $this->syncCousinKeywords($group);
+        $addedNeg = $this->syncCousinKeywords($group, true, 'neg');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Synced across '.count($group).' campaigns: '
+                .$added.' keyword'.($added === 1 ? '' : 's').', '
+                .$addedNeg.' negative keyword'.($addedNeg === 1 ? '' : 's').'.',
+            'added' => $added,
+            'added_negatives' => $addedNeg,
+            'affected' => $this->cousinRows($group),
+        ]);
+    }
+
+    /**
+     * Campaign names per parent (PT / archived already excluded), keyed by upper-cased parent.
+     *
+     * @return array<string, list<string>>
+     */
+    protected function siblingsByParent(): array
+    {
+        if ($this->siblingsMemo !== null) {
+            return $this->siblingsMemo;
+        }
+        $out = [];
+        foreach ($this->campaignsGroupedByParent() as $c) {
+            if ($c['parent'] !== '') {
+                $out[strtoupper($c['parent'])][] = $c['campaign_name'];
+            }
+        }
+
+        return $this->siblingsMemo = $out;
+    }
+
+    /**
+     * @param  list<string>  $names
+     * @return list<string>
+     */
+    protected function uniqueByNorm(array $names): array
+    {
+        $seen = [];
+        foreach ($names as $n) {
+            $seen[$this->cousins->normalize((string) $n)] ??= trim((string) $n);
+        }
+        unset($seen['']);
+
+        return array_values($seen);
+    }
+
+    /**
+     * Cousin group of a campaign. Campaigns under the same parent share one group: it is the union of the
+     * stored links of all campaigns of that parent (plus the siblings themselves).
+     *
+     * @param  array<string, list<string>>|null  $groupsMap  pre-loaded groupsMap()
+     * @return list<string>
+     */
+    protected function effectiveGroup(string $campaign, ?array $groupsMap = null): array
+    {
+        $groupsMap ??= Schema::hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+        $norm = $this->cousins->normalize($campaign);
+        $members = $groupsMap[$norm] ?? [$campaign];
+
+        $self = $this->campaignIndex()[$norm] ?? null;
+        if ($self && $self['parent'] !== '') {
+            foreach ($this->siblingsByParent()[strtoupper($self['parent'])] ?? [] as $sib) {
+                foreach ($groupsMap[$this->cousins->normalize($sib)] ?? [$sib] as $m) {
+                    $members[] = $m;
+                }
+            }
+        }
+
+        return $this->uniqueByNorm($members);
+    }
+
+    /**
+     * The cousins of a campaign: its group minus itself and minus its own siblings (same parent).
+     *
+     * @param  list<string>  $group
+     * @return list<string>
+     */
+    protected function cousinCampaignNames(array $group, string $campaign): array
+    {
+        $index = $this->campaignIndex();
+        $selfNorm = $this->cousins->normalize($campaign);
+        $ownParent = strtoupper($index[$selfNorm]['parent'] ?? '');
+
+        return array_values(array_filter($group, function ($m) use ($index, $selfNorm, $ownParent) {
+            $norm = $this->cousins->normalize((string) $m);
+            if ($norm === $selfNorm || ! isset($index[$norm])) {
+                return false; // itself, or hidden on this page (PT / archived)
+            }
+
+            return $ownParent === '' || strtoupper($index[$norm]['parent']) !== $ownParent;
+        }));
+    }
+
+    private function parentKey(string $parent): string
+    {
+        return strtoupper(trim((string) preg_replace('/\s+/u', ' ', str_replace("\xC2\xA0", ' ', $parent))));
+    }
+
+    /**
+     * Product Master title for each parent (autofill). The parent's own "PARENT …" row wins when it has a
+     * title; otherwise the first child SKU of that parent that has one. Prefers the 150-char title.
+     *
+     * @param  list<string>  $parents
+     * @return array<string, string> normalized parent => title
+     */
+    protected function parentTitles(array $parents): array
+    {
+        $keys = [];
+        foreach ($parents as $p) {
+            $k = $this->parentKey($p);
+            if ($k !== '') {
+                $keys[$k] = true;
+            }
+        }
+        if ($keys === [] || ! Schema::hasTable('product_master')) {
+            return [];
+        }
+
+        $cols = array_values(array_filter(
+            ['title150', 'title100', 'title80', 'title60'],
+            static fn (string $c) => Schema::hasColumn('product_master', $c)
+        ));
+        if ($cols === []) {
+            return [];
+        }
+
+        $out = [];
+        $rank = [];
+        foreach (array_chunk(array_keys($keys), 500) as $chunk) {
+            $ph = implode(',', array_fill(0, count($chunk), '?'));
+            $rows = DB::table('product_master')
+                ->whereNull('deleted_at')
+                ->whereRaw('UPPER(TRIM(REPLACE(parent, CHAR(160), " "))) IN ('.$ph.')', $chunk)
+                ->orderBy('sku')
+                ->get(array_merge(['parent', 'sku'], $cols));
+
+            foreach ($rows as $r) {
+                $title = '';
+                foreach ($cols as $c) {
+                    $t = trim((string) ($r->{$c} ?? ''));
+                    if ($t !== '') {
+                        $title = $t;
+                        break;
+                    }
+                }
+                if ($title === '') {
+                    continue;
+                }
+                $key = $this->parentKey((string) $r->parent);
+                $isParentRow = str_starts_with(strtoupper(trim((string) $r->sku)), 'PARENT');
+                // 2 = the PARENT row itself, 1 = first child with a title.
+                $score = $isParentRow ? 2 : 1;
+                if (! isset($out[$key]) || $score > $rank[$key]) {
+                    $out[$key] = $title;
+                    $rank[$key] = $score;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Saved cousin names: normalized campaign name => name.
+     *
+     * @return array<string, string>
+     */
+    protected function cousinNameMap(): array
+    {
+        if (! Schema::hasTable(self::COUSIN_NAME_TABLE)) {
+            return [];
+        }
+
+        return DB::table(self::COUSIN_NAME_TABLE)->pluck('name', 'campaign_norm')->all();
+    }
+
+    /**
+     * Name of the cousin group a campaign belongs to: its own saved name, else the first member's.
+     *
+     * @param  list<string>  $group
+     * @param  array<string, string>  $nameMap
+     */
+    protected function groupNameFor(array $group, string $campaign, array $nameMap): string
+    {
+        $own = $nameMap[$this->cousins->normalize($campaign)] ?? '';
+        if ($own !== '') {
+            return $own;
+        }
+        foreach ($group as $member) {
+            $n = $nameMap[$this->cousins->normalize($member)] ?? '';
+            if ($n !== '') {
+                return $n;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Save one name on every campaign of a cousin group (empty name removes it).
+     *
+     * @param  list<string>  $group
+     */
+    protected function setGroupName(array $group, string $name): void
+    {
+        if (! Schema::hasTable(self::COUSIN_NAME_TABLE)) {
+            return;
+        }
+        $name = mb_substr(trim($name), 0, 191);
+        if ($name === '') {
+            $this->clearGroupName($group);
+
+            return;
+        }
+
+        $now = now();
+        $user = Auth::user()?->name;
+        foreach ($group as $member) {
+            $norm = $this->cousins->normalize($member);
+            if ($norm === '') {
+                continue;
+            }
+            DB::table(self::COUSIN_NAME_TABLE)->updateOrInsert(
+                ['campaign_norm' => $norm],
+                ['campaign' => mb_substr(trim($member), 0, 512), 'name' => $name, 'updated_by' => $user, 'updated_at' => $now, 'created_at' => $now]
+            );
+        }
+    }
+
+    /**
+     * @param  list<string>  $campaigns
+     */
+    protected function clearGroupName(array $campaigns): void
+    {
+        if (! Schema::hasTable(self::COUSIN_NAME_TABLE) || $campaigns === []) {
+            return;
+        }
+        $norms = array_values(array_filter(array_map(fn ($c) => $this->cousins->normalize((string) $c), $campaigns)));
+        if ($norms !== []) {
+            DB::table(self::COUSIN_NAME_TABLE)->whereIn('campaign_norm', $norms)->delete();
+        }
+    }
+
+    /**
+     * Name (or rename) the cousin group of a campaign. The name is stored on every campaign in the group.
+     */
+    public function nameCousins(Request $request): JsonResponse
+    {
+        $v = $request->validate([
+            'campaign' => ['required', 'string', 'max:512'],
+            'name' => ['nullable', 'string', 'max:191'],
+        ]);
+
+        if (! Schema::hasTable(self::COUSIN_NAME_TABLE)) {
+            return response()->json(['success' => false, 'message' => 'Table is missing. Run php artisan migrate.'], 500);
+        }
+
+        $campaign = trim($v['campaign']);
+        if (! isset($this->campaignIndex()[$this->cousins->normalize($campaign)])) {
+            return response()->json(['success' => false, 'message' => 'Unknown campaign.'], 422);
+        }
+
+        $group = $this->effectiveGroup($campaign);
+        $name = trim((string) ($v['name'] ?? ''));
+        $this->setGroupName($group, $name);
+
+        return response()->json([
+            'success' => true,
+            'message' => $name === '' ? 'Name removed.' : 'Name saved for '.count($group).' campaign'.(count($group) === 1 ? '' : 's').'.',
+            'affected' => $this->cousinRows($group),
+        ]);
+    }
+
+    /**
+     * Cousin campaigns of one campaign, grouped by parent for display.
+     *
+     * @param  list<string>  $cousinNames
+     * @return list<array{parent: string, campaigns: list<string>}>
+     */
+    protected function cousinParents(array $cousinNames): array
+    {
+        $index = $this->campaignIndex();
+        $byParent = [];
+        $loose = [];
+        foreach ($cousinNames as $name) {
+            $hit = $index[$this->cousins->normalize($name)] ?? null;
+            if ($hit === null) {
+                continue; // PT / archived campaigns are hidden on this page
+            }
+            $parent = $hit['parent'];
+            if ($parent === '') {
+                $loose[] = ['parent' => '', 'campaigns' => [$name]];
+
+                continue;
+            }
+            $key = strtoupper($parent);
+            $byParent[$key] ??= ['parent' => $parent, 'campaigns' => []];
+            $byParent[$key]['campaigns'][] = $name;
+        }
+        ksort($byParent, SORT_NATURAL);
+
+        return array_merge(array_values($byParent), $loose);
+    }
+
+    /**
+     * @param  list<string>  $group
+     * @return list<array{campaign: string, cousins: list<string>, cousin_parents: list<array>, cousin_count: int}>
+     */
+    protected function cousinRows(array $group): array
+    {
+        $nameMap = $this->cousinNameMap();
+        $map = Schema::hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+        $rows = [];
+        foreach ($group as $member) {
+            $current = $this->effectiveGroup($member, $map);
+            $others = $this->cousinCampaignNames($current, $member);
+            $parents = $this->cousinParents($others);
+            $rows[] = [
+                'campaign' => $member,
+                'cousin_name' => $this->groupNameFor($current, $member, $nameMap),
+                'cousins' => $others,
+                'cousin_parents' => $parents,
+                'cousin_count' => count($parents),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * KW campaigns are every campaign that is not product targeting (name contains " PT" / ends with PT).
+     */
+    protected function isProductTargetingCampaign(string $campaignName): bool
+    {
+        $n = preg_replace('/\s+/u', ' ', trim(str_replace("\xC2\xA0", ' ', $campaignName)));
+        if ($n === '') {
+            return false;
+        }
+        $u = strtoupper($n);
+
+        return str_contains($u, ' PT') || preg_match('/PT\.?\s*$/u', $u) === 1;
+    }
+
+    /**
+     * Add keywords stored in the app to the per-campaign target lists (no duplicates).
+     *
+     * @param  array<string, list<string>>  $map
+     * @param  list<string>  $campaignIds
+     * @return array<string, list<string>>
+     */
+    protected function mergeStoredKeywords(array $map, array $campaignIds, string $table = self::STORE_TABLE): array
+    {
+        $campaignIds = array_values(array_unique(array_filter($campaignIds)));
+        if ($campaignIds === [] || ! Schema::hasTable($table)) {
+            return $map;
+        }
+
+        $seen = [];
+        foreach ($map as $cid => $labels) {
+            foreach ($labels as $label) {
+                $seen[$cid][strtolower($label)] = true;
+            }
+        }
+
+        $touched = [];
+        foreach (DB::table($table)->whereIn('campaign_id', $campaignIds)->get(['campaign_id', 'keyword', 'match_type']) as $row) {
+            $cid = (string) $row->campaign_id;
+            $label = $row->match_type !== '' ? $row->keyword.' ('.$row->match_type.')' : $row->keyword;
+            if (isset($seen[$cid][strtolower($label)])) {
+                continue;
+            }
+            $seen[$cid][strtolower($label)] = true;
+            $map[$cid][] = $label;
+            $touched[$cid] = true;
+        }
+
+        foreach (array_keys($touched) as $cid) {
+            sort($map[$cid], SORT_NATURAL | SORT_FLAG_CASE);
+            $map[$cid] = array_values($map[$cid]);
+        }
+
+        return $map;
     }
 
     /**

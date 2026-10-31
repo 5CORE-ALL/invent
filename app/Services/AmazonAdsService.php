@@ -642,6 +642,46 @@ class AmazonAdsService
     }
 
     /**
+     * Enabled SP campaign-level negative keywords for one or more campaigns (walks nextToken).
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    public function listSpCampaignNegativeKeywordsByCampaignIds(array $campaignIds, int $maxPages = 40): array
+    {
+        return $this->listSpEntitiesByCampaignIds(
+            '/sp/campaignNegativeKeywords/list',
+            'application/vnd.spCampaignNegativeKeyword.v3+json',
+            ['campaignNegativeKeywords'],
+            $campaignIds,
+            $maxPages,
+            1000,
+            50,
+            ['ENABLED']
+        );
+    }
+
+    /**
+     * Enabled SP ad-group-level negative keywords for one or more campaigns (walks nextToken).
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    public function listSpAdGroupNegativeKeywordsByCampaignIds(array $campaignIds, int $maxPages = 40): array
+    {
+        return $this->listSpEntitiesByCampaignIds(
+            '/sp/negativeKeywords/list',
+            'application/vnd.spNegativeKeyword.v3+json',
+            ['negativeKeywords'],
+            $campaignIds,
+            $maxPages,
+            1000,
+            50,
+            ['ENABLED']
+        );
+    }
+
+    /**
      * Enabled Sponsored Brands negative keywords.
      * This list rejects stateFilter=paused (allowed values are enabled and archived).
      *
@@ -760,7 +800,8 @@ class AmazonAdsService
         array $campaignIds,
         int $maxPages = 20,
         int $pageSize = 100,
-        int $chunkSize = 8
+        int $chunkSize = 8,
+        array $states = ['ENABLED', 'PAUSED']
     ): array {
         $ids = array_values(array_unique(array_filter(array_map(
             static fn ($id) => trim((string) $id),
@@ -778,7 +819,7 @@ class AmazonAdsService
                 $pages++;
                 $body = [
                     'campaignIdFilter' => ['include' => $chunk],
-                    'stateFilter' => ['include' => ['ENABLED', 'PAUSED']],
+                    'stateFilter' => ['include' => array_values($states)],
                     'maxResults' => max(1, $pageSize),
                 ];
                 if (is_string($nextToken) && $nextToken !== '') {

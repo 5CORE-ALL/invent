@@ -35,6 +35,7 @@ use App\Models\BadgeDataHistory;
 use App\Models\AdvertisementMasterCustomRow;
 use App\Models\AdvertisementMasterHiddenRow;
 use App\Models\AdvertisementMasterNrReq;
+use App\Models\AdvertisementMasterDataAlertIgnore;
 use App\Models\AmazonOrder;
 use App\Models\ChannelMaster;
 use App\Models\ChannelMasterSummary;
@@ -937,6 +938,7 @@ class AdvertisementMasterController extends Controller
             }
             $this->attachTrends($rows, $prevByChannel);
             $this->attachMissingAdsTrends($rows, $prevByChannel);
+            $this->attachDataAlertIgnores($rows);
             $this->applyActiveChannelAds($rows);
             try {
                 $this->snapshotChannels($this->flattenRows($rows), $totalNetSales);
@@ -1173,6 +1175,118 @@ class AdvertisementMasterController extends Controller
             'channel_key' => $key,
             'nr_req' => $nr,
         ]);
+    }
+
+    /**
+     * Ignore (or un-ignore) one gray "Data Alert" for a row + column.
+     */
+    public function ignoreDataAlert(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'channel_key' => 'required|string|max:191',
+            'field' => 'required|string|max:64',
+            'ignored' => 'required|boolean',
+        ]);
+        $key = trim((string) $data['channel_key']);
+        $field = trim((string) $data['field']);
+        if ($key === '' || $field === '') {
+            return response()->json(['status' => 422, 'message' => 'Missing row.'], 422);
+        }
+
+        if (! Schema::hasTable('advertisement_master_data_alert_ignores')) {
+            return response()->json([
+                'status' => 503,
+                'message' => 'Data alert table is missing. Run migrations and try again.',
+            ], 503);
+        }
+
+        if ($request->boolean('ignored')) {
+            AdvertisementMasterDataAlertIgnore::query()->updateOrCreate(
+                ['channel_key' => $key, 'field' => $field],
+                ['channel_key' => $key]
+            );
+        } else {
+            AdvertisementMasterDataAlertIgnore::query()
+                ->where('channel_key', $key)
+                ->where('field', $field)
+                ->delete();
+        }
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Saved.',
+            'channel_key' => $key,
+            'field' => $field,
+            'ignored' => $request->boolean('ignored'),
+        ]);
+    }
+
+    /**
+     * "Autofix" for stale / gray data: drop the cached missing-ad counts so
+     * the next data load recomputes them from the source pages, and let that
+     * load write today's snapshot (which gives the row a day to compare to).
+     */
+    public function autofixDataAlert(Request $request): JsonResponse
+    {
+        $request->validate([
+            'channel_key' => 'required|string|max:191',
+        ]);
+
+        $cleared = [];
+        $forgets = [
+            'amazon' => [AmazonAdsMissingController::class, 'forgetMissingTotalCache'],
+            'temu' => [Temu1MissingAdsController::class, 'forgetMissingTotalCache'],
+            'temu2' => [Temu2MissingAdsController::class, 'forgetMissingTotalCache'],
+            'tiktok' => [TiktokAdsMissingController::class, 'forgetMissingTotalCache'],
+            'google_shopping' => [GoogleShoppingAdsMissingController::class, 'forgetMissingTotalCache'],
+            'google_serp' => [GoogleSerpAdsMissingController::class, 'forgetMissingTotalCache'],
+            'google_youtube' => [GoogleYoutubeAdsMissingController::class, 'forgetMissingTotalCache'],
+        ];
+        foreach ($forgets as $name => $callable) {
+            try {
+                if (is_callable($callable)) {
+                    $callable();
+                    $cleared[] = $name;
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('Advertisement Master autofix cache clear failed ('.$name.'): '.$e->getMessage());
+            }
+        }
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Source caches cleared. Reloading data…',
+            'cleared' => $cleared,
+        ]);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function attachDataAlertIgnores(array &$rows): void
+    {
+        $map = [];
+        try {
+            if (Schema::hasTable('advertisement_master_data_alert_ignores')) {
+                foreach (AdvertisementMasterDataAlertIgnore::query()->get(['channel_key', 'field']) as $r) {
+                    $map[(string) $r->channel_key][] = (string) $r->field;
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master data-alert ignores failed: '.$e->getMessage());
+        }
+
+        $walk = function (array &$list) use (&$walk, $map): void {
+            foreach ($list as &$row) {
+                $key = (string) ($row['channel_key'] ?? $row['channel'] ?? '');
+                $row['alert_ignored'] = $map[$key] ?? [];
+                if (! empty($row['_children']) && is_array($row['_children'])) {
+                    $walk($row['_children']);
+                }
+            }
+            unset($row);
+        };
+        $walk($rows);
     }
 
     /**
@@ -2987,6 +3101,9 @@ class AdvertisementMasterController extends Controller
                 }
             }
             $row['trend'] = $this->computeTrend($row, $prev);
+            // Lets the Data Alerts modal tell "no previous day to compare"
+            // apart from "same as yesterday".
+            $row['trend_no_prior'] = $prev === null;
 
             if (! empty($row['_children']) && is_array($row['_children'])) {
                 $this->attachTrends($row['_children'], $prevByChannel);
@@ -4094,6 +4211,13 @@ class AdvertisementMasterController extends Controller
             $amazonMissingPt,
             $amazonMissingHref
         );
+        // HL had no source of its own, so it fell through to the "amazon"
+        // marketplace key and showed the whole Amazon total (PT + KW + HL).
+        $put(
+            ['amazonhl', 'amzhl'],
+            $amazonMissingHl,
+            $amazonMissingHref
+        );
         $put(
             ['shopifygoogleshopping'],
             $safeCount(static fn () => GoogleShoppingAdsMissingController::missingTotalCount(true)),
@@ -4207,7 +4331,16 @@ class AdvertisementMasterController extends Controller
                 $row['has_missing_ads'] = true;
             } elseif ($childHas) {
                 $row['missing_ads'] = $childSum;
-                $row['missing_ads_href'] = null;
+                // Roll-up rows link to the page their children share (e.g.
+                // Amazon Total -> Amazon missing page). Mixed sources -> no link.
+                $childHrefs = [];
+                foreach ($row['_children'] ?? [] as $child) {
+                    $h = trim((string) ($child['missing_ads_href'] ?? ''));
+                    if ($h !== '') {
+                        $childHrefs[$h] = true;
+                    }
+                }
+                $row['missing_ads_href'] = count($childHrefs) === 1 ? (string) array_key_first($childHrefs) : null;
                 $row['has_missing_ads'] = true;
             } else {
                 $row['missing_ads'] = 0;

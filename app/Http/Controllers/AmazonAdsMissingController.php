@@ -344,6 +344,230 @@ class AmazonAdsMissingController extends Controller
         }
     }
 
+    /** HL links to campaigns archived longer than this many days are removed by the HL import. */
+    private const HL_ARCHIVED_KEEP_DAYS = 30;
+
+    /**
+     * "Import HL" button: pull every current Sponsored Brands (HL) campaign from the SB reports into the
+     * parent links, then drop HL links whose campaign has been ARCHIVED for more than 30 days.
+     *
+     * Import matches "PARENT {parent} HL|HEAD" (optionally followed by a number) and "{parent} HL|HEAD".
+     * Unlike the automatic link it also adds a second / third HL campaign to a parent that already has one.
+     */
+    public function hlImport(): JsonResponse
+    {
+        if (! Schema::hasTable('amazon_ads_missing_links')
+            || ! Schema::hasTable(self::SB_TABLE)
+            || ! Schema::hasColumn(self::SB_TABLE, 'campaignName')
+            || ! Schema::hasColumn(self::SB_TABLE, 'campaign_id')
+            || ! Schema::hasColumn(self::SB_TABLE, 'campaignStatus')) {
+            return response()->json(['ok' => false, 'message' => 'Sponsored Brands campaign reports are not available.'], 503);
+        }
+
+        try {
+            $parents = $this->distinctParentsForImport();
+
+            // Latest report row per campaign name = its current status / id.
+            $latestIds = DB::table(self::SB_TABLE)
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '')
+                ->selectRaw('MAX(id) AS max_id')
+                ->groupBy('campaignName')
+                ->pluck('max_id')
+                ->filter()
+                ->map(fn ($v) => (int) $v)
+                ->all();
+
+            $campaigns = [];
+            foreach (array_chunk($latestIds, 1000) as $chunk) {
+                foreach (DB::table(self::SB_TABLE)->whereIn('id', $chunk)->get(['campaignName', 'campaign_id', 'campaignStatus']) as $r) {
+                    $name = trim((string) $r->campaignName);
+                    $key = $this->normalizeCampaignName($name);
+                    if ($key === '') {
+                        continue;
+                    }
+                    $campaigns[$key] = [
+                        'name' => $name,
+                        'id' => preg_replace('/\D+/', '', (string) ($r->campaign_id ?? '')) ?: null,
+                        'status' => strtoupper(trim((string) ($r->campaignStatus ?? ''))),
+                    ];
+                }
+            }
+
+            $existing = AmazonAdsMissingLink::query()->where('type', 'HL')->get(['id', 'sku', 'campaign_id', 'campaign_name']);
+            $linked = [];
+            foreach ($existing as $l) {
+                $linked[(string) $l->sku.'|'.$this->normalizeCampaignName((string) $l->campaign_name)] = true;
+                // Back-fill the campaign id on name-only links.
+                if (trim((string) $l->campaign_id) === '') {
+                    $hit = $campaigns[$this->normalizeCampaignName((string) $l->campaign_name)] ?? null;
+                    if ($hit && $hit['id']) {
+                        AmazonAdsMissingLink::where('id', $l->id)->update(['campaign_id' => $hit['id']]);
+                    }
+                }
+            }
+
+            $imported = 0;
+            $unmatched = 0;
+            foreach ($campaigns as $key => $c) {
+                if ($c['status'] === 'ARCHIVED') {
+                    continue;
+                }
+                $parentKey = $this->parentKeyFromHlCampaignName($key, $parents);
+                if ($parentKey === null) {
+                    $unmatched++;
+
+                    continue;
+                }
+                $sku = 'PARENT '.$parents[$parentKey];
+                if (isset($linked[$sku.'|'.$key])) {
+                    continue;
+                }
+                $attrs = $this->missingLinkCreateAttrs($c['id'], false);
+                $attrs['user_id'] = Auth::id();
+                AmazonAdsMissingLink::firstOrCreate(
+                    ['sku' => $sku, 'type' => 'HL', 'campaign_name' => $c['name']],
+                    $attrs
+                );
+                $linked[$sku.'|'.$key] = true;
+                $imported++;
+            }
+
+            // Remove HL links whose campaign has been ARCHIVED for more than 30 days.
+            $removed = 0;
+            $archivedSince = $this->archivedSinceByCampaign();
+            $cutoff = Carbon::now()->subDays(self::HL_ARCHIVED_KEEP_DAYS)->startOfDay();
+            $removeIds = [];
+            foreach (AmazonAdsMissingLink::query()->where('type', 'HL')->get(['id', 'campaign_name']) as $l) {
+                $key = $this->normalizeCampaignName((string) $l->campaign_name);
+                if (($campaigns[$key]['status'] ?? '') !== 'ARCHIVED') {
+                    continue;
+                }
+                $since = $archivedSince[$key] ?? null;
+                if ($since !== null && $since->lt($cutoff)) {
+                    $removeIds[] = (int) $l->id;
+                }
+            }
+            foreach (array_chunk($removeIds, 500) as $chunk) {
+                $removed += AmazonAdsMissingLink::query()->whereIn('id', $chunk)->delete();
+            }
+
+            self::forgetMissingTotalCache();
+
+            return response()->json([
+                'ok' => true,
+                'imported' => $imported,
+                'removed' => $removed,
+                'unmatched' => $unmatched,
+                'message' => "Imported {$imported} HL campaign(s), removed {$removed} archived over ".self::HL_ARCHIVED_KEEP_DAYS.' days.'
+                    .($unmatched > 0 ? " {$unmatched} active HL campaign(s) did not match any parent name." : ''),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Amazon ads missing: HL import failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['ok' => false, 'message' => 'HL import failed: '.$e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * UPPER(parent) => parent for every non-DC product parent (same rules as the grid).
+     *
+     * @return array<string, string>
+     */
+    private function distinctParentsForImport(): array
+    {
+        $parents = [];
+        if (! Schema::hasTable('product_master')) {
+            return $parents;
+        }
+        $rows = DB::table('product_master')
+            ->select('parent', 'sku', 'Values')
+            ->whereNull('deleted_at')
+            ->get();
+        foreach ($rows as $r) {
+            $sku = trim((string) ($r->sku ?? ''));
+            if ($sku === '' || Str::startsWith(strtoupper($sku), 'PARENT') || $this->isDcProduct($r)) {
+                continue;
+            }
+            $parent = preg_replace('/\s+/', ' ', trim((string) ($r->parent ?? '')));
+            if ($parent === '') {
+                continue;
+            }
+            $parents[strtoupper($parent)] = $parent;
+        }
+
+        return $parents;
+    }
+
+    /**
+     * Parent key (UPPER) for an HL campaign name like "PARENT FOO HL", "PARENT FOO HEAD 2" or "FOO HL".
+     *
+     * @param  array<string, string>  $parents
+     */
+    private function parentKeyFromHlCampaignName(string $normalizedName, array $parents): ?string
+    {
+        if (! preg_match('/^(.*?)\s+(?:HL|HEAD)(?:\s*\d+)?$/', $normalizedName, $m)) {
+            return null;
+        }
+        $base = trim($m[1]);
+        if ($base === '') {
+            return null;
+        }
+        if (isset($parents[$base])) {
+            return $base;
+        }
+        if (str_starts_with($base, 'PARENT ')) {
+            $stripped = trim(substr($base, 7));
+            if (isset($parents[$stripped])) {
+                return $stripped;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Date each SB campaign went ARCHIVED (earliest ARCHIVED report row after its last non-archived row).
+     *
+     * @return array<string, Carbon>
+     */
+    private function archivedSinceByCampaign(): array
+    {
+        $dateExpr = Schema::hasColumn(self::SB_TABLE, 'date')
+            ? 'COALESCE(`date`, DATE(updated_at), DATE(created_at))'
+            : 'COALESCE(DATE(updated_at), DATE(created_at))';
+
+        $lastActive = DB::table(self::SB_TABLE)
+            ->whereNotNull('campaignName')
+            ->where(function ($q) {
+                $q->whereNull('campaignStatus')->orWhereRaw('UPPER(TRIM(campaignStatus)) != ?', ['ARCHIVED']);
+            })
+            ->selectRaw('campaignName, MAX(id) AS last_id')
+            ->groupBy('campaignName')
+            ->pluck('last_id', 'campaignName');
+
+        $rows = DB::table(self::SB_TABLE)
+            ->whereNotNull('campaignName')
+            ->whereRaw('UPPER(TRIM(campaignStatus)) = ?', ['ARCHIVED'])
+            ->selectRaw("campaignName, id, {$dateExpr} AS d")
+            ->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $name = (string) $r->campaignName;
+            if ($r->d === null || (int) $r->id <= (int) ($lastActive[$name] ?? 0)) {
+                continue;
+            }
+            $key = $this->normalizeCampaignName($name);
+            $d = Carbon::parse((string) $r->d)->startOfDay();
+            if (! isset($out[$key]) || $d->lt($out[$key])) {
+                $out[$key] = $d;
+            }
+        }
+
+        return $out;
+    }
+
     /**
      * Distinct SP campaigns (same source as /amazon-ads/all SP reports) for the Campaign picker.
      */
@@ -807,11 +1031,11 @@ class AmazonAdsMissingController extends Controller
             'parent' => ['required', 'string', 'max:255'],
             'campaign_name' => ['required', 'string', 'max:128'],
             'budget_amount' => ['nullable', 'numeric', 'min:1', 'max:100000'],
-            'headline' => ['nullable', 'string', 'max:50'],
+            'headline' => ['required', 'string', 'max:50'],
             'children' => ['required', 'array', 'min:1'],
             'children.*.asin' => ['nullable', 'string', 'max:32'],
             'keywords' => ['nullable', 'array', 'max:200'],
-            'keywords.*.text' => ['required', 'string', 'max:200'],
+            'keywords.*.text' => ['nullable', 'string', 'max:200'],
             'keywords.*.match_type' => ['nullable', 'string', 'in:BROAD,PHRASE,EXACT'],
             'keywords.*.bid' => ['nullable', 'numeric', 'min:0.1', 'max:1000'],
         ]);
@@ -833,14 +1057,7 @@ class AmazonAdsMissingController extends Controller
             ->pluck('campaign_id')
             ->all();
 
-        $keywords = [];
-        foreach ((array) ($validated['keywords'] ?? []) as $k) {
-            $keywords[] = [
-                'text' => (string) $k['text'],
-                'match_type' => (string) ($k['match_type'] ?? 'PHRASE'),
-                'bid' => (float) ($k['bid'] ?? 0.6),
-            ];
-        }
+        $keywords = $this->normalizeHlKeywords((array) ($validated['keywords'] ?? []));
 
         try {
             $result = (new AmazonAdsHlCampaignCreator(app(AmazonAdsService::class)))->create(
@@ -1556,6 +1773,43 @@ class AmazonAdsMissingController extends Controller
         }
 
         return response()->json(['ok' => true, 'rows' => $rows, 'message' => $rows === [] ? 'No ideas found for these keywords.' : '']);
+    }
+
+    /**
+     * Sponsored Brands keyword rules (Amazon Ads API /sb/keywords): text up to 80 characters / 10 words with no
+     * special characters, match type broad|phrase|exact, bid at least $0.10, no duplicate text + match type,
+     * at most 200 keywords per campaign here. Invalid rows are dropped rather than failing the whole create.
+     *
+     * @param  array<int, mixed>  $rows  [{text, match_type, bid}]
+     * @return list<array{text: string, match_type: string, bid: float}>
+     */
+    private function normalizeHlKeywords(array $rows): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            if (! is_array($row) || count($out) >= 200) {
+                continue;
+            }
+            $text = preg_replace('/\s+/u', ' ', trim((string) ($row['text'] ?? '')));
+            if ($text === '' || mb_strlen($text) > 80 || count(explode(' ', $text)) > 10
+                || preg_match('/[!@#$%^&*()_+=\[\]{}\\\\|;:"<>?,\/~`]/u', $text)) {
+                continue;
+            }
+            $mt = strtoupper(trim((string) ($row['match_type'] ?? 'PHRASE')));
+            if (! in_array($mt, ['BROAD', 'PHRASE', 'EXACT'], true)) {
+                $mt = 'PHRASE';
+            }
+            $key = mb_strtolower($text).'|'.$mt;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $bid = isset($row['bid']) && is_numeric($row['bid']) ? (float) $row['bid'] : 0.6;
+            $out[] = ['text' => $text, 'match_type' => $mt, 'bid' => round(max(0.1, $bid), 2)];
+        }
+
+        return $out;
     }
 
     /**

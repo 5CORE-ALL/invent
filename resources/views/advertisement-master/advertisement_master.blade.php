@@ -41,10 +41,28 @@
         .adm-missing-count.is-alert { color: #dc2626; }
         .adm-missing-ads-link {
             color: #2563eb;
-            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
             line-height: 1;
             text-decoration: none;
         }
+        .adm-missing-ads-link svg { display: block; }
+        .adm-alert-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            background: transparent;
+            padding: 2px;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .adm-alert-btn svg { display: block; filter: drop-shadow(0 1px 1px rgba(220, 38, 38, .35)); }
+        .adm-alert-btn:hover svg { transform: scale(1.15); }
+        #admAlertModal .adm-alert-table th { font-size: 12px; white-space: nowrap; }
+        #admAlertModal .adm-alert-table td { font-size: 12.5px; vertical-align: middle; }
+        #admAlertModal .adm-alert-row.is-ignored td { opacity: .5; }
+        #admAlertModal .adm-alert-row.is-ignored .adm-alert-error { text-decoration: line-through; }
         .adm-missing-ads-link:hover { color: #1d4ed8; }
         .adm-missing-header {
             display: inline-flex;
@@ -619,6 +637,37 @@
         </div>
     </div>
 
+    <div class="modal fade" id="admAlertModal" tabindex="-1" aria-labelledby="admAlertLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title mb-0" id="admAlertLabel">Data Alerts</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2" id="adm-alert-sub"></p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0 adm-alert-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Error</th>
+                                    <th>Reason</th>
+                                    <th class="text-center">Autofix</th>
+                                    <th class="text-center">Ignore</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adm-alert-body"></tbody>
+                        </table>
+                    </div>
+                    <p class="text-danger small mb-0 mt-2 d-none" id="adm-alert-error"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="admEditModal" tabindex="-1" aria-labelledby="admEditLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -841,8 +890,11 @@
                 return wholeMoneyFormatter(cell);
             }
 
+            // Inline SVG so the icon never depends on an icon font being loaded.
+            const ADM_LINK_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+
             function missingAdsTitleFormatter() {
-                return '<span class="adm-missing-header">Missing <i class="fas fa-external-link-alt" title="Link icon opens the missing page in a new tab"></i></span>';
+                return '<span class="adm-missing-header">Missing</span>';
             }
 
             function missingAdsFormatter(cell) {
@@ -854,7 +906,7 @@
                 const href = String(row.missing_ads_href || '').trim();
                 const num = '<span class="adm-missing-count' + (n > 0 ? ' is-alert' : '') + '">' + n.toLocaleString() + '</span>';
                 const arrow = href
-                    ? '<a class="adm-missing-ads-link" href="' + admEsc(href) + '" target="_blank" rel="noopener" title="Open missing page in new tab"><i class="fas fa-external-link-alt"></i></a>'
+                    ? '<a class="adm-missing-ads-link" href="' + admEsc(href) + '" target="_blank" rel="noopener" title="Open missing page in new tab">' + ADM_LINK_ICON_SVG + '</a>'
                     : '';
                 return '<span class="adm-missing-cell">' + num + arrow + '</span>' + admTrendDot(cell);
             }
@@ -868,6 +920,70 @@
                     return;
                 }
                 admCellChart(e, cell);
+            }
+
+            // ---- Data Alerts: a row is alerted when any metric dot is gray ----
+            const ADM_ALERT_FIELDS = [
+                { field: 'missing_ads', label: 'Missing', kind: 'int', needs: 'has_missing_ads' },
+                { field: 'active', label: 'Active', kind: 'int' },
+                { field: 'spend', label: 'Spend', kind: 'money' },
+                { field: 'clicks', label: 'Clicks', kind: 'int' },
+                { field: 'sold', label: 'Sold', kind: 'int' },
+                { field: 'sales', label: 'Ads Sales', kind: 'money' },
+                { field: 'cvr', label: 'CVR', kind: 'pct' },
+                { field: 'acos', label: 'ACOS', kind: 'pct' },
+            ];
+            const ADM_ALERT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6 1.8 20.4a1 1 0 0 0 .87 1.5h18.66a1 1 0 0 0 .87-1.5L12 2.6z" fill="#dc2626" stroke="#b91c1c" stroke-width="1" stroke-linejoin="round"/><rect x="11" y="9" width="2" height="6.2" rx="1" fill="#fff"/><circle cx="12" cy="17.9" r="1.2" fill="#fff"/></svg>';
+
+            function admAlertFormatValue(kind, value) {
+                const n = Number(value || 0);
+                if (kind === 'money') return '$' + Math.round(n).toLocaleString();
+                if (kind === 'pct') return n.toLocaleString(undefined, { maximumFractionDigits: 1 }) + '%';
+                return Math.round(n).toLocaleString();
+            }
+
+            function admAlertReason(row, def) {
+                const value = Number(row[def.field] || 0);
+                if (row.trend_no_prior) {
+                    return 'No previous-day snapshot exists for this channel, so the change cannot be measured yet.';
+                }
+                if (value === 0) {
+                    return 'Value is 0 and unchanged from the previous day. The source is returning no data for this column.';
+                }
+                return 'Value is identical to the previous day. The source may not have refreshed (stale data).';
+            }
+
+            // All gray columns for a row, each flagged ignored or not.
+            function admRowAlerts(row) {
+                row = row || {};
+                if (row.is_custom && !row.is_sum_row) return [];
+                const ignored = Array.isArray(row.alert_ignored) ? row.alert_ignored : [];
+                const trend = row.trend || {};
+                const out = [];
+                ADM_ALERT_FIELDS.forEach(function (def) {
+                    if (def.needs && !row[def.needs]) return;
+                    if (admTrendClass(trend[def.field], !!ADM_INVERTED_METRICS[def.field]) !== 'is-flat') return;
+                    out.push({
+                        field: def.field,
+                        label: def.label,
+                        error: def.label + ' is gray (' + admAlertFormatValue(def.kind, row[def.field]) + ')',
+                        reason: admAlertReason(row, def),
+                        ignored: ignored.indexOf(def.field) !== -1,
+                    });
+                });
+                return out;
+            }
+
+            function admActiveAlerts(row) {
+                return admRowAlerts(row).filter(function (a) { return !a.ignored; });
+            }
+
+            function dataAlertFormatter(cell) {
+                const row = cell.getRow().getData() || {};
+                const n = admActiveAlerts(row).length;
+                if (!n) return '';
+                return '<button type="button" class="adm-alert-btn" title="' + n + ' data alert' + (n === 1 ? '' : 's') + ' — click for details">'
+                    + ADM_ALERT_ICON_SVG + '</button>';
             }
 
             function percentFormatter(cell) {
@@ -1033,6 +1149,7 @@
                     }
                     copy.missing_ads = Number(copy.missing_ads || 0);
                     copy.has_missing_ads = !!copy.has_missing_ads;
+                    copy.alert_ignored = Array.isArray(copy.alert_ignored) ? copy.alert_ignored : [];
                     copy.is_sum_row = children.length > 0 || !!copy.is_group_total || !!copy.is_sum_row;
                     if (copy.is_sum_row) {
                         const typeName = String(copy.channel || '').trim();
@@ -1043,6 +1160,7 @@
                     if (children.length) {
                         Array.prototype.push.apply(flat, flattenAdmRows(children, group));
                     }
+                    copy.alert_count = admActiveAlerts(copy).length;
                     flat.push(copy);
                 });
                 return flat;
@@ -1323,6 +1441,7 @@
                     { title: 'CVR', field: 'cvr', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
                     { title: 'ACOS', field: 'acos', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
                     { title: 'Tcos', field: 'tcos', hozAlign: 'center', formatter: tcosFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admTcosCellChart, visible: false },
+                    { title: 'Data Alerts', field: 'alert_count', width: 84, minWidth: 76, hozAlign: 'center', headerHozAlign: 'center', headerSort: true, headerSortStartingDir: 'desc', sorter: admNumberSorter, formatter: dataAlertFormatter, cssClass: 'adm-alert-cell', cellClick: openAdmAlertFromCell },
                     { title: '', field: '_task', width: 42, minWidth: 42, hozAlign: 'center', headerSort: false, formatter: taskFormatter, cssClass: 'adm-task-cell', cellClick: openAdmTaskFromCell },
                     { title: '', field: '_edit', width: 42, minWidth: 42, hozAlign: 'center', headerSort: false, formatter: editFormatter, cssClass: 'adm-edit-cell', cellClick: openAdmEditFromCell },
                     { title: '', field: '_delete', width: 42, minWidth: 42, hozAlign: 'center', headerSort: false, formatter: deleteFormatter, cssClass: 'adm-delete-cell', cellClick: openAdmDeleteFromCell },
@@ -1597,6 +1716,140 @@
                     window.alert('Could not delete.');
                 });
             }
+
+            // ---- Data Alerts modal ----
+            const admAlertIgnoreUrl = "{{ route('advertisement.master.data-alert.ignore') }}";
+            const admAlertAutofixUrl = "{{ route('advertisement.master.data-alert.autofix') }}";
+            let admAlertRow = null;
+
+            function admJsonHeaders() {
+                const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+                if (admCsrf && admCsrf.content) headers['X-CSRF-TOKEN'] = admCsrf.content;
+                return headers;
+            }
+
+            function admAlertShowError(msg) {
+                const el = document.getElementById('adm-alert-error');
+                if (!el) return;
+                el.textContent = msg || '';
+                el.classList.toggle('d-none', !msg);
+            }
+
+            function renderAdmAlertModal() {
+                if (!admAlertRow) return;
+                const data = admAlertRow.getData() || {};
+                const name = [data.channel_group, data.channel].filter(Boolean).join(' · ') || data.channel_key || '';
+                const sub = document.getElementById('adm-alert-sub');
+                if (sub) sub.textContent = name + ' — columns showing a gray dot (no change vs previous day).';
+                const body = document.getElementById('adm-alert-body');
+                if (!body) return;
+                const alerts = admRowAlerts(data);
+                if (!alerts.length) {
+                    body.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No data alerts for this row.</td></tr>';
+                    return;
+                }
+                body.innerHTML = alerts.map(function (a) {
+                    return '<tr class="adm-alert-row' + (a.ignored ? ' is-ignored' : '') + '" data-field="' + admEsc(a.field) + '">'
+                        + '<td class="adm-alert-error fw-semibold text-danger">' + admEsc(a.error) + '</td>'
+                        + '<td>' + admEsc(a.reason) + '</td>'
+                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary adm-alert-autofix" data-field="' + admEsc(a.field) + '">Autofix</button></td>'
+                        + '<td class="text-center"><input type="checkbox" class="form-check-input adm-alert-ignore" data-field="' + admEsc(a.field) + '"' + (a.ignored ? ' checked' : '') + '></td>'
+                        + '</tr>';
+                }).join('');
+            }
+
+            function openAdmAlertFromCell(e, cell) {
+                if (e && e.stopPropagation) e.stopPropagation();
+                const row = cell.getRow();
+                if (!admActiveAlerts(row.getData() || {}).length) return;
+                admAlertRow = row;
+                admAlertShowError('');
+                renderAdmAlertModal();
+                const modalEl = document.getElementById('admAlertModal');
+                if (window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                } else {
+                    modalEl.classList.add('show');
+                    modalEl.style.display = 'block';
+                }
+            }
+
+            function admAlertSetIgnored(field, ignored, checkbox) {
+                if (!admAlertRow) return;
+                const data = admAlertRow.getData() || {};
+                const key = String(data.channel_key || data.channel || '').trim();
+                if (!key) return;
+                admAlertShowError('');
+                fetch(admAlertIgnoreUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: admJsonHeaders(),
+                    body: JSON.stringify({ channel_key: key, field: field, ignored: ignored }),
+                }).then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                .then(function (result) {
+                    if (!result.ok || !result.body || Number(result.body.status) !== 200) {
+                        if (checkbox) checkbox.checked = !ignored;
+                        admAlertShowError((result.body && result.body.message) || 'Could not save.');
+                        return;
+                    }
+                    const list = (Array.isArray(data.alert_ignored) ? data.alert_ignored : []).filter(function (f) { return f !== field; });
+                    if (ignored) list.push(field);
+                    data.alert_ignored = list;
+                    const count = admActiveAlerts(data).length;
+                    admAlertRow.update({ alert_ignored: list, alert_count: count });
+                    renderAdmAlertModal();
+                }).catch(function () {
+                    if (checkbox) checkbox.checked = !ignored;
+                    admAlertShowError('Could not save.');
+                });
+            }
+
+            function admAlertAutofix(btn) {
+                if (!admAlertRow) return;
+                const data = admAlertRow.getData() || {};
+                const key = String(data.channel_key || data.channel || '').trim();
+                if (!key) return;
+                admAlertShowError('');
+                btn.disabled = true;
+                const oldText = btn.textContent;
+                btn.textContent = 'Fixing…';
+                fetch(admAlertAutofixUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: admJsonHeaders(),
+                    body: JSON.stringify({ channel_key: key }),
+                }).then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                .then(function (result) {
+                    if (!result.ok || !result.body || Number(result.body.status) !== 200) {
+                        btn.disabled = false;
+                        btn.textContent = oldText;
+                        admAlertShowError((result.body && result.body.message) || 'Autofix failed.');
+                        return;
+                    }
+                    const modalEl = document.getElementById('admAlertModal');
+                    if (window.bootstrap && bootstrap.Modal) {
+                        const inst = bootstrap.Modal.getInstance(modalEl);
+                        if (inst) inst.hide();
+                    }
+                    showAdmLoading();
+                    table.setData(dataUrl);
+                }).catch(function () {
+                    btn.disabled = false;
+                    btn.textContent = oldText;
+                    admAlertShowError('Autofix failed.');
+                });
+            }
+
+            document.getElementById('adm-alert-body').addEventListener('change', function (e) {
+                const cb = e.target && e.target.closest ? e.target.closest('.adm-alert-ignore') : null;
+                if (!cb) return;
+                admAlertSetIgnored(cb.getAttribute('data-field'), cb.checked, cb);
+            });
+            document.getElementById('adm-alert-body').addEventListener('click', function (e) {
+                const btn = e.target && e.target.closest ? e.target.closest('.adm-alert-autofix') : null;
+                if (!btn) return;
+                admAlertAutofix(btn);
+            });
 
             const admTaskStoreUrl = "{{ route('tasks.store') }}";
             const admAssignorId = {{ (int) (Auth::id() ?? 0) }};

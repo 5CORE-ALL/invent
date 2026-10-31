@@ -47,6 +47,12 @@
         .amz-ads-missing .amz-missing-badge--missing {
             background-color: #868e96;
         }
+        .amz-ads-missing .amz-missing-badge--avail {
+            background-color: #0d9488;
+        }
+        .amz-ads-missing .amz-missing-badge--live {
+            background-color: #16a34a;
+        }
         .amz-ads-missing .amz-missing-badge--missing.is-alert {
             background-color: #dc2626;
         }
@@ -249,26 +255,88 @@
                             <span class="amz-missing-badge-label">Missing HL</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingHlValue">0</span>
                         </div>
+                        <span class="vr mx-1"></span>
+                        <div class="amz-missing-badge amz-missing-badge--avail" id="amzAvailAllWrap" title="Available All: distinct KW + PT + HL campaigns linked to the rows in the current view.">
+                            <span class="amz-missing-badge-label">Available All</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzAvailAllValue">0</span>
+                        </div>
+                        <div class="amz-missing-badge amz-missing-badge--avail" id="amzAvailKwWrap" title="Available KW: distinct KW campaigns linked to the rows in the current view. Click to list them.">
+                            <span class="amz-missing-badge-label">Available KW</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzAvailKwValue">0</span>
+                        </div>
+                        <div class="amz-missing-badge amz-missing-badge--avail" id="amzAvailPtWrap" title="Available PT: distinct PT campaigns linked to the rows in the current view. Click to list them.">
+                            <span class="amz-missing-badge-label">Available PT</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzAvailPtValue">0</span>
+                        </div>
+                        <div class="amz-missing-badge amz-missing-badge--avail" id="amzAvailHlWrap" title="Available HL: distinct HL campaigns linked to the rows in the current view. Click to list them.">
+                            <span class="amz-missing-badge-label">Available HL</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzAvailHlValue">0</span>
+                        </div>
+                        <span class="vr mx-1"></span>
+                        <div class="amz-missing-badge amz-missing-badge--live" id="amzLiveAllWrap" title="Active All: linked KW + PT + HL campaigns that are ENABLED (green dot).">
+                            <span class="amz-missing-badge-label">Active All</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzLiveAllValue">0</span>
+                        </div>
+                        <div class="amz-missing-badge amz-missing-badge--live" id="amzLiveKwWrap" title="Active KW: linked KW campaigns that are ENABLED. Click to list them.">
+                            <span class="amz-missing-badge-label">Active KW</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzLiveKwValue">0</span>
+                        </div>
+                        <div class="amz-missing-badge amz-missing-badge--live" id="amzLivePtWrap" title="Active PT: linked PT campaigns that are ENABLED. Click to list them.">
+                            <span class="amz-missing-badge-label">Active PT</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzLivePtValue">0</span>
+                        </div>
+                        <div class="amz-missing-badge amz-missing-badge--live" id="amzLiveHlWrap" title="Active HL: linked HL campaigns that are ENABLED. Click to list them.">
+                            <span class="amz-missing-badge-label">Active HL</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzLiveHlValue">0</span>
+                        </div>
                         <span class="small text-muted ms-2" id="amzKwCountStatus"></span>
-                        <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" id="amzKwCountReloadBtn" title="Load keyword / target counts from Amazon for rows that don't have one yet">
+                        <button type="button" class="btn btn-outline-danger btn-sm ms-auto" id="amzHlImportBtn" title="Import all current HL (Sponsored Brands) campaigns into the parent links, and remove HL links to campaigns archived for more than 30 days.">
+                            <i class="fa fa-download me-1"></i> Import HL
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="amzKwCountReloadBtn" title="Load keyword / target counts from Amazon for rows that don't have one yet">
                             <i class="fa fa-sync me-1"></i> Counts
                         </button>
                         <div class="dropdown">
-                            <button type="button" class="btn btn-outline-primary btn-sm" id="amzColumnsBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Show / hide table columns. Your choice is saved in this browser.">
-                                <i class="fa fa-columns me-1"></i> Columns
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="amzColumnsBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="Columns" title="Columns: show / hide table columns. Your choice is saved in this browser.">
+                                <i class="fa fa-columns"></i>
                             </button>
-                            <div class="dropdown-menu dropdown-menu-end p-2" id="amzColumnsMenu" style="min-width: 240px; max-height: 70vh; overflow-y: auto;">
+                            <div class="dropdown-menu dropdown-menu-end p-2" id="amzColumnsMenu" style="min-width: 880px; max-width: 96vw; max-height: 70vh; overflow-y: auto;">
                                 <div class="d-flex gap-1 mb-2">
                                     <button type="button" class="btn btn-outline-secondary btn-sm flex-fill" id="amzColsShowAll">Show all</button>
                                     <button type="button" class="btn btn-outline-secondary btn-sm flex-fill" id="amzColsHideAll">Hide all</button>
                                 </div>
-                                <div id="amzColumnsList"></div>
+                                <div id="amzColumnsList" class="d-flex flex-row flex-nowrap align-items-start gap-3"></div>
                                 <div class="text-muted small mt-2">Saved automatically for this browser.</div>
                             </div>
                         </div>
                         <button type="button" class="btn btn-success btn-sm" id="amzMissingExportBtn" title="Export the current (filtered) view to CSV">
                             <i class="fa fa-download me-1"></i> Export
                         </button>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="amzTopFilters">
+                        <input type="search" class="form-control form-control-sm" id="amzFilterParent" placeholder="Search Parent..." autocomplete="off" style="width: 220px;">
+                        <label class="d-flex align-items-center gap-1 mb-0 small text-muted">Inv
+                            <select class="form-select form-select-sm" id="amzFilterInventory" style="width: 90px;">
+                                <option value="">All</option>
+                                <option value="in">&gt; 0</option>
+                                <option value="zero">0</option>
+                            </select>
+                        </label>
+                        <label class="d-flex align-items-center gap-1 mb-0 small text-muted">Campaign KW
+                            <select class="form-select form-select-sm amz-top-link-filter" id="amzFilterKw" data-type="kw" style="width: 110px;">
+                                <option value="">All</option><option value="missing">Missing</option><option value="linked">Linked</option>
+                            </select>
+                        </label>
+                        <label class="d-flex align-items-center gap-1 mb-0 small text-muted">Campaign PT
+                            <select class="form-select form-select-sm amz-top-link-filter" id="amzFilterPt" data-type="pt" style="width: 110px;">
+                                <option value="">All</option><option value="missing">Missing</option><option value="linked">Linked</option>
+                            </select>
+                        </label>
+                        <label class="d-flex align-items-center gap-1 mb-0 small text-muted">Campaign HL
+                            <select class="form-select form-select-sm amz-top-link-filter" id="amzFilterHl" data-type="hl" style="width: 110px;">
+                                <option value="">All</option><option value="missing">Missing</option><option value="linked">Linked</option>
+                            </select>
+                        </label>
                     </div>
                     <div id="amzAdsMissingTable"></div>
                 </div>
@@ -279,7 +347,7 @@
 
 @section('modal')
     <div class="modal fade" id="amzHlModal" tabindex="-1" aria-labelledby="amzHlModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="amzHlModalLabel">Create / Update Amz HL Campaign</h5>
@@ -313,8 +381,11 @@
                             <input type="number" class="form-control form-control-sm" id="amzHlBudget" min="1" step="0.01" value="3">
                         </div>
                         <div class="col-md-8 amz-hl-new-only">
-                            <label class="form-label small mb-1">Headline <span class="text-muted">(optional - leave empty to keep the template's)</span></label>
-                            <input type="text" class="form-control form-control-sm" id="amzHlHeadline" maxlength="50">
+                            <label class="form-label small mb-1">Headline <span class="text-danger">*</span> <span class="text-muted">(required, max 50 - auto-generated from the parent, you can edit it)</span></label>
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control form-control-sm" id="amzHlHeadline" maxlength="50" required>
+                                <button type="button" class="btn btn-outline-secondary" id="amzHlHeadlineAuto" title="Auto-generate the headline from the parent"><i class="fa fa-magic"></i> Auto</button>
+                            </div>
                         </div>
                     </div>
                     <div class="d-flex align-items-center justify-content-between mb-1">
@@ -332,19 +403,129 @@
                             <tbody id="amzHlChildrenBody"></tbody>
                         </table>
                     </div>
-                    <div class="amz-hl-new-only mt-3">
-                        <label class="form-label small mb-1 fw-semibold">Keywords <span class="text-muted fw-normal">(optional, one per line; added to the campaign as enabled keywords)</span></label>
-                        <textarea class="form-control form-control-sm" id="amzHlKeywords" rows="4" placeholder="keyword one&#10;keyword two"></textarea>
-                        <div class="row g-2 mt-1">
-                            <div class="col-md-4">
-                                <select class="form-select form-select-sm" id="amzHlMatch">
-                                    <option value="PHRASE" selected>Phrase</option>
-                                    <option value="BROAD">Broad</option>
-                                    <option value="EXACT">Exact</option>
-                                </select>
+                    {{-- Keyword targeting for the Sponsored Brands (HL) campaign: same flow as the KW campaign, with Amazon Ads API SB limits. --}}
+                    <div class="amz-hl-new-only mt-3" id="amzHlKwSection">
+                        <div class="fw-semibold small mb-1">
+                            Keyword targeting
+                            <span class="text-muted fw-normal">(optional) — Sponsored Brands keywords: up to 80 characters / 10 words, Broad / Phrase / Exact, minimum bid $0.10, max 200 per campaign. Added as enabled keywords.</span>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-lg-7">
+                                <div class="border rounded">
+                                    <ul class="nav nav-tabs small px-2 pt-1" role="tablist">
+                                        <li class="nav-item"><button type="button" class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzHlKwPaneSug">Suggested</button></li>
+                                        <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzHlKwPaneIdeas">Search ideas</button></li>
+                                        <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzHlKwPaneList">Enter list</button></li>
+                                        <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzHlKwPaneFile">Upload file</button></li>
+                                    </ul>
+                                    <div class="p-2 border-bottom d-flex flex-wrap align-items-center gap-2 small">
+                                        <span class="fw-semibold">Bid</span>
+                                        <select class="form-select form-select-sm w-auto" id="amzHlKwBidMode">
+                                            <option value="suggested">Suggested bid</option>
+                                            <option value="custom">Custom bid</option>
+                                            <option value="default">Default bid</option>
+                                        </select>
+                                        <input type="number" class="form-control form-control-sm d-none" style="width:90px;" id="amzHlKwCustomBid" min="0.1" step="0.01" value="0.60" placeholder="$">
+                                        <span class="text-muted">Default bid $</span>
+                                        <input type="number" class="form-control form-control-sm" style="width:80px;" id="amzHlBid" min="0.1" step="0.01" value="0.60" title="Default bid ($, minimum 0.10)">
+                                        <span class="text-muted" id="amzHlKwBidHint">Amazon's suggested bid per match type (default bid if none).</span>
+                                    </div>
+                                    <div class="tab-content">
+                                        <div class="tab-pane fade show active" id="amzHlKwPaneSug">
+                                            <div class="p-2 d-flex flex-wrap align-items-center gap-3 small border-bottom">
+                                                <span class="fw-semibold">Filter by</span>
+                                                <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 amz-hlkw-filter" value="BROAD" checked>Broad</label>
+                                                <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 amz-hlkw-filter" value="PHRASE" checked>Phrase</label>
+                                                <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 amz-hlkw-filter" value="EXACT" checked>Exact</label>
+                                                <span class="fw-semibold ms-2">Sort by</span>
+                                                <select class="form-select form-select-sm w-auto" id="amzHlKwSort">
+                                                    <option value="CONVERSIONS">Orders</option>
+                                                    <option value="CLICKS">Clicks</option>
+                                                    <option value="DEFAULT">Relevance</option>
+                                                </select>
+                                                <input type="text" class="form-control form-control-sm" style="width:150px;" id="amzHlKwSugSearch" placeholder="Search keywords">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" id="amzHlKwLoadBtn"><i class="fa fa-sync me-1"></i>Reload</button>
+                                            </div>
+                                            <div class="px-2 py-1 small text-muted d-flex justify-content-between">
+                                                <span id="amzHlKwSugStatus">Select child SKUs, then load Amazon's suggestions.</span>
+                                                <a href="#" id="amzHlKwAddAll" class="fw-semibold">Add all</a>
+                                            </div>
+                                            <div style="max-height:260px; overflow:auto;">
+                                                <table class="table table-sm align-middle mb-0 small">
+                                                    <thead class="table-light sticky-top"><tr><th>Keyword <span class="text-muted fw-normal">IS | IR</span></th><th>Match type</th><th class="text-end">Sugg. bid</th><th class="text-end"></th></tr></thead>
+                                                    <tbody id="amzHlKwSugBody"></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div class="tab-pane fade" id="amzHlKwPaneIdeas">
+                                            <div class="p-2 small border-bottom">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="text" class="form-control" id="amzHlKwSeed" placeholder="Type keywords (comma separated), e.g. woofer, 15 inch subwoofer">
+                                                    <button type="button" class="btn btn-primary" id="amzHlKwSeedBtn"><i class="fa fa-search me-1"></i>Get ideas</button>
+                                                </div>
+                                                <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+                                                    <span class="fw-semibold">Add as</span>
+                                                    <label><input type="checkbox" class="form-check-input me-1 amz-hlkw-idea-mt" value="BROAD">Broad</label>
+                                                    <label><input type="checkbox" class="form-check-input me-1 amz-hlkw-idea-mt" value="PHRASE" checked>Phrase</label>
+                                                    <label><input type="checkbox" class="form-check-input me-1 amz-hlkw-idea-mt" value="EXACT">Exact</label>
+                                                </div>
+                                            </div>
+                                            <div class="px-2 py-1 small text-muted d-flex justify-content-between">
+                                                <span id="amzHlKwIdeaStatus">Type a keyword and press Get ideas.</span>
+                                                <a href="#" id="amzHlKwIdeaAddAll" class="fw-semibold">Add all</a>
+                                            </div>
+                                            <div style="max-height:260px; overflow:auto;">
+                                                <table class="table table-sm align-middle mb-0 small">
+                                                    <thead class="table-light sticky-top"><tr><th>Keyword</th><th class="text-end">Avg monthly</th><th>Competition</th><th class="text-end">Avg CPC</th><th></th></tr></thead>
+                                                    <tbody id="amzHlKwIdeaBody"></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div class="tab-pane fade" id="amzHlKwPaneList">
+                                            <div class="p-2 small">
+                                                <textarea class="form-control form-control-sm" id="amzHlKwListText" rows="7" placeholder="Enter one keyword per line (or separate with commas)"></textarea>
+                                                <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+                                                    <span class="fw-semibold">Match types</span>
+                                                    <label><input type="checkbox" class="form-check-input me-1 amz-hlkw-list-mt" value="BROAD">Broad</label>
+                                                    <label><input type="checkbox" class="form-check-input me-1 amz-hlkw-list-mt" value="PHRASE" checked>Phrase</label>
+                                                    <label><input type="checkbox" class="form-check-input me-1 amz-hlkw-list-mt" value="EXACT">Exact</label>
+                                                    <button type="button" class="btn btn-primary btn-sm ms-auto" id="amzHlKwListAddBtn">Add keywords</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="tab-pane fade" id="amzHlKwPaneFile">
+                                            <div class="p-2 small">
+                                                <input type="file" class="form-control form-control-sm" id="amzHlKwFile" accept=".csv,.txt,text/csv,text/plain">
+                                                <div class="form-text">One keyword per line, or a CSV (the first column is used; a "keyword" header row is skipped).</div>
+                                                <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+                                                    <span class="fw-semibold">Match types</span>
+                                                    <label><input type="checkbox" class="form-check-input me-1 amz-hlkw-file-mt" value="BROAD">Broad</label>
+                                                    <label><input type="checkbox" class="form-check-input me-1 amz-hlkw-file-mt" value="PHRASE" checked>Phrase</label>
+                                                    <label><input type="checkbox" class="form-check-input me-1 amz-hlkw-file-mt" value="EXACT">Exact</label>
+                                                    <button type="button" class="btn btn-primary btn-sm ms-auto" id="amzHlKwFileAddBtn">Add keywords</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="col-md-4">
-                                <input type="number" class="form-control form-control-sm" id="amzHlBid" min="0.1" step="0.01" value="0.60" title="Bid ($)">
+                            <div class="col-lg-5">
+                                <div class="border rounded h-100">
+                                    <div class="p-2 border-bottom d-flex justify-content-between align-items-center small">
+                                        <span class="fw-bold"><span id="amzHlKwAddedCount">0</span> added</span>
+                                        <span class="d-flex align-items-center gap-1">
+                                            <input type="number" class="form-control form-control-sm py-0" style="width:78px;" id="amzHlKwBulkBid" min="0.1" step="0.01" placeholder="Bid $">
+                                            <a href="#" id="amzHlKwBulkBidApply" title="Set this bid for every added keyword">Set all</a>
+                                            <a href="#" id="amzHlKwClearAll" class="text-danger ms-2">Remove all</a>
+                                        </span>
+                                    </div>
+                                    <div style="max-height:340px; overflow:auto;">
+                                        <table class="table table-sm align-middle mb-0 small">
+                                            <thead class="table-light sticky-top"><tr><th>Keyword</th><th>Match</th><th style="width:84px;">Bid ($)</th><th style="width:28px;"></th></tr></thead>
+                                            <tbody id="amzHlKwAddedBody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1043,6 +1224,26 @@
 
             function onlyParentsFilter(data) {
                 return data.is_parent === true;
+            }
+
+            // Top-bar filters (replace the old per-column header filters).
+            var topFilterState = { parent: '', inventory: '', kw: '', pt: '', hl: '' };
+            var TOP_FILTER_IDS = { parent: 'amzFilterParent', inventory: 'amzFilterInventory', kw: 'amzFilterKw', pt: 'amzFilterPt', hl: 'amzFilterHl' };
+
+            function topFilterMatch(data) {
+                var s = topFilterState;
+                if (s.parent) {
+                    var p = String(data.parent == null ? '' : data.parent).toLowerCase();
+                    if (p.indexOf(s.parent.toLowerCase()) === -1) { return false; }
+                }
+                return inventoryHeaderFilter(s.inventory, data.inventory)
+                    && missingHeaderFilter(s.kw, data.kw)
+                    && missingHeaderFilter(s.pt, data.pt)
+                    && missingHeaderFilter(s.hl, data.hl);
+            }
+
+            function combinedRowFilter(data) {
+                return onlyParentsFilter(data) && topFilterMatch(data);
             }
 
             // Sort PT/KW columns by number of linked campaigns (blank rows first when ascending).
@@ -2065,7 +2266,7 @@
                     },
                     index: 'sku',
                     layout: 'fitColumns',
-                    height: 'calc(100vh - 220px)',
+                    height: 'calc(100vh - 260px)',
                     pagination: true,
                     paginationSize: 100,
                     paginationSizeSelector: [25, 50, 100, 200, 500],
@@ -2078,7 +2279,7 @@
                     },
                     columns: [
                         {
-                            title: 'Parent', field: 'parent', headerFilter: 'input', headerFilterPlaceholder: 'Search Parent...',
+                            title: 'Parent', field: 'parent',
                             cssClass: 'text-primary', widthGrow: 1, minWidth: 280, frozen: true, tooltip: true,
                             hozAlign: 'center', headerHozAlign: 'center',
                             formatter: function (cell) {
@@ -2091,9 +2292,6 @@
                             title: 'Inventory', field: 'inventory', width: 130,
                             hozAlign: 'right', headerHozAlign: 'right',
                             headerSort: true, sorter: 'number',
-                            headerFilter: 'list',
-                            headerFilterParams: { values: { '': 'All', in: 'In Stock', zero: 'Zero Inv' } },
-                            headerFilterFunc: inventoryHeaderFilter,
                             formatter: function (cell) {
                                 var v = cell.getValue();
                                 return (v == null || v === '') ? '' : Number(v).toLocaleString('en-US');
@@ -2119,9 +2317,6 @@
                             title: 'Campaign KW', field: 'kw', widthGrow: 2, minWidth: 340,
                             hozAlign: 'center', headerHozAlign: 'center',
                             headerSort: true, sorter: linkCountSorter,
-                            headerFilter: 'list',
-                            headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
-                            headerFilterFunc: missingHeaderFilter,
                             formatter: chipsFormatter('KW'),
                             accessorDownload: linkNamesAccessor
                         },
@@ -2151,9 +2346,6 @@
                             title: 'Campaign PT', field: 'pt', widthGrow: 2, minWidth: 340,
                             hozAlign: 'center', headerHozAlign: 'center',
                             headerSort: true, sorter: linkCountSorter,
-                            headerFilter: 'list',
-                            headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
-                            headerFilterFunc: missingHeaderFilter,
                             formatter: chipsFormatter('PT'),
                             accessorDownload: linkNamesAccessor
                         },
@@ -2184,9 +2376,6 @@
                             headerTooltip: 'HL = Headline (Sponsored Brands) campaign named "PARENT {parent} HL" or "PARENT {parent} HEAD" on Amazon; linked automatically.',
                             hozAlign: 'center', headerHozAlign: 'center',
                             headerSort: true, sorter: linkCountSorter,
-                            headerFilter: 'list',
-                            headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
-                            headerFilterFunc: missingHeaderFilter,
                             formatter: chipsFormatter('HL'),
                             accessorDownload: linkNamesAccessor
                         },
@@ -2200,7 +2389,7 @@
                 });
 
                 table.on('tableBuilt', function () {
-                    table.setFilter(onlyParentsFilter);
+                    table.setFilter(combinedRowFilter);
                     // Parent Vs Ads SKU HL: load now, then re-check against Amazon every 5 minutes while the page is open.
                     amzHlPvaTable = table;
                     amzHlPvaLoad(false);
@@ -2237,19 +2426,48 @@
                         if (saved[f]) { col.show(); } else { col.hide(); }
                     });
                 }
+                // Column groups shown in the Columns box: Basic, KW, PT, HL.
+                var COLS_GROUPS = [
+                    { key: 'basic', label: 'Basic' },
+                    { key: 'kw', label: 'KW' },
+                    { key: 'pt', label: 'PT' },
+                    { key: 'hl', label: 'HL' }
+                ];
+                function colsGroupOf(field) {
+                    var m = /(?:^|_)(kw|pt|hl)(?:_|$)/.exec(String(field || ''));
+                    return m ? m[1] : 'basic';
+                }
                 function colsRenderMenu() {
                     var list = document.getElementById('amzColumnsList');
                     if (!list) { return; }
-                    list.innerHTML = table.getColumns().filter(function (col) {
+                    var cols = table.getColumns().filter(function (col) {
                         var f = col.getField();
                         return f && !COLS_LOCKED[f];
-                    }).map(function (col) {
-                        var f = col.getField();
-                        var title = String(col.getDefinition().title || f);
-                        return '<label class="d-flex align-items-center gap-2 py-1 px-1 mb-0 small" style="cursor:pointer;">'
-                            + '<input type="checkbox" class="form-check-input mt-0 amz-col-toggle" data-field="' + esc(f) + '"' + (col.isVisible() ? ' checked' : '') + '>'
-                            + '<span>' + esc(title) + '</span></label>';
+                    });
+                    list.innerHTML = COLS_GROUPS.map(function (g) {
+                        var inGroup = cols.filter(function (col) { return colsGroupOf(col.getField()) === g.key; });
+                        if (!inGroup.length) { return ''; }
+                        var allOn = inGroup.every(function (col) { return col.isVisible(); });
+                        var items = inGroup.map(function (col) {
+                            var f = col.getField();
+                            var title = String(col.getDefinition().title || f);
+                            return '<label class="d-flex align-items-center gap-2 py-1 ps-3 pe-1 mb-0 small" style="cursor:pointer;">'
+                                + '<input type="checkbox" class="form-check-input mt-0 amz-col-toggle" data-field="' + esc(f) + '"' + (col.isVisible() ? ' checked' : '') + '>'
+                                + '<span>' + esc(title) + '</span></label>';
+                        }).join('');
+                        return '<div class="amz-col-group flex-fill" style="min-width:0;">'
+                            + '<label class="d-flex align-items-center gap-2 py-1 px-1 mb-0 fw-bold text-uppercase" style="cursor:pointer;font-size:11px;letter-spacing:.04em;background:#f1f5f9;border-radius:4px;">'
+                            + '<input type="checkbox" class="form-check-input mt-0 amz-col-group-toggle" data-group="' + g.key + '"' + (allOn ? ' checked' : '') + '>'
+                            + '<span>' + g.label + '</span></label>'
+                            + items + '</div>';
                     }).join('');
+                    // Group box is indeterminate when only some of its columns are shown.
+                    list.querySelectorAll('.amz-col-group-toggle').forEach(function (gb) {
+                        var wrap = gb.closest('.amz-col-group');
+                        var all = wrap.querySelectorAll('.amz-col-toggle');
+                        var on = wrap.querySelectorAll('.amz-col-toggle:checked');
+                        gb.indeterminate = on.length > 0 && on.length < all.length;
+                    });
                 }
                 function colsSetAll(visible) {
                     table.getColumns().forEach(function (col) {
@@ -2263,12 +2481,25 @@
                 var colsList = document.getElementById('amzColumnsList');
                 if (colsList) {
                     colsList.addEventListener('change', function (e) {
-                        var cb = e.target && e.target.classList && e.target.classList.contains('amz-col-toggle') ? e.target : null;
+                        var t = e.target;
+                        if (t && t.classList && t.classList.contains('amz-col-group-toggle')) {
+                            var grp = t.getAttribute('data-group');
+                            table.getColumns().forEach(function (c) {
+                                var f = c.getField();
+                                if (!f || COLS_LOCKED[f] || colsGroupOf(f) !== grp) { return; }
+                                if (t.checked) { c.show(); } else { c.hide(); }
+                            });
+                            colsSave();
+                            colsRenderMenu();
+                            return;
+                        }
+                        var cb = t && t.classList && t.classList.contains('amz-col-toggle') ? t : null;
                         if (!cb) { return; }
                         var col = table.getColumn(cb.getAttribute('data-field'));
                         if (!col) { return; }
                         if (cb.checked) { col.show(); } else { col.hide(); }
                         colsSave();
+                        colsRenderMenu();
                     });
                 }
                 document.getElementById('amzColsShowAll').addEventListener('click', function () { colsSetAll(true); });
@@ -2362,6 +2593,31 @@
                     kwLastData = Array.isArray(data) ? data : null;
                     amzLoadCounts('kw', null, function (err) {
                         if (!err) { amzLoadCounts('pt', null, function (err2) { if (!err2) { amzLoadCounts('hl', null, null); } }); }
+                    });
+                }
+                // ---- Import HL: link every current SB campaign, drop HL links archived > 30 days ----
+                var hlImportBtn = document.getElementById('amzHlImportBtn');
+                if (hlImportBtn) {
+                    hlImportBtn.addEventListener('click', function () {
+                        if (!window.confirm('Import all current HL campaigns and remove HL campaigns archived for more than 30 days?')) { return; }
+                        var oldHtml = hlImportBtn.innerHTML;
+                        hlImportBtn.disabled = true;
+                        hlImportBtn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Importing…';
+                        postForm(@json(route('amazon.ads.missing.hl-import')), {}).then(function (out) {
+                            hlImportBtn.disabled = false;
+                            hlImportBtn.innerHTML = oldHtml;
+                            var b = out.body || {};
+                            if (out.ok && b.ok) {
+                                window.alert(b.message || 'HL import done.');
+                                table.setData(missingDataUrl);
+                            } else {
+                                window.alert(b.message || ('HL import failed (HTTP ' + out.status + ').'));
+                            }
+                        }).catch(function () {
+                            hlImportBtn.disabled = false;
+                            hlImportBtn.innerHTML = oldHtml;
+                            window.alert('Network error.');
+                        });
                     });
                 }
                 var kwCountReloadBtn = document.getElementById('amzKwCountReloadBtn');
@@ -2548,14 +2804,338 @@
                     el.textContent = msg || '';
                     el.classList.toggle('d-none', !msg);
                 }
+                // ---- HL keyword targeting (Sponsored Brands keywords: Amazon Ads API v3.2 /sb/keywords) ----
+                // Guidelines enforced: text up to 80 chars / 10 words, no special characters, match type
+                // broad|phrase|exact, bid >= $0.10, no duplicate text+match, max 200 keywords per campaign.
+                var HL_KW_MAX = 200;
+                var HL_KW_MIN_BID = 0.10;
+                var hlKwAdded = [];   // [{text, match_type, bid}]
+                var hlKwSug = [];     // [{keyword, is, ir, bids:{BROAD,PHRASE,EXACT}}]
+                var hlKwIdeas = [];
+                var hlKwSugSeq = 0;
+                var HL_KW_BAD_CHARS = /[!@#$%^&*()_+=\[\]{}\\|;:"<>?,\/~`]/;
+
+                function hlKwDefaultBid() {
+                    var v = parseFloat((document.getElementById('amzHlBid') || {}).value);
+                    return Math.max(HL_KW_MIN_BID, isFinite(v) ? Math.round(v * 100) / 100 : 0.60);
+                }
+                function hlKwResolveBid(sugBid) {
+                    var mode = (document.getElementById('amzHlKwBidMode') || {}).value || 'suggested';
+                    var v = null;
+                    if (mode === 'suggested' && sugBid != null && isFinite(sugBid)) { v = Number(sugBid); }
+                    else if (mode === 'custom') { v = parseFloat((document.getElementById('amzHlKwCustomBid') || {}).value); }
+                    if (v == null || !isFinite(v)) { v = hlKwDefaultBid(); }
+                    return Math.max(HL_KW_MIN_BID, Math.round(v * 100) / 100);
+                }
+                // Returns '' when valid, otherwise the reason it is rejected.
+                function hlKwCheck(text) {
+                    if (!text) { return 'empty'; }
+                    if (text.length > 80) { return 'longer than 80 characters'; }
+                    if (text.split(' ').length > 10) { return 'more than 10 words'; }
+                    if (HL_KW_BAD_CHARS.test(text)) { return 'contains special characters'; }
+                    return '';
+                }
+                function hlKwIsAdded(text, mt) {
+                    var k = String(text).toLowerCase() + '|' + mt;
+                    return hlKwAdded.some(function (a) { return (a.text.toLowerCase() + '|' + a.match_type) === k; });
+                }
+                // Returns 'added' | 'dup' | 'full' | a rejection reason.
+                function hlKwAdd(text, mt, bid) {
+                    text = String(text || '').replace(/\s+/g, ' ').trim();
+                    var bad = hlKwCheck(text);
+                    if (bad) { return bad; }
+                    if (hlKwIsAdded(text, mt)) { return 'dup'; }
+                    if (hlKwAdded.length >= HL_KW_MAX) { return 'full'; }
+                    hlKwAdded.push({ text: text, match_type: mt, bid: bid });
+                    return 'added';
+                }
+                function hlKwReport(results) {
+                    var rejected = {};
+                    var full = false;
+                    results.forEach(function (r) {
+                        if (r === 'full') { full = true; }
+                        else if (r !== 'added' && r !== 'dup') { rejected[r] = (rejected[r] || 0) + 1; }
+                    });
+                    var parts = Object.keys(rejected).map(function (k) { return rejected[k] + ' skipped: ' + k; });
+                    if (full) { parts.push('limit of ' + HL_KW_MAX + ' keywords per campaign reached'); }
+                    if (parts.length) { window.alert('Amazon Sponsored Brands keyword rules:\n' + parts.join('\n')); }
+                }
+                function hlKwCap(mt) { return mt.charAt(0) + mt.slice(1).toLowerCase(); }
+                function hlKwRenderAdded() {
+                    var body = document.getElementById('amzHlKwAddedBody');
+                    if (!body) { return; }
+                    document.getElementById('amzHlKwAddedCount').textContent = String(hlKwAdded.length);
+                    body.innerHTML = hlKwAdded.map(function (k, i) {
+                        return '<tr><td>' + esc(k.text) + '</td><td>' + esc(hlKwCap(k.match_type)) + '</td>'
+                            + '<td><input type="number" class="form-control form-control-sm py-0 amz-hlkw-bid" data-i="' + i + '" min="0.1" step="0.01" value="' + Number(k.bid).toFixed(2) + '"></td>'
+                            + '<td><a href="#" class="text-danger amz-hlkw-del" data-i="' + i + '" title="Remove">&times;</a></td></tr>';
+                    }).join('');
+                }
+                function hlKwSelected(cls) {
+                    var out = [];
+                    document.querySelectorAll('.' + cls).forEach(function (cb) { if (cb.checked) { out.push(cb.value); } });
+                    return out;
+                }
+                function hlKwRenderSug() {
+                    var body = document.getElementById('amzHlKwSugBody');
+                    if (!body) { return; }
+                    var filters = hlKwSelected('amz-hlkw-filter');
+                    var q = String((document.getElementById('amzHlKwSugSearch') || {}).value || '').toLowerCase().trim();
+                    var html = '';
+                    hlKwSug.forEach(function (row, ki) {
+                        if (q && String(row.keyword).toLowerCase().indexOf(q) === -1) { return; }
+                        var mts = ['BROAD', 'PHRASE', 'EXACT'].filter(function (mt) { return filters.indexOf(mt) !== -1 && row.bids && row.bids[mt] != null; });
+                        if (!mts.length || hlKwCheck(String(row.keyword)) ) { return; }
+                        mts.forEach(function (mt, j) {
+                            html += '<tr>';
+                            if (j === 0) {
+                                html += '<td rowspan="' + mts.length + '"><div class="fw-semibold">' + esc(row.keyword) + '</div>'
+                                    + '<div class="text-muted" style="font-size:11px;">IS: ' + esc(row.is == null ? '—' : (row.is <= 1 ? (row.is * 100).toFixed(2) : Number(row.is).toFixed(2)) + '%') + ' | IR: ' + esc(row.ir == null ? '—' : row.ir) + '</div></td>';
+                            }
+                            html += '<td>' + esc(hlKwCap(mt)) + '</td>'
+                                + '<td class="text-end">$' + Math.max(HL_KW_MIN_BID, Number(row.bids[mt])).toFixed(2) + '</td>'
+                                + '<td class="text-end">' + (hlKwIsAdded(row.keyword, mt)
+                                    ? '<span class="text-muted fst-italic">Added</span>'
+                                    : '<a href="#" class="fw-semibold amz-hlkw-add" data-ki="' + ki + '" data-mt="' + mt + '">Add</a>') + '</td></tr>';
+                        });
+                    });
+                    body.innerHTML = html || '<tr><td colspan="4" class="text-muted text-center py-3">No suggestions to show.</td></tr>';
+                }
+                function hlKwSugStatus(msg, isErr) {
+                    var el = document.getElementById('amzHlKwSugStatus');
+                    if (!el) { return; }
+                    el.textContent = msg;
+                    el.classList.toggle('text-danger', !!isErr);
+                }
+                function hlKwLoadSug(force) {
+                    var children = hlSelectedChildren();
+                    var btn = document.getElementById('amzHlKwLoadBtn');
+                    if (!children.length) {
+                        hlKwSug = [];
+                        hlKwRenderSug();
+                        hlKwSugStatus('Select at least one child SKU with an ASIN to load Amazon suggestions.', false);
+                        return;
+                    }
+                    var seq = ++hlKwSugSeq;
+                    hlKwSugStatus('Loading suggestions from Amazon…', false);
+                    if (btn) { btn.disabled = true; }
+                    postForm(kwSuggestUrl, {
+                        children: children,
+                        sort: (document.getElementById('amzHlKwSort') || {}).value || 'CONVERSIONS',
+                        refresh: force === true
+                    }).then(function (out) {
+                        if (seq !== hlKwSugSeq) { return; }
+                        if (btn) { btn.disabled = false; }
+                        if (out.ok && out.body && out.body.ok) {
+                            hlKwSug = Array.isArray(out.body.keywords) ? out.body.keywords : [];
+                            hlKwSugStatus(hlKwSug.length ? (hlKwSug.length + ' keywords suggested by Amazon.') : (out.body.message || 'Amazon returned no suggestions.'), false);
+                        } else {
+                            hlKwSug = [];
+                            hlKwSugStatus((out.body && out.body.message) || ('Could not load Amazon suggestions (HTTP ' + out.status + ').'), true);
+                        }
+                        hlKwRenderSug();
+                    }).catch(function () {
+                        if (seq !== hlKwSugSeq) { return; }
+                        if (btn) { btn.disabled = false; }
+                        hlKwSugStatus('Network error loading Amazon suggestions.', true);
+                    });
+                }
+                function hlKwRenderIdeas() {
+                    var body = document.getElementById('amzHlKwIdeaBody');
+                    if (!body) { return; }
+                    var mts = hlKwSelected('amz-hlkw-idea-mt');
+                    body.innerHTML = hlKwIdeas.length ? hlKwIdeas.map(function (r, i) {
+                        var all = mts.length && mts.every(function (mt) { return hlKwIsAdded(r.keyword, mt); });
+                        return '<tr><td class="fw-semibold">' + esc(r.keyword) + '</td>'
+                            + '<td class="text-end">' + (r.avg_monthly == null ? '—' : Number(r.avg_monthly).toLocaleString('en-US')) + '</td>'
+                            + '<td>' + esc(r.competition || '—') + '</td>'
+                            + '<td class="text-end">' + (r.avg_cpc == null ? '—' : '$' + Number(r.avg_cpc).toFixed(2)) + '</td>'
+                            + '<td class="text-end">' + (all ? '<span class="text-muted fst-italic">Added</span>'
+                                : '<a href="#" class="fw-semibold amz-hlkw-idea-add" data-i="' + i + '">Add</a>') + '</td></tr>';
+                    }).join('') : '<tr><td colspan="5" class="text-muted text-center py-3">No ideas yet.</td></tr>';
+                }
+                function hlKwAddIdeas(rows) {
+                    var mts = hlKwSelected('amz-hlkw-idea-mt');
+                    if (!mts.length) { window.alert('Pick at least one match type under "Add as".'); return; }
+                    var results = [];
+                    rows.forEach(function (r) { mts.forEach(function (mt) { results.push(hlKwAdd(r.keyword, mt, hlKwResolveBid(null))); }); });
+                    hlKwReport(results);
+                    hlKwRenderAdded(); hlKwRenderIdeas(); hlKwRenderSug();
+                }
+                function hlKwLoadIdeas() {
+                    var seed = (document.getElementById('amzHlKwSeed') || {}).value || '';
+                    var st = document.getElementById('amzHlKwIdeaStatus');
+                    var btn = document.getElementById('amzHlKwSeedBtn');
+                    if (!seed.trim()) { st.textContent = 'Type at least one keyword.'; st.classList.add('text-danger'); return; }
+                    st.textContent = 'Getting keyword ideas…'; st.classList.remove('text-danger');
+                    btn.disabled = true;
+                    postForm(kwIdeasUrl, { seeds: seed }).then(function (out) {
+                        btn.disabled = false;
+                        if (out.ok && out.body && out.body.ok) {
+                            hlKwIdeas = Array.isArray(out.body.rows) ? out.body.rows : [];
+                            st.textContent = hlKwIdeas.length ? (hlKwIdeas.length + ' ideas.') : (out.body.message || 'No ideas found.');
+                        } else {
+                            hlKwIdeas = [];
+                            st.textContent = (out.body && out.body.message) || ('Could not get ideas (HTTP ' + out.status + ').');
+                            st.classList.add('text-danger');
+                        }
+                        hlKwRenderIdeas();
+                    }).catch(function () {
+                        btn.disabled = false;
+                        st.textContent = 'Network error getting ideas.'; st.classList.add('text-danger');
+                    });
+                }
+                function hlKwParse(text, isCsv) {
+                    var out = [];
+                    String(text || '').split(/\r?\n/).forEach(function (line, idx) {
+                        var cells = isCsv ? [line.split(',')[0]] : line.split(',');
+                        cells.forEach(function (c) {
+                            var t = String(c || '').replace(/^["']|["']$/g, '').replace(/\s+/g, ' ').trim();
+                            if (!t) { return; }
+                            if (isCsv && idx === 0 && /^(keyword|keywords|keyword text|search term)$/i.test(t)) { return; }
+                            out.push(t);
+                        });
+                    });
+                    return out;
+                }
+                function hlKwAddTexts(texts, mts) {
+                    var results = [];
+                    texts.forEach(function (t) { mts.forEach(function (mt) { results.push(hlKwAdd(t, mt, hlKwResolveBid(null))); }); });
+                    hlKwReport(results);
+                    hlKwRenderAdded(); hlKwRenderSug(); hlKwRenderIdeas();
+                }
+                function hlKwReset() {
+                    hlKwAdded = []; hlKwSug = []; hlKwIdeas = [];
+                    ['amzHlKwSugSearch', 'amzHlKwBulkBid', 'amzHlKwSeed', 'amzHlKwListText'].forEach(function (id) { var e = document.getElementById(id); if (e) { e.value = ''; } });
+                    var f = document.getElementById('amzHlKwFile'); if (f) { f.value = ''; }
+                    var bm = document.getElementById('amzHlKwBidMode'); if (bm) { bm.value = 'suggested'; }
+                    var cb = document.getElementById('amzHlKwCustomBid'); if (cb) { cb.classList.add('d-none'); }
+                    var db = document.getElementById('amzHlBid'); if (db) { db.value = '0.60'; }
+                    var ist = document.getElementById('amzHlKwIdeaStatus'); if (ist) { ist.textContent = 'Type a keyword and press Get ideas.'; ist.classList.remove('text-danger'); }
+                    hlKwRenderAdded(); hlKwRenderSug(); hlKwRenderIdeas();
+                    hlKwSugStatus('Select child SKUs, then load Amazon\'s suggestions.', false);
+                }
+                (function hlKwWire() {
+                    var bm = document.getElementById('amzHlKwBidMode');
+                    if (!bm) { return; }
+                    bm.addEventListener('change', function () {
+                        document.getElementById('amzHlKwCustomBid').classList.toggle('d-none', bm.value !== 'custom');
+                        document.getElementById('amzHlKwBidHint').textContent = bm.value === 'suggested'
+                            ? 'Amazon\'s suggested bid per match type (default bid if none).'
+                            : (bm.value === 'custom' ? 'Same bid for every keyword you add next.' : 'The default bid entered here.');
+                    });
+                    document.getElementById('amzHlKwLoadBtn').addEventListener('click', function () { hlKwLoadSug(true); });
+                    document.getElementById('amzHlKwSort').addEventListener('change', function () { hlKwLoadSug(false); });
+                    document.querySelectorAll('.amz-hlkw-filter').forEach(function (cb) { cb.addEventListener('change', hlKwRenderSug); });
+                    document.getElementById('amzHlKwSugSearch').addEventListener('input', hlKwRenderSug);
+                    document.getElementById('amzHlKwBulkBidApply').addEventListener('click', function (e) {
+                        e.preventDefault();
+                        var v = parseFloat((document.getElementById('amzHlKwBulkBid') || {}).value);
+                        if (!isFinite(v) || v < HL_KW_MIN_BID) { window.alert('Enter a bid of at least $0.10 (Amazon Sponsored Brands minimum).'); return; }
+                        v = Math.round(v * 100) / 100;
+                        hlKwAdded.forEach(function (k) { k.bid = v; });
+                        hlKwRenderAdded();
+                    });
+                    document.getElementById('amzHlKwSugBody').addEventListener('click', function (e) {
+                        var a = e.target.closest ? e.target.closest('.amz-hlkw-add') : null;
+                        if (!a) { return; }
+                        e.preventDefault();
+                        var row = hlKwSug[Number(a.getAttribute('data-ki'))];
+                        var mt = a.getAttribute('data-mt');
+                        if (row && mt) {
+                            hlKwReport([hlKwAdd(row.keyword, mt, hlKwResolveBid(row.bids ? row.bids[mt] : null))]);
+                            hlKwRenderAdded(); hlKwRenderSug();
+                        }
+                    });
+                    document.getElementById('amzHlKwAddAll').addEventListener('click', function (e) {
+                        e.preventDefault();
+                        var filters = hlKwSelected('amz-hlkw-filter');
+                        var results = [];
+                        hlKwSug.forEach(function (row) {
+                            ['BROAD', 'PHRASE', 'EXACT'].forEach(function (mt) {
+                                if (filters.indexOf(mt) !== -1 && row.bids && row.bids[mt] != null) {
+                                    results.push(hlKwAdd(row.keyword, mt, hlKwResolveBid(row.bids[mt])));
+                                }
+                            });
+                        });
+                        hlKwReport(results);
+                        hlKwRenderAdded(); hlKwRenderSug();
+                    });
+                    document.getElementById('amzHlKwClearAll').addEventListener('click', function (e) {
+                        e.preventDefault();
+                        hlKwAdded = [];
+                        hlKwRenderAdded(); hlKwRenderSug(); hlKwRenderIdeas();
+                    });
+                    var addedBody = document.getElementById('amzHlKwAddedBody');
+                    addedBody.addEventListener('click', function (e) {
+                        var d = e.target.closest ? e.target.closest('.amz-hlkw-del') : null;
+                        if (!d) { return; }
+                        e.preventDefault();
+                        hlKwAdded.splice(Number(d.getAttribute('data-i')), 1);
+                        hlKwRenderAdded(); hlKwRenderSug(); hlKwRenderIdeas();
+                    });
+                    addedBody.addEventListener('change', function (e) {
+                        var inp = e.target;
+                        if (!inp || !inp.classList || !inp.classList.contains('amz-hlkw-bid')) { return; }
+                        var item = hlKwAdded[Number(inp.getAttribute('data-i'))];
+                        var v = parseFloat(inp.value);
+                        if (item) { item.bid = (isFinite(v) && v >= HL_KW_MIN_BID) ? Math.round(v * 100) / 100 : hlKwDefaultBid(); }
+                        hlKwRenderAdded();
+                    });
+                    document.getElementById('amzHlKwSeedBtn').addEventListener('click', hlKwLoadIdeas);
+                    document.getElementById('amzHlKwSeed').addEventListener('keydown', function (e) {
+                        if (e.key === 'Enter') { e.preventDefault(); hlKwLoadIdeas(); }
+                    });
+                    document.querySelectorAll('.amz-hlkw-idea-mt').forEach(function (cb) { cb.addEventListener('change', hlKwRenderIdeas); });
+                    document.getElementById('amzHlKwIdeaBody').addEventListener('click', function (e) {
+                        var a = e.target.closest ? e.target.closest('.amz-hlkw-idea-add') : null;
+                        if (!a) { return; }
+                        e.preventDefault();
+                        var r = hlKwIdeas[Number(a.getAttribute('data-i'))];
+                        if (r) { hlKwAddIdeas([r]); }
+                    });
+                    document.getElementById('amzHlKwIdeaAddAll').addEventListener('click', function (e) {
+                        e.preventDefault();
+                        hlKwAddIdeas(hlKwIdeas);
+                    });
+                    document.getElementById('amzHlKwListAddBtn').addEventListener('click', function () {
+                        var mts = hlKwSelected('amz-hlkw-list-mt');
+                        var ta = document.getElementById('amzHlKwListText');
+                        if (!mts.length) { window.alert('Pick at least one match type.'); return; }
+                        hlKwAddTexts(hlKwParse(ta.value, false), mts);
+                        ta.value = '';
+                    });
+                    document.getElementById('amzHlKwFileAddBtn').addEventListener('click', function () {
+                        var mts = hlKwSelected('amz-hlkw-file-mt');
+                        var input = document.getElementById('amzHlKwFile');
+                        var file = input.files && input.files[0];
+                        if (!mts.length) { window.alert('Pick at least one match type.'); return; }
+                        if (!file) { window.alert('Choose a .csv or .txt file first.'); return; }
+                        var reader = new FileReader();
+                        reader.onload = function () {
+                            hlKwAddTexts(hlKwParse(String(reader.result || ''), /\.csv$/i.test(file.name)), mts);
+                            input.value = '';
+                        };
+                        reader.readAsText(file);
+                    });
+                })();
+
+                // Headline is mandatory: "Check out {Parent}" trimmed to Amazon's 50-character limit at a word boundary.
+                function hlAutoHeadline(parent) {
+                    var text = ('Check out ' + String(parent || '').replace(/\s+/g, ' ').trim()).trim();
+                    if (text.length <= 50) { return text; }
+                    var cut = text.slice(0, 50);
+                    var sp = cut.lastIndexOf(' ');
+                    return (sp > 10 ? cut.slice(0, sp) : cut).trim();
+                }
                 function openHlModal(d) {
                     d = d || {};
                     document.getElementById('amzHlParent').value = d.parent || '';
                     document.getElementById('amzHlParentDisplay').value = d.parent || '';
                     document.getElementById('amzHlCampaignName').value = (d.sku || ('PARENT ' + (d.parent || ''))) + ' HL';
                     document.getElementById('amzHlBudget').value = '3';
-                    document.getElementById('amzHlHeadline').value = '';
-                    document.getElementById('amzHlKeywords').value = '';
+                    document.getElementById('amzHlHeadline').value = hlAutoHeadline(d.parent);
+                    hlKwReset();
                     hlShowError('');
                     var children = Array.isArray(d.children) ? d.children : [];
                     document.getElementById('amzHlChildrenBody').innerHTML = children.map(function (c, idx) {
@@ -2579,8 +3159,12 @@
                     hlApplyMode();
                     var m = hlModalInstance();
                     if (m) { m.show(); }
+                    if (hlMode() === 'new') { hlKwLoadSug(false); }
                 }
                 document.querySelectorAll('input[name="amzHlMode"]').forEach(function (r) { r.addEventListener('change', hlApplyMode); });
+                document.getElementById('amzHlHeadlineAuto').addEventListener('click', function () {
+                    document.getElementById('amzHlHeadline').value = hlAutoHeadline(document.getElementById('amzHlParent').value);
+                });
                 document.getElementById('amzHlSelectAll').addEventListener('click', function () {
                     document.querySelectorAll('#amzHlChildrenBody .amz-hl-child-check').forEach(function (cb) { if (!cb.disabled) { cb.checked = true; } });
                 });
@@ -2603,20 +3187,19 @@
                         if (!payload.campaign_id) { hlShowError('Pick the campaign to update.'); return; }
                     } else {
                         url = hlCreateUrl;
-                        var match = document.getElementById('amzHlMatch').value || 'PHRASE';
-                        var bid = parseFloat(document.getElementById('amzHlBid').value) || 0.60;
-                        var kws = String(document.getElementById('amzHlKeywords').value || '').split(/\r?\n/).map(function (t) { return t.replace(/\s+/g, ' ').trim(); })
-                            .filter(function (t, i, a) { return t !== '' && a.indexOf(t) === i; })
-                            .map(function (t) { return { text: t, match_type: match, bid: bid }; });
+                        var kws = hlKwAdded.map(function (k) {
+                            return { text: k.text, match_type: k.match_type, bid: Math.max(HL_KW_MIN_BID, Number(k.bid) || hlKwDefaultBid()) };
+                        });
                         payload = {
                             parent: parent,
                             campaign_name: document.getElementById('amzHlCampaignName').value,
                             budget_amount: parseFloat(document.getElementById('amzHlBudget').value) || 3,
-                            headline: document.getElementById('amzHlHeadline').value,
+                            headline: (document.getElementById('amzHlHeadline').value || '').trim(),
                             children: children,
                             keywords: kws
                         };
                         if (!(payload.campaign_name || '').trim()) { hlShowError('Campaign name is required.'); return; }
+                        if (!payload.headline) { hlShowError('Headline is required.'); document.getElementById('amzHlHeadline').focus(); return; }
                     }
                     btn.disabled = true;
                     btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> ' + (updating ? 'Updating…' : 'Creating…');
@@ -2670,6 +3253,47 @@
                     if (hlEl) { hlEl.textContent = Number(hl).toLocaleString('en-US'); }
                     if (missingEl) { missingEl.textContent = Number(total).toLocaleString('en-US'); }
                     if (missingWrap) { missingWrap.classList.toggle('is-alert', total > 0); }
+                    updateCampaignBadges(rows);
+                }
+
+                // Distinct linked campaigns per type for the rows in view: available = linked, active = ENABLED.
+                var CAMPAIGN_TYPES = ['kw', 'pt', 'hl'];
+                var campaignBadgeNames;   // no initializer: set by updateCampaignBadges, which may run first
+                function updateCampaignBadges(rowsData) {
+                    var rows = rowsData || table.getData('active');
+                    var CAMPAIGN_TYPES = ['kw', 'pt', 'hl'];   // local copy: this can run before the outer var is assigned
+                    var seen = { kw: {}, pt: {}, hl: {} };
+                    var names = { avail: { kw: [], pt: [], hl: [] }, live: { kw: [], pt: [], hl: [] } };
+                    rows.forEach(function (r) {
+                        if (!r) { return; }
+                        CAMPAIGN_TYPES.forEach(function (t) {
+                            (r[t] || []).forEach(function (c) {
+                                if (!c) { return; }
+                                var name = String(c.campaign_name || '');
+                                var key = String(c.campaign_id || name || '').toUpperCase();
+                                if (!key || seen[t][key]) { return; }
+                                seen[t][key] = true;
+                                names.avail[t].push(name || key);
+                                if (String(c.status || '').toUpperCase() === 'ENABLED') { names.live[t].push(name || key); }
+                            });
+                        });
+                    });
+                    campaignBadgeNames = names;
+                    function setVal(id, n) {
+                        var el = document.getElementById(id);
+                        if (el) { el.textContent = Number(n).toLocaleString('en-US'); }
+                    }
+                    var cap = { kw: 'Kw', pt: 'Pt', hl: 'Hl' };
+                    var totalAvail = 0;
+                    var totalLive = 0;
+                    CAMPAIGN_TYPES.forEach(function (t) {
+                        totalAvail += names.avail[t].length;
+                        totalLive += names.live[t].length;
+                        setVal('amzAvail' + cap[t] + 'Value', names.avail[t].length);
+                        setVal('amzLive' + cap[t] + 'Value', names.live[t].length);
+                    });
+                    setVal('amzAvailAllValue', totalAvail);
+                    setVal('amzLiveAllValue', totalLive);
                 }
                 // Total parent rows (whole dataset, independent of filters).
                 function updateParentBadge() {
@@ -2680,12 +3304,27 @@
                 }
 
                 function headerFilterValue(field) {
-                    try {
-                        return table.getHeaderFilterValue(field) || '';
-                    } catch (e) {
-                        return '';
-                    }
+                    return topFilterState[field] || '';
                 }
+
+                function applyTopFilters() {
+                    table.setFilter(combinedRowFilter);
+                }
+
+                // Set one top filter (and its control). Pass noApply to batch several changes.
+                function setTopFilter(field, value, noApply) {
+                    topFilterState[field] = value || '';
+                    var el = document.getElementById(TOP_FILTER_IDS[field]);
+                    if (el && el.value !== topFilterState[field]) { el.value = topFilterState[field]; }
+                    if (!noApply) { applyTopFilters(); }
+                }
+
+                Object.keys(TOP_FILTER_IDS).forEach(function (field) {
+                    var el = document.getElementById(TOP_FILTER_IDS[field]);
+                    if (!el) { return; }
+                    var evt = field === 'parent' ? 'input' : 'change';
+                    el.addEventListener(evt, function () { setTopFilter(field, field === 'parent' ? el.value.trim() : el.value); });
+                });
 
                 var MISSING_TYPES = ['kw', 'pt', 'hl'];
                 var MISSING_WRAP_IDS = { kw: 'amzMissingKwWrap', pt: 'amzMissingPtWrap', hl: 'amzMissingHlWrap' };
@@ -2714,13 +3353,14 @@
                 function toggleMissingTypeFilter(type) {
                     badgePanel.classList.add('d-none');
                     if (isMissingTypeBadgeFilterOn(type)) {
-                        table.setHeaderFilterValue(type, '');
-                        table.setHeaderFilterValue('inventory', '');
+                        setTopFilter(type, '', true);
+                        setTopFilter('inventory', '', true);
                     } else {
-                        otherMissingTypes(type).forEach(function (o) { table.setHeaderFilterValue(o, ''); });
-                        table.setHeaderFilterValue('inventory', 'in');
-                        table.setHeaderFilterValue(type, 'missing');
+                        otherMissingTypes(type).forEach(function (o) { setTopFilter(o, '', true); });
+                        setTopFilter('inventory', 'in', true);
+                        setTopFilter(type, 'missing', true);
                     }
+                    applyTopFilters();
                 }
 
                 function bindMissingColumnBadge(wrapId, type) {
@@ -2785,6 +3425,22 @@
                     return parentNamesFrom(table.getData('active'), function (r) {
                         if (!r || (Number(r.inventory) || 0) <= 0) { return false; }
                         return (!r.pt || !r.pt.length) || (!r.kw || !r.kw.length) || (!r.hl || !r.hl.length);
+                    });
+                });
+                // Available / Active campaign badges: click lists the campaign names behind the count.
+                [['avail', 'Available', 'Avail'], ['live', 'Active', 'Live']].forEach(function (grp) {
+                    CAMPAIGN_TYPES.forEach(function (t) {
+                        bindBadge('amz' + grp[2] + (t === 'kw' ? 'Kw' : (t === 'pt' ? 'Pt' : 'Hl')) + 'Wrap', grp[1] + ' ' + t.toUpperCase() + ' campaigns', function () {
+                            return campaignBadgeNames ? campaignBadgeNames[grp[0]][t].slice() : [];
+                        });
+                    });
+                    bindBadge('amz' + grp[2] + 'AllWrap', grp[1] + ' campaigns (all)', function () {
+                        var out = [];
+                        if (!campaignBadgeNames) { return out; }
+                        CAMPAIGN_TYPES.forEach(function (t) {
+                            campaignBadgeNames[grp[0]][t].forEach(function (n) { out.push(t.toUpperCase() + ' · ' + n); });
+                        });
+                        return out;
                     });
                 });
                 bindMissingColumnBadge('amzMissingKwWrap', 'kw');

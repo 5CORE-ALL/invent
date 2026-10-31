@@ -3901,6 +3901,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-ads/lbid-history', [AmazonAdsController::class, 'lbidHistory'])->name('amazon.ads.lbid-history');
     Route::get('/amazon-ads/fbm-targeting', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'index'])->name('amazon.ads.fbm-targeting');
     Route::get('/amazon-ads/fbm-targeting/data', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'data'])->name('amazon.ads.fbm-targeting.data');
+    Route::post('/amazon-ads/fbm-targeting/pull-keywords', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'pullKeywords'])->name('amazon.ads.fbm-targeting.pull-keywords');
+    Route::post('/amazon-ads/fbm-targeting/pull-negatives', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'pullNegatives'])->name('amazon.ads.fbm-targeting.pull-negatives');
+    Route::post('/amazon-ads/fbm-targeting/push-keywords', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'pushKeywords'])->name('amazon.ads.fbm-targeting.push-keywords');
+    Route::post('/amazon-ads/fbm-targeting/specific/add', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'specificAdd'])->name('amazon.ads.fbm-targeting.specific.add');
+    Route::post('/amazon-ads/fbm-targeting/specific/remove', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'specificRemove'])->name('amazon.ads.fbm-targeting.specific.remove');
+    Route::get('/amazon-ads/fbm-targeting/cousins/campaigns', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'cousinCampaigns'])->name('amazon.ads.fbm-targeting.cousins.campaigns');
+    Route::post('/amazon-ads/fbm-targeting/cousins/add', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'addCousins'])->name('amazon.ads.fbm-targeting.cousins.add');
+    Route::post('/amazon-ads/fbm-targeting/cousins/remove', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'removeCousin'])->name('amazon.ads.fbm-targeting.cousins.remove');
+    Route::post('/amazon-ads/fbm-targeting/cousins/name', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'nameCousins'])->name('amazon.ads.fbm-targeting.cousins.name');
+    Route::post('/amazon-ads/fbm-targeting/cousins/sync', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'syncCousins'])->name('amazon.ads.fbm-targeting.cousins.sync');
     Route::match(['get', 'post'], '/amazon-ads/raw-data/{source}', [AmazonAdsController::class, 'rawData'])->name('amazon.ads.raw-data');
     Route::post('/amazon-ads/u7-distribution/{source}', [AmazonAdsController::class, 'u7Distribution'])->name('amazon.ads.u7-distribution');
     Route::post('/amazon-ads/u7-distribution-history/{source}', [AmazonAdsController::class, 'u7DistributionHistory'])->name('amazon.ads.u7-distribution-history');
@@ -3982,6 +3992,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/missing/keyword-list', [\App\Http\Controllers\AmazonAdsMissingController::class, 'keywordList'])->name('amazon.ads.missing.keyword-list');
     Route::post('/amazon-ads/missing/delete', [\App\Http\Controllers\AmazonAdsMissingController::class, 'delete'])->name('amazon.ads.missing.delete');
     Route::post('/amazon-ads/missing/hl-create', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlCreate'])->name('amazon.ads.missing.hl-create');
+    Route::post('/amazon-ads/missing/hl-import', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlImport'])->name('amazon.ads.missing.hl-import');
     Route::post('/amazon-ads/missing/hl-update', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlUpdate'])->name('amazon.ads.missing.hl-update');
     Route::get('/amazon-ads/missing/hl-parent-vs-ads', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlParentVsAds'])->name('amazon.ads.missing.hl-parent-vs-ads');
     Route::post('/amazon-ads/missing/ai-negatives', [\App\Http\Controllers\AmazonAdsMissingController::class, 'aiNegativeKeywords'])->name('amazon.ads.missing.ai-negatives');
@@ -5696,6 +5707,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/advertisement-master/label', [AdvertisementMasterController::class, 'saveLabel'])->name('advertisement.master.label.save');
     Route::post('/advertisement-master/nr', [AdvertisementMasterController::class, 'saveNrReq'])->name('advertisement.master.nr.save');
     Route::post('/advertisement-master/row/delete', [AdvertisementMasterController::class, 'deleteRow'])->name('advertisement.master.row.delete');
+    Route::post('/advertisement-master/data-alert/ignore', [AdvertisementMasterController::class, 'ignoreDataAlert'])->name('advertisement.master.data-alert.ignore');
+    Route::post('/advertisement-master/data-alert/autofix', [AdvertisementMasterController::class, 'autofixDataAlert'])->name('advertisement.master.data-alert.autofix');
     Route::get('/variations-ads', [VariationsAdsController::class, 'index'])->name('advertisement.variations.ads');
     Route::get('/variations-ads/data', [VariationsAdsController::class, 'data'])->name('advertisement.variations.ads.data');
     Route::post('/variations-ads/save', [VariationsAdsController::class, 'save'])->name('advertisement.variations.ads.save');
@@ -7638,12 +7651,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(FbaDataController::class)->group(function () {
         Route::get('fba-view-page', 'fbaPageView');
         Route::get('fba-dispatch-page', 'fbaDispatchPageView');
-        Route::get('fba-ads-keywords', 'fbaadskw');
         Route::get('fba-ads-pt', 'fbaAdsPt');
         Route::get('fba-data-json', 'fbaDataJson');
         Route::post('push-fba-price', 'pushFbaPrice');
         Route::post('update-fba-sprice-status', 'updateSpriceStatus');
-        Route::get('fba-ads-data-json', 'fbaAdsDataJson');
         Route::get('fba-ads-pt-data-json', 'fbaAdsPtDataJson');
         Route::get('fba-manual-export', 'exportFbaManualData');
         Route::post('fba-manual-import', 'importFbaManualData');
