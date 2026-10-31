@@ -515,25 +515,20 @@ class Temu2ListingPublishService
                     'skus' => array_values(array_map(static fn ($row) => $row['sku'], $prepared)),
                 ];
             }
-            if ($targetGoodsId !== '') {
-                // The user chose this parent: never create a separate parent with a different goods id.
-                Log::warning('Temu2 publish: add SKU to the chosen goods failed, nothing created', [
-                    'parent' => $parentKey,
-                    'goods_id' => $targetGoodsId,
-                    'message' => $added['message'] ?? '',
-                ]);
-
-                return [
-                    'success' => false,
-                    'message' => 'Could not add the variation(s) to the selected '.$this->shopLabel().' parent (goods '.$targetGoodsId.'). '
-                        .'No new listing was created. '.trim((string) ($added['message'] ?? '')),
-                ];
-            }
-            Log::warning('Temu2 publish: add SKU to existing goods failed, creating a new listing', [
+            // The parent already exists on the marketplace (chosen in the window, or found from its siblings):
+            // never fall back to a separate listing with a different goods id.
+            Log::warning('Temu2 publish: add SKU to the existing goods failed, nothing created', [
                 'parent' => $parentKey,
                 'goods_id' => $existingGoodsId,
+                'chosen' => $targetGoodsId !== '',
                 'message' => $added['message'] ?? '',
             ]);
+
+            return [
+                'success' => false,
+                'message' => 'Could not add the variation(s) to the existing '.$this->shopLabel().' parent (goods '.$existingGoodsId.'). '
+                    .'No new listing was created. '.trim((string) ($added['message'] ?? '')),
+            ];
         }
 
         $outGoodsSn = $this->uniqueOutGoodsSn(

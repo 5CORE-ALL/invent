@@ -1684,6 +1684,14 @@
                     normalizePreviewChildren(group.children).forEach(function (child) {
                         addChild(parent, child, true);
                     });
+                    // Keep the parent listings Temu already has for this group, so the picker can attach to them.
+                    const pkey = (parent || 'Standalone').toUpperCase();
+                    if (byParent[pkey]) {
+                        if (group.attach_supported) byParent[pkey].attach_supported = true;
+                        if (Array.isArray(group.existing_parents) && group.existing_parents.length) {
+                            byParent[pkey].existing_parents = group.existing_parents;
+                        }
+                    }
                 });
                 fallbackGroupsFromTable(skus).forEach(function (group) {
                     normalizePreviewChildren(group.children).forEach(function (child) {
@@ -1740,7 +1748,7 @@
                     html += `<div class="temu-publish-group" data-group-index="${gi}" data-parent="${escapeHtml(parent)}">`;
                     html += `<div class="temu-publish-group-head"><span class="listing-publish-group-title">${escapeHtml(parent)} · ${selectedCount} selected for ${single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation'}</span><button type="button" class="listing-publish-group-close" title="Remove this parent from this publish" aria-label="Remove ${escapeHtml(parent)}">&times;</button></div>`;
                     if (!single && window.ListingParentCategory) html += window.ListingParentCategory.block(parent, group.suggested_category);
-                    if (!single && window.ListingParentPicker) { html += window.ListingParentPicker.block(group, gi, { channel: 'temu', label: 'Temu', attachSupported: false, required: false }); }
+                    if (!single && window.ListingParentPicker) { html += window.ListingParentPicker.block(group, gi, { channel: 'temu', label: 'Temu', attachSupported: true, required: (group.existing_parents || []).length > 0 }); }
                     html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th><th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
                     children.forEach(function (child) {
                         const sku = String(child.sku || '');
@@ -1803,7 +1811,13 @@
                         if (pick && pick.attach === 'new' && pick.newParent) sendParent = pick.newParent;
                         else if (pick && pick.attach === 'existing' && pick.existingParent) sendParent = pick.existingParent;
                         const cat = window.ListingParentCategory ? window.ListingParentCategory.read(this) : {};
-                        groups.push({ parent: sendParent, skus: skus, category_id: cat.category_id || '', category_name: cat.category_name || '', category_uuid: cat.category_uuid || '' });
+                        const entry = { parent: sendParent, skus: skus, category_id: cat.category_id || '', category_name: cat.category_name || '', category_uuid: cat.category_uuid || '' };
+                        // Existing parent: send its goods id so the SKUs join that goods, never a new independent one.
+                        if (pick && pick.supported && (pick.attach === 'existing' || pick.attach === 'new')) {
+                            entry.attach = pick.attach;
+                            entry.existing_listing_id = pick.attach === 'existing' ? String(pick.existingId || '') : '';
+                        }
+                        groups.push(entry);
                     }
                 });
                 if (selectedPublishMode() !== 'single') return groups;
@@ -1920,7 +1934,9 @@
                         parent: parent || '',
                         category_id: category.category_id || '',
                         category_name: category.category_name || '',
-                        category_uuid: category.category_uuid || ''
+                        category_uuid: category.category_uuid || '',
+                        attach: category.attach || '',
+                        existing_listing_id: category.existing_listing_id || ''
                     }),
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
                     timeout: 180000
