@@ -505,6 +505,11 @@ class ChatWorkspace
         return self::postSystemNotice($channel, $actor->name.' removed '.$list, 'member');
     }
 
+    public static function announceAdminChange(User $actor, ChatChannel $channel, User $target, bool $admin): ChatMessage
+    {
+        return self::postSystemNotice($channel, $actor->name.($admin ? ' made ' : ' removed ').$target->name.($admin ? ' an admin' : ' as admin'), 'member');
+    }
+
     public static function pruneImplicitPublicMembersOnce(): void
     {
         if (! self::tablesReady()) {
@@ -669,6 +674,14 @@ class ChatWorkspace
             ->get(['channel_id', 'user_id'])
             ->groupBy('channel_id')
             ->map(fn ($rows) => $rows->pluck('user_id')->map(fn ($id) => (int) $id)->values()->all());
+        $promotedByChannel = self::adminColumnReady()
+            ? ChatChannelMember::query()
+                ->whereIn('channel_id', $channels->pluck('id'))
+                ->where('is_admin', true)
+                ->get(['channel_id', 'user_id'])
+                ->groupBy('channel_id')
+                ->map(fn ($rows) => $rows->pluck('user_id')->map(fn ($id) => (int) $id)->values()->all())
+            : collect();
 
         $peerIds = [];
         foreach ($channels as $channel) {
@@ -719,6 +732,7 @@ class ChatWorkspace
                 'status' => $peerPresence['status'] ?? 'active',
                 'last_seen_label' => $peerPresence['last_seen_label'] ?? null,
                 'created_by' => (int) $channel->created_by,
+                'admin_ids' => array_values(array_unique(array_merge([(int) $channel->created_by], $promotedByChannel[$channel->id] ?? []))),
                 'can_manage_members' => self::canManageMembers($user, $channel),
                 'can_delete' => self::canDeleteChannel($user, $channel),
                 'can_edit' => self::canEditChannel($user, $channel),
@@ -1429,10 +1443,67 @@ class ChatWorkspace
             return false;
         }
 
+        // Like WhatsApp: in groups and channels only admins manage people. Task chats stay open to their members,
+        // and so does everything until the is_admin column exists.
+        if (self::adminColumnReady() && ! $channel->isTask()) {
+            return self::isGroupAdmin($user, $channel);
+        }
+
         return ChatChannelMember::query()
             ->where('channel_id', $channel->id)
             ->where('user_id', $user->id)
             ->exists();
+    }
+
+    public static function adminColumnReady(): bool
+    {
+        static $ready = null;
+        if ($ready === null) {
+            try {
+                $ready = Schema::hasTable('chat_channel_members') && Schema::hasColumn('chat_channel_members', 'is_admin');
+            } catch (\Throwable) {
+                $ready = false;
+            }
+        }
+
+        return $ready;
+    }
+
+    /** The creator is always an admin; others are admins when promoted. */
+    public static function isGroupAdmin(?User $user, ChatChannel $channel): bool
+    {
+        if (! $user) {
+            return false;
+        }
+        if ((int) $channel->created_by === (int) $user->id) {
+            return true;
+        }
+        if (! self::adminColumnReady()) {
+            return false;
+        }
+
+        return ChatChannelMember::query()
+            ->where('channel_id', $channel->id)
+            ->where('user_id', $user->id)
+            ->where('is_admin', true)
+            ->exists();
+    }
+
+    /**
+     * Creator plus promoted admins.
+     *
+     * @return list<int>
+     */
+    public static function adminIds(ChatChannel $channel): array
+    {
+        $ids = [(int) $channel->created_by];
+        if (self::adminColumnReady()) {
+            foreach (ChatChannelMember::query()->where('channel_id', $channel->id)->where('is_admin', true)->pluck('user_id') as $id) {
+                $ids[] = (int) $id;
+            }
+        }
+
+        return array_values(array_unique(array_filter($ids)));
     }
 
     public static function canDeleteAnyConversation(?User $user): bool

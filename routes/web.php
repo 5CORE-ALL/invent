@@ -3669,6 +3669,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/chat/channels/{channel}/read', 'markRead')->whereNumber('channel')->name('chat.channels.read');
         Route::post('/chat/channels/{channel}/pin', 'pinChannel')->whereNumber('channel')->name('chat.channels.pin');
         Route::post('/chat/channels/{channel}/members', 'members')->whereNumber('channel')->name('chat.channels.members');
+        Route::post('/chat/channels/{channel}/admins', 'setAdmin')->whereNumber('channel')->name('chat.channels.admins');
         Route::post('/chat/read-all', 'markAllRead')->name('chat.read-all');
         Route::get('/chat/search', 'search')->name('chat.search');
         Route::match(['get', 'post'], '/chat/prefs', 'prefs')->name('chat.prefs');

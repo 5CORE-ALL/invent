@@ -955,12 +955,58 @@ class ChatController extends Controller
             'member_ids' => $roster['ids'],
             'member_names' => $roster['names'],
             'removed_ids' => $removed,
+            'admin_ids' => ChatWorkspace::adminIds($row),
             'messages' => $notices !== []
                 ? $this->serializeMessages($row, collect($notices), (int) $user->id, false)
                 : [],
         ]);
     }
 
+    /**
+     * Make a member a group admin, or take admin away (like WhatsApp). The creator always stays admin.
+     */
+    public function setAdmin(Request $request, int $channel): JsonResponse
+    {
+        $user = Auth::user();
+        abort_unless($user, 403);
+        $row = ChatWorkspace::canManageChannels($user)
+            ? ChatChannel::query()->findOrFail($channel)
+            : ChatWorkspace::memberOrFail($user, $channel);
+        abort_unless(ChatWorkspace::canManageMembers($user, $row), 403);
+        abort_unless(ChatWorkspace::adminColumnReady(), 422, 'Run the migrations first: the admin column is missing.');
+
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'admin' => 'required|boolean',
+        ]);
+        $makeAdmin = (bool) $validated['admin'];
+        $targetId = (int) $validated['user_id'];
+
+        if (! $makeAdmin && $targetId === (int) $row->created_by) {
+            abort(422, 'The person who created this group is always an admin.');
+        }
+        $member = ChatChannelMember::query()->where('channel_id', $row->id)->where('user_id', $targetId)->first();
+        abort_unless($member, 422, 'That person is not in this group.');
+
+        $notice = null;
+        if ((bool) $member->is_admin !== $makeAdmin) {
+            $member->is_admin = $makeAdmin;
+            $member->save();
+            ChatAudit::record($user, $makeAdmin ? 'member.admin_granted' : 'member.admin_revoked', 'user', $targetId, (int) $row->id);
+            $target = User::query()->find($targetId);
+            if ($target) {
+                $notice = ChatWorkspace::announceAdminChange($user, $row, $target, $makeAdmin);
+            }
+        }
+
+        return response()->json([
+            'ok' => true,
+            'admin_ids' => ChatWorkspace::adminIds($row),
+            'messages' => $notice
+                ? $this->serializeMessages($row, collect([$notice]), (int) $user->id, false)
+                : [],
+        ]);
+    }
     public function createTask(Request $request, int $message): JsonResponse
     {
         $user = Auth::user();
@@ -1172,6 +1218,7 @@ class ChatController extends Controller
             'last_read_message_id' => (int) ($member->last_read_message_id ?? 0),
             'notify_pref' => $member->notify_pref ?? 'all',
             'created_by' => (int) $channel->created_by,
+            'admin_ids' => ChatWorkspace::adminIds($channel),
             'can_manage_members' => ChatWorkspace::canManageMembers($user, $channel),
             'can_delete' => ChatWorkspace::canDeleteChannel($user, $channel),
             'can_edit' => ChatWorkspace::canEditChannel($user, $channel),
