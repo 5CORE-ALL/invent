@@ -2353,12 +2353,125 @@ class DispatchIssuesController extends IssueBoardControllerBase
     }
 
     /**
+     * An order entered with several SKUs is one group (same group_id, one row per SKU and department).
+     * When the department of one SKU is changed, every other SKU of that order is moved to the same
+     * department(s): rows of another department are archived and a row is added for any department the
+     * SKU does not have yet. Rows that already match are left untouched.
+     *
+     * @param  list<string>  $newDepts
+     */
+    private function propagateDepartmentsToOrderSkus(string $groupId, string $editedSku, array $newDepts): void
+    {
+        if ($groupId === '' || $newDepts === []) {
+            return;
+        }
+
+        $others = DB::table($this->issuesTable())
+            ->where('group_id', $groupId)
+            ->where('sku', '!=', $editedSku)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->orderBy('id')
+            ->get();
+        if ($others->isEmpty()) {
+            return;
+        }
+
+        $user = auth()->user();
+        $actorName = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        $now = now();
+        $historyColumns = array_flip(Schema::getColumnListing($this->historyTable()));
+        $issueColumns = array_flip(Schema::getColumnListing($this->issuesTable()));
+        $wanted = $newDepts;
+        sort($wanted);
+        $touchedIds = [];
+
+        DB::transaction(function () use ($others, $newDepts, $wanted, $actorName, $user, $now, $historyColumns, $issueColumns, &$touchedIds) {
+            foreach ($others->groupBy('sku') as $siblings) {
+                $haveDepts = [];
+                foreach ($siblings as $s) {
+                    $rowDepts = CustomerCareDepartments::decode($s->department ?? null);
+                    $sorted = $rowDepts;
+                    sort($sorted);
+                    $keep = $rowDepts !== [] && (
+                        (count($rowDepts) === 1 && in_array($rowDepts[0], $newDepts, true) && ! isset($haveDepts[$rowDepts[0]]))
+                        || $sorted === $wanted
+                    );
+                    if ($keep) {
+                        foreach ($rowDepts as $d) {
+                            $haveDepts[$d] = true;
+                        }
+                        continue;
+                    }
+
+                    DB::table($this->issuesTable())->where('id', $s->id)->update([
+                        'is_archived' => true,
+                        'archived_at' => $now,
+                        'archived_by' => $actorName,
+                        'updated_at'  => $now,
+                    ]);
+                    $archived = array_intersect_key((array) $s, $historyColumns);
+                    unset($archived['id']);
+                    DB::table($this->historyTable())->insert(array_merge($archived, [
+                        'orders_on_hold_issue_id' => $s->id,
+                        'event_type'              => 'archived',
+                        'revision_no'             => ((int) DB::table($this->historyTable())
+                            ->where('orders_on_hold_issue_id', $s->id)
+                            ->max('revision_no')) + 1,
+                        'created_by'              => $actorName,
+                        'created_by_user_id'      => $user?->id,
+                        'logged_at'               => $now,
+                        'created_at'              => $now,
+                        'updated_at'              => $now,
+                    ]));
+                    $touchedIds[] = (int) $s->id;
+                }
+
+                // Template for new rows: the first row of this SKU (all its fields except department).
+                $template = (array) $siblings->first();
+                foreach ($newDepts as $dept) {
+                    if (isset($haveDepts[$dept])) {
+                        continue;
+                    }
+                    $payload = array_intersect_key($template, $issueColumns);
+                    unset($payload['id']);
+                    $payload = array_merge($payload, [
+                        'department'         => CustomerCareDepartments::encode([$dept]),
+                        'is_archived'        => false,
+                        'archived_at'        => null,
+                        'archived_by'        => null,
+                        'created_by'         => $actorName,
+                        'created_by_user_id' => $user?->id,
+                        'created_at'         => $now,
+                        'updated_at'         => $now,
+                    ]);
+                    $payload = array_intersect_key($payload, $issueColumns);
+                    $newId = DB::table($this->issuesTable())->insertGetId($payload);
+                    $created = array_intersect_key($payload, $historyColumns);
+                    DB::table($this->historyTable())->insert(array_merge($created, [
+                        'orders_on_hold_issue_id' => $newId,
+                        'event_type'              => 'created',
+                        'revision_no'             => 0,
+                        'logged_at'               => $now,
+                    ]));
+                    $touchedIds[] = (int) $newId;
+                }
+            }
+        });
+
+        CustomerCareIssueFanout::syncMany($touchedIds);
+    }
+    /**
      * Shared post-update response: optional outgoing triggers + JSON payload.
      *
      * @param  array<string, mixed>  $validated
      */
     private function updateResponseAfterSave(Request $request, array $validated, string $groupId, string $sku): JsonResponse
     {
+        // One order, one department: every other SKU of this order follows the department chosen here.
+        $this->propagateDepartmentsToOrderSkus($groupId, $sku, CustomerCareDepartments::normalizeStringList((array) ($validated['department'] ?? [])));
+
         $fanoutIds = DB::table($this->issuesTable())
             ->where('sku', $sku)
             ->where('group_id', $groupId)
