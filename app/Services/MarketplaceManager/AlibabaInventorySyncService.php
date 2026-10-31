@@ -167,6 +167,21 @@ class AlibabaInventorySyncService
             ];
         }
 
+        // Inv SKU Mismatch first, 40 SKUs per run. The full catalog crawl below pushes every linked SKU
+        // (three Alibaba calls each) and used to hit the job time limit before it reached the mismatches.
+        if (! $dryRun && ($settings['inventory']['inventory_sync'] ?? false)) {
+            $priority = app(MarketplaceMismatchInventoryPass::class)->runAndStopIfMore('alibaba', 40);
+            if ($priority !== null) {
+                return [
+                    'updated' => (int) ($priority['updated'] ?? 0),
+                    'failed' => (int) ($priority['failed'] ?? 0),
+                    'skipped' => (int) ($priority['skipped'] ?? 0),
+                    'price_updated' => 0,
+                    'message' => (string) ($priority['message'] ?? ''),
+                ];
+            }
+        }
+
         if (! Schema::hasTable('alibaba_metrics')) {
             return [
                 'updated' => 0,

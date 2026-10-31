@@ -171,6 +171,13 @@ class AliexpressListingPublishService
             ];
         }
 
+        if ($mode !== 'single') {
+            // Variation listing: the parent photos from Variation Master lead the shared gallery.
+            $parentImages = \App\Support\Marketplace\VariationListingContent::parentImagesFor($primary);
+            if ($parentImages !== []) {
+                $gallery = array_values(array_unique(array_merge($parentImages, $gallery)));
+            }
+        }
         $upload = $this->api->uploadImagesToPhotobank($gallery);
         if (empty($upload['success']) || ($upload['urls'] ?? []) === []) {
             return [

@@ -52,16 +52,22 @@ class PlatformChargebackCsvImport
             return ['ok' => false, 'message' => 'Could not open the CSV file.', 'rows' => 0, 'saved' => 0];
         }
         $head = array_map(fn ($h) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $h)), (array) fgetcsv($fh));
+        $origHead = $head;
+        $upsAdjustments = false;
         if ($platform === 'ups') {
             $head = array_map(fn ($h) => $this->norm($h), $head);
-            $cfg['required'] = array_map(fn ($h) => $this->norm($h), $cfg['required']);
+            // Two UPS layouts: the Adjustments report (one line per corrected package, an invoice total line
+            // without a tracking number) and the invoice detail download (one line per charge).
+            $upsAdjustments = in_array('netamountdue', $head, true) && in_array('adjustment', $head, true);
+            $cfg['required'] = $upsAdjustments
+                ? ['invoicenumber', 'invoicedate', 'trackingnumber', 'adjustment', 'netamountdue']
+                : array_map(fn ($h) => $this->norm($h), $cfg['required']);
         }
         $missing = array_diff($cfg['required'], $head);
         if ($missing !== [] && $platform === 'ups') {
-            $missing = array_map(fn ($m) => $m === 'chargedescription' ? 'Charge Description' : ($m === 'netamount' ? 'Net Amount' : 'Tracking Number'), $missing);
             fclose($fh);
 
-            return ['ok' => false, 'message' => 'This is not a UPS invoice file with a header row (missing columns: '.implode(', ', $missing).'). In UPS Billing Center, download the invoice data as CSV with column headings.', 'rows' => 0, 'saved' => 0];
+            return ['ok' => false, 'message' => 'This is not a UPS invoice file with a header row. Expected the UPS adjustments CSV (Invoice Number, Invoice Date, Tracking Number, Adjustment, Net Amount Due) or the invoice detail CSV (Charge Description, Net Amount, Tracking Number).', 'rows' => 0, 'saved' => 0];
         }
         if ($missing !== []) {
             fclose($fh);
@@ -82,6 +88,7 @@ class PlatformChargebackCsvImport
             $r = array_combine($head, array_slice(array_pad($line, count($head), ''), 0, count($head)));
             $row = match (true) {
                 str_starts_with($platform, 'temu') => $this->temuRow($cfg, $r),
+                $platform === 'ups' && $upsAdjustments => $this->upsAdjustmentRow($r),
                 $platform === 'ups' => $this->upsRow($r),
                 default => $this->shopifyRow($cfg, $r),
             };
@@ -96,7 +103,10 @@ class PlatformChargebackCsvImport
                 'source' => $cfg['source'],
                 'marketplace_name' => $cfg['name'],
                 'currency' => 'USD',
-                'raw' => json_encode($platform === 'ups' ? array_filter($r, fn ($v) => trim((string) $v) !== '') : $r),
+                // UPS keeps the file's own column names so the UPS sheet view can show them as they are.
+                'raw' => json_encode($platform === 'ups'
+                    ? array_filter(array_combine($origHead, array_slice(array_pad($line, count($origHead), ''), 0, count($origHead))), fn ($v) => trim((string) $v) !== '')
+                    : $r),
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
@@ -221,6 +231,65 @@ class PlatformChargebackCsvImport
             'service' => $this->str($service, 150),
             'item_types' => $this->str($tracking, 500),
         ];
+    }
+
+    /**
+     * UPS adjustments report: one line per corrected package (Adjustment = "Shipping Charge Corrections",
+     * Original/Corrected Address, Published Charge, Incentives, Net Amount Due). The line without a tracking
+     * number is the invoice total (already the sum of its package lines), so it is skipped.
+     * Net Amount Due is positive when UPS charged more and negative for a credit.
+     *
+     * @param  array<string, mixed>  $r  row keyed by normalised header
+     */
+    private function upsAdjustmentRow(array $r): ?array
+    {
+        $tracking = trim((string) ($r['trackingnumber'] ?? ''));
+        if ($tracking === '') {
+            return null;
+        }
+        $net = $this->money((string) ($r['netamountdue'] ?? ''));
+        if ($net === null) {
+            return null;
+        }
+        $adjustment = trim((string) ($r['adjustment'] ?? ''));
+        $invoice = trim((string) ($r['invoicenumber'] ?? ''));
+        $dateRaw = trim((string) ($r['invoicedate'] ?? ''));
+        $ref1 = trim((string) ($r['referencenumber1'] ?? ''));
+        $ref2 = trim((string) ($r['referencenumber2'] ?? ''));
+        $order = trim((string) preg_replace('/^order\s*#?\s*/i', '', $ref2));
+        $total = round(-$net, 2);
+
+        return [
+            '_key' => implode('|', [$invoice, $tracking, $adjustment, $net, $dateRaw, $ref1, $ref2]),
+            'transaction_type' => 'ADJ',
+            'description' => self::UPS_ADJUSTMENT,
+            'reason' => $this->str($adjustment, 150),
+            'transaction_status' => null,
+            'posted_at' => $this->date($dateRaw, ['M d, Y', 'm/d/Y', 'Y-m-d']),
+            'order_number' => $this->str($order, 100),
+            'settlement_id' => $this->str($invoice, 64),
+            'total_amount' => $total,
+            'direction' => $total < 0 ? 'debit' : 'credit',
+            'carrier' => 'UPS',
+            'service' => $this->str($r['servicetype'] ?? null, 150),
+            'item_types' => $this->str($tracking, 500),
+        ];
+    }
+
+    /** "$1.40", "-$18.58", "($4.00)" or "1,234.50" as a float; null when it is not an amount. */
+    private function money(string $value): ?float
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+        $negative = str_starts_with($value, '(') || str_contains($value, '-');
+        $number = preg_replace('/[^0-9.]/', '', $value);
+        if ($number === '' || ! is_numeric($number)) {
+            return null;
+        }
+
+        return $negative ? -(float) $number : (float) $number;
     }
 
     private function norm(mixed $header): string

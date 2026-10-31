@@ -45,7 +45,7 @@ class ListingVariationPreviewService
         $channel = strtolower(trim($channel));
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
         if ($mode === 'variation') {
-            VariationListingContent::activate();
+            VariationListingContent::activate($channel);
         }
         try {
         return $this->buildPreview($seedSkus, $channel, $skuParents, $mode);
@@ -305,7 +305,7 @@ class ListingVariationPreviewService
     {
         $variation = strtolower(trim($mode)) !== 'single';
         if ($variation) {
-            VariationListingContent::activate();
+            VariationListingContent::activate($channel);
         }
 
         try {

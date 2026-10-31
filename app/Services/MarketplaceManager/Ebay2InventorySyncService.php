@@ -555,6 +555,7 @@ class Ebay2InventorySyncService
         $skipped = 0;
         $lastMessage = null;
         $errorSamples = [];
+        $errorSkus = [];
         $pushedRows = [];
         $rateLimited = false;
         $attempted = 0;
@@ -633,6 +634,7 @@ class Ebay2InventorySyncService
                             $skipped++;
                         } else {
                             $failed++;
+                            $this->noteError($errorSamples, $errorSkus, (string) ($one['message'] ?? ''), (string) ($row['sku_code'] ?? ''));
                         }
                     }
                     continue;
@@ -667,10 +669,7 @@ class Ebay2InventorySyncService
                     $skipped++;
                 } else {
                     $failed++;
-                    $err = trim((string) ($one['message'] ?? ''));
-                    if ($err !== '') {
-                        $errorSamples[$err] = ($errorSamples[$err] ?? 0) + 1;
-                    }
+                    $this->noteError($errorSamples, $errorSkus, (string) ($one['message'] ?? ''), (string) ($row['sku_code'] ?? ''));
                 }
             }
         }
@@ -679,8 +678,11 @@ class Ebay2InventorySyncService
         $message = $lastMessage;
         if ($failed > 0 && $errorSamples !== [] && ! $rateLimited) {
             arsort($errorSamples);
-            $top = array_key_first($errorSamples);
-            $message = $failed.' eBay 2 update(s) failed. '.$top;
+            $parts = [];
+            foreach (array_slice(array_keys($errorSamples), 0, 3) as $reason) {
+                $parts[] = $reason.' ['.$errorSamples[$reason].'x: '.implode(', ', array_slice($errorSkus[$reason] ?? [], 0, 3)).']';
+            }
+            $message = $failed.' eBay 2 update(s) failed. '.implode(' | ', $parts);
         }
         if ($rateLimited) {
             $skipped += $remaining;
@@ -699,6 +701,24 @@ class Ebay2InventorySyncService
             'message' => $message,
             'rows' => $pushedRows,
         ];
+    }
+
+    /**
+     * Remember why a SKU failed (reason => count, reason => SKUs) so the alert names every cause.
+     *
+     * @param  array<string, int>  $samples
+     * @param  array<string, list<string>>  $skus
+     */
+    protected function noteError(array &$samples, array &$skus, string $message, string $sku): void
+    {
+        $reason = trim(preg_replace('/\s+/', ' ', strip_tags($message)) ?? '');
+        $reason = $reason !== '' ? mb_substr($reason, 0, 160) : 'No error text returned by eBay (see laravel.log)';
+        // Keep the SKU out of the reason so the same cause on different SKUs groups together.
+        if ($sku !== '') {
+            $reason = trim(str_ireplace($sku, '…', $reason));
+        }
+        $samples[$reason] = ($samples[$reason] ?? 0) + 1;
+        $skus[$reason][] = $sku;
     }
 
     /**

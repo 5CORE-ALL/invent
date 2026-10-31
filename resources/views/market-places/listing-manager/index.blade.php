@@ -5864,6 +5864,7 @@
             $.getJSON("{{ url('/listing-manager/variation-content') }}", {
                 sku: String(currentDraft.sku || $('#lc-sku').val() || ''),
                 parent: selectedParentGroup(currentDraft),
+                channel: String((currentDraft && currentDraft.channel) || ''),
             })
                 .done(function (res) {
                     if (!res.success) {
@@ -5873,6 +5874,16 @@
                     if (res.title) $('#lc-title').val(res.title);
                     if (res.description) setDescriptionValue(res.description);
                     if (Array.isArray(res.bullets) && res.bullets.length) $('#lc-bullets').val(res.bullets.join('\n'));
+                    // Parent photos lead the shared gallery of the variation listing.
+                    if (Array.isArray(res.images) && res.images.length && typeof sanitizeEditorImages === 'function') {
+                        const merged = sanitizeEditorImages(res.images.concat(editorImages || []))
+                            .filter(function (url, i, all) { return all.indexOf(url) === i; });
+                        if (merged.length) {
+                            editorImages = merged;
+                            dirty = true;
+                            renderImages();
+                        }
+                    }
                     refreshEditorUi(currentDraft);
                     toast(res.message || 'Loaded from Variation Master.', 'success');
                 })

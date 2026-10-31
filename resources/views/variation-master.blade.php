@@ -2,6 +2,7 @@
 
 @section('css')
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     @include('partials.marketplace-master-button-colors')
     <style>
         #vm-table-wrapper {
@@ -154,6 +155,142 @@
             gap: 8px;
             flex-wrap: wrap;
         }
+
+        #vm-tabulator .vm-chip {
+            display: inline-block;
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            background: #e2e8f0;
+            color: #334155;
+        }
+
+        #vm-tabulator .vm-chip.is-aplus {
+            background: #ede9fe;
+            color: #5b21b6;
+        }
+
+        #vm-tabulator .vm-pill-btn {
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #1e40af;
+            border-radius: 6px;
+            padding: 2px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        #vm-tabulator .vm-pill-btn.is-empty {
+            color: #64748b;
+            border-style: dashed;
+        }
+
+        #vm-tabulator .vm-img-cell {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 0;
+        }
+
+        #vm-tabulator .vm-img-count {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f766e;
+        }
+
+        #vm-tabulator .vm-img-count.is-zero {
+            color: #94a3b8;
+            font-weight: 600;
+        }
+
+        #vm-tabulator .vm-img-actions {
+            display: inline-flex;
+            gap: 4px;
+        }
+
+        #vm-tabulator .vm-thumbs {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        #vm-tabulator .vm-thumbs img {
+            width: 26px;
+            height: 26px;
+            object-fit: cover;
+            border-radius: 3px;
+            border: 1px solid #cbd5e1;
+        }
+
+        #vm-aplus-modal .modal-header-gradient { background: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%); color: #fff; }
+        #vm-aplus-modal .vm-desc-note { font-size: 10px; color: #64748b; }
+        #vm-desc-count.at-limit { color: #dc2626; font-weight: 600; }
+
+        .vm-img-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .vm-img-tile {
+            position: relative;
+            width: 110px;
+            height: 110px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #f8fafc;
+        }
+
+        .vm-img-tile img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .vm-img-tile .vm-img-del {
+            position: absolute;
+            top: 3px;
+            right: 3px;
+            width: 22px;
+            height: 22px;
+            border: 0;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, .75);
+            color: #fff;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .vm-img-tile .vm-img-dl {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, .75);
+            color: #fff;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+        }
+
+        .vm-img-tile .vm-img-no {
+            position: absolute;
+            left: 3px;
+            bottom: 3px;
+            padding: 0 6px;
+            border-radius: 8px;
+            background: rgba(15, 23, 42, .65);
+            color: #fff;
+            font-size: 10px;
+        }
     </style>
 @endsection
 
@@ -188,7 +325,7 @@
                             <i class="bi bi-arrow-repeat me-1"></i>Update
                         </button>
                         <input type="file" id="vm-upload-file" class="d-none" accept=".xlsx,.xls,.csv">
-                        <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Title, Description, and Bullet 1–5 are shared by every child of that parent and are used when a variation listing is published.</span>
+                        <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Title, Description, A+ Content, Bullet 1–5 and Parent Images are shared by every child of that parent and are used when a variation listing is published from Listing Manager or Missing L. Where the marketplace takes A+ (eBay) a saved A+ Content is sent instead of the Description; other marketplaces use the Description. Amazon keeps each child's own content and images.</span>
                         <span class="small ms-auto" id="vm-status"></span>
                     </div>
                 </div>
@@ -236,6 +373,13 @@
                             <textarea class="form-control form-control-sm vm-bulk-input" data-field="description" rows="5" maxlength="20000"></textarea>
                         </div>
                     </div>
+                    <div class="vm-bulk-field">
+                        <input class="form-check-input vm-apply" type="checkbox" data-field="aplus" title="Apply this field">
+                        <div class="vm-bulk-body">
+                            <label class="vm-bulk-label">A+ Content (HTML)</label>
+                            <textarea class="form-control form-control-sm vm-bulk-input" data-field="aplus" rows="4" maxlength="200000" placeholder="&lt;div&gt;…&lt;/div&gt;"></textarea>
+                        </div>
+                    </div>
                     @for ($b = 1; $b <= 5; $b++)
                         <div class="vm-bulk-field">
                             <input class="form-check-input vm-apply" type="checkbox" data-field="bullet_{{ $b }}" title="Apply this field">
@@ -255,10 +399,79 @@
             </div>
         </div>
     </div>
+
+    {{-- Same editor as Description Master's "Edit descriptions" modal. The parent keeps ONE shared content. --}}
+    <div class="modal fade" id="vm-aplus-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title" id="vm-aplus-title"><i class="fas fa-edit me-2"></i>Edit descriptions</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3"><strong>Product:</strong> <span id="vm-desc-product"></span> <span class="small text-muted" id="vm-desc-sku"></span></div>
+                    <p class="small text-muted mb-2"><i class="fas fa-info-circle"></i> One description is shared by every child of this parent. Pick a marketplace tab to choose which marketplace <strong>Fetch live</strong> and <strong>AI Generate</strong> use, edit in the editor, then Save. It is saved as the parent's A+ HTML: eBay sends it instead of the Description, other marketplaces keep using the Description.</p>
+
+                    <div id="vm-desc-tabs" class="d-flex flex-wrap gap-1 mb-2"></div>
+
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                        <div class="fw-semibold small" id="vm-desc-active-label">—</div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-outline-success btn-sm" id="vm-desc-fetch-live"><i class="fas fa-cloud-download-alt"></i> Fetch live</button>
+                            <button type="button" class="btn btn-outline-dark btn-sm" id="vm-desc-fetch-aplus" title="Load the stored A+ content of this SKU into the editor (fetched once automatically if not stored yet)"><i class="fas fa-star"></i> Fetch A+</button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="vm-desc-ai"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
+                        </div>
+                    </div>
+                    <textarea id="vm-desc-html"></textarea>
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-1">
+                        <div class="small text-muted" id="vm-desc-hint">Editing the shared description of this parent.</div>
+                        <div class="small text-muted" id="vm-desc-count">0 / —</div>
+                    </div>
+                    <p class="vm-desc-note mb-0 mt-1"><i class="fas fa-info-circle"></i> Some marketplaces can't be fetched live yet (no read API) — those tabs return nothing.</p>
+                    <div class="mt-2 small text-muted d-none" id="vm-desc-loading"><i class="fas fa-spinner fa-spin"></i> <span id="vm-desc-loading-text"></span></div>
+                </div>
+                <div class="modal-footer">
+                    <span class="small me-auto" id="vm-aplus-status"></span>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="vm-aplus-save"><i class="fas fa-save"></i> Save all</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="vm-images-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="vm-images-title">Parent Images</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">Photos of the parent listing. A variation listing on eBay, Temu and AliExpress shows these first in its shared gallery; each child keeps its own Image Master photos for its variation. Amazon always uses each child's own images.</p>
+                    <div class="mb-3">
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="file" class="form-control form-control-sm" id="vm-images-file" accept="image/*" multiple>
+                            <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="vm-images-download">
+                                <i class="bi bi-download me-1"></i>Download all (ZIP)
+                            </button>
+                        </div>
+                        <div class="small text-muted mt-1">JPG, PNG, WEBP or GIF, up to 12 MB each, 20 photos per parent. <strong id="vm-images-count"></strong></div>
+                    </div>
+                    <div class="vm-img-grid" id="vm-images-grid"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <span class="small me-auto" id="vm-images-status"></span>
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
+    @include('partials.all-marketplace-master-channels', ['allMpMaster' => 'description'])
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tinymce@7/tinymce.min.js" referrerpolicy="origin"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const dataUrl = @json(route('variation.master.data'));
@@ -404,11 +617,59 @@
                         cssClass: 'vm-editable vm-text',
                         formatter: textFormatter
                     },
+                    {
+                        title: 'A+ Content',
+                        field: 'aplus',
+                        headerFilter: 'input',
+                        headerFilterPlaceholder: 'A+ HTML',
+                        minWidth: 150,
+                        formatter: function (cell) {
+                            const html = String(cell.getValue() || '').trim();
+                            if (!html) {
+                                return '<button type="button" class="vm-pill-btn is-empty"><i class="bi bi-plus-lg"></i> Add A+</button>';
+                            }
+                            return '<button type="button" class="vm-pill-btn" title="Edit the A+ content"><i class="bi bi-file-richtext"></i> A+ · ' + html.length.toLocaleString() + ' chars</button>';
+                        },
+                        cellClick: function (_e, cell) {
+                            openAplusModal(cell.getRow().getData());
+                        }
+                    },
                     bulletColumn(1),
                     bulletColumn(2),
                     bulletColumn(3),
                     bulletColumn(4),
                     bulletColumn(5),
+                    {
+                        title: 'Parent Images',
+                        field: 'parent_images',
+                        headerSort: false,
+                        minWidth: 150,
+                        formatter: function (cell) {
+                            const list = Array.isArray(cell.getValue()) ? cell.getValue() : [];
+                            let html = '<div class="vm-img-cell">';
+                            html += '<span class="vm-img-count' + (list.length ? '' : ' is-zero') + '" title="Images uploaded for this parent">' + list.length + (list.length === 1 ? ' image' : ' images') + '</span>';
+                            if (list.length) {
+                                html += '<span class="vm-thumbs">';
+                                list.slice(0, 3).forEach(function (url) {
+                                    html += '<img src="' + escapeHtml(url) + '" alt="" loading="lazy">';
+                                });
+                                html += '</span>';
+                            }
+                            html += '<span class="vm-img-actions">'
+                                + '<button type="button" class="vm-pill-btn vm-img-up" title="Upload images"><i class="bi bi-upload"></i></button>'
+                                + (list.length ? '<button type="button" class="vm-pill-btn vm-img-down" title="Download all images (ZIP)"><i class="bi bi-download"></i></button>' : '')
+                                + '</span></div>';
+                            return html;
+                        },
+                        cellClick: function (e, cell) {
+                            const data = cell.getRow().getData();
+                            if (e.target.closest('.vm-img-down')) {
+                                downloadParentImages(data);
+                                return;
+                            }
+                            openImagesModal(data);
+                        }
+                    },
                     {
                         title: 'Edit',
                         field: 'vm_edit',
@@ -592,6 +853,429 @@
                 }).catch(function (err) {
                     cell.restoreOldValue();
                     setStatus(err && err.message ? err.message : 'Could not save ' + (row.sku || ''), false);
+                });
+            });
+
+            // ---- A+ content and parent images (shared by every child of the parent) ----
+            const imagesUrl = @json(route('variation.master.parent.images.upload'));
+            const imageDeleteUrl = @json(route('variation.master.parent.images.delete'));
+            const imagesDownloadUrl = @json(route('variation.master.parent.images.download'));
+            const aplusModalEl = document.getElementById('vm-aplus-modal');
+            const imagesModalEl = document.getElementById('vm-images-modal');
+            const aplusStatus = document.getElementById('vm-aplus-status');
+            const imagesStatus = document.getElementById('vm-images-status');
+            let panelRow = null;
+
+            function applyParentPatch(rowData, patch) {
+                table.getRows().forEach(function (other) {
+                    if (sameParent(other.getData(), rowData)) other.update(patch);
+                });
+                Object.assign(rowData, patch);
+            }
+
+            function parentLabel(row) {
+                return String(row.parent_key || row.parent || '').trim();
+            }
+
+            function postJson(url, payload) {
+                return fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                    body: JSON.stringify(payload)
+                }).then(function (res) {
+                    return res.json().catch(function () { return null; }).then(function (json) {
+                        if (!res.ok || !json || json.success === false) {
+                            throw new Error((json && (json.message || (json.errors && Object.values(json.errors)[0][0]))) || 'Request failed.');
+                        }
+                        return json;
+                    });
+                });
+            }
+
+            // ---- "Edit descriptions" editor (same as Description Master): marketplace tabs + TinyMCE ----
+            const mpConfig = window.__ALL_MP__ || {};
+            const MP_LABELS = mpConfig.labels || {};
+            const ALL_MP = (mpConfig.enabled && mpConfig.enabled.length) ? mpConfig.enabled : Object.keys(MP_LABELS);
+            const MP_LIMITS = {
+                amazon: 2000, temu: 2000, temu2: 2000, walmart: 2000, shein: 2000, aliexpress: 2000,
+                reverb: 1500, bestbuy: 1500, doba: 1500, wayfair: 2000,
+                shopify_main: 500000, shopify_pls: 500000, ebay: 500000, ebay2: 500000, ebay3: 500000,
+                macy: 600, faire: 600
+            };
+            const MP_LIMIT_LABELS = {
+                amazon: '2000 (plain text, no HTML)', temu: '2000 (plain text)', temu2: '2000 (plain text)',
+                walmart: '2000', shein: '2000', aliexpress: '2000', doba: '1500',
+                shopify_main: 'no hard limit', shopify_pls: 'no hard limit',
+                ebay: '500000 (~800 on mobile)', ebay2: '500000 (~800 on mobile)', ebay3: '500000 (~800 on mobile)',
+                reverb: '1500', wayfair: '2000 (100–200 words marketing copy)', bestbuy: '1500', macy: '600', faire: '600'
+            };
+            const TIER1500 = ['amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy', 'walmart', 'shein', 'aliexpress'];
+            const TIER1000 = ['shopify_main', 'shopify_pls', 'doba'];
+            const TIER800 = ['ebay', 'ebay2', 'ebay3'];
+            let descActiveMp = ALL_MP[0] || '';
+            let descEditor = null;
+            let descEditorPromise = null;
+            let descSetting = false;
+
+            function mpLimit(mp) { return MP_LIMITS[mp] || 1500; }
+
+            function mpTier(mp) {
+                if (TIER1500.indexOf(mp) !== -1) return '1500';
+                if (TIER1000.indexOf(mp) !== -1) return '1000';
+                if (TIER800.indexOf(mp) !== -1) return '800';
+                return '600';
+            }
+
+            function plainText(html) {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = String(html || '');
+                return (tmp.textContent || '').replace(/\s+/g, ' ').trim();
+            }
+
+            // Bootstrap modals steal focus from TinyMCE dialogs (link / image / table); let TinyMCE keep it.
+            document.addEventListener('focusin', function (e) {
+                if (e.target.closest && e.target.closest('.tox-tinymce-aux, .tox-dialog, .tox-tinymce') !== null) {
+                    e.stopImmediatePropagation();
+                }
+            });
+
+            function getDescContent() {
+                if (descEditor) return descEditor.getContent();
+                const el = document.getElementById('vm-desc-html');
+                return el ? el.value : '';
+            }
+
+            function updateDescCount() {
+                const el = document.getElementById('vm-desc-count');
+                if (!el) return;
+                const len = plainText(getDescContent()).length;
+                const lim = mpLimit(descActiveMp);
+                if (lim >= 100000) {
+                    el.textContent = len + ' characters (' + (MP_LABELS[descActiveMp] || 'this marketplace') + ': no hard limit)';
+                    el.classList.remove('at-limit');
+                    return;
+                }
+                el.textContent = len + ' / ' + lim + ' plain-text characters';
+                el.classList.toggle('at-limit', len > lim);
+            }
+
+            function ensureDescEditor() {
+                if (descEditor) return Promise.resolve(descEditor);
+                if (typeof tinymce === 'undefined') return Promise.resolve(null);
+                if (descEditorPromise) return descEditorPromise;
+                descEditorPromise = tinymce.init({
+                    selector: '#vm-desc-html',
+                    license_key: 'gpl',
+                    height: 380,
+                    menubar: false,
+                    plugins: 'lists link image table code',
+                    toolbar: 'undo redo | blocks | bold italic | bullist numlist | table | link image | removeformat code',
+                    branding: false,
+                    promotion: false,
+                    convert_urls: false,
+                    content_style: 'img{max-width:100%;height:auto;} table{max-width:100%;border-collapse:collapse;} body{font-size:14px;}',
+                    setup: function (editor) {
+                        editor.on('input change keyup paste Undo Redo SetContent', updateDescCount);
+                    }
+                }).then(function (eds) {
+                    descEditor = (eds && eds[0]) || (tinymce.get ? tinymce.get('vm-desc-html') : null);
+                    return descEditor;
+                }).catch(function () { return null; });
+                return descEditorPromise;
+            }
+
+            function setDescContent(html) {
+                return ensureDescEditor().then(function (ed) {
+                    descSetting = true;
+                    if (ed) ed.setContent(String(html || ''));
+                    else document.getElementById('vm-desc-html').value = String(html || '');
+                    descSetting = false;
+                    updateDescCount();
+                });
+            }
+
+            function buildDescTabs() {
+                document.getElementById('vm-desc-tabs').innerHTML = ALL_MP.map(function (mp) {
+                    return '<button type="button" class="btn btn-sm btn-outline-secondary mp-tab" data-mp="' + escapeHtml(mp) + '">' + escapeHtml(MP_LABELS[mp] || mp) + '</button>';
+                }).join('');
+            }
+
+            function selectDescMp(mp) {
+                descActiveMp = mp;
+                document.querySelectorAll('#vm-desc-tabs .mp-tab').forEach(function (b) {
+                    const on = b.getAttribute('data-mp') === mp;
+                    b.classList.toggle('btn-primary', on);
+                    b.classList.toggle('btn-outline-secondary', !on);
+                });
+                document.getElementById('vm-desc-active-label').textContent = (MP_LABELS[mp] || mp) + ' — max ' + (MP_LIMIT_LABELS[mp] || (mpLimit(mp) + ' plain-text characters'));
+                updateDescCount();
+            }
+
+            function descLoading(text) {
+                const wrap = document.getElementById('vm-desc-loading');
+                if (text) document.getElementById('vm-desc-loading-text').textContent = text;
+                wrap.classList.toggle('d-none', !text);
+            }
+
+            function descButtonLoading(id, loading, text) {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                if (!btn.dataset.originalText) btn.dataset.originalText = btn.innerHTML;
+                btn.disabled = !!loading;
+                btn.innerHTML = loading ? '<i class="fas fa-spinner fa-spin me-1"></i>' + escapeHtml(text || 'Loading...') : btn.dataset.originalText;
+            }
+
+            function descApi(url, payload) {
+                return fetch(url, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+                    body: JSON.stringify(payload)
+                }).then(function (res) { return res.json().catch(function () { return {}; }); });
+            }
+
+            function descFail(text) {
+                aplusStatus.className = 'small me-auto text-danger';
+                aplusStatus.textContent = text;
+            }
+
+            function descNote(text) {
+                aplusStatus.className = 'small me-auto text-success';
+                aplusStatus.textContent = text;
+            }
+
+            // Fetch the ACTIVE marketplace's live description of this row's SKU into the editor.
+            function descFetchLive() {
+                const sku = panelRow && panelRow.sku ? String(panelRow.sku) : '';
+                const mp = descActiveMp;
+                if (!sku || !mp) return;
+                descLoading('Fetching live from ' + (MP_LABELS[mp] || mp) + '…');
+                descButtonLoading('vm-desc-fetch-live', true, 'Fetching...');
+                descApi('/product-description/pull-marketplace', { sku: sku, marketplace: mp }).then(function (res) {
+                    if (res.success) {
+                        setDescContent(String(res.description_html || res.description_plain || ''));
+                        descNote(res.message || ('Fetched ' + (MP_LABELS[mp] || mp) + '. Review, then Save all.'));
+                    } else {
+                        descFail(res.message || 'Fetch failed.');
+                    }
+                }).catch(function (e) {
+                    descFail('Fetch failed: ' + e.message);
+                }).finally(function () {
+                    descLoading('');
+                    descButtonLoading('vm-desc-fetch-live', false);
+                });
+            }
+
+            // Load the stored Shopify A+ content of this row's SKU (fetching it once if nothing is stored yet).
+            function descFetchAplus() {
+                const sku = panelRow && panelRow.sku ? String(panelRow.sku) : '';
+                if (!sku) return;
+                descLoading('Loading A+ content for ' + sku + '…');
+                descButtonLoading('vm-desc-fetch-aplus', true, 'Fetching...');
+                const headers = { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf };
+                fetch('/product-description/shopify-aplus?sku=' + encodeURIComponent(sku), { credentials: 'same-origin', headers: headers })
+                    .then(function (res) { return res.json().catch(function () { return {}; }); })
+                    .then(function (stored) {
+                        const html = String(((stored && stored.data) || {}).html || '');
+                        if (stored && stored.success && html.trim() !== '') return stored;
+                        return descApi('/product-description/shopify-aplus/fetch', { sku: sku, force: false });
+                    })
+                    .then(function (out) {
+                        const html = String(((out && out.data) || {}).html || '');
+                        if (!out || !out.success || html.trim() === '') {
+                            descFail((out && out.message) || 'No A+ content available for this SKU.');
+                            return;
+                        }
+                        setDescContent(html);
+                        descNote('A+ content loaded. Review, then Save all.');
+                    })
+                    .catch(function (e) { descFail('A+ fetch failed: ' + e.message); })
+                    .finally(function () {
+                        descLoading('');
+                        descButtonLoading('vm-desc-fetch-aplus', false);
+                    });
+            }
+
+            // AI-generate a description for the ACTIVE marketplace at its tier length.
+            function descAiGenerate() {
+                const mp = descActiveMp;
+                if (!mp || !panelRow) return;
+                descLoading('Generating description for ' + (MP_LABELS[mp] || mp) + ' (max ' + (MP_LIMIT_LABELS[mp] || mpLimit(mp)) + ')…');
+                descButtonLoading('vm-desc-ai', true, 'Generating...');
+                descApi('/product-description/generate', {
+                    product_name: String(panelRow.title || parentLabel(panelRow) || ''),
+                    current_text: plainText(getDescContent()),
+                    tier: mpTier(mp),
+                    max_chars: mpLimit(mp),
+                    marketplace: mp
+                }).then(function (res) {
+                    if (res.success && res.description) {
+                        setDescContent(String(res.description));
+                        descNote('AI description generated (' + plainText(res.description).length + ' chars). Review, then Save all.');
+                    } else {
+                        descFail(res.message || 'AI failed.');
+                    }
+                }).catch(function (e) {
+                    descFail('AI error: ' + e.message);
+                }).finally(function () {
+                    descLoading('');
+                    descButtonLoading('vm-desc-ai', false);
+                });
+            }
+
+            buildDescTabs();
+            document.getElementById('vm-desc-tabs')?.addEventListener('click', function (e) {
+                const tab = e.target.closest('.mp-tab');
+                if (tab) selectDescMp(tab.getAttribute('data-mp'));
+            });
+            document.getElementById('vm-desc-fetch-live')?.addEventListener('click', descFetchLive);
+            document.getElementById('vm-desc-fetch-aplus')?.addEventListener('click', descFetchAplus);
+            document.getElementById('vm-desc-ai')?.addEventListener('click', descAiGenerate);
+            aplusModalEl?.addEventListener('shown.bs.modal', function () {
+                ensureDescEditor().then(function () {
+                    setDescContent(panelRow ? (panelRow.aplus || '') : '');
+                    selectDescMp(descActiveMp || ALL_MP[0] || '');
+                });
+            });
+
+            function openAplusModal(row) {
+                panelRow = row;
+                document.getElementById('vm-desc-product').textContent = parentLabel(row);
+                document.getElementById('vm-desc-sku').textContent = row.sku ? '· Fetch live / Fetch A+ read SKU ' + row.sku : '';
+                aplusStatus.textContent = '';
+                descLoading('');
+                bootstrap.Modal.getOrCreateInstance(aplusModalEl).show();
+            }
+
+            document.getElementById('vm-aplus-save')?.addEventListener('click', function () {
+                const btn = this;
+                if (!panelRow || btn.disabled) return;
+                btn.disabled = true;
+                aplusStatus.className = 'small me-auto text-muted';
+                aplusStatus.textContent = 'Saving…';
+                const row = panelRow;
+                postJson(saveUrl, { id: row.id, parent: row.parent || '', aplus: getDescContent() }).then(function (json) {
+                    applyParentPatch(row, { aplus: json.aplus || '' });
+                    bootstrap.Modal.getOrCreateInstance(aplusModalEl).hide();
+                    setStatus('Saved A+ content for ' + parentLabel(row), true);
+                }).catch(function (err) {
+                    aplusStatus.className = 'small me-auto text-danger';
+                    aplusStatus.textContent = err.message || 'Save failed.';
+                }).finally(function () {
+                    btn.disabled = false;
+                });
+            });
+
+            function renderImagesGrid() {
+                const grid = document.getElementById('vm-images-grid');
+                const list = (panelRow && Array.isArray(panelRow.parent_images)) ? panelRow.parent_images : [];
+                document.getElementById('vm-images-count').textContent = list.length + (list.length === 1 ? ' image' : ' images') + ' uploaded';
+                document.getElementById('vm-images-download').disabled = !list.length;
+                if (!list.length) {
+                    grid.innerHTML = '<div class="small text-muted">No parent images yet. Choose files above to upload.</div>';
+                    return;
+                }
+                grid.innerHTML = list.map(function (url, i) {
+                    return '<div class="vm-img-tile"><a href="' + escapeHtml(url) + '" target="_blank" rel="noopener"><img src="' + escapeHtml(url) + '" alt=""></a>'
+                        + '<span class="vm-img-no">' + (i + 1) + '</span>'
+                        + '<a class="vm-img-dl" href="' + escapeHtml(url) + '" download title="Download this image"><i class="bi bi-download"></i></a>'
+                        + '<button type="button" class="vm-img-del" data-url="' + escapeHtml(url) + '" title="Remove this image">&times;</button></div>';
+                }).join('');
+            }
+
+            function downloadParentImages(row, statusTarget) {
+                const target = statusTarget || null;
+                const say = function (text, ok) {
+                    if (target) {
+                        target.className = 'small me-auto ' + (ok ? 'text-success' : 'text-danger');
+                        target.textContent = text;
+                    } else {
+                        setStatus(text, ok);
+                    }
+                };
+                say('Preparing the ZIP…', true);
+                fetch(imagesDownloadUrl + '?parent=' + encodeURIComponent(parentLabel(row)), {
+                    headers: { 'X-CSRF-TOKEN': csrf }
+                }).then(function (res) {
+                    if (!res.ok) {
+                        return res.json().catch(function () { return null; }).then(function (json) {
+                            throw new Error((json && json.message) || 'Download failed.');
+                        });
+                    }
+                    return res.blob();
+                }).then(function (blob) {
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = parentLabel(row).replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') + '-images.zip';
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    setTimeout(function () { URL.revokeObjectURL(link.href); }, 2000);
+                    say('Downloaded the images of ' + parentLabel(row) + '.', true);
+                }).catch(function (err) {
+                    say(err.message || 'Download failed.', false);
+                });
+            }
+
+            document.getElementById('vm-images-download')?.addEventListener('click', function () {
+                if (panelRow) downloadParentImages(panelRow, imagesStatus);
+            });
+
+            function openImagesModal(row) {
+                panelRow = row;
+                document.getElementById('vm-images-title').textContent = 'Parent Images — ' + parentLabel(row);
+                imagesStatus.textContent = '';
+                document.getElementById('vm-images-file').value = '';
+                renderImagesGrid();
+                bootstrap.Modal.getOrCreateInstance(imagesModalEl).show();
+            }
+
+            document.getElementById('vm-images-file')?.addEventListener('change', function () {
+                const files = Array.from(this.files || []);
+                this.value = '';
+                if (!files.length || !panelRow) return;
+                const row = panelRow;
+                const body = new FormData();
+                body.append('parent', parentLabel(row));
+                files.forEach(function (file) { body.append('images[]', file); });
+                imagesStatus.className = 'small me-auto text-muted';
+                imagesStatus.textContent = 'Uploading ' + files.length + ' image' + (files.length === 1 ? '' : 's') + '…';
+                fetch(imagesUrl, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                    body: body
+                }).then(function (res) {
+                    return res.json().catch(function () { return null; }).then(function (json) {
+                        if (!res.ok || !json || json.success === false) {
+                            throw new Error((json && (json.message || (json.errors && Object.values(json.errors)[0][0]))) || 'Upload failed.');
+                        }
+                        return json;
+                    });
+                }).then(function (json) {
+                    applyParentPatch(row, { parent_images: json.parent_images || [] });
+                    renderImagesGrid();
+                    imagesStatus.className = 'small me-auto text-success';
+                    imagesStatus.textContent = json.message || 'Uploaded.';
+                }).catch(function (err) {
+                    imagesStatus.className = 'small me-auto text-danger';
+                    imagesStatus.textContent = err.message || 'Upload failed.';
+                });
+            });
+
+            document.getElementById('vm-images-grid')?.addEventListener('click', function (event) {
+                const btn = event.target.closest('.vm-img-del');
+                if (!btn || !panelRow) return;
+                const row = panelRow;
+                imagesStatus.className = 'small me-auto text-muted';
+                imagesStatus.textContent = 'Removing…';
+                postJson(imageDeleteUrl, { parent: parentLabel(row), url: btn.getAttribute('data-url') || '' }).then(function (json) {
+                    applyParentPatch(row, { parent_images: json.parent_images || [] });
+                    renderImagesGrid();
+                    imagesStatus.className = 'small me-auto text-success';
+                    imagesStatus.textContent = json.message || 'Removed.';
+                }).catch(function (err) {
+                    imagesStatus.className = 'small me-auto text-danger';
+                    imagesStatus.textContent = err.message || 'Could not remove the image.';
                 });
             });
 

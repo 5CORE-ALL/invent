@@ -345,7 +345,49 @@
                 return col(title, field, Object.assign({ headerFilter: false, headerSort: false }, extra || {}));
             }
 
+            let upsSheet = false;
+            let directionBeforeUps = 'debit';
+
+            // UPS data sheet: the columns of the UPS adjustments CSV, in the file's order.
+            function upsSheetColumns() {
+                const text = (title, key, extra) => plain(title, 'ups_' + key, Object.assign({ minWidth: 110 }, extra || {}));
+                const wrap = { minWidth: 280, formatter: 'textarea' };
+                const amount = (title, key) => text(title, key, {
+                    hozAlign: 'right', minWidth: 110,
+                    formatter: c => {
+                        const v = String(c.getValue() || '');
+                        return v.indexOf('-') !== -1 ? '<span class="vc-debit">' + esc(v) + '</span>' : esc(v);
+                    },
+                });
+                return [
+                    {
+                        title: '', field: '_view', width: 44, headerSort: false, hozAlign: 'center', frozen: true,
+                        formatter: () => '<button type="button" class="btn btn-sm btn-outline-info py-0 px-1" title="Full UPS row"><i class="fas fa-eye"></i></button>',
+                        cellClick: (e, cell) => openRaw(cell.getRow().getData()),
+                    },
+                    text('Account Number', 'accountnumber', { minWidth: 120 }),
+                    text('Invoice Number', 'invoicenumber', { minWidth: 160 }),
+                    text('Invoice Date', 'invoicedate', { minWidth: 110 }),
+                    text('Tracking Number', 'trackingnumber', { minWidth: 180 }),
+                    text('Adjustment', 'adjustment', { minWidth: 170 }),
+                    text('Pickup Record Number', 'pickuprecordnumber', { minWidth: 150 }),
+                    text('Original Address', 'originaladdress', wrap),
+                    text('Corrected Address', 'correctedaddress', wrap),
+                    text('Reference Number 1', 'referencenumber1', { minWidth: 130 }),
+                    text('Reference Number 2', 'referencenumber2', { minWidth: 150 }),
+                    text('Reference Number 3', 'referencenumber3'),
+                    text('Reference Number 4', 'referencenumber4'),
+                    text('Reference Number 5', 'referencenumber5'),
+                    text('Zone', 'zone', { minWidth: 70 }),
+                    text('Service Type', 'servicetype', { minWidth: 140 }),
+                    amount('Published Charge', 'publishedcharge'),
+                    amount('Incentives', 'incentives'),
+                    amount('Net Amount Due', 'netamountdue'),
+                ];
+            }
+
             function columns() {
+                if (document.getElementById('vcSource').value === 'ups_csv') return upsSheetColumns();
                 return [
                     {
                         title: '', field: '_view', width: 44, headerSort: false, hozAlign: 'center', frozen: true,
@@ -858,7 +900,7 @@
                 veeqo: 'Veeqo → Reports → shipping transactions, file like <code>reports-…_AsiaKolkata_original.csv</code>. Columns: <code>Type, Transaction ID, Value, Created Date, Order ID</code>. Only Chargeback Debit/Credit rows are kept.',
                 shopify: 'Shopify admin → Settings → Billing → Bills/charges export. Columns: <code>Charge category, Description, Amount, Order, Charge date</code>. Label purchases and Shipping Label Price Adjustments are imported.',
                 temu: 'Temu Seller Center → Finance → Transactions by custom date range. Columns: <code>Date, Transaction type, Order ID, Total</code>. Shipping label purchase adjustments are imported.',
-                ups: 'UPS Billing Center → invoice data download as CSV, with column headings. Columns used: <code>Charge Description, Net Amount, Tracking Number, Transaction Date, Invoice Number, Package Reference Number 1</code>. Only adjustment lines (Charge Category ADJ, address corrections, weight or other adjustments) are imported.',
+                ups: 'UPS Billing Center → adjustments CSV (file like <code>UPS 2026.csv</code>). Columns: <code>Account Number, Invoice Number, Invoice Date, Tracking Number, Adjustment, Pickup Record Number, Original Address, Corrected Address, Reference Number 1–5, Zone, Service Type, Published Charge, Incentives, Net Amount Due</code>. One line per corrected package is imported; the invoice total lines (no tracking number) are skipped. Choose Source → UPS (CSV) to see the sheet with these columns. The invoice detail CSV (<code>Charge Description, Net Amount, Tracking Number</code>) also works; only its adjustment lines are kept.',
             };
             let importModal = null;
 
@@ -904,7 +946,14 @@
                     out.textContent = json.message || (res.ok ? 'Import finished.' : 'Import failed (' + res.status + ').');
                     if (res.ok) {
                         input.value = '';
-                        refresh();
+                        if (platform === 'ups') {
+                            // Show the UPS sheet straight away.
+                            const source = document.getElementById('vcSource');
+                            source.value = 'ups_csv';
+                            source.dispatchEvent(new Event('change'));
+                        } else {
+                            refresh();
+                        }
                     }
                 } catch (err) {
                     out.className = 'small mt-2 fw-semibold text-danger';
@@ -986,6 +1035,16 @@
                 document.getElementById('vcSource').addEventListener('change', function () {
                     alignTypesToSource();
                     updateEmptyText();
+                    // UPS has its own sheet columns, and its credits (negative Net Amount Due) belong in the sheet too.
+                    const ups = this.value === 'ups_csv';
+                    if (ups !== upsSheet) {
+                        const dir = document.getElementById('vcDirection');
+                        if (ups) { directionBeforeUps = dir.value; dir.value = ''; } else { dir.value = directionBeforeUps; }
+                        upsSheet = ups;
+                        buildTable();
+                        loadSummary(true);
+                        return;
+                    }
                     refresh();
                 });
                 let timer = null;

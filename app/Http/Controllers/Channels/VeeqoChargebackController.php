@@ -65,6 +65,12 @@ class VeeqoChargebackController extends Controller
         $rows = collect($page->items())->map(function (VeeqoChargeback $row) use ($shipments) {
             $out = ['id' => $row->id] + $row->only(self::COLUMNS);
             $out['posted_at'] = $row->posted_at?->format('Y-m-d H:i');
+            if ($row->source === 'ups_csv') {
+                // UPS sheet view: the file's own columns (ups_invoicenumber, ups_netamountdue, ...).
+                foreach ((array) $row->raw as $key => $value) {
+                    $out['ups_'.strtolower((string) preg_replace('/[^a-z0-9]/i', '', (string) $key))] = is_scalar($value) ? (string) $value : '';
+                }
+            }
             foreach ((array) ($row->components ?? []) as $type => $amount) {
                 $out['c_'.$type] = $amount;
             }
@@ -629,6 +635,10 @@ class VeeqoChargebackController extends Controller
             $query->where(function (Builder $q) use ($search) {
                 foreach (self::SEARCHABLE as $column) {
                     $q->orWhere($column, 'like', '%'.$search.'%');
+                }
+                if ($request->input('source') === 'ups_csv') {
+                    // The UPS sheet shows addresses and reference numbers that only live in the stored row.
+                    $q->orWhere('raw', 'like', '%'.$search.'%');
                 }
             });
         }

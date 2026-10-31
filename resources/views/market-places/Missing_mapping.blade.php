@@ -242,6 +242,22 @@
                     },
                     bottomCalc: "sum",
                 },
+                {
+                    title: "Inventory Push",
+                    field: "inventory_push",
+                    width: 190,
+                    hozAlign: "center",
+                    headerHozAlign: "center",
+                    headerTooltip: "Channels whose API cannot update inventory are flagged here and are not counted in Missing Mapping Titas.",
+                    sorter: "string",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        if (String(row.inventory_push || '') !== 'failed') return '';
+                        const label = escapeHtml(row.inventory_push_label || 'Inventory push failed');
+                        const detail = escapeHtml(row.inventory_push_detail || '');
+                        return `<span class="badge bg-danger" title="${detail}">${label}</span>`;
+                    },
+                },
             ],
         });
 

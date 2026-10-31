@@ -85,8 +85,10 @@ final class MarketplaceMismatchInventoryPass
 
         $remaining = 0;
         // PLS is a Shopify store (2 req/s, ~7 Admin calls per SKU), so rotate batches too.
-        if (in_array($channel, ['ebay2', 'tiktok', 'tiktok2', 'shein', 'topdawg', 'pls'], true)) {
-            $sliced = MarketplaceMismatchBatch::take($channel, $mismatch, $limit);
+        // Alibaba: 3 API calls per product under a per-second app limit, so 300+ SKUs in one run always timed
+        // out (30 min job limit) and pushed nothing. Rotate 40 SKUs per run instead.
+        if (in_array($channel, ['ebay2', 'tiktok', 'tiktok2', 'shein', 'topdawg', 'pls', 'alibaba'], true)) {
+            $sliced = MarketplaceMismatchBatch::take($channel, $mismatch, $limit ?? ($channel === 'alibaba' ? 40 : null));
             $remaining = (int) ($sliced['remaining'] ?? 0);
             $mismatch = $sliced['batch'] ?? [];
             if ($mismatch === []) {
@@ -441,6 +443,16 @@ final class MarketplaceMismatchInventoryPass
                 'ebay2' => Ebay2Metric::query(),
                 default => Ebay3Metric::query(),
             };
+
+            // The portal status sync marks a SKU MISSING when neither Active nor Unsold returns it, i.e. it
+            // is gone from eBay. Pushing qty to it always fails ("Variation SKU ... not found"), and it kept
+            // counting as an Inv SKU Mismatch forever. Those SKUs belong under Not on eBay.
+            if (Schema::hasColumn($table, 'listing_status')) {
+                $query->where(function ($q) {
+                    $q->whereNull('listing_status')
+                        ->orWhereNotIn('listing_status', ['MISSING', 'NOT_LISTED']);
+                });
+            }
 
             return $query
                 ->whereNotNull('sku')
