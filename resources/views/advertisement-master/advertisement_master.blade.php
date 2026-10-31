@@ -41,7 +41,7 @@
         .adm-missing-count.is-alert { color: #dc2626; }
         .adm-missing-ads-link {
             color: #2563eb;
-            font-size: 11px;
+            font-size: 12px;
             line-height: 1;
             text-decoration: none;
         }
@@ -842,7 +842,7 @@
             }
 
             function missingAdsTitleFormatter() {
-                return '<span class="adm-missing-header">Missing <i class="fa fa-external-link" title="Arrow opens the missing page in a new tab"></i></span>';
+                return '<span class="adm-missing-header">Missing <i class="fas fa-external-link-alt" title="Link icon opens the missing page in a new tab"></i></span>';
             }
 
             function missingAdsFormatter(cell) {
@@ -854,7 +854,7 @@
                 const href = String(row.missing_ads_href || '').trim();
                 const num = '<span class="adm-missing-count' + (n > 0 ? ' is-alert' : '') + '">' + n.toLocaleString() + '</span>';
                 const arrow = href
-                    ? '<a class="adm-missing-ads-link" href="' + admEsc(href) + '" target="_blank" rel="noopener" title="Open missing page"><i class="fa fa-external-link"></i></a>'
+                    ? '<a class="adm-missing-ads-link" href="' + admEsc(href) + '" target="_blank" rel="noopener" title="Open missing page in new tab"><i class="fas fa-external-link-alt"></i></a>'
                     : '';
                 return '<span class="adm-missing-cell">' + num + arrow + '</span>' + admTrendDot(cell);
             }
