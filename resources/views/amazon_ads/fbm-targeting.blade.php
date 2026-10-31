@@ -296,6 +296,13 @@
                     Only Broad / Phrase / Exact keywords are sent. Negative keywords are not touched.
                 </p>
                 <div id="pk-summary" class="fw-semibold mb-2"></div>
+                <div id="pk-toolbar" class="d-none align-items-center gap-2 flex-wrap mb-2">
+                    <input type="text" id="pk-filter" class="form-control form-control-sm" style="max-width: 260px;"
+                           placeholder="Filter campaigns..." autocomplete="off">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="pk-sel-shown" title="Tick every campaign currently shown">Select shown</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="pk-sel-none" title="Untick every campaign currently shown">Clear shown</button>
+                    <span class="small text-muted ms-auto" id="pk-sel-text"></span>
+                </div>
                 <div id="pk-table-wrap" style="max-height: 420px; overflow-y: auto;"></div>
             </div>
             <div class="modal-footer">
@@ -1528,7 +1535,7 @@
     const pkWrap = document.getElementById('pk-table-wrap');
     const pkModalEl = document.getElementById('pushKwModal');
 
-    function pkPost(dryRun) {
+    function pkPost(dryRun, selected) {
         return fetch(pushUrl, {
             method: 'POST',
             headers: {
@@ -1537,7 +1544,7 @@
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRF-TOKEN': csrf,
             },
-            body: JSON.stringify({ dry_run: dryRun }),
+            body: JSON.stringify(selected ? { dry_run: dryRun, selected: selected } : { dry_run: dryRun }),
         }).then(function (res) {
             return res.json().catch(function () { return {}; }).then(function (b) {
                 return { ok: res.ok && b.success !== false, body: b };
@@ -1545,29 +1552,119 @@
         });
     }
 
-    function pkRender(body, done) {
-        const rows = body.rows || [];
+    // Check results: one row per campaign with a checkbox; only ticked campaigns are pushed.
+    const pkEl = {
+        toolbar: document.getElementById('pk-toolbar'),
+        filter: document.getElementById('pk-filter'),
+        selText: document.getElementById('pk-sel-text'),
+        selShown: document.getElementById('pk-sel-shown'),
+        selNone: document.getElementById('pk-sel-none'),
+    };
+    const pkState = { rows: [], selected: new Set(), filter: '' };
+    const pkKey = function (r) { return String(r.type) + '|' + String(r.campaign_id); };
+
+    function pkShownRows() {
+        const q = pkState.filter.trim().toLowerCase();
+        if (!q) return pkState.rows;
+        return pkState.rows.filter(function (r) {
+            return String(r.campaign_name || '').toLowerCase().indexOf(q) >= 0 || String(r.type || '').toLowerCase() === q || String(r.parent || '').toLowerCase().indexOf(q) >= 0;
+        });
+    }
+
+    function pkUpdateSelection() {
+        let camps = 0, kws = 0;
+        pkState.rows.forEach(function (r) {
+            if (pkState.selected.has(pkKey(r))) { camps++; kws += Number(r.to_add || 0); }
+        });
+        pkEl.selText.textContent = camps.toLocaleString() + ' of ' + pkState.rows.length.toLocaleString() + ' campaigns selected · ' + kws.toLocaleString() + ' keyword(s)';
+        pkConfirm.innerHTML = '<i class="fas fa-upload"></i> Push selected (' + camps.toLocaleString() + ')';
+        pkConfirm.disabled = camps === 0;
+        const all = document.getElementById('pk-all');
+        if (all) {
+            const shown = pkShownRows();
+            const n = shown.filter(function (r) { return pkState.selected.has(pkKey(r)); }).length;
+            all.checked = shown.length > 0 && n === shown.length;
+            all.indeterminate = n > 0 && n < shown.length;
+        }
+    }
+
+    function pkDraw() {
+        const rows = pkShownRows();
         if (!rows.length) {
-            pkWrap.innerHTML = '<span class="aft-empty">Nothing to push. Every campaign already has these keywords.</span>';
+            pkWrap.innerHTML = '<span class="aft-empty">No campaigns match the filter</span>';
+            pkUpdateSelection();
             return;
         }
         pkWrap.innerHTML = '<table class="table table-sm table-bordered align-middle mb-0"><thead class="table-light"><tr>' +
-            '<th style="width:70px">Type</th><th>Campaign</th><th style="width:140px" class="text-end">' + (done ? 'Added' : 'To add') + '</th>' +
-            (done ? '<th style="width:90px" class="text-end">Failed</th><th>Note</th>' : '') + '</tr></thead><tbody>' +
+            '<th style="width:36px"><input type="checkbox" id="pk-all" title="Select all shown"></th>' +
+            '<th style="width:70px">Type</th><th>Campaign</th><th style="width:140px" class="text-end">To add</th></tr></thead><tbody>' +
+            rows.map(function (r) {
+                const k = pkKey(r);
+                return '<tr><td><input type="checkbox" class="pk-row" data-key="' + escapeHtml(k) + '"' + (pkState.selected.has(k) ? ' checked' : '') + '></td>' +
+                    '<td><span class="badge ' + (r.type === 'HL' ? 'bg-info' : 'bg-primary') + '">' + escapeHtml(r.type) + '</span></td>' +
+                    '<td>' + escapeHtml(r.campaign_name) + '</td>' +
+                    '<td class="text-end">' + Number(r.to_add || 0).toLocaleString() + '</td></tr>';
+            }).join('') + '</tbody></table>';
+        pkUpdateSelection();
+    }
+
+    function pkRender(body, done) {
+        const rows = body.rows || [];
+        if (!rows.length) {
+            pkEl.toolbar.classList.add('d-none');
+            pkEl.toolbar.classList.remove('d-flex');
+            pkWrap.innerHTML = '<span class="aft-empty">Nothing to push. Every campaign already has these keywords.</span>';
+            return;
+        }
+        if (!done) {
+            pkState.rows = rows;
+            pkState.selected = new Set(rows.map(pkKey)); // everything ticked to start with
+            pkState.filter = '';
+            pkEl.filter.value = '';
+            pkEl.toolbar.classList.remove('d-none');
+            pkEl.toolbar.classList.add('d-flex');
+            pkDraw();
+            return;
+        }
+        pkEl.toolbar.classList.add('d-none');
+        pkEl.toolbar.classList.remove('d-flex');
+        pkWrap.innerHTML = '<table class="table table-sm table-bordered align-middle mb-0"><thead class="table-light"><tr>' +
+            '<th style="width:70px">Type</th><th>Campaign</th><th style="width:140px" class="text-end">Added</th>' +
+            '<th style="width:90px" class="text-end">Failed</th><th>Note</th></tr></thead><tbody>' +
             rows.map(function (r) {
                 return '<tr><td><span class="badge ' + (r.type === 'HL' ? 'bg-info' : 'bg-primary') + '">' + escapeHtml(r.type) + '</span></td>' +
                     '<td>' + escapeHtml(r.campaign_name) + '</td>' +
-                    '<td class="text-end">' + (done ? Number(r.added || 0) + ' / ' + Number(r.to_add || 0) : Number(r.to_add || 0).toLocaleString()) + '</td>' +
-                    (done ? '<td class="text-end ' + (r.failed ? 'text-danger fw-bold' : '') + '">' + Number(r.failed || 0) + '</td><td class="small">' + escapeHtml(r.message || '') + '</td>' : '') +
+                    '<td class="text-end">' + Number(r.added || 0) + ' / ' + Number(r.to_add || 0) + '</td>' +
+                    '<td class="text-end ' + (r.failed ? 'text-danger fw-bold' : '') + '">' + Number(r.failed || 0) + '</td><td class="small">' + escapeHtml(r.message || '') + '</td>' +
                     '</tr>';
             }).join('') + '</tbody></table>';
     }
+
+    pkWrap.addEventListener('change', function (e) {
+        const t = e.target;
+        if (t && t.id === 'pk-all') {
+            pkShownRows().forEach(function (r) { t.checked ? pkState.selected.add(pkKey(r)) : pkState.selected.delete(pkKey(r)); });
+            pkDraw();
+        } else if (t && t.classList && t.classList.contains('pk-row')) {
+            const k = t.getAttribute('data-key');
+            t.checked ? pkState.selected.add(k) : pkState.selected.delete(k);
+            // Rows that point at the same Amazon campaign id (renamed campaigns, parents sharing one HL) move together.
+            pkWrap.querySelectorAll('.pk-row').forEach(function (cb) { cb.checked = pkState.selected.has(cb.getAttribute('data-key')); });
+            pkUpdateSelection();
+        }
+    });
+    pkEl.filter.addEventListener('input', function () { pkState.filter = pkEl.filter.value; pkDraw(); });
+    pkEl.selShown.addEventListener('click', function () { pkShownRows().forEach(function (r) { pkState.selected.add(pkKey(r)); }); pkDraw(); });
+    pkEl.selNone.addEventListener('click', function () { pkShownRows().forEach(function (r) { pkState.selected.delete(pkKey(r)); }); pkDraw(); });
 
     function pkOpen() {
         pkSummary.className = 'fw-semibold mb-2';
         pkSummary.textContent = 'Checking what is missing on Amazon…';
         pkWrap.innerHTML = '<span class="aft-empty">Loading…</span>';
         pkConfirm.disabled = true;
+        pkConfirm.innerHTML = '<i class="fas fa-upload"></i> Push selected';
+        pkEl.toolbar.classList.add('d-none');
+        pkEl.toolbar.classList.remove('d-flex');
         if (window.bootstrap && bootstrap.Modal) {
             bootstrap.Modal.getOrCreateInstance(pkModalEl).show();
         } else if (window.jQuery) {
@@ -1589,9 +1686,9 @@
                 return;
             }
             pkSummary.textContent = b.message || '';
-            pkRender(b, false);
+            pkRender(b, false); // enables / labels the button from the ticked campaigns
             const t = b.totals || {};
-            pkConfirm.disabled = (Number(t.kw_to_add || 0) + Number(t.hl_to_add || 0)) === 0;
+            if ((Number(t.kw_to_add || 0) + Number(t.hl_to_add || 0)) === 0) pkConfirm.disabled = true;
         }).catch(function (e) {
             pkSummary.className = 'fw-semibold mb-2 text-danger';
             pkSummary.textContent = 'Failed: ' + e.message;
@@ -1602,14 +1699,16 @@
 
     if (pkConfirm) {
         pkConfirm.addEventListener('click', function () {
-            if (!confirm('This adds keywords to live campaigns on Amazon. Continue?')) return;
+            const selected = Array.from(pkState.selected);
+            if (!selected.length) return;
+            if (!confirm('This adds keywords to ' + selected.length.toLocaleString() + ' selected campaign(s) on Amazon. Continue?')) return;
             const original = pkConfirm.innerHTML;
             pkConfirm.disabled = true;
             pkConfirm.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Pushing…';
             pkSummary.className = 'fw-semibold mb-2';
             pkSummary.textContent = 'Starting the push…';
             // The push runs in the background on the server (it takes many minutes); poll its progress here.
-            pkPost(false).then(function (r) {
+            pkPost(false, selected).then(function (r) {
                 const b = r.body || {};
                 if (!r.ok) {
                     pkSummary.className = 'fw-semibold mb-2 text-danger';
@@ -1619,6 +1718,8 @@
                     pkConfirm.innerHTML = original;
                     return;
                 }
+                pkEl.toolbar.classList.add('d-none');
+                pkEl.toolbar.classList.remove('d-flex');
                 pkPollPush(original);
             }).catch(function (e) {
                 pkSummary.className = 'fw-semibold mb-2 text-danger';

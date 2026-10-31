@@ -29,10 +29,13 @@ class AmazonKwTargetingPushService
      * @param  list<array{parent: string, campaign_id: string, campaign_name: string}>  $kwCampaigns  non-PT SP campaigns
      * @return array{rows: list<array<string, mixed>>, totals: array<string, int>, errors: list<string>}
      */
-    public function run(array $kwCampaigns, bool $dryRun, ?callable $progress = null): array
+    public function run(array $kwCampaigns, bool $dryRun, ?callable $progress = null, ?array $only = null): array
     {
         $errors = [];
         $rows = [];
+        // $only = ["KW|<campaign id>", "HL|<campaign id>", ...]: push just those campaigns (null = every campaign).
+        $onlySet = $only === null ? null : array_fill_keys(array_map('strval', $only), true);
+        $picked = static fn (string $type, string $id): bool => $onlySet === null || isset($onlySet[$type.'|'.$id]);
         // One access token for the whole run (hundreds of calls) instead of a token refresh per call.
         $this->ads->reuseAccessToken();
         $report = function (string $note) use (&$rows, $progress): void {
@@ -78,7 +81,7 @@ class AmazonKwTargetingPushService
         try {
             // Only campaigns that have app keywords can be missing something, so only those are read from Amazon
             // (and in parallel, with one access token) - this is what made the check so slow.
-            $liveIds = array_values(array_filter($kwIds, static fn (string $id) => ! empty($appByCampaign[$id])));
+            $liveIds = array_values(array_filter($kwIds, static fn (string $id) => ! empty($appByCampaign[$id]) && $picked('KW', $id)));
             foreach ($this->ads->listKeywordsByCampaignIdsConcurrent($liveIds) as $kw) {
                 $cid = trim((string) ($kw['campaignId'] ?? ''));
                 $text = trim((string) ($kw['keywordText'] ?? ''));
@@ -110,7 +113,7 @@ class AmazonKwTargetingPushService
                     $byParent[strtoupper($c['parent'])][$k] = $kw;
                 }
             }
-            if ($missing === []) {
+            if ($missing === [] || ! $picked('KW', $cid)) {
                 continue;
             }
 
@@ -150,7 +153,7 @@ class AmazonKwTargetingPushService
         $hlByParent = $this->hlCampaignsByParent();
         $hlIds = [];
         foreach ($byParent as $parentKey => $_) {
-            if (isset($hlByParent[$parentKey])) {
+            if (isset($hlByParent[$parentKey]) && $picked('HL', (string) $hlByParent[$parentKey]['id'])) {
                 $hlIds[$hlByParent[$parentKey]['id']] = true;
             }
         }

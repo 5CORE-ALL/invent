@@ -28,7 +28,8 @@ class AmazonKwTargetingPush extends Command
                 false,
                 function (array $rows, array $totals, string $note) use ($page): void {
                     $page->recordPushState(['message' => $note, 'totals' => $totals, 'rows' => $rows]);
-                }
+                },
+                $page->pushSelection() // only the campaigns ticked in the check
             );
 
             $payload = $page->pushPayload($r, false);

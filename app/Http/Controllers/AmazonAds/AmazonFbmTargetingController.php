@@ -642,7 +642,17 @@ class AmazonFbmTargetingController extends Controller
         // The real push sends tens of thousands of keywords - far longer than a web request may last - so it runs
         // in a background process; the page polls pushStatus() for progress.
         if (! $dryRun) {
-            return $this->startBackgroundPush();
+            // Only the campaigns ticked in the check ("KW|<id>" / "HL|<id>") are pushed; none given = all of them.
+            $v = $request->validate([
+                'selected' => ['nullable', 'array', 'max:5000'],
+                'selected.*' => ['string', 'regex:/^(KW|HL)\|\d{1,32}$/'],
+            ]);
+            $selected = array_key_exists('selected', $v) && $v['selected'] !== null ? array_values(array_unique($v['selected'])) : null;
+            if ($selected === []) {
+                return response()->json(['success' => false, 'message' => 'Select at least one campaign to push.'], 422);
+            }
+
+            return $this->startBackgroundPush($selected);
         }
 
         @set_time_limit(300);
@@ -690,13 +700,15 @@ class AmazonFbmTargetingController extends Controller
 
     private const PUSH_LOCK = 'amz_fbm_push_lock';
 
+    private const PUSH_SELECTION = 'amz_fbm_push_selection';
+
     /** The push is treated as dead when its background process has not reported progress for this long. */
     private const PUSH_STALE_SECONDS = 300;
 
     /**
      * Start the real push in the background (one at a time) and return at once.
      */
-    protected function startBackgroundPush(): JsonResponse
+    protected function startBackgroundPush(?array $selected = null): JsonResponse
     {
         $state = Cache::get(self::PUSH_STATE);
         $alive = is_array($state) && ($state['status'] ?? '') === 'running'
@@ -707,6 +719,7 @@ class AmazonFbmTargetingController extends Controller
 
         Cache::forget(self::PUSH_LOCK);
         Cache::put(self::PUSH_LOCK, 1, now()->addHours(3));
+        Cache::put(self::PUSH_SELECTION, $selected, now()->addHours(6)); // read by the background command
         Cache::put(self::PUSH_STATE, [
             'status' => 'running', 'started_at' => now()->toDateTimeString(), 'heartbeat' => time(),
             'by' => Auth::user()?->name,
@@ -774,6 +787,18 @@ class AmazonFbmTargetingController extends Controller
             return;
         }
         exec('nohup '.escapeshellarg($php).' '.escapeshellarg($artisan).' '.$command.' >> '.escapeshellarg($log).' 2>&1 &');
+    }
+
+    /**
+     * Campaigns picked for the running push ("KW|<id>" / "HL|<id>"); null = all.
+     *
+     * @return list<string>|null
+     */
+    public function pushSelection(): ?array
+    {
+        $sel = Cache::get(self::PUSH_SELECTION);
+
+        return is_array($sel) ? array_values($sel) : null;
     }
 
     /**
