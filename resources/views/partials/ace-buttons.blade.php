@@ -15,6 +15,9 @@
     .ace-btn-list { background: linear-gradient(135deg, #0f766e, #14b8a6); box-shadow: 0 4px 12px rgba(15, 118, 110, .3); }
     .ace-modal .modal-header { background: linear-gradient(120deg, #6d28d9, #3b82f6); color: #fff; border: 0; }
     .ace-modal .btn-close { filter: invert(1); }
+    /* The create / edit form uses the full page height (the body scrolls, header + buttons stay put). */
+    #{{ $aceUid }}_newModal .modal-dialog { height: calc(100vh - 1rem); max-height: none; margin-top: .5rem; margin-bottom: .5rem; }
+    #{{ $aceUid }}_newModal .modal-content { height: 100%; max-height: 100%; }
     .ace-modal .modal-content { border: 0; border-radius: 16px; overflow: hidden; }
     .ace-sec { background: #f8faff; border: 1px solid #e5eaf7; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
     .ace-sec-title { font-weight: 800; color: #3730a3; font-size: .85rem; letter-spacing: .03em; text-transform: uppercase; margin-bottom: 8px; }
@@ -22,6 +25,13 @@
     .ace-cond .ace-c-col { flex: 5; } .ace-cond .ace-c-op { flex: 3; } .ace-cond .ace-c-val { flex: 4; }
     .ace-cond .ace-c-del { border: 0; background: #fee2e2; color: #b91c1c; border-radius: 50%; width: 26px; height: 26px; line-height: 1; flex-shrink: 0; }
     .ace-cond .ace-c-del:hover { background: #b91c1c; color: #fff; }
+    .ace-cpick { min-width: 0; }
+    .ace-cpick .ace-cp-btn { text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ace-cp-menu { border: 1px solid #dbe3f3; border-radius: 8px; background: #fff; padding: 6px; margin-top: 4px; }
+    .ace-cp-list { max-height: 220px; overflow: auto; margin-top: 4px; }
+    .ace-cp-item { display: flex; align-items: center; gap: 8px; padding: 3px 6px; margin: 0; font-size: .82rem; cursor: pointer; border-radius: 6px; }
+    .ace-cp-item:hover { background: #eef2ff; }
+    .ace-cp-links a { font-size: .75rem; font-weight: 600; cursor: pointer; text-decoration: none; }
     .ace-pick { border: 1px solid #dbe3f3; border-radius: 8px; background: #fff; padding: 6px; }
     #{{ $aceUid }}_alist { max-height: 140px; overflow: auto; }
     .ace-pick-item { display: flex; align-items: center; gap: 8px; padding: 3px 6px; margin: 0; font-size: .82rem; cursor: pointer; border-radius: 6px; }
@@ -58,7 +68,7 @@
             <div class="modal-header">
                 <div>
                     <h5 class="modal-title mb-0" id="{{ $aceUid }}_newTitle">&#9889; Auto Task Event</h5>
-                    <small class="opacity-75">Create a one-time task automatically when a column matches</small>
+                    <small class="opacity-75" id="{{ $aceUid }}_newSub">Create a one-time task automatically when a column matches</small>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -69,25 +79,53 @@
                 </div>
 
                 <div class="ace-sec">
-                    <div class="ace-sec-title">1 &middot; When this column&hellip;</div>
-                    <div id="{{ $aceUid }}_conds"></div>
-                    <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="{{ $aceUid }}_addCond" title="Add another condition">
-                            <i class="ri-add-line"></i> Add condition
-                        </button>
-                        <select class="form-select form-select-sm d-none" style="width:auto" id="{{ $aceUid }}_mode" title="How the conditions combine">
-                            <option value="all">Match ALL conditions (AND)</option>
-                            <option value="any">Match ANY condition (OR)</option>
-                        </select>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="{{ $aceUid }}_previewBtn">Preview matches</button>
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                        <div class="ace-sec-title mb-0" id="{{ $aceUid }}_secTitle">1 &middot; When this column&hellip;</div>
+                        <div class="btn-group btn-group-sm d-none" role="group" id="{{ $aceUid }}_kindWrap" aria-label="What triggers this event">
+                            <input type="radio" class="btn-check" name="{{ $aceUid }}_kind" id="{{ $aceUid }}_kc" value="col" checked>
+                            <label class="btn btn-outline-primary" for="{{ $aceUid }}_kc">Column block</label>
+                            <input type="radio" class="btn-check" name="{{ $aceUid }}_kind" id="{{ $aceUid }}_kb" value="badge">
+                            <label class="btn btn-outline-primary" for="{{ $aceUid }}_kb">Badges block</label>
+                        </div>
                     </div>
-                    <div class="ace-hint mt-2" id="{{ $aceUid }}_preview"></div>
-                    <div class="mt-2 pt-2 border-top">
+
+                    <div id="{{ $aceUid }}_blockCols">
+                        <div id="{{ $aceUid }}_conds"></div>
+                        <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="{{ $aceUid }}_addCond" title="Add another condition">
+                                <i class="ri-add-line"></i> Add condition
+                            </button>
+                            <select class="form-select form-select-sm d-none" style="width:auto" id="{{ $aceUid }}_mode" title="How the conditions combine">
+                                <option value="all">Match ALL conditions (AND)</option>
+                                <option value="any">Match ANY condition (OR)</option>
+                            </select>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="{{ $aceUid }}_previewBtn">Preview matches</button>
+                        </div>
+                        <div class="ace-hint mt-2" id="{{ $aceUid }}_preview"></div>
+                    </div>
+
+                    <div id="{{ $aceUid }}_blockBadges" class="d-none">
+                        <div id="{{ $aceUid }}_bconds"></div>
+                        <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="{{ $aceUid }}_addBadge" title="Add another badge condition">
+                                <i class="ri-add-line"></i> Add condition
+                            </button>
+                            <select class="form-select form-select-sm d-none" style="width:auto" id="{{ $aceUid }}_bmode" title="How the conditions combine">
+                                <option value="all">Match ALL conditions (AND)</option>
+                                <option value="any">Match ANY condition (OR)</option>
+                            </select>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="{{ $aceUid }}_bpreviewBtn">Check badges now</button>
+                        </div>
+                        <div class="ace-hint mt-2" id="{{ $aceUid }}_bpreview"></div>
+                        <div class="ace-hint mt-1">Uses the badges at the top of this page. It is checked in the browser while someone has this page open, so the task is created once per checked period the first time the condition is met.</div>
+                    </div>
+
+                    <div class="mt-2 pt-2 border-top" id="{{ $aceUid }}_freqWrap">
                         <span class="fw-semibold small me-2">Check</span>
                         <div class="form-check form-check-inline mb-0"><input class="form-check-input ace-freq" type="checkbox" value="daily" id="{{ $aceUid }}_fd" checked><label class="form-check-label" for="{{ $aceUid }}_fd">Daily</label></div>
                         <div class="form-check form-check-inline mb-0"><input class="form-check-input ace-freq" type="checkbox" value="weekly" id="{{ $aceUid }}_fw"><label class="form-check-label" for="{{ $aceUid }}_fw">Weekly</label></div>
                         <div class="form-check form-check-inline mb-0"><input class="form-check-input ace-freq" type="checkbox" value="monthly" id="{{ $aceUid }}_fm"><label class="form-check-label" for="{{ $aceUid }}_fm">Monthly</label></div>
-                        <div class="ace-hint">A task is created once per matching row in each checked period (day / week / month).</div>
+                        <div class="ace-hint" id="{{ $aceUid }}_freqHint">A task is created once per matching row in each checked period (day / week / month).</div>
                     </div>
                 </div>
 
@@ -175,7 +213,7 @@
                 <div class="text-danger small d-none" id="{{ $aceUid }}_err"></div>
             </div>
             <div class="modal-footer">
-                <small class="text-muted me-auto">A task is created once per matching row in each checked period.</small>
+                <small class="text-muted me-auto" id="{{ $aceUid }}_foot">A task is created once per matching row in each checked period.</small>
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="{{ $aceUid }}_save">Create ATE</button>
             </div>
@@ -215,10 +253,13 @@
     var UID = @json($aceUid);
     var CSRF = @json(csrf_token());
     var URLS = { meta: @json(route('ace.meta')), index: @json(route('ace.index')), preview: @json(route('ace.preview')),
-                 store: @json(route('ace.store')), base: @json(url('/ace')) };
+                 store: @json(route('ace.store')), base: @json(url('/ace')), badgeRules: @json(route('ace.badge.rules')) };
     var SERVER_SOURCE = @json($aceSource ?? null);
     var DYNAMIC = /^p_/.test(PAGE);          // analytics / active-channels page: rows come from its data endpoint
     var meta = null, rules = [], source = null, titles = {}, editing = null;
+    var titleOrder = [];
+    var kind = 'col', colsReady = !DYNAMIC, colsPromise = null, lastFetch = 0;
+    var BADGE_OPS = [['gt', 'is greater than'], ['lt', 'is less than'], ['gte', 'is at least'], ['lte', 'is at most'], ['equals', 'is'], ['not_equals', 'is not']];
 
     function $(s) { return document.getElementById(UID + '_' + s); }
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -262,50 +303,85 @@
     // Column headings exactly as the page's table shows them (field -> plain-text title).
     function tableTitles() {
         var map = {};
+        titleOrder = [];
         function walk(defs) {
             (defs || []).forEach(function (d) {
                 if (d.columns) { walk(d.columns); return; }
                 if (!d.field || map[d.field]) return;
                 var txt = new DOMParser().parseFromString(String(d.title || ''), 'text/html').body.textContent.replace(/\s+/g, ' ').trim();
-                if (txt) map[d.field] = txt;
+                if (txt) { map[d.field] = txt; titleOrder.push(d.field); }
             });
         }
         pageTables().forEach(function (t) { try { walk(t.getColumnDefinitions()); } catch (e) { /* ignore */ } });
         return map;
     }
+    // The page's columns in the order its own table (and its "Columns" checkbox menu) shows them.
     function colList() {
-        var list = meta.columns.map(function (c) { return { key: c.key, label: titles[c.key] || c.label }; });
-        if (DYNAMIC) { // columns the table shows first (in its order is not needed), the rest after
-            list = list.filter(function (c) { return titles[c.key]; }).concat(list.filter(function (c) { return !titles[c.key]; }));
-        }
-        return list;
+        var byKey = {};
+        meta.columns.forEach(function (c) { byKey[c.key] = { key: c.key, label: titles[c.key] || c.label }; });
+        if (!DYNAMIC || !titleOrder.length) return meta.columns.map(function (c) { return byKey[c.key]; });
+        var out = [];
+        titleOrder.forEach(function (k) { if (byKey[k]) { out.push(byKey[k]); delete byKey[k]; } });
+        meta.columns.forEach(function (c) { if (byKey[c.key]) out.push(byKey[c.key]); });
+        return out;
     }
 
+    // Base options (users, operators ...). On analytics pages the page's data is NOT read here, so the
+    // form opens instantly; the columns are fetched by loadColumns() only when a Column rule needs them.
     function loadMeta() {
         if (meta) return Promise.resolve(meta);
         var q = '?page=' + encodeURIComponent(PAGE);
-        if (DYNAMIC) {
-            source = detectSource();
-            if (!source) return Promise.reject(new Error('Auto Task Events could not find the data table on this page.'));
-            q += '&source=' + encodeURIComponent(source);
-        }
+        if (DYNAMIC) q += '&lite=1';
         return api(URLS.meta + q).then(function (d) {
             if (!d.ok) throw new Error(d.message || 'Could not load Auto Task Event options');
             meta = d;
-            titles = DYNAMIC ? tableTitles() : {};
+            colsReady = !DYNAMIC;
+            titles = {};
             return d;
         });
     }
+    function loadColumns() {
+        if (colsReady) return Promise.resolve();
+        if (colsPromise) return colsPromise;
+        source = detectSource();
+        if (!source) return Promise.reject(new Error('Auto Task Events could not find the data table on this page, so the Column block is not available here. Use the Badges block.'));
+        colsPromise = api(URLS.meta + '?page=' + encodeURIComponent(PAGE) + '&source=' + encodeURIComponent(source)).then(function (d) {
+            if (!d.ok) throw new Error(d.message || 'Could not read this page\'s columns.');
+            meta.columns = d.columns; meta.placeholders = d.placeholders;
+            titles = tableTitles();
+            colsReady = true;
+        }).catch(function (e) { colsPromise = null; throw e; });
+        return colsPromise;
+    }
 
     // ---- conditions (one row per condition; "+ Add condition" adds more) ----
+    function colItemHtml(key, label, checked) {
+        return '<label class="ace-cp-item" data-name="' + esc(String(label).toLowerCase()) + '"><input type="checkbox" class="form-check-input m-0 ace-cp-cb" value="' + esc(key) + '" data-label="' + esc(label) + '"' + (checked ? ' checked' : '') + '> <span>' + esc(label) + '</span></label>';
+    }
+    // A condition row: a checkbox list of the page's columns (tick one or more), an operator and a value.
     function condRowHtml() {
-        var cols = colList().map(function (c) { return opt(c.key, c.label); }).join('');
+        var items = colList().map(function (c) { return colItemHtml(c.key, c.label, false); }).join('');
         var ops = meta.operators.map(function (o) { return opt(o.key, o.label); }).join('');
-        return '<div class="ace-cond">' +
-            '<select class="form-select form-select-sm ace-c-col">' + cols + '</select>' +
+        return '<div class="ace-cond" style="align-items:flex-start">' +
+            '<div class="ace-c-col ace-cpick">' +
+                '<button type="button" class="form-select form-select-sm ace-cp-btn">Select columns…</button>' +
+                '<div class="ace-cp-menu d-none">' +
+                    '<input type="text" class="form-control form-control-sm ace-cp-search" placeholder="Search columns…" autocomplete="off">' +
+                    '<div class="ace-cp-links d-flex justify-content-between mt-1"><a class="ace-cp-all">Select all</a><a class="ace-cp-none">Clear</a></div>' +
+                    '<div class="ace-cp-list">' + items + '</div>' +
+                '</div>' +
+            '</div>' +
             '<select class="form-select form-select-sm ace-c-op">' + ops + '</select>' +
             '<input type="text" class="form-control form-control-sm ace-c-val" placeholder="value" maxlength="500">' +
             '<button type="button" class="ace-c-del" title="Remove this condition">&times;</button></div>';
+    }
+    function rowCols(r) {
+        return Array.prototype.map.call(r.querySelectorAll('.ace-cp-cb:checked'), function (c) { return { key: c.value, label: c.getAttribute('data-label') }; });
+    }
+    function syncPickLabel(r) {
+        var cols = rowCols(r), b = r.querySelector('.ace-cp-btn');
+        b.textContent = !cols.length ? 'Select columns…' : (cols.length === 1 ? cols[0].label : cols.length + ' columns: ' + cols.slice(0, 2).map(function (c) { return c.label; }).join(', ') + (cols.length > 2 ? '…' : ''));
+        b.title = cols.map(function (c) { return c.label; }).join(', ');
     }
     function addCond() {
         $('conds').insertAdjacentHTML('beforeend', condRowHtml());
@@ -317,17 +393,122 @@
             var op = r.querySelector('.ace-c-op').value;
             r.querySelector('.ace-c-val').disabled = (op === 'empty' || op === 'not_empty');
             r.querySelector('.ace-c-del').style.visibility = rows.length > 1 ? 'visible' : 'hidden';
+            syncPickLabel(r);
         });
-        $('mode').classList.toggle('d-none', rows.length < 2);
+        var multi = rows.length > 1 || Array.prototype.some.call(rows, function (r) { return rowCols(r).length > 1; });
+        $('mode').classList.toggle('d-none', !multi);
     }
     function readFreqs() {
-        return Array.prototype.map.call($('conds').closest('.ace-sec').querySelectorAll('.ace-freq:checked'), function (c) { return c.value; });
+        return Array.prototype.map.call($('freqWrap').querySelectorAll('.ace-freq:checked'), function (c) { return c.value; });
     }
+    // One condition per ticked column (a row with 3 columns ticked = 3 conditions, joined by the ALL / ANY switch).
     function readConds() {
-        return Array.prototype.map.call($('conds').querySelectorAll('.ace-cond'), function (r) {
-            var sel = r.querySelector('.ace-c-col');
-            return { column_key: sel.value, label: sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : '', operator: r.querySelector('.ace-c-op').value, value: r.querySelector('.ace-c-val').value };
+        var out = [];
+        $('conds').querySelectorAll('.ace-cond').forEach(function (r) {
+            var op = r.querySelector('.ace-c-op').value, val = r.querySelector('.ace-c-val').value;
+            rowCols(r).forEach(function (c) { out.push({ column_key: c.key, label: c.label, operator: op, value: val }); });
         });
+        return out;
+    }
+    function emptyColRows() {
+        return Array.prototype.filter.call($('conds').querySelectorAll('.ace-cond'), function (r) { return !rowCols(r).length; }).length;
+    }
+
+    // ---- badges block: the badges shown at the top of the page, with their live numbers ----
+    function slugOf(t) { return String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''); }
+    // "Total Sales: $12,345" -> {label:'Total Sales', value:12345}; "CVR 3.2%" -> {label:'CVR', value:3.2}
+    function parseBadge(text) {
+        var t = String(text || '').replace(/\s+/g, ' ').trim();
+        var NUM = '([-+]?\\s*[$\u20b9\u20ac\u00a3]?\\s*[-+]?\\d[\\d,]*(?:\\.\\d+)?)\\s*([kKmMbB%]?)';
+        var m = t.match(new RegExp('^(.*?)\\s*[:=]\\s*' + NUM)) || t.match(new RegExp('^(.*?)\\s+' + NUM)) || t.match(new RegExp('^()' + NUM));
+        if (!m) return null;
+        var n = parseFloat(String(m[2]).replace(/[^0-9.\-]/g, ''));
+        if (isNaN(n)) return null;
+        var suf = (m[3] || '').toLowerCase();
+        if (suf === 'k') n *= 1e3; else if (suf === 'm') n *= 1e6; else if (suf === 'b') n *= 1e9;
+        return { label: String(m[1] || '').replace(/[:=\s]+$/, '').trim(), value: Math.round(n * 1e6) / 1e6, text: t };
+    }
+    function readBadges() {
+        var root = document.querySelector('.content-page') || document.body, seen = {}, out = [];
+        root.querySelectorAll('.badge').forEach(function (el) {
+            if (el.closest('.tabulator, .modal, table, .dropdown-menu, .offcanvas, nav, .navbar-custom, .leftside-menu')) return;
+            if (el.classList.contains('d-none')) return;
+            var cs = window.getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden') return;
+            var p = parseBadge(el.textContent);
+            if (!p) return;
+            var label = p.label || (el.id ? el.id.replace(/[-_]+/g, ' ').replace(/\s*badge$/i, '').trim() : '');
+            var key = el.id || (el.getAttribute('data-metric') ? 'm:' + el.getAttribute('data-metric') : (slugOf(label) ? 'l:' + slugOf(label) : ''));
+            if (!key || seen[key]) return;
+            seen[key] = 1;
+            out.push({ key: key.slice(0, 80), label: (label || key).slice(0, 120), value: p.value, text: p.text });
+        });
+        return out;
+    }
+    function fmtNum(n) { return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
+    function badgeRowHtml(list) {
+        var bs = list.length ? list.map(function (b) { return '<option value="' + esc(b.key) + '">' + esc(b.label + '  (now ' + fmtNum(b.value) + ')') + '</option>'; }).join('')
+                             : '<option value="">No badges found on this page</option>';
+        var ops = BADGE_OPS.map(function (o) { return opt(o[0], o[1]); }).join('');
+        return '<div class="ace-cond">' +
+            '<select class="form-select form-select-sm ace-c-col">' + bs + '</select>' +
+            '<select class="form-select form-select-sm ace-c-op">' + ops + '</select>' +
+            '<input type="text" class="form-control form-control-sm ace-c-val" placeholder="number" maxlength="40">' +
+            '<button type="button" class="ace-c-del" title="Remove this condition">&times;</button></div>';
+    }
+    function addBadgeCond() {
+        $('bconds').insertAdjacentHTML('beforeend', badgeRowHtml(readBadges()));
+        syncBadgeConds();
+    }
+    function syncBadgeConds() {
+        var rows = $('bconds').querySelectorAll('.ace-cond');
+        rows.forEach(function (r) { r.querySelector('.ace-c-del').style.visibility = rows.length > 1 ? 'visible' : 'hidden'; });
+        $('bmode').classList.toggle('d-none', rows.length < 2);
+    }
+    function readBadgeConds() {
+        return Array.prototype.map.call($('bconds').querySelectorAll('.ace-cond'), function (r) {
+            var sel = r.querySelector('.ace-c-col');
+            var lbl = sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text.replace(/\s+\(now [^)]*\)\s*$/, '') : '';
+            return { column_key: sel.value, label: lbl, operator: r.querySelector('.ace-c-op').value, value: r.querySelector('.ace-c-val').value };
+        }).filter(function (c) { return c.column_key; });
+    }
+    function cmpNum(op, a, b) {
+        a = parseFloat(a); b = parseFloat(String(b).replace(/[\s,$%\u20b9\u20ac\u00a3]/g, ''));
+        if (isNaN(a) || isNaN(b)) return false;
+        switch (op) {
+            case 'gt': return a > b; case 'lt': return a < b; case 'gte': return a >= b; case 'lte': return a <= b;
+            case 'equals': return Math.abs(a - b) < 1e-9; case 'not_equals': return Math.abs(a - b) >= 1e-9;
+        }
+        return false;
+    }
+    function evalConds(conds, mode, map) {
+        if (!conds.length) return false;
+        var hits = conds.map(function (c) { return map.hasOwnProperty(c.column_key) && cmpNum(c.operator, map[c.column_key], c.value); });
+        return mode === 'any' ? hits.some(Boolean) : hits.every(Boolean);
+    }
+    function badgeCheckNow() {
+        var out = $('bpreview'), conds = readBadgeConds(), cur = readBadges(), map = {};
+        cur.forEach(function (b) { map[b.key] = b.value; });
+        if (!conds.length) { out.textContent = 'No badge selected.'; return; }
+        var lines = conds.map(function (c) {
+            var opLabel = (BADGE_OPS.filter(function (o) { return o[0] === c.operator; })[0] || [0, c.operator])[1];
+            var has = map.hasOwnProperty(c.column_key);
+            return c.label + ' is now ' + (has ? fmtNum(map[c.column_key]) : '(not on this page)') + ' — needs ' + opLabel + ' ' + (c.value || '?') + ' → ' + (has && cmpNum(c.operator, map[c.column_key], c.value) ? '✔ met' : '✘ not met');
+        });
+        var all = evalConds(conds, $('bmode').value, map);
+        out.innerHTML = lines.map(esc).join('<br>') + '<br><b>' + (all ? 'Condition is met right now.' : 'Condition is not met right now.') + '</b>';
+    }
+
+    // Column block <-> Badges block (a rule uses one of them)
+    function setKind(k) {
+        kind = k === 'badge' ? 'badge' : 'col';
+        $('kc').checked = kind === 'col'; $('kb').checked = kind === 'badge';
+        $('blockCols').classList.toggle('d-none', kind !== 'col');
+        $('blockBadges').classList.toggle('d-none', kind !== 'badge');
+        $('secTitle').innerHTML = kind === 'badge' ? '1 &middot; When these badges&hellip;' : '1 &middot; When this column&hellip;';
+        $('newSub').textContent = kind === 'badge' ? 'Create a task automatically when a badge at the top of the page meets a condition' : 'Create a one-time task automatically when a column matches';
+        var msg = kind === 'badge' ? 'A task is created once per checked period (day / week / month) when the badge condition is met.' : 'A task is created once per matching row in each checked period.';
+        $('freqHint').textContent = msg; $('foot').textContent = msg;
     }
 
     // ---- task titles (+ Add task) ----
@@ -367,9 +548,6 @@
     var OPT_KEYS = ['l2', 'training_link', 'video_link', 'form_link', 'form_report_link', 'checklist_link', 'pl', 'process'];
 
     function fillForm() {
-        $('conds').innerHTML = '';
-        $('mode').value = 'all';
-        addCond();
         buildAssignees();
         // Like the task manager: only task admins can pick another assignor; everyone else is the assignor.
         $('assignor').innerHTML = meta.users.filter(function (u) { return meta.is_admin || u.id === meta.me; }).map(function (u) { return opt(u.id, u.name); }).join('');
@@ -397,25 +575,65 @@
         // Auto-fill the link with the page this rule is being created on (still editable).
         $('link').value = location.origin + location.pathname + location.search;
         $('fd').checked = true; $('fw').checked = false; $('fm').checked = false;
-        $('prio').value = 'normal'; $('due').value = 1; $('preview').textContent = '';
+        $('prio').value = 'normal'; $('due').value = 1; $('preview').textContent = ''; $('bpreview').textContent = '';
+        $('mode').value = 'all'; $('bmode').value = 'all';
+    }
+
+    // Build the condition rows of the active block (from a saved rule when editing).
+    function buildBadgeBlock(f) {
+        $('bconds').innerHTML = '';
+        var list = f && f.trigger_type === 'badge' && f.conditions && f.conditions.length ? f.conditions : [{}];
+        var cur = readBadges();
+        list.forEach(function (c) {
+            $('bconds').insertAdjacentHTML('beforeend', badgeRowHtml(cur));
+            var row = $('bconds').lastElementChild, sel = row.querySelector('.ace-c-col');
+            if (c.column_key) {
+                if (!Array.prototype.some.call(sel.options, function (x) { return x.value === c.column_key; })) {
+                    if (sel.options.length === 1 && !sel.options[0].value) sel.innerHTML = '';
+                    sel.insertAdjacentHTML('beforeend', opt(c.column_key, (c.label || c.column_key) + '  (not on this page now)'));
+                }
+                sel.value = c.column_key;
+            }
+            if (c.operator) row.querySelector('.ace-c-op').value = c.operator;
+            row.querySelector('.ace-c-val').value = c.value || '';
+        });
+        if (f && f.trigger_type === 'badge') $('bmode').value = f.match_mode || 'all';
+        syncBadgeConds();
+    }
+    function buildColumnBlock(f) {
+        $('conds').innerHTML = '<div class="ace-hint py-2">Loading this page\'s columns…</div>';
+        loadColumns().then(function () {
+            $('conds').innerHTML = '';
+            var saved = f && f.trigger_type !== 'badge' && f.conditions && f.conditions.length ? f.conditions : [];
+            // Conditions with the same operator + value come back as one row with several columns ticked.
+            var groups = [];
+            saved.forEach(function (c) {
+                var g = groups.filter(function (x) { return x.operator === c.operator && (x.value || '') === (c.value || ''); })[0];
+                if (!g) { g = { operator: c.operator, value: c.value || '', cols: [] }; groups.push(g); }
+                g.cols.push(c);
+            });
+            if (!groups.length) groups = [{ cols: [] }];
+            groups.forEach(function (g) {
+                addCond();
+                var row = $('conds').lastElementChild, list = row.querySelector('.ace-cp-list');
+                g.cols.forEach(function (c) {
+                    var cb = Array.prototype.filter.call(list.querySelectorAll('.ace-cp-cb'), function (x) { return x.value === c.column_key; })[0];
+                    if (!cb) { list.insertAdjacentHTML('beforeend', colItemHtml(c.column_key, c.label || c.column_key, true)); } else { cb.checked = true; }
+                });
+                if (g.operator) row.querySelector('.ace-c-op').value = g.operator;
+                row.querySelector('.ace-c-val').value = g.value || '';
+            });
+            if (f && f.trigger_type !== 'badge') $('mode').value = f.match_mode || 'all';
+            syncConds();
+        }).catch(function (e) {
+            $('conds').innerHTML = '<div class="text-danger small py-2">' + esc(e.message || 'Could not load columns.') + '</div>';
+        });
     }
 
     // Fill the form from a saved rule (edit).
     function applyForm(f) {
         var o = f.task_options || {};
         $('name').value = f.name || '';
-        $('conds').innerHTML = '';
-        (f.conditions && f.conditions.length ? f.conditions : [{}]).forEach(function (c) {
-            addCond();
-            var row = $('conds').lastElementChild, sel = row.querySelector('.ace-c-col');
-            if (c.column_key) {
-                if (!Array.prototype.some.call(sel.options, function (x) { return x.value === c.column_key; })) sel.insertAdjacentHTML('beforeend', opt(c.column_key, c.label || c.column_key));
-                sel.value = c.column_key;
-            }
-            if (c.operator) row.querySelector('.ace-c-op').value = c.operator;
-            row.querySelector('.ace-c-val').value = c.value || '';
-        });
-        $('mode').value = f.match_mode || 'all';
         var fr = f.frequencies && f.frequencies.length ? f.frequencies : ['daily'];
         $('fd').checked = fr.indexOf('daily') !== -1; $('fw').checked = fr.indexOf('weekly') !== -1; $('fm').checked = fr.indexOf('monthly') !== -1;
 
@@ -440,7 +658,7 @@
         var anyMore = false;
         OPT_KEYS.forEach(function (k) { $('o_' + k).value = o[k] || ''; if (o[k]) anyMore = true; });
         $('more').classList.toggle('d-none', !anyMore); $('moreIcon').className = anyMore ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line';
-        syncConds(); syncAssign(); syncForm();
+        syncAssign(); syncForm();
     }
 
     // rule = a saved rule from the list (edit) or nothing (create)
@@ -450,6 +668,12 @@
             fillForm();
             resetForm();
             if (editing && editing.form) applyForm(editing.form);
+            // Badges are only on analytics pages; the Column block is the default.
+            $('kindWrap').classList.toggle('d-none', !DYNAMIC);
+            var f = editing && editing.form ? editing.form : null;
+            setKind(DYNAMIC && f && f.trigger_type === 'badge' ? 'badge' : 'col');
+            buildBadgeBlock(f);
+            buildColumnBlock(f);
             $('newTitle').innerHTML = editing ? '&#9998; Edit ATE' : '&#9889; Auto Task Event';
             $('save').textContent = editing ? 'Save changes' : 'Create ATE';
             showErr('');
@@ -461,9 +685,9 @@
     function save() {
         showErr('');
         var body = {
-            page: PAGE, source: DYNAMIC ? source : null, page_label: (document.title || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+            page: PAGE, trigger: kind === 'badge' ? 'badge' : 'column', source: DYNAMIC && kind === 'col' ? source : null, page_label: (document.title || '').replace(/\s+/g, ' ').trim().slice(0, 160),
             name: $('name').value.trim(),
-            conditions: readConds(), match_mode: $('mode').value, frequencies: readFreqs(),
+            conditions: kind === 'badge' ? readBadgeConds() : readConds(), match_mode: (kind === 'badge' ? $('bmode') : $('mode')).value, frequencies: readFreqs(),
             task_title: readTitles()[0] || '', task_description: $('desc').value, task_group: $('group').value.trim(), task_link: $('link').value.trim(),
             priority: $('prio').value, due_in_days: parseInt($('due').value, 10) || 0,
             assignee_mode: $('amode').value, assignee_id: null
@@ -479,10 +703,14 @@
         OPT_KEYS.forEach(function (k) { opts[k] = $('o_' + k).value.trim(); });
         body.task_options = opts;
         if (!body.name) return showErr('Give the rule a name.');
+        if (kind === 'col' && emptyColRows()) return showErr('Tick at least one column in every condition.');
+        if (!body.conditions.length) return showErr(kind === 'badge' ? 'Pick a badge for the condition (this page has none to pick).' : 'Add at least one condition.');
+        if (body.conditions.length > 60) return showErr('Too many conditions (max 60). Untick some columns.');
         if (!body.frequencies.length) return showErr('Tick at least one of Daily, Weekly or Monthly.');
         for (var i = 0; i < body.conditions.length; i++) {
             var c = body.conditions[i];
-            if (c.operator !== 'empty' && c.operator !== 'not_empty' && !String(c.value).trim()) return showErr('Enter a value for condition ' + (i + 1) + ' (or use “is empty” / “is not empty”).');
+            if (kind === 'badge' && c.operator !== 'empty' && isNaN(parseFloat(String(c.value).replace(/[\s,$%\u20b9\u20ac\u00a3]/g, '')))) return showErr('Enter a number for condition ' + (i + 1) + '.');
+            if (kind !== 'badge' && c.operator !== 'empty' && c.operator !== 'not_empty' && !String(c.value).trim()) return showErr('Enter a value for condition ' + (i + 1) + ' (or use “is empty” / “is not empty”).');
         }
         if (!body.task_title) return showErr('Enter the task.');
         if ($('amode').value === 'fixed' && !assignees.length) return showErr('Select at least one assignee.');
@@ -495,13 +723,16 @@
                 if (d.errors) m = Object.keys(d.errors).map(function (k) { return d.errors[k][0]; }).join(' ');
                 return showErr(m);
             }
+            lastFetch = 0; // the badge watcher re-reads the rules soon
             modal('newModal').hide();
             openList();
         }).catch(function () { showErr('Could not save the rule.'); }).finally(function () { btn.disabled = false; });
     }
 
     function preview() {
-        var out = $('preview'); out.textContent = 'Checking…';
+        var out = $('preview');
+        if (!readConds().length) { out.textContent = 'Tick at least one column first.'; return; }
+        out.textContent = 'Checking…';
         post(URLS.preview, { page: PAGE, source: DYNAMIC ? source : null, conditions: readConds(), match_mode: $('mode').value }).then(function (d) {
             if (!d.ok) { out.textContent = d.message || 'Could not preview.'; return; }
             out.textContent = d.matches + ' of ' + d.total + ' rows match now' + (d.sample.length ? ' — ' + d.sample.join(', ') + (d.matches > d.sample.length ? '…' : '') : '') + '.';
@@ -525,13 +756,13 @@
             var actions = r.mine ? '<div class="d-flex gap-1 flex-wrap">' +
                 '<button class="btn btn-sm btn-outline-dark" data-act="edit" data-id="' + r.id + '"><i class="ri-edit-line"></i> Edit</button>' +
                 '<button class="btn btn-sm btn-outline-secondary" data-act="toggle" data-id="' + r.id + '">' + (r.is_active ? 'Pause' : 'Resume') + '</button>' +
-                '<button class="btn btn-sm btn-outline-primary" data-act="run" data-id="' + r.id + '">Run now</button>' +
+                (r.trigger_type === 'badge' ? '' : '<button class="btn btn-sm btn-outline-primary" data-act="run" data-id="' + r.id + '">Run now</button>') +
                 '<button class="btn btn-sm btn-outline-danger" data-act="del" data-id="' + r.id + '"><i class="ri-delete-bin-line"></i></button></div>'
                 : '<span class="ace-hint">View only &middot; owned by ' + esc(r.owner || 'someone else') + '</span>';
             return '<div class="ace-rule' + (r.is_active ? '' : ' is-paused') + '"><div class="ace-rule-head">' +
                 '<div><span class="ace-rule-name">' + esc(r.name) + '</span> <span class="ace-badge ' + (r.is_active ? 'ace-badge-on' : 'ace-badge-off') + '">' + (r.is_active ? 'ACTIVE' : 'PAUSED') + '</span> ' +
-                (r.mine ? '<span class="ace-badge ace-badge-type">MINE</span>' : '') + '</div>' + actions + '</div>' +
-                (r.condition ? '<div class="ace-kv"><b>When:</b> ' + esc(r.condition) + ' <span class="text-muted">· checked ' + esc(r.frequency) + '</span></div>' : '') +
+                (r.trigger_type === 'badge' ? '<span class="ace-badge ace-badge-type">BADGES</span> ' : '') + (r.mine ? '<span class="ace-badge ace-badge-type">MINE</span>' : '') + '</div>' + actions + '</div>' +
+                (r.condition ? '<div class="ace-kv"><b>When:</b> ' + esc(r.condition) + ' <span class="text-muted">· checked ' + esc(r.frequency) + (r.trigger_type === 'badge' ? ' while the page is open' : '') + '</span></div>' : '') +
                 '<div class="ace-kv"><b>Creates:</b> ' + esc(r.task_title) + (r.task_group ? ' <span class="ace-badge ace-badge-type">' + esc(r.task_group) + '</span>' : '') + ' <span class="text-muted">· ' + esc(r.priority) + ' · due in ' + r.due_in_days + 'd · assigned to ' + esc(r.assignee) + '</span></div>' +
                 '<div class="ace-kv"><b>Task:</b> ' + esc(r.task_frequency || 'One Time') + (r.task_extras ? ' <span class="text-muted">· ' + esc(r.task_extras) + '</span>' : '') + '</div>' +
                 (r.task_link ? '<div class="ace-kv"><b>Link:</b> <a href="' + esc(r.task_link) + '" target="_blank" rel="noopener">' + esc(r.task_link) + '</a></div>' : '') +
@@ -557,6 +788,40 @@
     $('previewBtn').addEventListener('click', preview);
     $('addCond').addEventListener('click', addCond);
     $('conds').addEventListener('change', syncConds);
+    $('conds').addEventListener('click', function (e) {
+        var btn = e.target.closest('.ace-cp-btn');
+        if (btn) {
+            var menu = btn.parentNode.querySelector('.ace-cp-menu'), opening = menu.classList.contains('d-none');
+            $('conds').querySelectorAll('.ace-cp-menu').forEach(function (m) { m.classList.add('d-none'); });
+            menu.classList.toggle('d-none', !opening);
+            if (opening) { var si = menu.querySelector('.ace-cp-search'); si.value = ''; si.dispatchEvent(new Event('input')); si.focus(); }
+            return;
+        }
+        var all = e.target.closest('.ace-cp-all, .ace-cp-none');
+        if (all) {
+            var on = all.classList.contains('ace-cp-all');
+            all.closest('.ace-cp-menu').querySelectorAll('.ace-cp-item').forEach(function (l) { if (l.style.display !== 'none') l.querySelector('input').checked = on; });
+            syncConds();
+        }
+    });
+    $('conds').addEventListener('input', function (e) {
+        if (!e.target.classList.contains('ace-cp-search')) return;
+        var q = e.target.value.trim().toLowerCase();
+        e.target.closest('.ace-cp-menu').querySelectorAll('.ace-cp-item').forEach(function (l) { l.style.display = !q || l.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none'; });
+    });
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('.ace-cpick')) return;
+        var c = $('conds'); if (c) c.querySelectorAll('.ace-cp-menu').forEach(function (m) { m.classList.add('d-none'); });
+    });
+    $('addBadge').addEventListener('click', addBadgeCond);
+    $('bpreviewBtn').addEventListener('click', badgeCheckNow);
+    $('bconds').addEventListener('change', syncBadgeConds);
+    $('bconds').addEventListener('click', function (e) {
+        var d = e.target.closest('.ace-c-del'); if (!d) return;
+        d.closest('.ace-cond').remove();
+        syncBadgeConds();
+    });
+    $('kindWrap').addEventListener('change', function (e) { if (e.target && e.target.name === UID + '_kind') setKind(e.target.value); });
     $('conds').addEventListener('click', function (e) {
         var d = e.target.closest('.ace-c-del'); if (!d) return;
         d.closest('.ace-cond').remove();
@@ -601,9 +866,56 @@
         var req = act === 'del' ? post(URLS.base + '/' + id, {}, 'DELETE') : post(URLS.base + '/' + id + '/' + act, {});
         req.then(function (d) {
             if (!d.ok) { alert(d.message || 'Action failed.'); return; }
+            lastFetch = 0;
             if (act === 'run') alert(d.created + ' task(s) created.');
             openList();
         }).catch(function () { alert('Action failed.'); }).finally(function () { b.disabled = false; });
     });
+
+    // ---- badge rules: checked here, in the browser, while this page is open ----
+    // The page's real badges are read; when a rule's condition holds on two reads in a row (so the
+    // initial "0" placeholders while the table loads can't trigger it), the server creates the task
+    // once per day / week / month.
+    if (DYNAMIC) {
+        var pending = [], firedHere = {}, streak = {}, started = Date.now(), busy = false;
+
+        function tablesLoaded() {
+            if (Date.now() - started > 45000) return true; // some pages legitimately have no rows
+            return pageTables().every(function (t) {
+                try { return typeof t.getDataCount !== 'function' || t.getDataCount() > 0; } catch (e) { return true; }
+            });
+        }
+        function fireRule(rule, vals) {
+            firedHere[rule.id] = true;
+            post(URLS.base + '/' + rule.id + '/badge-fire', { page: PAGE, values: vals.map(function (b) { return { key: b.key, label: b.label, value: b.value }; }) })
+                .catch(function () { delete firedHere[rule.id]; streak[rule.id] = 0; });
+        }
+        function tick() {
+            if (document.hidden || busy) return;
+            var go = function () {
+                if (!pending.length || !tablesLoaded()) return;
+                var vals = readBadges(), map = {};
+                vals.forEach(function (b) { map[b.key] = b.value; });
+                pending.forEach(function (rule) {
+                    if (firedHere[rule.id]) return;
+                    if (evalConds(rule.conditions, rule.match_mode, map)) {
+                        streak[rule.id] = (streak[rule.id] || 0) + 1;
+                        if (streak[rule.id] >= 2) fireRule(rule, vals);
+                    } else {
+                        streak[rule.id] = 0;
+                    }
+                });
+            };
+            if (Date.now() - lastFetch > 300000) { // (re)load the rules that still need a task, every 5 min
+                busy = true; lastFetch = Date.now();
+                api(URLS.badgeRules + '?page=' + encodeURIComponent(PAGE)).then(function (d) {
+                    pending = d && d.ok ? d.rules : [];
+                }).catch(function () { /* try again later */ }).finally(function () { busy = false; go(); });
+            } else {
+                go();
+            }
+        }
+        setTimeout(function loop() { tick(); setTimeout(loop, 8000); }, 8000);
+    }
 })();
 </script>

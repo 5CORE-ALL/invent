@@ -191,6 +191,12 @@
 
     @if (count($alerts) && ! session()->hasOldInput())
         <div class="alert alert-danger">
+            @if ($canEdit)
+                <form method="post" action="{{ route('incentives.alerts.clear') }}" class="float-end ms-3">
+                    @csrf
+                    <button type="submit" class="btn btn-sm btn-light border">Clear</button>
+                </form>
+            @endif
             @foreach ($alerts as $alert)
                 <div>{{ $alert }}</div>
             @endforeach

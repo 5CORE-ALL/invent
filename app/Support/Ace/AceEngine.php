@@ -37,6 +37,8 @@ class AceEngine
         'not_contains' => 'does not contain',
         'gt' => 'is greater than',
         'lt' => 'is less than',
+        'gte' => 'is at least',
+        'lte' => 'is at most',
         'empty' => 'is empty',
         'not_empty' => 'is not empty',
     ];
@@ -73,6 +75,8 @@ class AceEngine
             'not_contains' => $b === '' || ! str_contains($a, $b),
             'gt' => is_numeric($cell) && is_numeric($want) && (float) $cell > (float) $want,
             'lt' => is_numeric($cell) && is_numeric($want) && (float) $cell < (float) $want,
+            'gte' => is_numeric($cell) && is_numeric($want) && (float) $cell >= (float) $want,
+            'lte' => is_numeric($cell) && is_numeric($want) && (float) $cell <= (float) $want,
             'empty' => $cell === '',
             'not_empty' => $cell !== '',
             default => false,
@@ -274,6 +278,72 @@ class AceEngine
         $map = ['daily' => 'd:'.$now->format('Y-m-d'), 'weekly' => 'w:'.$now->format('o-\\WW'), 'monthly' => 'm:'.$now->format('Y-m')];
 
         return array_map(fn ($f) => $map[$f], self::frequenciesOf($ace));
+    }
+
+    /**
+     * Subject keys (one per checked period) a badge rule claims; a task exists for a period once
+     * its key is in auto_chat_event_runs.
+     *
+     * @return list<string>
+     */
+    public static function badgeKeys(AutoChatEvent $ace): array
+    {
+        $periods = self::periodSuffixes($ace);
+
+        return $periods === [] ? ['badge:once'] : array_map(fn ($p) => 'badge:'.$p, $periods);
+    }
+
+    /** Does this badge rule still have a period without a task? */
+    public static function badgeDue(AutoChatEvent $ace): bool
+    {
+        $keys = self::badgeKeys($ace);
+        $done = AutoChatEventRun::query()->where('ace_id', $ace->id)->whereIn('subject_key', $keys)->count();
+
+        return $done < count($keys);
+    }
+
+    /**
+     * A badge rule's condition was met in someone's browser: create the task once for the current
+     * day / week / month. $values = [{key,label,value}] as read from the page's badges.
+     *
+     * @param  list<array{key: string, label: string, value: string}>  $values
+     */
+    public static function fireBadge(AutoChatEvent $ace, array $values): int
+    {
+        $keys = self::badgeKeys($ace);
+        $done = AutoChatEventRun::query()->where('ace_id', $ace->id)->whereIn('subject_key', $keys)->pluck('subject_key')->all();
+        $due = array_values(array_diff($keys, $done));
+        if ($due === []) {
+            return 0;
+        }
+
+        // {placeholders}: each badge by its label ({Total_Sales}) and by its key.
+        $row = [];
+        foreach ($values as $b) {
+            foreach ([(string) ($b['label'] ?? ''), (string) ($b['key'] ?? '')] as $name) {
+                $alias = trim((string) preg_replace('/[^a-z0-9_]+/i', '_', $name), '_');
+                if ($alias !== '' && ! isset($row[$alias])) {
+                    $row[$alias] = (string) ($b['value'] ?? '');
+                }
+            }
+        }
+
+        $label = $ace->name.' (badges)';
+        if (! self::fireOne($ace, $due[0], $label, $row, 'badge', null)) {
+            return 0;
+        }
+        foreach (array_slice($due, 1) as $extraKey) {
+            try {
+                AutoChatEventRun::query()->create([
+                    'ace_id' => $ace->id, 'subject_key' => $extraKey, 'subject_label' => mb_substr($label, 0, 255),
+                    'source' => 'badge', 'status' => 'skipped',
+                ]);
+            } catch (\Throwable $e) {
+                // already claimed
+            }
+        }
+
+        return 1;
     }
 
     /**

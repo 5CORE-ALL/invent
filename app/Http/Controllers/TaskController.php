@@ -11258,6 +11258,10 @@ class TaskController extends Controller
                 if ($cutoff->gt($alertThrough)) {
                     continue;
                 }
+                $state = $this->incentiveAlertState($cutoff, $today);
+                if (($item['alert_cleared_state'] ?? null) === $state) {
+                    continue; // president cleared this alert at its current state
+                }
                 $target = trim((string) ($item['title'] ?? ''));
                 $prefix = trim((string) ($user['name'] ?? ''));
                 if ($target !== '') {
@@ -11266,13 +11270,11 @@ class TaskController extends Controller
                 if ($prefix !== '') {
                     $prefix .= ': ';
                 }
-                if ($cutoff->lt($today)) {
-                    $alerts[] = $prefix.'CutOff Date has passed.';
-                } elseif ($cutoff->equalTo($today)) {
-                    $alerts[] = $prefix.'CutOff Date is today.';
-                } else {
-                    $alerts[] = $prefix.'CutOff Date is tomorrow.';
-                }
+                $alerts[] = $prefix.match ($state) {
+                    'passed' => 'CutOff Date has passed.',
+                    'today' => 'CutOff Date is today.',
+                    default => 'CutOff Date is tomorrow.',
+                };
             }
 
             $people[] = [
@@ -11301,6 +11303,52 @@ class TaskController extends Controller
             'alerts' => $alerts,
             'total' => $total,
         ];
+    }
+
+    protected function incentiveAlertState(\Carbon\Carbon $cutoff, \Carbon\Carbon $today): string
+    {
+        if ($cutoff->lt($today)) {
+            return 'passed';
+        }
+
+        return $cutoff->equalTo($today) ? 'today' : 'tomorrow';
+    }
+
+    /**
+     * President-only: clear the red cutoff alert box. Each alert stays hidden until
+     * its state changes (tomorrow -> today -> passed) or its cutoff date is edited.
+     */
+    public function clearIncentiveAlerts(Request $request)
+    {
+        $viewer = Auth::user();
+        if (! $this->canEditIncentives($viewer)) {
+            abort(403, 'Only president@5core.com can clear incentive alerts.');
+        }
+
+        if (Schema::hasTable('user_incentives') && Schema::hasColumn('user_incentives', 'alert_cleared_state')) {
+            $today = TaskBusinessTime::incentiveToday()->startOfDay();
+            $alertThrough = $today->copy()->addDay();
+
+            UserIncentive::query()
+                ->where('is_active', true)
+                ->whereNotNull('additional_condition')
+                ->where('additional_condition', '!=', '')
+                ->when(Schema::hasColumn('user_incentives', 'achieved_at'), fn ($q) => $q->whereNull('achieved_at'))
+                ->get()
+                ->each(function (UserIncentive $row) use ($today, $alertThrough) {
+                    try {
+                        $cutoff = \Carbon\Carbon::parse(trim((string) $row->additional_condition))->startOfDay();
+                    } catch (\Throwable $e) {
+                        return;
+                    }
+                    if ($cutoff->gt($alertThrough)) {
+                        return;
+                    }
+                    $row->forceFill(['alert_cleared_state' => $this->incentiveAlertState($cutoff, $today)])->saveQuietly();
+                });
+        }
+
+        return redirect()->route('incentives.index')->with('success', 'Cutoff alerts cleared.');
     }
 
     /** GET incentives for a team member (self, privileged viewers, president). */
@@ -11574,6 +11622,12 @@ class TaskController extends Controller
             }
         }
 
+        if ($existing && Schema::hasColumn('user_incentives', 'alert_cleared_state')
+            && array_key_exists('additional_condition', $payload)
+            && trim((string) $existing->additional_condition) !== (string) $payload['additional_condition']) {
+            $payload['alert_cleared_state'] = null;
+        }
+
         return $payload;
     }
 
@@ -11672,6 +11726,9 @@ class TaskController extends Controller
             'sort_order' => (int) $row->sort_order,
             'is_active' => (bool) $row->is_active,
             'is_achieved' => Schema::hasColumn('user_incentives', 'achieved_at') && $row->achieved_at !== null,
+            'alert_cleared_state' => Schema::hasColumn('user_incentives', 'alert_cleared_state')
+                ? ($row->alert_cleared_state ?: null)
+                : null,
             'updated_at' => $row->updated_at?->toDateTimeString(),
         ];
     }

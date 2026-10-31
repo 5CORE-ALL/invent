@@ -7731,6 +7731,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // ATE (Auto Task Event): rules that create one-time tasks from a page column and/or a chat keyword
     Route::get('/ace/meta', [\App\Http\Controllers\AceController::class, 'meta'])->name('ace.meta');
     Route::get('/ace', [\App\Http\Controllers\AceController::class, 'index'])->name('ace.index');
+    Route::get('/ace/badge-rules', [\App\Http\Controllers\AceController::class, 'badgeRules'])->name('ace.badge.rules');
+    Route::post('/ace/{id}/badge-fire', [\App\Http\Controllers\AceController::class, 'badgeFire'])->whereNumber('id')->name('ace.badge.fire');
     Route::post('/ace/preview', [\App\Http\Controllers\AceController::class, 'preview'])->name('ace.preview');
     Route::post('/ace', [\App\Http\Controllers\AceController::class, 'store'])->name('ace.store');
     Route::put('/ace/{id}', [\App\Http\Controllers\AceController::class, 'update'])->whereNumber('id')->name('ace.update');
@@ -7869,6 +7871,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/user-incentives/sync', [\App\Http\Controllers\TaskController::class, 'syncUserIncentives'])->name('tasks.userIncentives.sync');
     Route::get('/incentives', [\App\Http\Controllers\TaskController::class, 'incentivesPage'])->name('incentives.index');
     Route::post('/incentives', [\App\Http\Controllers\TaskController::class, 'updateIncentives'])->name('incentives.update');
+    Route::post('/incentives/alerts/clear', [\App\Http\Controllers\TaskController::class, 'clearIncentiveAlerts'])->name('incentives.alerts.clear');
     // Legacy recognition badges (pool + awards)
     Route::get('/tasks/user-badges', [\App\Http\Controllers\TaskController::class, 'getUserBadges'])->name('tasks.userBadges.get');
     Route::post('/tasks/user-badges/award', [\App\Http\Controllers\TaskController::class, 'awardUserBadge'])->name('tasks.userBadges.award');

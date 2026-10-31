@@ -20,6 +20,7 @@ class UserIncentive extends Model
         'achieved_at',
         'achieved_notified_at',
         'closed_notified_at',
+        'alert_cleared_state',
     ];
 
     protected $casts = [

@@ -23,6 +23,9 @@ use Illuminate\Validation\Rule;
  */
 class AceController extends Controller
 {
+    /** Operators that make sense for a badge's number. */
+    private const BADGE_OPERATORS = ['equals', 'not_equals', 'gt', 'lt', 'gte', 'lte'];
+
     private function isAdmin(): bool
     {
         return SuperAdminAccess::isTaskAdmin(auth()->user());
@@ -72,16 +75,22 @@ class AceController extends Controller
      */
     public function meta(Request $request): JsonResponse
     {
-        [$page, $source] = $this->resolvePage($request, true);
+        // lite=1 (dynamic pages): only users / operators - the page's data is not read, so badge
+        // rules open instantly. The columns are fetched separately when a Column rule needs them.
+        $lite = $request->boolean('lite') && AcePages::isDynamicKey((string) $request->query('page', ''));
+        [$page, $source] = $this->resolvePage($request, ! $lite);
 
-        try {
-            $columns = AcePages::columns($page, $source, (int) auth()->id());
-        } catch (\RuntimeException $e) {
-            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
-        } catch (\Throwable $e) {
-            report($e);
+        $columns = [];
+        if (! $lite) {
+            try {
+                $columns = AcePages::columns($page, $source, (int) auth()->id());
+            } catch (\RuntimeException $e) {
+                return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+            } catch (\Throwable $e) {
+                report($e);
 
-            return response()->json(['ok' => false, 'message' => 'Could not read this page\'s data.'], 422);
+                return response()->json(['ok' => false, 'message' => 'Could not read this page\'s data.'], 422);
+            }
         }
 
         $placeholders = array_map(fn ($c) => $c['key'], $columns);
@@ -160,6 +169,7 @@ class AceController extends Controller
                 'id' => (int) $r->id,
                 'name' => $r->name,
                 'mine' => $mine,
+                'trigger_type' => $r->trigger_type === 'badge' ? 'badge' : 'column',
                 'owner' => (string) ($users[$r->created_by] ?? ''),
                 'condition' => $condition,
                 'frequency' => $r->frequencies
@@ -189,6 +199,7 @@ class AceController extends Controller
                 // What the edit form needs (owner only).
                 'form' => $mine ? [
                     'name' => $r->name,
+                    'trigger_type' => $r->trigger_type === 'badge' ? 'badge' : 'column',
                     'conditions' => $conds,
                     'match_mode' => $r->match_mode === 'any' ? 'any' : 'all',
                     'frequencies' => AceEngine::frequenciesOf($r),
@@ -255,18 +266,27 @@ class AceController extends Controller
             return $resp;
         }
 
+        // A rule is triggered either by page COLUMNS (server checks rows) or by page BADGES (the browser checks).
+        $trigger = $request->input('trigger') === 'badge' ? 'badge' : 'column';
+
         if ($existing) {
             $page = (string) $existing->page;
             $source = $existing->source_url ?: null;
+            if ($trigger === 'column' && ! $source && AcePages::isDynamicKey($page)) {
+                [, $source] = $this->resolvePage($request, true); // was a badge rule: needs the page's data source now
+            }
         } else {
-            [$page, $source] = $this->resolvePage($request, true);
+            [$page, $source] = $this->resolvePage($request, $trigger === 'column');
         }
         $dynamic = AcePages::isDynamicKey($page);
+        if ($trigger === 'badge' && ! $dynamic) {
+            return response()->json(['ok' => false, 'message' => 'Badges are only available on analytics pages.'], 422);
+        }
         if ($dynamic && ! $existing && ! Schema::hasColumn('auto_chat_events', 'source_url')) {
             return response()->json(['ok' => false, 'message' => 'This page needs a database update. Run php artisan migrate.'], 503);
         }
 
-        $colRule = ['required', 'string', 'max:200'];
+        $colRule = ['required', 'string', 'max:80'];
         if (! $dynamic) {
             $colRule[] = Rule::in(array_column(AcePages::columns($page), 'key'));
         }
@@ -275,7 +295,7 @@ class AceController extends Controller
             'name' => 'required|string|max:120',
             'page' => 'nullable|string',
             'page_label' => 'nullable|string|max:160',
-            'conditions' => 'nullable|array|max:10',
+            'conditions' => 'nullable|array|max:60',
             'conditions.*.column_key' => $colRule,
             'conditions.*.label' => 'nullable|string|max:160',
             'conditions.*.operator' => ['required', 'string', Rule::in(array_keys(AceEngine::OPERATORS))],
@@ -323,7 +343,7 @@ class AceController extends Controller
             $v['assignee_id'] = $fixedIds[0];
         }
 
-        $conditions = $this->cleanConditions($v['conditions'] ?? [], $page, $dynamic);
+        $conditions = $this->cleanConditions($v['conditions'] ?? [], $page, $dynamic, $trigger === 'badge');
         foreach ($conditions as $c) {
             if (! in_array($c['operator'], ['empty', 'not_empty'], true) && trim((string) $c['value']) === '') {
                 return response()->json(['ok' => false, 'message' => 'Enter a value for every condition (or use "is empty" / "is not empty").'], 422);
@@ -348,7 +368,7 @@ class AceController extends Controller
         $freqs = array_values(array_unique($v['frequencies'] ?? []));
         $attrs = [
             'name' => $v['name'],
-            'trigger_type' => 'column',
+            'trigger_type' => $trigger,
             'conditions' => $conditions,
             'match_mode' => ($v['match_mode'] ?? 'all') === 'any' ? 'any' : 'all',
             'frequencies' => $freqs ?: ['daily'],
@@ -372,11 +392,14 @@ class AceController extends Controller
         if ($existing) {
             $existing->fill($attrs)->save();
             Cache::forget('ate:checked:'.$existing->id); // re-check soon with the new conditions
+            if ($dynamic && $trigger === 'column' && $source && ! $existing->source_url) {
+                $existing->forceFill(['source_url' => $source])->save();
+            }
             $ace = $existing;
         } else {
             $attrs += ['page' => $page, 'is_active' => true, 'created_by' => auth()->id()];
             if ($dynamic) {
-                $attrs['source_url'] = $source;
+                $attrs['source_url'] = $trigger === 'column' ? $source : null;
                 $attrs['page_label'] = isset($v['page_label']) ? trim((string) $v['page_label']) ?: null : null;
             }
             $ace = AutoChatEvent::query()->create($attrs);
@@ -430,7 +453,7 @@ class AceController extends Controller
      * @param  mixed  $raw
      * @return list<array{column_key: string, operator: string, value: string|null, label: string|null}>
      */
-    private function cleanConditions($raw, string $page, bool $anyColumn = false): array
+    private function cleanConditions($raw, string $page, bool $anyColumn = false, bool $badge = false): array
     {
         $keys = $anyColumn ? [] : array_column(AcePages::columns($page), 'key');
         $out = [];
@@ -440,7 +463,10 @@ class AceController extends Controller
             }
             $key = (string) ($c['column_key'] ?? '');
             $op = (string) ($c['operator'] ?? '');
-            if ($key === '' || strlen($key) > 200 || ! isset(AceEngine::OPERATORS[$op])) {
+            if ($key === '' || strlen($key) > 80 || ! isset(AceEngine::OPERATORS[$op])) {
+                continue;
+            }
+            if ($badge && ! in_array($op, self::BADGE_OPERATORS, true)) {
                 continue;
             }
             if (! $anyColumn && ! in_array($key, $keys, true)) {
@@ -450,12 +476,13 @@ class AceController extends Controller
             $out[] = [
                 'column_key' => $key,
                 'operator' => $op,
-                'value' => isset($c['value']) ? (string) $c['value'] : null,
+                // Badge numbers are compared numerically: "$1,000" / "5%" -> 1000 / 5.
+                'value' => isset($c['value']) ? ($badge ? preg_replace('/[\s,$%₹€£]/u', '', (string) $c['value']) : (string) $c['value']) : null,
                 'label' => $label !== '' ? mb_substr($label, 0, 160) : null,
             ];
         }
 
-        return array_slice($out, 0, 10);
+        return array_slice($out, 0, 60);
     }
 
     public function toggle(int $id): JsonResponse
@@ -471,7 +498,7 @@ class AceController extends Controller
     {
         $ace = $this->ownRule($id);
         if ($ace->trigger_type !== 'column') {
-            return response()->json(['ok' => false, 'message' => 'Chat-triggered rules fire when a matching message is sent.'], 422);
+            return response()->json(['ok' => false, 'message' => 'Badge rules fire by themselves when someone has this page open and the badge condition is met.'], 422);
         }
 
         try {
@@ -481,6 +508,68 @@ class AceController extends Controller
         }
 
         return response()->json(['ok' => true, 'created' => $created]);
+    }
+
+    /**
+     * Active badge rules of an analytics page that still need a task in the current day / week /
+     * month. The page's JS checks them against its own badges (no data is read server-side).
+     */
+    public function badgeRules(Request $request): JsonResponse
+    {
+        if (! AceEngine::ready()) {
+            return response()->json(['ok' => true, 'rules' => []]);
+        }
+        [$page] = $this->resolvePage($request, false);
+        if (! AcePages::isDynamicKey($page)) {
+            return response()->json(['ok' => true, 'rules' => []]);
+        }
+
+        $rules = AutoChatEvent::query()->where('page', $page)->where('trigger_type', 'badge')->where('is_active', true)->get()
+            ->filter(fn (AutoChatEvent $r) => AceEngine::badgeDue($r))
+            ->map(fn (AutoChatEvent $r) => [
+                'id' => (int) $r->id,
+                'match_mode' => $r->match_mode === 'any' ? 'any' : 'all',
+                'conditions' => array_map(fn ($c) => [
+                    'column_key' => $c['column_key'], 'operator' => $c['operator'], 'value' => $c['value'],
+                ], AceEngine::conditionsOf($r)),
+            ])->values();
+
+        return response()->json(['ok' => true, 'rules' => $rules]);
+    }
+
+    /**
+     * The page's JS saw a badge rule's condition become true. The posted badge numbers must satisfy
+     * the rule's own condition; the task is created once per day / week / month.
+     */
+    public function badgeFire(Request $request, int $id): JsonResponse
+    {
+        if ($resp = $this->notReady()) {
+            return $resp;
+        }
+        $ace = AutoChatEvent::query()->findOrFail($id);
+        if ($ace->trigger_type !== 'badge' || ! $ace->is_active || (string) $ace->page !== (string) $request->input('page')) {
+            return response()->json(['ok' => false, 'message' => 'Not a live badge rule for this page.'], 422);
+        }
+
+        $request->validate([
+            'values' => 'required|array|max:100',
+            'values.*.key' => 'required|string|max:80',
+            'values.*.label' => 'nullable|string|max:160',
+            'values.*.value' => 'required|numeric',
+        ]);
+        $values = array_map(fn ($b) => [
+            'key' => (string) $b['key'], 'label' => (string) ($b['label'] ?? ''), 'value' => (string) $b['value'],
+        ], array_values($request->input('values')));
+
+        $map = [];
+        foreach ($values as $b) {
+            $map[$b['key']] = $b['value'];
+        }
+        if (! AceEngine::rowMatches($map, AceEngine::conditionsOf($ace), $ace->match_mode === 'any' ? 'any' : 'all')) {
+            return response()->json(['ok' => true, 'created' => 0, 'reason' => 'condition_not_met']);
+        }
+
+        return response()->json(['ok' => true, 'created' => AceEngine::fireBadge($ace, $values)]);
     }
 
     public function destroy(int $id): JsonResponse
