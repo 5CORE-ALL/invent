@@ -2492,8 +2492,17 @@ class TaskController extends Controller
 
         // Return raw DB attributes (not casted UTC ISO datetimes) so date filters/display
         // align with local task dates in the blade.
-        $responseRows = $tasks->map(function ($task) {
+        // Tasks created by an ATE (Auto Task Event) rule: the grid shows them on a light pink background.
+        $ateTaskIds = [];
+        if (\Illuminate\Support\Facades\Schema::hasTable('auto_chat_event_runs')) {
+            $ateTaskIds = array_flip(
+                DB::table('auto_chat_event_runs')->whereNotNull('task_id')->pluck('task_id')->map(fn ($id) => (int) $id)->all()
+            );
+        }
+
+        $responseRows = $tasks->map(function ($task) use ($ateTaskIds) {
             $row = $task->getAttributes(); // raw DB values (e.g. "Y-m-d H:i:s")
+            $row['is_ate_task'] = isset($ateTaskIds[(int) $task->id]) ? 1 : 0;
 
             foreach ([
                 'assignor_name',

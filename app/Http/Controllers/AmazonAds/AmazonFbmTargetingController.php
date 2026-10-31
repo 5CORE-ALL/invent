@@ -35,6 +35,9 @@ class AmazonFbmTargetingController extends Controller
 
     private const SPECIFIC_NEG_TABLE = 'amazon_kw_targeting_specific_negatives';
 
+    /** Per-target flags (deleted / ignored) set from the targets modal. */
+    private const FLAG_TABLE = 'amazon_kw_targeting_flags';
+
     private const COUSIN_TABLE = 'amazon_kw_cousin_links';
 
     /** "Low keyword count" badge thresholds: campaigns with fewer than this many of each kind. */
@@ -259,6 +262,9 @@ class AmazonFbmTargetingController extends Controller
         );
 
         $negativesByCampaign = $this->mergeStoredKeywords([], $campaignIds, self::NEG_TABLE);
+        // Targets deleted in the modal are hidden; ignored ones stay listed (flagged for the modal).
+        [$targetsByCampaign, $ignoredTargetsByCampaign] = $this->applyFlags($targetsByCampaign, $campaignIds, 'kw');
+        [$negativesByCampaign, $ignoredNegativesByCampaign] = $this->applyFlags($negativesByCampaign, $campaignIds, 'neg');
         $specificByCampaign = $this->specificByCampaign($campaignIds);
         $specificNegByCampaign = $this->specificByCampaign($campaignIds, self::SPECIFIC_NEG_TABLE);
 
@@ -276,6 +282,8 @@ class AmazonFbmTargetingController extends Controller
             $name = $row['campaign_name'];
             $targets = $targetsByCampaign[$id] ?? ($targetsByCampaign[strtolower($name)] ?? []);
             $negatives = $negativesByCampaign[$id] ?? [];
+            $ignoredTargets = $ignoredTargetsByCampaign[$id] ?? [];
+            $ignoredNegatives = $ignoredNegativesByCampaign[$id] ?? [];
             $specific = $specificByCampaign[$id] ?? [];
             $specificNeg = $specificNegByCampaign[$id] ?? [];
 
@@ -301,8 +309,10 @@ class AmazonFbmTargetingController extends Controller
                 'status' => $row['status'],
                 'targets' => $targets,
                 'target_count' => count($targets),
+                'ignored_targets' => $ignoredTargets,
                 'negatives' => $negatives,
                 'negative_count' => count($negatives),
+                'ignored_negatives' => $ignoredNegatives,
                 'specific' => $specific,
                 'specific_count' => count($specific),
                 'specific_neg' => $specificNeg,
@@ -451,7 +461,13 @@ class AmazonFbmTargetingController extends Controller
         }
         if ($parts !== []) {
             // UNION (not UNION ALL) removes the duplicates between the two sources.
-            foreach (DB::select('SELECT cid, COUNT(*) AS c FROM ('.implode(' UNION ', $parts).') u GROUP BY cid') as $r) {
+            // Targets deleted in the targets modal are left out.
+            $skipDeleted = $this->hasTable(self::FLAG_TABLE)
+                ? " LEFT JOIN `".self::FLAG_TABLE."` f ON f.kind = 'kw' AND f.status = 'deleted'"
+                    .' AND f.campaign_id COLLATE utf8mb4_unicode_ci = u.cid COLLATE utf8mb4_unicode_ci'
+                    .' AND f.label_lc COLLATE utf8mb4_unicode_ci = u.lbl COLLATE utf8mb4_unicode_ci WHERE f.id IS NULL'
+                : '';
+            foreach (DB::select('SELECT u.cid AS cid, COUNT(*) AS c FROM ('.implode(' UNION ', $parts).') u'.$skipDeleted.' GROUP BY u.cid') as $r) {
                 $bump(trim((string) $r->cid), 'kw', (int) $r->c);
             }
         }
@@ -762,6 +778,377 @@ class AmazonFbmTargetingController extends Controller
         ]);
     }
 
+    /**
+     * Split a displayed target label ("keyword text (MATCH)") into text + match type.
+     *
+     * @return array{text: string, match: string}
+     */
+    protected function parseTargetLabel(string $label): array
+    {
+        $raw = trim($label);
+        if (preg_match('/^(.*)\s+\(([A-Za-z][A-Za-z0-9_\/ -]{1,20})\)$/u', $raw, $m)) {
+            return ['text' => trim($m[1]), 'match' => strtoupper(trim($m[2]))];
+        }
+
+        return ['text' => $raw, 'match' => ''];
+    }
+
+    protected function flagLabel(string $key, string $match): string
+    {
+        return $match !== '' ? $key.' ('.strtolower($match).')' : $key;
+    }
+
+    /**
+     * Flags (deleted / ignored) of a kind for campaigns: campaign_id => ['keyword_key|MATCH' => status].
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, array<string, string>>
+     */
+    protected function flagMap(string $kind, array $campaignIds): array
+    {
+        $campaignIds = array_values(array_unique(array_filter(array_map('strval', $campaignIds))));
+        if ($campaignIds === [] || ! $this->hasTable(self::FLAG_TABLE)) {
+            return [];
+        }
+        $out = [];
+        foreach (array_chunk($campaignIds, 1000) as $chunk) {
+            foreach (DB::table(self::FLAG_TABLE)->where('kind', $kind)->whereIn('campaign_id', $chunk)
+                ->get(['campaign_id', 'keyword_key', 'match_type', 'status']) as $r) {
+                $out[(string) $r->campaign_id][$r->keyword_key.'|'.strtoupper((string) $r->match_type)] = (string) $r->status;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Set of "campaign_id|keyword_key|MATCH" for targets deleted in the modal.
+     *
+     * @param  list<string|int>  $campaignIds
+     * @return array<string, true>
+     */
+    protected function deletedKeys(string $kind, array $campaignIds): array
+    {
+        $set = [];
+        foreach ($this->flagMap($kind, array_map('strval', $campaignIds)) as $cid => $flags) {
+            foreach ($flags as $k => $status) {
+                if ($status === 'deleted') {
+                    $set[$cid.'|'.$k] = true;
+                }
+            }
+        }
+
+        return $set;
+    }
+
+    /**
+     * Drop deleted targets from per-campaign label lists and collect the ignored ones.
+     *
+     * @param  array<string, list<string>>  $map
+     * @param  list<string>  $campaignIds
+     * @return array{0: array<string, list<string>>, 1: array<string, list<string>>} [lists without deleted, ignored labels]
+     */
+    protected function applyFlags(array $map, array $campaignIds, string $kind): array
+    {
+        $flags = $this->flagMap($kind, $campaignIds);
+        $ignored = [];
+        if ($flags === []) {
+            return [$map, $ignored];
+        }
+        foreach ($map as $cid => $labels) {
+            $f = $flags[(string) $cid] ?? null;
+            if ($f === null) {
+                continue;
+            }
+            $keep = [];
+            foreach ($labels as $label) {
+                $p = $this->parseTargetLabel((string) $label);
+                $status = $f[AmazonKwTargetingKeyword::normalizeKey($p['text']).'|'.$p['match']] ?? null;
+                if ($status === 'deleted') {
+                    continue;
+                }
+                if ($status === 'ignored') {
+                    $ignored[$cid][] = $label;
+                }
+                $keep[] = $label;
+            }
+            $map[$cid] = $keep;
+        }
+
+        return [$map, $ignored];
+    }
+
+    /**
+     * Campaigns that share keywords with the given one (its KW-cousin group + same-parent siblings), including itself.
+     *
+     * @return array<string, string> campaign_id => campaign_name
+     */
+    protected function groupMembers(string $campaignId, string $campaignName): array
+    {
+        $members = [$campaignId => $campaignName];
+        try {
+            $index = $this->campaignIndex();
+            foreach ($this->effectiveGroup($campaignName) as $name) {
+                $hit = $index[$this->cousins->normalize((string) $name)] ?? null;
+                if ($hit && $hit['campaign_id'] !== '') {
+                    $members[$hit['campaign_id']] = $hit['campaign_name'];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: group members lookup failed', ['error' => $e->getMessage()]);
+        }
+
+        return $members;
+    }
+
+    /**
+     * Current target / negative lists of one campaign (what the grid row would show).
+     *
+     * @return array<string, mixed>
+     */
+    protected function targetLists(string $campaignId): array
+    {
+        $targets = $this->mergeStoredKeywords($this->targetsForCampaignIds([$campaignId]), [$campaignId]);
+        $negatives = $this->mergeStoredKeywords([], [$campaignId], self::NEG_TABLE);
+        [$targets, $ignoredT] = $this->applyFlags($targets, [$campaignId], 'kw');
+        [$negatives, $ignoredN] = $this->applyFlags($negatives, [$campaignId], 'neg');
+
+        return [
+            'targets' => $targets[$campaignId] ?? [],
+            'ignored_targets' => $ignoredT[$campaignId] ?? [],
+            'negatives' => $negatives[$campaignId] ?? [],
+            'ignored_negatives' => $ignoredN[$campaignId] ?? [],
+        ];
+    }
+
+    /**
+     * Bulk edit / delete / ignore on targets (or negative keywords) from the targets modal. The action is applied to
+     * the campaign and to every campaign sharing its keywords (KW cousins + same-parent siblings), because the
+     * KW-cousin sync would otherwise copy the keywords straight back.
+     *  - delete: removed from the app and never re-imported
+     *  - ignore / unignore: kept, but skipped when pushing keywords to Amazon
+     *  - edit: new text and/or match type (find & replace for several at once)
+     * Only the app's data is changed; nothing is sent to Amazon.
+     */
+    public function bulkTargets(Request $request): JsonResponse
+    {
+        $v = $request->validate([
+            'kind' => ['required', 'string', 'in:kw,neg'],
+            'action' => ['required', 'string', 'in:edit,delete,ignore,unignore'],
+            'campaign_id' => ['required', 'string', 'max:64'],
+            'labels' => ['required', 'array', 'min:1', 'max:5000'],
+            'labels.*' => ['required', 'string', 'max:700'],
+            'text' => ['nullable', 'string', 'max:512'],
+            'find' => ['nullable', 'string', 'max:512'],
+            'replace' => ['nullable', 'string', 'max:512'],
+            'match_type' => ['nullable', 'string', 'max:32'],
+        ]);
+
+        if (! $this->hasTable(self::FLAG_TABLE)) {
+            return response()->json(['success' => false, 'message' => 'Table is missing. Run php artisan migrate.'], 500);
+        }
+
+        $kind = $v['kind'];
+        $action = $v['action'];
+        $table = $this->storeTable($kind);
+        if (! $this->hasTable($table)) {
+            return response()->json(['success' => false, 'message' => 'Table is missing. Run php artisan migrate.'], 500);
+        }
+
+        $cid = trim($v['campaign_id']);
+        $campaign = null;
+        foreach ($this->campaignsGroupedByParent() as $c) {
+            if ($c['campaign_id'] === $cid) {
+                $campaign = $c;
+                break;
+            }
+        }
+        if ($campaign === null) {
+            return response()->json(['success' => false, 'message' => 'Unknown campaign.'], 422);
+        }
+
+        $newMatch = null;
+        if ($action === 'edit' && trim((string) ($v['match_type'] ?? '')) !== '') {
+            $newMatch = strtoupper(trim((string) $v['match_type']));
+            $allowed = $kind === 'neg' ? ['NEGATIVE_EXACT', 'NEGATIVE_PHRASE'] : ['BROAD', 'PHRASE', 'EXACT'];
+            if (! in_array($newMatch, $allowed, true)) {
+                return response()->json(['success' => false, 'message' => 'Invalid match type.'], 422);
+            }
+        }
+
+        // Unique targets (text key + match type) out of the selected labels.
+        $items = [];
+        foreach ($v['labels'] as $label) {
+            $p = $this->parseTargetLabel((string) $label);
+            if ($p['text'] === '') {
+                continue;
+            }
+            $items[AmazonKwTargetingKeyword::normalizeKey($p['text']).'|'.$p['match']] = $p;
+        }
+        if ($items === []) {
+            return response()->json(['success' => false, 'message' => 'Nothing selected.'], 422);
+        }
+
+        // Edit: work out the new text / match for every item first.
+        $edits = [];
+        if ($action === 'edit') {
+            $single = count($items) === 1;
+            $text = trim((string) preg_replace('/\s+/u', ' ', (string) ($v['text'] ?? '')));
+            $find = (string) ($v['find'] ?? '');
+            $replace = (string) ($v['replace'] ?? '');
+            if ($single && $text === '' && $find === '' && $newMatch === null) {
+                return response()->json(['success' => false, 'message' => 'Enter a new keyword or choose a match type.'], 422);
+            }
+            if (! $single && $find === '' && $newMatch === null) {
+                return response()->json(['success' => false, 'message' => 'Enter text to find and replace, or choose a match type.'], 422);
+            }
+            foreach ($items as $oldK => $p) {
+                $nt = $p['text'];
+                if ($single && $text !== '') {
+                    $nt = $text;
+                } elseif ($find !== '') {
+                    $nt = trim((string) preg_replace('/\s+/u', ' ', str_ireplace($find, $replace, $p['text'])));
+                }
+                if ($nt === '') {
+                    return response()->json(['success' => false, 'message' => 'The edit would leave an empty keyword.'], 422);
+                }
+                $nm = $newMatch ?? $p['match'];
+                $newK = AmazonKwTargetingKeyword::normalizeKey($nt).'|'.$nm;
+                if ($newK === $oldK) {
+                    continue; // unchanged
+                }
+                $edits[$oldK] = ['old' => $p, 'text' => $nt, 'match' => $nm];
+            }
+            if ($edits === []) {
+                return response()->json(['success' => true, 'message' => 'Nothing changed.', 'changed' => 0] + $this->targetLists($cid));
+            }
+        }
+
+        $members = $this->groupMembers($cid, $campaign['campaign_name']);
+        $memberIds = array_map('strval', array_keys($members));
+        $now = now();
+        $user = Auth::user()?->name;
+
+        $flagRow = function (string $campaignId, string $text, string $match, string $status) use ($kind, $now, $user): array {
+            $key = AmazonKwTargetingKeyword::normalizeKey($text);
+
+            return [
+                'kind' => $kind,
+                'campaign_id' => $campaignId,
+                'keyword_key' => $key,
+                'match_type' => $match,
+                'label_lc' => mb_substr($this->flagLabel($key, $match), 0, 320),
+                'status' => $status,
+                'flagged_by' => $user,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        };
+        $upsert = function (array $rows): void {
+            foreach (array_chunk($rows, 500) as $batch) {
+                DB::table(self::FLAG_TABLE)->upsert(
+                    $batch,
+                    ['kind', 'campaign_id', 'keyword_key', 'match_type'],
+                    ['label_lc', 'status', 'flagged_by', 'updated_at']
+                );
+            }
+        };
+        $clearFlags = function (array $keys, ?string $onlyStatus = null) use ($kind, $memberIds): void {
+            // $keys: list of [keyword_key, match]
+            foreach ($keys as [$k, $m]) {
+                $q = DB::table(self::FLAG_TABLE)->where('kind', $kind)->whereIn('campaign_id', $memberIds)
+                    ->where('keyword_key', $k)->where('match_type', $m);
+                if ($onlyStatus !== null) {
+                    $q->where('status', $onlyStatus);
+                }
+                $q->delete();
+            }
+        };
+
+        $changed = 0;
+        DB::transaction(function () use ($action, $items, $edits, $members, $memberIds, $table, $kind, $now, $flagRow, $upsert, $clearFlags, &$changed) {
+            if ($action === 'ignore') {
+                $rows = [];
+                foreach ($items as $p) {
+                    foreach ($memberIds as $m) {
+                        $rows[] = $flagRow($m, $p['text'], $p['match'], 'ignored');
+                    }
+                }
+                $upsert($rows);
+                $changed = count($items);
+
+                return;
+            }
+
+            if ($action === 'unignore') {
+                $clearFlags(array_map(static fn ($p) => [AmazonKwTargetingKeyword::normalizeKey($p['text']), $p['match']], array_values($items)), 'ignored');
+                $changed = count($items);
+
+                return;
+            }
+
+            // delete + edit both remove the old target from the store and flag it deleted (so reports / pulls don't revive it)
+            $targets = $action === 'edit' ? array_map(static fn ($e) => $e['old'], array_values($edits)) : array_values($items);
+            $flags = [];
+            foreach ($targets as $p) {
+                $key = AmazonKwTargetingKeyword::normalizeKey($p['text']);
+                DB::table($table)->whereIn('campaign_id', $memberIds)->where('keyword_key', $key)->where('match_type', $p['match'])->delete();
+                foreach ($memberIds as $m) {
+                    $flags[] = $flagRow($m, $p['text'], $p['match'], 'deleted');
+                }
+            }
+            $upsert($flags);
+            $changed = count($targets);
+
+            if ($action === 'edit') {
+                $inserts = [];
+                $revive = [];
+                foreach ($edits as $e) {
+                    $key = AmazonKwTargetingKeyword::normalizeKey($e['text']);
+                    $revive[] = [$key, $e['match']];
+                    foreach ($members as $mid => $mname) {
+                        $row = [
+                            'campaign_id' => (string) $mid,
+                            'campaign_name' => $mname,
+                            'ad_group_id' => null,
+                            'keyword_id' => null,
+                            'keyword' => mb_substr($e['text'], 0, 512),
+                            'keyword_key' => $key,
+                            'match_type' => $e['match'],
+                            'state' => null,
+                            'source' => 'manual',
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
+                        if ($kind === 'neg') {
+                            $row['level'] = 'CAMPAIGN';
+                        }
+                        $inserts[] = $row;
+                    }
+                }
+                // A previously deleted/ignored flag on the new text must not hide the edited target.
+                $clearFlags($revive);
+                foreach (array_chunk($inserts, 500) as $batch) {
+                    DB::table($table)->insertOrIgnore($batch);
+                }
+            }
+        });
+
+        $this->forgetBadges();
+
+        $n = $changed;
+        $noun = ($kind === 'neg' ? 'negative keyword' : 'target').($n === 1 ? '' : 's');
+        $verb = ['edit' => 'updated', 'delete' => 'deleted', 'ignore' => 'ignored', 'unignore' => 'un-ignored'][$action];
+        $shared = count($members) > 1 ? ' (applied to '.count($members).' campaigns sharing these keywords)' : '';
+
+        return response()->json([
+            'success' => true,
+            'message' => $n.' '.$noun.' '.$verb.'.'.$shared,
+            'changed' => $n,
+            'campaigns' => count($members),
+        ] + $this->targetLists($cid));
+    }
+
     private function storeTable(string $kind): string
     {
         return $kind === 'neg' ? self::NEG_TABLE : self::STORE_TABLE;
@@ -881,6 +1268,11 @@ class AmazonFbmTargetingController extends Controller
             }
         }
 
+        // Targets deleted in the targets modal are not brought back.
+        foreach ($this->deletedKeys($kind, array_keys($names)) as $k => $_) {
+            $existing[$k] = true;
+        }
+
         $now = now();
         $toInsert = [];
         $skipped = 0;
@@ -980,11 +1372,12 @@ class AmazonFbmTargetingController extends Controller
             $have[$row->campaign_id][$uk] = true;
         }
 
+        $deleted = $this->deletedKeys($kind, array_keys($members));
         $now = now();
         $toInsert = [];
         foreach ($members as $cid => $cname) {
             foreach ($union as $uk => $row) {
-                if (isset($have[$cid][$uk])) {
+                if (isset($have[$cid][$uk]) || isset($deleted[$cid.'|'.$uk])) {
                     continue;
                 }
                 $new = [
@@ -1111,7 +1504,7 @@ class AmazonFbmTargetingController extends Controller
         }
 
         $now = now();
-        $seen = [];
+        $seen = $this->deletedKeys('kw', array_keys($members));
         $toInsert = [];
         foreach (array_chunk(array_keys($members), 1000) as $chunk) {
             $q = DB::table(self::KW_TABLE)->whereIn('campaign_id', $chunk)->whereNotNull($labelCol)->where($labelCol, '!=', '');

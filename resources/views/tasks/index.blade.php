@@ -1216,6 +1216,22 @@
             background-color: #fef3c7 !important;
         }
 
+        /* Tasks created by an ATE (Auto Task Event) rule - light pink */
+        .tabulator-row.ate-task,
+        .tabulator-row.ate-task .tabulator-cell {
+            background-color: #ffe4ef !important;
+        }
+
+        .tabulator-row.ate-task.tabulator-row-even,
+        .tabulator-row.ate-task.tabulator-row-even .tabulator-cell {
+            background-color: #ffd9e8 !important;
+        }
+
+        .tabulator-row.ate-task:hover,
+        .tabulator-row.ate-task:hover .tabulator-cell {
+            background-color: #ffc9de !important;
+        }
+
         .tabulator-row .tabulator-cell {
             border-right: 1px solid #e9ecef !important;
             padding: 12px 8px !important;
@@ -4188,7 +4204,7 @@
                     let isOverdue = isOverdueByBusinessTid(data);
                     
                     // Reset dynamic classes before applying current state
-                    row.getElement().classList.remove('automated-task', 'alt', 'overdue-task');
+                    row.getElement().classList.remove('automated-task', 'alt', 'overdue-task', 'ate-task');
                     row.getElement().style.backgroundColor = "";
                     row.getElement().style.borderLeft = "";
 
@@ -4196,7 +4212,11 @@
                     // - Automated tasks: always yellow (even if overdue)
                     // - Non-automated overdue tasks: red highlight
                     // Do not scan other rows here — that is O(n²) on every filter/redraw.
-                    if (data.is_automate_task == 1) {
+                    if (data.is_ate_task == 1) {
+                        // Created by an ATE (Auto Task Event) rule: light pink, even if overdue.
+                        row.getElement().classList.add('ate-task');
+                        row.getElement().style.borderLeft = "4px solid #ec4899";
+                    } else if (data.is_automate_task == 1) {
                         row.getElement().classList.add('automated-task');
                         row.getElement().style.borderLeft = "4px solid #ffc107";
                     } else if (isOverdue) {

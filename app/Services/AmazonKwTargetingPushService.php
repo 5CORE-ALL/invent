@@ -46,7 +46,18 @@ class AmazonKwTargetingPushService
         foreach (array_chunk($kwIds, 1000) as $chunk) {
             $q = DB::table(self::STORE_TABLE)->whereIn('campaign_id', $chunk)->whereIn('match_type', self::MATCH_TYPES)
                 ->get(['campaign_id', 'keyword', 'keyword_key', 'match_type']);
+            // Targets ignored (or deleted) in the targets modal are not pushed.
+            $skip = [];
+            if (Schema::hasTable('amazon_kw_targeting_flags')) {
+                foreach (DB::table('amazon_kw_targeting_flags')->where('kind', 'kw')->whereIn('campaign_id', $chunk)
+                    ->get(['campaign_id', 'keyword_key', 'match_type']) as $f) {
+                    $skip[$f->campaign_id.'|'.$f->keyword_key.'|'.strtoupper((string) $f->match_type)] = true;
+                }
+            }
             foreach ($q as $r) {
+                if (isset($skip[$r->campaign_id.'|'.$r->keyword_key.'|'.strtoupper((string) $r->match_type)])) {
+                    continue;
+                }
                 $appByCampaign[(string) $r->campaign_id][$r->keyword_key.'|'.$r->match_type] = [
                     'text' => (string) $r->keyword,
                     'match' => (string) $r->match_type,

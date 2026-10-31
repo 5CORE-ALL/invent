@@ -42,21 +42,35 @@
         padding: 2px 8px; border-radius: 999px; background: #047857; color: #fff; font-size: 11px; font-weight: 700;
     }
     .aft-empty { color: #94a3b8; font-size: 13px; }
+    /* Targets modal: full screen height (top to bottom), list scrolls inside */
+    #aftTargetsModal .modal-dialog { height: 100%; margin: 0 auto; max-width: 820px; }
+    #aftTargetsModal .modal-content { height: 100%; border-radius: 0; }
+    #aftTargetsModal .modal-body { display: flex; flex-direction: column; min-height: 0; overflow: hidden; padding: 12px 16px; }
     #aft-modal-targets.aft-modal-list {
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        max-height: 420px;
+        gap: 6px;
+        flex: 1 1 auto;
+        min-height: 0;
         overflow-y: auto;
         padding-right: 4px;
     }
+    #aftTargetsModal .aft-stats { width: 100%; margin-bottom: 8px; font-size: 12px; text-align: center; border-collapse: collapse; }
+    #aftTargetsModal .aft-stats th, #aftTargetsModal .aft-stats td { border: 1px solid #e2e8f0; padding: 3px 8px; }
+    #aftTargetsModal .aft-stats thead th { background: #f1f5f9; color: #475569; font-weight: 700; }
+    #aftTargetsModal .aft-stats tbody th { text-align: left; background: #f8fafc; color: #334155; }
+    #aftTargetsModal .aft-stats tr.aft-stats-sel td, #aftTargetsModal .aft-stats tr.aft-stats-sel th { background: #eff6ff; color: #1d4ed8; font-weight: 700; }
+    #aftTargetsModal .aft-toolbar { display: flex; align-items: center; gap: 10px; padding: 4px 10px; margin-bottom: 6px; font-size: 13px; color: #475569; }
+    #aftTargetsModal .aft-toolbar .aft-sel-text { flex: 1; }
+    #aftTargetsModal .aft-editpanel { display: none; border: 1px solid #fcd34d; background: #fffbeb; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px; }
+    #aftTargetsModal .aft-editpanel.show { display: block; }
+    #aftTargetsModal .aft-editpanel label { font-size: 12px; font-weight: 600; color: #92400e; margin-bottom: 2px; }
     #aft-modal-targets .aft-chip {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 12px;
+        gap: 10px;
         width: 100%;
-        padding: 8px 12px;
+        padding: 6px 10px;
         border-radius: 8px;
         background: #eef2ff;
         border: 1px solid #c7d2fe;
@@ -64,6 +78,10 @@
         font-size: 13px;
         line-height: 1.35;
     }
+    #aft-modal-targets .aft-chip.is-selected { background: #dbeafe; border-color: #60a5fa; }
+    #aft-modal-targets .aft-chip.is-ignored { opacity: .6; background: #f1f5f9; border-color: #cbd5e1; }
+    #aft-modal-targets .aft-chip.is-ignored .aft-chip-text { text-decoration: line-through; }
+    #aft-modal-targets .aft-chip input[type=checkbox], #aftTargetsModal .aft-toolbar input[type=checkbox] { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; }
     #aft-modal-targets .aft-chip-text { flex: 1; min-width: 0; word-break: break-word; }
     #aft-modal-targets .aft-chip-match {
         flex-shrink: 0;
@@ -75,6 +93,18 @@
         font-weight: 700;
         letter-spacing: 0.02em;
     }
+    #aftTargetsModal .aft-ico {
+        flex-shrink: 0; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 6px;
+        background: transparent; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px;
+    }
+    #aftTargetsModal .aft-ico:disabled { opacity: .4; cursor: not-allowed; }
+    #aftTargetsModal .aft-ico-edit { color: #1d4ed8; }
+    #aftTargetsModal .aft-ico-edit:hover:not(:disabled) { background: #dbeafe; border-color: #93c5fd; }
+    #aftTargetsModal .aft-ico-del { color: #b91c1c; }
+    #aftTargetsModal .aft-ico-del:hover:not(:disabled) { background: #fee2e2; border-color: #fca5a5; }
+    #aftTargetsModal .aft-ico-ign { color: #b45309; }
+    #aftTargetsModal .aft-ico-ign:hover:not(:disabled) { background: #fef3c7; border-color: #fcd34d; }
+    #aftTargetsModal .aft-ico-ign.is-on { background: #fde68a; border-color: #f59e0b; }
     .amz-fbm-targeting .kwc-btn {
         display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 6px;
         background: #fff; border: 1px solid #1d4ed8; color: #1d4ed8; font-size: 12px; font-weight: 700; cursor: pointer;
@@ -169,14 +199,47 @@
 </div>
 
 <div class="modal fade" id="aftTargetsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title"><i class="fas fa-bullseye"></i> <span id="aft-modal-title">Targets</span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small mb-2" id="aft-modal-count"></p>
+                <div id="aft-modal-msg" class="small mb-1" style="display:none;"></div>
+                <table class="aft-stats" id="aft-modal-stats"></table>
+                <div class="aft-toolbar">
+                    <input type="checkbox" id="aft-sel-all" title="Select all">
+                    <span class="aft-sel-text" id="aft-sel-text"></span>
+                    <button type="button" class="aft-ico aft-ico-edit" id="aft-bulk-edit" title="Edit selected"><i class="fas fa-pen"></i></button>
+                    <button type="button" class="aft-ico aft-ico-del" id="aft-bulk-del" title="Delete selected"><i class="fas fa-trash"></i></button>
+                    <button type="button" class="aft-ico aft-ico-ign" id="aft-bulk-ign" title="Ignore selected"><i class="fas fa-ban"></i></button>
+                </div>
+                <div class="aft-editpanel" id="aft-editpanel">
+                    <div class="fw-bold mb-2" id="aft-edit-title">Edit</div>
+                    <div class="row g-2">
+                        <div class="col-12" id="aft-edit-single">
+                            <label for="aft-edit-text">Keyword</label>
+                            <input type="text" class="form-control form-control-sm" id="aft-edit-text" maxlength="512">
+                        </div>
+                        <div class="col-6" id="aft-edit-find-wrap">
+                            <label for="aft-edit-find">Find text</label>
+                            <input type="text" class="form-control form-control-sm" id="aft-edit-find" maxlength="512" placeholder="in every selected keyword">
+                        </div>
+                        <div class="col-6" id="aft-edit-repl-wrap">
+                            <label for="aft-edit-replace">Replace with</label>
+                            <input type="text" class="form-control form-control-sm" id="aft-edit-replace" maxlength="512">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label for="aft-edit-match">Match type</label>
+                            <select class="form-select form-select-sm" id="aft-edit-match"></select>
+                        </div>
+                        <div class="col-12 col-md-6 d-flex align-items-end justify-content-end gap-2">
+                            <button type="button" class="btn btn-sm btn-light border" id="aft-edit-cancel">Cancel</button>
+                            <button type="button" class="btn btn-sm btn-primary" id="aft-edit-apply">Apply</button>
+                        </div>
+                    </div>
+                </div>
                 <div id="aft-modal-targets" class="aft-modal-list"></div>
             </div>
         </div>
@@ -621,30 +684,115 @@
         ],
     });
 
-    function openTargetsModal(row, kind) {
-        const isNeg = kind === 'neg';
-        const name = (row.campaign_name || 'Campaign') + (isNeg ? ' - Negative KW' : '');
-        const list = Array.isArray(isNeg ? row.negatives : row.targets) ? (isNeg ? row.negatives : row.targets) : [];
+    // ---- Targets modal: select, edit, delete, ignore (all work on the whole selection) ----
+    const TGT_URL = @json(route('amazon.ads.fbm-targeting.targets.bulk'));
+    const tgt = { campaignId: '', name: '', kind: 'kw', items: [], selected: new Set(), busy: false };
+
+    function parseTargetLabel(raw) {
+        raw = String(raw || '').trim();
+        const m = raw.match(/^(.*)\s+\(([A-Za-z][A-Za-z0-9_/ -]{1,20})\)$/);
+        return { text: m ? m[1].trim() : raw, match: m ? m[2].trim().toUpperCase() : '' };
+    }
+
+    function setTargetItems(targets, ignored) {
+        const ign = new Set((ignored || []).map(String));
+        tgt.items = (targets || []).map(function (label) {
+            const p = parseTargetLabel(label);
+            return { label: String(label), text: p.text, match: p.match, ignored: ign.has(String(label)) };
+        });
+        const have = new Set(tgt.items.map(function (i) { return i.label; }));
+        tgt.selected.forEach(function (l) { if (!have.has(l)) tgt.selected.delete(l); });
+    }
+
+    function nounFor(n) {
+        return (tgt.kind === 'neg' ? 'negative keyword' : 'target') + (n === 1 ? '' : 's');
+    }
+
+    function renderTargetsModal() {
+        const items = tgt.items;
+        const selItems = items.filter(function (i) { return tgt.selected.has(i.label); });
+
+        const countMatch = function (list) {
+            const o = { total: list.length, ignored: 0, by: {} };
+            list.forEach(function (i) {
+                if (i.ignored) o.ignored++;
+                const k = i.match || '-';
+                o.by[k] = (o.by[k] || 0) + 1;
+            });
+            return o;
+        };
+        const all = countMatch(items);
+        const sel = countMatch(selItems);
+        const order = ['EXACT', 'PHRASE', 'BROAD', 'NEGATIVE_EXACT', 'NEGATIVE_PHRASE'];
+        const types = Object.keys(all.by).sort(function (a, b) {
+            const ia = order.indexOf(a), ib = order.indexOf(b);
+            return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+        });
+        const typeLabel = function (t) { return t === '-' ? 'No match' : t.charAt(0) + t.slice(1).toLowerCase().replace(/_/g, ' '); };
+        const row = function (cls, label, c) {
+            return '<tr class="' + cls + '"><th>' + label + '</th><td>' + c.total.toLocaleString() + '</td>' +
+                types.map(function (t) { return '<td>' + (c.by[t] || 0).toLocaleString() + '</td>'; }).join('') +
+                '<td>' + c.ignored.toLocaleString() + '</td></tr>';
+        };
+        document.getElementById('aft-modal-stats').innerHTML =
+            '<thead><tr><th></th><th>Total</th>' + types.map(function (t) { return '<th>' + escapeHtml(typeLabel(t)) + '</th>'; }).join('') + '<th>Ignored</th></tr></thead>' +
+            '<tbody>' + row('', 'All', all) + row('aft-stats-sel', 'Selected', sel) + '</tbody>';
+
         const titleEl = document.getElementById('aft-modal-title');
-        const countLabel = document.getElementById('aft-modal-count');
+        if (titleEl) titleEl.textContent = tgt.name + (tgt.kind === 'neg' ? ' - Negative KW' : '');
+
         const listEl = document.getElementById('aft-modal-targets');
-        if (titleEl) titleEl.textContent = name;
-        if (countLabel) countLabel.textContent = list.length.toLocaleString() + (isNeg ? ' negative keyword' : ' target') + (list.length === 1 ? '' : 's');
-        if (listEl) {
-            if (list.length === 0) {
-                listEl.innerHTML = '<span class="aft-empty">' + (isNeg ? 'No negative keywords yet' : 'No targets yet') + '</span>';
-            } else {
-                listEl.innerHTML = list.map(function (t) {
-                    const raw = String(t || '').trim();
-                    const m = raw.match(/^(.*)\s+\(([A-Za-z][A-Za-z0-9_/ -]{1,20})\)$/);
-                    const text = m ? m[1].trim() : raw;
-                    const match = m ? m[2].trim() : '';
-                    return '<div class="aft-chip"><span class="aft-chip-text">' + escapeHtml(text) + '</span>' +
-                        (match ? '<span class="aft-chip-match">' + escapeHtml(match) + '</span>' : '') +
-                        '</div>';
-                }).join('');
-            }
+        if (items.length === 0) {
+            listEl.innerHTML = '<span class="aft-empty">' + (tgt.kind === 'neg' ? 'No negative keywords yet' : 'No targets yet') + '</span>';
+        } else {
+            listEl.innerHTML = items.map(function (i, idx) {
+                const on = tgt.selected.has(i.label);
+                return '<div class="aft-chip' + (on ? ' is-selected' : '') + (i.ignored ? ' is-ignored' : '') + '" data-idx="' + idx + '">' +
+                    '<input type="checkbox" class="aft-pick"' + (on ? ' checked' : '') + '>' +
+                    '<span class="aft-chip-text">' + escapeHtml(i.text) + '</span>' +
+                    (i.match ? '<span class="aft-chip-match">' + escapeHtml(i.match) + '</span>' : '') +
+                    '<button type="button" class="aft-ico aft-ico-edit" data-act="edit" title="Edit"><i class="fas fa-pen"></i></button>' +
+                    '<button type="button" class="aft-ico aft-ico-del" data-act="delete" title="Delete"><i class="fas fa-trash"></i></button>' +
+                    '<button type="button" class="aft-ico aft-ico-ign' + (i.ignored ? ' is-on' : '') + '" data-act="ignore" title="' + (i.ignored ? 'Un-ignore' : 'Ignore') + '"><i class="fas fa-ban"></i></button>' +
+                    '</div>';
+            }).join('');
         }
+
+        const n = selItems.length;
+        const allBox = document.getElementById('aft-sel-all');
+        allBox.checked = items.length > 0 && n === items.length;
+        allBox.indeterminate = n > 0 && n < items.length;
+        allBox.disabled = items.length === 0;
+        document.getElementById('aft-sel-text').textContent = n ? n.toLocaleString() + ' selected' : 'Select ' + nounFor(2) + ' to edit, delete or ignore in bulk';
+        ['aft-bulk-edit', 'aft-bulk-del', 'aft-bulk-ign'].forEach(function (id) {
+            const b = document.getElementById(id);
+            b.disabled = n === 0 || tgt.busy;
+        });
+        const ign = document.getElementById('aft-bulk-ign');
+        const allIgn = n > 0 && selItems.every(function (i) { return i.ignored; });
+        ign.classList.toggle('is-on', allIgn);
+        ign.title = (allIgn ? 'Un-ignore selected' : 'Ignore selected') + (n ? ' (' + n + ')' : '');
+        document.getElementById('aft-bulk-edit').title = 'Edit selected' + (n ? ' (' + n + ')' : '');
+        document.getElementById('aft-bulk-del').title = 'Delete selected' + (n ? ' (' + n + ')' : '');
+    }
+
+    function targetsToAct(idx) {
+        const i = tgt.items[idx];
+        if (i && tgt.selected.has(i.label)) {
+            return tgt.items.filter(function (x) { return tgt.selected.has(x.label); });
+        }
+        return i ? [i] : [];
+    }
+
+    function openTargetsModal(row, kind) {
+        tgt.kind = kind === 'neg' ? 'neg' : 'kw';
+        tgt.campaignId = String(row.campaign_id || '');
+        tgt.name = row.campaign_name || 'Campaign';
+        tgt.selected = new Set();
+        showModalMsg('', true);
+        setTargetItems(tgt.kind === 'neg' ? row.negatives : row.targets, tgt.kind === 'neg' ? row.ignored_negatives : row.ignored_targets);
+        closeEditPanel();
+        renderTargetsModal();
         const modalEl = document.getElementById('aftTargetsModal');
         if (modalEl && window.bootstrap && bootstrap.Modal) {
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -652,6 +800,130 @@
             window.jQuery(modalEl).modal('show');
         }
     }
+
+    function showModalMsg(text, ok) {
+        const el = document.getElementById('aft-modal-msg');
+        el.style.display = text ? 'block' : 'none';
+        el.className = 'small mb-1 ' + (ok ? 'text-success' : 'text-danger');
+        el.textContent = text || '';
+    }
+
+    function closeEditPanel() {
+        document.getElementById('aft-editpanel').classList.remove('show');
+    }
+
+    let editItems = [];
+    function openEditPanel(list) {
+        if (!list.length) return;
+        editItems = list;
+        const single = list.length === 1;
+        document.getElementById('aft-edit-title').textContent = 'Edit ' + list.length.toLocaleString() + ' ' + nounFor(list.length) +
+            (single ? '' : ' (find & replace in the keyword text, and/or change the match type)');
+        document.getElementById('aft-edit-single').style.display = single ? '' : 'none';
+        document.getElementById('aft-edit-find-wrap').style.display = single ? 'none' : '';
+        document.getElementById('aft-edit-repl-wrap').style.display = single ? 'none' : '';
+        document.getElementById('aft-edit-text').value = single ? list[0].text : '';
+        document.getElementById('aft-edit-find').value = '';
+        document.getElementById('aft-edit-replace').value = '';
+        const opts = tgt.kind === 'neg' ? ['NEGATIVE_EXACT', 'NEGATIVE_PHRASE'] : ['BROAD', 'PHRASE', 'EXACT'];
+        const matchSel = document.getElementById('aft-edit-match');
+        matchSel.innerHTML = '<option value="">Keep match type' + (single && list[0].match ? ' (' + escapeHtml(list[0].match) + ')' : '') + '</option>' +
+            opts.map(function (o) { return '<option value="' + o + '">' + o + '</option>'; }).join('');
+        document.getElementById('aft-editpanel').classList.add('show');
+        const focusEl = single ? document.getElementById('aft-edit-text') : document.getElementById('aft-edit-find');
+        if (focusEl) focusEl.focus();
+    }
+
+    function runTargetAction(action, list, extra) {
+        if (tgt.busy || !list.length) return;
+        tgt.busy = true;
+        renderTargetsModal();
+        const body = Object.assign({
+            kind: tgt.kind,
+            action: action,
+            campaign_id: tgt.campaignId,
+            labels: list.map(function (i) { return i.label; }),
+        }, extra || {});
+        fetch(TGT_URL, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrf,
+            },
+            body: JSON.stringify(body),
+        }).then(function (res) {
+            return res.json().catch(function () { return {}; }).then(function (b) { return { ok: res.ok && b.success !== false, body: b }; });
+        }).then(function (r) {
+            const b = r.body || {};
+            if (!r.ok) {
+                alert(b.message || (b.errors ? Object.values(b.errors).flat().join('\n') : 'Could not save. Please try again.'));
+                return;
+            }
+            if (action === 'delete' || action === 'edit') {
+                list.forEach(function (i) { tgt.selected.delete(i.label); });
+            }
+            setTargetItems(tgt.kind === 'neg' ? b.negatives : b.targets, tgt.kind === 'neg' ? b.ignored_negatives : b.ignored_targets);
+            closeEditPanel();
+            if (b.message) showModalMsg(b.message, true);
+            if (typeof table !== 'undefined' && table && table.replaceData) table.replaceData(); // refresh the grid counts / badges
+        }).catch(function () {
+            alert('Network error. Please try again.');
+        }).finally(function () {
+            tgt.busy = false;
+            renderTargetsModal();
+        });
+    }
+
+    function actOn(action, list) {
+        if (!list.length) return;
+        if (action === 'edit') { openEditPanel(list); return; }
+        if (action === 'delete') {
+            if (!confirm('Delete ' + list.length.toLocaleString() + ' ' + nounFor(list.length) + '? This also applies to the KW cousins / sibling campaigns that share these keywords, and they will not be re-imported.')) return;
+            runTargetAction('delete', list);
+            return;
+        }
+        // ignore toggles: un-ignore when everything chosen is already ignored
+        const allIgn = list.every(function (i) { return i.ignored; });
+        runTargetAction(allIgn ? 'unignore' : 'ignore', list);
+    }
+
+    (function wireTargetsModal() {
+        const listEl = document.getElementById('aft-modal-targets');
+        listEl.addEventListener('click', function (e) {
+            const chip = e.target.closest('.aft-chip');
+            if (!chip) return;
+            const idx = Number(chip.dataset.idx);
+            const btn = e.target.closest('[data-act]');
+            if (btn) {
+                actOn(btn.dataset.act, targetsToAct(idx));
+                return;
+            }
+            if (e.target.classList.contains('aft-pick')) {
+                const label = tgt.items[idx].label;
+                if (e.target.checked) tgt.selected.add(label); else tgt.selected.delete(label);
+                renderTargetsModal();
+            }
+        });
+        document.getElementById('aft-sel-all').addEventListener('change', function (e) {
+            tgt.selected = e.target.checked ? new Set(tgt.items.map(function (i) { return i.label; })) : new Set();
+            renderTargetsModal();
+        });
+        const selected = function () { return tgt.items.filter(function (i) { return tgt.selected.has(i.label); }); };
+        document.getElementById('aft-bulk-edit').addEventListener('click', function () { actOn('edit', selected()); });
+        document.getElementById('aft-bulk-del').addEventListener('click', function () { actOn('delete', selected()); });
+        document.getElementById('aft-bulk-ign').addEventListener('click', function () { actOn('ignore', selected()); });
+        document.getElementById('aft-edit-cancel').addEventListener('click', closeEditPanel);
+        document.getElementById('aft-edit-apply').addEventListener('click', function () {
+            runTargetAction('edit', editItems, {
+                text: document.getElementById('aft-edit-text').value,
+                find: document.getElementById('aft-edit-find').value,
+                replace: document.getElementById('aft-edit-replace').value,
+                match_type: document.getElementById('aft-edit-match').value,
+            });
+        });
+    })();
 
     const pullMsg = document.getElementById('aft-pull-msg');
     const csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
