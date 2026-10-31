@@ -200,6 +200,52 @@
             font-size: 13px;
         }
         .slack-fwd strong { color: #1d1c1d; }
+        /* WhatsApp-style quoted reply inside a message */
+        .slack-quote {
+            display: block; cursor: pointer; margin: 4px 0 6px; padding: 5px 10px;
+            background: #f0f2f5; border-left: 4px solid #007a5a; border-radius: 6px;
+            max-width: 460px; overflow: hidden;
+        }
+        .slack-quote:hover { background: #e6eaee; }
+        .slack-quote strong { display: block; font-size: 12px; color: #007a5a; }
+        .slack-quote span {
+            display: block; font-size: 13px; color: #54656f;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .slack-quote.is-deleted span { font-style: italic; }
+        .slack-msg.is-flash { animation: slackFlash 1.8s ease-out; }
+        @keyframes slackFlash { 0%, 35% { background: #fff3b0; } 100% { background: transparent; } }
+        /* Reply bar above the composer */
+        .slack-replybar {
+            display: flex; align-items: stretch; gap: 8px; background: #f0f2f5;
+            border-radius: 8px; padding: 6px 8px; margin-bottom: 6px;
+        }
+        .slack-replybar__q {
+            flex: 1; min-width: 0; border-left: 4px solid #007a5a; padding-left: 10px; cursor: pointer;
+        }
+        .slack-replybar__q strong { display: block; font-size: 12px; color: #007a5a; }
+        .slack-replybar__q span {
+            display: block; font-size: 13px; color: #54656f;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .slack-replybar button {
+            border: 0; background: transparent; font-size: 18px; line-height: 1; color: #54656f; padding: 0 6px;
+        }
+        .slack-replybar button:hover { color: #d32f2f; }
+        /* Right-click / long-press menu */
+        .slack-ctx {
+            display: none; position: fixed; z-index: 3000; min-width: 190px; padding: 6px 0;
+            background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+        }
+        .slack-ctx.is-on { display: block; }
+        .slack-ctx button {
+            display: block; width: 100%; text-align: left; border: 0; background: transparent;
+            padding: 7px 16px; font-size: 14px; color: #1d1c1d;
+        }
+        .slack-ctx button:hover { background: #f0f2f5; }
+        .slack-ctx button.is-primary { font-weight: 700; }
+        .slack-ctx button.is-danger { color: #b91c1c; }
+        .slack-ctx hr { margin: 4px 0; border-color: #eee; }
         .slack-msg__file { margin-top: 8px; }
         .slack-msg__file img { max-width: 320px; max-height: 240px; border-radius: 8px; }
         .slack-msg__seen { font-size: 11px; color: #616061; margin-top: 3px; }
@@ -1205,6 +1251,11 @@
         if (m.forwarded) {
             fwd = '<div class="slack-fwd">Forwarded from <strong>' + esc(m.forwarded.name) + '</strong><div>' + esc(m.forwarded.preview || '') + '</div></div>';
         }
+        let quote = '';
+        if (m.reply_to) {
+            quote = '<div class="slack-quote' + (m.reply_to.deleted ? ' is-deleted' : '') + '" data-quote="' + esc(String(m.reply_to.id)) + '" title="Go to original message">' +
+                '<strong>' + esc(m.reply_to.name || '') + '</strong><span>' + (m.reply_to.has_file && !m.reply_to.deleted ? '📎 ' : '') + esc(m.reply_to.preview || '') + '</span></div>';
+        }
         let file = '';
         if (m.attachment_url) {
             file = m.attachment_is_image
@@ -1238,12 +1289,129 @@
         );
         wrap.innerHTML = avatar + '<div style="flex:1;min-width:0">' +
             '<div class="slack-msg__meta"><strong>' + esc(m.name || (m.is_bot ? '5 Core Bot' : '')) + '</strong>' + esc(m.created_label || '') + edited + '</div>' +
-            fwd + '<div class="slack-msg__body">' + (m.html || esc(m.body || '')) + '</div>' + file + task +
+            quote + fwd + '<div class="slack-msg__body">' + (m.html || esc(m.body || '')) + '</div>' + file + task +
             (rx ? '<div class="mt-1">' + rx + '</div>' : '') + replies + seen +
             '</div>' + actions;
         bindMessageActions(wrap, m);
+        bindMessageContext(wrap, m);
         return wrap;
     }
+
+    // ---- WhatsApp-style reply: quote jump, right-click menu, long-press ----
+    function flashMessage(el) {
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.remove('is-flash');
+        void el.offsetWidth;
+        el.classList.add('is-flash');
+        setTimeout(function () { el.classList.remove('is-flash'); }, 2000);
+    }
+
+    async function jumpToMessage(id) {
+        let el = document.getElementById('slack-msg-' + id);
+        if (!el && activeId) {
+            try { await openChannel(activeId, id); } catch (err) {}
+            el = document.getElementById('slack-msg-' + id);
+        }
+        flashMessage(el);
+    }
+
+    const ctxMenu = document.createElement('div');
+    ctxMenu.className = 'slack-ctx';
+    ctxMenu.id = 'slackCtxMenu';
+    document.body.appendChild(ctxMenu);
+
+    function hideCtx() {
+        ctxMenu.classList.remove('is-on');
+        ctxMenu.innerHTML = '';
+    }
+
+    function showCtx(wrap, x, y) {
+        const entries = [
+            ['[data-reply]', '↩ Reply', 'is-primary'],
+            ['[data-copy]', 'Copy', ''],
+            ['[data-fwd]', 'Forward', ''],
+            ['[data-reactbtn]', 'React', ''],
+            ['[data-pin]', null, ''],
+            ['[data-save]', null, ''],
+            ['[data-task]', 'Create Task', ''],
+            ['[data-edit]', 'Edit', ''],
+            ['[data-del]', 'Delete', 'is-danger'],
+            ['[data-ad]', 'Hide for me', 'is-danger']
+        ];
+        ctxMenu.innerHTML = '';
+        entries.forEach(function (en) {
+            const src = wrap.querySelector(en[0]);
+            if (!src) return;
+            if (en[0] === '[data-edit]') ctxMenu.appendChild(document.createElement('hr'));
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = en[2];
+            b.textContent = en[1] || src.textContent;
+            b.addEventListener('click', function (ev) {
+                ev.stopPropagation();
+                hideCtx();
+                src.click();
+            });
+            ctxMenu.appendChild(b);
+        });
+        if (!ctxMenu.children.length) return;
+        ctxMenu.classList.add('is-on');
+        const w = ctxMenu.offsetWidth;
+        const h = ctxMenu.offsetHeight;
+        ctxMenu.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 4)) + 'px';
+        ctxMenu.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 4)) + 'px';
+    }
+
+    function bindMessageContext(wrap, m) {
+        const quote = wrap.querySelector('[data-quote]');
+        if (quote) quote.addEventListener('click', function (e) {
+            e.stopPropagation();
+            jumpToMessage(Number(quote.getAttribute('data-quote')));
+        });
+        if (!wrap.querySelector('.slack-msg__act')) return;
+        wrap.addEventListener('contextmenu', function (e) {
+            if (e.shiftKey || e.target.closest('a, input, textarea')) return; // Shift + right-click keeps the browser menu
+            e.preventDefault();
+            showCtx(wrap, e.clientX, e.clientY);
+        });
+        let timer = null;
+        let startX = 0;
+        let startY = 0;
+        wrap.addEventListener('touchstart', function (e) {
+            if (e.target.closest('a, button, input, textarea') || !e.touches[0]) return;
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            timer = setTimeout(function () {
+                timer = null;
+                showCtx(wrap, startX, startY);
+            }, 500);
+        }, { passive: true });
+        wrap.addEventListener('touchmove', function (e) {
+            const t = e.touches[0];
+            if (timer && t && (Math.abs(t.clientX - startX) > 10 || Math.abs(t.clientY - startY) > 10)) {
+                clearTimeout(timer);
+                timer = null;
+            }
+        }, { passive: true });
+        ['touchend', 'touchcancel'].forEach(function (ev) {
+            wrap.addEventListener(ev, function () { if (timer) { clearTimeout(timer); timer = null; } });
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('#slackCtxMenu')) hideCtx();
+    });
+    document.addEventListener('contextmenu', function (e) {
+        if (!e.target.closest('.slack-msg') && !e.target.closest('#slackCtxMenu')) hideCtx();
+    });
+    window.addEventListener('scroll', hideCtx, true);
+    window.addEventListener('resize', hideCtx);
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        if (ctxMenu.classList.contains('is-on')) { hideCtx(); return; }
+        if (replyTo && replyTo.kind !== 'thread') clearReply();
+    });
 
     function bindMessageActions(wrap, m) {
         const fwd = wrap.querySelector('[data-fwd]');
@@ -1442,21 +1610,25 @@
         }
     }
 
+    function clearReply() {
+        replyTo = null;
+        const bar = document.getElementById('slackReplyBar');
+        bar.classList.remove('is-on');
+        bar.innerHTML = '';
+    }
+
     function setReply(m) {
-        replyTo = m;
+        if (!m || !m.id || String(m.id).indexOf('c') === 0 || Number.isNaN(Number(m.id))) return; // unsent messages cannot be quoted
+        let preview = String(m.body || '').replace(/\s+/g, ' ').trim();
+        if (!preview && m.attachment_name) preview = m.attachment_is_image ? 'Photo' : m.attachment_name;
+        replyTo = { id: m.id, name: m.name || '', body: m.body || '', kind: 'quote' };
         const bar = document.getElementById('slackReplyBar');
         bar.classList.add('is-on');
-        bar.innerHTML = 'Replying to ' + esc(m.name || '') + ': ' + esc((m.body || '').slice(0, 80)) +
-            ' <button type="button" id="slackReplyJump">Jump</button> <button type="button" id="slackReplyClear">Cancel</button>';
-        document.getElementById('slackReplyJump').addEventListener('click', function () {
-            const el = document.getElementById('slack-msg-' + m.id);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        });
-        document.getElementById('slackReplyClear').addEventListener('click', function () {
-            replyTo = null;
-            bar.classList.remove('is-on');
-            bar.innerHTML = '';
-        });
+        bar.innerHTML = '<div class="slack-replybar"><div class="slack-replybar__q" id="slackReplyJump" title="Go to message"><strong>' +
+            esc(Number(m.user_id) === meId ? 'You' : (m.name || '')) + '</strong><span>' + esc(preview.slice(0, 140)) +
+            '</span></div><button type="button" id="slackReplyClear" aria-label="Cancel reply" title="Cancel reply">&times;</button></div>';
+        document.getElementById('slackReplyJump').addEventListener('click', function () { jumpToMessage(Number(m.id)); });
+        document.getElementById('slackReplyClear').addEventListener('click', clearReply);
         bodyEl.focus();
     }
 
@@ -1469,14 +1641,11 @@
         const tf = document.getElementById('slackThreadFeed');
         tf.innerHTML = '';
         appendMessages(data.messages || [], false, false, tf);
-        replyTo = { id: parentId, name: 'thread', body: '' };
+        replyTo = { id: parentId, name: 'thread', body: '', kind: 'thread' };
         document.getElementById('slackReplyBar').classList.add('is-on');
         document.getElementById('slackReplyBar').innerHTML = 'Replying in thread <button type="button" id="slackReplyClear">Cancel</button>';
         const clr = document.getElementById('slackReplyClear');
-        if (clr) clr.addEventListener('click', function () {
-            replyTo = null;
-            document.getElementById('slackReplyBar').classList.remove('is-on');
-        });
+        if (clr) clr.addEventListener('click', clearReply);
     }
 
     function renderPins(rows) {
@@ -1627,7 +1796,7 @@
         initialLoad = false;
     }
 
-    function appendOptimistic(tempId, text, failed) {
+    function appendOptimistic(tempId, text, failed, quote) {
         const empty = feed.querySelector('.slack-empty');
         if (empty) empty.remove();
         const now = new Date();
@@ -1645,7 +1814,8 @@
             seen_label: failed ? 'Failed · Retry' : 'Sending…',
             seen: false,
             pending: !failed,
-            failed: !!failed
+            failed: !!failed,
+            reply_to: quote || null
         }], false, false);
         const el = document.getElementById('slack-msg-' + tempId);
         if (el && failed) {
@@ -1670,11 +1840,12 @@
         fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
     }
 
-    function postMessage(channelId, text, file, cid, parentId) {
+    function postMessage(channelId, text, file, cid, parentId, replyToId) {
         const fd = new FormData();
         fd.append('body', text);
         fd.append('client_id', cid);
         if (parentId) fd.append('parent_id', parentId);
+        if (replyToId) fd.append('reply_to_id', replyToId);
         if (file) fd.append('file', file);
         return new Promise(function (resolve, reject) {
             const xhr = new XMLHttpRequest();
@@ -1702,10 +1873,10 @@
         });
     }
 
-    function markFailed(cid, text, channelId, file, parentId) {
+    function markFailed(cid, text, channelId, file, parentId, replyToId) {
         const box = readOutbox();
         if (!box.find(function (r) { return r.client_id === cid; })) {
-            box.push({ client_id: cid, channel_id: channelId, body: text, parent_id: parentId || null, created_at: Date.now(), has_file: !!file });
+            box.push({ client_id: cid, channel_id: channelId, body: text, parent_id: parentId || null, reply_to_id: replyToId || null, created_at: Date.now(), has_file: !!file });
             writeOutbox(box);
         }
         if (file) pendingFiles[cid] = file;
@@ -1731,12 +1902,12 @@
         const el = document.getElementById('slack-msg-' + cid);
         const text = row.body || (el && el.querySelector('.slack-msg__body') ? el.querySelector('.slack-msg__body').textContent : '');
         try {
-            const data = await postMessage(row.channel_id || activeId, text, pendingFiles[cid] || null, cid, row.parent_id);
+            const data = await postMessage(row.channel_id || activeId, text, pendingFiles[cid] || null, cid, row.parent_id, row.reply_to_id);
             writeOutbox(readOutbox().filter(function (r) { return r.client_id !== cid; }));
             if (el) el.remove();
             appendMessages(data.messages || [], false, false);
         } catch (e) {
-            markFailed(cid, text, row.channel_id || activeId, pendingFiles[cid], row.parent_id);
+            markFailed(cid, text, row.channel_id || activeId, pendingFiles[cid], row.parent_id, row.reply_to_id);
         }
     }
 
@@ -1755,19 +1926,27 @@
         if (!text.trim() && !file) return;
         if (syncAbort) syncAbort.abort();
         const cid = clientId();
-        const parentId = replyTo ? replyTo.id : null;
-        appendOptimistic(cid, text);
+        const isThreadReply = !!(replyTo && replyTo.kind === 'thread');
+        const parentId = isThreadReply ? replyTo.id : null;
+        const replyToId = (replyTo && !isThreadReply) ? replyTo.id : null;
+        let quotePreview = null;
+        if (replyToId) {
+            const q = document.querySelector('#slackReplyBar .slack-replybar__q');
+            quotePreview = q ? { id: replyToId, name: q.querySelector('strong').textContent, preview: q.querySelector('span').textContent } : null;
+            clearReply();
+        }
+        appendOptimistic(cid, text, false, quotePreview);
         bodyEl.value = '';
         localStorage.removeItem(DRAFT_KEY + activeId);
         clearComposerFile();
         sending = true;
         if (!navigator.onLine) {
-            markFailed(cid, text, activeId, file, parentId);
+            markFailed(cid, text, activeId, file, parentId, replyToId);
             sending = false;
             return;
         }
         try {
-            const data = await postMessage(activeId, text, file, cid, parentId);
+            const data = await postMessage(activeId, text, file, cid, parentId, replyToId);
             const pending = document.getElementById('slack-msg-' + cid);
             if (pending) pending.remove();
             appendMessages(data.messages || [], false, false);
@@ -1779,7 +1958,7 @@
             }
             broadcastChat({ type: 'messages', channelId: activeId, messages: data.messages || [] });
         } catch (err) {
-            markFailed(cid, text, activeId, file, parentId);
+            markFailed(cid, text, activeId, file, parentId, replyToId);
         } finally {
             sending = false;
         }

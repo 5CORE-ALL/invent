@@ -1218,6 +1218,10 @@ class ChatWorkspace
             'attachment_is_image' => self::isImageName($message->attachment_name),
             'command' => $message->command,
             'forwarded' => $forwarded,
+            'reply_to_id' => $message->reply_to_id ? (int) $message->reply_to_id : null,
+            'reply_to' => $message->reply_to_id
+                ? ($message->reply_to_preview ?? self::replyPreview(ChatMessage::query()->with('user:id,name')->find($message->reply_to_id)))
+                : null,
             'edited' => (bool) $message->edited_at,
             'deleted' => $deleted,
             'pinned' => (bool) $message->pinned_at,
@@ -1232,6 +1236,31 @@ class ChatWorkspace
             'created_at' => optional($message->created_at)->toIso8601String(),
             'created_label' => optional($message->created_at)->timezone($tz)->format('g:i A'),
             'permalink' => url('/chat?channel='.$message->channel_id.'&message='.$message->id),
+        ];
+    }
+
+    /**
+     * Short quote of a message for the WhatsApp-style reply block.
+     *
+     * @return array{id: int, name: string, preview: string, has_file: bool, deleted: bool}|null
+     */
+    public static function replyPreview(?ChatMessage $orig): ?array
+    {
+        if (! $orig) {
+            return null;
+        }
+        $deleted = $orig->deleted_at !== null;
+        $text = trim(preg_replace('/\s+/u', ' ', strip_tags((string) $orig->body)) ?? '');
+        if ($text === '' && $orig->attachment_name) {
+            $text = self::isImageName($orig->attachment_name) ? 'Photo' : (string) $orig->attachment_name;
+        }
+
+        return [
+            'id' => (int) $orig->id,
+            'name' => $orig->is_bot ? self::botDisplayName($orig->bot_name) : (($orig->user->name ?? null) ?: 'Member'),
+            'preview' => $deleted ? 'This message was deleted.' : Str::limit($text, 140),
+            'has_file' => ! $deleted && (bool) $orig->attachment_name,
+            'deleted' => $deleted,
         ];
     }
 
