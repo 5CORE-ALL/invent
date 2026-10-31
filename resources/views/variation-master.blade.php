@@ -2,6 +2,7 @@
 
 @section('css')
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     @include('partials.marketplace-master-button-colors')
     <style>
         #vm-table-wrapper {
@@ -224,13 +225,9 @@
             border: 1px solid #cbd5e1;
         }
 
-        .vm-aplus-preview {
-            width: 100%;
-            height: 420px;
-            border: 1px solid #cbd5e1;
-            border-radius: 6px;
-            background: #fff;
-        }
+        #vm-aplus-modal .modal-header-gradient { background: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%); color: #fff; }
+        #vm-aplus-modal .vm-desc-note { font-size: 10px; color: #64748b; }
+        #vm-desc-count.at-limit { color: #dc2626; font-weight: 600; }
 
         .vm-img-grid {
             display: flex;
@@ -403,31 +400,40 @@
         </div>
     </div>
 
+    {{-- Same editor as Description Master's "Edit descriptions" modal. The parent keeps ONE shared content. --}}
     <div class="modal fade" id="vm-aplus-modal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="vm-aplus-title">A+ Content</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title" id="vm-aplus-title"><i class="fas fa-edit me-2"></i>Edit descriptions</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted">HTML for the parent's A+ page. It replaces the text description on marketplaces that accept HTML (eBay). Other marketplaces keep using the Description. Shared by every child of the parent.</p>
-                    <div class="row g-3">
-                        <div class="col-lg-6">
-                            <label class="form-label small fw-semibold mb-1">A+ HTML</label>
-                            <textarea class="form-control form-control-sm" id="vm-aplus-input" rows="18" maxlength="200000" spellcheck="false"></textarea>
-                            <div class="small text-muted mt-1" id="vm-aplus-count"></div>
-                        </div>
-                        <div class="col-lg-6">
-                            <label class="form-label small fw-semibold mb-1">Preview</label>
-                            <iframe class="vm-aplus-preview" id="vm-aplus-preview" sandbox="" title="A+ preview"></iframe>
+                    <div class="mb-3"><strong>Product:</strong> <span id="vm-desc-product"></span> <span class="small text-muted" id="vm-desc-sku"></span></div>
+                    <p class="small text-muted mb-2"><i class="fas fa-info-circle"></i> One description is shared by every child of this parent. Pick a marketplace tab to choose which marketplace <strong>Fetch live</strong> and <strong>AI Generate</strong> use, edit in the editor, then Save. It is saved as the parent's A+ HTML: eBay sends it instead of the Description, other marketplaces keep using the Description.</p>
+
+                    <div id="vm-desc-tabs" class="d-flex flex-wrap gap-1 mb-2"></div>
+
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                        <div class="fw-semibold small" id="vm-desc-active-label">—</div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-outline-success btn-sm" id="vm-desc-fetch-live"><i class="fas fa-cloud-download-alt"></i> Fetch live</button>
+                            <button type="button" class="btn btn-outline-dark btn-sm" id="vm-desc-fetch-aplus" title="Load the stored A+ content of this SKU into the editor (fetched once automatically if not stored yet)"><i class="fas fa-star"></i> Fetch A+</button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="vm-desc-ai"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
                         </div>
                     </div>
+                    <textarea id="vm-desc-html"></textarea>
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-1">
+                        <div class="small text-muted" id="vm-desc-hint">Editing the shared description of this parent.</div>
+                        <div class="small text-muted" id="vm-desc-count">0 / —</div>
+                    </div>
+                    <p class="vm-desc-note mb-0 mt-1"><i class="fas fa-info-circle"></i> Some marketplaces can't be fetched live yet (no read API) — those tabs return nothing.</p>
+                    <div class="mt-2 small text-muted d-none" id="vm-desc-loading"><i class="fas fa-spinner fa-spin"></i> <span id="vm-desc-loading-text"></span></div>
                 </div>
-                <div class="modal-footer py-2">
+                <div class="modal-footer">
                     <span class="small me-auto" id="vm-aplus-status"></span>
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="vm-aplus-save">Save A+ content</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="vm-aplus-save"><i class="fas fa-save"></i> Save all</button>
                 </div>
             </div>
         </div>
@@ -463,7 +469,9 @@
 @endsection
 
 @section('script')
+    @include('partials.all-marketplace-master-channels', ['allMpMaster' => 'description'])
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tinymce@7/tinymce.min.js" referrerpolicy="origin"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const dataUrl = @json(route('variation.master.data'));
@@ -854,12 +862,9 @@
             const imagesDownloadUrl = @json(route('variation.master.parent.images.download'));
             const aplusModalEl = document.getElementById('vm-aplus-modal');
             const imagesModalEl = document.getElementById('vm-images-modal');
-            const aplusInput = document.getElementById('vm-aplus-input');
-            const aplusPreview = document.getElementById('vm-aplus-preview');
             const aplusStatus = document.getElementById('vm-aplus-status');
             const imagesStatus = document.getElementById('vm-images-status');
             let panelRow = null;
-            let previewTimer = null;
 
             function applyParentPatch(rowData, patch) {
                 table.getRows().forEach(function (other) {
@@ -887,24 +892,260 @@
                 });
             }
 
-            function refreshAplusPreview() {
-                aplusPreview.srcdoc = '<base target="_blank"><body style="font-family:sans-serif;margin:12px">' + aplusInput.value + '</body>';
-                document.getElementById('vm-aplus-count').textContent = aplusInput.value.length.toLocaleString() + ' characters';
+            // ---- "Edit descriptions" editor (same as Description Master): marketplace tabs + TinyMCE ----
+            const mpConfig = window.__ALL_MP__ || {};
+            const MP_LABELS = mpConfig.labels || {};
+            const ALL_MP = (mpConfig.enabled && mpConfig.enabled.length) ? mpConfig.enabled : Object.keys(MP_LABELS);
+            const MP_LIMITS = {
+                amazon: 2000, temu: 2000, temu2: 2000, walmart: 2000, shein: 2000, aliexpress: 2000,
+                reverb: 1500, bestbuy: 1500, doba: 1500, wayfair: 2000,
+                shopify_main: 500000, shopify_pls: 500000, ebay: 500000, ebay2: 500000, ebay3: 500000,
+                macy: 600, faire: 600
+            };
+            const MP_LIMIT_LABELS = {
+                amazon: '2000 (plain text, no HTML)', temu: '2000 (plain text)', temu2: '2000 (plain text)',
+                walmart: '2000', shein: '2000', aliexpress: '2000', doba: '1500',
+                shopify_main: 'no hard limit', shopify_pls: 'no hard limit',
+                ebay: '500000 (~800 on mobile)', ebay2: '500000 (~800 on mobile)', ebay3: '500000 (~800 on mobile)',
+                reverb: '1500', wayfair: '2000 (100–200 words marketing copy)', bestbuy: '1500', macy: '600', faire: '600'
+            };
+            const TIER1500 = ['amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy', 'walmart', 'shein', 'aliexpress'];
+            const TIER1000 = ['shopify_main', 'shopify_pls', 'doba'];
+            const TIER800 = ['ebay', 'ebay2', 'ebay3'];
+            let descActiveMp = ALL_MP[0] || '';
+            let descEditor = null;
+            let descEditorPromise = null;
+            let descSetting = false;
+
+            function mpLimit(mp) { return MP_LIMITS[mp] || 1500; }
+
+            function mpTier(mp) {
+                if (TIER1500.indexOf(mp) !== -1) return '1500';
+                if (TIER1000.indexOf(mp) !== -1) return '1000';
+                if (TIER800.indexOf(mp) !== -1) return '800';
+                return '600';
             }
+
+            function plainText(html) {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = String(html || '');
+                return (tmp.textContent || '').replace(/\s+/g, ' ').trim();
+            }
+
+            // Bootstrap modals steal focus from TinyMCE dialogs (link / image / table); let TinyMCE keep it.
+            document.addEventListener('focusin', function (e) {
+                if (e.target.closest && e.target.closest('.tox-tinymce-aux, .tox-dialog, .tox-tinymce') !== null) {
+                    e.stopImmediatePropagation();
+                }
+            });
+
+            function getDescContent() {
+                if (descEditor) return descEditor.getContent();
+                const el = document.getElementById('vm-desc-html');
+                return el ? el.value : '';
+            }
+
+            function updateDescCount() {
+                const el = document.getElementById('vm-desc-count');
+                if (!el) return;
+                const len = plainText(getDescContent()).length;
+                const lim = mpLimit(descActiveMp);
+                if (lim >= 100000) {
+                    el.textContent = len + ' characters (' + (MP_LABELS[descActiveMp] || 'this marketplace') + ': no hard limit)';
+                    el.classList.remove('at-limit');
+                    return;
+                }
+                el.textContent = len + ' / ' + lim + ' plain-text characters';
+                el.classList.toggle('at-limit', len > lim);
+            }
+
+            function ensureDescEditor() {
+                if (descEditor) return Promise.resolve(descEditor);
+                if (typeof tinymce === 'undefined') return Promise.resolve(null);
+                if (descEditorPromise) return descEditorPromise;
+                descEditorPromise = tinymce.init({
+                    selector: '#vm-desc-html',
+                    license_key: 'gpl',
+                    height: 380,
+                    menubar: false,
+                    plugins: 'lists link image table code',
+                    toolbar: 'undo redo | blocks | bold italic | bullist numlist | table | link image | removeformat code',
+                    branding: false,
+                    promotion: false,
+                    convert_urls: false,
+                    content_style: 'img{max-width:100%;height:auto;} table{max-width:100%;border-collapse:collapse;} body{font-size:14px;}',
+                    setup: function (editor) {
+                        editor.on('input change keyup paste Undo Redo SetContent', updateDescCount);
+                    }
+                }).then(function (eds) {
+                    descEditor = (eds && eds[0]) || (tinymce.get ? tinymce.get('vm-desc-html') : null);
+                    return descEditor;
+                }).catch(function () { return null; });
+                return descEditorPromise;
+            }
+
+            function setDescContent(html) {
+                return ensureDescEditor().then(function (ed) {
+                    descSetting = true;
+                    if (ed) ed.setContent(String(html || ''));
+                    else document.getElementById('vm-desc-html').value = String(html || '');
+                    descSetting = false;
+                    updateDescCount();
+                });
+            }
+
+            function buildDescTabs() {
+                document.getElementById('vm-desc-tabs').innerHTML = ALL_MP.map(function (mp) {
+                    return '<button type="button" class="btn btn-sm btn-outline-secondary mp-tab" data-mp="' + escapeHtml(mp) + '">' + escapeHtml(MP_LABELS[mp] || mp) + '</button>';
+                }).join('');
+            }
+
+            function selectDescMp(mp) {
+                descActiveMp = mp;
+                document.querySelectorAll('#vm-desc-tabs .mp-tab').forEach(function (b) {
+                    const on = b.getAttribute('data-mp') === mp;
+                    b.classList.toggle('btn-primary', on);
+                    b.classList.toggle('btn-outline-secondary', !on);
+                });
+                document.getElementById('vm-desc-active-label').textContent = (MP_LABELS[mp] || mp) + ' — max ' + (MP_LIMIT_LABELS[mp] || (mpLimit(mp) + ' plain-text characters'));
+                updateDescCount();
+            }
+
+            function descLoading(text) {
+                const wrap = document.getElementById('vm-desc-loading');
+                if (text) document.getElementById('vm-desc-loading-text').textContent = text;
+                wrap.classList.toggle('d-none', !text);
+            }
+
+            function descButtonLoading(id, loading, text) {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                if (!btn.dataset.originalText) btn.dataset.originalText = btn.innerHTML;
+                btn.disabled = !!loading;
+                btn.innerHTML = loading ? '<i class="fas fa-spinner fa-spin me-1"></i>' + escapeHtml(text || 'Loading...') : btn.dataset.originalText;
+            }
+
+            function descApi(url, payload) {
+                return fetch(url, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+                    body: JSON.stringify(payload)
+                }).then(function (res) { return res.json().catch(function () { return {}; }); });
+            }
+
+            function descFail(text) {
+                aplusStatus.className = 'small me-auto text-danger';
+                aplusStatus.textContent = text;
+            }
+
+            function descNote(text) {
+                aplusStatus.className = 'small me-auto text-success';
+                aplusStatus.textContent = text;
+            }
+
+            // Fetch the ACTIVE marketplace's live description of this row's SKU into the editor.
+            function descFetchLive() {
+                const sku = panelRow && panelRow.sku ? String(panelRow.sku) : '';
+                const mp = descActiveMp;
+                if (!sku || !mp) return;
+                descLoading('Fetching live from ' + (MP_LABELS[mp] || mp) + '…');
+                descButtonLoading('vm-desc-fetch-live', true, 'Fetching...');
+                descApi('/product-description/pull-marketplace', { sku: sku, marketplace: mp }).then(function (res) {
+                    if (res.success) {
+                        setDescContent(String(res.description_html || res.description_plain || ''));
+                        descNote(res.message || ('Fetched ' + (MP_LABELS[mp] || mp) + '. Review, then Save all.'));
+                    } else {
+                        descFail(res.message || 'Fetch failed.');
+                    }
+                }).catch(function (e) {
+                    descFail('Fetch failed: ' + e.message);
+                }).finally(function () {
+                    descLoading('');
+                    descButtonLoading('vm-desc-fetch-live', false);
+                });
+            }
+
+            // Load the stored Shopify A+ content of this row's SKU (fetching it once if nothing is stored yet).
+            function descFetchAplus() {
+                const sku = panelRow && panelRow.sku ? String(panelRow.sku) : '';
+                if (!sku) return;
+                descLoading('Loading A+ content for ' + sku + '…');
+                descButtonLoading('vm-desc-fetch-aplus', true, 'Fetching...');
+                const headers = { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf };
+                fetch('/product-description/shopify-aplus?sku=' + encodeURIComponent(sku), { credentials: 'same-origin', headers: headers })
+                    .then(function (res) { return res.json().catch(function () { return {}; }); })
+                    .then(function (stored) {
+                        const html = String(((stored && stored.data) || {}).html || '');
+                        if (stored && stored.success && html.trim() !== '') return stored;
+                        return descApi('/product-description/shopify-aplus/fetch', { sku: sku, force: false });
+                    })
+                    .then(function (out) {
+                        const html = String(((out && out.data) || {}).html || '');
+                        if (!out || !out.success || html.trim() === '') {
+                            descFail((out && out.message) || 'No A+ content available for this SKU.');
+                            return;
+                        }
+                        setDescContent(html);
+                        descNote('A+ content loaded. Review, then Save all.');
+                    })
+                    .catch(function (e) { descFail('A+ fetch failed: ' + e.message); })
+                    .finally(function () {
+                        descLoading('');
+                        descButtonLoading('vm-desc-fetch-aplus', false);
+                    });
+            }
+
+            // AI-generate a description for the ACTIVE marketplace at its tier length.
+            function descAiGenerate() {
+                const mp = descActiveMp;
+                if (!mp || !panelRow) return;
+                descLoading('Generating description for ' + (MP_LABELS[mp] || mp) + ' (max ' + (MP_LIMIT_LABELS[mp] || mpLimit(mp)) + ')…');
+                descButtonLoading('vm-desc-ai', true, 'Generating...');
+                descApi('/product-description/generate', {
+                    product_name: String(panelRow.title || parentLabel(panelRow) || ''),
+                    current_text: plainText(getDescContent()),
+                    tier: mpTier(mp),
+                    max_chars: mpLimit(mp),
+                    marketplace: mp
+                }).then(function (res) {
+                    if (res.success && res.description) {
+                        setDescContent(String(res.description));
+                        descNote('AI description generated (' + plainText(res.description).length + ' chars). Review, then Save all.');
+                    } else {
+                        descFail(res.message || 'AI failed.');
+                    }
+                }).catch(function (e) {
+                    descFail('AI error: ' + e.message);
+                }).finally(function () {
+                    descLoading('');
+                    descButtonLoading('vm-desc-ai', false);
+                });
+            }
+
+            buildDescTabs();
+            document.getElementById('vm-desc-tabs')?.addEventListener('click', function (e) {
+                const tab = e.target.closest('.mp-tab');
+                if (tab) selectDescMp(tab.getAttribute('data-mp'));
+            });
+            document.getElementById('vm-desc-fetch-live')?.addEventListener('click', descFetchLive);
+            document.getElementById('vm-desc-fetch-aplus')?.addEventListener('click', descFetchAplus);
+            document.getElementById('vm-desc-ai')?.addEventListener('click', descAiGenerate);
+            aplusModalEl?.addEventListener('shown.bs.modal', function () {
+                ensureDescEditor().then(function () {
+                    setDescContent(panelRow ? (panelRow.aplus || '') : '');
+                    selectDescMp(descActiveMp || ALL_MP[0] || '');
+                });
+            });
 
             function openAplusModal(row) {
                 panelRow = row;
-                document.getElementById('vm-aplus-title').textContent = 'A+ Content — ' + parentLabel(row);
-                aplusInput.value = row.aplus || '';
+                document.getElementById('vm-desc-product').textContent = parentLabel(row);
+                document.getElementById('vm-desc-sku').textContent = row.sku ? '· Fetch live / Fetch A+ read SKU ' + row.sku : '';
                 aplusStatus.textContent = '';
-                refreshAplusPreview();
+                descLoading('');
                 bootstrap.Modal.getOrCreateInstance(aplusModalEl).show();
             }
-
-            aplusInput?.addEventListener('input', function () {
-                clearTimeout(previewTimer);
-                previewTimer = setTimeout(refreshAplusPreview, 250);
-            });
 
             document.getElementById('vm-aplus-save')?.addEventListener('click', function () {
                 const btn = this;
@@ -913,7 +1154,7 @@
                 aplusStatus.className = 'small me-auto text-muted';
                 aplusStatus.textContent = 'Saving…';
                 const row = panelRow;
-                postJson(saveUrl, { id: row.id, parent: row.parent || '', aplus: aplusInput.value }).then(function (json) {
+                postJson(saveUrl, { id: row.id, parent: row.parent || '', aplus: getDescContent() }).then(function (json) {
                     applyParentPatch(row, { aplus: json.aplus || '' });
                     bootstrap.Modal.getOrCreateInstance(aplusModalEl).hide();
                     setStatus('Saved A+ content for ' + parentLabel(row), true);
