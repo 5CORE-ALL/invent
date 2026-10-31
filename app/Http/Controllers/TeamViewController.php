@@ -93,9 +93,44 @@ class TeamViewController extends Controller
             }
         }
 
+        // Flatten into Tabulator "dataTree" rows (children go under `_children`).
+        $toRow = function (array $m) use (&$toRow) {
+            $row = [
+                'id' => $m['id'],
+                'name' => $m['name'],
+                'avatar' => $m['avatar'],
+                'designation' => $m['designation'],
+                'level' => $m['level'],
+                'email' => $m['email'],
+                'phone' => $m['phone'],
+                'rr' => $m['rr'],
+                'reports' => count($m['children']),
+                'search' => mb_strtolower(trim(
+                    $m['name'] . ' ' . $m['designation'] . ' ' . $m['email'] . ' ' . $m['phone'] . ' ' . implode(' ', $m['rr'])
+                )),
+            ];
+            if (count($m['children'])) {
+                $row['_children'] = array_map($toRow, $m['children']);
+            }
+
+            return $row;
+        };
+
+        $rows = array_map($toRow, $tree);
+
+        if (count($unassigned)) {
+            $rows[] = [
+                'id' => 0,
+                'group' => true,
+                'name' => 'Other Team Members (no reporting line set)',
+                'reports' => count($unassigned),
+                'search' => '',
+                '_children' => array_map($toRow, $unassigned),
+            ];
+        }
+
         return view('team-view.index', [
-            'tree' => $tree,
-            'unassigned' => $unassigned,
+            'rows' => $rows,
             'total' => count($members),
         ]);
     }
