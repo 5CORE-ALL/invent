@@ -296,7 +296,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 @include('marketplace._sync-mismatch-now', [
     'url' => route('marketplace.manager.alibaba.sync.mismatch.inventory'),
     'confirm' => 'Push the actual live Shopify quantity to every Linked mismatch SKU on Alibaba now (no queue)? This runs in batches and may take a few minutes.',
-    'limit' => 10,
+    'limit' => 3,
 ])
 @include('marketplace._listings-instant-map-js')
 @endsection
