@@ -3619,6 +3619,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         $byGoods = [];
         $skusByGoods = [];
+        $seenSkuIds = [];
         $failed = 0;
         $errors = [];
         foreach ($items as $item) {
@@ -3636,6 +3637,16 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
                 continue;
             }
+            // The same Temu SKU can sit in our metrics table twice (two rows, same goods_id + sku_id).
+            // Temu refuses the whole request when a skuId repeats ("Duplicate SKUs detected"), so send each
+            // skuId once and still remember every row's SKU name so each row gets the new local quantity.
+            $skuKey = $goodsId.'|'.(string) $skuId;
+            if (isset($seenSkuIds[$skuKey])) {
+                $skusByGoods[$goodsId][] = $sku;
+
+                continue;
+            }
+            $seenSkuIds[$skuKey] = true;
             $byGoods[$goodsId][] = [
                 'skuId' => is_numeric($skuId) ? (int) $skuId : $skuId,
                 'stockTarget' => max(0, (int) ($item['quantity'] ?? 0)),
