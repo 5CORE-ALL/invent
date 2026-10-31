@@ -2411,9 +2411,12 @@
                     formatter: (c) => {
                         const d = c.getRow().getData();
                         const has = [d.bank_1, d.bank_2, d.upi_id].some((v) => v && String(v).trim() !== '');
-                        return has
-                            ? '<button type="button" class="btn btn-sm btn-success bank-view-btn py-0" title="View / edit bank details"><i class="ri-eye-line"></i></button>'
-                            : '<button type="button" class="btn btn-sm btn-outline-secondary bank-view-btn py-0" title="Add bank details"><i class="ri-bank-line"></i></button>';
+                        // Directors are exempt from bank details, so they always show as complete.
+                        if (has || d.is_director) {
+                            const tip = has ? 'View / edit bank details' : 'Director — bank details exempted (click to add anyway)';
+                            return '<button type="button" class="btn btn-sm btn-success bank-view-btn py-0" title="' + tip + '"><i class="ri-eye-line"></i></button>';
+                        }
+                        return '<button type="button" class="btn btn-sm btn-outline-secondary bank-view-btn py-0" title="Add bank details"><i class="ri-bank-line"></i></button>';
                     },
                     cellClick: function (e, cell) {
                         if (!e.target.closest('.bank-view-btn')) return;
