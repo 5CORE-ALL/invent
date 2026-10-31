@@ -483,6 +483,28 @@ class ChatWorkspace
         return self::postSystemNotice($channel, $actor->name.' added '.$list, 'member');
     }
 
+    /**
+     * @param  list<int>  $userIds
+     */
+    public static function announceRemoved(User $actor, ChatChannel $channel, array $userIds): ?ChatMessage
+    {
+        $userIds = array_values(array_unique(array_filter(
+            array_map('intval', $userIds),
+            static fn ($id) => $id > 0
+        )));
+        if ($userIds === []) {
+            return null;
+        }
+        $list = self::formatNameList(
+            User::query()->whereIn('id', $userIds)->orderBy('name')->pluck('name')->all()
+        );
+        if ($list === '') {
+            return null;
+        }
+
+        return self::postSystemNotice($channel, $actor->name.' removed '.$list, 'member');
+    }
+
     public static function pruneImplicitPublicMembersOnce(): void
     {
         if (! self::tablesReady()) {
@@ -696,6 +718,7 @@ class ChatWorkspace
                 'online' => (bool) ($peerPresence['online'] ?? false),
                 'status' => $peerPresence['status'] ?? 'active',
                 'last_seen_label' => $peerPresence['last_seen_label'] ?? null,
+                'created_by' => (int) $channel->created_by,
                 'can_manage_members' => self::canManageMembers($user, $channel),
                 'can_delete' => self::canDeleteChannel($user, $channel),
                 'can_edit' => self::canEditChannel($user, $channel),
