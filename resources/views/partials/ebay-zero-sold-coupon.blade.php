@@ -35,7 +35,10 @@
     .el30cpn-power { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,.18); backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,.45); }
     .el30cpn-power .form-check-input { width: 3rem; height: 1.5rem; margin: 0; cursor: pointer; background-color: rgba(255,255,255,.45); border-color: rgba(255,255,255,.8); }
     .el30cpn-power .form-check-input:checked { background-color: #22c55e; border-color: #bbf7d0; box-shadow: 0 0 0 4px rgba(34,197,94,.3); }
-    .el30cpn-power label { font-weight: 800; font-size: .9rem; margin: 0; min-width: 28px; }
+    .el30cpn-power label { font-weight: 800; font-size: .9rem; margin: 0; white-space: nowrap; cursor: pointer; }
+    .el30cpn-power label .fa-bolt { color: #fde047; margin-right: 2px; }
+    .el30cpn-state { margin-left: 6px; padding: 2px 10px; border-radius: 999px; font-size: .7rem; background: rgba(0,0,0,.28); }
+    .el30cpn-state.is-on { background: #16a34a; }
     .el30cpn-hero .btn-close { filter: invert(1) grayscale(1) brightness(2); opacity: .9; align-self: flex-start; }
     .el30cpn .modal-body { padding: 18px 22px 20px; background: linear-gradient(180deg, #faf7ff 0%, #fff5fa 100%); }
     .el30cpn-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 14px; font-size: .78rem; color: #4c1d95; background: #ede9fe; border: 1px solid #ddd6fe; margin-bottom: 14px; }
@@ -101,7 +104,7 @@
                 </div>
                 <div class="el30cpn-power form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="{{ $ebayZeroSoldPrefix }}-switch">
-                    <label class="form-check-label" for="{{ $ebayZeroSoldPrefix }}-switch" id="{{ $ebayZeroSoldPrefix }}-switch-label">Off</label>
+                    <label class="form-check-label" for="{{ $ebayZeroSoldPrefix }}-switch" id="{{ $ebayZeroSoldPrefix }}-switch-label" title="On: slab changes are saved and coupons are pushed to eBay automatically."><i class="fas fa-bolt"></i> Save &amp; Autopush <span class="el30cpn-state" id="{{ $ebayZeroSoldPrefix }}-switch-state">Off</span></label>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -296,7 +299,7 @@
         if (on && codes.length === 1) label = 'EL30 CPN ' + codes[0];
         else if (on && codes.length > 1) label = 'EL30 CPN On';
         $('#' + prefix + '-switch').prop('checked', on);
-        $('#' + prefix + '-switch-label').text(on ? 'On' : 'Off');
+        $('#' + prefix + '-switch-state').text(on ? 'On' : 'Off').toggleClass('is-on', on);
         $('#' + prefix + '-btn')
             .toggleClass('btn-outline-secondary', !on || !codes.length)
             .toggleClass('btn-primary', on && codes.length > 0)
