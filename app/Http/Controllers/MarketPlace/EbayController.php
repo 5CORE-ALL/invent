@@ -5560,6 +5560,12 @@ class EbayController extends Controller
             }
         }
 
+        // A slow push can finish after the user flipped the switch (or edited slabs) in another request.
+        // Keep the newer switch/slabs and only merge the promotion ids this run created.
+        $latest = $this->ebayZeroSoldCouponConfig($channel);
+        $enabled = $latest['enabled'];
+        $slabs = $latest['slabs'];
+        $promos = array_merge($latest['promotions'], $promos);
         $this->persistZeroSoldCouponSetting($channel, $enabled, $slabs, $promos);
         $legacyPct = EbayDilCoupon::legacyPct($slabs);
         $code = $legacyPct >= 5 ? $service->zeroSoldCouponCode($legacyPct) : '';
@@ -5639,6 +5645,11 @@ class EbayController extends Controller
                 ? max(0.0, (float) $item['el30'])
                 : (float) ($el30Fallback[strtoupper($sku)] ?? 0);
             $inv = $shop ? (float) ($shop->inv ?? 0) : 0.0;
+            // eBay 2 slabs by parent: the page sends the parent's summed E L30 and INV for every child SKU.
+            if ($channel === 'ebay2' && is_numeric($item['family_el30'] ?? null) && is_numeric($item['family_inv'] ?? null)) {
+                $el30 = max(0.0, (float) $item['family_el30']);
+                $inv = (float) $item['family_inv'];
+            }
             $pct = $enabled ? EbayDilCoupon::percentFor($el30, $inv, $slabs) : 0;
             $out[] = ['sku' => $sku, 'on' => $pct >= 5, 'pct' => $pct];
         }

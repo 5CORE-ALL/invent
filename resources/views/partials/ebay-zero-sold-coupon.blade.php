@@ -30,6 +30,8 @@
     .el30cpn-gif { width: 84px; height: 84px; border-radius: 20px; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 8px 22px rgba(0,0,0,.25); flex: 0 0 auto; background: #fff; }
     .el30cpn-hero-text { flex: 1 1 240px; min-width: 0; }
     .el30cpn-hero .modal-title { font-size: 1.25rem; font-weight: 800; letter-spacing: .01em; text-shadow: 0 2px 8px rgba(0,0,0,.25); margin: 0; }
+    .el30cpn-mkt { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 3px 14px 3px 4px; border-radius: 999px; background: #fff; color: #3b0764; font-weight: 800; font-size: .85rem; box-shadow: 0 3px 10px rgba(0,0,0,.2); }
+    .el30cpn-mkt img { width: 30px; height: 30px; border-radius: 50%; object-fit: contain; background: #fff; }
     .el30cpn-sub { font-size: .8rem; opacity: .92; margin-top: 2px; }
     .el30cpn-formula { display: inline-block; margin-top: 8px; padding: 3px 12px; border-radius: 999px; background: rgba(255,255,255,.2); border: 1px dashed rgba(255,255,255,.7); font-size: .74rem; font-weight: 700; letter-spacing: .02em; }
     .el30cpn-power { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,.18); backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,.45); }
@@ -98,9 +100,19 @@
             <div class="el30cpn-hero">
                 <img class="el30cpn-gif" src="{{ asset('images/ebay-coupon.gif') }}" alt="Coupon">
                 <div class="el30cpn-hero-text">
+                    <span class="el30cpn-mkt">
+                        <img src="{{ asset('uploads/'.(['ebay1' => 1, 'ebay2' => 2, 'ebay3' => 3][$ebayZeroSoldChannel] ?? 1).'.png') }}" alt="">
+                        {{ ['ebay1' => 'eBay', 'ebay2' => 'eBay 2', 'ebay3' => 'eBay 3'][$ebayZeroSoldChannel] ?? 'eBay' }}
+                    </span>
                     <h5 class="modal-title">EL30 Dil % Coupons</h5>
-                    <div class="el30cpn-sub">Every SKU gets the eBay coupon of the slab its sell-through falls in.</div>
-                    <span class="el30cpn-formula">EL30 Dil % = E L30 ÷ INV × 100</span>
+                    <div class="el30cpn-sub">
+                        @if($ebayZeroSoldChannel === 'ebay2')
+                            Every parent gets the eBay coupon of the slab its sell-through falls in. All its SKUs share that coupon.
+                        @else
+                            Every SKU gets the eBay coupon of the slab its sell-through falls in.
+                        @endif
+                    </div>
+                    <span class="el30cpn-formula">EL30 Dil % = E L30 ÷ INV × 100 @if($ebayZeroSoldChannel === 'ebay2')(summed over the parent's SKUs) @endif</span>
                 </div>
                 <div class="el30cpn-power form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="{{ $ebayZeroSoldPrefix }}-switch">
@@ -111,7 +123,7 @@
             <div class="modal-body">
                 <div class="el30cpn-note">
                     <i class="fas fa-lightbulb"></i>
-                    <div>INV must be above 0. The <b>0–0</b> slab is E L30 = 0. Coupon % of <b>0</b> leaves that slab off. eBay accepts <b>5–80</b>, letters and numbers only. Click a colored dot next to a SKUs count to see that slab's history.</div>
+                    <div>INV must be above 0. The <b>0–0</b> slab is E L30 = 0. Coupon % of <b>0</b> leaves that slab off. eBay accepts <b>5–80</b>, letters and numbers only. @if($ebayZeroSoldChannel === 'ebay2')E L30 and INV are totals across a parent's SKUs, and the count is parents. @endif Click a colored dot next to a {{ $ebayZeroSoldChannel === 'ebay2' ? 'parent' : 'SKUs' }} count to see that slab's history.</div>
                 </div>
                 <div class="table-responsive">
                     <table class="el30cpn-table">
@@ -119,7 +131,7 @@
                             <tr>
                                 <th>EL30 Dil % From</th>
                                 <th>EL30 Dil % To</th>
-                                <th class="text-center">SKUs</th>
+                                <th class="text-center">{{ $ebayZeroSoldChannel === 'ebay2' ? 'Parents' : 'SKUs' }}</th>
                                 <th>Coupon %</th>
                                 <th>eBay code</th>
                                 <th></th>
@@ -177,6 +189,7 @@
     const histUrl = @json($ebayZeroSoldHistUrl);
     const SLAB_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#6366f1', '#a855f7', '#ec4899'];
     const skipOffSync = @json(($ebayZeroSoldChannel ?? '') === 'ebay3');
+    const perParent = @json(($ebayZeroSoldChannel ?? '') === 'ebay2');
     const state = {
         enabled: false,
         slabs: [
@@ -190,7 +203,9 @@
         ready: false,
         loading: false,
         saving: false,
-        pending: false
+        pending: false,
+        abort: false,
+        afterSave: null
     };
     let applyTimer = null;
 
@@ -216,6 +231,37 @@
         const el30 = parseFloat(data && data['eBay L30']) || 0;
         return { inv: inv, ov: el30, dil: inv > 0 ? (el30 / inv) * 100 : null };
     }
+    // eBay 2 only: slabs are decided per parent. E L30 and INV are summed over the parent's child SKUs,
+    // and every child SKU gets the coupon of its parent's slab.
+    function familyKey(data) {
+        const p = String((data && (data.Parent || data.parent)) || '').replace(/^PARENT\s+/i, '').trim().toUpperCase();
+        return (p && p !== 'PARENT') ? p : ('SKU:' + rowSku(data).toUpperCase());
+    }
+    let famCache = null;
+    function familyMap() {
+        const list = rows();
+        const now = Date.now();
+        if (famCache && famCache.len === list.length && now - famCache.t < 3000) return famCache.map;
+        const map = {};
+        list.forEach(function(d) {
+            if (!d || isParent(d)) return;
+            const key = familyKey(d);
+            const fam = map[key] || (map[key] = { inv: 0, l30: 0 });
+            fam.inv += parseFloat(d.INV) || 0;
+            fam.l30 += parseFloat(d['eBay L30']) || 0;
+        });
+        famCache = { len: list.length, t: now, map: map };
+        return map;
+    }
+    function famMetric(fam) {
+        return { inv: fam.inv, ov: fam.l30, dil: fam.inv > 0 ? (fam.l30 / fam.inv) * 100 : null };
+    }
+    // Metric used to pick a SKU's slab: its parent's totals on eBay 2, its own numbers elsewhere.
+    function metricFor(data) {
+        if (!perParent) return rowMetrics(data);
+        const fam = familyMap()[familyKey(data)];
+        return fam ? famMetric(fam) : rowMetrics(data);
+    }
     function contains(dil, ov, slab, prevMax) {
         const min = Number(slab.min) || 0;
         const max = Number(slab.max) || 0;
@@ -226,7 +272,7 @@
     }
     function slabFor(data) {
         if (!data || isParent(data)) return null;
-        const metric = rowMetrics(data);
+        const metric = metricFor(data);
         if (!(metric.inv > 0)) return null;
         let prevMax = null;
         const slabs = state.slabs || [];
@@ -265,9 +311,17 @@
     }
     function counts() {
         const totals = (state.slabs || []).map(function() { return 0; });
-        rows().forEach(function(data) {
-            if (!data || isParent(data)) return;
-            const metric = rowMetrics(data);
+        // One unit per parent on eBay 2, one per SKU elsewhere.
+        let units = [];
+        if (perParent) {
+            const map = familyMap();
+            units = Object.keys(map).map(function(key) { return famMetric(map[key]); });
+        } else {
+            rows().forEach(function(data) {
+                if (data && !isParent(data)) units.push(rowMetrics(data));
+            });
+        }
+        units.forEach(function(metric) {
             if (!(metric.inv > 0)) return;
             let prevMax = null;
             for (let i = 0; i < state.slabs.length; i++) {
@@ -565,7 +619,13 @@
             const want = columnCode(data).toUpperCase();
             if (want && stored === want) return;
             if (!want && stored === '') return;
-            out.push({ sku: sku, on: !!want, pct: want ? couponPct(want.replace(/\D/g, '')) : 0, el30: rowMetrics(data).ov });
+            const job = { sku: sku, on: !!want, pct: want ? couponPct(want.replace(/\D/g, '')) : 0, el30: rowMetrics(data).ov };
+            if (perParent) {
+                const fam = metricFor(data);
+                job.family_el30 = fam.ov;
+                job.family_inv = fam.inv;
+            }
+            out.push(job);
         });
         return out;
     }
@@ -581,11 +641,20 @@
         let index = 0, ok = 0, fail = 0;
         function finish() {
             state.saving = false;
+            state.abort = false;
             $('#' + prefix + '-status').text('eBay EL30 Dil % coupon: ' + ok + ' updated, ' + fail + ' failed.');
+            // A switch/slab change arrived mid-push: save it now (after this chunk ended), then re-sync.
+            if (typeof state.afterSave === 'function') {
+                const run = state.afterSave;
+                state.afterSave = null;
+                state.pending = false;
+                run();
+                return;
+            }
             if (state.pending) { state.pending = false; sync(); }
         }
         function next() {
-            if (index >= list.length) { finish(); return; }
+            if (state.abort || index >= list.length) { finish(); return; }
             const chunk = list.slice(index, index + 4);
             index += chunk.length;
             $('#' + prefix + '-status').text('Updating eBay coupon ' + index + ' / ' + list.length + '…');
@@ -637,7 +706,15 @@
         state.enabled = $('#' + prefix + '-switch').is(':checked');
         paintChrome();
         if (window.table && typeof window.table.redraw === 'function') window.table.redraw(true);
-        persistSetting().always(function() { sync(); });
+        const save = function() { persistSetting().always(function() { sync(); }); };
+        if (state.saving) {
+            // Stop the running push after its current chunk, so its old On/Off value cannot overwrite this change.
+            state.abort = true;
+            state.afterSave = save;
+            $('#' + prefix + '-status').text('Applying change…');
+        } else {
+            save();
+        }
     }
     function scheduleApply() {
         clearTimeout(applyTimer);
@@ -731,6 +808,7 @@
         if (table._ebayZeroSoldBound) return;
         table._ebayZeroSoldBound = true;
         table.on('dataLoaded', function() {
+            famCache = null;
             load();
             paintChrome();
         });
