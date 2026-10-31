@@ -18,11 +18,21 @@ class OrderSkuLookup
      */
     public function forOrders(array $orderNumbers): array
     {
-        $want = array_values(array_unique(array_filter(array_map(fn ($o) => trim((string) $o), $orderNumbers))));
+        $orders = array_values(array_unique(array_filter(array_map(fn ($o) => trim((string) $o), $orderNumbers))));
         $found = [];
-        if ($want === []) {
+        if ($orders === []) {
             return [];
         }
+
+        // An order can be written "#346627" (Shopify / Veeqo) or "346627" (UPS reference "Order #346627"):
+        // look up every spelling and report the result under the order number as it was asked for.
+        $aliases = [];
+        foreach ($orders as $order) {
+            foreach ($this->variants($order) as $variant) {
+                $aliases[$variant] ??= $order;
+            }
+        }
+        $want = array_map('strval', array_keys($aliases));
 
         $this->collect($found, $want, fn (array $missing) => $this->pairs('veeqo_billing_shipments', 'order_number', 'skus', $missing, true));
         $this->collect($found, $want, fn (array $missing) => $this->pairs('veeqo_order_skus', 'order_number', 'skus', $missing, true));
@@ -36,7 +46,28 @@ class OrderSkuLookup
             $this->collect($found, $want, fn (array $missing) => $this->pairs($table, 'order_id', 'seller_sku', array_values(array_filter($missing, 'ctype_digit'))));
         }
 
-        return array_map(fn (array $skus) => implode(', ', array_keys($skus)), $found);
+        $byOrder = [];
+        foreach ($found as $variant => $skus) {
+            $order = $aliases[(string) $variant] ?? (string) $variant;
+            $byOrder[$order] = ($byOrder[$order] ?? []) + $skus;
+        }
+
+        return array_map(fn (array $skus) => implode(', ', array_keys($skus)), $byOrder);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function variants(string $order): array
+    {
+        $variants = [$order];
+        if (preg_match('/^\d+$/', $order)) {
+            $variants[] = '#'.$order;
+        } elseif (preg_match('/^#\d+$/', $order)) {
+            $variants[] = substr($order, 1);
+        }
+
+        return $variants;
     }
 
     /**

@@ -90,11 +90,53 @@ class VeeqoChargebackController extends Controller
             });
         }
 
+        // SKU column (every platform): the SKU(s) of the row's order. UPS lines that have no matching order
+        // fall back to the Veeqo shipment with the same tracking number.
+        $rows = $rows->map(function ($r) {
+            $r['sku'] = (string) ($r['v_skus'] ?? '');
+
+            return $r;
+        });
+        $byTracking = $this->skusByTracking($rows
+            ->filter(fn ($r) => $r['sku'] === '' && ($r['source'] ?? '') === 'ups_csv' && ! empty($r['item_types']))
+            ->pluck('item_types')->unique()->values()->all());
+        if ($byTracking !== []) {
+            $rows = $rows->map(function ($r) use ($byTracking) {
+                if ($r['sku'] === '' && ($r['source'] ?? '') === 'ups_csv' && isset($byTracking[$r['item_types'] ?? ''])) {
+                    $r['sku'] = $byTracking[$r['item_types']];
+                }
+
+                return $r;
+            });
+        }
+
         return response()->json([
             'last_page' => $page->lastPage(),
             'total' => $page->total(),
             'data' => $rows,
         ]);
+    }
+
+    /**
+     * @param  list<string>  $trackingNumbers
+     * @return array<string, string> tracking number => comma-separated SKUs of that shipment
+     */
+    private function skusByTracking(array $trackingNumbers): array
+    {
+        if ($trackingNumbers === [] || ! Schema::hasTable('veeqo_billing_shipments')) {
+            return [];
+        }
+
+        $out = [];
+        DB::table('veeqo_billing_shipments')
+            ->whereIn('tracking_number', $trackingNumbers)
+            ->whereNotNull('skus')->where('skus', '!=', '')
+            ->get(['tracking_number', 'skus'])
+            ->each(function ($s) use (&$out) {
+                $out[(string) $s->tracking_number] = (string) $s->skus;
+            });
+
+        return $out;
     }
 
     public function summary(Request $request)
