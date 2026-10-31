@@ -795,32 +795,9 @@ class Temu2ListingPublishService
             if (! is_array($item)) {
                 continue;
             }
-            $specIds = [];
-            foreach ($item['specDetails'] ?? [] as $row) {
-                if (isset($row['specId']) && $row['specId'] !== '' && $row['specId'] !== null) {
-                    $specIds[] = (int) $row['specId'];
-                }
-            }
-            $pkg = is_array($item['packageInfo'] ?? null) ? $item['packageInfo'] : [];
-            $price = is_array($item['price'] ?? null) ? $item['price'] : [];
-            $sku = [
-                'outSkuSn' => (string) ($item['outSkuSn'] ?? ($item['externalSkuId'] ?? '')),
-                'quantity' => max(0, (int) ($item['quantity'] ?? 0)),
-                'specIdList' => $specIds,
-                'images' => array_values(array_filter(array_map('strval', is_array($item['images'] ?? null) ? $item['images'] : []))),
-                'weight' => $this->v1Measure($pkg['weight'] ?? '1', 4),
-                'length' => $this->v1Measure($pkg['length'] ?? '1', 3),
-                'width' => $this->v1Measure($pkg['width'] ?? '1', 3),
-                'height' => $this->v1Measure($pkg['height'] ?? '1', 3),
-                'weightUnit' => $this->v1WeightUnit($pkg['weightUnit'] ?? 2),
-                'volumeUnit' => $this->v1VolumeUnit($pkg['volumeUnit'] ?? 2),
-            ];
-            $money = $this->v1Money($price);
-            if ($money['basePrice'] !== null) {
-                $sku['price'] = ['basePrice' => $money['basePrice']];
-            }
-            $listPrices[] = $money['listPrice'];
-            $skuList[] = $sku;
+            $converted = $this->v1SkuFromV2($item);
+            $listPrices[] = $converted['listPrice'];
+            $skuList[] = $converted['sku'];
         }
         $v1['skuList'] = $skuList;
 
@@ -843,6 +820,42 @@ class Temu2ListingPublishService
             'success' => (bool) ($data['success'] ?? false),
             'data' => $data,
         ];
+    }
+
+    /**
+     * One bg.local.goods.add style SKU (flat measures, specIdList, price.basePrice) from a v2 SKU row.
+     *
+     * @param  array<string, mixed>  $item
+     * @return array{sku: array<string, mixed>, listPrice: ?array{amount: string, currency: string}}
+     */
+    private function v1SkuFromV2(array $item): array
+    {
+        $specIds = [];
+        foreach ($item['specDetails'] ?? [] as $row) {
+            if (isset($row['specId']) && $row['specId'] !== '' && $row['specId'] !== null) {
+                $specIds[] = (int) $row['specId'];
+            }
+        }
+        $pkg = is_array($item['packageInfo'] ?? null) ? $item['packageInfo'] : [];
+        $price = is_array($item['price'] ?? null) ? $item['price'] : [];
+        $sku = [
+            'outSkuSn' => (string) ($item['outSkuSn'] ?? ($item['externalSkuId'] ?? '')),
+            'quantity' => max(0, (int) ($item['quantity'] ?? 0)),
+            'specIdList' => $specIds,
+            'images' => array_values(array_filter(array_map('strval', is_array($item['images'] ?? null) ? $item['images'] : []))),
+            'weight' => $this->v1Measure($pkg['weight'] ?? '1', 4),
+            'length' => $this->v1Measure($pkg['length'] ?? '1', 3),
+            'width' => $this->v1Measure($pkg['width'] ?? '1', 3),
+            'height' => $this->v1Measure($pkg['height'] ?? '1', 3),
+            'weightUnit' => $this->v1WeightUnit($pkg['weightUnit'] ?? 2),
+            'volumeUnit' => $this->v1VolumeUnit($pkg['volumeUnit'] ?? 2),
+        ];
+        $money = $this->v1Money($price);
+        if ($money['basePrice'] !== null) {
+            $sku['price'] = ['basePrice' => $money['basePrice']];
+        }
+
+        return ['sku' => $sku, 'listPrice' => $money['listPrice']];
     }
 
     /**
@@ -4287,43 +4300,206 @@ class Temu2ListingPublishService
     }
 
     /**
-     * @param  list<array<string, mixed>>  $skuList
+     * One SKU in the shape bg.local.goods.update reads: price fields sit at the top level of the SKU
+     * (basePrice, listPrice, listPriceType), not inside a nested price object.
+     *
+     * @param  array<string, mixed>  $item  v2 SKU row
+     * @return array<string, mixed>
+     */
+    private function updateSkuFromV2(array $item): array
+    {
+        $converted = $this->v1SkuFromV2($item);
+        $sku = $converted['sku'];
+        $price = is_array($sku['price'] ?? null) ? $sku['price'] : [];
+        unset($sku['price']);
+        if (is_array($price['basePrice'] ?? null)) {
+            $sku['basePrice'] = $price['basePrice'];
+            if (is_array($converted['listPrice'])) {
+                $sku['listPrice'] = $converted['listPrice'];
+                $sku['listPriceType'] = 1;
+            }
+        }
+
+        return $sku;
+    }
+
+    /**
+     * The SKUs Temu already holds under a goods, read back in the update shape (with skuId) so they can be
+     * re-sent unchanged next to a new SKU: bg.local.goods.update must carry every published SKU.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function existingSkusForUpdate(string $goodsId): array
+    {
+        $found = [];
+        foreach ([2, 3] as $searchType) {
+            for ($page = 1; $page <= 10; $page++) {
+                $res = $this->temuCallBody([
+                    'type' => 'bg.local.goods.sku.list.query',
+                    'searchText' => $goodsId,
+                    'skuSearchType' => $searchType,
+                    'pageNo' => $page,
+                    'pageSize' => 100,
+                ], 45);
+                if (! ($res['success'] ?? false)) {
+                    break;
+                }
+                $rows = (array) ($res['result']['skuList'] ?? []);
+                foreach ($rows as $row) {
+                    if (! is_array($row) || (string) ($row['goodsId'] ?? '') !== $goodsId) {
+                        continue;
+                    }
+                    $skuId = (string) ($row['skuId'] ?? '');
+                    if ($skuId === '' || isset($found[$skuId])) {
+                        continue;
+                    }
+                    $found[$skuId] = $this->updateSkuFromRemote($row);
+                }
+                if (count($rows) < 100) {
+                    break;
+                }
+            }
+        }
+
+        return array_values($found);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row  one entry of bg.local.goods.sku.list.query
+     * @return array<string, mixed>
+     */
+    private function updateSkuFromRemote(array $row): array
+    {
+        $specIds = [];
+        foreach ((array) ($row['specList'] ?? []) as $spec) {
+            if (is_array($spec) && ! empty($spec['specId'])) {
+                $specIds[] = (int) $spec['specId'];
+            }
+        }
+        $weight = is_array($row['weightInfo'] ?? null) ? $row['weightInfo'] : [];
+        $volume = is_array($row['volumeInfo'] ?? null) ? $row['volumeInfo'] : [];
+        $sku = [
+            'skuId' => (int) $row['skuId'],
+            'outSkuSn' => (string) ($row['skuSn'] ?? ''),
+            'quantity' => max(0, (int) ($row['stock'] ?? 0)),
+            'specIdList' => $specIds,
+        ];
+        $thumb = trim((string) ($row['thumbUrl'] ?? ''));
+        if ($thumb !== '') {
+            $sku['images'] = [$thumb];
+        }
+        if (isset($weight['weight']) && is_numeric($weight['weight'])) {
+            $sku['weight'] = $this->v1Measure($weight['weight'], 4);
+            $sku['weightUnit'] = $this->v1WeightUnit($weight['unit'] ?? 'lb');
+        }
+        if (isset($volume['length'], $volume['width'], $volume['height'])) {
+            $sku['length'] = $this->v1Measure($volume['length'], 3);
+            $sku['width'] = $this->v1Measure($volume['width'], 3);
+            $sku['height'] = $this->v1Measure($volume['height'], 3);
+            $sku['volumeUnit'] = $this->v1VolumeUnit($volume['unit'] ?? 'in');
+        }
+        $currency = strtoupper(trim((string) ($row['currency'] ?? 'USD'))) ?: 'USD';
+        $base = is_numeric($row['price'] ?? null) ? (float) $row['price'] : 0.0;
+        if ($base > 0) {
+            $sku['basePrice'] = ['amount' => number_format($base, 2, '.', ''), 'currency' => $currency];
+            $list = is_numeric($row['retailPrice']['amount'] ?? null) ? (float) $row['retailPrice']['amount'] : 0.0;
+            if ($list > $base) {
+                $sku['listPrice'] = ['amount' => number_format($list, 2, '.', ''), 'currency' => $currency];
+                $sku['listPriceType'] = 1;
+            }
+        }
+
+        return $sku;
+    }
+
+    /**
+     * Add SKUs to a goods that is already live, so they end up as variations of that same goods id.
+     * Temu has no "add SKU" call, so this goes through the goods update APIs: first the partial update with only
+     * the new SKUs, then the full update with every existing SKU (skuId) plus the new ones. Nothing here can create
+     * another goods; if every attempt fails the caller gets the Temu error code and message.
+     *
+     * @param  list<array<string, mixed>>  $skuList  v2 SKU rows
      * @return array{success: bool, data?: array<string, mixed>, message?: string}
      */
     private function addSkusToExistingGoods(string $goodsId, array $skuList): array
     {
-        $attempts = [
-            'bg.local.goods.sku.add',
-            'temu.local.goods.sku.add',
-            'bg.local.goods.update',
-            'temu.local.goods.update',
-            'bg.local.goods.partial.update',
-        ];
-        $lastMsg = '';
-        $seen = [];
-        foreach ($attempts as $type) {
-            $data = $this->temuCallBody([
-                'type' => $type,
-                'language' => 'en',
-                'goodsId' => (int) $goodsId,
-                'skuList' => $skuList,
-            ], 120);
-            if ($data['success'] ?? false) {
-                return ['success' => true, 'data' => $data];
+        $newSkus = [];
+        foreach ($skuList as $item) {
+            if (is_array($item)) {
+                $newSkus[] = $this->updateSkuFromV2($item);
             }
-            $msg = $this->apiErrorMessage($data);
-            if ($msg !== '' && ! in_array($msg, $seen, true) && ! $this->isApiAccessDenied($data)) {
-                $seen[] = $msg;
-            }
-            $lastMsg = implode(' | ', array_slice($seen, 0, 3));
-            Log::info('Temu2 add SKU to existing goods failed', [
-                'type' => $type,
-                'goods_id' => $goodsId,
-                'message' => $lastMsg,
-            ]);
+        }
+        if ($newSkus === []) {
+            return ['success' => false, 'message' => 'There is no variation to add.'];
         }
 
-        return ['success' => false, 'message' => $lastMsg];
+        $messages = [];
+        $unknownTypes = [];
+        $attempt = function (string $type, array $skus) use ($goodsId, &$messages, &$unknownTypes): ?array {
+            if (isset($unknownTypes[$type])) {
+                return null;
+            }
+            $data = $this->temuCallBody(['type' => $type, 'language' => 'en', 'goodsId' => (int) $goodsId, 'skuList' => $skus], 120);
+            if ($data['success'] ?? false) {
+                Log::info('Temu add SKU to existing goods: accepted', ['type' => $type, 'goods_id' => $goodsId, 'sku_count' => count($skus)]);
+
+                return $data;
+            }
+            $msg = $this->apiErrorMessage($data);
+            if ($this->isUnknownApiType($data)) {
+                $unknownTypes[$type] = true;
+            } elseif ($msg !== '') {
+                $messages[$type] = $msg;
+            }
+            Log::warning('Temu add SKU to existing goods failed', [
+                'type' => $type,
+                'goods_id' => $goodsId,
+                'sku_count' => count($skus),
+                'message' => $msg,
+            ]);
+
+            return null;
+        };
+
+        // 1) Partial update with just the new SKUs (touches nothing that is already live).
+        if (($data = $attempt('bg.local.goods.partial.update', $newSkus)) !== null) {
+            return ['success' => true, 'data' => $data];
+        }
+
+        // 2) Full update: every SKU Temu already holds under this goods (published SKUs cannot be dropped) + the new ones.
+        $existing = $this->existingSkusForUpdate($goodsId);
+        $existingSns = [];
+        foreach ($existing as $row) {
+            $existingSns[strtoupper((string) ($row['outSkuSn'] ?? ''))] = true;
+        }
+        $full = $existing;
+        foreach ($newSkus as $sku) {
+            if (! isset($existingSns[strtoupper((string) ($sku['outSkuSn'] ?? ''))])) {
+                $full[] = $sku;
+            }
+        }
+        if ($existing !== [] && count($full) === count($existing)) {
+            // Every requested SKU is already under this goods.
+            return ['success' => true, 'data' => ['success' => true, 'result' => ['goodsId' => (int) $goodsId]]];
+        }
+        // Without the existing SKUs the update could not keep the live variations, so it is not sent at all.
+        if ($existing !== []) {
+            foreach (['bg.local.goods.update', 'temu.local.goods.update'] as $type) {
+                if (($data = $attempt($type, $full)) !== null) {
+                    return ['success' => true, 'data' => $data];
+                }
+            }
+        }
+
+        $parts = [];
+        foreach (array_slice($messages, 0, 3, true) as $label => $msg) {
+            $parts[] = $label.': '.$msg;
+        }
+        if ($existing === []) {
+            $parts[] = 'The existing variations of this goods could not be read from Temu.';
+        }
+
+        return ['success' => false, 'message' => implode(' | ', $parts)];
     }
 
     private function uniqueOutGoodsSn(string $preferred, string $fallback): string
