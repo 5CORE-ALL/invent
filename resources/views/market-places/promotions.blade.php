@@ -118,12 +118,6 @@
             color: #cbd5e1;
             cursor: not-allowed;
         }
-        /* This page has no SKU grid, so hide the modal's per-slab SKU count / history. */
-        .el30cpn-table th:nth-child(3),
-        .el30cpn-table td:nth-child(3),
-        .el30cpn-hist {
-            display: none !important;
-        }
         .promo-edit-btn {
             border: 1px solid #cbd5e1;
             background: #fff;
@@ -185,10 +179,13 @@
         @foreach (['ebay1', 'ebay2', 'ebay3'] as $promoEbayKey)
             @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => $promoEbayKey])
         @endforeach
+        @include('partials.amazon-dil-price-coupon', ['amazonCouponPart' => 'button'])
     </div>
     @foreach (['ebay1', 'ebay2', 'ebay3'] as $promoEbayKey)
-        @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => $promoEbayKey])
+        @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => $promoEbayKey, 'ebayZeroSoldSnapshot' => true])
     @endforeach
+    {{-- Amazon: Dil % x Price coupon rule (reuses the .el30cpn-* styles from the eBay modals above) --}}
+    @include('partials.amazon-dil-price-coupon', ['amazonCouponPart' => 'modal'])
 
     {{-- Add Column modal --}}
     <div class="modal fade" id="promo-add-column-modal" tabindex="-1" aria-hidden="true">
@@ -419,13 +416,16 @@
                 if (!key) {
                     return '<span class="promo-rule-btn is-disabled" title="No coupon rule for this channel"><i class="fas fa-ticket-alt"></i></span>';
                 }
-                return '<button type="button" class="promo-rule-btn" title="EL30 Dil % Coupons rule"><i class="fas fa-ticket-alt"></i></button>';
+                const tip = key === 'amazon' ? 'Amazon Dil % × Price coupon rule' : 'EL30 Dil % Coupons rule';
+                return '<button type="button" class="promo-rule-btn" title="' + tip + '"><i class="fas fa-ticket-alt"></i></button>';
             },
             cellClick: function (e, cell) {
                 e.stopPropagation();
                 const key = cell.getValue();
                 if (key) {
-                    $('#' + key + '-zero-sold-coupon-btn').trigger('click');
+                    // eBay 1/2/3 → EL30 Dil % modal; Amazon → Dil % × Price modal.
+                    const btnId = key === 'amazon' ? 'amazon-dil-price-coupon-btn' : key + '-zero-sold-coupon-btn';
+                    $('#' + btnId).trigger('click');
                 }
             },
         };
@@ -621,12 +621,14 @@
     // The EL30 coupon partial looks for a SKU grid at window.table / window.allTableData and
     // polls until one exists. This page has none, so give it an inert stub (no getData) so it
     // sees zero SKUs: it only loads/saves the slab rule and never pushes coupons or writes
-    // zero-count history.
+    // zero-count history. The Count column + history dots run in snapshot mode: they read the
+    // per-slab counts the eBay pages already saved (/ebay*-el30-cpn-history).
     window.table = window.table || { on: function () {} };
 </script>
 <script>
-    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay1'])
-    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2'])
-    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay3'])
+    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay1', 'ebayZeroSoldSnapshot' => true])
+    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2', 'ebayZeroSoldSnapshot' => true])
+    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay3', 'ebayZeroSoldSnapshot' => true])
+    @include('partials.amazon-dil-price-coupon', ['amazonCouponPart' => 'script'])
 </script>
 @endsection

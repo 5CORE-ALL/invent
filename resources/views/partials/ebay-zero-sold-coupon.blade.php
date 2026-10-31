@@ -1,6 +1,9 @@
 @php
     $ebayZeroSoldChannel = $ebayZeroSoldChannel ?? 'ebay1';
     $ebayZeroSoldPart = $ebayZeroSoldPart ?? 'button';
+    // Snapshot mode (e.g. the Promotions page, which has no SKU grid): the Count column shows the
+    // latest per-slab count saved by the eBay page, instead of counting live rows.
+    $ebayZeroSoldSnapshot = ! empty($ebayZeroSoldSnapshot);
     $ebayZeroSoldPrefix = $ebayZeroSoldChannel.'-zero-sold-coupon';
     $ebayZeroSoldUrl = $ebayZeroSoldChannel === 'ebay1'
         ? '/ebay-zero-sold-coupon'
@@ -131,7 +134,7 @@
                             <tr>
                                 <th>EL30 Dil % From</th>
                                 <th>EL30 Dil % To</th>
-                                <th class="text-center">{{ $ebayZeroSoldChannel === 'ebay2' ? 'Parents' : 'SKUs' }}</th>
+                                <th class="text-center">{{ $ebayZeroSoldSnapshot ? 'Count' : ($ebayZeroSoldChannel === 'ebay2' ? 'Parents' : 'SKUs') }}</th>
                                 <th>Coupon %</th>
                                 <th>eBay code</th>
                                 <th></th>
@@ -189,6 +192,7 @@
     const histUrl = @json($ebayZeroSoldHistUrl);
     const SLAB_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#6366f1', '#a855f7', '#ec4899'];
     const skipOffSync = @json(($ebayZeroSoldChannel ?? '') === 'ebay3');
+    const snapshotMode = @json($ebayZeroSoldSnapshot);
     const perParent = @json(($ebayZeroSoldChannel ?? '') === 'ebay2');
     const state = {
         enabled: false,
@@ -310,6 +314,8 @@
         return [];
     }
     function counts() {
+        // Snapshot mode: latest saved count per slab (null = nothing saved for that slab yet).
+        if (snapshotMode) return (state.slabs || []).map(function(s) { return snapPair(slabKey(s)).live; });
         const totals = (state.slabs || []).map(function() { return 0; });
         // One unit per parent on eBay 2, one per SKU elsewhere.
         let units = [];
@@ -360,7 +366,7 @@
             .html('<i class="fas fa-ticket-alt"></i> ' + label);
         const tally = counts();
         $('#' + prefix + '-slabs tr').each(function(i) {
-            $(this).find('.ebay-dil-count').text(tally[i] || 0);
+            $(this).find('.ebay-dil-count').text(cnt(tally[i]));
             const pct = couponPct($(this).find('.ebay-dil-pct').val());
             $(this).find('.ebay-dil-code').text(codeFor(pct) || '—').toggleClass('is-on', !!codeFor(pct));
         });
@@ -376,7 +382,7 @@
             return '<tr style="--c:' + color + ';">'
                 + '<td><input type="number" step="0.01" class="form-control form-control-sm el30cpn-input ebay-dil-min" value="' + slab.min + '"></td>'
                 + '<td><input type="number" step="0.01" class="form-control form-control-sm el30cpn-input ebay-dil-max" value="' + slab.max + '"></td>'
-                + '<td class="text-center"><span class="el30cpn-count"><span class="ebay-dil-count">' + (tally[i] || 0) + '</span>'
+                + '<td class="text-center"><span class="el30cpn-count"><span class="ebay-dil-count">' + cnt(tally[i]) + '</span>'
                 + '<span class="el30-slab-dot none" data-i="' + i + '" title="Click for history"></span></span></td>'
                 + '<td><div class="el30cpn-pct"><input type="number" min="0" max="80" step="1" class="form-control form-control-sm ebay-dil-pct" value="' + pct + '"><span>%</span></div></td>'
                 + '<td><span class="el30cpn-code ebay-dil-code' + (code ? ' is-on' : '') + '">' + (code || '—') + '</span></td>'
@@ -412,8 +418,24 @@
         }
         return null;
     }
+    // Snapshot mode: newest saved count for a slab, the one before it, and the newest date.
+    function snapPair(key) {
+        const days = (state.hist && state.hist.days) || {};
+        const found = [];
+        Object.keys(days).sort().reverse().forEach(function(d) {
+            if (found.length >= 2) return;
+            const row = days[d];
+            if (row && row[key] != null && isFinite(Number(row[key]))) found.push({ d: d, v: Number(row[key]) });
+        });
+        return {
+            live: found[0] ? found[0].v : null,
+            date: found[0] ? found[0].d : null,
+            prev: found[1] ? found[1].v : null
+        };
+    }
+    function cnt(v) { return (snapshotMode && v == null) ? '—' : (v || 0); }
     function dotClass(live, prev, invert) {
-        if (prev == null || !isFinite(live)) return 'none';
+        if (live == null || prev == null || !isFinite(live)) return 'none';
         const d = live - prev;
         let c = d > 0 ? 'up' : (d < 0 ? 'down' : 'flat');
         if (invert && c === 'up') c = 'down';
@@ -425,8 +447,16 @@
             const slab = (state.slabs || [])[i];
             const $dot = $(this).find('.el30-slab-dot');
             if (!slab || !$dot.length) return;
-            const live = tally[i] || 0;
-            const prev = prevCount(slabKey(slab));
+            let live = tally[i] || 0;
+            let prev = prevCount(slabKey(slab));
+            if (snapshotMode) {
+                const snap = snapPair(slabKey(slab));
+                live = snap.live;
+                prev = snap.prev;
+                $(this).find('.el30cpn-count').attr('title', snap.date
+                    ? 'Latest saved count (' + snap.date + ') from the eBay page'
+                    : 'No saved count for this slab yet');
+            }
             // 0–0 slab = SKUs with no E L30 sales, so fewer of them is the good direction.
             const zeroSlab = Math.abs(Number(slab.min) || 0) < 0.0000001 && Math.abs(Number(slab.max) || 0) < 0.0000001;
             const cls = dotClass(live, prev, zeroSlab);
@@ -444,7 +474,9 @@
         $.get(histUrl, function(res) {
             if (!res || !res.success) return;
             state.hist = { today: res.today, days: res.days || {} };
-            paintDots(counts());
+            // Snapshot mode: the counts themselves come from history, so repaint them too.
+            if (snapshotMode) paintChrome();
+            else paintDots(counts());
         });
     }
     function histSeries(key, live) {
@@ -452,11 +484,12 @@
         const today = todayPt();
         const out = [];
         Object.keys(days).sort().forEach(function(d) {
-            if (d === today) return;
+            if (d === today && !snapshotMode) return;
             const row = days[d];
             if (row && row[key] != null && isFinite(Number(row[key]))) out.push({ d: d, v: Number(row[key]) });
         });
-        if (live != null) out.push({ d: today, v: live });
+        // Snapshot mode already includes today's saved point; there is no live count to append.
+        if (!snapshotMode && live != null) out.push({ d: today, v: live });
         return out;
     }
     function dLabel(ymd) {

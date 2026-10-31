@@ -4546,6 +4546,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/promotions', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'index'])->name('promotions');
     Route::get('/promotions/data', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'data'])->name('promotions.data');
     Route::post('/promotions/columns', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'storeColumn'])->name('promotions.columns.store');
+    Route::get('/promotions/amazon-coupon', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponShow'])->name('promotions.amazon.coupon.show');
+    Route::post('/promotions/amazon-coupon', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponSave'])->name('promotions.amazon.coupon.save');
     Route::post('/promotions/save-row', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'saveRow'])->name('promotions.save.row');
 
     // Doba Sales Routes
