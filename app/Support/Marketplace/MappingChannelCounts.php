@@ -39,6 +39,35 @@ class MappingChannelCounts
 
     private const INACTIVE_PAGE_CACHE_TTL_DAYS = 7;
 
+    /**
+     * Channels whose API cannot update inventory (TopDawg returns 403), so their mismatch SKUs
+     * are not counted on /map-issues or in the sidebar total.
+     *
+     * @var list<string>
+     */
+    public const NOT_COUNTED = ['topdawg'];
+
+    public static function isNotCounted(string $slug): bool
+    {
+        return in_array(self::normalize($slug), self::NOT_COUNTED, true);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private static function withoutUncounted(array $rows): array
+    {
+        foreach ($rows as $i => $row) {
+            if (is_array($row) && self::isNotCounted((string) ($row['channel_slug'] ?? ''))) {
+                $rows[$i]['missing_mapping_titas'] = 0;
+                $rows[$i]['not_counted'] = true;
+            }
+        }
+
+        return $rows;
+    }
+
     public const LINKED_MISMATCH_TOTAL_CACHE_KEY = 'linked_mismatch_sku_total_v3';
 
     public const LINKED_MISMATCH_MASTER_ROWS_CACHE_KEY = 'linked_mismatch_sku_master_rows_v3';
@@ -142,7 +171,7 @@ class MappingChannelCounts
             return;
         }
 
-        $count = max(0, $count);
+        $count = self::isNotCounted($slug) ? 0 : max(0, $count);
         $want = self::normalize($slug);
 
         try {
@@ -197,11 +226,11 @@ class MappingChannelCounts
         foreach ([self::MASTER_ROWS_CACHE_KEY, self::MASTER_ROWS_LAST_GOOD_KEY] as $key) {
             $rows = Cache::get($key);
             if (is_array($rows) && $rows !== []) {
-                return $rows;
+                return self::withoutUncounted($rows);
             }
         }
 
-        return self::storedMasterRows();
+        return self::withoutUncounted(self::storedMasterRows());
     }
 
     /**
@@ -349,6 +378,15 @@ class MappingChannelCounts
      */
     public static function cachedTotalOrZero(): int
     {
+        // Sum the rows (not the stored total) so an uncounted channel never leaks into the total.
+        $rows = self::currentMasterRows();
+        if ($rows !== []) {
+            $total = (int) collect($rows)->sum('missing_mapping_titas');
+            self::storeTotalTitas($total);
+
+            return $total;
+        }
+
         foreach ([self::TOTAL_TITAS_CACHE_KEY, self::TOTAL_CACHE_KEY] as $key) {
             try {
                 $cached = Cache::get($key);
@@ -501,7 +539,7 @@ class MappingChannelCounts
                 try {
                     $cached = Cache::get($key);
                     if (is_array($cached) && $cached !== []) {
-                        return $cached;
+                        return self::withoutUncounted($cached);
                     }
                 } catch (\Throwable $e) {
                     // try the next key
@@ -509,7 +547,7 @@ class MappingChannelCounts
             }
             $stored = self::storedMasterRows();
             if ($stored !== []) {
-                return $stored;
+                return self::withoutUncounted($stored);
             }
 
             return self::skeletonMasterRows();
@@ -1364,6 +1402,10 @@ class MappingChannelCounts
         $seenMm = [];
 
         foreach (self::$sources as $slug => $meta) {
+            if (self::isNotCounted($slug)) {
+                $counts[$slug] = 0;
+                continue;
+            }
             $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
             if ($mm === null) {
                 continue;
@@ -1394,6 +1436,10 @@ class MappingChannelCounts
         $seenMm = [];
 
         foreach (self::$sources as $slug => $meta) {
+            if (self::isNotCounted($slug)) {
+                $counts[$slug] = 0;
+                continue;
+            }
             $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
             if ($mm === null) {
                 continue;
