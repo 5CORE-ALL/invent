@@ -33,7 +33,7 @@ class VeeqoChargebackController extends Controller
     public const CHARGEBACK_TYPES = [
         'LabmanLabelChargeBack', 'Chargeback Debit - Outbound', 'Chargeback Credit - Outbound',
         'TikTok Shipping Fee Adjustment', 'TikTok Shipping Fee Compensation',
-        'Shopify Label Price Adjustment', 'Temu Label Purchase Adjustment',
+        'Shopify Label Price Adjustment', 'Temu Label Purchase Adjustment', 'UPS Billing Adjustment',
     ];
 
     public function index()
@@ -105,6 +105,7 @@ class VeeqoChargebackController extends Controller
             ->selectRaw("COALESCE(SUM(CASE WHEN source IN ('tiktok_api', 'tiktok2_api') THEN total_amount END), 0) as tiktok_net")
             ->selectRaw("COALESCE(SUM(CASE WHEN source = 'shopify_csv' THEN total_amount END), 0) as shopify_net")
             ->selectRaw("COALESCE(SUM(CASE WHEN source IN ('temu1_csv', 'temu2_csv', 'temu3_csv') THEN total_amount END), 0) as temu_net")
+            ->selectRaw("COALESCE(SUM(CASE WHEN source = 'ups_csv' THEN total_amount END), 0) as ups_net")
             ->selectRaw("SUM(CASE WHEN direction = 'debit' THEN 1 ELSE 0 END) as debits")
             ->selectRaw("COALESCE(SUM(CASE WHEN direction = 'debit' THEN total_amount END), 0) as debit_total")
             ->selectRaw("COALESCE(SUM(CASE WHEN direction = 'credit' THEN total_amount END), 0) as credit_total")
