@@ -31,10 +31,16 @@ class MasterListingDetails
         return [
             'sku' => 'SKU',
             'parent' => 'Parent',
-            'title' => 'Title',
+            'title' => 'Title (75)',
+            'bullet1' => 'Bullet 1',
+            'bullet2' => 'Bullet 2',
+            'bullet3' => 'Bullet 3',
+            'bullet4' => 'Bullet 4',
+            'bullet5' => 'Bullet 5',
             'description' => 'Description',
             'images' => 'All Image Shopify Link',
             'aplus' => 'A+',
+            'aplus_html' => 'A+ HTML',
             'weight_kg' => 'Weight (kg)',
             'length_cm' => 'Length (cm)',
             'width_cm' => 'Width (cm)',
@@ -126,20 +132,57 @@ class MasterListingDetails
                 [
                     'sku' => $sku,
                     'parent' => trim((string) ($product->parent ?? '')),
-                    'title' => trim((string) ($pack['title'] ?? '')),
+                    'title' => self::title75($pack),
                     'description' => self::description($pack),
                     'images' => implode(', ', self::images($sku, $shopifyRow)),
                     'aplus' => trim((string) ($pack['description_aplus'] ?? '')),
+                    'aplus_html' => trim((string) ($pack['description_aplus'] ?? '')),
                     'shopify_category' => trim((string) ($category->category_shopify ?? '')),
                     'shopify_category_id' => trim((string) ($category->category_shopify_id ?? '')),
                     'price' => self::price($shopifyRow, $product),
                     'inventory' => self::inventory($sku, $shopifyRow),
                 ],
+                self::bullets($product),
                 self::package($sku, $product)
             );
         }
 
         return ['rows' => $rows, 'message' => $message];
+    }
+
+    /**
+     * Title Master 75-character title (the 60-character one only when 75 is empty; both fit a 75 limit).
+     *
+     * @param  array<string, mixed>  $pack
+     */
+    private static function title75(array $pack): string
+    {
+        $byKey = [];
+        foreach ((array) ($pack['titles'] ?? []) as $row) {
+            $byKey[(string) ($row['key'] ?? '')] = trim((string) ($row['value'] ?? ''));
+        }
+        foreach (['title75', 'title60'] as $key) {
+            if (($byKey[$key] ?? '') !== '') {
+                return $byKey[$key];
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Bullet Points Master, one column per bullet (bullet1..bullet5), kept in position.
+     *
+     * @return array<string, string>
+     */
+    private static function bullets(?ProductMaster $product): array
+    {
+        $out = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $out['bullet'.$i] = $product ? trim((string) ($product->getAttribute('bullet'.$i) ?? '')) : '';
+        }
+
+        return $out;
     }
 
     /**
