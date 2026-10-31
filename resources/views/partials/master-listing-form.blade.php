@@ -33,6 +33,11 @@
     #mlf-table th { position: sticky; top: 0; background: #00d5d5; color: #0f172a; padding: 6px 8px; text-align: left; white-space: nowrap; border: 1px solid #cbd5e1; z-index: 1; }
     #mlf-table td { padding: 5px 8px; border: 1px solid #e2e8f0; vertical-align: top; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #mlf-table td.mlf-empty { background: #fef2f2; }
+    #mlf-table td.mlf-aplus { min-width: 340px; max-width: 420px; white-space: normal; }
+    .mlf-aplus-box { max-height: 120px; overflow: auto; font-size: 12px; line-height: 1.4; }
+    .mlf-aplus-box img { max-width: 90px; max-height: 70px; height: auto; margin: 0 4px 4px 0; vertical-align: top; border-radius: 4px; }
+    .mlf-aplus-box table { max-width: 100%; }
+    .mlf-aplus-box * { max-width: 100%; }
     #mlf-table tr:hover td { background: #f1f5f9; }
 </style>
 <div id="mlf-overlay" aria-hidden="true">
@@ -69,6 +74,24 @@
         });
     }
 
+    // Rendered A+ preview: scripts, styles, frames and event handlers are stripped.
+    function safeHtml(html) {
+        var doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+        doc.querySelectorAll('script, style, iframe, object, embed, link, meta, form, video, audio').forEach(function (n) { n.remove(); });
+        doc.body.querySelectorAll('*').forEach(function (n) {
+            Array.prototype.slice.call(n.attributes).forEach(function (a) {
+                var name = a.name.toLowerCase();
+                if (name.indexOf('on') === 0 || name === 'style' || name === 'width' || name === 'height' ||
+                    ((name === 'href' || name === 'src') && /^\s*javascript:/i.test(a.value))) {
+                    n.removeAttribute(a.name);
+                }
+            });
+            if (n.tagName === 'A') { n.setAttribute('target', '_blank'); n.setAttribute('rel', 'noopener'); }
+            if (n.tagName === 'IMG') { n.setAttribute('loading', 'lazy'); }
+        });
+        return doc.body.innerHTML;
+    }
+
     function setStatus(text) { $('mlf-status').textContent = text || ''; }
 
     function setNote(text) {
@@ -94,13 +117,13 @@
                 var v = row[key] == null ? '' : String(row[key]);
                 var empty = v === '' && ['title', 'description', 'aplus', 'images', 'price', 'inventory'].indexOf(key) !== -1;
                 var shown = key === 'images' && v ? (v.split(', ').length + ' image link(s): ' + v) : v;
-                var tip = v;
-                if (key === 'aplus' && v) {
-                    // A+ is a full HTML page: show a short stub here, the whole thing goes into the CSV.
-                    shown = 'A+ content (' + v.length + ' chars): ' + v.replace(/\s+/g, ' ').slice(0, 80);
-                    tip = '';
+                if (key === 'aplus') {
+                    // A+ is a full HTML page: show it rendered (as in Description Master); the CSV keeps the HTML.
+                    html += '<td class="mlf-aplus' + (empty ? ' mlf-empty' : '') + '">' +
+                        (v ? '<div class="mlf-aplus-box">' + safeHtml(v) + '</div>' : '') + '</td>';
+                    return;
                 }
-                html += '<td' + (empty ? ' class="mlf-empty"' : '') + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + esc(shown) + '</td>';
+                html += '<td' + (empty ? ' class="mlf-empty"' : '') + ' title="' + esc(v) + '">' + esc(shown) + '</td>';
             });
             html += '</tr>';
         });
