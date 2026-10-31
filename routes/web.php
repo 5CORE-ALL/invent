@@ -5257,6 +5257,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay2-zero-sold-coupon', [EbayController::class, 'saveEbayZeroSoldCoupon'])->defaults('channel', 'ebay2')->name('ebay2.zero-sold-coupon.save');
     Route::get('/ebay3-zero-sold-coupon', [EbayController::class, 'ebayZeroSoldCouponSetting'])->defaults('channel', 'ebay3')->name('ebay3.zero-sold-coupon.show');
     Route::post('/ebay3-zero-sold-coupon', [EbayController::class, 'saveEbayZeroSoldCoupon'])->defaults('channel', 'ebay3')->name('ebay3.zero-sold-coupon.save');
+    // EL30 Dil % Coupons: daily SKU count per slab (history dot next to each SKUs count)
+    Route::get('/ebay-el30-cpn-history', [EbayController::class, 'el30CpnHistory'])->name('ebay.el30-cpn-history.show');
+    Route::post('/ebay-el30-cpn-history', [EbayController::class, 'saveEl30CpnHistory'])->name('ebay.el30-cpn-history.save');
+    Route::get('/ebay2-el30-cpn-history', [EbayController::class, 'el30CpnHistory'])->defaults('channel', 'ebay2')->name('ebay2.el30-cpn-history.show');
+    Route::post('/ebay2-el30-cpn-history', [EbayController::class, 'saveEl30CpnHistory'])->defaults('channel', 'ebay2')->name('ebay2.el30-cpn-history.save');
+    Route::get('/ebay3-el30-cpn-history', [EbayController::class, 'el30CpnHistory'])->defaults('channel', 'ebay3')->name('ebay3.el30-cpn-history.show');
+    Route::post('/ebay3-el30-cpn-history', [EbayController::class, 'saveEl30CpnHistory'])->defaults('channel', 'ebay3')->name('ebay3.el30-cpn-history.save');
 
     // Ebay Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
     Route::get('/ebay-listing-variation-verify', [EbayListingVariationVerifyController::class, 'index'])->name('ebay.listing.variation.verify');

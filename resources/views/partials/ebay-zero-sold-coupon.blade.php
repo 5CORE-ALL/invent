@@ -5,31 +5,113 @@
     $ebayZeroSoldUrl = $ebayZeroSoldChannel === 'ebay1'
         ? '/ebay-zero-sold-coupon'
         : '/'.$ebayZeroSoldChannel.'-zero-sold-coupon';
+    $ebayZeroSoldHistUrl = $ebayZeroSoldChannel === 'ebay1'
+        ? '/ebay-el30-cpn-history'
+        : '/'.$ebayZeroSoldChannel.'-el30-cpn-history';
 @endphp
 
 @if($ebayZeroSoldPart === 'button')
-<button type="button" id="{{ $ebayZeroSoldPrefix }}-btn" class="btn btn-outline-secondary btn-sm pricing-filter-item"
+<button type="button" id="{{ $ebayZeroSoldPrefix }}-btn" class="btn btn-outline-secondary btn-sm pricing-filter-item el30cpn-btn"
     title="Public eBay coupon by EL30 Dil % slab. EL30 Dil % = E L30 ÷ INV × 100. Coupon % of 0 leaves that slab off.">
     <i class="fas fa-ticket-alt"></i> EL30 CPN Off
 </button>
 @endif
 
 @if($ebayZeroSoldPart === 'modal')
-<div class="modal fade" id="{{ $ebayZeroSoldPrefix }}-modal" tabindex="-1" aria-hidden="true">
+<style>
+    .el30cpn-btn.btn-primary { background: linear-gradient(135deg, #7c3aed, #db2777 55%, #f97316); border: 0; color: #fff; box-shadow: 0 2px 10px rgba(219, 39, 119, .35); }
+    .el30cpn .modal-content.el30cpn-content { border: 0; border-radius: 22px; overflow: hidden; box-shadow: 0 24px 70px rgba(76, 29, 149, .35); background: #faf7ff; }
+    .el30cpn-hero { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 16px; padding: 16px 22px; color: #fff;
+        background: linear-gradient(120deg, #6d28d9, #db2777, #f97316, #6d28d9); background-size: 300% 300%; animation: el30cpnFlow 9s ease infinite; }
+    .el30cpn-hero::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+        background: radial-gradient(circle at 12% 20%, rgba(255,255,255,.22), transparent 38%), radial-gradient(circle at 88% 85%, rgba(255,255,255,.16), transparent 40%); }
+    .el30cpn-hero > * { position: relative; z-index: 1; }
+    @keyframes el30cpnFlow { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    .el30cpn-gif { width: 84px; height: 84px; border-radius: 20px; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 8px 22px rgba(0,0,0,.25); flex: 0 0 auto; background: #fff; }
+    .el30cpn-hero-text { flex: 1 1 240px; min-width: 0; }
+    .el30cpn-hero .modal-title { font-size: 1.25rem; font-weight: 800; letter-spacing: .01em; text-shadow: 0 2px 8px rgba(0,0,0,.25); margin: 0; }
+    .el30cpn-sub { font-size: .8rem; opacity: .92; margin-top: 2px; }
+    .el30cpn-formula { display: inline-block; margin-top: 8px; padding: 3px 12px; border-radius: 999px; background: rgba(255,255,255,.2); border: 1px dashed rgba(255,255,255,.7); font-size: .74rem; font-weight: 700; letter-spacing: .02em; }
+    .el30cpn-power { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,.18); backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,.45); }
+    .el30cpn-power .form-check-input { width: 3rem; height: 1.5rem; margin: 0; cursor: pointer; background-color: rgba(255,255,255,.45); border-color: rgba(255,255,255,.8); }
+    .el30cpn-power .form-check-input:checked { background-color: #22c55e; border-color: #bbf7d0; box-shadow: 0 0 0 4px rgba(34,197,94,.3); }
+    .el30cpn-power label { font-weight: 800; font-size: .9rem; margin: 0; min-width: 28px; }
+    .el30cpn-hero .btn-close { filter: invert(1) grayscale(1) brightness(2); opacity: .9; align-self: flex-start; }
+    .el30cpn .modal-body { padding: 18px 22px 20px; background: linear-gradient(180deg, #faf7ff 0%, #fff5fa 100%); }
+    .el30cpn-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 14px; font-size: .78rem; color: #4c1d95; background: #ede9fe; border: 1px solid #ddd6fe; margin-bottom: 14px; }
+    .el30cpn-note i { color: #7c3aed; margin-top: 2px; }
+    .el30cpn-table { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
+    .el30cpn-table thead th { padding: 6px 6px; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: #7c3aed; font-weight: 800; border: 0; background: transparent; }
+    .el30cpn-table tbody tr { background: #fff; box-shadow: 0 2px 10px rgba(76, 29, 149, .08); transition: transform .15s ease, box-shadow .15s ease; }
+    .el30cpn-table tbody tr:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(76, 29, 149, .16); }
+    .el30cpn-table tbody td { padding: 10px 6px; border: 0; vertical-align: middle; }
+    .el30cpn-table tbody td:first-child { border-radius: 14px 0 0 14px; border-left: 6px solid var(--c, #7c3aed); }
+    .el30cpn-table tbody td:last-child { border-radius: 0 14px 14px 0; }
+    .el30cpn-input { width: 78px !important; border-radius: 10px; border: 2px solid #ede9fe; font-weight: 700; color: #3b0764; text-align: center; transition: border-color .15s, box-shadow .15s; }
+    .el30cpn-input:focus { border-color: var(--c, #7c3aed); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c, #7c3aed) 22%, transparent); }
+    .el30cpn-count { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 14px; border-radius: 999px; font-weight: 800; font-size: 1rem; color: #fff;
+        background: linear-gradient(135deg, var(--c, #7c3aed), color-mix(in srgb, var(--c, #7c3aed) 55%, #ec4899)); box-shadow: 0 3px 10px color-mix(in srgb, var(--c, #7c3aed) 40%, transparent); }
+    .el30-slab-dot { display: inline-block; width: 13px; height: 13px; border-radius: 50%; cursor: pointer; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(15,23,42,.25); background: #9ca3af; transition: transform .15s; }
+    .el30-slab-dot:hover { transform: scale(1.35); }
+    .el30-slab-dot.up { background: #22c55e; animation: el30cpnPulse 1.8s infinite; }
+    .el30-slab-dot.down { background: #ef4444; animation: el30cpnPulse 1.8s infinite; }
+    .el30-slab-dot.flat { background: #eab308; }
+    @keyframes el30cpnPulse { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,.9), 0 0 0 1px rgba(15,23,42,.25); } 70% { box-shadow: 0 0 0 7px rgba(255,255,255,0), 0 0 0 1px rgba(15,23,42,.25); } 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0), 0 0 0 1px rgba(15,23,42,.25); } }
+    .el30cpn-pct { display: inline-flex; align-items: center; border: 2px solid #ede9fe; border-radius: 10px; background: #fff; overflow: hidden; }
+    .el30cpn-pct input { width: 56px !important; border: 0 !important; box-shadow: none !important; text-align: center; font-weight: 800; color: #be185d; background: transparent; }
+    .el30cpn-pct span { padding: 0 10px 0 2px; font-weight: 800; color: #db2777; }
+    .el30cpn-code { display: inline-block; white-space: nowrap; padding: 5px 12px; border-radius: 8px; font-weight: 800; font-size: .75rem; letter-spacing: .06em; color: #9ca3af; border: 2px dashed #e5e7eb; background: #f9fafb; }
+    .el30cpn-code.is-on { color: #fff; border-color: rgba(255,255,255,.75); background: linear-gradient(135deg, #7c3aed, #db2777); box-shadow: 0 3px 10px rgba(219, 39, 119, .35); }
+    .el30cpn-del { width: 30px; height: 30px; border-radius: 50%; border: 0; background: #fee2e2; color: #dc2626; font-weight: 800; line-height: 1; transition: transform .15s, background .15s; }
+    .el30cpn-del:hover { background: #dc2626; color: #fff; transform: rotate(90deg); }
+    .el30cpn-add { border: 0; border-radius: 999px; padding: 8px 20px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #06b6d4, #6366f1, #a855f7); box-shadow: 0 4px 14px rgba(99, 102, 241, .4); transition: transform .15s; }
+    .el30cpn-add:hover { transform: translateY(-2px) scale(1.03); color: #fff; }
+    .el30cpn-status { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: .8rem; font-weight: 600; color: #6b21a8; }
+    .el30cpn-status::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #a855f7; animation: el30cpnPulse 1.8s infinite; }
+    .el30cpn-hist { display: none; margin-top: 16px; padding: 14px 16px 12px; border-radius: 18px; background: #fff; border: 2px solid color-mix(in srgb, var(--c, #7c3aed) 35%, #fff); box-shadow: 0 8px 26px rgba(76, 29, 149, .12); animation: el30cpnIn .25s ease; }
+    .el30cpn-hist.show { display: block; }
+    @keyframes el30cpnIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .el30cpn-hist-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    .el30cpn-hist-title { font-weight: 800; color: #3b0764; flex: 1 1 auto; }
+    .el30cpn-hist-title small { display: block; font-weight: 600; color: #7c3aed; }
+    .el30cpn-hist select { border-radius: 10px; border: 2px solid #ede9fe; font-weight: 700; font-size: .78rem; padding: 3px 8px; }
+    .el30cpn-hist .el30cpn-x { border: 0; background: #f3e8ff; color: #7c3aed; width: 28px; height: 28px; border-radius: 50%; font-weight: 800; }
+    .el30cpn-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+    .el30cpn-chip { padding: 3px 12px; border-radius: 999px; font-size: .74rem; font-weight: 800; color: #4c1d95; background: #f3e8ff; }
+    .el30cpn-chip.up { color: #166534; background: #dcfce7; }
+    .el30cpn-chip.down { color: #991b1b; background: #fee2e2; }
+    .el30cpn-svg { width: 100%; height: auto; display: block; }
+    .el30cpn-svg .line { fill: none; stroke: var(--c, #7c3aed); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: el30cpnDraw 1.1s ease forwards; }
+    @keyframes el30cpnDraw { to { stroke-dashoffset: 0; } }
+    .el30cpn-svg .pt { fill: #fff; stroke: var(--c, #7c3aed); stroke-width: 2.5; cursor: pointer; transition: r .12s; }
+    .el30cpn-svg .pt:hover { r: 7; }
+    .el30cpn-svg .grid { stroke: #ede9fe; stroke-width: 1; }
+    .el30cpn-svg text { font-size: 11px; font-weight: 700; fill: #6b7280; }
+    .el30cpn-empty { padding: 24px 0; text-align: center; color: #7c3aed; font-weight: 700; }
+</style>
+<div class="modal fade el30cpn" id="{{ $ebayZeroSoldPrefix }}-modal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h5 class="modal-title fs-6">EL30 Dil % Coupons</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body py-3">
-                <p class="small text-muted mb-2">Public coupon on eBay by EL30 Dil % slab. EL30 Dil % is E L30 ÷ INV × 100, and INV must be above 0. The 0–0 slab is E L30 = 0. A SKU moves onto the coupon of the slab its EL30 Dil % falls in. Coupon % of 0 leaves that slab off. eBay accepts 5–80, letters and numbers only.</p>
-                <div class="form-check form-switch mb-3">
+        <div class="modal-content el30cpn-content">
+            <div class="el30cpn-hero">
+                <img class="el30cpn-gif" src="{{ asset('images/ebay-coupon.gif') }}" alt="Coupon">
+                <div class="el30cpn-hero-text">
+                    <h5 class="modal-title">EL30 Dil % Coupons</h5>
+                    <div class="el30cpn-sub">Every SKU gets the eBay coupon of the slab its sell-through falls in.</div>
+                    <span class="el30cpn-formula">EL30 Dil % = E L30 ÷ INV × 100</span>
+                </div>
+                <div class="el30cpn-power form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="{{ $ebayZeroSoldPrefix }}-switch">
                     <label class="form-check-label" for="{{ $ebayZeroSoldPrefix }}-switch" id="{{ $ebayZeroSoldPrefix }}-switch-label">Off</label>
                 </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="el30cpn-note">
+                    <i class="fas fa-lightbulb"></i>
+                    <div>INV must be above 0. The <b>0–0</b> slab is E L30 = 0. Coupon % of <b>0</b> leaves that slab off. eBay accepts <b>5–80</b>, letters and numbers only. Click a colored dot next to a SKUs count to see that slab's history.</div>
+                </div>
                 <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-2">
+                    <table class="el30cpn-table">
                         <thead>
                             <tr>
                                 <th>EL30 Dil % From</th>
@@ -43,8 +125,22 @@
                         <tbody id="{{ $ebayZeroSoldPrefix }}-slabs"></tbody>
                     </table>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="{{ $ebayZeroSoldPrefix }}-add">Add slab</button>
-                <div class="small text-muted mt-2" id="{{ $ebayZeroSoldPrefix }}-status"></div>
+                <button type="button" class="el30cpn-add" id="{{ $ebayZeroSoldPrefix }}-add"><i class="fas fa-plus me-1"></i> Add slab</button>
+                <div class="el30cpn-status" id="{{ $ebayZeroSoldPrefix }}-status"></div>
+                <div class="el30cpn-hist" id="{{ $ebayZeroSoldPrefix }}-hist">
+                    <div class="el30cpn-hist-head">
+                        <div class="el30cpn-hist-title"><span class="el30cpn-hist-name"></span><small>SKUs per day (daily snapshot)</small></div>
+                        <select class="el30cpn-hist-range" aria-label="Range">
+                            <option value="7">7 days</option>
+                            <option value="30" selected>30 days</option>
+                            <option value="90">90 days</option>
+                            <option value="0">All</option>
+                        </select>
+                        <button type="button" class="el30cpn-x" aria-label="Close history">×</button>
+                    </div>
+                    <div class="el30cpn-chips"></div>
+                    <div class="el30cpn-chart"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -75,6 +171,8 @@
 (function() {
     const prefix = @json($ebayZeroSoldPrefix);
     const url = @json($ebayZeroSoldUrl);
+    const histUrl = @json($ebayZeroSoldHistUrl);
+    const SLAB_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#6366f1', '#a855f7', '#ec4899'];
     const skipOffSync = @json(($ebayZeroSoldChannel ?? '') === 'ebay3');
     const state = {
         enabled: false,
@@ -152,6 +250,7 @@
         return n;
     };
     function announce() {
+        scheduleHistReport();
         try { document.dispatchEvent(new CustomEvent('ebayZeroSoldChanged', { detail: { channel: @json($ebayZeroSoldChannel) } })); } catch (e) {}
     }
 
@@ -206,8 +305,9 @@
         $('#' + prefix + '-slabs tr').each(function(i) {
             $(this).find('.ebay-dil-count').text(tally[i] || 0);
             const pct = couponPct($(this).find('.ebay-dil-pct').val());
-            $(this).find('.ebay-dil-code').text(codeFor(pct) || '—');
+            $(this).find('.ebay-dil-code').text(codeFor(pct) || '—').toggleClass('is-on', !!codeFor(pct));
         });
+        paintDots(tally);
         announce();
     }
     function paintSlabs() {
@@ -215,17 +315,193 @@
         const html = (state.slabs || []).map(function(slab, i) {
             const pct = couponPct(slab.pct);
             const code = codeFor(pct);
-            return '<tr>'
-                + '<td><input type="number" step="0.01" class="form-control form-control-sm ebay-dil-min" value="' + slab.min + '" style="width:88px;"></td>'
-                + '<td><input type="number" step="0.01" class="form-control form-control-sm ebay-dil-max" value="' + slab.max + '" style="width:88px;"></td>'
-                + '<td class="text-center fw-bold ebay-dil-count">' + (tally[i] || 0) + '</td>'
-                + '<td><input type="number" min="0" max="80" step="1" class="form-control form-control-sm ebay-dil-pct" value="' + pct + '" style="width:72px;"></td>'
-                + '<td class="small fw-semibold ebay-dil-code">' + (code || '—') + '</td>'
-                + '<td><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 ebay-dil-del" data-i="' + i + '">×</button></td>'
+            const color = SLAB_COLORS[i % SLAB_COLORS.length];
+            return '<tr style="--c:' + color + ';">'
+                + '<td><input type="number" step="0.01" class="form-control form-control-sm el30cpn-input ebay-dil-min" value="' + slab.min + '"></td>'
+                + '<td><input type="number" step="0.01" class="form-control form-control-sm el30cpn-input ebay-dil-max" value="' + slab.max + '"></td>'
+                + '<td class="text-center"><span class="el30cpn-count"><span class="ebay-dil-count">' + (tally[i] || 0) + '</span>'
+                + '<span class="el30-slab-dot none" data-i="' + i + '" title="Click for history"></span></span></td>'
+                + '<td><div class="el30cpn-pct"><input type="number" min="0" max="80" step="1" class="form-control form-control-sm ebay-dil-pct" value="' + pct + '"><span>%</span></div></td>'
+                + '<td><span class="el30cpn-code ebay-dil-code' + (code ? ' is-on' : '') + '">' + (code || '—') + '</span></td>'
+                + '<td class="text-end"><button type="button" class="el30cpn-del ebay-dil-del" data-i="' + i + '" aria-label="Remove slab">×</button></td>'
                 + '</tr>';
         }).join('');
         $('#' + prefix + '-slabs').html(html);
         paintChrome();
+    }
+    // ---- Daily SKU count per slab: history dot + graph ----
+    state.hist = null;
+    let histReportTimer = null;
+    let histReportSig = '';
+    let histOpenIdx = null;
+    function r2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+    function slabKey(slab) {
+        const a = r2(slab.min), b = r2(slab.max);
+        return String(Math.min(a, b)) + '-' + String(Math.max(a, b));
+    }
+    function todayPt() {
+        if (state.hist && state.hist.today) return state.hist.today;
+        try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date()); }
+        catch (e) { return new Date().toISOString().slice(0, 10); }
+    }
+    function prevCount(key) {
+        const days = (state.hist && state.hist.days) || {};
+        const today = todayPt();
+        const keys = Object.keys(days).sort().reverse();
+        for (let i = 0; i < keys.length; i++) {
+            if (keys[i] >= today) continue;
+            const row = days[keys[i]];
+            if (row && row[key] != null && isFinite(Number(row[key]))) return Number(row[key]);
+        }
+        return null;
+    }
+    function dotClass(live, prev, invert) {
+        if (prev == null || !isFinite(live)) return 'none';
+        const d = live - prev;
+        let c = d > 0 ? 'up' : (d < 0 ? 'down' : 'flat');
+        if (invert && c === 'up') c = 'down';
+        else if (invert && c === 'down') c = 'up';
+        return c;
+    }
+    function paintDots(tally) {
+        $('#' + prefix + '-slabs tr').each(function(i) {
+            const slab = (state.slabs || [])[i];
+            const $dot = $(this).find('.el30-slab-dot');
+            if (!slab || !$dot.length) return;
+            const live = tally[i] || 0;
+            const prev = prevCount(slabKey(slab));
+            // 0–0 slab = SKUs with no E L30 sales, so fewer of them is the good direction.
+            const zeroSlab = Math.abs(Number(slab.min) || 0) < 0.0000001 && Math.abs(Number(slab.max) || 0) < 0.0000001;
+            const cls = dotClass(live, prev, zeroSlab);
+            let tip = 'Click for history (no prior day saved yet).';
+            if (prev != null) {
+                const diff = live - prev;
+                tip = (diff > 0 ? 'Up ' + diff : (diff < 0 ? 'Down ' + Math.abs(diff) : 'Same'))
+                    + ' vs prior day (' + prev + ' → ' + live + '). Click for history.';
+            }
+            $dot.attr('class', 'el30-slab-dot ' + cls).attr('title', tip);
+        });
+        if (histOpenIdx !== null) drawHist();
+    }
+    function loadHist() {
+        $.get(histUrl, function(res) {
+            if (!res || !res.success) return;
+            state.hist = { today: res.today, days: res.days || {} };
+            paintDots(counts());
+        });
+    }
+    function histSeries(key, live) {
+        const days = (state.hist && state.hist.days) || {};
+        const today = todayPt();
+        const out = [];
+        Object.keys(days).sort().forEach(function(d) {
+            if (d === today) return;
+            const row = days[d];
+            if (row && row[key] != null && isFinite(Number(row[key]))) out.push({ d: d, v: Number(row[key]) });
+        });
+        if (live != null) out.push({ d: today, v: live });
+        return out;
+    }
+    function dLabel(ymd) {
+        return new Date(ymd + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+    }
+    function chartSvg(pts, color) {
+        if (!pts.length) return '<div class="el30cpn-empty">No history yet. Today\'s count is saved automatically.</div>';
+        const W = 700, H = 230, pl = 44, pr = 16, pt = 14, pb = 34;
+        let max = Math.max.apply(null, pts.map(function(p) { return p.v; }));
+        let min = Math.min.apply(null, pts.map(function(p) { return p.v; }));
+        if (max === min) { max += 1; min = Math.max(0, min - 1); }
+        const pad = (max - min) * 0.15;
+        const hi = max + pad, lo = Math.max(0, min - pad);
+        const x = function(i) { return pts.length === 1 ? pl + (W - pl - pr) / 2 : pl + (W - pl - pr) * i / (pts.length - 1); };
+        const y = function(v) { return pt + (H - pt - pb) * (1 - (v - lo) / (hi - lo)); };
+        const gid = 'el30g-' + prefix;
+        let svg = '<svg class="el30cpn-svg" viewBox="0 0 ' + W + ' ' + H + '" style="--c:' + color + ';">'
+            + '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">'
+            + '<stop offset="0%" stop-color="' + color + '" stop-opacity="0.38"/><stop offset="100%" stop-color="' + color + '" stop-opacity="0.02"/></linearGradient></defs>';
+        for (let k = 0; k <= 4; k++) {
+            const gv = lo + (hi - lo) * k / 4, gy = y(gv);
+            svg += '<line class="grid" x1="' + pl + '" y1="' + gy + '" x2="' + (W - pr) + '" y2="' + gy + '"/>'
+                + '<text x="' + (pl - 8) + '" y="' + (gy + 4) + '" text-anchor="end">' + Math.round(gv) + '</text>';
+        }
+        const line = pts.map(function(p, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(p.v).toFixed(1); }).join(' ');
+        if (pts.length > 1) {
+            svg += '<path d="' + line + ' L' + x(pts.length - 1).toFixed(1) + ',' + (H - pb) + ' L' + x(0).toFixed(1) + ',' + (H - pb) + ' Z" fill="url(#' + gid + ')"/>'
+                + '<path class="line" pathLength="1" d="' + line + '"/>';
+        }
+        const step = Math.max(1, Math.ceil(pts.length / 8));
+        pts.forEach(function(p, i) {
+            svg += '<circle class="pt" cx="' + x(i).toFixed(1) + '" cy="' + y(p.v).toFixed(1) + '" r="5"><title>' + dLabel(p.d) + ': ' + p.v + ' SKUs</title></circle>';
+            if (i % step === 0 || i === pts.length - 1) {
+                svg += '<text x="' + x(i).toFixed(1) + '" y="' + (H - 12) + '" text-anchor="middle">' + dLabel(p.d) + '</text>';
+            }
+        });
+        return svg + '</svg>';
+    }
+    function drawHist() {
+        const i = histOpenIdx;
+        const slab = (state.slabs || [])[i];
+        const $panel = $('#' + prefix + '-hist');
+        if (i === null || !slab) { $panel.removeClass('show'); return; }
+        const color = SLAB_COLORS[i % SLAB_COLORS.length];
+        const tally = counts();
+        let pts = histSeries(slabKey(slab), tally[i] || 0);
+        const range = parseInt($panel.find('.el30cpn-hist-range').val(), 10) || 0;
+        if (range > 0 && pts.length) {
+            const end = new Date(pts[pts.length - 1].d + 'T12:00:00');
+            end.setDate(end.getDate() - (range - 1));
+            const cut = end.toISOString().slice(0, 10);
+            pts = pts.filter(function(p) { return p.d >= cut; });
+        }
+        $panel.css('--c', color);
+        $panel.find('.el30cpn-hist-name').text('SKUs with EL30 Dil % ' + slab.min + ' – ' + slab.max);
+        const vals = pts.map(function(p) { return p.v; });
+        const last = vals.length ? vals[vals.length - 1] : null;
+        const prev = vals.length > 1 ? vals[vals.length - 2] : null;
+        let chips = '';
+        if (last !== null) chips += '<span class="el30cpn-chip">Now ' + last + '</span>';
+        if (prev !== null) {
+            const d = last - prev;
+            chips += '<span class="el30cpn-chip ' + (d > 0 ? 'up' : (d < 0 ? 'down' : '')) + '">' + (d > 0 ? '▲ +' : (d < 0 ? '▼ ' : '● ')) + d + ' vs prior</span>';
+        }
+        if (vals.length) {
+            chips += '<span class="el30cpn-chip">Peak ' + Math.max.apply(null, vals) + '</span>'
+                + '<span class="el30cpn-chip">Low ' + Math.min.apply(null, vals) + '</span>'
+                + '<span class="el30cpn-chip">' + vals.length + ' day' + (vals.length === 1 ? '' : 's') + '</span>';
+        }
+        $panel.find('.el30cpn-chips').html(chips);
+        $panel.find('.el30cpn-chart').html(chartSvg(pts, color));
+        $panel.addClass('show');
+    }
+    function histCounts() {
+        const t = counts();
+        return (state.slabs || []).map(function(s, i) { return { min: r2(s.min), max: r2(s.max), count: t[i] || 0 }; });
+    }
+    // Saves today's per-slab SKU counts once the grid is loaded (not while the modal is being edited).
+    function scheduleHistReport() {
+        if (!state.ready || modalOpen() || !rows().length) return;
+        const list = histCounts();
+        const sig = JSON.stringify(list);
+        if (sig === histReportSig) return;
+        clearTimeout(histReportTimer);
+        histReportTimer = setTimeout(function() {
+            if (document.visibilityState === 'hidden') return;
+            histReportSig = sig;
+            $.ajax({
+                url: histUrl,
+                method: 'POST',
+                contentType: 'application/json',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: JSON.stringify({ counts: list }),
+                success: function() {
+                    if (!state.hist) state.hist = { today: todayPt(), days: {} };
+                    const today = state.hist.today;
+                    state.hist.days[today] = state.hist.days[today] || {};
+                    list.forEach(function(c) { state.hist.days[today][slabKey(c)] = c.count; });
+                },
+                error: function() { histReportSig = ''; }
+            });
+        }, 2500);
     }
     function readSlabs() {
         const body = $('#' + prefix + '-slabs tr');
@@ -373,6 +649,7 @@
             state.enabled = !!(res && (res.enabled === true || res.enabled === 1 || res.enabled === '1'));
             if (res && Array.isArray(res.slabs) && res.slabs.length) state.slabs = res.slabs;
             state.ready = true;
+            loadHist();
             paintSlabs();
             if (window.table && typeof window.table.redraw === 'function') window.table.redraw(true);
             autoSync();
@@ -392,6 +669,9 @@
         });
     }
     function openModal() {
+        histOpenIdx = null;
+        $('#' + prefix + '-hist').removeClass('show');
+        loadHist();
         paintSlabs();
         const modalEl = document.getElementById(prefix + '-modal');
         if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -420,6 +700,24 @@
         state.slabs.splice(Number($(this).attr('data-i')) || 0, 1);
         paintSlabs();
         scheduleApply();
+    });
+    $('#' + prefix + '-modal').on('click', '.el30-slab-dot', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const i = Number($(this).attr('data-i'));
+        histOpenIdx = (histOpenIdx === i && $('#' + prefix + '-hist').hasClass('show')) ? null : i;
+        drawHist();
+        if (histOpenIdx !== null) {
+            const el = document.getElementById(prefix + '-hist');
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    });
+    $('#' + prefix + '-hist').on('change', '.el30cpn-hist-range', drawHist);
+    $('#' + prefix + '-hist').on('click', '.el30cpn-x', function() { histOpenIdx = null; drawHist(); });
+    $('#' + prefix + '-modal').on('hidden.bs.modal', function() {
+        histOpenIdx = null;
+        $('#' + prefix + '-hist').removeClass('show');
+        scheduleHistReport();
     });
     function bind() {
         const table = window.table;

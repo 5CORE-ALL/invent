@@ -5683,6 +5683,82 @@ class EbayController extends Controller
         );
     }
 
+    private const EL30_CPN_HISTORY_DAYS = 400;
+
+    private function el30CpnHistoryRow(string $channel): ?ChannelTabulatorColumnSetting
+    {
+        return ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', $channel.'_el30_cpn_history')
+            ->first();
+    }
+
+    /**
+     * Daily SKU count per EL30 Dil % slab: { today, days: { 'YYYY-MM-DD': { '0-0': 353, '0.01-5': 204, ... } } }.
+     * Drives the history dot next to each SKUs count in the EL30 Dil % Coupons modal.
+     */
+    public function el30CpnHistory(string $channel = 'ebay1')
+    {
+        $channel = $this->normalizeZeroSoldChannel($channel);
+        $vis = $this->el30CpnHistoryRow($channel)?->visibility;
+        $days = is_array($vis) && is_array($vis['days'] ?? null) ? $vis['days'] : [];
+        ksort($days);
+
+        return response()->json([
+            'success' => true,
+            'today' => now()->toDateString(),
+            'days' => $days,
+        ]);
+    }
+
+    /**
+     * Saves today's SKU count for each slab (last write of the day wins).
+     * Body: counts = [{ min, max, count }, ...]
+     */
+    public function saveEl30CpnHistory(Request $request, string $channel = 'ebay1')
+    {
+        $channel = $this->normalizeZeroSoldChannel($channel);
+        $raw = $request->input('counts');
+        if (! is_array($raw) || $raw === []) {
+            return response()->json(['success' => false, 'message' => 'No counts'], 422);
+        }
+        $today = now()->toDateString();
+        $counts = [];
+        foreach (array_slice($raw, 0, 40) as $row) {
+            if (! is_array($row) || ! is_numeric($row['min'] ?? null) || ! is_numeric($row['max'] ?? null) || ! is_numeric($row['count'] ?? null)) {
+                continue;
+            }
+            $min = (float) $row['min'];
+            $max = (float) $row['max'];
+            if ($max < $min) {
+                [$min, $max] = [$max, $min];
+            }
+            $counts[EbayDilCoupon::slabKey($min, $max)] = max(0, (int) $row['count']);
+        }
+        if ($counts === []) {
+            return response()->json(['success' => false, 'message' => 'No valid counts'], 422);
+        }
+
+        DB::transaction(function () use ($channel, $today, $counts) {
+            $row = ChannelTabulatorColumnSetting::query()
+                ->where('channel_name', $channel.'_el30_cpn_history')
+                ->lockForUpdate()
+                ->first();
+            $vis = $row && is_array($row->visibility) ? $row->visibility : [];
+            $days = is_array($vis['days'] ?? null) ? $vis['days'] : [];
+            $days[$today] = array_merge(is_array($days[$today] ?? null) ? $days[$today] : [], $counts);
+            ksort($days);
+            if (count($days) > self::EL30_CPN_HISTORY_DAYS) {
+                $days = array_slice($days, -self::EL30_CPN_HISTORY_DAYS, null, true);
+            }
+            ChannelTabulatorColumnSetting::query()->updateOrCreate(
+                ['channel_name' => $channel.'_el30_cpn_history'],
+                ['visibility' => ['days' => $days], 'column_order' => []]
+            );
+        });
+
+        return response()->json(['success' => true, 'date' => $today]);
+    }
+
     private function normalizeZeroSoldChannel(string $channel): string
     {
         $channel = strtolower(trim($channel));

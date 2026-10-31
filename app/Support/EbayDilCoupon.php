@@ -10,6 +10,15 @@ namespace App\Support;
 class EbayDilCoupon
 {
     /**
+     * Stable key for a slab's From–To range, used to store its daily SKU count history.
+     * The page builds the same key (String(Math.round(x * 100) / 100)).
+     */
+    public static function slabKey(float $min, float $max): string
+    {
+        return (string) round($min, 2).'-'.(string) round($max, 2);
+    }
+
+    /**
      * @return list<array{min:float,max:float,pct:int}>
      */
     public static function defaults(): array
