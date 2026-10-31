@@ -293,3 +293,8 @@
 
 {{-- Global NROI / GROI / NPFT / GPFT % color schema (window.MetricPctColors) --}}
 <script src="{{ asset('js/metric-percent-colors.js') }}"></script>
+
+{{-- Global: every single-series line history graph (Chart.js / Highcharts) shows how much
+     was added (▲ +N) or deducted (▼ −N) from the previous count to the next. Must load
+     before any chart library so it can self-register when the library is loaded. --}}
+<script src="{{ asset('js/chart-delta-labels.js') }}?v=20261031"></script>

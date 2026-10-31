@@ -529,7 +529,7 @@ class NewTemutwoSprcDilAutoPushService
         // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above the saved % adds the saved points to the Target (default 20% / +10). Price = full Temu Price.
         $liveBase = (float) ($row['live_base'] ?? 0);
         $diffPct = \App\Support\EbayRuleSprice::stdPriceDiffPct(
-            $std,
+            \App\Support\EbayRuleSprice::diffRefPrice($std, (float) (($row['lmp_raw'] ?? 0) > 0 ? $row['lmp_raw'] : ($row['lmp'] ?? 0))),
             $liveBase > 0 ? TemuShopifySalesService::computeFullTemuPrice($liveBase) : 0.0
         );
         $target += AmazonDilGroiRule::diffAdjPoints($diffPct, $this->diffAdjConfig());

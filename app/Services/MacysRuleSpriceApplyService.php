@@ -230,11 +230,11 @@ class MacysRuleSpriceApplyService
                 );
             }
             $std = (float) ($row['std'] ?? 0);
-            if ($std > 0 && round((float) ($row['mc_price'] ?? 0), 2) > 0) {
+            if (EbayRuleSprice::diffRefPrice($std, (float) ($row['lmp'] ?? 0)) > 0 && round((float) ($row['mc_price'] ?? 0), 2) > 0) {
                 $base = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi, 0.0, $margin);
                 if ($base !== null && $base > 0) {
                     $groi += AmazonDilGroiRule::diffAdjPoints(
-                        EbayRuleSprice::stdPriceDiffPct($std, $base),
+                        EbayRuleSprice::stdPriceDiffPct(EbayRuleSprice::diffRefPrice($std, (float) ($row['lmp'] ?? 0)), $base),
                         $dilContext['diff_adj'] ?? null
                     );
                 }

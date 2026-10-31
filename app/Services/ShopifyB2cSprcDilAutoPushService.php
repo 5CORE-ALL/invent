@@ -285,7 +285,7 @@ class ShopifyB2cSprcDilAutoPushService
             is_array($ctx['age_adj'] ?? null) ? $ctx['age_adj'] : null
         );
         $afterAge = max(0.0, round($afterCvr + $ageAdj, 2));
-        $diffPct = EbayRuleSprice::stdPriceDiffPct((float) ($row['standard_price'] ?? 0), (float) ($row['price'] ?? 0));
+        $diffPct = EbayRuleSprice::stdPriceDiffPct(EbayRuleSprice::diffRefPrice((float) ($row['standard_price'] ?? 0), (float) ($row['lmp'] ?? 0)), (float) ($row['price'] ?? 0));
         $diffAdj = AmazonDilGroiRule::diffAdjPoints($diffPct, is_array($ctx['diff_adj'] ?? null) ? $ctx['diff_adj'] : null);
         $target = max(0.0, round($afterAge + $diffAdj, 2));
         $price = AmazonDilGroiRule::suggestedPrice(

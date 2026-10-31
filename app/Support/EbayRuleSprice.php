@@ -216,7 +216,7 @@ class EbayRuleSprice
         return is_int($days) ? (float) $days : null;
     }
 
-    /** Diff% = (Std Prc − Price) / Price × 100; null when either is missing. */
+    /** Diff% = (reference − Price) / Price × 100, reference = LMP (or Std Prc, see diffRefPrice()); null when either is missing. */
     public static function stdPriceDiffPct(float $std, float $price): ?float
     {
         if (! ($std > 0) || ! ($price > 0)) {
@@ -224,6 +224,15 @@ class EbayRuleSprice
         }
 
         return (($std - $price) / $price) * 100;
+    }
+
+    /**
+     * Diff rule reference price: the SKU's LMP. A SKU / page with no LMP falls back to Std Prc.
+     * Same as the page (ebayDiffRefPrice in partials/ebay-sprc-dil).
+     */
+    public static function diffRefPrice(float $std, float $lmp): float
+    {
+        return $lmp > 0 ? $lmp : $std;
     }
 
     public const DIFF_ADJ_GT_PCT = 20.0;
@@ -257,7 +266,10 @@ class EbayRuleSprice
         }
         if (! empty($dil['diff_adj'])) {
             // $diffRefPrice overrides the live price as the Diff reference (see price(): keeps a boosted SKU stable).
-            $diffPct = self::stdPriceDiffPct((float) ($input['std'] ?? 0), $diffRefPrice ?? (float) ($input['price'] ?? 0));
+            $diffPct = self::stdPriceDiffPct(
+                self::diffRefPrice((float) ($input['std'] ?? 0), (float) ($input['lmp'] ?? 0)),
+                $diffRefPrice ?? (float) ($input['price'] ?? 0)
+            );
             // true = default 20% / +10; an array is the saved Sprc Dil setting.
             $nroi += AmazonDilGroiRule::diffAdjPoints($diffPct, is_array($dil['diff_adj']) ? $dil['diff_adj'] : null);
         }

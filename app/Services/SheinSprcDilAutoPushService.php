@@ -440,11 +440,11 @@ class SheinSprcDilAutoPushService
         // Purchasing Power, and the page). Read against the live Price, the boosted price is pushed -> Diff drops under
         // the threshold -> the boost is removed -> the lower price is pushed -> Diff rises -> the boost is back, so the SKU
         // alternated between two prices every 10-minute run. A listed SKU (live Price > 0) and a Std Prc are still required.
-        if ($std > 0 && round((float) ($row['price'] ?? 0), 2) > 0) {
+        if (EbayRuleSprice::diffRefPrice($std, (float) ($row['lmp'] ?? 0)) > 0 && round((float) ($row['price'] ?? 0), 2) > 0) {
             $diffBase = AmazonDilGroiRule::suggestedPrice($lp, $ship, $target, 0.0, $margin);
             if ($diffBase !== null && $diffBase > 0) {
                 $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints(
-                    EbayRuleSprice::stdPriceDiffPct($std, $diffBase),
+                    EbayRuleSprice::stdPriceDiffPct(EbayRuleSprice::diffRefPrice($std, (float) ($row['lmp'] ?? 0)), $diffBase),
                     $ctx['diff_adj'] ?? null
                 ), 2));
             }

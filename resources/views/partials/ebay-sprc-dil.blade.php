@@ -468,7 +468,7 @@
                         @if(!empty($ebaySprcDilDiffAdjOn))
                         <li>
                             <strong>When</strong> the <strong>Diff</strong> column
-                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt;</strong>
+                            (<code>(LMP − Price) / Price</code>; Std Prc when the SKU has no LMP) is <strong>&gt;</strong>
                             <input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-gt" style="width:68px;" value="20" title="Diff threshold %">%:
                             add <strong>+</strong><input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-points" style="width:68px;" value="10" title="Points added to the Target">
                             to the Target {{ $ebaySprcDilTargetLabel }}.
@@ -549,7 +549,7 @@
                         @if(!empty($ebaySprcDilDiffAdjOn))
                         <li>
                             <strong>When</strong> the <strong>Diff</strong> column
-                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt;</strong>
+                            (<code>(LMP − Price) / Price</code>; Std Prc when the SKU has no LMP) is <strong>&gt;</strong>
                             <input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-gt" style="width:68px;" value="20" title="Diff threshold %">%:
                             add <strong>+</strong><input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-points" style="width:68px;" value="10" title="Points added to the Target">
                             to the Target {{ $ebaySprcDilTargetLabel }}.
@@ -693,8 +693,9 @@
                         </div>
                         <div id="ebay-dg-clearance-block" class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
                             <span class="fw-semibold">Clearance</span>
-                            <span title="INV &gt; 0 and Clearance Yes on Inv Days. Count and Target {{ $ebaySprcDilTargetLabel }}% in red. Stored on this page only.">
-                                <span class="ebay-dg-clearance-count">0</span><span class="ebay-dg-clearance-nroi">0%</span>
+                            <span class="ebay-dg-count" title="Count of SKUs with INV &gt; 0 and Clearance Yes on Inv Days. Click the dot for the daily history. Stored on this page only.">
+                                <span class="small text-muted me-1">Count</span><span class="ebay-dg-clearance-count">0</span>
+                                <span class="ebay-dg-clearance-dot-slot"></span>
                             </span>
                             <span class="d-flex align-items-center gap-2">
                                 <label class="small mb-0 text-muted">Target {{ $ebaySprcDilTargetLabel }}%</label>
@@ -791,6 +792,7 @@
                                     <th class="text-center">Dil %</th>
                                     <th class="text-end">LMP reduce %</th>
                                     <th class="text-center" style="width:90px;" title="S PRC at the LMP cap, e.g. LMP $100 with 2% → $98.00">S PRC</th>
+                                    <th class="text-center" style="width:80px;" title="SKUs (INV &gt; 0, not on clearance) whose Dil falls in this band">Count</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -804,6 +806,7 @@
                                         <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-low-pct" value="2">
                                     </td>
                                     <td class="text-center text-muted ebay-lmp-cap-eg-low">LMP × 0.98</td>
+                                    <td class="ebay-dg-count"><span class="ebay-lmp-cap-low-count">0</span></td>
                                 </tr>
                                 <tr data-row="mid">
                                     <td>Between</td>
@@ -812,6 +815,7 @@
                                         <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-mid-pct" value="2">
                                     </td>
                                     <td class="text-center text-muted ebay-lmp-cap-eg-mid">LMP × 0.98</td>
+                                    <td class="ebay-dg-count"><span class="ebay-lmp-cap-mid-count">0</span></td>
                                 </tr>
                                 <tr data-row="high">
                                     <td>Above</td>
@@ -823,6 +827,7 @@
                                         <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-high-pct" value="2">
                                     </td>
                                     <td class="text-center text-muted ebay-lmp-cap-eg-high">LMP × 0.98</td>
+                                    <td class="ebay-dg-count"><span class="ebay-lmp-cap-high-count">0</span></td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1022,6 +1027,7 @@
         let ebayDgHistChart = null;
         let ebayDgDilLiveCounts = {};
         let ebayDgCvrLiveCounts = {};
+        let ebayDgClearanceLiveCounts = {};
         let ebayDgDilSlices = [];
         const EBAY_DG_SLAB_COLORS = [
             '#6f42c1', '#3b82f6', '#14b8a6', '#22c55e', '#84cc16',
@@ -1402,7 +1408,7 @@
             if (trend === 'up' && cvr > cfg.up_gt) return cfg.up_adj;
             return 0;
         }
-        /** Diff rule: Diff = (Std Prc − Price) / Price above gt_pct adds `points` to the Target. Both are saved in the modal (default 20 / +10). */
+        /** Diff rule: Diff = (LMP − Price) / Price (Std Prc when no LMP) above gt_pct adds `points` to the Target. Both are saved in the modal (default 20 / +10). */
         const EBAY_DIFF_ADJ_DEFAULT = { gt_pct: 20, points: 10 };
         const EBAY_DIFF_ADJ_ON = @json(!empty($ebaySprcDilDiffAdjOn));
         let ebayDiffAdj = Object.assign({}, EBAY_DIFF_ADJ_DEFAULT);
@@ -1568,10 +1574,20 @@
             }
             return 0;
         }
+        /**
+         * Diff rule reference price = the SKU's LMP. A SKU (or page) with no LMP falls back to Std Prc, same as the server
+         * (EbayRuleSprice::diffRefPrice). A page that prices another way sets window.ebayDiffStdPrice(d) for the Std fallback.
+         */
+        function ebayDiffRefPrice(d) {
+            const lmp = ebayDgRowLmp(d);
+            if (lmp > 0) return lmp;
+            return (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : ebayDiffDefaultStd(d);
+        }
+        window.ebayDiffRefPrice = ebayDiffRefPrice;
         function ebayDilGroiDiffAdj(d) {
             if (!EBAY_DIFF_ADJ_ON || !d) return 0;
-            // eBay reads STANDARD_PRICE and eBay Price. A page that prices another way (Temu) sets window.ebayDiffStdPrice(d) / ebayDiffLivePrice(d).
-            const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : ebayDiffDefaultStd(d);
+            // Diff = (LMP − Price) / Price (Std Prc when the SKU has no LMP). A page that prices another way (Temu) sets window.ebayDiffLivePrice(d).
+            const std = ebayDiffRefPrice(d);
             const price = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : ebayDiffDefaultLive(d);
             if (!(std > 0) || !(price > 0)) return 0;
             return (((std - price) / price) * 100 > ebayDiffAdj.gt_pct) ? ebayDiffAdj.points : 0;
@@ -1584,7 +1600,7 @@
          */
         function ebayDilGroiStableDiffAdj(afterCvr, d, plain) {
             if (!EBAY_DIFF_ADJ_ON || !d) return plain;
-            const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : ebayDiffDefaultStd(d);
+            const std = ebayDiffRefPrice(d);
             const live = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : ebayDiffDefaultLive(d);
             if (!(std > 0) || !(ebayDgRound2(live) > 0)) return plain;
             const base = ebaySpriceFromGroi(d, afterCvr);
@@ -2078,12 +2094,23 @@
             });
             return counts;
         }
+        /** A SKU under clearance (Inv Days clearance = YES) is priced only from the Clearance Target: no slab / CVR overlay applies to it. */
+        function ebayDgIsClearanceSku(d) {
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) return true;
+            if (!ebayClearanceYesSet) return false;
+            const sku = (typeof chPromoSku === 'function')
+                ? chPromoSku(d)
+                : (d && (d['(Child) sku'] || d.sku));
+            return !!ebayClearanceYesSet[ebayClearanceSkuKey(sku)];
+        }
         function ebayDilGroiCollectCvrAdjCounts() {
             const counts = { down: 0, up: 0 };
             if (!EBAY_DIL_GROI_CVR_ADJ) return counts;
             const cfg = ebayCvrGroiAdjNow();
             ebayDgEachInvChild(function(d) {
                 if (ebayDgIsShein() && !(ebayDgViews(d) > 0)) return;
+                // Count only the SKUs the CVR overlay really applies to (same rule as ebayDilGroiMetaForRow).
+                if (ebayDgIsClearanceSku(d)) return;
                 const cvr = ebayDgCvr30(d);
                 const trend = ebayDgCvrTrend(d);
                 if (trend === 'down' && cvr < cfg.down_lt) counts.down++;
@@ -2093,9 +2120,37 @@
         }
         function ebayPaintCvrGroiAdjCounts() {
             if (!EBAY_DIL_GROI_CVR_ADJ) return;
+            // The clearance list decides which SKUs are left out; repaint once it has loaded.
+            if (!ebayClearanceYesSet && typeof ebayEnsureClearanceYesSet === 'function') {
+                ebayEnsureClearanceYesSet().then(function() { ebayPaintCvrGroiAdjCounts(); });
+            }
             const counts = ebayDilGroiCollectCvrAdjCounts();
             $('#ebay-cvr-groi-table .ebay-cvr-groi-down-count').text(counts.down);
             $('#ebay-cvr-groi-table .ebay-cvr-groi-up-count').text(counts.up);
+        }
+        /** LMP cap block Count: SKUs (INV > 0, not on clearance) per Dil band, same split as ebayLmpReducePctForRow. */
+        function ebayDilGroiCollectLmpCapCounts() {
+            const counts = { low: 0, mid: 0, high: 0 };
+            const cfg = ebayLmpCapNow();
+            ebayDgEachInvChild(function(d) {
+                if (ebayDgIsClearanceSku(d)) return;
+                const dil = ebayDgDil(d);
+                if (dil < cfg.low_lt) counts.low++;
+                else if (dil > cfg.high_gt) counts.high++;
+                else counts.mid++;
+            });
+            return counts;
+        }
+        function ebayPaintLmpCapCounts() {
+            const $tbl = $('#ebay-lmp-cap-table');
+            if (!$tbl.length) return;
+            if (!ebayClearanceYesSet && typeof ebayEnsureClearanceYesSet === 'function') {
+                ebayEnsureClearanceYesSet().then(function() { ebayPaintLmpCapCounts(); });
+            }
+            const counts = ebayDilGroiCollectLmpCapCounts();
+            $tbl.find('.ebay-lmp-cap-low-count').text(counts.low);
+            $tbl.find('.ebay-lmp-cap-mid-count').text(counts.mid);
+            $tbl.find('.ebay-lmp-cap-high-count').text(counts.high);
         }
         function ebayDgSlabColor(idx) {
             return EBAY_DG_SLAB_COLORS[idx % EBAY_DG_SLAB_COLORS.length];
@@ -2198,13 +2253,14 @@
             return out;
         }
         function ebayDgDrawHist(chart, band, rows) {
-            const slices = chart === 'cvr' ? ebayDgCvrBands() : ebayDgDilSlices;
+            const slices = chart === 'cvr' ? ebayDgCvrBands()
+                : (chart === 'clearance' ? [{ key: 'count', label: 'Clearance', color: '#dc3545' }] : ebayDgDilSlices);
             const spec = slices.find(function(s) { return s.key === band; })
                 || { key: band, label: band, color: '#6f42c1' };
             const plot = ebayDgPadHistoryDays(rows, 30);
             const labels = plot.map(function(r) { return r.label || r.date; });
             const values = plot.map(function(r) { return Number(r[band]) || 0; });
-            $('#ebay-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : 'Dil ') + spec.label + ' count · last 30 days');
+            $('#ebay-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : (chart === 'clearance' ? '' : 'Dil ')) + spec.label + ' count · last 30 days');
             const $wrap = $('#ebay-dg-hist-wrap').addClass('is-open');
             if ($wrap.length && $wrap[0].scrollIntoView) {
                 $wrap[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -2296,8 +2352,8 @@
             });
         }
         function ebayDgOpenHist(chart, band) {
-            const storeKey = chart === 'cvr' ? ebayDgHistKey('cvr') : ebayDgHistKey('dil');
-            const live = chart === 'cvr' ? ebayDgCvrLiveCounts : ebayDgDilLiveCounts;
+            const storeKey = chart === 'cvr' ? ebayDgHistKey('cvr') : (chart === 'clearance' ? ebayDgHistKey('clr') : ebayDgHistKey('dil'));
+            const live = chart === 'cvr' ? ebayDgCvrLiveCounts : (chart === 'clearance' ? ebayDgClearanceLiveCounts : ebayDgDilLiveCounts);
             const applyToday = function(rows) {
                 const list = ebayDgPadHistoryDays(rows, 30);
                 const today = ebayDgTodayKey();
@@ -2435,7 +2491,13 @@
                 ebayEnsureClearanceYesSet().then(function() { ebayPaintClearanceSlabCount(); });
                 return;
             }
-            el.textContent = String(ebayClearanceYesCount());
+            const n = ebayClearanceYesCount();
+            el.textContent = String(n);
+            ebayDgClearanceLiveCounts = { count: n };
+            // Daily history dot (same graph as the slab counts). Only a loaded page counts: a half-loaded table would save a wrong day.
+            if (window._ebayDilRulesLoaded === true) ebayDgSnapLocal(ebayDgHistKey('clr'), ebayDgClearanceLiveCounts);
+            const slot = document.querySelector('#ebay-dg-clearance-block .ebay-dg-clearance-dot-slot');
+            if (slot && !slot.firstChild) slot.innerHTML = ebayDgHistDotHtml('clearance', 'count', '#dc3545', 'Clearance');
         }
         /** The Clearance block sits outside the slab table (its own block, rule written above it): fill it from the saved NROI%. */
         function ebayAppendClearanceSlabRow() {
@@ -2472,6 +2534,7 @@
                         }
                     });
                     ebayPaintClearanceSlabCount();
+                    ebayPaintLmpCapCounts();
                     return;
                 }
 
@@ -2484,6 +2547,7 @@
                 ebayDgDrawPie('ebay-dg-cvr-pie', 'cvr', cvrBands, cvrCounts);
                 ebayPaintCvrGroiAdjCounts();
                 ebayPaintAgeAdjCounts();
+                ebayPaintLmpCapCounts();
 
                 $('#ebay-dil-groi-tbody tr:not([data-clearance])').each(function(i) {
                     const r = rules[i];
@@ -2519,6 +2583,7 @@
             });
             ebayPaintCvrGroiAdjCounts();
             ebayPaintAgeAdjCounts();
+            ebayPaintLmpCapCounts();
             ebayPaintClearanceSlabCount();
         }
         function renderEbayDilGroiModalTable() {
@@ -3612,6 +3677,7 @@
                 .on('input.ebayLmpCap change.ebayLmpCap', '#ebay-lmp-cap-table .ebay-lmp-cap-input', function() {
                     ebayLmpCap = ebayLmpCapNow();
                     ebayPaintLmpCapExamples(ebayLmpCap);
+                    ebayPaintLmpCapCounts();
                     ebayAfterDilGroiRulesChanged();
                     ebayScheduleDilGroiAutosave();
                 });

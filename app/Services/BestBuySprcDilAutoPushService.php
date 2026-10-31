@@ -481,7 +481,7 @@ class BestBuySprcDilAutoPushService
                 $ctx['age_adj']
             );
         }
-        $diffPct = EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
+        $diffPct = EbayRuleSprice::stdPriceDiffPct(EbayRuleSprice::diffRefPrice($std, (float) ($row['lmp'] ?? 0)), (float) ($row['price'] ?? 0));
         $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
 
         $raw = round(($lp * (1 + $target / 100) + $ship) / $margin, 2);

@@ -87,12 +87,14 @@
                 stepNo++;
             }
             const diffAdj = ebayDilGroiDiffAdj(d);
-            const std = (typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : ((typeof ebayDiffDefaultStd === 'function') ? ebayDiffDefaultStd(d) : 0);
+            const std = (typeof window.ebayDiffRefPrice === 'function') ? (Number(window.ebayDiffRefPrice(d)) || 0)
+                : ((typeof window.ebayDiffStdPrice === 'function') ? (Number(window.ebayDiffStdPrice(d)) || 0) : ((typeof ebayDiffDefaultStd === 'function') ? ebayDiffDefaultStd(d) : 0));
+            const diffIsLmp = typeof ebayDgRowLmp === 'function' && Number(ebayDgRowLmp(d)) > 0;
             const price = (typeof window.ebayDiffLivePrice === 'function') ? (Number(window.ebayDiffLivePrice(d)) || 0) : ((typeof ebayDiffDefaultLive === 'function') ? ebayDiffDefaultLive(d) : 0);
             const diffPct = (std > 0 && price > 0) ? ((std - price) / price) * 100 : null;
             if (diffAdj) {
                 steps.push(temuRuleStep('ok', stepNo + ' · Diff rule',
-                    'Diff ' + diffPct.toFixed(1) + '% (Std Prc ' + temuRuleMoney(std) + ' vs {{ $temuRuleLiveLabel }} ' + temuRuleMoney(price) + ') is above ' + temuRuleDiffCfg().gt_pct + '% → <b>'
+                    'Diff ' + diffPct.toFixed(1) + '% (' + (diffIsLmp ? 'LMP ' : 'Std Prc ') + temuRuleMoney(std) + ' vs {{ $temuRuleLiveLabel }} ' + temuRuleMoney(price) + ') is above ' + temuRuleDiffCfg().gt_pct + '% → <b>'
                     + temuRuleDiffPts(diffAdj) + '</b> to Target SNROI'));
             } else {
                 steps.push(temuRuleStep('skip', stepNo + ' · Diff rule',

@@ -288,11 +288,11 @@ class ShopifyB2bSprcDilAutoPushService
         $std = (float) ($row['standard_price'] ?? 0);
         $live = round((float) ($row['price'] ?? 0), 2);
         $diffAdj = 0.0;
-        if ($std > 0 && $live > 0) {
+        if (EbayRuleSprice::diffRefPrice($std, (float) ($row['lmp'] ?? 0)) > 0 && $live > 0) {
             $base = AmazonDilGroiRule::suggestedPrice($lp, 0.0, $afterCvr, 0.0, self::MARGIN);
             if ($base !== null && $base > 0) {
                 $diffAdj = AmazonDilGroiRule::diffAdjPoints(
-                    EbayRuleSprice::stdPriceDiffPct($std, $base),
+                    EbayRuleSprice::stdPriceDiffPct(EbayRuleSprice::diffRefPrice($std, (float) ($row['lmp'] ?? 0)), $base),
                     is_array($ctx['diff_adj'] ?? null) ? $ctx['diff_adj'] : null
                 );
             }

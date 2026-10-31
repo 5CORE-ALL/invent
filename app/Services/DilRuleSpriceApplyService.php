@@ -371,17 +371,23 @@ class DilRuleSpriceApplyService
             );
         }
 
-        // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above the saved % adds the saved points to the Target (default 20% / +10). Temu 3 Price = full Temu Price.
+        // Diff rule (same as eBay 1): Diff = (LMP, or Std Prc when no LMP − Price) / Price above the saved % adds the saved points to the Target (default 20% / +10). Temu 3 Price = full Temu Price.
         if ($this->channel === 'temu3') {
             $diffPct = EbayRuleSprice::stdPriceDiffPct(
-                (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0),
+                EbayRuleSprice::diffRefPrice(
+                    (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0),
+                    (float) ($row['lmp'] ?? 0)
+                ),
                 TemuShopifySalesService::computeFullTemuPrice((float) ($row['live'] ?? 0))
             );
             $groi += AmazonDilGroiRule::diffAdjPoints($diffPct, $this->diffAdj);
         } elseif (in_array($this->channel, ['wayfair', 'doba', 'walmart', 'fb_marketplace'], true)) {
             // Wayfair / Doba / Walmart / FB Marketplace: same Diff rule against the channel price (the page's Std Diff column). Floor the target at 0 like the page.
             $diffPct = EbayRuleSprice::stdPriceDiffPct(
-                (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0),
+                EbayRuleSprice::diffRefPrice(
+                    (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0),
+                    (float) ($row['lmp'] ?? 0)
+                ),
                 (float) ($row['live'] ?? 0)
             );
             $groi = max(0.0, (float) $groi) + AmazonDilGroiRule::diffAdjPoints($diffPct, $this->diffAdj);
