@@ -4477,6 +4477,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
         ->name('missing.listing.csv.import');
 
+    // Master listing form for marketplaces with no API (details come from our masters, exported as CSV)
+    Route::get('/master-listing/{channel}/skus', [\App\Http\Controllers\MarketPlace\MasterListingController::class, 'skus'])
+        ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
+        ->name('master.listing.skus');
+    Route::post('/master-listing/{channel}/details', [\App\Http\Controllers\MarketPlace\MasterListingController::class, 'details'])
+        ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
+        ->name('master.listing.details');
+
     // LMP Overall — parent/SKU inventory with Amz, eBay, Temu, and Google LMP
     Route::get('/lmp-overall', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'index'])->name('lmp.overall');
     Route::get('/lmp-overall/data', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'data'])->name('lmp.overall.data');

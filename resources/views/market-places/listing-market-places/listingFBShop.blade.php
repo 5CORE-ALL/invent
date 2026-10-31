@@ -1090,4 +1090,5 @@
     </script>
     <script src="{{ asset('js/listing-page-tools.js') }}?v=20261029-parent"></script>
 @include('partials.listing-sku-search')
+@include('partials.master-listing-form', ['channel' => 'fbshop', 'label' => \App\Support\Marketplace\SheetListingCatalog::label('fbshop')])
 @endsection

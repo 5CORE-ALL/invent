@@ -131,7 +131,8 @@
             color: #084298;
             font-weight: 700;
         }
-        .ml-csv-upload-btn {
+        .ml-csv-upload-btn,
+        .ml-master-listing-btn {
             font-size: 11px;
             padding: 1px 7px;
             margin-left: 6px;
@@ -783,7 +784,7 @@
                             : safeName;
                         if (!row.allows_csv_upload) return nameHtml;
                         const importUrl = String(row.csv_import_url || '').trim();
-                        return `${nameHtml}<button type="button" class="btn btn-sm btn-outline-warning ml-csv-upload-btn" data-import-url="${escapeHtml(importUrl)}" title="Upload current ${safeName} listings CSV and match to CP Master">Upload CSV</button>`;
+                        return `${nameHtml}<button type="button" class="btn btn-sm btn-outline-warning ml-csv-upload-btn" data-import-url="${escapeHtml(importUrl)}" title="Upload current ${safeName} listings CSV and match to CP Master">Upload CSV</button><button type="button" class="btn btn-sm btn-outline-primary ml-master-listing-btn" data-slug="${escapeHtml(importUrl.split('/').filter(Boolean).pop() || '')}" data-label="${safeName}" title="Title, Description, Shopify images, weight / size, category, price and inventory from our masters for ${safeName} Missing L">Master Listing</button>`;
                     },
                 }, shortFilter()),
                 Object.assign({
@@ -1129,6 +1130,12 @@
             });
         });
 
+        $(document).on('click', '#missing-listing-table .ml-master-listing-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (window.MasterListing) window.MasterListing.open(String($(this).data('slug') || ''), String($(this).data('label') || ''));
+        });
+
         let mlSheetImportUrl = '';
         $(document).on('click', '#missing-listing-table .ml-csv-upload-btn', function(e) {
             e.preventDefault();
@@ -1177,4 +1184,5 @@
         });
     });
 </script>
+@include('partials.master-listing-form')
 @endsection
