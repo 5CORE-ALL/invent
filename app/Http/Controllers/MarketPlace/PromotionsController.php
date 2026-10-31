@@ -75,6 +75,27 @@ class PromotionsController extends Controller
         return null;
     }
 
+    /**
+     * Channels that have the "EL30 Dil % Coupons" rule modal
+     * (partials/ebay-zero-sold-coupon). Value = the partial's channel key.
+     * Exact match on the normalized channel name.
+     */
+    private const COUPON_RULE_MODAL = [
+        'ebay' => 'ebay1',
+        'ebay1' => 'ebay1',
+        'ebay2' => 'ebay2',
+        'ebaytwo' => 'ebay2',
+        'ebay3' => 'ebay3',
+        'ebaythree' => 'ebay3',
+    ];
+
+    private function couponRuleModal(string $channel): ?string
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', strtolower($channel));
+
+        return self::COUPON_RULE_MODAL[$key] ?? null;
+    }
+
     private function storageReady(): bool
     {
         return Schema::hasTable('promotion_columns') && Schema::hasTable('promotion_channel_data');
@@ -138,6 +159,7 @@ class PromotionsController extends Controller
                     'seller_link' => $hasSellerLink ? ($row->seller_link ?? null) : null,
                     'status' => 'Active',
                     'coupon_allowed' => $this->couponSupport((string) $row->channel),
+                    'coupon_rule' => $this->couponRuleModal((string) $row->channel),
                     'notes_remarks' => $stored->notes_remarks ?? '',
                     'values' => (object) $values,
                 ];

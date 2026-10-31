@@ -96,6 +96,34 @@
             background: #fee2e2;
             color: #dc2626;
         }
+        .promo-rule-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border: 0;
+            border-radius: 8px;
+            background: #5bbcc4;
+            color: #fff;
+            font-size: 15px;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .promo-rule-btn:hover:not(.is-disabled) {
+            background: #3da5ae;
+        }
+        .promo-rule-btn.is-disabled {
+            background: #f1f5f9;
+            color: #cbd5e1;
+            cursor: not-allowed;
+        }
+        /* This page has no SKU grid, so hide the modal's per-slab SKU count / history. */
+        .el30cpn-table th:nth-child(3),
+        .el30cpn-table td:nth-child(3),
+        .el30cpn-hist {
+            display: none !important;
+        }
         .promo-edit-btn {
             border: 1px solid #cbd5e1;
             background: #fff;
@@ -150,6 +178,17 @@
             </div>
         </div>
     </div>
+
+    {{-- EL30 Dil % Coupons modals (same as the eBay pages). The buttons stay hidden;
+         the Rule column's coupon icon triggers them. --}}
+    <div class="d-none">
+        @foreach (['ebay1', 'ebay2', 'ebay3'] as $promoEbayKey)
+            @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => $promoEbayKey])
+        @endforeach
+    </div>
+    @foreach (['ebay1', 'ebay2', 'ebay3'] as $promoEbayKey)
+        @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => $promoEbayKey])
+    @endforeach
 
     {{-- Add Column modal --}}
     <div class="modal fade" id="promo-add-column-modal" tabindex="-1" aria-hidden="true">
@@ -367,7 +406,44 @@
             },
         };
 
-        return startColumns.concat(created, [notes, edit]);
+        // "Rule": coupon icon that opens the eBay "EL30 Dil % Coupons" modal.
+        const rule = {
+            title: 'Rule',
+            field: 'coupon_rule',
+            width: 90,
+            hozAlign: 'center',
+            headerHozAlign: 'center',
+            headerSort: false,
+            formatter: function (cell) {
+                const key = cell.getValue();
+                if (!key) {
+                    return '<span class="promo-rule-btn is-disabled" title="No coupon rule for this channel"><i class="fas fa-ticket-alt"></i></span>';
+                }
+                return '<button type="button" class="promo-rule-btn" title="EL30 Dil % Coupons rule"><i class="fas fa-ticket-alt"></i></button>';
+            },
+            cellClick: function (e, cell) {
+                e.stopPropagation();
+                const key = cell.getValue();
+                if (key) {
+                    $('#' + key + '-zero-sold-coupon-btn').trigger('click');
+                }
+            },
+        };
+
+        // Rule sits right after the Coupons column (or after Status if there is none yet).
+        const couponIdx = dynamicColumns.findIndex(isCouponColumn);
+        const cols = startColumns.slice();
+        if (couponIdx === -1) {
+            cols.push(rule);
+        }
+        created.forEach(function (c, i) {
+            cols.push(c);
+            if (i === couponIdx) {
+                cols.push(rule);
+            }
+        });
+        cols.push(notes, edit);
+        return cols;
     }
 
     // Flatten server row: values{colId:value} → dyn_<colId> fields
@@ -540,5 +616,17 @@
         applyFilters();
     });
 })();
+</script>
+<script>
+    // The EL30 coupon partial looks for a SKU grid at window.table / window.allTableData and
+    // polls until one exists. This page has none, so give it an inert stub (no getData) so it
+    // sees zero SKUs: it only loads/saves the slab rule and never pushes coupons or writes
+    // zero-count history.
+    window.table = window.table || { on: function () {} };
+</script>
+<script>
+    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay1'])
+    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2'])
+    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay3'])
 </script>
 @endsection
