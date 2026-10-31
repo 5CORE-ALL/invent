@@ -34,7 +34,7 @@ class MasterListingDetails
             'title' => 'Title',
             'description' => 'Description',
             'images' => 'All Image Shopify Link',
-            'shopify_link' => 'Shopify Product Link',
+            'aplus' => 'A+',
             'weight_kg' => 'Weight (kg)',
             'length_cm' => 'Length (cm)',
             'width_cm' => 'Width (cm)',
@@ -129,7 +129,7 @@ class MasterListingDetails
                     'title' => trim((string) ($pack['title'] ?? '')),
                     'description' => self::description($pack),
                     'images' => implode(', ', self::images($sku, $shopifyRow)),
-                    'shopify_link' => trim((string) ($shopifyRow->product_link ?? '')),
+                    'aplus' => trim((string) ($pack['description_aplus'] ?? '')),
                     'shopify_category' => trim((string) ($category->category_shopify ?? '')),
                     'shopify_category_id' => trim((string) ($category->category_shopify_id ?? '')),
                     'price' => self::price($shopifyRow, $product),
@@ -148,11 +148,21 @@ class MasterListingDetails
     private static function description(array $pack): string
     {
         $text = trim((string) ($pack['description_text'] ?? ''));
-        if ($text === '') {
-            $text = ListingManagerMasterLoader::plainText((string) ($pack['description'] ?? ''));
+        if ($text !== '') {
+            return $text;
         }
 
-        return trim($text);
+        // No text in Description Master: use the A+ copy (text only), then the bullet points.
+        $aplus = ListingManagerMasterLoader::plainText((string) ($pack['description_aplus'] ?? ''));
+        if (mb_strlen($aplus) >= 40) {
+            return $aplus;
+        }
+        $bullets = array_values(array_filter(array_map('trim', (array) ($pack['bullets'] ?? []))));
+        if ($bullets !== []) {
+            return implode("\n", array_map(static fn ($b) => '- '.ltrim($b, "-• \t"), $bullets));
+        }
+
+        return trim($aplus);
     }
 
     /**
