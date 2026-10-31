@@ -40,6 +40,9 @@ class AmazonFbmTargetingController extends Controller
 
     private const COUSIN_TABLE = 'amazon_kw_cousin_links';
 
+    /** Set while a background pull of daily campaign reports (for the LT columns) is running. */
+    private const LT_SYNC_LOCK = 'amz_fbm_lt_sync_lock';
+
     /** "Low keyword count" badge thresholds: campaigns with fewer than this many of each kind. */
     private const LOW_LIMITS = ['kw' => 50, 'neg' => 50, 'spec' => 10, 'sneg' => 10];
 
@@ -275,6 +278,30 @@ class AmazonFbmTargetingController extends Controller
         $groups = $this->hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
         $nameMap = $this->cousinNameMap();
 
+        // Lifetime clicks / sold of every campaign in each row's KW cousin group (own parent + cousin parents).
+        $groupCampaignIds = [];
+        $allGroupIds = [];
+        try {
+            $index = $this->campaignIndex();
+            foreach ($rows as $row) {
+                $ids = $row['campaign_id'] !== '' ? [$row['campaign_id'] => true] : [];
+                foreach ($this->effectiveGroup($row['campaign_name'], $groups) as $member) {
+                    $cid = $index[$this->cousins->normalize((string) $member)]['campaign_id'] ?? '';
+                    if ($cid !== '') {
+                        $ids[$cid] = true; // keyed by id: a campaign id shared by renamed campaigns counts once
+                    }
+                }
+                $groupCampaignIds[$row['campaign_name']] = array_keys($ids);
+                foreach ($ids as $cid => $_) {
+                    $allGroupIds[(string) $cid] = true;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: cousin group lookup for LT failed', ['error' => $e->getMessage()]);
+        }
+        $ltTotals = $this->lifetimeCampaignTotals(array_map('strval', array_keys($allGroupIds)));
+        $mark('lifetime');
+
         $data = [];
         $prevParent = null;
         foreach ($rows as $row) {
@@ -292,7 +319,24 @@ class AmazonFbmTargetingController extends Controller
             $cousinNames = $this->cousinCampaignNames($group, $name);
 
             $cousinParents = $cousinNames === [] ? [] : $this->cousinParents($cousinNames);
+
+            $ltClicks = 0;
+            $ltSold = 0;
+            $ltWithData = 0;
+            $memberIds = $groupCampaignIds[$name] ?? [];
+            foreach ($memberIds as $mid) {
+                $t = $ltTotals[(string) $mid] ?? null;
+                if ($t !== null) {
+                    $ltClicks += $t['clicks'];
+                    $ltSold += $t['sold'];
+                    $ltWithData++;
+                }
+            }
             $data[] = [
+                'lt_clicks' => $ltClicks,
+                'lt_sold' => $ltSold,
+                'lt_campaigns' => count($memberIds),
+                'lt_campaigns_with_data' => $ltWithData,
                 // id / name give the Auto Task Events (ATE) rules one trackable key + label per campaign row.
                 'id' => $name !== '' ? $name : $id, // campaign names are unique per row (a campaign id can repeat across renamed campaigns)
                 'name' => $name,
@@ -338,6 +382,7 @@ class AmazonFbmTargetingController extends Controller
             'low_limits' => self::LOW_LIMITS,
             'missing_cousins' => count($missingCousins),
             'missing_cousin_parents' => array_slice($missingCousins, 0, 40),
+            'lt_coverage' => $this->lifetimeCoverage(),
             'timing_ms' => $timing,
         ])->header('Server-Timing', implode(', ', array_map(static fn ($k, $v) => $k.';dur='.$v, array_keys($timing), $timing)));
     }
@@ -919,6 +964,127 @@ class AmazonFbmTargetingController extends Controller
             'negatives' => $negatives[$campaignId] ?? [],
             'ignored_negatives' => $ignoredN[$campaignId] ?? [],
         ];
+    }
+
+    /**
+     * Lifetime clicks and units sold per campaign, summed from the stored DAILY Amazon Ads SP campaign reports
+     * (report_date_range = YYYY-MM-DD; the L1 / L7 / L15 / L30 summary rows overlap them and are left out).
+     * Sold = unitsSoldClicks30d, the same field as the keyword LT figures in the targets modal.
+     * Campaigns with no daily rows are absent from the result.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, array{clicks: int, sold: int}>
+     */
+    protected function lifetimeCampaignTotals(array $campaignIds): array
+    {
+        $campaignIds = array_values(array_unique(array_filter($campaignIds, static fn ($id) => (string) $id !== '')));
+        if ($campaignIds === [] || ! $this->hasTable(self::SP_TABLE)) {
+            return [];
+        }
+        $cols = $this->columnsOf(self::SP_TABLE);
+        if (! in_array('campaign_id', $cols, true) || ! in_array('report_date_range', $cols, true) || ! in_array('clicks', $cols, true)) {
+            return [];
+        }
+        $soldCol = in_array('unitsSoldClicks30d', $cols, true) ? 'unitsSoldClicks30d' : (in_array('purchases30d', $cols, true) ? 'purchases30d' : null);
+
+        sort($campaignIds);
+        $key = 'amz_fbm_lt_totals:'.md5(implode(',', $campaignIds));
+
+        try {
+            return Cache::remember($key, now()->addMinutes(5), function () use ($campaignIds, $soldCol) {
+                $out = [];
+                foreach (array_chunk($campaignIds, 1000) as $chunk) {
+                    $rows = DB::table(self::SP_TABLE)
+                        ->whereIn('campaign_id', $chunk)
+                        ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+                        ->selectRaw(
+                            'campaign_id, SUM(COALESCE(`clicks`, 0)) AS clicks, '
+                            .($soldCol !== null ? 'SUM(COALESCE(`'.$soldCol.'`, 0))' : '0').' AS sold'
+                        )
+                        ->groupBy('campaign_id')
+                        ->get();
+                    foreach ($rows as $r) {
+                        $cid = trim((string) $r->campaign_id);
+                        $out[$cid] ??= ['clicks' => 0, 'sold' => 0];
+                        $out[$cid]['clicks'] += (int) $r->clicks;
+                        $out[$cid]['sold'] += (int) $r->sold;
+                    }
+                }
+
+                return $out;
+            });
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: lifetime totals failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Which days the stored daily SP campaign reports cover (what "lifetime" means here), plus whether a pull
+     * from Amazon is already running.
+     *
+     * @return array{days: int, from: ?string, to: ?string, syncing: bool}
+     */
+    protected function lifetimeCoverage(): array
+    {
+        $out = ['days' => 0, 'from' => null, 'to' => null, 'syncing' => Cache::has(self::LT_SYNC_LOCK)];
+        try {
+            if ($this->hasTable(self::SP_TABLE) && $this->hasColumn(self::SP_TABLE, 'report_date_range')) {
+                $c = Cache::remember('amz_fbm_lt_coverage', now()->addMinutes(5), function () {
+                    $r = DB::table(self::SP_TABLE)
+                        ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+                        ->selectRaw('COUNT(DISTINCT report_date_range) AS d, MIN(report_date_range) AS mn, MAX(report_date_range) AS mx')
+                        ->first();
+
+                    return ['days' => (int) ($r->d ?? 0), 'from' => $r->mn ?? null, 'to' => $r->mx ?? null];
+                });
+                $out = $c + $out;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: lifetime coverage failed', ['error' => $e->getMessage()]);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Pull the missing daily SP campaign report days from the Amazon Ads Reporting API (the most Amazon serves is
+     * about 95 days) in a background process, so the LT clicks / sold columns fill in. Existing days are skipped.
+     */
+    public function syncLifetime(): JsonResponse
+    {
+        if (! Cache::add(self::LT_SYNC_LOCK, now()->toDateTimeString(), now()->addMinutes(60))) {
+            return response()->json(['success' => true, 'message' => 'A pull from Amazon is already running (started within the last hour). Reload the page in a few minutes.', 'already' => true]);
+        }
+
+        try {
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/fbm-targeting-lt-sync.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' app:amazon-ads-backfill-daily --type=sp', 'r'));
+            } else {
+                exec('nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                    .' app:amazon-ads-backfill-daily --type=sp >> '.escapeshellarg($log).' 2>&1 &');
+            }
+        } catch (\Throwable $e) {
+            Cache::forget(self::LT_SYNC_LOCK);
+            Log::warning('AmazonFbmTargetingController: LT sync spawn failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Could not start the pull: '.$e->getMessage()], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pulling daily campaign reports from Amazon in the background (this can take several minutes). Reload the page when it finishes.',
+        ]);
     }
 
     /**

@@ -181,7 +181,13 @@
                               title="Campaigns with fewer than 10 specific keywords. Click to filter.">Specific KW &lt; 10: 0</span>
                         <span class="badge bg-primary aft-low-badge" role="button" tabindex="0" data-low="sneg" id="aft-low-sneg"
                               title="Campaigns with fewer than 10 specific negative keywords. Click to filter.">Specific neg KW &lt; 10: 0</span>
-                        <button type="button" id="aft-pull-kw" class="btn btn-sm btn-success ms-auto"
+                        <span class="small text-muted" id="aft-lt-coverage"
+                              title="Clicks LT / Sold LT add up the stored daily Amazon Ads campaign reports. Amazon only serves about the last 95 days."></span>
+                        <button type="button" id="aft-pull-lt" class="btn btn-sm btn-info ms-auto"
+                                title="Fetch missing daily campaign reports (clicks / sold) from the Amazon Ads API for the Clicks LT / Sold LT columns. Runs in the background.">
+                            <i class="fas fa-chart-line"></i> Pull LT Clicks / Sold
+                        </button>
+                        <button type="button" id="aft-pull-kw" class="btn btn-sm btn-success"
                                 title="Add keywords that exist in Amazon KW campaigns but not in the app. Existing keywords are kept.">
                             <i class="fas fa-cloud-download-alt"></i> Pull Keywords
                         </button>
@@ -398,6 +404,7 @@
     const countEl = document.getElementById('aft-count');
     const missingTitlesEl = document.getElementById('aft-missing-titles');
     const missingCousinsEl = document.getElementById('aft-missing-cousins');
+    const ltCoverageEl = document.getElementById('aft-lt-coverage');
     const lowBadgeEls = Array.prototype.slice.call(document.querySelectorAll('.aft-low-badge'));
     const lowLabels = { kw: 'KW', neg: 'Neg KW', spec: 'Specific KW', sneg: 'Specific neg KW' };
     let lowFilter = '';
@@ -468,6 +475,16 @@
             },
         };
     })();
+
+    // Clicks LT / Sold LT: totals over the whole KW cousin group of the row (hover for how many campaigns had data).
+    function ltFormatter(cell) {
+        const d = cell.getRow().getData() || {};
+        const n = Number(cell.getValue() || 0);
+        const total = Number(d.lt_campaigns || 0), withData = Number(d.lt_campaigns_with_data || 0);
+        const tip = 'Across ' + total.toLocaleString() + ' campaign' + (total === 1 ? '' : 's') + ' in the KW cousin group (' +
+            withData.toLocaleString() + ' with report data)';
+        return '<span title="' + escapeHtml(tip) + '"' + (withData === 0 ? ' class="text-muted"' : '') + '>' + n.toLocaleString() + '</span>';
+    }
 
     const table = new Tabulator('#aft-table', {
         layout: 'fitDataFill', // every column sizes to its data (capped below for long text); the table fills any space left
@@ -543,6 +560,15 @@
                 missingCousinsEl.title = mc > 0
                     ? 'Parents with no KW cousins: ' + cn.join(', ') + (mc > cn.length ? ' …' : '')
                     : 'Every parent has KW cousins';
+            }
+            if (ltCoverageEl) {
+                const c = response.lt_coverage || {};
+                const days = Number(c.days || 0);
+                ltCoverageEl.textContent = days
+                    ? 'LT data: ' + c.from + ' → ' + c.to + ' (' + days.toLocaleString() + ' days)' + (c.syncing ? ' · pulling from Amazon…' : '')
+                    : 'LT data: none stored yet' + (c.syncing ? ' · pulling from Amazon…' : '');
+                ltCoverageEl.classList.toggle('text-danger', days === 0);
+                ltCoverageEl.classList.toggle('text-muted', days > 0);
             }
             lowBadgeEls.forEach(function (el) {
                 const k = el.getAttribute('data-low');
@@ -654,6 +680,24 @@
                 cellClick: function (_e, cell) {
                     openCousinsModal(cell.getRow().getData() || {});
                 },
+            },
+            {
+                title: 'Clicks LT',
+                field: 'lt_clicks',
+                minWidth: 90,
+                hozAlign: 'right',
+                headerSort: false,
+                headerTooltip: 'Total clicks, lifetime, across every campaign in this row\'s KW cousin group (its own parent + cousin parents). From the stored daily Amazon Ads campaign reports.',
+                formatter: ltFormatter,
+            },
+            {
+                title: 'Sold LT',
+                field: 'lt_sold',
+                minWidth: 90,
+                hozAlign: 'right',
+                headerSort: false,
+                headerTooltip: 'Total units sold, lifetime, across every campaign in this row\'s KW cousin group. From the stored daily Amazon Ads campaign reports.',
+                formatter: ltFormatter,
             },
             {
                 title: 'Targets',
@@ -1173,6 +1217,31 @@
             });
         });
     });
+
+    // Pull missing daily campaign reports (clicks / sold) from the Amazon Ads API for the LT columns.
+    (function () {
+        const btn = document.getElementById('aft-pull-lt');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            if (!confirm('Fetch missing daily campaign reports from the Amazon Ads API (up to ~95 days back)? It runs in the background and can take several minutes.')) return;
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Starting…';
+            fetch(@json(route('amazon.ads.fbm-targeting.lifetime.sync')), {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+            }).then(function (res) {
+                return res.json().catch(function () { return {}; }).then(function (b) {
+                    showPullMsg(b.message || (res.ok ? 'Started.' : 'Could not start the pull.'), res.ok && b.success !== false);
+                });
+            }).catch(function (e) {
+                showPullMsg('Could not start the pull: ' + e.message, false);
+            }).finally(function () {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            });
+        });
+    })();
 
     // ---------- KW cousins ----------
     const cousinUrls = {
