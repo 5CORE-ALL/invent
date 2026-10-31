@@ -16,6 +16,10 @@
     .amz-fbm-targeting .tabulator-row { min-height: 36px; }
     .amz-fbm-targeting .tabulator-row:hover { background-color: #f8fafc !important; }
     .amz-fbm-targeting .tabulator-cell { padding: 6px 8px !important; }
+    .amz-fbm-targeting .aft-loadbar { background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-bottom:10px; }
+    .amz-fbm-targeting .aft-loadbar-top { display:flex; justify-content:space-between; gap:12px; font-size:.85rem; font-weight:600; color:#1e3a8a; margin-bottom:6px; }
+    .amz-fbm-targeting .aft-low-badge { font-size: .78rem; cursor: pointer; user-select: none; border: 2px solid transparent; }
+    .amz-fbm-targeting .aft-low-badge.is-active { border-color: #111827; box-shadow: 0 0 0 2px #fde68a; }
     .amz-fbm-targeting .aft-count-badge {
         display: inline-block; padding: 2px 10px; border-radius: 999px;
         background: #1d4ed8; border: 1px solid #1e40af; color: #fff;
@@ -121,6 +125,18 @@
                         <input type="text" id="aft-search" class="form-control form-control-sm"
                                style="max-width: 360px;" placeholder="Search parent or campaign name...">
                         <span class="text-muted small" id="aft-count"></span>
+                        <span class="badge bg-danger" id="aft-missing-titles" style="font-size:.78rem;"
+                              title="Parents with no title in Product Master">Missing Titles: 0</span>
+                        <span class="badge bg-danger" id="aft-missing-cousins" style="font-size:.78rem;"
+                              title="Parents with no KW cousins">Missing KW cousins: 0</span>
+                        <span class="badge bg-primary aft-low-badge" role="button" tabindex="0" data-low="kw" id="aft-low-kw"
+                              title="Campaigns with fewer than 50 keywords. Click to filter.">KW &lt; 50: 0</span>
+                        <span class="badge bg-primary aft-low-badge" role="button" tabindex="0" data-low="neg" id="aft-low-neg"
+                              title="Campaigns with fewer than 50 negative keywords. Click to filter.">Neg KW &lt; 50: 0</span>
+                        <span class="badge bg-primary aft-low-badge" role="button" tabindex="0" data-low="spec" id="aft-low-spec"
+                              title="Campaigns with fewer than 10 specific keywords. Click to filter.">Specific KW &lt; 10: 0</span>
+                        <span class="badge bg-primary aft-low-badge" role="button" tabindex="0" data-low="sneg" id="aft-low-sneg"
+                              title="Campaigns with fewer than 10 specific negative keywords. Click to filter.">Specific neg KW &lt; 10: 0</span>
                         <button type="button" id="aft-pull-kw" class="btn btn-sm btn-success ms-auto"
                                 title="Add keywords that exist in Amazon KW campaigns but not in the app. Existing keywords are kept.">
                             <i class="fas fa-cloud-download-alt"></i> Pull Keywords
@@ -131,6 +147,15 @@
                         </button>
                     </div>
                     <div id="aft-pull-msg" class="small mb-2" style="display:none;"></div>
+                    <div id="aft-loadbar" class="aft-loadbar" style="display:none;" role="status" aria-live="polite">
+                        <div class="aft-loadbar-top">
+                            <span id="aft-loadbar-text">Loading campaigns…</span>
+                            <span id="aft-loadbar-eta" class="text-muted"></span>
+                        </div>
+                        <div class="progress" style="height:10px;">
+                            <div id="aft-loadbar-fill" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div>
+                        </div>
+                    </div>
                     <div id="aft-table"></div>
                 </div>
             </div>
@@ -271,6 +296,11 @@
     const scopeEl = document.getElementById('aft-scope');
     const cousinSearchEl = document.getElementById('aft-cousin-search');
     const countEl = document.getElementById('aft-count');
+    const missingTitlesEl = document.getElementById('aft-missing-titles');
+    const missingCousinsEl = document.getElementById('aft-missing-cousins');
+    const lowBadgeEls = Array.prototype.slice.call(document.querySelectorAll('.aft-low-badge'));
+    const lowLabels = { kw: 'KW', neg: 'Neg KW', spec: 'Specific KW', sneg: 'Specific neg KW' };
+    let lowFilter = '';
     let searchTimer = null;
 
     function escapeHtml(s) {
@@ -278,6 +308,66 @@
             return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);
         });
     }
+
+    // ---- Loading bar with an estimated time (shown only when a load is slow) ----
+    // The estimate is a rolling average of this browser's previous load times (default 6 s the first time).
+    const loadBar = (function () {
+        const box = document.getElementById('aft-loadbar');
+        const fill = document.getElementById('aft-loadbar-fill');
+        const eta = document.getElementById('aft-loadbar-eta');
+        const text = document.getElementById('aft-loadbar-text');
+        const KEY = 'aft_load_ms';
+        let started = 0, showTimer = null, tick = null;
+
+        function estimate() {
+            const v = Number(localStorage.getItem(KEY));
+            return v > 500 ? v : 6000;
+        }
+        function paint() {
+            const est = estimate();
+            const elapsed = Date.now() - started;
+            let pct;
+            if (elapsed < est) {
+                pct = (elapsed / est) * 90;
+                const left = Math.max(1, Math.ceil((est - elapsed) / 1000));
+                eta.textContent = 'about ' + left + 's left';
+                text.textContent = 'Loading campaigns…';
+            } else {
+                // Past the estimate: creep toward 99% so the bar never looks stuck at 100%.
+                pct = 90 + 9 * (1 - Math.exp(-(elapsed - est) / (est * 2)));
+                eta.textContent = 'almost there · ' + Math.round(elapsed / 1000) + 's elapsed';
+                text.textContent = 'Taking longer than usual…';
+            }
+            fill.style.width = Math.min(99, pct).toFixed(1) + '%';
+        }
+        return {
+            start: function () {
+                this.stop(false);
+                started = Date.now();
+                showTimer = setTimeout(function () {
+                    box.style.display = '';
+                    paint();
+                    tick = setInterval(paint, 250);
+                }, 700);
+            },
+            stop: function (record) {
+                if (record && started) {
+                    const took = Date.now() - started;
+                    const prev = Number(localStorage.getItem(KEY));
+                    const next = prev > 0 ? Math.round(prev * 0.6 + took * 0.4) : took;
+                    try { localStorage.setItem(KEY, String(next)); } catch (e) { /* storage unavailable */ }
+                }
+                clearTimeout(showTimer);
+                clearInterval(tick);
+                showTimer = tick = null;
+                started = 0;
+                if (box.style.display !== 'none') {
+                    fill.style.width = '100%';
+                    setTimeout(function () { box.style.display = 'none'; }, 150);
+                }
+            },
+        };
+    })();
 
     const table = new Tabulator('#aft-table', {
         layout: 'fitColumns',
@@ -299,16 +389,63 @@
             if (cousinQ) q.set('cousin', cousinQ);
             const scope = scopeEl ? scopeEl.value : 'all';
             if (scope && scope !== 'all') q.set('scope', scope);
+            if (lowFilter) q.set('low', lowFilter);
+            loadBar.start();
             return fetch(url + '?' + q.toString(), {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
             }).then(function (res) {
-                if (!res.ok) throw new Error('Network response was not ok');
+                if (!res.ok) {
+                    loadBar.stop(false);
+                    showPullMsg('Could not load campaigns (server error ' + res.status + '). Please try again; if it keeps happening, check storage/logs/laravel.log on the server.', false);
+                    if (pullMsg) pullMsg.dataset.loadErr = '1';
+                    throw new Error('Network response was not ok');
+                }
                 return res.json();
+            }).then(function (json) {
+                loadBar.stop(true);
+                if (pullMsg && pullMsg.dataset.loadErr) { // clear an earlier load error once a load succeeds
+                    delete pullMsg.dataset.loadErr;
+                    pullMsg.style.display = 'none';
+                }
+                return json;
+            }, function (err) {
+                loadBar.stop(false);
+                throw err;
             });
         },
         ajaxResponse: function (_url, _params, response) {
             const total = Number(response.total || 0);
             if (countEl) countEl.textContent = total ? (total.toLocaleString() + ' campaigns') : '';
+            if (missingTitlesEl) {
+                const mt = Number(response.missing_titles || 0);
+                missingTitlesEl.textContent = 'Missing Titles: ' + mt.toLocaleString();
+                missingTitlesEl.classList.toggle('bg-danger', mt > 0);
+                missingTitlesEl.classList.toggle('bg-success', mt === 0);
+                const names = Array.isArray(response.missing_title_parents) ? response.missing_title_parents : [];
+                missingTitlesEl.title = mt > 0
+                    ? 'Parents with no title in Product Master: ' + names.join(', ') + (mt > names.length ? ' …' : '')
+                    : 'Every parent has a title in Product Master';
+            }
+            if (missingCousinsEl) {
+                const mc = Number(response.missing_cousins || 0);
+                missingCousinsEl.textContent = 'Missing KW cousins: ' + mc.toLocaleString();
+                missingCousinsEl.classList.toggle('bg-danger', mc > 0);
+                missingCousinsEl.classList.toggle('bg-success', mc === 0);
+                const cn = Array.isArray(response.missing_cousin_parents) ? response.missing_cousin_parents : [];
+                missingCousinsEl.title = mc > 0
+                    ? 'Parents with no KW cousins: ' + cn.join(', ') + (mc > cn.length ? ' …' : '')
+                    : 'Every parent has KW cousins';
+            }
+            lowBadgeEls.forEach(function (el) {
+                const k = el.getAttribute('data-low');
+                const n = Number((response.low_counts || {})[k] || 0);
+                const lim = Number((response.low_limits || {})[k] || 0);
+                el.innerHTML = escapeHtml(lowLabels[k]) + ' &lt; ' + lim + ': ' + n.toLocaleString();
+                el.classList.toggle('bg-primary', n === 0 || lowFilter === k);
+                el.classList.toggle('bg-warning', n > 0 && lowFilter !== k);
+                el.classList.toggle('text-dark', n > 0 && lowFilter !== k);
+                el.classList.toggle('is-active', lowFilter === k);
+            });
             return {
                 data: response.data || [],
                 last_page: response.last_page || 1,
@@ -1056,6 +1193,19 @@
             searchTimer = setTimeout(function () { table.setPage(1); }, 300);
         });
     }
+
+    // Click a "low count" badge to show only those campaigns; click again to clear.
+    lowBadgeEls.forEach(function (el) {
+        const toggle = function () {
+            const k = el.getAttribute('data-low');
+            lowFilter = lowFilter === k ? '' : k;
+            table.setPage(1);
+        };
+        el.addEventListener('click', toggle);
+        el.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+        });
+    });
 
     if (scopeEl) {
         scopeEl.addEventListener('change', function () { table.setPage(1); });

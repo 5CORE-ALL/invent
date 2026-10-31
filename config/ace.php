@@ -23,6 +23,7 @@ return [
         'market-places.amazon_tabulator_view' => [],
         'market-places.amazonpricing_cvr_tabular' => [],
         'market-places.amz_zero_views_diagnostic' => [],
+        'amazon_ads.fbm-targeting' => ['route' => 'amazon.ads.fbm-targeting.data'],
         'market-places.bestbuy_tabulator_view' => [],
         'market-places.depop_pricing' => [],
         'market-places.dhgate_analytics' => ['route' => 'dhgate.analytics.data'],

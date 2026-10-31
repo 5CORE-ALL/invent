@@ -37,6 +37,9 @@ class AmazonFbmTargetingController extends Controller
 
     private const COUSIN_TABLE = 'amazon_kw_cousin_links';
 
+    /** "Low keyword count" badge thresholds: campaigns with fewer than this many of each kind. */
+    private const LOW_LIMITS = ['kw' => 50, 'neg' => 50, 'spec' => 10, 'sneg' => 10];
+
     private const COUSIN_NAME_TABLE = 'amazon_kw_cousin_names';
 
     /** @var array<string, array<string, mixed>>|null */
@@ -65,6 +68,22 @@ class AmazonFbmTargetingController extends Controller
         $search = trim((string) $request->query('campaign', ''));
 
         $all = $this->campaignsGroupedByParent();
+        // Badge figures are cached briefly and can never break the grid (they just show 0 if something fails).
+        $badges = $this->badgeFigures($all);
+        $missingTitles = $badges['missing_titles'];
+        $missingCousins = $badges['missing_cousins'];
+
+        // "Low" badges: campaigns under the keyword-count thresholds (counted over every campaign, ignoring filters).
+        $lowCounts = $badges['counts'];
+        $lowTotals = array_fill_keys(array_keys(self::LOW_LIMITS), 0);
+        foreach ($all as $c) {
+            foreach (self::LOW_LIMITS as $k => $limit) {
+                if (($lowCounts[$c['campaign_id']][$k] ?? 0) < $limit) {
+                    $lowTotals[$k]++;
+                }
+            }
+        }
+        $low = strtolower(trim((string) $request->query('low', '')));
 
         // Parent = "PARENT …" campaigns, SKU = single-SKU campaigns, all = both.
         $scope = strtolower(trim((string) $request->query('scope', 'all')));
@@ -76,6 +95,11 @@ class AmazonFbmTargetingController extends Controller
             $needle = mb_strtolower($search);
             $all = array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['campaign_name']), $needle)
                 || str_contains(mb_strtolower($c['parent']), $needle)));
+        }
+
+        if (isset(self::LOW_LIMITS[$low])) {
+            $limit = self::LOW_LIMITS[$low];
+            $all = array_values(array_filter($all, static fn (array $c) => ($lowCounts[$c['campaign_id']][$low] ?? 0) < $limit));
         }
 
         // KW cousin filter: matches the cousin group name, or any cousin campaign / cousin parent.
@@ -142,6 +166,9 @@ class AmazonFbmTargetingController extends Controller
 
             $cousinParents = $cousinNames === [] ? [] : $this->cousinParents($cousinNames);
             $data[] = [
+                // id / name give the Auto Task Events (ATE) rules one trackable key + label per campaign row.
+                'id' => $name !== '' ? $name : $id, // campaign names are unique per row (a campaign id can repeat across renamed campaigns)
+                'name' => $name,
                 'cousin_name' => $this->groupNameFor($group, $name, $nameMap),
                 'cousins' => $cousinNames,
                 'cousin_parents' => $cousinParents,
@@ -170,7 +197,165 @@ class AmazonFbmTargetingController extends Controller
             'data' => $data,
             'last_page' => max(1, (int) ceil($total / $size)),
             'total' => $total,
+            'missing_titles' => count($missingTitles),
+            'missing_title_parents' => array_slice($missingTitles, 0, 40),
+            'low_counts' => $lowTotals,
+            'low_limits' => self::LOW_LIMITS,
+            'missing_cousins' => count($missingCousins),
+            'missing_cousin_parents' => array_slice($missingCousins, 0, 40),
         ]);
+    }
+
+    /**
+     * Figures behind the toolbar badges (missing titles / cousins, keyword counts per campaign). Cached for a minute
+     * and each part is isolated so a failure only blanks that badge instead of failing the whole grid.
+     *
+     * @param  list<array{parent: string, campaign_name: string, campaign_id: string}>  $campaigns
+     * @return array{missing_titles: list<string>, missing_cousins: list<string>, counts: array<string, array{kw: int, neg: int, spec: int, sneg: int}>}
+     */
+    protected function badgeFigures(array $campaigns): array
+    {
+        $empty = ['missing_titles' => [], 'missing_cousins' => [], 'counts' => []];
+        try {
+            return Cache::remember('amz_kw_targeting_badges_v1:'.md5((string) count($campaigns)), now()->addMinute(), function () use ($campaigns, $empty) {
+                $out = $empty;
+                foreach ([
+                    'missing_titles' => fn () => $this->missingTitleParents($campaigns),
+                    'missing_cousins' => fn () => $this->missingCousinParents($campaigns),
+                    'counts' => fn () => $this->keywordCountsByCampaign(),
+                ] as $key => $fn) {
+                    try {
+                        $out[$key] = $fn();
+                    } catch (\Throwable $e) {
+                        Log::warning('AmazonFbmTargetingController: badge figure failed', ['badge' => $key, 'error' => $e->getMessage()]);
+                    }
+                }
+
+                return $out;
+            });
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: badge figures failed', ['error' => $e->getMessage()]);
+
+            return $empty;
+        }
+    }
+
+    /**
+     * Keyword counts per campaign id for the "low" badges / filters: kw (reports + app store, distinct keyword + match),
+     * neg (app negatives), spec (Specific KW), sneg (S Negative KW).
+     *
+     * @return array<string, array{kw: int, neg: int, spec: int, sneg: int}>
+     */
+    protected function keywordCountsByCampaign(): array
+    {
+        $out = [];
+        $bump = static function (string $cid, string $k, int $n) use (&$out): void {
+            $out[$cid] ??= ['kw' => 0, 'neg' => 0, 'spec' => 0, 'sneg' => 0];
+            $out[$cid][$k] = $n;
+        };
+
+        // kw: union of the keyword reports and the app store, distinct by lower-cased "keyword (MATCH)" - aggregated in SQL
+        // (the reports table can be large, so nothing is loaded into PHP).
+        $parts = [];
+        if (Schema::hasTable(self::KW_TABLE)) {
+            $cols = Schema::getColumnListing(self::KW_TABLE);
+            $labelCol = in_array('keyword', $cols, true) ? 'keyword' : (in_array('targeting', $cols, true) ? 'targeting' : null);
+            if ($labelCol !== null && in_array('campaign_id', $cols, true)) {
+                $matchExpr = in_array('matchType', $cols, true) ? "TRIM(COALESCE(`matchType`, ''))" : "''";
+                $parts[] = 'SELECT CONVERT(CAST(`campaign_id` AS CHAR) USING utf8mb4) AS cid, '
+                    ."LOWER(CONVERT(CONCAT(TRIM(`{$labelCol}`), IF({$matchExpr} = '', '', CONCAT(' (', {$matchExpr}, ')'))) USING utf8mb4)) AS lbl "
+                    .'FROM `'.self::KW_TABLE."` WHERE `{$labelCol}` IS NOT NULL AND TRIM(`{$labelCol}`) <> '' AND `campaign_id` IS NOT NULL";
+            }
+        }
+        if (Schema::hasTable(self::STORE_TABLE)) {
+            $parts[] = 'SELECT CONVERT(CAST(`campaign_id` AS CHAR) USING utf8mb4) AS cid, '
+                ."LOWER(CONVERT(CONCAT(`keyword`, IF(`match_type` = '', '', CONCAT(' (', `match_type`, ')'))) USING utf8mb4)) AS lbl "
+                .'FROM `'.self::STORE_TABLE.'`';
+        }
+        if ($parts !== []) {
+            // UNION (not UNION ALL) removes the duplicates between the two sources.
+            foreach (DB::select('SELECT cid, COUNT(*) AS c FROM ('.implode(' UNION ', $parts).') u GROUP BY cid') as $r) {
+                $bump(trim((string) $r->cid), 'kw', (int) $r->c);
+            }
+        }
+
+        if (Schema::hasTable(self::NEG_TABLE)) {
+            foreach (DB::table(self::NEG_TABLE)->selectRaw("campaign_id, COUNT(DISTINCT LOWER(CONCAT(keyword, '|', match_type))) as c")->groupBy('campaign_id')->get() as $r) {
+                $bump((string) $r->campaign_id, 'neg', (int) $r->c);
+            }
+        }
+        foreach (['spec' => self::SPECIFIC_TABLE, 'sneg' => self::SPECIFIC_NEG_TABLE] as $k => $table) {
+            if (Schema::hasTable($table)) {
+                foreach (DB::table($table)->selectRaw('campaign_id, COUNT(*) as c')->groupBy('campaign_id')->get() as $r) {
+                    $bump((string) $r->campaign_id, $k, (int) $r->c);
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Parents (of every campaign on this page, ignoring filters) that have no KW cousins on any other parent.
+     * Campaigns of one parent share cousins, so one campaign per parent is enough to decide.
+     *
+     * @param  list<array{parent: string, campaign_name: string}>  $campaigns
+     * @return list<string>
+     */
+    protected function missingCousinParents(array $campaigns): array
+    {
+        $groups = Schema::hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+        $missing = [];
+        $seen = [];
+        foreach ($campaigns as $c) {
+            $p = trim((string) $c['parent']);
+            if ($p === '') {
+                continue;
+            }
+            $key = $this->parentKey($p);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $group = $this->effectiveGroup($c['campaign_name'], $groups);
+            if ($this->cousinCampaignNames($group, $c['campaign_name']) === []) {
+                $missing[] = $p;
+            }
+        }
+        sort($missing, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $missing;
+    }
+
+    /**
+     * Parents (of every campaign on this page, ignoring filters) that have no title in the Product Master.
+     *
+     * @param  list<array{parent: string}>  $campaigns
+     * @return list<string>
+     */
+    protected function missingTitleParents(array $campaigns): array
+    {
+        $parents = [];
+        foreach ($campaigns as $c) {
+            $p = trim((string) $c['parent']);
+            if ($p !== '') {
+                $parents[$this->parentKey($p)] = $p;
+            }
+        }
+        if ($parents === []) {
+            return [];
+        }
+
+        $titles = $this->parentTitles(array_values($parents));
+        $missing = [];
+        foreach ($parents as $key => $label) {
+            if (($titles[$key] ?? '') === '') {
+                $missing[] = $label;
+            }
+        }
+        sort($missing, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $missing;
     }
 
     /**
