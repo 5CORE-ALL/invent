@@ -25,7 +25,7 @@ class UserController extends Controller
         // Load all users (active, inactive, soft-deleted) for the merged table;
         // status filters run client-side. select() must run before withCount().
         $allUsers = User::withTrashed()
-            ->select('id', 'name', 'phone', 'email', 'designation', 'date_of_joining', 'avatar', 'is_active', 'deactivated_at', 'deleted_at', 'show_in_salary', 'stay_logged_in', 'resume_path', 'resume_original_name')
+            ->select('id', 'name', 'phone', 'email', 'designation', 'org_level', 'date_of_joining', 'avatar', 'is_active', 'deactivated_at', 'deleted_at', 'show_in_salary', 'stay_logged_in', 'resume_path', 'resume_original_name')
             ->with(['userRR', 'userSalary', 'docs'])
             ->withCount('rrPortfolioAssignments')
             ->orderBy('name')
