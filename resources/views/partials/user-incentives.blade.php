@@ -96,11 +96,6 @@
         color: #dc2626;
         animation: ts-inc-alert-pulse 1.15s ease-in-out infinite;
     }
-    #ts-incentive-float-btn.is-cutoff-alert {
-        background: linear-gradient(145deg, #ef4444, #b91c1c);
-        box-shadow: 0 8px 22px rgba(185, 28, 28, 0.4);
-        animation: ts-inc-alert-pulse 1.15s ease-in-out infinite;
-    }
     .ts-inc-table tr.is-cutoff-alert td {
         background: #fef2f2;
     }
@@ -229,55 +224,6 @@
         padding: 0.65rem;
         margin-bottom: 0.55rem;
         background: #fffbeb;
-    }
-    #ts-incentive-float-btn {
-        position: fixed;
-        left: 18px;
-        bottom: 22px;
-        z-index: 1045;
-        width: 52px;
-        height: 52px;
-        border: none;
-        border-radius: 50%;
-        background: linear-gradient(145deg, #f59e0b, #d97706);
-        color: #fff;
-        box-shadow: 0 8px 22px rgba(180, 83, 9, 0.35);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.45rem;
-        cursor: pointer;
-        text-decoration: none;
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-    }
-    #ts-incentive-float-btn:hover {
-        transform: scale(1.06);
-        box-shadow: 0 10px 28px rgba(180, 83, 9, 0.45);
-    }
-    #ts-incentive-float-btn .ts-inc-float-count {
-        position: absolute;
-        top: -4px;
-        right: -4px;
-        min-width: 1.15rem;
-        height: 1.15rem;
-        padding: 0 0.25rem;
-        border-radius: 999px;
-        background: #15803d;
-        color: #fff;
-        font-size: 0.62rem;
-        font-weight: 800;
-        line-height: 1.15rem;
-        text-align: center;
-        border: 2px solid #fff;
-    }
-    @media (max-width: 576px) {
-        #ts-incentive-float-btn {
-            left: 12px;
-            bottom: 16px;
-            width: 46px;
-            height: 46px;
-            font-size: 1.25rem;
-        }
     }
     .ts-inc-also-users {
         margin-bottom: 0.85rem;
@@ -462,15 +408,6 @@
         color: #fff;
     }
 </style>
-
-<a href="{{ route('incentives.index') }}"
-        id="ts-incentive-float-btn"
-        class="d-none"
-        title="My incentives"
-        aria-label="Open my incentives">
-    <span aria-hidden="true">₹</span>
-    <span class="ts-inc-float-count d-none" id="ts-incentive-float-count"></span>
-</a>
 
 <div class="modal fade" id="taskSummaryIncentivesModal" tabindex="-1" aria-labelledby="taskSummaryIncentivesModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">

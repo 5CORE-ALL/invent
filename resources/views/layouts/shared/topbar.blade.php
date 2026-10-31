@@ -41,7 +41,44 @@
             </div>
         </div>
 
+        {{-- Floating "Team" shortcut: left of the world clocks --}}
+        @auth
+            <a href="{{ route('team.view') }}" class="topbar-team-btn{{ request()->routeIs('team.view') ? ' is-active' : '' }}"
+                title="Team View" aria-label="Open Team View">
+                <i class="ri-team-fill"></i>
+                <span class="topbar-team-btn__label">Team</span>
+            </a>
+        @endauth
+
         @include('layouts.shared.world-clocks-inline')
+
+        <style>
+            .topbar-team-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                flex-shrink: 0;
+                margin: 0 0.5rem;
+                padding: 0 14px 0 10px;
+                height: 40px;
+                border-radius: 999px;
+                background: linear-gradient(135deg, #6d28d9, #3b82f6);
+                color: #fff;
+                font-weight: 800;
+                font-size: 0.85rem;
+                letter-spacing: 0.02em;
+                text-decoration: none;
+                box-shadow: 0 6px 16px rgba(79, 70, 229, 0.4);
+                animation: topbarTeamFloat 3.2s ease-in-out infinite;
+                transition: box-shadow 0.2s ease, filter 0.2s ease;
+            }
+            .topbar-team-btn:hover { color: #fff; filter: brightness(1.1); box-shadow: 0 10px 22px rgba(79, 70, 229, 0.55); animation-play-state: paused; }
+            .topbar-team-btn i { font-size: 1.2rem; line-height: 1; }
+            .topbar-team-btn.is-active { box-shadow: 0 0 0 3px rgba(109, 93, 252, 0.3), 0 6px 16px rgba(79, 70, 229, 0.4); }
+            @keyframes topbarTeamFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+            @media (max-width: 575.98px) { .topbar-team-btn__label { display: none; } .topbar-team-btn { padding: 0 11px; } }
+            @media (prefers-reduced-motion: reduce) { .topbar-team-btn { animation: none; } }
+        </style>
 
         <style>
             .topbar-brand-row {

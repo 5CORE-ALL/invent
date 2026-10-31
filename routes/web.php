@@ -7728,6 +7728,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::match(['get', 'post'], '/ebay/token-callback', [\App\Http\Controllers\EbayTokenController::class, 'callback'])->name('ebay.token.callback');
     // Team directory + hierarchy (read-only, visible to all logged-in team members)
     Route::get('/team-view', [\App\Http\Controllers\TeamViewController::class, 'index'])->name('team.view');
+    // Peer star-reviews (Personal / Team / R&R) given by any logged-in team member
+    // Open (or create) a 1:1 chat with a team member, then redirect into it
+    Route::get('/team-view/chat/{user}', [\App\Http\Controllers\TeamViewController::class, 'chatWith'])->whereNumber('user')->name('team.view.chat');
+    Route::get('/team-view/reviews/{user}', [\App\Http\Controllers\TeamViewController::class, 'reviewShow'])->whereNumber('user')->name('team.view.review.show');
+    Route::post('/team-view/reviews/{user}', [\App\Http\Controllers\TeamViewController::class, 'reviewStore'])->whereNumber('user')->name('team.view.review.store');
     // Company meeting rooms: mandatory recording, AI minutes and auto-generated tasks
     Route::get('/meetings', [\App\Http\Controllers\MeetingController::class, 'index'])->name('meetings.index');
     Route::post('/meetings', [\App\Http\Controllers\MeetingController::class, 'store'])->name('meetings.store');
