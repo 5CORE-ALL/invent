@@ -122,8 +122,12 @@
                             <option value="parent">Parent</option>
                             <option value="sku">SKU</option>
                         </select>
+                        <input type="text" id="aft-parent-search" class="form-control form-control-sm"
+                               style="max-width: 170px;" placeholder="Search parents..." autocomplete="off">
+                        <input type="text" id="aft-title-search" class="form-control form-control-sm"
+                               style="max-width: 240px;" placeholder="Search title..." autocomplete="off">
                         <input type="text" id="aft-search" class="form-control form-control-sm"
-                               style="max-width: 360px;" placeholder="Search parent or campaign name...">
+                               style="max-width: 240px;" placeholder="Search campaigns..." autocomplete="off">
                         <span class="text-muted small" id="aft-count"></span>
                         <span class="badge bg-danger" id="aft-missing-titles" style="font-size:.78rem;"
                               title="Parents with no title in Product Master">Missing Titles: 0</span>
@@ -293,6 +297,8 @@
 (function () {
     const dataUrl = @json(route('amazon.ads.fbm-targeting.data'));
     const searchEl = document.getElementById('aft-search');
+    const parentSearchEl = document.getElementById('aft-parent-search');
+    const titleSearchEl = document.getElementById('aft-title-search');
     const scopeEl = document.getElementById('aft-scope');
     const cousinSearchEl = document.getElementById('aft-cousin-search');
     const countEl = document.getElementById('aft-count');
@@ -385,6 +391,10 @@
             q.set('size', String(params.size || 50));
             const search = (searchEl && searchEl.value || '').trim();
             if (search) q.set('campaign', search);
+            const parentQ = (parentSearchEl && parentSearchEl.value || '').trim();
+            if (parentQ) q.set('parent', parentQ);
+            const titleQ = (titleSearchEl && titleSearchEl.value || '').trim();
+            if (titleQ) q.set('title', titleQ);
             const cousinQ = (cousinSearchEl && cousinSearchEl.value || '').trim();
             if (cousinQ) q.set('cousin', cousinQ);
             const scope = scopeEl ? scopeEl.value : 'all';
@@ -1215,12 +1225,13 @@
         scopeEl.addEventListener('change', function () { table.setPage(1); });
     }
 
-    if (searchEl) {
-        searchEl.addEventListener('input', function () {
+    [searchEl, parentSearchEl, titleSearchEl].forEach(function (el) {
+        if (!el) return;
+        el.addEventListener('input', function () {
             clearTimeout(searchTimer);
             searchTimer = setTimeout(function () { table.setPage(1); }, 300);
         });
-    }
+    });
 })();
 </script>
 @endsection

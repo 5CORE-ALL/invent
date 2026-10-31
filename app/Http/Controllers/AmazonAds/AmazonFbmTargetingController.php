@@ -126,14 +126,7 @@ class AmazonFbmTargetingController extends Controller
 
         // "Low" badges: campaigns under the keyword-count thresholds (counted over every campaign, ignoring filters).
         $lowCounts = $badges['counts'];
-        $lowTotals = array_fill_keys(array_keys(self::LOW_LIMITS), 0);
-        foreach ($all as $c) {
-            foreach (self::LOW_LIMITS as $k => $limit) {
-                if (($lowCounts[$c['campaign_id']][$k] ?? 0) < $limit) {
-                    $lowTotals[$k]++;
-                }
-            }
-        }
+        $lowTotals = $this->lowTotals($all, $lowCounts);
         $low = strtolower(trim((string) $request->query('low', '')));
 
         // Parent = "PARENT …" campaigns, SKU = single-SKU campaigns, all = both.
@@ -142,10 +135,28 @@ class AmazonFbmTargetingController extends Controller
             $all = array_values(array_filter($all, static fn (array $c) => $scope === 'parent' ? $c['is_parent'] : ! $c['is_parent']));
         }
 
+        // Separate filters: campaign name, parent, and the parent's Product Master title (every word must match).
         if ($search !== '') {
             $needle = mb_strtolower($search);
-            $all = array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['campaign_name']), $needle)
-                || str_contains(mb_strtolower($c['parent']), $needle)));
+            $all = array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['campaign_name']), $needle)));
+        }
+        $parentQ = mb_strtolower(trim((string) $request->query('parent', '')));
+        if ($parentQ !== '') {
+            $all = array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['parent']), $parentQ)));
+        }
+        $titleTerms = array_values(array_filter(preg_split('/\s+/', mb_strtolower(trim((string) $request->query('title', '')))) ?: []));
+        if ($titleTerms !== []) {
+            $titleMap = $this->parentTitles(array_map(static fn (array $c) => $c['parent'], $all));
+            $all = array_values(array_filter($all, function (array $c) use ($titleMap, $titleTerms) {
+                $title = mb_strtolower($titleMap[$this->parentKey($c['parent'])] ?? '');
+                foreach ($titleTerms as $t) {
+                    if (! str_contains($title, $t)) {
+                        return false;
+                    }
+                }
+
+                return $title !== '';
+            }));
         }
 
         if (isset(self::LOW_LIMITS[$low])) {
@@ -255,6 +266,46 @@ class AmazonFbmTargetingController extends Controller
             'missing_cousins' => count($missingCousins),
             'missing_cousin_parents' => array_slice($missingCousins, 0, 40),
         ]);
+    }
+
+    /**
+     * @param  list<array{campaign_id: string}>  $campaigns
+     * @param  array<string, array<string, int>>  $counts
+     * @return array<string, int>
+     */
+    protected function lowTotals(array $campaigns, array $counts): array
+    {
+        $totals = array_fill_keys(array_keys(self::LOW_LIMITS), 0);
+        foreach ($campaigns as $c) {
+            foreach (self::LOW_LIMITS as $k => $limit) {
+                if (($counts[$c['campaign_id']][$k] ?? 0) < $limit) {
+                    $totals[$k]++;
+                }
+            }
+        }
+
+        return $totals;
+    }
+
+    /**
+     * The toolbar badge numbers for Auto Task Events (the server-side daily check). Keys / labels match the page's badges.
+     *
+     * @return list<array{key: string, label: string, value: int}>
+     */
+    public function aceBadgeValues(): array
+    {
+        $all = $this->campaignsGroupedByParent();
+        $b = $this->badgeFigures($all);
+        $low = $this->lowTotals($all, $b['counts']);
+
+        return [
+            ['key' => 'aft-missing-titles', 'label' => 'Missing Titles', 'value' => count($b['missing_titles'])],
+            ['key' => 'aft-missing-cousins', 'label' => 'Missing KW cousins', 'value' => count($b['missing_cousins'])],
+            ['key' => 'aft-low-kw', 'label' => 'KW < '.self::LOW_LIMITS['kw'], 'value' => $low['kw']],
+            ['key' => 'aft-low-neg', 'label' => 'Neg KW < '.self::LOW_LIMITS['neg'], 'value' => $low['neg']],
+            ['key' => 'aft-low-spec', 'label' => 'Specific KW < '.self::LOW_LIMITS['spec'], 'value' => $low['spec']],
+            ['key' => 'aft-low-sneg', 'label' => 'Specific neg KW < '.self::LOW_LIMITS['sneg'], 'value' => $low['sneg']],
+        ];
     }
 
     /**

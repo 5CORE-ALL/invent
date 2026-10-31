@@ -165,28 +165,78 @@ class AceEngine
 
         $created = 0;
         foreach ($q->get() as $ace) {
-            // Rules on analytics pages read a (large) page data feed: check them at most hourly,
-            // unless the last run hit the per-run cap and more rows are waiting.
-            $feed = ! empty($ace->source_url);
-            $gate = 'ate:checked:'.$ace->id;
-            if ($feed && ! $aceId && Cache::has($gate)) {
-                continue;
-            }
             try {
-                $n = self::fireForRows($ace, self::matchingRows($ace), 'column', null);
-                $created += $n;
-                if ($feed && $n < self::MAX_PER_RUN) {
-                    Cache::put($gate, 1, now()->addMinutes(55));
+                // One run per rule per day; if the per-run cap was hit, keep going until every matching row has its task.
+                for ($i = 0; $i < 10; $i++) {
+                    $n = self::fireForRows($ace, self::matchingRows($ace), 'column', null);
+                    $created += $n;
+                    if ($n < self::MAX_PER_RUN) {
+                        break;
+                    }
                 }
             } catch (\Throwable $e) {
                 Log::warning('ACE #'.$ace->id.' column run failed: '.$e->getMessage());
-                if ($feed) {
-                    Cache::put($gate, 1, now()->addMinutes(10));
-                }
             }
         }
 
         return $created;
+    }
+
+    /**
+     * Badge rules on pages whose badges the server can compute (AceBadgeProviders): evaluate the rule now and create
+     * today's task when it applies. Other pages' badge rules are checked from the browser.
+     */
+    public static function runBadgeRules(?int $aceId = null): int
+    {
+        if (! self::ready()) {
+            return 0;
+        }
+
+        $q = AutoChatEvent::query()->where('is_active', true)->where('trigger_type', 'badge');
+        if ($aceId) {
+            $q->where('id', $aceId);
+        }
+
+        $created = 0;
+        $valuesByPage = [];
+        foreach ($q->get() as $ace) {
+            $page = (string) $ace->page;
+            if (! AceBadgeProviders::has($page)) {
+                continue;
+            }
+            try {
+                $valuesByPage[$page] ??= AceBadgeProviders::values($page) ?? [];
+                $values = array_map(fn ($b) => ['key' => (string) $b['key'], 'label' => (string) $b['label'], 'value' => (string) $b['value']], $valuesByPage[$page]);
+                $map = [];
+                foreach ($values as $b) {
+                    $map[$b['key']] = $b['value'];
+                }
+                if (self::rowMatches($map, self::conditionsOf($ace), $ace->match_mode === 'any' ? 'any' : 'all')) {
+                    $created += self::fireBadge($ace, $values);
+                }
+                $ace->forceFill(['last_run_at' => now()])->save();
+            } catch (\Throwable $e) {
+                Log::warning('ACE #'.$ace->id.' badge run failed: '.$e->getMessage());
+            }
+        }
+
+        return $created;
+    }
+
+    /** First check, right when a rule is created: make today's task now if the rule applies. */
+    public static function fireNow(AutoChatEvent $ace): int
+    {
+        return match ($ace->trigger_type) {
+            'column' => self::runColumnRules((int) $ace->id),
+            'badge' => self::runBadgeRules((int) $ace->id),
+            default => 0,
+        };
+    }
+
+    /** Does the server (scheduler) check this rule, rather than a browser with the page open? */
+    public static function serverChecked(AutoChatEvent $ace): bool
+    {
+        return $ace->trigger_type === 'column' || ($ace->trigger_type === 'badge' && AceBadgeProviders::has((string) $ace->page));
     }
 
     /**
@@ -263,21 +313,25 @@ class AceEngine
 
     public const FREQUENCIES = ['daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'];
 
-    /** @return list<string> the checked frequencies (valid ones only); empty = legacy once-per-row */
+    /** Rules are event based: checked once a day (weekly / monthly do not apply). Legacy rules without any frequency stay once-per-row. */
+    public const CHECK_TZ = 'America/Los_Angeles';
+
+    /** @return list<string> ['daily'], or [] for a legacy once-per-row rule */
     public static function frequenciesOf(AutoChatEvent $ace): array
     {
         $f = is_array($ace->frequencies ?? null) ? $ace->frequencies : [];
 
-        return array_values(array_filter(array_keys(self::FREQUENCIES), fn ($k) => in_array($k, $f, true)));
+        return $f === [] ? [] : ['daily'];
     }
 
-    /** @return list<string> subject-key suffixes for the current day / ISO week / month */
+    /** @return list<string> subject-key suffix for today's date in Pacific time (the daily check is before 9 AM PT) */
     private static function periodSuffixes(AutoChatEvent $ace): array
     {
-        $now = now();
-        $map = ['daily' => 'd:'.$now->format('Y-m-d'), 'weekly' => 'w:'.$now->format('o-\\WW'), 'monthly' => 'm:'.$now->format('Y-m')];
+        if (self::frequenciesOf($ace) === []) {
+            return [];
+        }
 
-        return array_map(fn ($f) => $map[$f], self::frequenciesOf($ace));
+        return ['d:'.now(self::CHECK_TZ)->format('Y-m-d')];
     }
 
     /**

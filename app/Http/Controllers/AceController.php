@@ -172,6 +172,7 @@ class AceController extends Controller
                 'trigger_type' => $r->trigger_type === 'badge' ? 'badge' : 'column',
                 'owner' => (string) ($users[$r->created_by] ?? ''),
                 'condition' => $condition,
+                'server_check' => AceEngine::serverChecked($r),
                 'frequency' => $r->frequencies
                     ? implode(', ', array_map(fn ($f) => AceEngine::FREQUENCIES[$f] ?? $f, AceEngine::frequenciesOf($r)))
                     : 'Once per row',
@@ -365,13 +366,13 @@ class AceController extends Controller
         }
 
         $first = $conditions[0];
-        $freqs = array_values(array_unique($v['frequencies'] ?? []));
+        // Event based: always checked once a day (weekly / monthly do not apply).
         $attrs = [
             'name' => $v['name'],
             'trigger_type' => $trigger,
             'conditions' => $conditions,
             'match_mode' => ($v['match_mode'] ?? 'all') === 'any' ? 'any' : 'all',
-            'frequencies' => $freqs ?: ['daily'],
+            'frequencies' => ['daily'],
             // The first condition is mirrored into the original single-condition columns.
             'column_key' => $first['column_key'],
             'operator' => $first['operator'],
@@ -405,7 +406,17 @@ class AceController extends Controller
             $ace = AutoChatEvent::query()->create($attrs);
         }
 
-        return response()->json(['ok' => true, 'id' => (int) $ace->id]);
+        // First check happens right now: if the rule applies, today's task is created at creation time.
+        $created = 0;
+        if (! $existing) {
+            try {
+                $created = AceEngine::fireNow($ace);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return response()->json(['ok' => true, 'id' => (int) $ace->id, 'created' => $created, 'server_checked' => AceEngine::serverChecked($ace)]);
     }
 
     /**
@@ -520,7 +531,8 @@ class AceController extends Controller
             return response()->json(['ok' => true, 'rules' => []]);
         }
         [$page] = $this->resolvePage($request, false);
-        if (! AcePages::isDynamicKey($page)) {
+        if (! AcePages::isDynamicKey($page) || \App\Support\Ace\AceBadgeProviders::has($page)) {
+            // Pages whose badges the server computes are checked by the daily scheduler run instead.
             return response()->json(['ok' => true, 'rules' => []]);
         }
 

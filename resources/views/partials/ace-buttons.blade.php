@@ -122,10 +122,9 @@
 
                     <div class="mt-2 pt-2 border-top" id="{{ $aceUid }}_freqWrap">
                         <span class="fw-semibold small me-2">Check</span>
-                        <div class="form-check form-check-inline mb-0"><input class="form-check-input ace-freq" type="checkbox" value="daily" id="{{ $aceUid }}_fd" checked><label class="form-check-label" for="{{ $aceUid }}_fd">Daily</label></div>
-                        <div class="form-check form-check-inline mb-0"><input class="form-check-input ace-freq" type="checkbox" value="weekly" id="{{ $aceUid }}_fw"><label class="form-check-label" for="{{ $aceUid }}_fw">Weekly</label></div>
-                        <div class="form-check form-check-inline mb-0"><input class="form-check-input ace-freq" type="checkbox" value="monthly" id="{{ $aceUid }}_fm"><label class="form-check-label" for="{{ $aceUid }}_fm">Monthly</label></div>
-                        <div class="ace-hint" id="{{ $aceUid }}_freqHint">A task is created once per matching row in each checked period (day / week / month).</div>
+                        <span class="badge bg-primary" style="font-size:.72rem;">Once a day &middot; before 9 AM PST</span>
+                        <input class="ace-freq" type="checkbox" value="daily" id="{{ $aceUid }}_fd" checked hidden>
+                        <div class="ace-hint" id="{{ $aceUid }}_freqHint">The first check runs right when you create the rule. After that it is checked once a day, and a task is created only if the rule applies.</div>
                     </div>
                 </div>
 
@@ -399,7 +398,7 @@
         $('mode').classList.toggle('d-none', !multi);
     }
     function readFreqs() {
-        return Array.prototype.map.call($('freqWrap').querySelectorAll('.ace-freq:checked'), function (c) { return c.value; });
+        return ['daily']; // event based: weekly / monthly do not apply
     }
     // One condition per ticked column (a row with 3 columns ticked = 3 conditions, joined by the ALL / ANY switch).
     function readConds() {
@@ -537,7 +536,9 @@
         $('blockBadges').classList.toggle('d-none', kind !== 'badge');
         $('secTitle').innerHTML = kind === 'badge' ? '1 &middot; When these badges&hellip;' : '1 &middot; When this column&hellip;';
         $('newSub').textContent = kind === 'badge' ? 'Create a task automatically when a badge at the top of the page meets a condition' : 'Create a one-time task automatically when a column matches';
-        var msg = kind === 'badge' ? 'A task is created once per checked period (day / week / month) when the badge condition is met.' : 'A task is created once per matching row in each checked period.';
+        var msg = kind === 'badge'
+            ? 'Checked right when you create the rule, then once a day (before 9 AM PST). A task is created only if the badge condition applies.'
+            : 'Checked right when you create the rule, then once a day (before 9 AM PST). A task is created for each matching row only if the rule applies.';
         $('freqHint').textContent = msg; $('foot').textContent = msg;
         autoGroup();
     }
@@ -609,7 +610,6 @@
         $('more').classList.add('d-none'); $('moreIcon').className = 'ri-arrow-down-s-line';
         // Auto-fill the link with the page this rule is being created on (still editable).
         $('link').value = location.origin + location.pathname + location.search;
-        $('fd').checked = true; $('fw').checked = false; $('fm').checked = false;
         $('prio').value = 'normal'; $('due').value = 1; $('preview').textContent = ''; $('bpreview').textContent = '';
         $('mode').value = 'all'; $('bmode').value = 'all';
     }
@@ -670,8 +670,6 @@
         var o = f.task_options || {};
         $('name').value = f.name || '';
         $('name').dataset.auto = f.name ? '0' : '1'; // a saved name is kept as-is
-        var fr = f.frequencies && f.frequencies.length ? f.frequencies : ['daily'];
-        $('fd').checked = fr.indexOf('daily') !== -1; $('fw').checked = fr.indexOf('weekly') !== -1; $('fm').checked = fr.indexOf('monthly') !== -1;
 
         $('titles').innerHTML = '';
         (o.titles && o.titles.length ? o.titles : [f.task_title || '']).forEach(function (t) { addTitle(t); });
@@ -743,7 +741,6 @@
         if (kind === 'col' && emptyColRows()) return showErr('Tick at least one column in every condition.');
         if (!body.conditions.length) return showErr(kind === 'badge' ? 'Pick a badge for the condition (this page has none to pick).' : 'Add at least one condition.');
         if (body.conditions.length > 60) return showErr('Too many conditions (max 60). Untick some columns.');
-        if (!body.frequencies.length) return showErr('Tick at least one of Daily, Weekly or Monthly.');
         for (var i = 0; i < body.conditions.length; i++) {
             var c = body.conditions[i];
             if (kind === 'badge' && c.operator !== 'empty' && isNaN(parseFloat(String(c.value).replace(/[\s,$%\u20b9\u20ac\u00a3]/g, '')))) return showErr('Enter a number for condition ' + (i + 1) + '.');
@@ -763,7 +760,24 @@
             lastFetch = 0; // the badge watcher re-reads the rules soon
             modal('newModal').hide();
             openList();
+            if (!editing) {
+                if (d.created > 0) {
+                    alert('Rule created. It applies right now, so a task was created immediately.');
+                } else if (kind === 'badge' && !d.server_checked) {
+                    checkBadgeRuleNow(d.id, body.conditions, body.match_mode); // first check, from this page's badges
+                }
+            }
         }).catch(function () { showErr('Could not save the rule.'); }).finally(function () { btn.disabled = false; });
+    }
+
+    // A new badge rule on a page the server cannot read: do its first check here, from the badges on screen.
+    function checkBadgeRuleNow(id, conds, mode) {
+        var vals = readBadges(), map = {};
+        vals.forEach(function (b) { map[b.key] = b.value; });
+        if (!id || !evalConds(conds, mode, map)) return;
+        post(URLS.base + '/' + id + '/badge-fire', { page: PAGE, values: vals.map(function (b) { return { key: b.key, label: b.label, value: b.value }; }) })
+            .then(function (d) { if (d && d.ok && d.created > 0) { lastFetch = 0; alert('The rule applies right now, so a task was created immediately.'); } })
+            .catch(function () { /* the page watcher will retry */ });
     }
 
     function preview() {
@@ -799,7 +813,7 @@
             return '<div class="ace-rule' + (r.is_active ? '' : ' is-paused') + '"><div class="ace-rule-head">' +
                 '<div><span class="ace-rule-name">' + esc(r.name) + '</span> <span class="ace-badge ' + (r.is_active ? 'ace-badge-on' : 'ace-badge-off') + '">' + (r.is_active ? 'ACTIVE' : 'PAUSED') + '</span> ' +
                 (r.trigger_type === 'badge' ? '<span class="ace-badge ace-badge-type">BADGES</span> ' : '') + (r.mine ? '<span class="ace-badge ace-badge-type">MINE</span>' : '') + '</div>' + actions + '</div>' +
-                (r.condition ? '<div class="ace-kv"><b>When:</b> ' + esc(r.condition) + ' <span class="text-muted">· checked ' + esc(r.frequency) + (r.trigger_type === 'badge' ? ' while the page is open' : '') + '</span></div>' : '') +
+                (r.condition ? '<div class="ace-kv"><b>When:</b> ' + esc(r.condition) + ' <span class="text-muted">· ' + (r.server_check ? 'checked once a day before 9 AM PST' : 'checked once a day while the page is open') + '</span></div>' : '') +
                 '<div class="ace-kv"><b>Creates:</b> ' + esc(r.task_title) + (r.task_group ? ' <span class="ace-badge ace-badge-type">' + esc(r.task_group) + '</span>' : '') + ' <span class="text-muted">· ' + esc(r.priority) + ' · due in ' + r.due_in_days + 'd · assigned to ' + esc(r.assignee) + '</span></div>' +
                 '<div class="ace-kv"><b>Task:</b> ' + esc(r.task_frequency || 'One Time') + (r.task_extras ? ' <span class="text-muted">· ' + esc(r.task_extras) + '</span>' : '') + '</div>' +
                 (r.task_link ? '<div class="ace-kv"><b>Link:</b> <a href="' + esc(r.task_link) + '" target="_blank" rel="noopener">' + esc(r.task_link) + '</a></div>' : '') +

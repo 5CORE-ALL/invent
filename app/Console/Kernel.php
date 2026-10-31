@@ -859,9 +859,10 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
      
-        // ATE (Auto Task Event): column rules -> one-time tasks
+        // ATE (Auto Task Event): event-based rules are checked once a day, before 9 AM Pacific; a task is created only if the rule applies.
         $schedule->command('ace:run')
-            ->everyFiveMinutes()
+            ->dailyAt('08:00')
+            ->timezone('America/Los_Angeles')
             ->name('ace-run')
             ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
             ->runInBackground()
