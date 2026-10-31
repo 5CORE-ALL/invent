@@ -92,9 +92,15 @@
             html += '<tr>';
             keys.forEach(function (key) {
                 var v = row[key] == null ? '' : String(row[key]);
-                var empty = v === '' && ['title', 'description', 'images', 'price', 'inventory'].indexOf(key) !== -1;
+                var empty = v === '' && ['title', 'description', 'aplus', 'images', 'price', 'inventory'].indexOf(key) !== -1;
                 var shown = key === 'images' && v ? (v.split(', ').length + ' image link(s): ' + v) : v;
-                html += '<td' + (empty ? ' class="mlf-empty"' : '') + ' title="' + esc(v) + '">' + esc(shown) + '</td>';
+                var tip = v;
+                if (key === 'aplus' && v) {
+                    // A+ is a full HTML page: show a short stub here, the whole thing goes into the CSV.
+                    shown = 'A+ content (' + v.length + ' chars): ' + v.replace(/\s+/g, ' ').slice(0, 80);
+                    tip = '';
+                }
+                html += '<td' + (empty ? ' class="mlf-empty"' : '') + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + esc(shown) + '</td>';
             });
             html += '</tr>';
         });
