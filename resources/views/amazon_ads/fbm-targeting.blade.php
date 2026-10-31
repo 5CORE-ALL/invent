@@ -396,9 +396,13 @@
             }).then(function (res) {
                 if (!res.ok) {
                     loadBar.stop(false);
-                    showPullMsg('Could not load campaigns (server error ' + res.status + '). Please try again; if it keeps happening, check storage/logs/laravel.log on the server.', false);
-                    if (pullMsg) pullMsg.dataset.loadErr = '1';
-                    throw new Error('Network response was not ok');
+                    return res.text().then(function (body) {
+                        let reason = '';
+                        try { reason = (JSON.parse(body) || {}).message || ''; } catch (e) { /* not JSON */ }
+                        showPullMsg('Could not load campaigns (server error ' + res.status + ')' + (reason ? ': ' + reason : '. Please try again.'), false);
+                        if (pullMsg) pullMsg.dataset.loadErr = '1';
+                        throw new Error('Network response was not ok');
+                    });
                 }
                 return res.json();
             }).then(function (json) {

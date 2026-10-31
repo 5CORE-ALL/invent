@@ -59,6 +59,57 @@ class AmazonFbmTargetingController extends Controller
 
     public function data(Request $request): JsonResponse
     {
+        // Give a heavy production load room, and make any failure visible: caught errors come back as JSON with the
+        // reason, and fatals (memory / time limit) are written to storage/logs/fbm-targeting-error.log.
+        $limit = (string) ini_get('memory_limit');
+        if ($limit !== '-1' && $this->iniBytes($limit) < 512 * 1024 * 1024) {
+            @ini_set('memory_limit', '512M');
+        }
+        @set_time_limit(90);
+        register_shutdown_function(static function () {
+            $e = error_get_last();
+            if ($e && in_array($e['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_PARSE], true)) {
+                @file_put_contents(
+                    storage_path('logs/fbm-targeting-error.log'),
+                    '['.date('Y-m-d H:i:s').'] FATAL '.$e['message'].' @ '.$e['file'].':'.$e['line']."\n",
+                    FILE_APPEND
+                );
+            }
+        });
+
+        try {
+            return $this->loadData($request);
+        } catch (\Throwable $e) {
+            report($e);
+            @file_put_contents(
+                storage_path('logs/fbm-targeting-error.log'),
+                '['.date('Y-m-d H:i:s').'] '.get_class($e).': '.$e->getMessage().' @ '.$e->getFile().':'.$e->getLine()."\n",
+                FILE_APPEND
+            );
+
+            return response()->json([
+                'success' => false,
+                'message' => mb_substr(class_basename($e).': '.$e->getMessage(), 0, 400).' ('.basename($e->getFile()).':'.$e->getLine().')',
+            ], 500);
+        }
+    }
+
+    private function iniBytes(string $v): int
+    {
+        $v = trim($v);
+        $n = (int) $v;
+        $u = strtolower(substr($v, -1));
+
+        return match ($u) {
+            'g' => $n * 1024 * 1024 * 1024,
+            'm' => $n * 1024 * 1024,
+            'k' => $n * 1024,
+            default => $n,
+        };
+    }
+
+    protected function loadData(Request $request): JsonResponse
+    {
         if (! Schema::hasTable(self::SP_TABLE) || ! Schema::hasColumn(self::SP_TABLE, 'campaignName')) {
             return response()->json(['success' => true, 'data' => [], 'last_page' => 1, 'total' => 0]);
         }
@@ -849,7 +900,6 @@ class AmazonFbmTargetingController extends Controller
         }
 
         try {
-            @set_time_limit(120);
             $groupsMap = $this->cousins->groupsMap();
             $index = $this->campaignIndex();
 
@@ -870,6 +920,7 @@ class AmazonFbmTargetingController extends Controller
             if ($todo === []) {
                 return;
             }
+            $todo = array_slice($todo, 0, 12, true); // keep one page load light; the rest sync on later loads
 
             $members = [];
             foreach ($todo as $group) {
@@ -884,14 +935,11 @@ class AmazonFbmTargetingController extends Controller
             // Keywords already shown in the grid come from the synced keyword reports, so bring those into the store too.
             $this->ingestFromReports($members);
 
+            // Local data only here (no live Amazon calls while the grid loads); live keywords come in with the
+            // Pull buttons and "Sync keywords now".
             foreach (['kw', 'neg'] as $kind) {
                 if ($kind === 'neg' && ! Schema::hasTable(self::NEG_TABLE)) {
                     continue;
-                }
-                try {
-                    $this->ingestKeywords($members, $kind);
-                } catch (\Throwable $e) {
-                    Log::warning('AmazonFbmTargetingController: auto cousin live pull failed', ['kind' => $kind, 'error' => $e->getMessage()]);
                 }
                 foreach ($todo as $group) {
                     $this->syncCousinKeywords($group, false, $kind);
