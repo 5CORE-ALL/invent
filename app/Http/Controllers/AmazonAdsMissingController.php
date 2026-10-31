@@ -2715,6 +2715,81 @@ PROMPT;
     }
 
     /**
+     * The toolbar badge numbers for Auto Task Events (the server-side daily check). Keys are the badge element ids
+     * and labels match the page, so rules made in the browser keep working. Read-only; numbers cover all parents
+     * (the page's badges follow its filters, with no filter they are identical).
+     *
+     * @return list<array{key: string, label: string, value: int}>
+     */
+    public function aceBadgeValues(): array
+    {
+        $rows = DB::table('product_master')
+            ->select('parent', 'sku', 'Values')
+            ->whereNull('deleted_at')
+            ->get();
+
+        $parents = [];
+        foreach ($rows as $r) {
+            $sku = trim((string) ($r->sku ?? ''));
+            if ($sku === '' || Str::startsWith(strtoupper($sku), 'PARENT') || $this->isDcProduct($r)) {
+                continue;
+            }
+            $parent = preg_replace('/\s+/', ' ', trim((string) ($r->parent ?? '')));
+            if ($parent !== '') {
+                $parents[strtoupper($parent)] = $parent;
+            }
+        }
+
+        $linksBySku = AmazonAdsMissingLink::query()->get(['sku', 'type', 'campaign_id', 'campaign_name'])
+            ->groupBy(fn ($l) => (string) $l->sku);
+        $statusMap = $this->campaignStatusMap();
+
+        $types = ['KW', 'PT', 'HL'];
+        $missing = array_fill_keys($types, 0);
+        $avail = array_fill_keys($types, []);
+        $live = array_fill_keys($types, []);
+        foreach ($parents as $parent) {
+            $links = $linksBySku->get('PARENT '.$parent, collect());
+            foreach ($types as $t) {
+                $of = $links->filter(fn ($l) => (string) $l->type === $t);
+                if ($of->isEmpty()) {
+                    $missing[$t]++;
+                    continue;
+                }
+                foreach ($of as $l) {
+                    $name = (string) ($l->campaign_name ?? '');
+                    $key = strtoupper((string) ($l->campaign_id ?: $name));
+                    if ($key === '' || isset($avail[$t][$key])) {
+                        continue;
+                    }
+                    $avail[$t][$key] = true;
+                    if (($statusMap[$this->normalizeCampaignName($name)] ?? '') === 'ENABLED') {
+                        $live[$t][$key] = true;
+                    }
+                }
+            }
+        }
+
+        $out = [
+            ['key' => 'amzParentWrap', 'label' => 'Parent', 'value' => count($parents)],
+            ['key' => 'amzMissingWrap', 'label' => 'Missing All', 'value' => array_sum($missing)],
+        ];
+        foreach ($types as $t) {
+            $out[] = ['key' => 'amzMissing'.ucfirst(strtolower($t)).'Wrap', 'label' => 'Missing '.$t, 'value' => $missing[$t]];
+        }
+        $out[] = ['key' => 'amzAvailAllWrap', 'label' => 'Available All', 'value' => array_sum(array_map('count', $avail))];
+        foreach ($types as $t) {
+            $out[] = ['key' => 'amzAvail'.ucfirst(strtolower($t)).'Wrap', 'label' => 'Available '.$t, 'value' => count($avail[$t])];
+        }
+        $out[] = ['key' => 'amzLiveAllWrap', 'label' => 'Active All', 'value' => array_sum(array_map('count', $live))];
+        foreach ($types as $t) {
+            $out[] = ['key' => 'amzLive'.ucfirst(strtolower($t)).'Wrap', 'label' => 'Active '.$t, 'value' => count($live[$t])];
+        }
+
+        return $out;
+    }
+
+    /**
      * SUM(shopify_skus.inv) for child (non-PARENT) SKUs, keyed by normalized-uppercase parent name
      * (whitespace collapsed) so it lines up with the grouped parent rows.
      *

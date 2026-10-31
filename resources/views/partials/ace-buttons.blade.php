@@ -430,7 +430,7 @@
     }
     function readBadges() {
         var root = document.querySelector('.content-page') || document.body, seen = {}, out = [];
-        root.querySelectorAll('.badge').forEach(function (el) {
+        root.querySelectorAll('.badge, .amz-missing-badge').forEach(function (el) {
             if (el.closest('.tabulator, .modal, table, .dropdown-menu, .offcanvas, nav, .navbar-custom, .leftside-menu')) return;
             if (el.classList.contains('d-none')) return;
             var cs = window.getComputedStyle(el);
