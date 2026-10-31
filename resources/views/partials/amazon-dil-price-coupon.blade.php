@@ -20,6 +20,13 @@
 @endif
 
 @if($amazonCouponPart === 'modal')
+<style>
+    /* Single-range counts (Dil only / Price only): lighter than the main "both conditions" count pill. */
+    .el30cpn .amz-range-count { display: inline-block; min-width: 46px; padding: 3px 12px; border-radius: 999px; font-weight: 800; font-size: .95rem; text-align: center;
+        color: color-mix(in srgb, var(--c, #7c3aed) 80%, #1f2937); background: color-mix(in srgb, var(--c, #7c3aed) 14%, #fff);
+        border: 2px solid color-mix(in srgb, var(--c, #7c3aed) 35%, #fff); }
+    .el30cpn .amz-th-both { color: #be185d; }
+</style>
 <div class="modal fade el30cpn" id="{{ $amazonCouponPrefix }}-modal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-xl">
         <div class="modal-content el30cpn-content">
@@ -35,7 +42,7 @@
             <div class="modal-body">
                 <div class="el30cpn-note">
                     <i class="fas fa-lightbulb"></i>
-                    <div>A SKU must match <b>both</b> the Dil % range <b>and</b> the Price range. Rules are checked top to bottom and the first match wins. INV must be above 0. The <b>0–0</b> Dil range is A L30 = 0. Coupon % of <b>0</b> leaves that rule off; Amazon accepts <b>5–80</b>. Click a colored dot next to a count to see that rule's history. Changes save automatically and are not pushed to Amazon.</div>
+                    <div>A SKU must match <b>both</b> the Dil % range <b>and</b> the Price range. Rules are checked top to bottom and the first match wins. INV must be above 0. The <b>0–0</b> Dil range is A L30 = 0. Coupon % of <b>0</b> leaves that rule off; Amazon accepts <b>5–80</b>. <b>Dil Count</b> and <b>Price Count</b> show how many SKUs fall in that one range alone; <b>Count (Both)</b> is where both apply. Click a colored dot next to Count (Both) to see that rule's history. Changes save automatically and are not pushed to Amazon.</div>
                 </div>
                 <div class="table-responsive">
                     <table class="el30cpn-table">
@@ -43,9 +50,11 @@
                             <tr>
                                 <th>Dil % From</th>
                                 <th>Dil % To</th>
+                                <th class="text-center" title="SKUs whose Dil % is in this rule's Dil range, whatever their price">Dil Count</th>
                                 <th>Price From ($)</th>
                                 <th>Price To ($)</th>
-                                <th class="text-center">Count</th>
+                                <th class="text-center" title="SKUs whose price is in this rule's price range, whatever their Dil %">Price Count</th>
+                                <th class="text-center amz-th-both" title="SKUs where both the Dil % range and the Price range apply (first matching rule wins)">Count (Both)</th>
                                 <th>Coupon %</th>
                                 <th></th>
                             </tr>
@@ -98,19 +107,29 @@
         return 'd' + Math.min(a, b) + '-' + Math.max(a, b) + '|p' + Math.min(c, d) + '-' + Math.max(c, d);
     }
 
-    // ---- matching: both conditions must hold; first rule wins ----
-    function matchIdx(sku) {
-        const l30 = sku[0], inv = sku[1], price = sku[2];
-        if (!(inv > 0) || !(price > 0)) return -1;
+    // ---- matching ----
+    // sku = [A L30, INV, price]. Each condition on its own, so it can also be counted alone.
+    function dilInRange(s, sku) {
+        const l30 = sku[0], inv = sku[1];
+        if (!(inv > 0)) return false;
+        const lo = num(s.dmin), hi = num(s.dmax);
+        if (Math.abs(lo) < 1e-7 && Math.abs(hi) < 1e-7) return Math.abs(l30) < 1e-7; // 0–0 = no A L30 sales
         const dil = (l30 / inv) * 100;
+        return dil >= lo && dil <= hi;
+    }
+    function priceInRange(s, sku) {
+        const price = sku[2];
+        return price > 0 && price >= num(s.pmin) && price <= num(s.pmax);
+    }
+    // Both conditions must hold; the first matching rule wins.
+    function matchIdx(sku) {
+        if (!(sku[1] > 0) || !(sku[2] > 0)) return -1;
         for (let i = 0; i < state.slabs.length; i++) {
-            const s = state.slabs[i];
-            const lo = num(s.dmin), hi = num(s.dmax);
-            const dilOk = (Math.abs(lo) < 1e-7 && Math.abs(hi) < 1e-7) ? Math.abs(l30) < 1e-7 : (dil >= lo && dil <= hi);
-            if (dilOk && price >= num(s.pmin) && price <= num(s.pmax)) return i;
+            if (dilInRange(state.slabs[i], sku) && priceInRange(state.slabs[i], sku)) return i;
         }
         return -1;
     }
+    // Count (Both): SKUs where both conditions apply. This is the one saved to history.
     function counts() {
         const t = state.slabs.map(function() { return 0; });
         state.skus.forEach(function(sku) {
@@ -118,6 +137,18 @@
             if (i >= 0) t[i] += 1;
         });
         return t;
+    }
+    // Dil Count / Price Count: each range counted on its own (not first-match, rules may overlap).
+    function rangeCounts() {
+        const dil = state.slabs.map(function() { return 0; });
+        const price = state.slabs.map(function() { return 0; });
+        state.skus.forEach(function(sku) {
+            state.slabs.forEach(function(s, i) {
+                if (dilInRange(s, sku)) dil[i] += 1;
+                if (priceInRange(s, sku)) price[i] += 1;
+            });
+        });
+        return { dil: dil, price: price };
     }
 
     // ---- history dots + graph ----
@@ -255,21 +286,27 @@
     }
     function paintChrome() {
         const tally = counts();
+        const rc = rangeCounts();
         $('#' + prefix + '-slabs tr').each(function(i) {
             $(this).find('.amz-count').text(tally[i] || 0);
+            $(this).find('.amz-dil-count').text(rc.dil[i] || 0);
+            $(this).find('.amz-price-count').text(rc.price[i] || 0);
         });
         paintDots(tally);
     }
     function paintSlabs() {
         const tally = counts();
+        const rc = rangeCounts();
         const html = state.slabs.map(function(slab, i) {
             const color = COLORS[i % COLORS.length];
             return '<tr style="--c:' + color + ';">'
                 + numInput('amz-dmin', slab.dmin, '0.01')
                 + numInput('amz-dmax', slab.dmax, '0.01')
+                + '<td class="text-center"><span class="amz-range-count amz-dil-count" title="SKUs in this Dil % range, any price">' + (rc.dil[i] || 0) + '</span></td>'
                 + numInput('amz-pmin', slab.pmin, '0.01')
                 + numInput('amz-pmax', slab.pmax, '0.01')
-                + '<td class="text-center"><span class="el30cpn-count"><span class="amz-count">' + (tally[i] || 0) + '</span>'
+                + '<td class="text-center"><span class="amz-range-count amz-price-count" title="SKUs in this price range, any Dil %">' + (rc.price[i] || 0) + '</span></td>'
+                + '<td class="text-center"><span class="el30cpn-count" title="SKUs where both conditions apply"><span class="amz-count">' + (tally[i] || 0) + '</span>'
                 + '<span class="el30-slab-dot none" data-i="' + i + '" title="Click for history"></span></span></td>'
                 + '<td><div class="el30cpn-pct"><input type="number" min="0" max="80" step="1" class="form-control form-control-sm amz-pct" value="' + couponPct(slab.pct) + '"><span>%</span></div></td>'
                 + '<td class="text-end"><button type="button" class="el30cpn-del amz-del" data-i="' + i + '" aria-label="Remove rule">×</button></td>'
