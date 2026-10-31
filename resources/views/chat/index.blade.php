@@ -566,6 +566,7 @@
                     </select>
                     <button type="button" id="slackPrefsBtn">Notify</button>
                     <button type="button" id="slackAddPeopleBtn" hidden>Add people</button>
+                    <button type="button" id="slackRemovePeopleBtn" class="is-danger" hidden>Remove people</button>
                     <button type="button" id="slackEditRoomBtn" hidden>Edit</button>
                     <button type="button" id="slackDeleteRoomBtn" class="is-danger" hidden>Delete</button>
                     @if ($canManageChannels)
@@ -626,6 +627,26 @@
                     <button type="submit" class="btn btn-success" id="slackPeopleSubmit">Create</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div class="modal fade" id="slackMembersModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="slackMembersTitle">Remove people</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input class="form-control mb-2" type="search" id="slackMembersSearch" placeholder="Search members" autocomplete="off">
+                    <div id="slackMembersList"></div>
+                    <div class="small text-danger mt-2" id="slackMembersErr" hidden></div>
+                </div>
+                <div class="modal-footer">
+                    <span class="me-auto small text-muted" id="slackMembersCount"></span>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1401,6 +1422,8 @@
         const editBtn = document.getElementById('slackEditRoomBtn');
         if (editBtn) editBtn.hidden = archived || !(src.can_edit || (ch && ch.can_edit));
         if (addBtn) addBtn.hidden = archived || !canAdd;
+        const removeBtn = document.getElementById('slackRemovePeopleBtn');
+        if (removeBtn) removeBtn.hidden = archived || !canAdd;
         if (delBtn) {
             delBtn.hidden = archived || !canDel;
             delBtn.textContent = (ch && ch.type === 'group') ? 'Delete group' : ((ch && (ch.type === 'dm' || ch.type === 'task')) ? 'Delete chat' : 'Delete channel');
@@ -2079,6 +2102,90 @@
     document.getElementById('slackAddPeopleBtn').addEventListener('click', function () {
         const ch = channels.find(function (c) { return c.id === activeId; }) || {};
         openPeopleModal('add', ch.member_ids || []);
+    });
+    const canManageAll = @json((bool) $canManageChannels);
+    function activeChannel() {
+        return channels.find(function (c) { return c.id === activeId; }) || null;
+    }
+    function renderMembers() {
+        const ch = activeChannel();
+        const list = document.getElementById('slackMembersList');
+        const countEl = document.getElementById('slackMembersCount');
+        if (!ch || !list) return;
+        const q = document.getElementById('slackMembersSearch').value.toLowerCase().trim();
+        const byId = {};
+        directory.forEach(function (u) { byId[Number(u.id)] = u; });
+        const ids = (ch.member_ids || []).map(Number);
+        const rows = ids.map(function (id) {
+            const u = byId[id] || { id: id, name: 'User #' + id, department: '' };
+            return u;
+        }).filter(function (u) {
+            return !q || ((u.name || '') + ' ' + (u.email || '') + ' ' + (u.department || '')).toLowerCase().indexOf(q) >= 0;
+        }).sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || '')); });
+        countEl.textContent = ids.length + ' member' + (ids.length === 1 ? '' : 's');
+        if (!rows.length) {
+            list.innerHTML = '<div class="text-muted small py-2">No members match.</div>';
+            return;
+        }
+        list.innerHTML = rows.map(function (u) {
+            const id = Number(u.id);
+            const isCreator = id === Number(ch.created_by || 0);
+            const isMe = id === Number(meId);
+            let action = '<button type="button" class="btn btn-sm btn-outline-danger" data-remove-member="' + id + '">Remove</button>';
+            if (!canManageAll && (isCreator || isMe)) {
+                action = '<span class="small text-muted">' + (isCreator ? 'Creator' : 'You') + '</span>';
+            }
+            return '<div class="d-flex align-items-center justify-content-between border-bottom py-2">' +
+                '<div><div class="fw-semibold">' + esc(u.name || '') + (isMe ? ' (you)' : '') + (isCreator ? ' <span class="badge bg-light text-dark">Creator</span>' : '') + '</div>' +
+                (u.department ? '<div class="small text-muted">' + esc(u.department) + '</div>' : '') + '</div>' + action + '</div>';
+        }).join('');
+    }
+    document.getElementById('slackRemovePeopleBtn').addEventListener('click', function () {
+        const ch = activeChannel();
+        if (!ch) return;
+        document.getElementById('slackMembersTitle').textContent = 'Remove people from ' + (ch.name || 'this chat');
+        document.getElementById('slackMembersSearch').value = '';
+        document.getElementById('slackMembersErr').hidden = true;
+        renderMembers();
+        window.bootstrap && window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackMembersModal')).show();
+    });
+    document.getElementById('slackMembersSearch').addEventListener('input', renderMembers);
+    document.getElementById('slackMembersList').addEventListener('click', async function (e) {
+        const btn = e.target.closest('[data-remove-member]');
+        if (!btn) return;
+        const ch = activeChannel();
+        if (!ch) return;
+        const uid = Number(btn.getAttribute('data-remove-member'));
+        const person = (directory.find(function (u) { return Number(u.id) === uid; }) || {}).name || 'this person';
+        if (!confirm('Remove ' + person + ' from ' + (ch.name || 'this chat') + '?')) return;
+        const err = document.getElementById('slackMembersErr');
+        err.hidden = true;
+        btn.disabled = true;
+        let res;
+        try {
+            res = await api('/chat/channels/' + ch.id + '/members', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ remove: [uid] })
+            });
+        } catch (ex) {
+            btn.disabled = false;
+            err.textContent = ex.message || 'Could not remove this person.';
+            err.hidden = false;
+            return;
+        }
+        if (!res || (res.removed_ids || []).indexOf(uid) < 0) {
+            btn.disabled = false;
+            err.textContent = 'This person could not be removed.';
+            err.hidden = false;
+            return;
+        }
+        if (res.member_ids) ch.member_ids = res.member_ids;
+        if (res.member_names) ch.member_names = res.member_names;
+        if (typeof res.member_count === 'number') ch.member_count = res.member_count;
+        renderMembers();
+        setHead(ch, ch);
+        if (res.messages && res.messages.length) appendMessages(res.messages, false, false);
     });
     function openEditChannel(id) {
         const ch = channels.find(function (c) { return c.id === id; });

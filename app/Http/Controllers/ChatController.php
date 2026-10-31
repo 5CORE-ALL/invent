@@ -926,15 +926,27 @@ class ChatController extends Controller
                 ChatAudit::record($user, 'member.added', 'user', (int) $uid, (int) $row->id);
             }
         }
+        $removed = [];
         foreach ($validated['remove'] ?? [] as $uid) {
-            if ((int) $uid === (int) $user->id && ! ChatWorkspace::canManageChannels($user)) {
+            $uid = (int) $uid;
+            if ($uid === (int) $user->id && ! ChatWorkspace::canManageChannels($user)) {
                 continue;
             }
-            ChatChannelMember::query()->where('channel_id', $row->id)->where('user_id', (int) $uid)->delete();
-            ChatAudit::record($user, 'member.removed', 'user', (int) $uid, (int) $row->id);
+            // Only workspace admins can remove the person who created the group.
+            if ($uid === (int) $row->created_by && ! ChatWorkspace::canManageChannels($user)) {
+                continue;
+            }
+            if (ChatChannelMember::query()->where('channel_id', $row->id)->where('user_id', $uid)->delete() > 0) {
+                $removed[] = $uid;
+                ChatWorkspace::forgetUnreadCache($uid);
+                ChatAudit::record($user, 'member.removed', 'user', $uid, (int) $row->id);
+            }
         }
         ChatWorkspace::forgetUnreadCache((int) $user->id);
-        $notice = ChatWorkspace::announceAdded($user, $row, $added);
+        $notices = array_values(array_filter([
+            ChatWorkspace::announceAdded($user, $row, $added),
+            ChatWorkspace::announceRemoved($user, $row, $removed),
+        ]));
         $roster = ChatWorkspace::memberRoster($row);
 
         return response()->json([
@@ -942,8 +954,9 @@ class ChatController extends Controller
             'member_count' => $roster['count'],
             'member_ids' => $roster['ids'],
             'member_names' => $roster['names'],
-            'messages' => $notice
-                ? $this->serializeMessages($row, collect([$notice]), (int) $user->id, false)
+            'removed_ids' => $removed,
+            'messages' => $notices !== []
+                ? $this->serializeMessages($row, collect($notices), (int) $user->id, false)
                 : [],
         ]);
     }
@@ -1158,6 +1171,7 @@ class ChatController extends Controller
             'member_names' => $roster['names'],
             'last_read_message_id' => (int) ($member->last_read_message_id ?? 0),
             'notify_pref' => $member->notify_pref ?? 'all',
+            'created_by' => (int) $channel->created_by,
             'can_manage_members' => ChatWorkspace::canManageMembers($user, $channel),
             'can_delete' => ChatWorkspace::canDeleteChannel($user, $channel),
             'can_edit' => ChatWorkspace::canEditChannel($user, $channel),
