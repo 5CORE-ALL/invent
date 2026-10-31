@@ -146,6 +146,7 @@
                             <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none fw-semibold" id="{{ $aceUid }}_addTitle"><i class="ri-add-line"></i> Add task</button>
                         </div>
                         <div id="{{ $aceUid }}_titles"></div>
+                        <div class="ace-hint mt-1 d-none" id="{{ $aceUid }}_tHint"></div>
                     </div>
                     <div class="mb-2">
                         <label class="form-label fw-semibold mb-1">Description</label>
@@ -463,7 +464,35 @@
         var rows = $('bconds').querySelectorAll('.ace-cond');
         rows.forEach(function (r) { r.querySelector('.ace-c-del').style.visibility = rows.length > 1 ? 'visible' : 'hidden'; });
         $('bmode').classList.toggle('d-none', rows.length < 2);
-        autoGroup();
+        autoGroup(); autoTask();
+    }
+    // Badge rules: first task = "Fix <badge> ({placeholder})" until the user types their own. The {placeholder} is
+    // replaced by the badge's live count every time the task is created (a fixed number would go stale after day 1).
+    function autoTask() {
+        var hint = $('tHint');
+        var first = $('titles') && $('titles').querySelector('.ace-t-input');
+        if (hint) hint.classList.add('d-none');
+        if (!first || kind !== 'badge' || first.dataset.auto === '0') return;
+        var live = {};
+        readBadges().forEach(function (b) { live[b.key] = b.value; });
+        var seen = {}, parts = [], preview = [];
+        readBadgeConds().forEach(function (c) {
+            var l = String(c.label || '').trim();
+            if (!l || seen[l]) return;
+            seen[l] = 1;
+            var alias = l.replace(/[^a-z0-9_]+/gi, '_').replace(/^_+|_+$/g, '');
+            if (!alias) return;
+            parts.push(l + ' ({' + alias + '})');
+            preview.push(l + ' (' + (live.hasOwnProperty(c.column_key) ? fmtNum(live[c.column_key]) : '?') + ')');
+        });
+        if (!parts.length) return;
+        first.value = ('Fix ' + parts.join(', ')).slice(0, 1000);
+        first.dataset.auto = '1';
+        if (hint) {
+            hint.textContent = 'Now: Fix ' + preview.join(', ') + ' — the {…} part becomes the live count each time the task is created.';
+            hint.classList.remove('d-none');
+        }
+        autoName();
     }
     // Rule name: "Group - first task - assignee(s)" until the user types their own name (still editable).
     function autoName() {
@@ -471,7 +500,7 @@
         if (!n || n.dataset.auto === '0') return;
         var parts = [];
         var g = $('group').value.trim(); if (g) parts.push(g);
-        var t = readTitles()[0]; if (t) parts.push(t);
+        var t = (readTitles()[0] || '').replace(/\s*\([^()]*\{[^{}]*\}[^()]*\)/g, '').trim(); if (t) parts.push(t);
         if ($('amode').value === 'fixed') {
             var ids = readAssignees();
             var names = (meta && meta.users ? meta.users : []).filter(function (u) { return ids.indexOf(u.id) !== -1; }).map(function (u) { return u.name; });
@@ -540,7 +569,7 @@
             ? 'Checked right when you create the rule, then once a day (before 9 AM PST). A task is created only if the badge condition applies.'
             : 'Checked right when you create the rule, then once a day (before 9 AM PST). A task is created for each matching row only if the rule applies.';
         $('freqHint').textContent = msg; $('foot').textContent = msg;
-        autoGroup();
+        autoGroup(); autoTask();
     }
 
     // ---- task titles (+ Add task) ----
@@ -673,6 +702,8 @@
 
         $('titles').innerHTML = '';
         (o.titles && o.titles.length ? o.titles : [f.task_title || '']).forEach(function (t) { addTitle(t); });
+        var firstT = $('titles').querySelector('.ace-t-input');
+        if (firstT) firstT.dataset.auto = firstT.value.trim() ? '0' : '1'; // a saved task is kept as-is
         $('desc').value = f.task_description || '';
         $('group').value = f.task_group || '';
         $('group').dataset.auto = f.task_group ? '0' : '1'; // a saved group is kept as-is
@@ -866,7 +897,11 @@
     });
     $('group').addEventListener('input', function () { this.dataset.auto = this.value.trim() === '' ? '1' : '0'; autoName(); });
     $('name').addEventListener('input', function () { this.dataset.auto = this.value.trim() === '' ? '1' : '0'; if (this.dataset.auto === '1') autoName(); });
-    $('titles').addEventListener('input', autoName);
+    $('titles').addEventListener('input', function (e) {
+        var first = $('titles').querySelector('.ace-t-input');
+        if (e.target === first) { first.dataset.auto = first.value.trim() === '' ? '1' : '0'; if (first.dataset.auto === '1') autoTask(); }
+        autoName();
+    });
     $('addBadge').addEventListener('click', addBadgeCond);
     $('bpreviewBtn').addEventListener('click', badgeCheckNow);
     $('bconds').addEventListener('change', syncBadgeConds);
