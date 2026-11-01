@@ -276,7 +276,8 @@ class OrderFulfillmentShopifyPushService
             ->whereNull('channel_pushed_at')
             ->whereNotIn('mm_slug', self::EXCLUDED_SLUGS)
             ->where('created_at', '>=', now()->subDays(self::MAX_ROW_AGE_DAYS))
-            ->where('channel_push_attempts', '>', 0)
+            // Rows with 0 attempts count too: order-fulfillment:reconcile-shopify fulfils the Shopify order and marks the
+            // row done without ever pushing to the marketplace, so these rows were never pushed at all.
             ->where('channel_push_attempts', '<', self::MAX_CHANNEL_ATTEMPTS)
             ->where(function ($q) {
                 $q->whereNull('shopify_push_checked_at')
@@ -543,6 +544,16 @@ class OrderFulfillmentShopifyPushService
             return ['state' => 'pushed', 'message' => $row->channel_push_message];
         }
 
+        if (! $notImplemented && self::isTransientChannelFailure($message)) {
+            // Shopify / marketplace is throttling or briefly down: not this order's fault, so no attempt is burned
+            // (6 attempts used to drop the row for good) and it is retried in RATE_LIMIT_RETRY_MINUTES.
+            $row->shopify_push_checked_at = now()->subMinutes(max(0, self::RETRY_COOLDOWN_MINUTES - self::RATE_LIMIT_RETRY_MINUTES));
+            $row->channel_push_message = mb_substr($message, 0, 255);
+            $row->save();
+
+            return ['state' => 'failed', 'message' => $row->channel_push_message];
+        }
+
         $row->channel_push_attempts = $notImplemented
             ? self::MAX_CHANNEL_ATTEMPTS
             : min(self::MAX_CHANNEL_ATTEMPTS, (int) $row->channel_push_attempts + 1);
@@ -550,6 +561,27 @@ class OrderFulfillmentShopifyPushService
         $row->save();
 
         return ['state' => $notImplemented ? 'skipped' : 'failed', 'message' => $row->channel_push_message];
+    }
+
+    /** Throttling, timeouts and 5xx from Shopify or the marketplace: worth retrying without counting an attempt. */
+    public static function isTransientChannelFailure(string $message): bool
+    {
+        $m = strtolower($message);
+        if ($m === '') {
+            return false;
+        }
+        foreach ([
+            'http 429', 'too many requests', 'exceeded 2 calls per second', 'frequency exceeds', 'access frequency',
+            'rate limit', 'rate-limit', 'throttl', 'timed out', 'timeout', 'could not resolve host', 'connection refused',
+            'curl error', 'http 500', 'http 502', 'http 503', 'http 504', 'service unavailable', 'bad gateway',
+            'shopify order fetch failed', 'could not load shopify fulfillments', 'http 0)',
+        ] as $needle) {
+            if (str_contains($m, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

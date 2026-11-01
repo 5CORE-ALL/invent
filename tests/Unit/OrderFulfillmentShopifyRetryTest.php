@@ -48,4 +48,24 @@ class OrderFulfillmentShopifyRetryTest extends TestCase
         $this->assertSame(720, OrderFulfillmentController::trackingMissRecheckMinutes('2026-09-15 09:00:00'));
         $this->assertSame(60, OrderFulfillmentController::trackingMissRecheckMinutes(''));
     }
+
+    public function test_throttling_and_outages_are_not_counted_as_channel_failures(): void
+    {
+        $this->assertTrue(Push::isTransientChannelFailure('Shopify order fetch failed.'));
+        $this->assertTrue(Push::isTransientChannelFailure('Api access frequency exceeds the limit. this ban will last 1 seconds'));
+        $this->assertTrue(Push::isTransientChannelFailure('Could not load Shopify fulfillments to update tracking (HTTP 429).'));
+        $this->assertTrue(Push::isTransientChannelFailure('Reverb ship HTTP 503: unavailable'));
+        $this->assertFalse(Push::isTransientChannelFailure('Reverb ship HTTP 422: tracking number is invalid'));
+        $this->assertFalse(Push::isTransientChannelFailure('No tracking number on Shopify yet.'));
+        $this->assertFalse(Push::isTransientChannelFailure(''));
+    }
+
+    public function test_newegg_second_parameter_is_a_bool_so_the_hub_must_not_pass_the_known_array(): void
+    {
+        $second = (new \ReflectionMethod(\App\Services\MarketplaceManager\NeweggTrackingSyncService::class, 'pushTrackingForOrder'))->getParameters()[1];
+        $this->assertSame('bool', $second->getType()->getName());
+
+        $b5c = (new \ReflectionMethod(\App\Services\MarketplaceManager\B5cB2bTrackingSyncService::class, 'pushTrackingForOrder'))->getParameters()[1];
+        $this->assertSame('array', $b5c->getType()->getName());
+    }
 }

@@ -496,15 +496,13 @@ class ReverbTrackingSyncService
         }
 
         $carrier = trim($carrier) !== '' ? trim($carrier) : 'Other';
-        $headers = [
-            'X-Shopify-Access-Token' => $token,
-            'Content-Type' => 'application/json',
-        ];
+        $version = '2025-01';
+        $trackingInfo = ['number' => $tracking, 'company' => mb_substr($carrier, 0, 100)];
 
+        // ShopifyRestClient shares the app's REST bucket with every other job: it paces calls and waits out a 429,
+        // where a plain Http call just failed and left the row "could not load Shopify fulfillments".
         try {
-            $orders = Http::withHeaders($headers)
-                ->timeout(30)
-                ->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}/fulfillment_orders.json");
+            $orders = ShopifyRestClient::request('GET', "https://{$storeUrl}/admin/api/{$version}/orders/{$shopifyOrderId}/fulfillment_orders.json", $token);
 
             $open = [];
             if ($orders->successful()) {
@@ -521,30 +519,23 @@ class ReverbTrackingSyncService
             }
 
             if ($open !== []) {
-                $created = Http::withHeaders($headers)
-                    ->timeout(30)
-                    ->post("https://{$storeUrl}/admin/api/2024-01/fulfillments.json", [
-                        'fulfillment' => [
-                            'line_items_by_fulfillment_order' => $open,
-                            'tracking_info' => [
-                                'number' => $tracking,
-                                'company' => mb_substr($carrier, 0, 100),
-                            ],
-                            'notify_customer' => false,
-                        ],
-                    ]);
+                $created = ShopifyRestClient::request('POST', "https://{$storeUrl}/admin/api/{$version}/fulfillments.json", $token, [
+                    'fulfillment' => [
+                        'line_items_by_fulfillment_order' => $open,
+                        'tracking_info' => $trackingInfo,
+                        'notify_customer' => false,
+                    ],
+                ]);
                 if ($created->successful()) {
                     return ['success' => true, 'message' => 'Shopify fulfillment created from Reverb tracking.'];
                 }
             }
 
-            $order = Http::withHeaders($headers)
-                ->timeout(30)
-                ->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}.json", [
-                    'fields' => 'id,fulfillments',
-                ]);
+            $order = ShopifyRestClient::request('GET', "https://{$storeUrl}/admin/api/{$version}/orders/{$shopifyOrderId}.json", $token, [
+                'fields' => 'id,fulfillments',
+            ]);
             if (! $order->successful()) {
-                return ['success' => false, 'message' => 'Could not load Shopify fulfillments to update tracking.'];
+                return ['success' => false, 'message' => 'Could not load Shopify fulfillments to update tracking (HTTP '.$order->status().').'];
             }
 
             $want = self::normalizeTracking($tracking);
@@ -564,17 +555,12 @@ class ReverbTrackingSyncService
                     return ['success' => true, 'message' => 'Shopify already has this Reverb tracking number.'];
                 }
 
-                $updated = Http::withHeaders($headers)
-                    ->timeout(30)
-                    ->post("https://{$storeUrl}/admin/api/2024-01/fulfillments/".((int) $fulfillment['id']).'/update_tracking.json', [
-                        'fulfillment' => [
-                            'notify_customer' => false,
-                            'tracking_info' => [
-                                'number' => $tracking,
-                                'company' => mb_substr($carrier, 0, 100),
-                            ],
-                        ],
-                    ]);
+                $updated = ShopifyRestClient::request('POST', "https://{$storeUrl}/admin/api/{$version}/fulfillments/".((int) $fulfillment['id']).'/update_tracking.json', $token, [
+                    'fulfillment' => [
+                        'notify_customer' => false,
+                        'tracking_info' => $trackingInfo,
+                    ],
+                ]);
                 if ($updated->successful()) {
                     return ['success' => true, 'message' => 'Shopify fulfillment tracking updated from Reverb.'];
                 }

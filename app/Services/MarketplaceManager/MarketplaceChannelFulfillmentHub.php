@@ -242,7 +242,14 @@ class MarketplaceChannelFulfillmentHub
 
         try {
             $method = new \ReflectionMethod($service, 'pushTrackingForOrder');
-            $result = $method->getNumberOfParameters() >= 2
+            // The "known tracking" array is only for services whose 2nd parameter is an array. Newegg's 2nd
+            // parameter is a bool (tryVeeqoCopy): passing the array there threw a TypeError on every push.
+            $second = $method->getParameters()[1] ?? null;
+            $secondType = $second?->getType();
+            $takesKnown = $second !== null
+                && $secondType instanceof \ReflectionNamedType
+                && $secondType->getName() === 'array';
+            $result = $takesKnown
                 ? $service->pushTrackingForOrder($line, $known)
                 : $service->pushTrackingForOrder($line);
 

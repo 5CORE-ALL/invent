@@ -320,7 +320,8 @@ class ReconcileShopifyFulfillmentCommand extends Command
         foreach ($rows as $row) {
             $row->shopify_order_id = $shopifyId;
             $row->shopify_fulfilled_at = now();
-            $row->shopify_push_checked_at = now();
+            // Left unset on purpose: the marketplace push (order-fulfillment:push-tracking) picks this row up on its next run.
+            $row->shopify_push_checked_at = null;
             $row->shopify_next_try_at = null;
             $row->shopify_push_message = mb_substr('reconcile: '.$message, 0, 255);
             $row->save();
