@@ -1109,8 +1109,16 @@
         }
         return Number(d.prmt_pct != null && d.prmt_pct !== '' ? d.prmt_pct : d._prmt_pct_applied) || 0;
     }
-    /** 12% $ = Price (Temu Price) × 12%. */
+    /** The S PRC the promo chain is built on (same value as the S PRC column). 0 when there is none. */
+    function temu3PromoSprice(d) {
+        if (!d || d.is_parent) return 0;
+        const s = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
+        return s > 0 ? +Number(s).toFixed(2) : 0;
+    }
+    /** 12% $ = S PRC × 12% (falls back to Temu Price × 12% when there is no S PRC). */
     function temu3TwelvePct(d) {
+        const s = temu3PromoSprice(d);
+        if (s > 0) return +(s * 0.12).toFixed(2);
         const price = temu2FullPriceFromRow(d);
         return price > 0 ? +(price * 0.12).toFixed(2) : 0;
     }
@@ -1151,12 +1159,24 @@
     /** Disc $ = Std Prc × Disc % (Disc % = PRMT %). */
     function temu3DiscAmt(d) {
         const std = parseFloat(d && d.STANDARD_PRICE) || 0;
+        const s = temu3PromoSprice(d);
+        if (s > 0) {
+            // S PRC drives it: Disc $ is whatever takes Std down to the S R prc after the 12%, so the chain lands exactly on the S side.
+            if (!(std > 0)) return 0;
+            return +(std - temu3TwelvePct(d) - temu3SRecoveryRounded(s)).toFixed(2);
+        }
         const pct = temu3PromoPct(d);
         if (!(std > 0) || !(pct > 0)) return 0;
         return +(std * pct / 100).toFixed(2);
     }
-    /** Price After Discount = Std Prc − 12% $ − Disc $. */
+    /** S R prc = S PRC × 0.88, rounded to cents (same rounding as S Base Prc). */
+    function temu3SRecoveryRounded(s) {
+        return Math.round(s * TEMU2_S_RECOVERY_RATE * 100) / 100;
+    }
+    /** Price After Discount = Std Prc − 12% $ − Disc $. With an S PRC it is exactly S R prc (S PRC × 0.88). */
     function temu3PriceAfterDisc(d) {
+        const s = temu3PromoSprice(d);
+        if (s > 0) return +temu3SRecoveryRounded(s).toFixed(2);
         const std = parseFloat(d && d.STANDARD_PRICE) || 0;
         if (!(std > 0)) return null;
         return +(std - temu3TwelvePct(d) - temu3DiscAmt(d)).toFixed(2);
@@ -1165,6 +1185,8 @@
     function temu3ShipDisc(d) {
         const p = temu3PriceAfterDisc(d);
         if (p == null) return null;
+        // With an S PRC the cut-off is the S Base Prc rule (S R prc under $30); otherwise $30 or less.
+        if (temu3PromoSprice(d) > 0) return p < 30 ? 2.99 : 0;
         return p <= 30 ? 2.99 : 0;
     }
     /** Promo Base Prc = Price After Discount − Ship Disc. */
@@ -4052,13 +4074,15 @@
                     hozAlign: "center",
                     minWidth: 70,
                     sorter: temuSortBy(function(d) { return temu3DiscAmt(d); }),
-                    headerTooltip: "Disc $ = Std Prc × Disc % (Disc % = PRMT %).",
+                    headerTooltip: "Disc $ = Std Prc − 12% $ − S R prc, so the promo chain lands on the S side (S PRC × 0.88). With no S PRC: Std Prc × Disc % (Disc % = PRMT %).",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const amt = temu3DiscAmt(row);
                         if (!(amt > 0)) return '<span style="color: #6c757d;">—</span>';
                         const std = parseFloat(row.STANDARD_PRICE) || 0;
-                        const tip = 'Disc $ = Std Prc × Disc % → $' + std.toFixed(2) + ' × ' + temu3PromoPct(row) + '% = $' + amt.toFixed(2);
+                        const tip = temu3PromoSprice(row) > 0
+                            ? 'Disc $ = Std $' + std.toFixed(2) + ' − 12% $' + temu3TwelvePct(row).toFixed(2) + ' − S R prc $' + temu3PriceAfterDisc(row).toFixed(2) + ' = $' + amt.toFixed(2)
+                            : 'Disc $ = Std Prc × Disc % → $' + std.toFixed(2) + ' × ' + temu3PromoPct(row) + '% = $' + amt.toFixed(2);
                         return `<span style="font-weight: 600;" title="${tip.replace(/"/g, '&quot;')}">$${amt.toFixed(2)}</span>`;
                     }
                 },
@@ -4068,7 +4092,7 @@
                     hozAlign: "center",
                     minWidth: 80,
                     sorter: temuSortBy(function(d) { const n = temu3PriceAfterDisc(d); return n == null ? -Infinity : n; }),
-                    headerTooltip: "Price After Discount = Std Prc − 12% $ − Disc $.",
+                    headerTooltip: "Price After Discount = Std Prc − 12% $ − Disc $ = S R prc (S PRC × 0.88) when there is an S PRC.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const p = temu3PriceAfterDisc(row);
@@ -4101,7 +4125,7 @@
                     hozAlign: "center",
                     minWidth: 80,
                     sorter: temuSortBy(function(d) { const n = temu3PromoBasePrc(d); return n == null ? -Infinity : n; }),
-                    headerTooltip: "Promo Base Prc = Price After Discount − Ship Disc.",
+                    headerTooltip: "Promo Base Prc = Price After Discount − Ship Disc. Built on the S PRC, so it equals S Base Prc.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const v = temu3PromoBasePrc(row);
