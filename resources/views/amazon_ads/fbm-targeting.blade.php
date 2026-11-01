@@ -218,6 +218,10 @@
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title"><i class="fas fa-bullseye"></i> <span id="aft-modal-title">Targets</span></h5>
+                <button type="button" id="aft-push-campaign" class="btn btn-warning btn-sm fw-bold ms-auto me-2"
+                    title="Add this campaign's keywords that are missing on Amazon, through the Amazon Ads API">
+                    <i class="fas fa-upload"></i> Push to Amazon
+                </button>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -1022,6 +1026,8 @@
         tgt.filters = { text: '', match: '', clicks: '', sold: '', cvr: '' };
         document.querySelectorAll('#aftTargetsModal [data-filter]').forEach(function (el) { el.value = ''; });
         showModalMsg('', true);
+        const pushCampBtn = document.getElementById('aft-push-campaign');
+        if (pushCampBtn) pushCampBtn.style.display = tgt.kind === 'neg' ? 'none' : '';
         setTargetItems(tgt.kind === 'neg' ? row.negatives : row.targets, tgt.kind === 'neg' ? row.ignored_negatives : row.ignored_targets);
         closeEditPanel();
         renderTargetsModal();
@@ -1792,6 +1798,49 @@
         };
         tick();
     }
+
+    // "Push to Amazon" inside the Targets modal: push only this campaign's missing keywords.
+    (function wirePushCampaign() {
+        const btn = document.getElementById('aft-push-campaign');
+        if (!btn) return;
+        const label = '<i class="fas fa-upload"></i> Push to Amazon';
+        const finish = function (text, ok) {
+            btn.disabled = false;
+            btn.innerHTML = label;
+            showModalMsg(text, ok);
+        };
+        btn.addEventListener('click', function () {
+            if (!tgt.campaignId) return;
+            if (!confirm('Add the keywords of "' + tgt.name + '" that are missing on Amazon, through the Amazon Ads API?')) return;
+            const cid = tgt.campaignId;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Pushing…';
+            showModalMsg('Pushing to Amazon…', true);
+            pkPost(false, ['KW|' + cid]).then(function (r) {
+                if (!r.ok) { finish((r.body && r.body.message) || 'Push failed.', false); return; }
+                const tick = function () {
+                    fetch(pushStatusUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                        .then(function (res) { return res.json(); })
+                        .then(function (b) {
+                            if (b.status === 'running') {
+                                showModalMsg('Pushing to Amazon… ' + (b.message || ''), true);
+                                setTimeout(tick, 3000);
+                                return;
+                            }
+                            const mine = (b.rows || []).filter(function (x) { return x.type === 'KW' && String(x.campaign_id) === cid; });
+                            if (b.status === 'error') { finish(b.message || 'Push failed.', false); return; }
+                            if (!mine.length) { finish('Nothing to push: every keyword of this campaign is already on Amazon.', true); return; }
+                            const added = mine.reduce(function (s, x) { return s + Number(x.added || 0); }, 0);
+                            const failed = mine.reduce(function (s, x) { return s + Number(x.failed || 0); }, 0);
+                            const note = (mine.find(function (x) { return x.message; }) || {}).message || '';
+                            finish('Pushed to Amazon: ' + added.toLocaleString() + ' keyword(s) added' + (failed ? ', ' + failed.toLocaleString() + ' failed' + (note ? ' (' + note + ')' : '') : '') + '.', !failed);
+                        })
+                        .catch(function () { setTimeout(tick, 5000); });
+                };
+                tick();
+            }).catch(function (e) { finish('Push failed: ' + e.message, false); });
+        });
+    })();
 
     // ---------- Specific KW (manual, independent of cousins) ----------
     const specificUrls = {
