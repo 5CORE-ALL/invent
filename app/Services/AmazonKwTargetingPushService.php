@@ -100,6 +100,7 @@ class AmazonKwTargetingPushService
         }
 
         $byParent = [];
+        $seenKw = [];
         foreach ($kwCampaigns as $c) {
             $cid = $c['campaign_id'];
             $missing = [];
@@ -116,6 +117,11 @@ class AmazonKwTargetingPushService
             if ($missing === [] || ! $picked('KW', $cid)) {
                 continue;
             }
+            // Renamed campaigns can share one Amazon campaign id: push / preview it once only.
+            if (isset($seenKw[$cid])) {
+                continue;
+            }
+            $seenKw[$cid] = true;
 
             $row = ['type' => 'KW', 'campaign_id' => $cid, 'campaign_name' => $c['campaign_name'], 'parent' => $c['parent'],
                 'to_add' => count($missing), 'added' => 0, 'failed' => 0, 'message' => ''];
@@ -180,12 +186,28 @@ class AmazonKwTargetingPushService
             }
         }
 
+        // Several parents can be linked to the same HL campaign: merge their keywords into one row per campaign.
+        $byHl = [];
         foreach ($byParent as $parentKey => $keywords) {
             $hl = $hlByParent[$parentKey] ?? null;
             if (! $hl || ! isset($hlIds[$hl['id']])) {
                 continue;
             }
             $hid = $hl['id'];
+            if (! isset($byHl[$hid])) {
+                $byHl[$hid] = ['hl' => $hl, 'parents' => [], 'keywords' => []];
+            }
+            $byHl[$hid]['parents'][] = $parentKey;
+            foreach ($keywords as $k => $kw) {
+                $byHl[$hid]['keywords'][$k] = $kw;
+            }
+        }
+
+        foreach ($byHl as $hid => $entry) {
+            $hid = (string) $hid;
+            $hl = $entry['hl'];
+            $keywords = $entry['keywords'];
+            $parentKey = implode(', ', $entry['parents']);
             $missing = [];
             foreach ($keywords as $kw) {
                 if (! isset($liveSb[$hid][$this->key($kw['text'], $kw['match'])])) {
@@ -213,7 +235,6 @@ class AmazonKwTargetingPushService
                             'keywordText' => $kw['text'],
                             'matchType' => strtolower($kw['match']),
                             'bid' => $bid,
-                            'state' => 'enabled',
                         ], $chunk);
                         try {
                             $resp = $this->ads->createSbKeywords($payload);
@@ -303,7 +324,8 @@ class AmazonKwTargetingPushService
                 $ok++;
             } else {
                 $detail = (string) ($it['details'] ?? $it['description'] ?? $code);
-                if (stripos($detail, 'duplicate') !== false) {
+                $blob = strtolower((string) json_encode($it));
+                if (str_contains($blob, 'duplicate') || str_contains($blob, 'already exists')) {
                     continue; // already on the campaign
                 }
                 $bad++;

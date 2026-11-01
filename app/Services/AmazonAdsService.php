@@ -1446,16 +1446,24 @@ class AmazonAdsService
     }
 
     /**
-     * Create Sponsored Brands keywords (v3.2 list body).
+     * Create Sponsored Brands keywords (plain JSON list body; `state` is not allowed on create).
+     * Amazon answers 415 for the vnd.sbkeyword content types and 406 for explicit Accept values,
+     * so send application/json and accept anything (same as the working bid PUT).
      *
-     * @param  list<array<string, mixed>>  $keywords  campaignId, adGroupId, keywordText, matchType, bid, state
+     * @param  list<array<string, mixed>>  $keywords  campaignId, adGroupId, keywordText, matchType, bid
      * @return array<string, mixed>
      */
     public function createSbKeywords(array $keywords): array
     {
-        return $this->post('/sb/keywords', array_values($keywords), [
-            'Content-Type' => 'application/vnd.sbkeyword.v3.2+json',
-            'Accept' => 'application/vnd.sbkeyword.v3.2+json',
+        $rows = array_map(static function ($k) {
+            unset($k['state']);
+
+            return $k;
+        }, array_values($keywords));
+
+        return $this->post('/sb/keywords', $rows, [
+            'Content-Type' => 'application/json',
+            'Accept' => '*/*',
         ]);
     }
 
@@ -2343,7 +2351,7 @@ class AmazonAdsService
             if (is_array($errorList)) {
                 foreach ($errorList as $e) {
                     $msg = $this->extractAmazonErrorMessage($e);
-                    if (stripos($msg, 'duplicate') !== false) {
+                    if ($this->isDuplicateKeywordError($e)) {
                         $duplicates++;
                     } else {
                         $failed++;
@@ -2436,7 +2444,7 @@ class AmazonAdsService
             if (is_array($errList)) {
                 foreach ($errList as $e) {
                     $msg = $this->extractAmazonErrorMessage($e);
-                    if (stripos($msg, 'duplicate') !== false) {
+                    if ($this->isDuplicateKeywordError($e)) {
                         $duplicates++;
                     } else {
                         $failed++;
@@ -2625,7 +2633,7 @@ class AmazonAdsService
             if (is_array($errorList)) {
                 foreach ($errorList as $e) {
                     $msg = $this->extractAmazonErrorMessage($e);
-                    if (stripos($msg, 'duplicate') !== false) {
+                    if ($this->isDuplicateKeywordError($e)) {
                         $duplicates++;
                     } else {
                         $failed++;
@@ -2703,7 +2711,26 @@ class AmazonAdsService
             }
         }
 
-        return '';
+        // SP v3 nests the text one level deeper: errors.0.errorValue.<errorKind>.message (e.g. duplicateValueError).
+        foreach ((array) data_get($error, 'errors.0.errorValue', []) as $inner) {
+            if (is_array($inner) && trim((string) ($inner['message'] ?? '')) !== '') {
+                return trim((string) $inner['message']);
+            }
+        }
+
+        return trim((string) data_get($error, 'errors.0.errorType', ''));
+    }
+
+    /**
+     * True when an Amazon per-item error only says the keyword is already there (nothing to fix).
+     *
+     * @param  mixed  $error
+     */
+    protected function isDuplicateKeywordError($error): bool
+    {
+        $blob = strtolower(is_array($error) ? (string) json_encode($error) : (string) $error);
+
+        return str_contains($blob, 'duplicate') || str_contains($blob, 'already exists');
     }
 
     public function amazonErrorMessage(\Throwable $e): string
