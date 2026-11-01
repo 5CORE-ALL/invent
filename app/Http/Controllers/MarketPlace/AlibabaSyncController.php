@@ -1022,8 +1022,10 @@ class AlibabaSyncController extends Controller
         }
 
         $result = app(AlibabaInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
-        $nextOffset = $offset + count($batch);
-        $done = $nextOffset >= $total;
+        $rateLimited = ! empty($result['rate_limited']) && (int) ($result['updated'] ?? 0) === 0;
+        // A rate limit updated nothing. Retry the same SKUs after the ban instead of skipping them.
+        $nextOffset = $rateLimited ? $offset : $offset + count($batch);
+        $done = ! $rateLimited && $nextOffset >= $total;
 
         return response()->json([
             'success' => true,
@@ -1033,9 +1035,13 @@ class AlibabaSyncController extends Controller
             'updated' => (int) ($result['updated'] ?? 0),
             'failed' => (int) ($result['failed'] ?? 0),
             'skipped' => (int) ($result['skipped'] ?? 0),
-            'message' => $done
-                ? 'Mismatch inventory sync finished.'
-                : 'Batch synced — call again with offset='.$nextOffset.' to continue.',
+            'rate_limited' => $rateLimited,
+            'retry_after_ms' => $rateLimited ? 3000 : 0,
+            'message' => $rateLimited
+                ? (string) ($result['message'] ?? 'Alibaba asked us to slow down. Retrying this SKU.')
+                : ($done
+                    ? 'Mismatch inventory sync finished.'
+                    : 'Batch synced — call again with offset='.$nextOffset.' to continue.'),
         ]);
     }
 

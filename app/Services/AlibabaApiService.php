@@ -443,6 +443,7 @@ class AlibabaApiService extends AliExpressApiService
         $updated = 0;
         $errors = [];
         $failedSkus = [];
+        $rateLimited = false;
         $productIds = array_keys($byProduct);
 
         foreach ($productIds as $index => $productId) {
@@ -513,6 +514,12 @@ class AlibabaApiService extends AliExpressApiService
                         $failedSkus[] = $skuCode;
                         $errors[] = $skuCode.': '.$failure;
                     }
+                    if ($this->isFrequencyLimit($raw)) {
+                        // Alibaba's ban is one second, and calling the rest of the batch now only extends it.
+                        // Leave the remaining SKUs unattempted so the caller retries them after the ban.
+                        $rateLimited = true;
+                        break;
+                    }
                     if ($this->isAuthError($raw) || $this->isAuthError(['message' => $failure])) {
                         foreach (array_slice($productIds, $index + 1) as $laterId) {
                             foreach ($byProduct[$laterId] as $item) {
@@ -544,6 +551,7 @@ class AlibabaApiService extends AliExpressApiService
             'updated' => $updated,
             'errors' => $errors,
             'failed_skus' => $failedSkus,
+            'rate_limited' => $rateLimited,
         ];
     }
 
@@ -1321,36 +1329,48 @@ class AlibabaApiService extends AliExpressApiService
     private static float $gatewayGapSeconds = 0.30;
 
     /**
-     * Alibaba bans a seller app for a second when it calls too fast ("Api access frequency exceeds the limit").
-     * One inventory push is three calls per product, so a long mismatch pass hit that ban on almost every SKU
-     * and nothing synced. Space the calls out and, when the ban still comes, wait it out and try again.
+     * Alibaba bans this app for one second when two calls overlap ("Api access frequency exceeds the limit").
+     * Retrying that in a loop is what kept the ban alive: each retry is another call, the browser request
+     * sat there until nginx returned 504, and no SKU was updated. One call at a time, one retry.
      *
      * @param  array<string, mixed>  $businessParams
      * @return array<string, mixed>
      */
     protected function callRestGateway(string $method, array $businessParams = []): array
     {
-        $tries = 0;
-        while (true) {
-            $this->waitForGatewaySlot();
-            $raw = parent::callRestGateway($method, $businessParams);
-            self::$lastGatewayCallAt = microtime(true);
+        if (app()->runningUnitTests()) {
+            return parent::callRestGateway($method, $businessParams);
+        }
 
-            if (! $this->isFrequencyLimit($raw)) {
-                return $raw;
+        $last = null;
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $lock = $this->acquireGatewayTurn();
+            if ($lock === null) {
+                return [
+                    'success' => false,
+                    'message' => 'Api access frequency exceeds the limit. this ban will last 1 seconds',
+                ];
             }
-
-            self::$gatewayGapSeconds = min(1.2, self::$gatewayGapSeconds + 0.1);
-            $this->noteGatewayBan($tries);
-            if (++$tries > 6) {
-                return $raw;
+            try {
+                $last = parent::callRestGateway($method, $businessParams);
+            } finally {
+                try {
+                    $lock->release();
+                } catch (\Throwable $e) {
+                    // ignore
+                }
             }
-            \Illuminate\Support\Facades\Log::info('Alibaba API rate limit hit, waiting before retry', [
+            if (! $this->isFrequencyLimit($last)) {
+                return $last;
+            }
+            $this->noteGatewayBan();
+            \Illuminate\Support\Facades\Log::info('Alibaba API rate limit hit', [
                 'method' => $method,
-                'try' => $tries,
-                'gap' => self::$gatewayGapSeconds,
+                'attempt' => $attempt + 1,
             ]);
         }
+
+        return $last ?? ['success' => false, 'message' => 'Api access frequency exceeds the limit. this ban will last 1 seconds'];
     }
 
     private const GATEWAY_LOCK = 'alibaba:gateway:slot';
@@ -1362,68 +1382,57 @@ class AlibabaApiService extends AliExpressApiService
     private const GATEWAY_BAN = 'alibaba:gateway:ban_until';
 
     /**
-     * Every queue worker, the scheduler and the web button call Alibaba with the same app key, and Alibaba
-     * counts them together. A per-process gap did nothing against that, so the spacing and the ban are
-     * kept in the shared cache: one call starts at a time across all processes, and when Alibaba says
-     * "too fast" every process waits out the ban.
+     * One Alibaba call in flight across every process, at least 1.2s after the previous one.
+     * The lock is held for the HTTP call itself (the caller releases it). A wait longer than
+     * a couple of seconds returns null so the web request ends instead of sitting until a 504.
+     *
+     * @return \Illuminate\Contracts\Cache\Lock|null
      */
-    private function waitForGatewaySlot(): void
+    private function acquireGatewayTurn(): mixed
     {
-        if (app()->runningUnitTests()) {
-            return;
-        }
-
-        $lock = null;
         try {
-            $lock = \Illuminate\Support\Facades\Cache::lock(self::GATEWAY_LOCK, 20);
-            $lock->block(25);
-        } catch (\Throwable $e) {
-            $lock = null;
-            // No shared lock available: fall back to this process's own spacing.
-            if (self::$lastGatewayCallAt > 0) {
-                $wait = self::$gatewayGapSeconds - (microtime(true) - self::$lastGatewayCallAt);
-                if ($wait > 0) {
-                    usleep((int) ($wait * 1000000));
-                }
+            $lock = \Illuminate\Support\Facades\Cache::lock(self::GATEWAY_LOCK, 45);
+            if (! $lock->block(8)) {
+                return null;
             }
-
-            return;
+        } catch (\Throwable $e) {
+            return null;
         }
 
         try {
             $cache = \Illuminate\Support\Facades\Cache::getFacadeRoot();
-            $gap = max(self::$gatewayGapSeconds, (float) $cache->get(self::GATEWAY_GAP, 0.35));
             $last = (float) $cache->get(self::GATEWAY_LAST, 0);
             $banUntil = (float) $cache->get(self::GATEWAY_BAN, 0);
-            $wait = max($last + $gap, $banUntil) - microtime(true);
+            $wait = max($last + 1.2, $banUntil) - microtime(true);
+            if ($wait > 2.5) {
+                $lock->release();
+
+                return null;
+            }
             if ($wait > 0) {
-                usleep((int) (min($wait, 12) * 1000000));
+                usleep((int) ($wait * 1000000));
             }
             $cache->put(self::GATEWAY_LAST, microtime(true), 120);
         } catch (\Throwable $e) {
-            // ignore
-        } finally {
             try {
                 $lock->release();
-            } catch (\Throwable $e) {
+            } catch (\Throwable $e2) {
                 // ignore
             }
+
+            return null;
         }
+
+        return $lock;
     }
 
-    /** Alibaba banned the app: widen the shared gap and make every process wait out the ban. */
-    private function noteGatewayBan(int $tries): void
+    /** Alibaba banned the app for one second. The next call waits this out instead of calling again. */
+    private function noteGatewayBan(): void
     {
-        if (app()->runningUnitTests()) {
-            return;
-        }
         try {
-            $cache = \Illuminate\Support\Facades\Cache::getFacadeRoot();
-            $gap = min(1.2, max(self::$gatewayGapSeconds, (float) $cache->get(self::GATEWAY_GAP, 0.35)) + 0.1);
-            $cache->put(self::GATEWAY_GAP, $gap, 900);
-            $cache->put(self::GATEWAY_BAN, microtime(true) + 1.4 + 0.5 * $tries, 60);
+            \Illuminate\Support\Facades\Cache::put(self::GATEWAY_BAN, microtime(true) + 2.5, 30);
         } catch (\Throwable $e) {
-            usleep((int) ((1.2 + 0.4 * $tries) * 1000000));
+            usleep(2500000);
         }
     }
 

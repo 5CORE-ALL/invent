@@ -135,8 +135,9 @@ class AlibabaInventorySyncService
 
         return [
             'updated' => $pushed,
-            'failed' => count($inventoryRows) - $pushed,
+            'failed' => count($invResult['failed_skus'] ?? []),
             'skipped' => $skipped,
+            'rate_limited' => ! empty($invResult['rate_limited']),
             'message' => $invResult['message'] ?? 'Alibaba inventory update failed.',
         ];
     }

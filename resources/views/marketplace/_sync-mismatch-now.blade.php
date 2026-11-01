@@ -37,6 +37,7 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
         return text;
     }
     var retries = 0;
+    var rateRetries = 0;
     var limit = {{ (int) ($limit ?? 1) }};
 
     function finish(msg) {
@@ -76,6 +77,13 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 return;
             }
             retries = 0;
+            if (data.rate_limited && rateRetries < 8) {
+                rateRetries++;
+                btn.innerHTML = '<i class="ri-loader-4-line"></i> Alibaba is busy, retrying…';
+                setTimeout(tick, data.retry_after_ms || 3000);
+                return;
+            }
+            rateRetries = 0;
             if (data.prepared) {
                 ready = true;
                 if (data.done) {
