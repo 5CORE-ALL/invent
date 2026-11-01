@@ -1201,14 +1201,45 @@
         pullMsg.textContent = text;
     }
 
+    const pullStatusUrl = @json(route('amazon.ads.fbm-targeting.pull-status'));
     pullDefs.forEach(function (def) {
         if (!def.btn) return;
+        const kind = def.what === 'keywords' ? 'kw' : 'neg';
+        const original = def.btn.innerHTML;
+
+        function finish() {
+            pullDefs.forEach(function (d) { if (d.btn) d.btn.disabled = false; });
+            def.btn.innerHTML = original;
+        }
+
+        function applyStatus(b) {
+            if (b.status === 'done') {
+                showPullMsg((b.message || 'Done.') + ' (' + (b.campaigns || 0) + ' KW campaigns, ' + (b.fetched || 0) + ' ' + def.what + ' fetched)', true);
+                table.setPage(1);
+                finish();
+                return true;
+            }
+            if (b.status === 'error') {
+                showPullMsg(b.message || 'Pull failed.', false);
+                finish();
+                return true;
+            }
+            showPullMsg((b.message || 'Pulling…') + ' (running in the background, you can keep working)', true);
+            return false;
+        }
+
+        function poll() {
+            fetch(pullStatusUrl + '?kind=' + kind, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (res) { return res.json(); })
+                .then(function (b) { if (!applyStatus(b)) setTimeout(poll, 4000); })
+                .catch(function () { setTimeout(poll, 6000); }); // a dropped poll must not kill the pull
+        }
+
         def.btn.addEventListener('click', function () {
             if (!confirm('Pull ' + def.what + ' from all Amazon KW campaigns? Only ones missing in the app will be added; existing ones are kept.')) return;
-            const original = def.btn.innerHTML;
             pullDefs.forEach(function (d) { if (d.btn) d.btn.disabled = true; });
             def.btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Pulling…';
-            showPullMsg('Pulling ' + def.what + ' from Amazon, this can take a minute…', true);
+            showPullMsg('Starting the pull of ' + def.what + ' from Amazon…', true);
             fetch(def.url, {
                 method: 'POST',
                 headers: {
@@ -1217,22 +1248,18 @@
                     'X-CSRF-TOKEN': csrf,
                 },
             }).then(function (res) {
-                return res.json().catch(function () { return {}; }).then(function (body) {
-                    return { ok: res.ok && body.success !== false, body: body };
-                });
+                return res.json().then(function (body) { return { ok: res.ok && body.success !== false, body: body }; },
+                    function () { return { ok: false, body: { message: 'Pull failed to start (HTTP ' + res.status + ').' } }; });
             }).then(function (r) {
-                const b = r.body || {};
-                if (r.ok) {
-                    showPullMsg((b.message || 'Done.') + ' (' + (b.campaigns || 0) + ' KW campaigns, ' + (b.fetched || 0) + ' ' + def.what + ' fetched)', true);
-                    table.setPage(1);
-                } else {
-                    showPullMsg(b.message || 'Pull failed.', false);
+                if (!r.ok) {
+                    showPullMsg(r.body.message || 'Pull failed.', false);
+                    finish();
+                    return;
                 }
+                poll();
             }).catch(function (e) {
                 showPullMsg('Pull failed: ' + e.message, false);
-            }).finally(function () {
-                pullDefs.forEach(function (d) { if (d.btn) d.btn.disabled = false; });
-                def.btn.innerHTML = original;
+                finish();
             });
         });
     });

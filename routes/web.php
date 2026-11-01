@@ -3903,6 +3903,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-ads/fbm-targeting', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'index'])->name('amazon.ads.fbm-targeting');
     Route::get('/amazon-ads/fbm-targeting/data', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'data'])->name('amazon.ads.fbm-targeting.data');
     Route::post('/amazon-ads/fbm-targeting/pull-keywords', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'pullKeywords'])->name('amazon.ads.fbm-targeting.pull-keywords');
+    Route::get('/amazon-ads/fbm-targeting/pull-status', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'pullStatus'])->name('amazon.ads.fbm-targeting.pull-status');
     Route::post('/amazon-ads/fbm-targeting/pull-negatives', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'pullNegatives'])->name('amazon.ads.fbm-targeting.pull-negatives');
     Route::post('/amazon-ads/fbm-targeting/push-keywords', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'pushKeywords'])->name('amazon.ads.fbm-targeting.push-keywords');
     Route::post('/amazon-ads/fbm-targeting/lifetime/sync', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'syncLifetime'])->name('amazon.ads.fbm-targeting.lifetime.sync');

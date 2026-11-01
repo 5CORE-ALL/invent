@@ -1576,7 +1576,6 @@ class AmazonFbmTargetingController extends Controller
 
     private function pullKind(string $kind): JsonResponse
     {
-        $label = $kind === 'neg' ? 'negative keyword' : 'keyword';
         $table = $this->storeTable($kind);
 
         if (! $this->hasTable(self::SP_TABLE) || ! $this->hasTable($table)) {
@@ -1586,7 +1585,77 @@ class AmazonFbmTargetingController extends Controller
             ], 500);
         }
 
-        @set_time_limit(600);
+        // Reading every KW campaign from Amazon takes longer than a web request may last (nginx 120s),
+        // so it runs in the background and the page polls pullStatus().
+        $key = self::PULL_STATE.'_'.$kind;
+        $state = Cache::get($key);
+        $alive = is_array($state) && ($state['status'] ?? '') === 'running'
+            && (time() - (int) ($state['heartbeat'] ?? 0)) < self::PUSH_STALE_SECONDS;
+        if ($alive) {
+            return response()->json(['success' => true, 'started' => true, 'already' => true] + $this->pullStatusBody($kind));
+        }
+
+        Cache::put($key, [
+            'status' => 'running', 'started_at' => now()->toDateTimeString(), 'heartbeat' => time(),
+            'message' => 'Starting…',
+        ], now()->addHours(2));
+
+        try {
+            $this->spawnArtisan('app:amazon-kw-targeting-pull '.$kind, 'fbm-targeting-pull.log');
+        } catch (\Throwable $e) {
+            Cache::forget($key);
+            Log::warning('AmazonFbmTargetingController: pull spawn failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Could not start the pull: '.$e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true, 'started' => true] + $this->pullStatusBody($kind));
+    }
+
+    private const PULL_STATE = 'amz_fbm_pull_state';
+
+    public function pullStatus(Request $request): JsonResponse
+    {
+        $kind = $request->query('kind') === 'neg' ? 'neg' : 'kw';
+
+        return response()->json(['success' => true] + $this->pullStatusBody($kind));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function pullStatusBody(string $kind): array
+    {
+        $key = self::PULL_STATE.'_'.$kind;
+        $s = Cache::get($key);
+        if (! is_array($s)) {
+            return ['status' => 'idle'];
+        }
+        if (($s['status'] ?? '') === 'running' && (time() - (int) ($s['heartbeat'] ?? 0)) >= self::PUSH_STALE_SECONDS) {
+            $s['status'] = 'error';
+            $s['message'] = 'The background pull stopped reporting progress (see storage/logs/fbm-targeting-pull.log).';
+            Cache::put($key, $s, now()->addHours(2));
+        }
+        unset($s['heartbeat']);
+
+        return $s;
+    }
+
+    public function recordPullState(string $kind, array $patch): void
+    {
+        $key = self::PULL_STATE.'_'.$kind;
+        $s = Cache::get($key);
+        Cache::put($key, array_merge(is_array($s) ? $s : [], $patch, ['heartbeat' => time()]), now()->addHours(2));
+    }
+
+    /**
+     * The actual pull (runs in the background command). Returns the result summary.
+     *
+     * @return array<string, mixed>
+     */
+    public function runPull(string $kind): array
+    {
+        $label = $kind === 'neg' ? 'negative keyword' : 'keyword';
 
         $names = [];
         foreach ($this->campaignsGroupedByParent() as $c) {
@@ -1595,24 +1664,13 @@ class AmazonFbmTargetingController extends Controller
             }
         }
         if ($names === []) {
-            return response()->json([
-                'success' => true,
-                'message' => 'No KW campaigns found.',
-                'campaigns' => 0, 'fetched' => 0, 'added' => 0, 'skipped' => 0,
-            ]);
+            return ['message' => 'No KW campaigns found.', 'campaigns' => 0, 'fetched' => 0, 'added' => 0, 'skipped' => 0];
         }
 
-        try {
-            $r = $this->ingestKeywords($names, $kind);
-        } catch (\Throwable $e) {
-            Log::warning('AmazonFbmTargetingController: pull '.$label.'s failed', ['error' => $e->getMessage()]);
+        $this->recordPullState($kind, ['message' => 'Reading '.$label.'s of '.count($names).' KW campaigns from Amazon…']);
+        $r = $this->ingestKeywords($names, $kind);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Could not fetch '.$label.'s from Amazon: '.$e->getMessage(),
-            ], 502);
-        }
-
+        $this->recordPullState($kind, ['message' => 'Syncing KW cousins…']);
         $cousinAdded = 0;
         if ($this->hasTable(self::COUSIN_TABLE)) {
             $done = [];
@@ -1631,15 +1689,14 @@ class AmazonFbmTargetingController extends Controller
             $message .= ' '.$cousinAdded.' copied between KW cousins.';
         }
 
-        return response()->json([
-            'success' => true,
+        return [
             'message' => $message,
             'campaigns' => count($names),
             'fetched' => $r['fetched'],
             'added' => $r['added'],
             'skipped' => $r['skipped'],
             'cousin_added' => $cousinAdded,
-        ]);
+        ];
     }
 
     /**
