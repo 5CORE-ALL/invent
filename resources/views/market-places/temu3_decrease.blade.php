@@ -1079,7 +1079,9 @@
     /** The Price the Gpft / Npft percentages and the Ads cut are taken on: recovery ÷ 0.88 of the live base (unrounded, like S Profit ÷ S PRC). */
     function temu3PriceBasis(rowData) {
         const recovery = temu3RecoveryFromBase(rowData && rowData.base_price);
-        return recovery > 0 ? recovery / 0.88 : 0;
+        if (recovery > 0) return recovery / 0.88;
+        // No live Base: the basis is the S PRC itself (same as SGPRFT% ÷ S PRC).
+        return temu3PromoSprice(rowData);
     }
     /** Base that gives this Price (= S Base Prc of that S PRC). */
     function temu2BaseFromFullPrice(full) {
@@ -1201,7 +1203,12 @@
      * (S side: S R prc = S PRC × 0.88, S Profit = S R prc × margin − LP − Ship.) null without a Base.
      */
     function temu2PftDollars(rowData) {
-        const recovery = temu3RecoveryFromBase(rowData && rowData.base_price);
+        let recovery = temu3RecoveryFromBase(rowData && rowData.base_price);
+        // No live Base from Temu: use the S PRC calc (S R prc = S PRC × 0.88) so Gpft / Groi / Npft / Nroi match the S side.
+        if (!(recovery > 0)) {
+            const s = temu3PromoSprice(rowData);
+            recovery = s > 0 ? s * TEMU2_S_RECOVERY_RATE : 0;
+        }
         if (!(recovery > 0)) return null;
         const lp = parseFloat(rowData && rowData.lp) || 0;
         const ship = parseFloat(rowData && rowData.temu_ship) || 0;
