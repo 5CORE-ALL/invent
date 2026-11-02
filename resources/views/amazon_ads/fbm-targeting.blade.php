@@ -18,6 +18,15 @@
     .amz-fbm-targeting .tabulator-cell { padding: 6px 8px !important; }
     .amz-fbm-targeting .aft-loadbar { background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-bottom:10px; }
     .amz-fbm-targeting .aft-loadbar-top { display:flex; justify-content:space-between; gap:12px; font-size:.85rem; font-weight:600; color:#1e3a8a; margin-bottom:6px; }
+    .amz-fbm-targeting .tabulator-row.aft-has-panel { flex-wrap: wrap; }
+    .amz-fbm-targeting .aft-sku-panel { flex: 0 0 100%; width: 100%; display: block; box-sizing: border-box; clear: both; white-space: normal; text-align: left;
+        padding: 8px 14px 10px; background: #f8fafc; border-top: 1px dashed #94a3b8; font-size: 12px; cursor: default; }
+    .amz-fbm-targeting .aft-sku-panel table { width: 100%; border-collapse: collapse; background: #fff; }
+    .amz-fbm-targeting .aft-sku-panel th, .amz-fbm-targeting .aft-sku-panel td { border: 1px solid #e2e8f0; padding: 3px 8px; vertical-align: middle; }
+    .amz-fbm-targeting .aft-sku-panel thead th { background: #e0ecff; color: #334155; font-weight: 700; }
+    .amz-fbm-targeting .aft-sku-panel img { width: 34px; height: 34px; object-fit: cover; border-radius: 4px; }
+    .amz-fbm-targeting .aft-sku-btn { border: 1px solid #93c5fd; background: #eff6ff; color: #1d4ed8; border-radius: 6px; padding: 1px 8px; font-size: 12px; cursor: pointer; }
+    .amz-fbm-targeting .aft-sku-btn.is-open { background: #1d4ed8; color: #fff; }
     .amz-fbm-targeting .aft-status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.06); vertical-align: middle; }
     .amz-fbm-targeting .aft-low-badge { font-size: .78rem; cursor: pointer; user-select: none; border: 2px solid transparent; }
     .amz-fbm-targeting .aft-low-badge.is-active { border-color: #111827; box-shadow: 0 0 0 2px #fde68a; }
@@ -497,6 +506,80 @@
         return '<span title="' + escapeHtml(tip) + '"' + (withData === 0 ? ' class="text-muted"' : '') + '>' + n.toLocaleString() + '</span>';
     }
 
+    // ---------- SKUs of a campaign, shown under its row (same data as "Campaign SKUs" on /amazon-ads/all) ----------
+    const SKU_URL = @json(route('amazon.ads.campaign-skus'));
+
+    function skuState(st) {
+        const s = String(st || '').trim().toUpperCase();
+        if (!s) return '<span class="aft-empty">-</span>';
+        const color = s === 'ENABLED' ? '#16a34a' : (s === 'PAUSED' ? '#b45309' : '#6b7280');
+        return '<strong style="color:' + color + ';">' + escapeHtml(s) + '</strong>';
+    }
+
+    function money(v) {
+        return v === null || v === undefined || v === '' || isNaN(Number(v)) ? '<span class="aft-empty">—</span>' : '$' + Number(v).toFixed(2);
+    }
+
+    function skuRowsHtml(list, offAd) {
+        return list.map(function (s) {
+            const rating = s.amz_avg_rating !== null && s.amz_avg_rating !== undefined
+                ? '★ ' + Number(s.amz_avg_rating).toFixed(1) + ' (' + Number(s.amz_review_count || 0).toLocaleString() + ')'
+                : '<span class="aft-empty">—</span>';
+            const inv = s.inv === null || s.inv === undefined ? '<span class="aft-empty">—</span>'
+                : '<span style="' + (Number(s.inv) <= 0 ? 'color:#dc2626;font-weight:700;' : '') + '">' + Number(s.inv).toLocaleString() + '</span>';
+            return '<tr>' +
+                '<td style="width:48px;text-align:center;">' + (s.image ? '<img src="' + escapeHtml(s.image) + '" alt="">' : '') + '</td>' +
+                '<td style="text-align:right;">' + inv + '</td>' +
+                '<td><strong>' + escapeHtml(s.sku || '') + '</strong></td>' +
+                '<td>' + escapeHtml(s.asin || '') + '</td>' +
+                '<td style="text-align:right;">' + money(s.price) + '</td>' +
+                '<td style="text-align:right;">' + (s.lmp !== null && s.lmp !== undefined ? '<span style="color:#16a34a;">' + money(s.lmp) + '</span>' : '<span class="aft-empty">—</span>') + '</td>' +
+                '<td>' + rating + '</td>' +
+                '<td>' + (offAd ? '<span class="text-muted">Not on this ad</span>' : skuState(s.state)) + '</td></tr>';
+        }).join('');
+    }
+
+    function skuPanelHtml(d, body) {
+        const onAd = Array.isArray(body.skus) ? body.skus : [];
+        const parentRows = Array.isArray(body.parent_skus) ? body.parent_skus : [];
+        const st = String(d.status || '').trim().toUpperCase();
+        const head = '<div class="mb-1"><strong>' + escapeHtml(d.campaign_name || '') + '</strong> · campaign status: ' + skuState(st) +
+            ' · ' + onAd.length.toLocaleString() + ' SKU' + (onAd.length === 1 ? '' : 's') + ' on the ad' +
+            (body.parent_family ? ' · parent family <strong>' + escapeHtml(body.parent_family) + '</strong>' + (parentRows.length ? ' (' + parentRows.length.toLocaleString() + ' more SKU' + (parentRows.length === 1 ? '' : 's') + ' not on this ad)' : '') : '') +
+            '</div>';
+        if (!onAd.length && !parentRows.length) return head + '<span class="aft-empty">No SKUs found for this campaign.</span>';
+        return head + '<table><thead><tr><th></th><th>Inv</th><th>SKU</th><th>ASIN</th><th>Item Price</th><th>LMP</th><th>Reviews</th><th>Ad state</th></tr></thead><tbody>' +
+            skuRowsHtml(onAd, false) + skuRowsHtml(parentRows, true) + '</tbody></table>';
+    }
+
+    function toggleSkuPanel(row, btn) {
+        const el = row.getElement();
+        const old = el.querySelector(':scope > .aft-sku-panel');
+        if (old) {
+            old.remove();
+            el.classList.remove('aft-has-panel');
+            if (btn) btn.classList.remove('is-open');
+            row.normalizeHeight();
+            return;
+        }
+        const d = row.getData() || {};
+        const panel = document.createElement('div');
+        panel.className = 'aft-sku-panel';
+        panel.innerHTML = '<span class="text-muted">Loading SKUs…</span>';
+        el.classList.add('aft-has-panel');
+        el.appendChild(panel);
+        if (btn) btn.classList.add('is-open');
+        row.normalizeHeight();
+        const url = SKU_URL + '?campaign_id=' + encodeURIComponent(d.campaign_id || '') + '&campaign_name=' + encodeURIComponent(d.campaign_name || '');
+        fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (res) { return res.json().then(function (b) { return { ok: res.ok, body: b }; }); })
+            .then(function (r) {
+                panel.innerHTML = r.ok ? skuPanelHtml(d, r.body || {}) : '<span class="text-danger">' + escapeHtml((r.body && r.body.message) || 'Could not load SKUs.') + '</span>';
+            })
+            .catch(function () { panel.innerHTML = '<span class="text-danger">Could not load SKUs.</span>'; })
+            .finally(function () { row.normalizeHeight(); });
+    }
+
     const table = new Tabulator('#aft-table', {
         layout: 'fitDataFill', // every column sizes to its data (capped below for long text); the table fills any space left
         placeholder: 'Loading campaigns…',
@@ -682,6 +765,21 @@
                     const color = st === 'ENABLED' ? '#16a34a' : (st === 'PAUSED' ? '#eab308' : '#9ca3af');
                     const label = st.charAt(0) + st.slice(1).toLowerCase();
                     return '<span class="aft-status-dot" style="background:' + color + ';" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '"></span>';
+                },
+            },
+            {
+                title: 'SKUs',
+                field: 'campaign_id',
+                minWidth: 78,
+                maxWidth: 90,
+                hozAlign: 'center',
+                headerSort: false,
+                formatter: function () {
+                    return '<button type="button" class="aft-sku-btn" title="Show the SKUs advertised in this campaign under the row">SKUs ▾</button>';
+                },
+                cellClick: function (e, cell) {
+                    const btn = e.target.closest('.aft-sku-btn');
+                    if (btn) toggleSkuPanel(cell.getRow(), btn);
                 },
             },
             {
