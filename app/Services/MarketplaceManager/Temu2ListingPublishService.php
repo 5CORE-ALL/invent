@@ -556,6 +556,10 @@ class Temu2ListingPublishService
                 'message' => $added['message'] ?? '',
             ]);
 
+            if (! empty($added['pending'])) {
+                return ['success' => false, 'message' => $this->shopLabel().' parent goods '.$existingGoodsId.': '.trim((string) $added['message'])];
+            }
+
             return [
                 'success' => false,
                 'message' => 'Could not add the variation(s) to the existing '.$this->shopLabel().' parent (goods '.$existingGoodsId.'). '
@@ -4506,12 +4510,28 @@ class Temu2ListingPublishService
     }
 
     /**
+     * @return array<string, float> uppercase seller SKU => base price Temu holds now
+     */
+    private function remoteBasePrices(string $goodsId): array
+    {
+        $out = [];
+        foreach ($this->remoteSkuRows($goodsId) as $row) {
+            $sn = strtoupper(trim((string) ($row['skuSn'] ?? $row['outSkuSn'] ?? $row['extCode'] ?? '')));
+            if ($sn !== '' && is_numeric($row['price'] ?? null)) {
+                $out[$sn] = (float) $row['price'];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * True only when every new seller SKU is on this goods in Temu's own SKU list.
      * A second read covers the short delay before a real add shows up.
      *
      * @param  list<array<string, mixed>>  $newSkus
      */
-    private function newSkusAreOnGoods(string $goodsId, array $newSkus): bool
+    private function newSkusAreOnGoods(string $goodsId, array $newSkus, int $waitSeconds = 3): bool
     {
         $want = [];
         foreach ($newSkus as $sku) {
@@ -4544,11 +4564,18 @@ class Temu2ListingPublishService
         if ($present()) {
             return true;
         }
-        if (! app()->runningUnitTests()) {
-            sleep(3);
+        if (app()->runningUnitTests()) {
+            return false;
+        }
+        // Temu applies an add asynchronously: keep reading for a while before calling it absent.
+        for ($waited = 0; $waited < max(3, $waitSeconds); $waited += 5) {
+            sleep(5);
+            if ($present()) {
+                return true;
+            }
         }
 
-        return $present();
+        return false;
     }
 
     /**
@@ -4574,22 +4601,34 @@ class Temu2ListingPublishService
 
         $messages = [];
         $unknownTypes = [];
-        $attempt = function (string $type, array $skus) use ($goodsId, $newSkus, &$messages, &$unknownTypes): ?array {
+        // Temu applies an accepted add asynchronously and locks the goods meanwhile (150010815 "You can edit the
+        // product after the processing is complete"). Either signal means "pending", not "failed": sending the
+        // heavier full update on top of a goods that is still processing only produces misleading errors.
+        $pending = '';
+        $attempt = function (string $type, array $skus, string $label = '') use ($goodsId, $newSkus, &$messages, &$unknownTypes, &$pending): ?array {
             if (isset($unknownTypes[$type])) {
                 return null;
+            }
+            $label = $label !== '' ? $label : $type;
+            $prices = [];
+            foreach ($skus as $s) {
+                $prices[(string) ($s['outSkuSn'] ?? '')] = $s['basePrice']['amount'] ?? null;
             }
             $data = $this->temuCallBody(['type' => $type, 'language' => 'en', 'goodsId' => (int) $goodsId, 'skuList' => $skus], 120);
             $innerFailed = is_array($data['result'] ?? null) && array_key_exists('success', $data['result']) && empty($data['result']['success']);
             if (($data['success'] ?? false) && ! $innerFailed) {
                 // Temu often answers success for a partial update that did not add the SKU. Only a read-back counts.
-                if ($this->newSkusAreOnGoods($goodsId, $newSkus)) {
+                if ($this->newSkusAreOnGoods($goodsId, $newSkus, $type === 'bg.local.goods.partial.update' ? 30 : 3)) {
                     Log::info('Temu add SKU to existing goods: SKU is on the goods', ['type' => $type, 'goods_id' => $goodsId, 'sku_count' => count($skus)]);
 
                     return $data;
                 }
-                $messages[$type] = 'Temu answered success but the new SKU is not on goods '.$goodsId;
+                if ($type === 'bg.local.goods.partial.update') {
+                    $pending = 'Temu accepted the add and is still processing it (goods '.$goodsId.').';
+                }
+                $messages[$label] = 'Temu answered success but the new SKU is not on goods '.$goodsId;
                 Log::warning('Temu add SKU to existing goods: success was not real', [
-                    'type' => $type,
+                    'type' => $label,
                     'goods_id' => $goodsId,
                     'sku_count' => count($skus),
                     'new_spec_ids' => array_map(static fn ($s) => $s['specIdList'] ?? [], $newSkus),
@@ -4599,16 +4638,20 @@ class Temu2ListingPublishService
                 return null;
             }
             $msg = $this->apiErrorMessage($data);
+            if (str_contains($msg, '150010815') || stripos($msg, 'after the processing is complete') !== false) {
+                $pending = 'Temu is still processing an earlier change to goods '.$goodsId.' and locks it until that is done.';
+            }
             if ($this->isUnknownApiType($data)) {
                 $unknownTypes[$type] = true;
             } elseif ($msg !== '') {
-                $messages[$type] = $msg;
+                $messages[$label] = $msg;
             }
             Log::warning('Temu add SKU to existing goods failed', [
-                'type' => $type,
+                'type' => $label,
                 'goods_id' => $goodsId,
                 'sku_count' => count($skus),
                 'message' => $msg,
+                'sku_base_prices' => $prices,
             ]);
 
             return null;
@@ -4617,6 +4660,16 @@ class Temu2ListingPublishService
         // 1) Partial update with just the new SKUs (touches nothing that is already live).
         if (($data = $attempt('bg.local.goods.partial.update', $newSkus)) !== null) {
             return ['success' => true, 'data' => $data];
+        }
+        if ($pending !== '') {
+            Log::info('Temu add SKU to existing goods: pending', ['goods_id' => $goodsId, 'note' => $pending]);
+
+            return [
+                'success' => false,
+                'pending' => true,
+                'message' => $pending.' It is NOT marked listed yet. Wait a few minutes, then click Refresh listings: it links the SKU as soon as Temu shows it under this goods. '
+                    .'If it never appears, Temu rejected it during processing - see the goods in Seller Center.',
+            ];
         }
 
         // 2) Full update: every SKU Temu already holds under this goods (published SKUs cannot be dropped) + the new ones.
@@ -4641,10 +4694,44 @@ class Temu2ListingPublishService
                     return ['success' => true, 'data' => $data];
                 }
             }
+
+            // 3) Temu rejects the update when an already-live SKU's price is sent back to it ("basePrice is
+            //    incorrect": a live price is not editable through this call). Send the live SKUs by skuId only,
+            //    so their price is left alone, and the new SKU with its own price. The result is still only
+            //    accepted when the new SKU is on the goods AND no existing SKU's price moved.
+            $priceKeys = array_flip(['basePrice', 'listPrice', 'listPriceType']);
+            $before = $this->remoteBasePrices($goodsId);
+            $fullKeepPrices = [];
+            foreach ($existing as $row) {
+                $fullKeepPrices[] = array_diff_key($row, $priceKeys);
+            }
+            foreach ($newSkus as $sku) {
+                if (! isset($existingSns[strtoupper((string) ($sku['outSkuSn'] ?? ''))])) {
+                    $fullKeepPrices[] = $sku;
+                }
+            }
+            foreach (['bg.local.goods.update', 'temu.local.goods.update'] as $type) {
+                if (($data = $attempt($type, $fullKeepPrices, $type.' (live prices untouched)')) === null) {
+                    continue;
+                }
+                $after = $this->remoteBasePrices($goodsId);
+                $moved = [];
+                foreach ($before as $sn => $price) {
+                    if (isset($after[$sn]) && abs($after[$sn] - $price) > 0.004) {
+                        $moved[] = $sn.' '.$price.' -> '.$after[$sn];
+                    }
+                }
+                if ($moved !== []) {
+                    Log::error('Temu add SKU to existing goods: live prices moved after update', ['goods_id' => $goodsId, 'moved' => $moved]);
+                    $messages[$type.' (live prices untouched)'] = 'The SKU was added but Temu changed these live prices: '.implode(', ', array_slice($moved, 0, 5));
+                }
+
+                return ['success' => true, 'data' => $data];
+            }
         }
 
         $parts = [];
-        foreach (array_slice($messages, 0, 3, true) as $label => $msg) {
+        foreach (array_slice($messages, 0, 5, true) as $label => $msg) {
             $parts[] = $label.': '.$msg;
         }
         if ($existing === []) {

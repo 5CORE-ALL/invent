@@ -49,10 +49,13 @@ class DriveController extends Controller
 
     public function index()
     {
-        return view('drive.index', [
-            'chunkSize' => $this->chunkSize(),
-            'maxFileBytes' => DriveService::MAX_FILE_BYTES,
-        ]);
+        return response()
+            ->view('drive.index', [
+                'chunkSize' => $this->chunkSize(),
+                'maxFileBytes' => DriveService::MAX_FILE_BYTES,
+            ])
+            ->header('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache');
     }
 
     /* ------------------------------------------------------------------ */
