@@ -1510,7 +1510,7 @@
             .then(function (res) { return res.json(); })
             .then(function (b) {
                 if (b.status === 'idle') { syncLock(false); return; }
-                if (!syncPaint(b)) syncTimer = setTimeout(syncPoll, 3000);
+                if (!syncPaint(b)) syncTimer = setTimeout(syncPoll, 1500);
             })
             .catch(function () { syncTimer = setTimeout(syncPoll, 6000); });
     }
@@ -2226,7 +2226,7 @@
                         pkSummary.textContent = 'Pushing to Amazon in the background… ' + sent.toLocaleString() + ' keyword(s) processed' +
                             (t.failed ? ' (' + Number(t.failed).toLocaleString() + ' rejected)' : '') + (b.message ? ' · ' + b.message : '') +
                             '. You can close this window; reopen it to check progress.';
-                        pkPollTimer = setTimeout(tick, 4000);
+                        pkPollTimer = setTimeout(tick, 2000);
                         return;
                     }
                     if (b.status === 'done' || b.status === 'error') {
@@ -2237,7 +2237,7 @@
                         pkConfirm.disabled = b.status === 'done';
                         return;
                     }
-                    pkPollTimer = setTimeout(tick, 4000);
+                    pkPollTimer = setTimeout(tick, 2000);
                 })
                 .catch(function () { pkPollTimer = setTimeout(tick, 6000); }); // transient network error: keep polling
         };
@@ -2269,7 +2269,7 @@
                         .then(function (b) {
                             if (b.status === 'running') {
                                 showModalMsg('Pushing to Amazon… ' + (b.message || ''), true);
-                                setTimeout(tick, 3000);
+                                setTimeout(tick, 1500);
                                 return;
                             }
                             const mine = (b.rows || []).filter(function (x) { return x.type === 'KW' && String(x.campaign_id) === cid; });

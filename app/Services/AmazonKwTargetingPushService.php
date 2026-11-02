@@ -51,6 +51,21 @@ class AmazonKwTargetingPushService
         }
 
         $kwCampaigns = array_values(array_filter($kwCampaigns, static fn (array $c) => $c['campaign_id'] !== ''));
+        // The HL campaign of each parent (one per parent).
+        $hlByParent = $this->hlCampaignsByParent();
+
+        // Only some campaigns picked: load just those (and, when an HL campaign is picked, the campaigns of its parent, whose
+        // keywords it receives). Pushing one campaign must not read the keywords of all ~800 campaigns first.
+        if ($onlySet !== null) {
+            $pickedParents = [];
+            foreach ($hlByParent as $parentKey => $hl) {
+                if ($picked('HL', (string) $hl['id'])) {
+                    $pickedParents[$parentKey] = true;
+                }
+            }
+            $kwCampaigns = array_values(array_filter($kwCampaigns, static fn (array $c) => $picked('KW', (string) $c['campaign_id'])
+                || ($c['parent'] !== '' && isset($pickedParents[strtoupper($c['parent'])]))));
+        }
         $kwIds = array_map(static fn (array $c) => $c['campaign_id'], $kwCampaigns);
 
         // App keywords per KW campaign, unique by text + match type. A campaign gets its OWN keywords plus the real keywords
@@ -202,7 +217,6 @@ class AmazonKwTargetingPushService
         }
 
         // ---- HL campaigns (SB), one per parent ----
-        $hlByParent = $this->hlCampaignsByParent();
         $hlIds = [];
         foreach ($byParent as $parentKey => $_) {
             if (isset($hlByParent[$parentKey]) && $picked('HL', (string) $hlByParent[$parentKey]['id'])) {
