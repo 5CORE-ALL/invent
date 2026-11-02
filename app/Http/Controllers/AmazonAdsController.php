@@ -3474,8 +3474,8 @@ class AmazonAdsController extends Controller
             $map[trim((string) $row->campaign_id)] = (int) $row->c;
         }
 
-        // The L30 report only lists keywords with activity (nothing at all for a paused campaign). The real total is what
-        // Amazon's console shows as "Total targets" (enabled + paused + archived), stored whenever keywords are pulled from
+        // The L30 report only lists keywords with activity (nothing at all for a paused campaign). The real total is the number
+        // of active keywords on Amazon (enabled + paused; archived ones are not counted), stored whenever keywords are pulled from
         // or pushed to Amazon. Without it, fall back to the keywords the app pulled / pushed (never the ones merely copied
         // from KW cousins). /amazon-ads/all and /amazon-ads/fbm-targeting both read this function, so Targets always match.
         $real = AmazonAdsTargetCounts::map(AmazonAdsTargetCounts::SP_KEYWORDS, $campaignIds, 'targets');

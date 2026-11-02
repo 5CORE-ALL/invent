@@ -2818,17 +2818,16 @@ class AmazonFbmTargetingController extends Controller
             $remote = $this->ads->listKeywordsByCampaignIdsBulk(array_keys($names));
         }
 
-        // Real "Total targets" per campaign as Amazon's console shows it (enabled + paused + archived), kept for the Targets
-        // column of both pages. Only the keyword pull stores it; a failed archived lookup leaves the old figure alone.
+        // Active targets per campaign (enabled + paused keywords; archived ones are no longer counted), kept for the Targets
+        // column of both pages. Only the keyword pull stores it.
         if ($kind === 'kw') {
             try {
                 $totals = array_fill_keys(array_map('strval', array_keys($names)), 0);
                 $seenIds = [];
                 AmazonAdsTargetCounts::tally($remote, $totals, $seenIds);
-                AmazonAdsTargetCounts::tally($this->ads->listArchivedKeywordsByCampaignIdsBulk(array_keys($names)), $totals, $seenIds);
                 AmazonAdsTargetCounts::upsert(AmazonAdsTargetCounts::SP_KEYWORDS, $totals);
             } catch (\Throwable $e) {
-                Log::warning('AmazonFbmTargetingController: could not store the real keyword totals', ['error' => $e->getMessage()]);
+                Log::warning('AmazonFbmTargetingController: could not store the active keyword totals', ['error' => $e->getMessage()]);
             }
         }
 

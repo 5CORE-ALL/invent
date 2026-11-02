@@ -12,7 +12,7 @@ class AmazonAdsTargetCounts
 {
     public const TABLE = 'amazon_ads_target_counts';
 
-    /** SP keyword campaigns: total keywords on Amazon (enabled + paused + archived), stored by the FBM keyword pull / push. */
+    /** SP keyword campaigns: active keywords on Amazon (enabled + paused, archived excluded), stored by the FBM keyword pull / push. */
     public const SP_KEYWORDS = 'spkw';
 
     /**
