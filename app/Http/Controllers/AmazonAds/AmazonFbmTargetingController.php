@@ -588,7 +588,8 @@ class AmazonFbmTargetingController extends Controller
         return Cache::remember('amz_kw_targeting_campaigns_by_parent_v6', now()->addMinutes(5), function () {
             // Latest known status per campaign from the synced reports. A campaign that stops running (paused /
             // archived on Amazon) stops getting report rows, so this goes stale - the live Amazon list below wins.
-            $status = AmazonAdsMissingLinks::campaignStatusMap();
+            // Same source as /amazon-ads/all: the summary rows (L1 / L7 / L15 / L30), L30 first.
+            $status = $this->summaryStatusMap();
             $live = $this->liveCampaigns(); // null until the first background sync has finished
             $liveByName = $live['byName'] ?? [];
             $liveById = $live['byId'] ?? [];
@@ -604,14 +605,31 @@ class AmazonFbmTargetingController extends Controller
                 return (string) ($status[$key] ?? '');
             };
 
+            // A report name that no longer exists on Amazon but whose campaign id is live under a new name is the OLD
+            // name of a renamed campaign (old report rows keep it, e.g. "WF 10 140 PP 4OHM 2PCS" -> "... 2PCS KW").
+            // It is a ghost duplicate with a stale status, so it is dropped; the current name is listed instead.
+            $isRenamedOldName = static function (string $name, string $id) use ($liveByName, $liveById): bool {
+                if ($liveByName === [] || $id === '' || ! isset($liveById[$id])) {
+                    return false;
+                }
+                $key = AmazonAdsMissingLinks::normalizeCampaignName($name);
+
+                return ! isset($liveByName[$key])
+                    && AmazonAdsMissingLinks::normalizeCampaignName((string) $liveById[$id]['name']) !== $key;
+            };
+
             // This page is for KW / HL work only: product-targeting (PT) campaigns are left out everywhere.
+            // Campaign names are exactly the ones /amazon-ads/all lists: names with a summary row (L1 / L7 / L15 / L30).
+            // Names that only live in old daily rows are old / renamed / deleted campaigns.
             $rows = DB::table(self::SP_TABLE)
+                ->where('report_date_range', 'like', 'L%')
                 ->whereNotNull('campaignName')
                 ->where('campaignName', '!=', '')
                 ->selectRaw('campaignName AS campaign_name, MAX(campaign_id) AS campaign_id')
                 ->groupBy('campaignName')
                 ->get()
                 ->reject(fn ($r) => $this->isProductTargetingCampaign((string) $r->campaign_name)
+                    || $isRenamedOldName((string) $r->campaign_name, trim((string) ($r->campaign_id ?? '')))
                     || $liveState((string) $r->campaign_name, trim((string) ($r->campaign_id ?? ''))) === 'ARCHIVED')
                 ->values();
 
@@ -660,6 +678,38 @@ class AmazonFbmTargetingController extends Controller
 
             return $list;
         });
+    }
+
+    /**
+     * Campaign status from the summary rows (what /amazon-ads/all shows), not from the newest row of any kind:
+     * backfilled daily rows are newer by id but belong to old dates.
+     *
+     * @return array<string, string> normalized campaign name => ENABLED / PAUSED / ARCHIVED
+     */
+    protected function summaryStatusMap(): array
+    {
+        $map = [];
+        foreach (['L30', 'L15', 'L7', 'L1'] as $range) { // first range with a row wins
+            $ids = DB::table(self::SP_TABLE)
+                ->where('report_date_range', $range)
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '')
+                ->selectRaw('MAX(id) AS max_id')
+                ->groupBy('campaignName')
+                ->pluck('max_id')
+                ->filter()
+                ->all();
+            foreach (array_chunk($ids, 2000) as $chunk) {
+                foreach (DB::table(self::SP_TABLE)->whereIn('id', $chunk)->get(['campaignName', 'campaignStatus']) as $r) {
+                    $key = AmazonAdsMissingLinks::normalizeCampaignName((string) $r->campaignName);
+                    if ($key !== '' && ! isset($map[$key])) {
+                        $map[$key] = strtoupper(trim((string) $r->campaignStatus));
+                    }
+                }
+            }
+        }
+
+        return $map;
     }
 
     private const LIVE_CAMPAIGNS = 'amz_fbm_live_campaigns';
