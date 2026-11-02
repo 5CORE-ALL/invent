@@ -347,6 +347,8 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="pk-sel-none" title="Untick every campaign currently shown">Clear shown</button>
                     <button type="button" class="btn btn-sm btn-outline-primary d-none" id="pk-sel-mine"
                             title="Keep only the campaigns you ticked in the grid (and the HL of their parents); untick the linked KW cousin campaigns that were added">Only my selected</button>
+                    <button type="button" class="btn btn-sm btn-outline-warning d-none" id="pk-sel-cousins"
+                            title="Also tick the linked KW cousin campaigns (marked cousin)">Include linked cousins</button>
                     <span class="small text-muted ms-auto" id="pk-sel-text"></span>
                 </div>
                 <div id="pk-table-wrap" style="max-height: 420px; overflow-y: auto;"></div>
@@ -1845,6 +1847,7 @@
         selShown: document.getElementById('pk-sel-shown'),
         selNone: document.getElementById('pk-sel-none'),
         selMine: document.getElementById('pk-sel-mine'),
+        selCousins: document.getElementById('pk-sel-cousins'),
     };
     const pkState = { rows: [], selected: new Set(), filter: '' };
     const pkKey = function (r) { return String(r.type) + '|' + String(r.campaign_id); };
@@ -1960,6 +1963,10 @@
     pkEl.filter.addEventListener('input', function () { pkState.filter = pkEl.filter.value; pkDraw(); });
     pkEl.selShown.addEventListener('click', function () { pkShownRows().forEach(function (r) { pkState.selected.add(pkKey(r)); }); pkDraw(); });
     if (pkEl.selMine) pkEl.selMine.addEventListener('click', pkOnlyMine);
+    if (pkEl.selCousins) pkEl.selCousins.addEventListener('click', function () {
+        pkState.rows.forEach(function (r) { pkState.selected.add(pkKey(r)); });
+        pkDraw();
+    });
     pkEl.selNone.addEventListener('click', function () { pkShownRows().forEach(function (r) { pkState.selected.delete(pkKey(r)); }); pkDraw(); });
 
     // The check runs in the background on the server (it reads every campaign's live keywords from Amazon);
@@ -2024,9 +2031,12 @@
             }
             const cousinRows = (b.rows || []).filter(pkIsCousinRow).length;
             pkSummary.textContent = (pkBulk ? 'Bulk push of ' + pkBulk.length.toLocaleString() + ' selected campaign(s)' +
-                (cousinRows ? ' + ' + cousinRows.toLocaleString() + ' linked KW cousin campaign(s) (marked "cousin" - use "Only my selected" to skip them)' : '') + '. ' : '') + (b.message || '');
-            if (pkEl.selMine) pkEl.selMine.classList.toggle('d-none', !(pkBulk && pkBulk.length && cousinRows));
+                (cousinRows ? ' + ' + cousinRows.toLocaleString() + ' linked KW cousin campaign(s) (marked "cousin", NOT ticked - use "Include linked cousins" to push them too)' : '') + '. ' : '') + (b.message || '');
+            const showCousinTools = !!(pkBulk && pkBulk.length && cousinRows);
+            if (pkEl.selMine) pkEl.selMine.classList.toggle('d-none', !showCousinTools);
+            if (pkEl.selCousins) pkEl.selCousins.classList.toggle('d-none', !showCousinTools);
             pkRender(b, false); // enables / labels the button from the ticked campaigns
+            if (showCousinTools) pkOnlyMine(); // default: only what was ticked in the grid; linked cousins stay unticked until asked for
             const t = b.totals || {};
             if ((Number(t.kw_to_add || 0) + Number(t.hl_to_add || 0)) === 0) pkConfirm.disabled = true;
         }).catch(function (e) {
