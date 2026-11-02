@@ -216,20 +216,19 @@ class FetchWayfairDailyData extends Command
         if (! is_array($existingPayload)) {
             return $order;
         }
-        $tn = trim((string) ($existingPayload['tracking_number'] ?? ''));
-        if ($tn === '') {
-            return $order;
-        }
         $payload = json_decode((string) ($order['raw_payload'] ?? ''), true);
         if (! is_array($payload)) {
             $payload = [];
         }
-        if (trim((string) ($payload['tracking_number'] ?? '')) === '') {
-            $payload['tracking_number'] = $tn;
-            $carrier = trim((string) ($existingPayload['tracking_company'] ?? ''));
-            if ($carrier !== '') {
-                $payload['tracking_company'] = $carrier;
+        $kept = false;
+        foreach (['tracking_number', 'tracking_company', 'asn_sent_at', 'asn_handle', 'asn_status', 'asn_tracking', 'asn_error', 'asn_error_at'] as $key) {
+            $old = trim((string) ($existingPayload[$key] ?? ''));
+            if ($old !== '' && trim((string) ($payload[$key] ?? '')) === '') {
+                $payload[$key] = $existingPayload[$key];
+                $kept = true;
             }
+        }
+        if ($kept) {
             $order['raw_payload'] = json_encode($payload);
         }
 

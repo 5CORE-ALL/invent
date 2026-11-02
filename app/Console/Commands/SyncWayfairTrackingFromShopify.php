@@ -10,7 +10,7 @@ class SyncWayfairTrackingFromShopify extends Command
     protected $signature = 'wayfair:sync-tracking
                             {--limit=40 : Max orders per run}';
 
-    protected $description = 'Push Shopify tracking to Wayfair (stub).';
+    protected $description = 'Send Wayfair an ASN for recent POs that already have a tracking number.';
 
     public function handle(WayfairTrackingSyncService $sync): int
     {
