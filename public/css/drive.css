@@ -17,9 +17,9 @@
     display: grid;
     grid-template-columns: 250px minmax(0, 1fr) 0;
     gap: 0;
-    /* drive.js sets the exact height so the box ends at the bottom of the page; this is the fallback. */
-    height: calc(100vh - 120px);
-    height: calc(100dvh - 120px);
+    /* drive.js sets the exact height so the box ends above the fixed footer; this is the fallback. */
+    height: calc(100vh - 180px);
+    height: calc(100dvh - 180px);
     min-height: 420px;
     /* One row that is exactly the box height: without it the row grew with its content, the box clipped it,
        and the file list never got a scrollbar once many folders were uploaded. */
@@ -152,7 +152,9 @@
 .drv-selbar-count { font-weight: 600; font-size: 14px; margin-right: 6px; }
 .drv-selbar-actions { display: flex; gap: 2px; flex-wrap: wrap; }
 
-.drv-body { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 10px 20px 30px; position: relative; outline: none; }
+.drv-body { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 10px 20px 28px; scroll-padding-bottom: 28px; position: relative; outline: none; }
+.content-page:has(#drive-app) > .content,
+.content-page:has(#drive-app) .container-fluid { padding-bottom: 0 !important; }
 .drv-loading { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--drv-bg) 60%, transparent); z-index: 3; }
 .drv-loading.show { display: grid; }
 .drv-spinner { width: 38px; height: 38px; border-radius: 50%; border: 3px solid var(--drv-soft-2); border-top-color: var(--drv-accent); animation: drvSpin .8s linear infinite; }

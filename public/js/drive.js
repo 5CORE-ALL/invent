@@ -143,6 +143,13 @@
         }
         toast(label || 'Copied to clipboard');
     }
+    function itemLink(item) {
+        return String(C.base).replace(/\/$/, '') + '#/item/' + item.id;
+    }
+    function copyItemLink(item) {
+        if (!item) return;
+        copyText(itemLink(item), 'Link copied');
+    }
     function toast(msg, opts = {}) {
         const el = document.createElement('div');
         el.className = 'drv-toast' + (opts.err ? ' err' : '');
@@ -404,6 +411,7 @@
             const actions = showTrashed
                 ? `<button class="drv-icon-btn sm" data-row-act="restore" title="Restore"><i class="ri-arrow-go-back-line"></i></button>`
                 : `${i.can_edit ? '<button class="drv-icon-btn sm" data-row-act="share" title="Share"><i class="ri-user-add-line"></i></button>' : ''}
+                   <button class="drv-icon-btn sm" data-row-act="link" title="Copy link"><i class="ri-link"></i></button>
                    <button class="drv-icon-btn sm" data-row-act="download" title="Download"><i class="ri-download-2-line"></i></button>
                    <button class="drv-icon-btn sm" data-row-act="star" title="${i.starred ? 'Remove from starred' : 'Add to starred'}"><i class="${i.starred ? 'ri-star-fill text-warning' : 'ri-star-line'}"></i></button>`;
             return `<tr class="drv-item" data-id="${esc(i.id)}" data-type="${i.type}" ${draggableAttr(i)}>
@@ -518,7 +526,7 @@
             A.push({ sep: true });
         }
         if (one && one.can_edit) A.push({ icon: 'ri-user-add-line', label: 'Share', bar: true, fn: () => openShare(one) });
-        if (one) A.push({ icon: 'ri-link', label: 'Get link', bar: true, fn: () => openShare(one, true) });
+        if (one) A.push({ icon: 'ri-link', label: 'Copy link', bar: true, fn: () => copyItemLink(one) });
         if (files.length && allEdit && files.length === items.length) A.push({ icon: 'ri-links-line', label: files.length > 1 ? 'Copy direct links (for listings)' : 'Copy direct link (for listings)', fn: () => bulkLinks(files) });
         A.push({ icon: 'ri-download-2-line', label: 'Download', bar: true, fn: () => download(items) });
         A.push({ sep: true });
@@ -801,6 +809,7 @@
         if (S.folderInfo) {
             A.push({ sep: true });
             if (S.folderInfo.can_edit) A.push({ icon: 'ri-user-add-line', label: 'Share this folder', fn: () => openShare(S.folderInfo) });
+            A.push({ icon: 'ri-link', label: 'Copy link', fn: () => copyItemLink(S.folderInfo) });
             A.push({ icon: 'ri-download-2-line', label: 'Download folder', fn: () => download([S.folderInfo]) });
         }
         A.push({ sep: true });
@@ -952,7 +961,7 @@
                     <div class="drv-link-box"><input class="form-control form-control-sm drv-mono" readonly value="${esc(`<img src="${d.direct_url}" alt="${d.name}">`)}"><button class="btn btn-sm btn-outline-primary" data-copy="${esc(`<img src="${d.direct_url}" alt="${d.name}">`)}"><i class="ri-file-copy-line"></i> Copy</button></div>` : ''}
                 ` : ''}
                 <div class="drv-link-label">Internal link (only people with access)</div>
-                <div class="drv-link-box"><input class="form-control form-control-sm" readonly value="${esc(d.internal_url)}"><button class="btn btn-sm btn-outline-secondary" data-copy="${esc(d.internal_url)}"><i class="ri-file-copy-line"></i> Copy</button></div>
+                <div class="drv-link-box"><input class="form-control form-control-sm" readonly value="${esc(d.internal_url)}"><button class="btn btn-sm btn-outline-primary" data-copy="${esc(d.internal_url)}" title="Copy link"><i class="ri-link"></i> Copy link</button></div>
             </div>
 
             <div class="drv-share-note"><i class="ri-shield-keyhole-line"></i><span>Only the owner can remove people, lower access, turn off the link or delete this ${kind}. Editors can add people and upload, but can’t delete.</span></div>
@@ -1163,7 +1172,7 @@
         const acts = [];
         if (item.editable_text && item.can_edit) acts.push(['ri-edit-2-line', 'Edit', () => { closePreview(); openEditor(item); }]);
         if (item.can_edit) acts.push(['ri-user-add-line', 'Share', () => openShare(item)]);
-        acts.push(['ri-link', 'Get link', () => openShare(item, true)]);
+        acts.push(['ri-link', 'Copy link', () => copyItemLink(item)]);
         acts.push(['ri-download-2-line', 'Download', () => download([item])]);
         if (item.view_url) acts.push(['ri-external-link-line', 'Open in new tab', () => window.open(item.view_url, '_blank', 'noopener')]);
         acts.push(['ri-close-line', 'Close (Esc)', closePreview]);
@@ -1594,11 +1603,13 @@
         $('#drv-uploads-list').innerHTML = '';
         $('#drv-uploads').hidden = true;
     };
-    /* Make the drive box end at the bottom of the page on every screen size, so the file list scrolls inside it. */
+    /* Size the drive to the space above the fixed page footer, so the last row of folders is fully visible. */
     function fitDriveHeight() {
         if (window.innerWidth <= 991) { app.style.height = ''; return; }
-        const top = app.getBoundingClientRect().top + window.scrollY;
-        const h = Math.max(420, Math.floor(window.innerHeight - top - 16));
+        const footer = document.querySelector('footer.footer');
+        const footerH = footer ? Math.ceil(footer.getBoundingClientRect().height) : 48;
+        const top = app.getBoundingClientRect().top;
+        const h = Math.max(420, Math.floor(window.innerHeight - top - footerH - 12));
         app.style.height = h + 'px';
     }
     fitDriveHeight();
@@ -1889,6 +1900,7 @@
         if (rowAct) {
             const a = rowAct.dataset.rowAct;
             if (a === 'share') openShare(item);
+            if (a === 'link') copyItemLink(item);
             if (a === 'download') download([item]);
             if (a === 'star') starItems([item], !item.starred);
             if (a === 'restore') restoreItems([item]);

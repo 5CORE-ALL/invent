@@ -1336,9 +1336,15 @@
         window.__inventPwaInstall = null;
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-                // sw.js calls skipWaiting() itself and only caches a few static assets (HTML is never cached),
-                // so a new version needs no confirm prompt and no forced reload; it applies on the next navigation.
-                navigator.serviceWorker.register('/sw.js').catch(function() {});
+                navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(function() {});
+            });
+            navigator.serviceWorker.addEventListener('message', function (event) {
+                if (!event.data || event.data.type !== 'APP_UPDATED') return;
+                try {
+                    if (sessionStorage.getItem('invent-sw') === event.data.cache) return;
+                    sessionStorage.setItem('invent-sw', event.data.cache);
+                } catch (e) {}
+                window.location.reload();
             });
         }
 

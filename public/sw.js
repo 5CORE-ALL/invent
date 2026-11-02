@@ -3,7 +3,7 @@
  * Cache only safe static assets. Never cache HTML pages (CSRF), JSON APIs,
  * chat messages, unread, files, or other private user data.
  */
-const CACHE_NAME = 'invent-chat-v5-static';
+const CACHE_NAME = 'invent-v6-network';
 
 const STATIC_ASSETS = [
   '/offline.html',
@@ -73,6 +73,12 @@ self.addEventListener('activate', function (event) {
       );
     }).then(function () {
       return self.clients.claim();
+    }).then(function () {
+      return self.clients.matchAll({ type: 'window' });
+    }).then(function (clients) {
+      clients.forEach(function (client) {
+        client.postMessage({ type: 'APP_UPDATED', cache: CACHE_NAME });
+      });
     })
   );
 });
@@ -115,8 +121,19 @@ self.addEventListener('fetch', function (event) {
 
   if (request.mode === 'navigate' || request.destination === 'document' || accept.includes('text/html')) {
     event.respondWith(
-      fetch(request).catch(function () {
+      fetch(request, { cache: 'no-store' }).catch(function () {
         return caches.match('/offline.html');
+      })
+    );
+    return;
+  }
+
+  // Scripts and styles always come from the network, so a deploy is visible
+  // without clearing site data. The HTTP cache is skipped on purpose.
+  if (request.destination === 'script' || request.destination === 'style') {
+    event.respondWith(
+      fetch(request, { cache: 'no-store' }).catch(function () {
+        return caches.match(request);
       })
     );
     return;
