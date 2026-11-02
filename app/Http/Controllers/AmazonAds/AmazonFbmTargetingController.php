@@ -1632,8 +1632,9 @@ class AmazonFbmTargetingController extends Controller
         $only = Cache::get(self::SYNC_ONLY);
         $only = is_array($only) && $only !== [] ? array_values($only) : null;
 
-        // From the push check the ticks are final (cousins were already added and could be unticked): no second expansion.
-        $camps = $this->kwCampaignsForPush($ids, $only === null);
+        // Only the campaigns that were asked for: linked KW cousins are never added behind the user's back (the push check
+        // lists them and lets the user tick them).
+        $camps = $this->kwCampaignsForPush($ids, false);
         if ($camps === []) {
             return ['message' => 'No KW campaigns to sync.', 'campaigns' => 0];
         }
