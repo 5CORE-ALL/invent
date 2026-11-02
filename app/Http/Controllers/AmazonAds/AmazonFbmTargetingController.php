@@ -177,15 +177,24 @@ class AmazonFbmTargetingController extends Controller
         $all = $this->campaignsGroupedByParent();
         $mark('campaigns');
         // Badge figures are cached briefly and can never break the grid (they just show 0 if something fails).
-        $badges = $this->badgeFigures($all);
+        $badges = $this->badgeFigures($this->withoutArchived($all)); // archived campaigns are listed but not counted
         $missingTitles = $badges['missing_titles'];
         $missingCousins = $badges['missing_cousins'];
         $mark('badges');
 
         // "Low" badges: campaigns under the keyword-count thresholds (counted over every campaign, ignoring filters).
         $lowCounts = $badges['counts'];
-        $lowTotals = $this->lowTotals($all, $lowCounts);
+        $lowTotals = $this->lowTotals($this->withoutArchived($all), $lowCounts);
         $low = strtolower(trim((string) $request->query('low', '')));
+
+        // Status filter like /amazon-ads/all: ENABLED / PAUSED / ARCHIVED (comma separated); empty = all statuses.
+        $statusWanted = array_values(array_filter(array_map(
+            static fn (string $v) => strtoupper(trim($v)),
+            explode(',', (string) $request->query('status', ''))
+        ), static fn (string $v) => in_array($v, ['ENABLED', 'PAUSED', 'ARCHIVED'], true)));
+        if ($statusWanted !== []) {
+            $all = array_values(array_filter($all, static fn (array $c) => in_array($c['status'], $statusWanted, true)));
+        }
 
         // Parent = "PARENT …" campaigns, SKU = single-SKU campaigns, all = both.
         $scope = strtolower(trim((string) $request->query('scope', 'all')));
@@ -405,7 +414,7 @@ class AmazonFbmTargetingController extends Controller
      */
     public function aceBadgeValues(): array
     {
-        $all = $this->campaignsGroupedByParent();
+        $all = $this->withoutArchived($this->campaignsGroupedByParent());
         $b = $this->badgeFigures($all, true); // the daily Auto Task Event check always reads fresh numbers
         $low = $this->lowTotals($all, $b['counts']);
 
@@ -589,49 +598,18 @@ class AmazonFbmTargetingController extends Controller
     }
 
     /**
-     * Every distinct SP campaign (PT and archived campaigns excluded) with its parent family, ordered so all campaigns of one parent
-     * sit together (parents A-Z, campaigns without a known parent last).
+     * Every distinct SP campaign of /amazon-ads/all (enabled, paused AND archived; PT campaigns excluded) with its parent
+     * family, ordered so all campaigns of one parent sit together (parents A-Z, campaigns without a known parent last).
+     * Names and statuses come from the same report rows the Ads All page reads (summary rows L1 / L7 / L15 / L30).
      *
      * @return list<array{parent: string, status: string, is_parent: bool, campaign_id: string, campaign_name: string}>
      */
     protected function campaignsGroupedByParent(): array
     {
-        return Cache::remember('amz_kw_targeting_campaigns_by_parent_v6', now()->addMinutes(5), function () {
-            // Latest known status per campaign from the synced reports. A campaign that stops running (paused /
-            // archived on Amazon) stops getting report rows, so this goes stale - the live Amazon list below wins.
-            // Same source as /amazon-ads/all: the summary rows (L1 / L7 / L15 / L30), L30 first.
+        return Cache::remember('amz_kw_targeting_campaigns_by_parent_v7', now()->addMinutes(5), function () {
             $status = $this->summaryStatusMap();
-            $live = $this->liveCampaigns(); // null until the first background sync has finished
-            $liveByName = $live['byName'] ?? [];
-            $liveById = $live['byId'] ?? [];
-            $liveState = static function (string $name, string $id) use ($status, $liveByName, $liveById): string {
-                $key = AmazonAdsMissingLinks::normalizeCampaignName($name);
-                if (isset($liveByName[$key])) {
-                    return (string) $liveByName[$key]['state'];
-                }
-                if ($id !== '' && isset($liveById[$id])) {
-                    return (string) $liveById[$id]['state']; // renamed on Amazon: the id still has the live state
-                }
-
-                return (string) ($status[$key] ?? '');
-            };
-
-            // A report name that no longer exists on Amazon but whose campaign id is live under a new name is the OLD
-            // name of a renamed campaign (old report rows keep it, e.g. "WF 10 140 PP 4OHM 2PCS" -> "... 2PCS KW").
-            // It is a ghost duplicate with a stale status, so it is dropped; the current name is listed instead.
-            $isRenamedOldName = static function (string $name, string $id) use ($liveByName, $liveById): bool {
-                if ($liveByName === [] || $id === '' || ! isset($liveById[$id])) {
-                    return false;
-                }
-                $key = AmazonAdsMissingLinks::normalizeCampaignName($name);
-
-                return ! isset($liveByName[$key])
-                    && AmazonAdsMissingLinks::normalizeCampaignName((string) $liveById[$id]['name']) !== $key;
-            };
 
             // This page is for KW / HL work only: product-targeting (PT) campaigns are left out everywhere.
-            // Campaign names are exactly the ones /amazon-ads/all lists: names with a summary row (L1 / L7 / L15 / L30).
-            // Names that only live in old daily rows are old / renamed / deleted campaigns.
             $rows = DB::table(self::SP_TABLE)
                 ->where('report_date_range', 'like', 'L%')
                 ->whereNotNull('campaignName')
@@ -639,26 +617,8 @@ class AmazonFbmTargetingController extends Controller
                 ->selectRaw('campaignName AS campaign_name, MAX(campaign_id) AS campaign_id')
                 ->groupBy('campaignName')
                 ->get()
-                ->reject(fn ($r) => $this->isProductTargetingCampaign((string) $r->campaign_name)
-                    || $isRenamedOldName((string) $r->campaign_name, trim((string) ($r->campaign_id ?? '')))
-                    || $liveState((string) $r->campaign_name, trim((string) ($r->campaign_id ?? ''))) === 'ARCHIVED')
+                ->reject(fn ($r) => $this->isProductTargetingCampaign((string) $r->campaign_name))
                 ->values();
-
-            // Live KW campaigns the reports have never seen (no report rows yet) - they must be listed to be pushed to.
-            $known = [];
-            foreach ($rows as $r) {
-                $known[AmazonAdsMissingLinks::normalizeCampaignName((string) $r->campaign_name)] = true;
-            }
-            $extra = [];
-            foreach ($liveByName as $key => $c) {
-                if (isset($known[$key]) || $c['state'] === 'ARCHIVED' || $this->isProductTargetingCampaign((string) $c['name'])) {
-                    continue;
-                }
-                $extra[] = (object) ['campaign_name' => (string) $c['name'], 'campaign_id' => (string) $c['id']];
-            }
-            if ($extra !== []) {
-                $rows = $rows->concat($extra)->values();
-            }
 
             $names = $rows->map(static fn ($r) => trim((string) $r->campaign_name))->all();
             $parents = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames($names);
@@ -668,7 +628,7 @@ class AmazonFbmTargetingController extends Controller
                 $name = trim((string) $r->campaign_name);
                 $list[] = [
                     'parent' => (string) ($parents[$name] ?? ''),
-                    'status' => $liveState($name, trim((string) ($r->campaign_id ?? ''))),
+                    'status' => (string) ($status[AmazonAdsMissingLinks::normalizeCampaignName($name)] ?? ''),
                     // PARENT … campaigns vs single-SKU campaigns.
                     'is_parent' => AmazonAdsCampaignSkuMetrics::campaignKeyIsParent(
                         AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName($name)
@@ -689,6 +649,17 @@ class AmazonFbmTargetingController extends Controller
 
             return $list;
         });
+    }
+
+    /**
+     * Campaigns that can still be worked on (archived ones cannot be changed on Amazon).
+     *
+     * @param  list<array<string, mixed>>  $campaigns
+     * @return list<array<string, mixed>>
+     */
+    protected function withoutArchived(array $campaigns): array
+    {
+        return array_values(array_filter($campaigns, static fn (array $c) => ($c['status'] ?? '') !== 'ARCHIVED'));
     }
 
     /**
@@ -752,72 +723,6 @@ class AmazonFbmTargetingController extends Controller
         return $out;
     }
 
-    private const LIVE_CAMPAIGNS = 'amz_fbm_live_campaigns';
-
-    private const LIVE_LOCK = 'amz_fbm_live_campaigns_lock';
-
-    /** Live campaign states older than this are refreshed in the background. */
-    private const LIVE_STALE_SECONDS = 1800;
-
-    /**
-     * Live SP campaign states from Amazon (name / id => state), refreshed in the background so the page never waits.
-     *
-     * @return array{at: int, byName: array<string, array{state: string, id: string, name: string}>, byId: array<string, array{state: string, name: string}>}|null
-     */
-    protected function liveCampaigns(): ?array
-    {
-        $live = Cache::get(self::LIVE_CAMPAIGNS);
-        $live = is_array($live) ? $live : null;
-        if ($live === null || (time() - (int) ($live['at'] ?? 0)) > self::LIVE_STALE_SECONDS) {
-            // One refresh at a time, and not more often than every 10 minutes even if it keeps failing.
-            if (Cache::add(self::LIVE_LOCK, 1, now()->addMinutes(10))) {
-                try {
-                    $this->spawnArtisan('app:amazon-fbm-campaigns-sync', 'fbm-targeting-live-campaigns.log');
-                } catch (\Throwable $e) {
-                    Log::warning('AmazonFbmTargetingController: live campaign sync spawn failed', ['error' => $e->getMessage()]);
-                }
-            }
-        }
-
-        return $live;
-    }
-
-    /**
-     * Read every SP campaign (with its live state) from Amazon and store it for the page. Runs in the background command.
-     *
-     * @return int number of campaigns read
-     */
-    public function syncLiveCampaigns(AmazonAdsService $ads): int
-    {
-        $ads->reuseAccessToken(); // one access token for all the pages
-        $campaigns = $ads->listAllSpCampaigns(['ENABLED', 'PAUSED', 'ARCHIVED']);
-        $rank = ['ENABLED' => 3, 'PAUSED' => 2, 'ARCHIVED' => 1];
-        $byName = [];
-        $byId = [];
-        foreach ($campaigns as $c) {
-            $name = trim((string) ($c['name'] ?? ''));
-            $id = trim((string) ($c['campaignId'] ?? ''));
-            $state = strtoupper(trim((string) ($c['state'] ?? '')));
-            if ($name === '' || $state === '') {
-                continue;
-            }
-            $key = AmazonAdsMissingLinks::normalizeCampaignName($name);
-            // The same name can exist more than once (an archived old campaign + a live one): the live one wins.
-            if (! isset($byName[$key]) || ($rank[$state] ?? 0) > ($rank[$byName[$key]['state']] ?? 0)) {
-                $byName[$key] = ['state' => $state, 'id' => $id, 'name' => $name];
-            }
-            if ($id !== '') {
-                $byId[$id] = ['state' => $state, 'name' => $name];
-            }
-        }
-
-        Cache::put(self::LIVE_CAMPAIGNS, ['at' => time(), 'byName' => $byName, 'byId' => $byId], now()->addHours(12));
-        Cache::forget('amz_kw_targeting_campaigns_by_parent_v6');
-        $this->forgetBadges();
-
-        return count($campaigns);
-    }
-
     /**
      * Push the app's keywords to Amazon: missing keywords go to every KW campaign (SP) and, per parent,
      * to its linked HL campaign (SB). dry_run=1 only reports what would be sent.
@@ -856,7 +761,7 @@ class AmazonFbmTargetingController extends Controller
     public function kwCampaignsForPush(): array
     {
         return array_values(array_filter(
-            $this->campaignsGroupedByParent(),
+            $this->withoutArchived($this->campaignsGroupedByParent()), // archived campaigns cannot take keywords
             fn (array $c) => $c['campaign_id'] !== '' && ! $this->isProductTargetingCampaign($c['campaign_name'])
         ));
     }
@@ -1845,7 +1750,7 @@ class AmazonFbmTargetingController extends Controller
         $label = $kind === 'neg' ? 'negative keyword' : 'keyword';
 
         $names = [];
-        foreach ($this->campaignsGroupedByParent() as $c) {
+        foreach ($this->withoutArchived($this->campaignsGroupedByParent()) as $c) {
             if ($c['campaign_id'] !== '' && ! $this->isProductTargetingCampaign($c['campaign_name'])) {
                 $names[$c['campaign_id']] = $c['campaign_name'];
             }

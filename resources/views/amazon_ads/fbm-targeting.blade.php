@@ -166,6 +166,12 @@
                         <input type="text" id="aft-cousin-search" class="form-control form-control-sm"
                                style="max-width: 260px;" placeholder="Search KW cousins..." autocomplete="off"
                                title="Filter by cousin name, cousin parent or cousin campaign">
+                        <select id="aft-status" class="form-select form-select-sm" style="max-width: 150px;" title="Campaign status (same values as Ads All)">
+                            <option value="" selected>All statuses</option>
+                            <option value="ENABLED">Enabled</option>
+                            <option value="PAUSED">Paused</option>
+                            <option value="ARCHIVED">Archived</option>
+                        </select>
                         <select id="aft-scope" class="form-select form-select-sm" style="max-width: 190px;" title="Show parent campaigns or single-SKU campaigns">
                             <option value="all">Parent + SKU</option>
                             <option value="parent">Parent</option>
@@ -420,6 +426,7 @@
     const parentSearchEl = document.getElementById('aft-parent-search');
     const titleSearchEl = document.getElementById('aft-title-search');
     const scopeEl = document.getElementById('aft-scope');
+    const statusEl = document.getElementById('aft-status');
     const cousinSearchEl = document.getElementById('aft-cousin-search');
     const countEl = document.getElementById('aft-count');
     const missingTitlesEl = document.getElementById('aft-missing-titles');
@@ -605,6 +612,8 @@
             if (cousinQ) q.set('cousin', cousinQ);
             const scope = scopeEl ? scopeEl.value : 'all';
             if (scope && scope !== 'all') q.set('scope', scope);
+            const statusQ = statusEl ? statusEl.value : '';
+            if (statusQ) q.set('status', statusQ);
             if (lowFilter) q.set('low', lowFilter);
             const srt = Array.isArray(params.sort) && params.sort.length ? params.sort[0] : null;
             if (srt && (srt.field === 'lt_clicks' || srt.field === 'lt_sold')) {
@@ -2093,6 +2102,9 @@
         });
     });
 
+    if (statusEl) {
+        statusEl.addEventListener('change', function () { table.setPage(1); });
+    }
     if (scopeEl) {
         scopeEl.addEventListener('change', function () { table.setPage(1); });
     }
