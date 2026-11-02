@@ -240,6 +240,7 @@
                             <div id="aft-sync-fill" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div>
                         </div>
                         <div id="aft-sync-counts" class="small text-muted"></div>
+                        <div id="aft-sync-rows" class="small mt-2" style="display:none; max-height:260px; overflow:auto;"></div>
                     </div>
                     <div id="aft-loadbar" class="aft-loadbar" style="display:none;" role="status" aria-live="polite">
                         <div class="aft-loadbar-top">
@@ -1468,6 +1469,7 @@
         pct: document.getElementById('aft-sync-pct'),
         fill: document.getElementById('aft-sync-fill'),
         counts: document.getElementById('aft-sync-counts'),
+        rows: document.getElementById('aft-sync-rows'),
         all: document.getElementById('aft-sync-all'),
         sel: document.getElementById('aft-sync-sel'),
     };
@@ -1489,6 +1491,28 @@
             ' · pulled from Amazon: ' + n(b.pulled) + ' · to push: ' + n(b.to_add) + ' · pushed: ' + n(b.added) +
             (b.failed ? ' · rejected: ' + n(b.failed) : '');
         syncEl.text.textContent = b.message || 'Sync…';
+        // What was pushed, per campaign (and what needed nothing), so the result is visible and not only a total.
+        if (syncEl.rows) {
+            const esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); };
+            const pushed = b.rows || [];
+            const same = (b.up_to_date || []).filter(function (u) { return !u.note; });
+            if (!pushed.length && !same.length) {
+                syncEl.rows.style.display = 'none';
+                syncEl.rows.innerHTML = '';
+            } else {
+                syncEl.rows.style.display = 'block';
+                syncEl.rows.innerHTML = '<table class="table table-sm table-bordered mb-0 bg-white"><thead class="table-light"><tr><th style="width:60px">Type</th><th>Campaign</th>' +
+                    '<th class="text-end">To add</th><th class="text-end">Pushed</th><th class="text-end">Rejected</th><th>Note</th></tr></thead><tbody>' +
+                    pushed.map(function (r) {
+                        return '<tr><td>' + esc(r.type) + '</td><td>' + esc(r.campaign_name) + '</td><td class="text-end">' + n(r.to_add) + '</td><td class="text-end ' + (r.added ? 'text-success fw-semibold' : '') + '">' + n(r.added) +
+                            '</td><td class="text-end ' + (r.failed ? 'text-danger fw-semibold' : '') + '">' + n(r.failed) + '</td><td>' + esc(r.message || '') + '</td></tr>';
+                    }).join('') +
+                    same.map(function (u) {
+                        return '<tr class="text-muted"><td>' + esc(u.type || 'KW') + '</td><td>' + esc(u.campaign_name) + '</td><td class="text-end">0</td><td class="text-end">0</td><td class="text-end">0</td><td>up to date' +
+                            (u.keywords ? ' (' + n(u.keywords) + ' keywords)' : '') + '</td></tr>';
+                    }).join('') + '</tbody></table>';
+            }
+        }
         if (b.status === 'done' || b.status === 'error') {
             syncEl.fill.classList.remove('progress-bar-animated', 'progress-bar-striped');
             syncEl.fill.classList.toggle('bg-danger', b.status === 'error');

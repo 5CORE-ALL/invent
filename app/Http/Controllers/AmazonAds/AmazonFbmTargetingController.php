@@ -1601,7 +1601,7 @@ class AmazonFbmTargetingController extends Controller
             'status' => 'running', 'phase' => 'start', 'percent' => 0, 'started_at' => now()->toDateTimeString(),
             'heartbeat' => time(), 'by' => Auth::user()?->name, 'message' => 'Starting…',
             'campaigns' => 0, 'done' => 0, 'chunk' => 0, 'chunks' => 0,
-            'fetched' => 0, 'pulled' => 0, 'to_add' => 0, 'added' => 0, 'failed' => 0, 'rows' => [],
+            'fetched' => 0, 'pulled' => 0, 'to_add' => 0, 'added' => 0, 'failed' => 0, 'rows' => [], 'up_to_date' => [],
         ], now()->addHours(6));
 
         try {
@@ -1736,6 +1736,7 @@ class AmazonFbmTargetingController extends Controller
         $rows = [];
         $errors = [];
         $tot = ['kw_campaigns' => 0, 'hl_campaigns' => 0, 'to_add' => 0, 'added' => 0, 'failed' => 0];
+        $upToDate = [];
         $done = 0;
         foreach ($chunks as $i => $chunk) {
             $label = 'Step 2/2 · Pushing to Amazon: chunk '.($i + 1).' of '.$n;
@@ -1745,6 +1746,9 @@ class AmazonFbmTargetingController extends Controller
             }, $only, $ids === null ? null : array_map(static fn (array $c) => (string) $c['campaign_id'], $camps));
             foreach ($r['errors'] as $e) {
                 $errors[] = $e;
+            }
+            foreach ($r['up_to_date'] ?? [] as $u) {
+                $upToDate[] = $u;
             }
             foreach ($r['rows'] as $row) {
                 $tot[$row['type'] === 'HL' ? 'hl_campaigns' : 'kw_campaigns']++;
@@ -1757,7 +1761,7 @@ class AmazonFbmTargetingController extends Controller
             $this->recordSyncState([
                 'done' => $done, 'to_add' => $tot['to_add'], 'added' => $tot['added'], 'failed' => $tot['failed'],
                 'percent' => 50 + (int) round(50 * $done / $total),
-                'rows' => array_slice($rows, -200),
+                'rows' => array_slice($rows, -200), 'up_to_date' => array_slice($upToDate, -200),
                 'message' => $label.' · '.number_format($tot['added']).' keyword(s) pushed'.($tot['failed'] ? ', '.number_format($tot['failed']).' rejected' : ''),
             ]);
         }
@@ -1769,7 +1773,7 @@ class AmazonFbmTargetingController extends Controller
                 .' ('.$tot['kw_campaigns'].' KW + '.$tot['hl_campaigns'].' HL campaign(s) needed keywords).',
             'campaigns' => $total, 'fetched' => $fetched, 'pulled' => $pulled,
             'to_add' => $tot['to_add'], 'added' => $tot['added'], 'failed' => $tot['failed'],
-            'rows' => array_slice($rows, -200), 'errors' => array_slice($errors, 0, 5),
+            'rows' => array_slice($rows, -200), 'up_to_date' => array_slice($upToDate, -200), 'errors' => array_slice(array_values(array_unique($errors)), 0, 5),
         ];
     }
 
@@ -1814,7 +1818,7 @@ class AmazonFbmTargetingController extends Controller
         Cache::put(self::SYNC_STATE, [
             'status' => 'running', 'phase' => 'undo', 'percent' => 0, 'started_at' => now()->toDateTimeString(),
             'heartbeat' => time(), 'by' => Auth::user()?->name, 'message' => 'Starting the undo…',
-            'campaigns' => 0, 'done' => 0, 'chunk' => 0, 'chunks' => 0, 'fetched' => 0, 'pulled' => 0, 'to_add' => 0, 'added' => 0, 'failed' => 0, 'rows' => [],
+            'campaigns' => 0, 'done' => 0, 'chunk' => 0, 'chunks' => 0, 'fetched' => 0, 'pulled' => 0, 'to_add' => 0, 'added' => 0, 'failed' => 0, 'rows' => [], 'up_to_date' => [],
         ], now()->addHours(6));
         try {
             $this->spawnArtisan('app:amazon-kw-targeting-undo --run='.$token, 'fbm-targeting-sync.log');
