@@ -518,6 +518,7 @@ class Temu2ListingPublishService
             $existingGoodsId = $this->siblingGoodsId($parentKey);
         }
         if ($existingGoodsId !== '') {
+            $skuList = $this->alignSpecsToGoods($existingGoodsId, $skuList, (int) $catId);
             $added = $this->addSkusToExistingGoods($existingGoodsId, $skuList);
             if ($added['success'] ?? false) {
                 $firstSkuId = $this->persistPublishedRows($prepared, $existingGoodsId, $added['data'] ?? []);
@@ -4332,6 +4333,21 @@ class Temu2ListingPublishService
     private function existingSkusForUpdate(string $goodsId): array
     {
         $found = [];
+        foreach ($this->remoteSkuRows($goodsId) as $skuId => $row) {
+            $found[$skuId] = $this->updateSkuFromRemote($row);
+        }
+
+        return array_values($found);
+    }
+
+    /**
+     * Temu's own rows (bg.local.goods.sku.list.query) for every SKU under a goods, keyed by skuId.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function remoteSkuRows(string $goodsId): array
+    {
+        $found = [];
         foreach ([2, 3] as $searchType) {
             for ($page = 1; $page <= 10; $page++) {
                 $res = $this->temuCallBody([
@@ -4353,7 +4369,7 @@ class Temu2ListingPublishService
                     if ($skuId === '' || isset($found[$skuId])) {
                         continue;
                     }
-                    $found[$skuId] = $this->updateSkuFromRemote($row);
+                    $found[$skuId] = $row;
                 }
                 if (count($rows) < 100) {
                     break;
@@ -4361,7 +4377,68 @@ class Temu2ListingPublishService
             }
         }
 
-        return array_values($found);
+        return $found;
+    }
+
+    /**
+     * The variation dimension (parent spec) and category the goods already uses. A SKU can only join a goods
+     * through the same parent spec as its siblings; a spec made from this SKU's own variation type (Size / Color)
+     * under another parent was accepted by Temu's update call and then dropped, so the SKU never appeared.
+     *
+     * @return array{parentSpecIds: list<int>, catId: int}
+     */
+    private function existingGoodsSpecContext(string $goodsId): array
+    {
+        $parents = [];
+        $catId = 0;
+        foreach (array_slice($this->remoteSkuRows($goodsId), 0, 25) as $row) {
+            foreach ((array) ($row['specList'] ?? []) as $spec) {
+                if (! is_array($spec)) {
+                    continue;
+                }
+                $pid = (int) ($spec['parentSpecId'] ?? $spec['parentId'] ?? 0);
+                if ($pid > 0) {
+                    $parents[$pid] = true;
+                }
+            }
+            if ($catId === 0) {
+                foreach (['leafCatId', 'catId', 'leafCategoryId', 'categoryId'] as $key) {
+                    if (is_numeric($row[$key] ?? null) && (int) $row[$key] > 0) {
+                        $catId = (int) $row[$key];
+                        break;
+                    }
+                }
+            }
+        }
+
+        return ['parentSpecIds' => array_map('intval', array_keys($parents)), 'catId' => $catId];
+    }
+
+    /**
+     * Rebuild each new SKU's spec under the goods' own parent spec (and category) before it is added.
+     *
+     * @param  list<array<string, mixed>>  $skuList  v2 SKU rows
+     * @return list<array<string, mixed>>
+     */
+    private function alignSpecsToGoods(string $goodsId, array $skuList, int $fallbackCatId): array
+    {
+        $ctx = $this->existingGoodsSpecContext($goodsId);
+        Log::info('Temu add SKU to existing goods: goods spec context', ['goods_id' => $goodsId] + $ctx);
+        if (count($ctx['parentSpecIds']) !== 1) {
+            return $skuList;
+        }
+        $parentSpecId = $ctx['parentSpecIds'][0];
+        $catId = $ctx['catId'] > 0 ? $ctx['catId'] : $fallbackCatId;
+        foreach ($skuList as $i => $item) {
+            $sn = (string) ($item['outSkuSn'] ?? $item['externalSkuId'] ?? '');
+            $specId = $sn !== '' ? $this->createSpecId($catId, $parentSpecId, $sn) : null;
+            if ($specId === null) {
+                continue;
+            }
+            $skuList[$i]['specDetails'] = [['parentSpecId' => $parentSpecId, 'specId' => $specId]];
+        }
+
+        return $skuList;
     }
 
     /**
@@ -4380,7 +4457,7 @@ class Temu2ListingPublishService
         $volume = is_array($row['volumeInfo'] ?? null) ? $row['volumeInfo'] : [];
         $sku = [
             'skuId' => (int) $row['skuId'],
-            'outSkuSn' => (string) ($row['skuSn'] ?? ''),
+            'outSkuSn' => (string) ($row['skuSn'] ?? $row['outSkuSn'] ?? $row['extCode'] ?? ''),
             'quantity' => max(0, (int) ($row['stock'] ?? 0)),
             'specIdList' => $specIds,
         ];
@@ -4413,6 +4490,52 @@ class Temu2ListingPublishService
     }
 
     /**
+     * True only when every new seller SKU is on this goods in Temu's own SKU list.
+     * A second read covers the short delay before a real add shows up.
+     *
+     * @param  list<array<string, mixed>>  $newSkus
+     */
+    private function newSkusAreOnGoods(string $goodsId, array $newSkus): bool
+    {
+        $want = [];
+        foreach ($newSkus as $sku) {
+            $sn = strtoupper(trim((string) ($sku['outSkuSn'] ?? '')));
+            if ($sn !== '') {
+                $want[$sn] = true;
+            }
+        }
+        if ($want === []) {
+            return false;
+        }
+
+        $present = function () use ($goodsId, $want): bool {
+            $have = [];
+            foreach ($this->existingSkusForUpdate($goodsId) as $row) {
+                $sn = strtoupper(trim((string) ($row['outSkuSn'] ?? '')));
+                if ($sn !== '') {
+                    $have[$sn] = true;
+                }
+            }
+            foreach (array_keys($want) as $sn) {
+                if (! isset($have[$sn])) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+
+        if ($present()) {
+            return true;
+        }
+        if (! app()->runningUnitTests()) {
+            sleep(3);
+        }
+
+        return $present();
+    }
+
+    /**
      * Add SKUs to a goods that is already live, so they end up as variations of that same goods id.
      * Temu has no "add SKU" call, so this goes through the goods update APIs: first the partial update with only
      * the new SKUs, then the full update with every existing SKU (skuId) plus the new ones. Nothing here can create
@@ -4435,15 +4558,29 @@ class Temu2ListingPublishService
 
         $messages = [];
         $unknownTypes = [];
-        $attempt = function (string $type, array $skus) use ($goodsId, &$messages, &$unknownTypes): ?array {
+        $attempt = function (string $type, array $skus) use ($goodsId, $newSkus, &$messages, &$unknownTypes): ?array {
             if (isset($unknownTypes[$type])) {
                 return null;
             }
             $data = $this->temuCallBody(['type' => $type, 'language' => 'en', 'goodsId' => (int) $goodsId, 'skuList' => $skus], 120);
-            if ($data['success'] ?? false) {
-                Log::info('Temu add SKU to existing goods: accepted', ['type' => $type, 'goods_id' => $goodsId, 'sku_count' => count($skus)]);
+            $innerFailed = is_array($data['result'] ?? null) && array_key_exists('success', $data['result']) && empty($data['result']['success']);
+            if (($data['success'] ?? false) && ! $innerFailed) {
+                // Temu often answers success for a partial update that did not add the SKU. Only a read-back counts.
+                if ($this->newSkusAreOnGoods($goodsId, $newSkus)) {
+                    Log::info('Temu add SKU to existing goods: SKU is on the goods', ['type' => $type, 'goods_id' => $goodsId, 'sku_count' => count($skus)]);
 
-                return $data;
+                    return $data;
+                }
+                $messages[$type] = 'Temu answered success but the new SKU is not on goods '.$goodsId;
+                Log::warning('Temu add SKU to existing goods: success was not real', [
+                    'type' => $type,
+                    'goods_id' => $goodsId,
+                    'sku_count' => count($skus),
+                    'new_spec_ids' => array_map(static fn ($s) => $s['specIdList'] ?? [], $newSkus),
+                    'response' => mb_substr((string) json_encode($data['result'] ?? $data), 0, 600),
+                ]);
+
+                return null;
             }
             $msg = $this->apiErrorMessage($data);
             if ($this->isUnknownApiType($data)) {
@@ -4478,8 +4615,7 @@ class Temu2ListingPublishService
                 $full[] = $sku;
             }
         }
-        if ($existing !== [] && count($full) === count($existing)) {
-            // Every requested SKU is already under this goods.
+        if ($existing !== [] && count($full) === count($existing) && $this->newSkusAreOnGoods($goodsId, $newSkus)) {
             return ['success' => true, 'data' => ['success' => true, 'result' => ['goodsId' => (int) $goodsId]]];
         }
         // Without the existing SKUs the update could not keep the live variations, so it is not sent at all.
