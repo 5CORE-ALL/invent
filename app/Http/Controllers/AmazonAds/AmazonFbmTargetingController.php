@@ -192,7 +192,7 @@ class AmazonFbmTargetingController extends Controller
         // the badge figures so the KW / HL work counts stay SP-only, and the "low" filter leaves them out.
         $all = $this->mergeSbCampaigns($all);
         if (isset(self::LOW_LIMITS[$low])) {
-            $all = array_values(array_filter($all, static fn (array $c) => ($c['ad_type'] ?? 'SP') !== 'SB'));
+            $all = array_values(array_filter($all, static fn (array $c) => empty($c['listed_only'])));
         }
 
         // Status filter like /amazon-ads/all: ENABLED / PAUSED / ARCHIVED (comma separated); empty = all statuses.
@@ -762,7 +762,7 @@ class AmazonFbmTargetingController extends Controller
     protected function mergeSbCampaigns(array $sp): array
     {
         try {
-            $sb = Cache::remember('amz_kw_targeting_sb_campaigns_v1', now()->addMinutes(5), function () {
+            $sb = Cache::remember('amz_kw_targeting_sb_campaigns_v2', now()->addMinutes(5), function () {
                 $table = 'amazon_sb_campaign_reports';
                 if (! $this->hasTable($table) || ! $this->hasColumn($table, 'campaignName')) {
                     return [];
@@ -797,9 +797,6 @@ class AmazonFbmTargetingController extends Controller
                 $names = [];
                 foreach (DB::table($table)->where('report_date_range', 'like', 'L%')->whereNotNull('campaignName')
                     ->where('campaignName', '!=', '')->distinct()->pluck('campaignName') as $n) {
-                    if ($this->isProductTargetingCampaign((string) $n)) {
-                        continue; // PT campaigns are left out of this page everywhere
-                    }
                     $names[AmazonAdsMissingLinks::normalizeCampaignName((string) $n)] ??= trim((string) $n);
                 }
                 $parents = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames(array_values($names));
@@ -815,6 +812,7 @@ class AmazonFbmTargetingController extends Controller
                         'campaign_id' => (string) ($ids[$key] ?? ''),
                         'campaign_name' => $name,
                         'ad_type' => 'SB',
+                        'listed_only' => true,
                     ];
                 }
 
@@ -822,8 +820,12 @@ class AmazonFbmTargetingController extends Controller
             });
         } catch (\Throwable $e) {
             Log::warning('AmazonFbmTargetingController: SB campaigns could not be listed', ['error' => $e->getMessage()]);
-
-            return $sp;
+            $sb = [];
+        }
+        try {
+            $sb = array_merge($sb, $this->productTargetingCampaigns());
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: PT campaigns could not be listed', ['error' => $e->getMessage()]);
         }
 
         // A name already listed as an SP campaign is not repeated.
@@ -849,6 +851,64 @@ class AmazonFbmTargetingController extends Controller
         });
 
         return $merged;
+    }
+
+    /**
+     * SP product-targeting (PT) campaigns, listed in the grid like /amazon-ads/all does. campaignsGroupedByParent()
+     * leaves them out on purpose (the KW push, badges and cousin sync are for KW / HL campaigns), so they are added
+     * only for display here. Status = live Amazon state when known, else the summary rows (L30 first).
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function productTargetingCampaigns(): array
+    {
+        return Cache::remember('amz_kw_targeting_pt_campaigns_v1', now()->addMinutes(5), function () {
+            $status = $this->summaryStatusMap();
+            $live = $this->liveCampaigns();
+            $liveByName = $live['byName'] ?? [];
+            $liveById = $live['byId'] ?? [];
+
+            $rows = DB::table(self::SP_TABLE)
+                ->where('report_date_range', 'like', 'L%')
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '')
+                ->selectRaw('campaignName AS campaign_name, MAX(campaign_id) AS campaign_id')
+                ->groupBy('campaignName')
+                ->get()
+                ->filter(fn ($r) => $this->isProductTargetingCampaign((string) $r->campaign_name))
+                ->values();
+
+            $names = $rows->map(static fn ($r) => trim((string) $r->campaign_name))->all();
+            $parents = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames($names);
+
+            $list = [];
+            foreach ($rows as $r) {
+                $name = trim((string) $r->campaign_name);
+                $id = trim((string) ($r->campaign_id ?? ''));
+                $key = AmazonAdsMissingLinks::normalizeCampaignName($name);
+                // A report name Amazon no longer has, whose id is live under a new name, is a renamed ghost.
+                if ($liveByName !== [] && $id !== '' && isset($liveById[$id]) && ! isset($liveByName[$key])
+                    && AmazonAdsMissingLinks::normalizeCampaignName((string) $liveById[$id]['name']) !== $key) {
+                    continue;
+                }
+                $state = isset($liveByName[$key])
+                    ? (string) $liveByName[$key]['state']
+                    : (($id !== '' && isset($liveById[$id])) ? (string) $liveById[$id]['state'] : (string) ($status[$key] ?? ''));
+                $list[] = [
+                    'parent' => (string) ($parents[$name] ?? ''),
+                    'status' => $state,
+                    'is_parent' => AmazonAdsCampaignSkuMetrics::campaignKeyIsParent(
+                        AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName($name)
+                    ),
+                    'campaign_id' => $id,
+                    'campaign_name' => $name,
+                    'ad_type' => 'SP',
+                    'listed_only' => true,
+                ];
+            }
+
+            return $list;
+        });
     }
 
     /**
