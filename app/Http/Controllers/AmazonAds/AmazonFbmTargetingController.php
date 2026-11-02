@@ -1212,11 +1212,74 @@ class AmazonFbmTargetingController extends Controller
     {
         $only = $onlyCampaignIds === null ? null : array_flip(array_map('strval', $onlyCampaignIds));
 
-        return array_values(array_filter(
+        $eligible = array_values(array_filter(
             $this->withoutArchived($this->campaignsGroupedByParent()), // archived campaigns cannot take keywords
             fn (array $c) => $c['campaign_id'] !== '' && ! $this->isProductTargetingCampaign($c['campaign_name'])
-                && ($only === null || isset($only[$c['campaign_id']]))
         ));
+        if ($only === null) {
+            return $eligible;
+        }
+
+        // Picked campaigns also push to the campaigns they are linked to as KW cousins (and only those).
+        $only = $this->withLinkedCousinCampaigns($only, $eligible);
+
+        return array_values(array_filter($eligible, static fn (array $c) => isset($only[$c['campaign_id']])));
+    }
+
+    /**
+     * Adds the KW-cousin campaigns of the picked campaigns to the picked set, so linking a SKU campaign as a cousin
+     * and pushing the picked campaign sends the targets to the linked SKU campaign too - and to no other campaign.
+     * The cousins' keywords are first unioned in the app's keyword store (local data, no Amazon call), exactly as the
+     * automatic cousin sync does, so the push has the linked keywords to send.
+     *
+     * @param  array<string, int>  $only  campaign id => index (array_flip)
+     * @param  list<array{campaign_id: string, campaign_name: string}>  $eligible  non-PT, non-archived SP campaigns
+     * @return array<string, int>
+     */
+    protected function withLinkedCousinCampaigns(array $only, array $eligible): array
+    {
+        if (! $this->hasTable(self::COUSIN_TABLE)) {
+            return $only;
+        }
+        try {
+            $groupsMap = $this->cousins->groupsMap();
+            $index = $this->campaignIndex();
+            $byId = [];
+            foreach ($eligible as $c) {
+                $byId[(string) $c['campaign_id']] = $c;
+            }
+
+            $synced = [];
+            foreach (array_keys($only) as $cid) {
+                $c = $byId[(string) $cid] ?? null;
+                if ($c === null) {
+                    continue;
+                }
+                $group = $this->effectiveGroup($c['campaign_name'], $groupsMap);
+                $cousins = $this->cousinCampaignNames($group, $c['campaign_name']);
+                if ($cousins === []) {
+                    continue;
+                }
+                foreach ($cousins as $member) {
+                    $hit = $index[$this->cousins->normalize((string) $member)] ?? null;
+                    $mid = (string) ($hit['campaign_id'] ?? '');
+                    if ($mid !== '' && isset($byId[$mid])) {
+                        $only[$mid] = 1;
+                    }
+                }
+                $norms = array_map(fn ($n) => $this->cousins->normalize((string) $n), $group);
+                sort($norms);
+                $key = md5(implode('|', $norms));
+                if (! isset($synced[$key])) {
+                    $synced[$key] = true;
+                    $this->syncCousinKeywords($group, false, 'kw');
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: linked cousin campaigns for push failed', ['error' => $e->getMessage()]);
+        }
+
+        return $only;
     }
 
     /**
