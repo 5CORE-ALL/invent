@@ -1912,7 +1912,7 @@
     function pkUpToDateRows() {
         const q = pkState.filter.trim().toLowerCase();
         return (pkState.upToDate || []).filter(function (u) { return !q || String(u.campaign_name).toLowerCase().indexOf(q) !== -1; }).map(function (u) {
-            return '<tr class="text-muted"><td></td><td><span class="badge bg-secondary">KW</span></td>' +
+            return '<tr class="text-muted"><td><input type="checkbox" disabled title="Nothing to push: this campaign already has all of its own keywords on Amazon"></td><td><span class="badge bg-secondary">KW</span></td>' +
                 '<td>' + escapeHtml(u.campaign_name) + '</td><td class="text-end">up to date</td></tr>';
         }).join('');
     }
@@ -1939,7 +1939,13 @@
 
     function pkRender(body, done) {
         const rows = body.rows || [];
-        if (!done) pkState.upToDate = body.up_to_date || [];
+        if (!done) {
+            // always start from this check's result: a previous check's rows must never be redrawn
+            pkState.upToDate = body.up_to_date || [];
+            pkState.rows = rows;
+            pkState.selected = new Set();
+            pkState.filter = '';
+        }
         if (!rows.length && !done && pkState.upToDate.length) {
             pkEl.toolbar.classList.add('d-none');
             pkEl.toolbar.classList.remove('d-flex');
@@ -2033,6 +2039,9 @@
         pkSummary.className = 'fw-semibold mb-2';
         pkSummary.textContent = 'Checking what is missing on Amazon…';
         pkWrap.innerHTML = '<span class="aft-empty">Loading…</span>';
+        pkState.rows = [];
+        pkState.upToDate = [];
+        pkState.selected = new Set();
         pkConfirm.disabled = true;
         pkConfirm.innerHTML = '<i class="fas fa-upload"></i> Push selected';
         pkEl.toolbar.classList.add('d-none');
@@ -2070,7 +2079,7 @@
             if (pkEl.selCousins) pkEl.selCousins.classList.toggle('d-none', !showCousinTools);
             if (pkEl.selHl) pkEl.selHl.classList.toggle('d-none', !(bulk && hasHl));
             pkRender(b, false); // enables / labels the button from the ticked campaigns
-            if (bulk) pkOnlyMine(); // default: ONLY what was ticked in the grid; linked cousins and HL stay unticked until asked for
+            if (bulk && (b.rows || []).length) pkOnlyMine(); // default: ONLY what was ticked in the grid; linked cousins and HL stay unticked until asked for
             const t = b.totals || {};
             if ((Number(t.kw_to_add || 0) + Number(t.hl_to_add || 0)) === 0) pkConfirm.disabled = true;
         }).catch(function (e) {
