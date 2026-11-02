@@ -191,6 +191,7 @@ class AmazonFbmTargetingController extends Controller
         // Sponsored Brands (HEAD / HL) campaigns are listed too, like /amazon-ads/all does. They are added after
         // the badge figures so the KW / HL work counts stay SP-only, and the "low" filter leaves them out.
         $all = $this->mergeSbCampaigns($all);
+        $all = $this->withAdsAllStatus($all);
         if (isset(self::LOW_LIMITS[$low])) {
             $all = array_values(array_filter($all, static fn (array $c) => empty($c['listed_only'])));
         }
@@ -973,6 +974,55 @@ class AmazonFbmTargetingController extends Controller
 
             return $list;
         });
+    }
+
+    /**
+     * Shown / filtered status = the status /amazon-ads/all shows: the campaign's row on the latest report day, else its
+     * summary rows (L30 first). The live Amazon state (which corrects stale reports) stays in use for the push and the
+     * badges, which read campaignsGroupedByParent() directly, so an archived campaign is never pushed to.
+     *
+     * @param  list<array<string, mixed>>  $campaigns
+     * @return list<array<string, mixed>>
+     */
+    protected function withAdsAllStatus(array $campaigns): array
+    {
+        try {
+            $map = Cache::remember('amz_kw_targeting_ads_all_status_v1', now()->addMinutes(5), function () {
+                $out = [];
+                foreach ([self::SP_TABLE, 'amazon_sb_campaign_reports'] as $table) {
+                    if (! $this->hasTable($table) || ! $this->hasColumn($table, 'campaignStatus')) {
+                        continue;
+                    }
+                    $day = DB::table($table)->whereRaw('CHAR_LENGTH(report_date_range) = 10')->max('report_date_range');
+                    if (! is_string($day) || $day === '') {
+                        continue;
+                    }
+                    foreach (DB::table($table)->where('report_date_range', $day)->whereNotNull('campaignName')
+                        ->get(['campaignName', 'campaignStatus']) as $r) {
+                        $key = AmazonAdsMissingLinks::normalizeCampaignName((string) $r->campaignName);
+                        $st = strtoupper(trim((string) $r->campaignStatus));
+                        if ($key !== '' && $st !== '') {
+                            $out[$key] = $st;
+                        }
+                    }
+                }
+
+                return $out;
+            });
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: Ads All status map failed', ['error' => $e->getMessage()]);
+
+            return $campaigns;
+        }
+
+        foreach ($campaigns as $i => $c) {
+            $key = AmazonAdsMissingLinks::normalizeCampaignName((string) $c['campaign_name']);
+            if (isset($map[$key])) {
+                $campaigns[$i]['status'] = $map[$key];
+            }
+        }
+
+        return $campaigns;
     }
 
     /**
