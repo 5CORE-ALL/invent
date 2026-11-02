@@ -2818,6 +2818,16 @@ class AmazonFbmTargetingController extends Controller
             $message .= ' '.$cousinAdded.' copied between KW cousins.';
         }
 
+        // HL (SB HEAD) campaigns: refresh their Targets counts too, so a push to them shows up without any other job.
+        $hlRefreshed = 0;
+        if ($kind === 'kw') {
+            $this->recordPullState($kind, ['message' => 'Refreshing the Targets of the HL (HEAD) campaigns…']);
+            $hlRefreshed = $this->refreshHlTargetCounts();
+            if ($hlRefreshed > 0) {
+                $message .= ' Targets of '.$hlRefreshed.' HL campaign(s) refreshed.';
+            }
+        }
+
         return [
             'message' => $message,
             'campaigns' => count($names),
@@ -2825,7 +2835,41 @@ class AmazonFbmTargetingController extends Controller
             'added' => $r['added'],
             'skipped' => $r['skipped'],
             'cousin_added' => $cousinAdded,
+            'hl_refreshed' => $hlRefreshed,
         ];
+    }
+
+    /**
+     * Store the live keyword + target count of every linked HL (SB HEAD) campaign for the Targets column (same figure the
+     * scheduled app:amazon-ads-target-counts job stores). A failed read leaves the old figure alone.
+     */
+    protected function refreshHlTargetCounts(): int
+    {
+        if (! $this->hasTable('amazon_ads_missing_links')) {
+            return 0;
+        }
+        $ids = [];
+        foreach (DB::table('amazon_ads_missing_links')->where('type', 'HL')->pluck('campaign_id') as $raw) {
+            $id = preg_replace('/\D+/', '', (string) $raw) ?: '';
+            if ($id !== '') {
+                $ids[$id] = true;
+            }
+        }
+        $stored = 0;
+        foreach (array_chunk(array_keys($ids), 20) as $chunk) {
+            try {
+                $counts = array_fill_keys(array_map('strval', $chunk), 0);
+                $seen = [];
+                AmazonAdsTargetCounts::tally($this->ads->listSbKeywordsByCampaignIds($chunk), $counts, $seen);
+                AmazonAdsTargetCounts::tally($this->ads->listSbTargetsByCampaignIds($chunk), $counts, $seen);
+                AmazonAdsTargetCounts::upsert('sb', $counts, 'targets');
+                $stored += count($counts);
+            } catch (\Throwable $e) {
+                Log::warning('AmazonFbmTargetingController: could not refresh HL target counts', ['error' => $e->getMessage()]);
+            }
+        }
+
+        return $stored;
     }
 
     /**
