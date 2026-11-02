@@ -885,11 +885,11 @@
                 headerSort: false,
                 formatter: function (cell) {
                     const n = Number(cell.getValue() || 0);
+                    // The number is only what is really on Amazon; keywords copied from KW cousins that still wait for a push
+                    // are not counted - they are only mentioned in the tooltip.
                     const p = Number((cell.getRow().getData() || {}).target_pending || 0);
-                    // n = keywords really on Amazon; +p = copied from KW cousins, waiting for a push (not on Amazon yet).
-                    return '<span class="aft-count-badge" title="View targets">' + n.toLocaleString() + '</span>' +
-                        (p > 0 ? ' <span class="badge bg-warning text-dark" style="font-size:.7rem;" title="' + p.toLocaleString() +
-                            ' keyword(s) copied from KW cousins, not pushed to Amazon yet (use Sync / Push)">+' + p.toLocaleString() + '</span>' : '');
+                    const tip = 'View targets' + (p > 0 ? ' (' + p.toLocaleString() + ' more copied from KW cousins, not pushed to Amazon yet)' : '');
+                    return '<span class="aft-count-badge" title="' + tip + '">' + n.toLocaleString() + '</span>';
                 },
                 cellClick: function (_e, cell) {
                     openTargetsModal(cell.getRow().getData() || {}, 'kw');
