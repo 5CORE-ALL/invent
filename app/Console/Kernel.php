@@ -230,6 +230,15 @@ class Kernel extends ConsoleKernel
 
         $log = $this->schedulerLog;
 
+        // Every tracking status is refreshed once a day. Hourly slices of 2000
+        // walk the whole set; a number checked in the last 24 hours is skipped.
+        $schedule->command('tracking:sync-status --stale=1440 --limit=2000 --catch-up --repair-quota --only-open')
+            ->hourlyAt(10)
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->name('tracking-sync-status-daily')
+            ->appendOutputTo($log);
+
         // Veeqo Billing: orders updated since the last run (label charges per shipment).
         $schedule->command('veeqo:sync-billing')
             ->hourlyAt(25)
