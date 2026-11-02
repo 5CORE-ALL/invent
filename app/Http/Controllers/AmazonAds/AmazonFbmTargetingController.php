@@ -753,6 +753,15 @@ class AmazonFbmTargetingController extends Controller
     }
 
     /**
+     * Campaign name as a lookup key, exact apart from case and spacing. normalizeCampaignName() also drops a trailing
+     * dot, which would merge two different campaigns such as "PARENT HORN 508 4PCS PT" and "PARENT HORN 508 4PCS PT.".
+     */
+    protected function exactNameKey(string $name): string
+    {
+        return strtoupper(trim((string) preg_replace('/\s+/u', ' ', str_replace("\xC2\xA0", ' ', $name))));
+    }
+
+    /**
      * Sponsored Brands campaigns (HEAD / HL, amazon_sb_campaign_reports) listed in the grid next to the SP ones, as on
      * /amazon-ads/all. Status comes from the SB summary rows (L30 first). Kept apart from campaignsGroupedByParent(),
      * which feeds the KW push, badges and cousin sync that only work on SP campaigns.
@@ -763,7 +772,7 @@ class AmazonFbmTargetingController extends Controller
     protected function mergeSbCampaigns(array $sp): array
     {
         try {
-            $sb = Cache::remember('amz_kw_targeting_sb_campaigns_v2', now()->addMinutes(5), function () {
+            $sb = Cache::remember('amz_kw_targeting_sb_campaigns_v3', now()->addMinutes(5), function () {
                 $table = 'amazon_sb_campaign_reports';
                 if (! $this->hasTable($table) || ! $this->hasColumn($table, 'campaignName')) {
                     return [];
@@ -787,7 +796,7 @@ class AmazonFbmTargetingController extends Controller
                             $cols[] = 'campaignStatus';
                         }
                         foreach (DB::table($table)->whereIn('id', $chunk)->get($cols) as $r) {
-                            $key = AmazonAdsMissingLinks::normalizeCampaignName((string) $r->campaignName);
+                            $key = $this->exactNameKey((string) $r->campaignName);
                             if ($key !== '' && ! isset($status[$key])) {
                                 $status[$key] = strtoupper(trim((string) ($r->campaignStatus ?? '')));
                                 $ids[$key] = trim((string) ($r->campaign_id ?? ''));
@@ -798,7 +807,7 @@ class AmazonFbmTargetingController extends Controller
                 $names = [];
                 foreach (DB::table($table)->where('report_date_range', 'like', 'L%')->whereNotNull('campaignName')
                     ->where('campaignName', '!=', '')->distinct()->pluck('campaignName') as $n) {
-                    $names[AmazonAdsMissingLinks::normalizeCampaignName((string) $n)] ??= trim((string) $n);
+                    $names[$this->exactNameKey((string) $n)] ??= trim((string) $n);
                 }
                 $parents = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames(array_values($names));
 
@@ -837,11 +846,11 @@ class AmazonFbmTargetingController extends Controller
         // A name already listed as an SP campaign is not repeated.
         $have = [];
         foreach ($sp as $c) {
-            $have[AmazonAdsMissingLinks::normalizeCampaignName((string) $c['campaign_name'])] = true;
+            $have[$this->exactNameKey((string) $c['campaign_name'])] = true;
         }
         $merged = $sp;
         foreach ($sb as $c) {
-            $k = AmazonAdsMissingLinks::normalizeCampaignName((string) $c['campaign_name']);
+            $k = $this->exactNameKey((string) $c['campaign_name']);
             if (! isset($have[$k])) {
                 $have[$k] = true;
                 $merged[] = $c;
@@ -928,13 +937,16 @@ class AmazonFbmTargetingController extends Controller
      */
     protected function renamedOldNameCampaigns(): array
     {
-        return Cache::remember('amz_kw_targeting_renamed_old_v1', now()->addMinutes(5), function () {
-            $live = $this->liveCampaigns();
+        // Renames are detected from the live campaign list; without it nothing is cached (the list would stay
+        // empty for the whole cache time even after the background sync has filled the live list).
+        $live = $this->liveCampaigns();
+        if (($live['byName'] ?? []) === []) {
+            return [];
+        }
+
+        return Cache::remember('amz_kw_targeting_renamed_old_v2', now()->addMinutes(5), function () use ($live) {
             $liveByName = $live['byName'] ?? [];
             $liveById = $live['byId'] ?? [];
-            if ($liveByName === []) {
-                return [];
-            }
             $status = $this->summaryStatusMap();
 
             $rows = DB::table(self::SP_TABLE)
@@ -987,7 +999,7 @@ class AmazonFbmTargetingController extends Controller
     protected function withAdsAllStatus(array $campaigns): array
     {
         try {
-            $map = Cache::remember('amz_kw_targeting_ads_all_status_v1', now()->addMinutes(5), function () {
+            $map = Cache::remember('amz_kw_targeting_ads_all_status_v2', now()->addMinutes(5), function () {
                 $out = [];
                 foreach ([self::SP_TABLE, 'amazon_sb_campaign_reports'] as $table) {
                     if (! $this->hasTable($table) || ! $this->hasColumn($table, 'campaignStatus')) {
@@ -999,7 +1011,7 @@ class AmazonFbmTargetingController extends Controller
                     }
                     foreach (DB::table($table)->where('report_date_range', $day)->whereNotNull('campaignName')
                         ->get(['campaignName', 'campaignStatus']) as $r) {
-                        $key = AmazonAdsMissingLinks::normalizeCampaignName((string) $r->campaignName);
+                        $key = $this->exactNameKey((string) $r->campaignName);
                         $st = strtoupper(trim((string) $r->campaignStatus));
                         if ($key !== '' && $st !== '') {
                             $out[$key] = $st;
@@ -1016,7 +1028,7 @@ class AmazonFbmTargetingController extends Controller
         }
 
         foreach ($campaigns as $i => $c) {
-            $key = AmazonAdsMissingLinks::normalizeCampaignName((string) $c['campaign_name']);
+            $key = $this->exactNameKey((string) $c['campaign_name']);
             if (isset($map[$key])) {
                 $campaigns[$i]['status'] = $map[$key];
             }
