@@ -1289,6 +1289,31 @@ class AmazonFbmTargetingController extends Controller
         return is_array($ids) && $ids !== [] ? array_values($ids) : null;
     }
 
+    /**
+     * Pull the live keywords of the picked campaigns into the app store before a check, so the check never judges them
+     * against a stale copy (e.g. a keyword added on Amazon directly to one picked campaign that another one still misses).
+     * Only for a handful of picked campaigns; the whole-account check is not preceded by a pull (use Sync for that).
+     *
+     * @param  list<array<string, mixed>>  $campaigns
+     */
+    public function refreshFromAmazon(array $campaigns): void
+    {
+        if ($campaigns === [] || count($campaigns) > 100) {
+            return;
+        }
+        try {
+            foreach (array_chunk($campaigns, 50) as $chunk) {
+                $names = [];
+                foreach ($chunk as $c) {
+                    $names[(string) $c['campaign_id']] = (string) $c['campaign_name'];
+                }
+                $this->ingestKeywords($names, 'kw');
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: pre-check pull failed, checking against the stored keywords', ['error' => $e->getMessage()]);
+        }
+    }
+
     /** @param  array<string, mixed>  $state */
     public function recordCheckState(string $token, array $state): void
     {

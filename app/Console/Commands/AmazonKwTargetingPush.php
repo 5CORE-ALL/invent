@@ -69,7 +69,13 @@ class AmazonKwTargetingPush extends Command
     {
         try {
             $page->recordCheckState($token, ['status' => 'running', 'message' => 'Checking what is missing on Amazon…']);
-            $r = $push->run($page->kwCampaignsForPush($page->checkCampaignIds($token)), true);
+            $camps = $page->kwCampaignsForPush($page->checkCampaignIds($token));
+            if ($page->checkCampaignIds($token) !== null) {
+                $page->recordCheckState($token, ['status' => 'running', 'message' => 'Reading the picked campaigns from Amazon…']);
+                $page->refreshFromAmazon($camps); // so the check compares live data, not a stale copy
+                $page->recordCheckState($token, ['status' => 'running', 'message' => 'Checking what is missing on Amazon…']);
+            }
+            $r = $push->run($camps, true);
             if ($r['errors'] !== [] && $r['rows'] === []) {
                 $page->recordCheckState($token, ['status' => 'error', 'message' => implode(' ', $r['errors'])]);
 
