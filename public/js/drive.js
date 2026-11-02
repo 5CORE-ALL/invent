@@ -453,7 +453,13 @@
         const n = S.selected.size;
         app.classList.toggle('has-selection', n > 0);
         const bar = $('#drv-selbar');
-        bar.hidden = n === 0;
+        // The bar is always shown (same height) so selecting an item never pushes the list down mid double-click.
+        bar.hidden = false;
+        bar.classList.toggle('is-empty', n === 0);
+        if (!n) {
+            $('#drv-sel-count').textContent = 'Select a file or folder to see actions (or right-click it)';
+            $('#drv-sel-actions').innerHTML = '';
+        }
         if (n) {
             $('#drv-sel-count').textContent = `${n} selected`;
             const items = selItems();
@@ -1588,16 +1594,119 @@
         $('#drv-uploads-list').innerHTML = '';
         $('#drv-uploads').hidden = true;
     };
+    /* Make the drive box end at the bottom of the page on every screen size, so the file list scrolls inside it. */
+    function fitDriveHeight() {
+        if (window.innerWidth <= 991) { app.style.height = ''; return; }
+        const top = app.getBoundingClientRect().top + window.scrollY;
+        const h = Math.max(420, Math.floor(window.innerHeight - top - 16));
+        app.style.height = h + 'px';
+    }
+    fitDriveHeight();
+    window.addEventListener('resize', fitDriveHeight);
+    window.addEventListener('load', fitDriveHeight);
+    setTimeout(fitDriveHeight, 400);
     window.addEventListener('beforeunload', e => {
         if (UP.queue.some(j => j.status === 'queued' || j.status === 'uploading')) { e.preventDefault(); e.returnValue = ''; }
     });
 
+    /* Picked files / folders are collected in a list first. A browser folder picker takes only ONE folder per
+       pick, so "Add folder" can be used again to add more before everything is uploaded together. */
+    const STAGE = { items: [], parent: null, shown: false, pending: null };
+    const stageKey = en => en.rel + '|' + en.file.size + '|' + en.file.lastModified;
+    const stageGroupId = en => { const s = en.rel.indexOf('/'); return s > 0 ? 'd:' + en.rel.slice(0, s) : 'f:' + stageKey(en); };
+
+    function stageGroups() {
+        const map = new Map();
+        STAGE.items.forEach(en => {
+            const id = stageGroupId(en);
+            let g = map.get(id);
+            if (!g) { g = { id, folder: id.startsWith('d:'), name: id.startsWith('d:') ? id.slice(2) : en.file.name, count: 0, size: 0 }; map.set(id, g); }
+            g.count++;
+            g.size += en.file.size;
+        });
+        return [...map.values()];
+    }
+
+    function renderStage() {
+        const groups = stageGroups();
+        const total = STAGE.items.reduce((n, en) => n + en.file.size, 0);
+        $('#drv-confirm-title').textContent = 'Upload to Drive';
+        $('#drv-confirm-body').innerHTML = `
+            <p class="small text-muted mb-2">Your browser picks one folder at a time. Use <b>Add folder</b> / <b>Add files</b> again to add more, then upload everything together.</p>
+            <div style="max-height:280px;overflow:auto">${groups.map(g => `
+                <div class="d-flex align-items-center gap-2 py-1 border-bottom">
+                    <i class="${g.folder ? 'ri-folder-3-fill' : 'ri-file-line'}" style="color:${g.folder ? '#f5b400' : '#64748b'};font-size:20px"></i>
+                    <div class="flex-grow-1" style="min-width:0"><div class="text-truncate" title="${esc(g.name)}">${esc(g.name)}</div>
+                    <div class="small text-muted">${g.folder ? g.count + ' file' + (g.count === 1 ? '' : 's') + ' · ' : ''}${fmtSize(g.size)}</div></div>
+                    <button type="button" class="btn btn-sm btn-link text-danger p-0" data-stage-rm="${esc(g.id)}" title="Remove">&times;</button>
+                </div>`).join('')}</div>
+            <div class="small mt-2"><b>${STAGE.items.length}</b> file${STAGE.items.length === 1 ? '' : 's'} · ${fmtSize(total)}</div>`;
+        $('#drv-confirm-body').querySelectorAll('[data-stage-rm]').forEach(b => {
+            b.onclick = () => {
+                const id = b.getAttribute('data-stage-rm');
+                STAGE.items = STAGE.items.filter(en => stageGroupId(en) !== id);
+                if (!STAGE.items.length) { modal('drv-confirm').hide(); return; }
+                renderStage();
+            };
+        });
+
+        const footer = $('#drv-confirm-footer');
+        footer.innerHTML = '';
+        const add = (label, cls, fn) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn ' + cls;
+            btn.textContent = label;
+            btn.onclick = fn;
+            footer.appendChild(btn);
+            return btn;
+        };
+        // The picker is opened straight from the click, so the browser allows it; the list stays open behind it.
+        add('Add folder', 'btn-outline-primary', () => $('#drv-input-folder').click());
+        add('Add files', 'btn-outline-primary', () => $('#drv-input-files').click());
+        const sp = document.createElement('span');
+        sp.className = 'flex-grow-1';
+        footer.appendChild(sp);
+        add('Cancel', 'btn-light', () => { STAGE.items = []; modal('drv-confirm').hide(); });
+        add(`Upload ${STAGE.items.length} file${STAGE.items.length === 1 ? '' : 's'}`, 'drv-btn-primary', () => {
+            STAGE.pending = { items: STAGE.items, parent: STAGE.parent };
+            STAGE.items = [];
+            modal('drv-confirm').hide();
+        });
+    }
+
+    function stageEntries(entries) {
+        entries = entries.filter(en => en.file);
+        if (!entries.length) return;
+        if (!STAGE.shown) {
+            const parent = currentParent();
+            if (parent === false) { toast('You only have view access to this folder.', { err: true }); return; }
+            STAGE.items = [];
+            STAGE.parent = parent;
+        }
+        const seen = new Set(STAGE.items.map(stageKey));
+        entries.forEach(en => { const k = stageKey(en); if (!seen.has(k)) { seen.add(k); STAGE.items.push(en); } });
+        renderStage();
+        if (!STAGE.shown) {
+            STAGE.shown = true;
+            $('#drv-confirm').addEventListener('hidden.bs.modal', () => {
+                STAGE.shown = false;
+                const pending = STAGE.pending;
+                STAGE.pending = null;
+                STAGE.items = [];
+                // Start after the dialog is fully closed: the "file already exists" prompt reuses the same modal.
+                if (pending) startUpload(pending.items, pending.parent);
+            }, { once: true });
+            modal('drv-confirm').show();
+        }
+    }
+
     $('#drv-input-files').onchange = e => {
-        startUpload([...e.target.files].map(f => ({ file: f, rel: f.name })), currentParent());
+        stageEntries([...e.target.files].map(f => ({ file: f, rel: f.name })));
         e.target.value = '';
     };
     $('#drv-input-folder').onchange = e => {
-        startUpload([...e.target.files].map(f => ({ file: f, rel: f.webkitRelativePath || f.name })), currentParent());
+        stageEntries([...e.target.files].map(f => ({ file: f, rel: f.webkitRelativePath || f.name })));
         e.target.value = '';
     };
     $('#drv-input-version').onchange = e => {

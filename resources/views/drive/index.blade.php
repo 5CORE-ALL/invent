@@ -97,9 +97,9 @@
             </div>
         </div>
 
-        <div class="drv-selbar" id="drv-selbar" hidden>
+        <div class="drv-selbar is-empty" id="drv-selbar">
             <button class="drv-icon-btn" data-sel="clear" title="Clear selection"><i class="ri-close-line"></i></button>
-            <span class="drv-selbar-count" id="drv-sel-count">0 selected</span>
+            <span class="drv-selbar-count" id="drv-sel-count">Select a file or folder to see actions (or right-click it)</span>
             <div class="drv-selbar-actions" id="drv-sel-actions"></div>
         </div>
 
