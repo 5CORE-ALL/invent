@@ -827,6 +827,11 @@ class AmazonFbmTargetingController extends Controller
         } catch (\Throwable $e) {
             Log::warning('AmazonFbmTargetingController: PT campaigns could not be listed', ['error' => $e->getMessage()]);
         }
+        try {
+            $sb = array_merge($sb, $this->renamedOldNameCampaigns());
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: renamed campaigns could not be listed', ['error' => $e->getMessage()]);
+        }
 
         // A name already listed as an SP campaign is not repeated.
         $have = [];
@@ -835,7 +840,9 @@ class AmazonFbmTargetingController extends Controller
         }
         $merged = $sp;
         foreach ($sb as $c) {
-            if (! isset($have[AmazonAdsMissingLinks::normalizeCampaignName((string) $c['campaign_name'])])) {
+            $k = AmazonAdsMissingLinks::normalizeCampaignName((string) $c['campaign_name']);
+            if (! isset($have[$k])) {
+                $have[$k] = true;
                 $merged[] = $c;
             }
         }
@@ -901,6 +908,63 @@ class AmazonFbmTargetingController extends Controller
                         AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName($name)
                     ),
                     'campaign_id' => $id,
+                    'campaign_name' => $name,
+                    'ad_type' => 'SP',
+                    'listed_only' => true,
+                ];
+            }
+
+            return $list;
+        });
+    }
+
+    /**
+     * Old names of renamed SP campaigns (KW or PT). /amazon-ads/all still lists them from the report rows, with the
+     * status stored there; campaignsGroupedByParent() drops them as stale duplicates, so they are added back for
+     * display only. Empty until the live campaign sync has run (renames are detected from it).
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function renamedOldNameCampaigns(): array
+    {
+        return Cache::remember('amz_kw_targeting_renamed_old_v1', now()->addMinutes(5), function () {
+            $live = $this->liveCampaigns();
+            $liveByName = $live['byName'] ?? [];
+            $liveById = $live['byId'] ?? [];
+            if ($liveByName === []) {
+                return [];
+            }
+            $status = $this->summaryStatusMap();
+
+            $rows = DB::table(self::SP_TABLE)
+                ->where('report_date_range', 'like', 'L%')
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '')
+                ->selectRaw('campaignName AS campaign_name, MAX(campaign_id) AS campaign_id')
+                ->groupBy('campaignName')
+                ->get()
+                ->filter(function ($r) use ($liveByName, $liveById) {
+                    $id = trim((string) ($r->campaign_id ?? ''));
+                    $key = AmazonAdsMissingLinks::normalizeCampaignName((string) $r->campaign_name);
+
+                    return $id !== '' && isset($liveById[$id]) && ! isset($liveByName[$key])
+                        && AmazonAdsMissingLinks::normalizeCampaignName((string) $liveById[$id]['name']) !== $key;
+                })
+                ->values();
+
+            $names = $rows->map(static fn ($r) => trim((string) $r->campaign_name))->all();
+            $parents = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames($names);
+
+            $list = [];
+            foreach ($rows as $r) {
+                $name = trim((string) $r->campaign_name);
+                $list[] = [
+                    'parent' => (string) ($parents[$name] ?? ''),
+                    'status' => (string) ($status[AmazonAdsMissingLinks::normalizeCampaignName($name)] ?? ''),
+                    'is_parent' => AmazonAdsCampaignSkuMetrics::campaignKeyIsParent(
+                        AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName($name)
+                    ),
+                    'campaign_id' => trim((string) ($r->campaign_id ?? '')),
                     'campaign_name' => $name,
                     'ad_type' => 'SP',
                     'listed_only' => true,
