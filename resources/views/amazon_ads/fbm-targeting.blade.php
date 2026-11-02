@@ -519,7 +519,7 @@
     function skuState(st) {
         const s = String(st || '').trim().toUpperCase();
         if (!s) return '<span class="aft-empty">-</span>';
-        const color = s === 'ENABLED' ? '#16a34a' : (s === 'PAUSED' ? '#b45309' : '#6b7280');
+        const color = s === 'ENABLED' ? '#16a34a' : (s === 'PAUSED' ? '#dc2626' : '#6b7280');
         return '<strong style="color:' + color + ';">' + escapeHtml(s) + '</strong>';
     }
 
@@ -527,7 +527,17 @@
         return v === null || v === undefined || v === '' || isNaN(Number(v)) ? '<span class="aft-empty">—</span>' : '$' + Number(v).toFixed(2);
     }
 
-    function skuRowsHtml(list, offAd) {
+    // Effective state of a SKU: an ad can be ENABLED on Amazon while its campaign is PAUSED / ARCHIVED - it is not running then.
+    function skuEffectiveState(adState, campaignState) {
+        const ad = String(adState || '').trim().toUpperCase();
+        const camp = String(campaignState || '').trim().toUpperCase();
+        if (ad === 'ENABLED' && camp && camp !== 'ENABLED') {
+            return skuState(camp) + '<div class="text-muted" style="font-size:11px;font-weight:400;" title="The ad itself is enabled on Amazon, but its campaign is ' + escapeHtml(camp.toLowerCase()) + ', so it is not running">ad enabled · campaign ' + escapeHtml(camp.toLowerCase()) + '</div>';
+        }
+        return skuState(ad);
+    }
+
+    function skuRowsHtml(list, offAd, campaignState) {
         return list.map(function (s) {
             const rating = s.amz_avg_rating !== null && s.amz_avg_rating !== undefined
                 ? '★ ' + Number(s.amz_avg_rating).toFixed(1) + ' (' + Number(s.amz_review_count || 0).toLocaleString() + ')'
@@ -542,7 +552,7 @@
                 '<td style="text-align:right;">' + money(s.price) + '</td>' +
                 '<td style="text-align:right;">' + (s.lmp !== null && s.lmp !== undefined ? '<span style="color:#16a34a;">' + money(s.lmp) + '</span>' : '<span class="aft-empty">—</span>') + '</td>' +
                 '<td>' + rating + '</td>' +
-                '<td>' + (offAd ? '<span class="text-muted">Not on this ad</span>' : skuState(s.state)) + '</td></tr>';
+                '<td>' + (offAd ? '<span class="text-muted">Not on this ad</span>' : skuEffectiveState(s.state, campaignState)) + '</td></tr>';
         }).join('');
     }
 
@@ -555,8 +565,8 @@
             (body.parent_family ? ' · parent family <strong>' + escapeHtml(body.parent_family) + '</strong>' + (parentRows.length ? ' (' + parentRows.length.toLocaleString() + ' more SKU' + (parentRows.length === 1 ? '' : 's') + ' not on this ad)' : '') : '') +
             '</div>';
         if (!onAd.length && !parentRows.length) return head + '<span class="aft-empty">No SKUs found for this campaign.</span>';
-        return head + '<table><thead><tr><th></th><th>Inv</th><th>SKU</th><th>ASIN</th><th>Item Price</th><th>LMP</th><th>Reviews</th><th>Ad state</th></tr></thead><tbody>' +
-            skuRowsHtml(onAd, false) + skuRowsHtml(parentRows, true) + '</tbody></table>';
+        return head + '<table><thead><tr><th></th><th>Inv</th><th>SKU</th><th>ASIN</th><th>Item Price</th><th>LMP</th><th>Reviews</th><th>State</th></tr></thead><tbody>' +
+            skuRowsHtml(onAd, false, st) + skuRowsHtml(parentRows, true, st) + '</tbody></table>';
     }
 
     function toggleSkuPanel(row, btn) {
@@ -771,7 +781,7 @@
                     const st = String(cell.getValue() || '').trim().toUpperCase();
                     if (!st) return '<span class="aft-empty">-</span>';
                     // Dot only: Enabled = green, Paused = yellow, anything else = gray (hover for the text).
-                    const color = st === 'ENABLED' ? '#16a34a' : (st === 'PAUSED' ? '#eab308' : '#9ca3af');
+                    const color = st === 'ENABLED' ? '#16a34a' : (st === 'PAUSED' ? '#dc2626' : '#9ca3af');
                     const label = st.charAt(0) + st.slice(1).toLowerCase();
                     return '<span class="aft-status-dot" style="background:' + color + ';" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '"></span>';
                 },
