@@ -49,16 +49,22 @@ class AlibabaInventorySyncService
         $qtyOffset = MarketplaceLiveInventoryRules::normalizeOffset($settings['inventory']['quantity_offset'] ?? 0);
         // min_quantity is ignored: Shopify 0 => marketplace 0 (never invent 1).
 
-        // Ledger-first when MM_USE_INVENTORY_LEDGER; else live Shopify API.
-        $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
-            $skus,
-            fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
-        );
-        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
-            $shopifyQty,
-            $skus,
-            $exactShopifyQty
-        );
+        // The mismatch button must write the same Shopify qty the tab compared.
+        // A live overlay here used to save a different number onto shopify_skus
+        // (sometimes a different SKU) and the mismatch count went up.
+        if ($exactShopifyQty) {
+            $shopifyQty = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        } else {
+            $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
+                $skus,
+                fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
+            );
+            $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+                $shopifyQty,
+                $skus,
+                false
+            );
+        }
         $metrics = AlibabaMetric::query()
             ->whereIn('sku', $skus)
             ->whereNotNull('product_id')
@@ -79,14 +85,20 @@ class AlibabaInventorySyncService
             }
 
             $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
+            if ($exactShopifyQty && $shopifyStock === null) {
+                $skipped++;
+                continue;
+            }
             // Rule 4: missing / 0 live Shopify => push 0 (do not skip leaving stale MP stock).
-            $pushQty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
-                $shopifyStock,
-                $exactShopifyQty,
-                $qtyPercent,
-                $maxQty,
-                $qtyOffset
-            );
+            $pushQty = $exactShopifyQty
+                ? MarketplaceLiveInventoryRules::expectedMarketplaceQty($shopifyStock, 'alibaba')
+                : MarketplaceLiveInventoryRules::qtyForMismatchPush(
+                    $shopifyStock,
+                    false,
+                    $qtyPercent,
+                    $maxQty,
+                    $qtyOffset
+                );
 
             $inventoryRows[] = [
                 'product_id' => $productId,

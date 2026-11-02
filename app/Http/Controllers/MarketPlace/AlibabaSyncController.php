@@ -989,21 +989,21 @@ class AlibabaSyncController extends Controller
             ], 422);
         }
 
-        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $liveService = app(AlibabaLiveListingsService::class);
-        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedAlibabaSkus(), $liveService->peekCached());
-        $verified = $catalog->filterLinkedToVerified($linkedSkus);
-        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
-            $liveService->peekCached(),
-            $this->alibabaStockMapForSkus($verified)
-        );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'alibaba');
-        $mismatchQty = $classified['mismatch'] ?? [];
-        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
-        $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
-        $mismatch = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
-
+        $scope = strtolower((string) $request->input('scope', $request->input('link', 'mismatch')));
+        if (! in_array($scope, ['mismatch', 'linked_mismatch'], true)) {
+            $scope = 'mismatch';
+        }
+        // Freeze the tab's SKU list on the first batch. Recomputing after each
+        // write shrinks the list, the client's offset then skips rows, and a
+        // wider raw list was pushing SKUs the tab already called a match —
+        // those landed back on Inv SKU Mismatch and the count went up.
+        $cacheKey = 'alibaba.mismatch.push.'.$scope;
         $offset = max(0, (int) $request->input('offset', 0));
+        if ($offset === 0 || ! is_array(\Illuminate\Support\Facades\Cache::get($cacheKey))) {
+            \Illuminate\Support\Facades\Cache::put($cacheKey, $this->alibabaInventoryPushSkus($scope), now()->addMinutes(20));
+        }
+        $mismatch = array_values(\Illuminate\Support\Facades\Cache::get($cacheKey) ?: []);
+
         $limit = max(1, min(40, (int) $request->input('limit', 25)));
         $total = count($mismatch);
         $batch = array_slice($mismatch, $offset, $limit);
@@ -1473,6 +1473,74 @@ class AlibabaSyncController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * SKUs on the Inv SKU Mismatch or Linked mismatch tab, after the same
+     * live re-check and active-listing filter the page count uses.
+     *
+     * @return list<string>
+     */
+    protected function alibabaInventoryPushSkus(string $scope): array
+    {
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $liveService = app(AlibabaLiveListingsService::class);
+        $linkedSkus = MarketplacePortalStatusTabs::withoutAbsentSkus($this->linkedAlibabaSkus(), $liveService->peekCached());
+        $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
+        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+            $liveService->peekCached(),
+            $this->alibabaStockMapForSkus($allLinkedVerified)
+        );
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'alibaba') ?? [];
+        $matchedQty = $classified['matched'] ?? [];
+        $mismatchQty = $classified['mismatch'] ?? [];
+        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
+        $zeroQty = $classified['zero'] ?? [];
+
+        if ($mismatchQty !== []) {
+            $liveShopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($mismatchQty);
+            $liveMpByUpper = [];
+            foreach ($mismatchQty as $sku) {
+                $qty = MarketplaceListingStockResolver::qtyFromMap($mpStock, (string) $sku);
+                if ($qty === null) {
+                    continue;
+                }
+                $liveMpByUpper[strtoupper(trim((string) $sku))] = $qty;
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+                if ($norm !== '') {
+                    $liveMpByUpper[$norm] = $qty;
+                }
+            }
+            $reconciled = MarketplaceListingStockResolver::reconcileLinkedTabsWithLiveQty(
+                $matchedQty,
+                $mismatchQty,
+                $zeroQty,
+                $liveShopify,
+                $liveMpByUpper,
+                'alibaba'
+            );
+            $matchedQty = $reconciled['matched'];
+            $mismatchQty = $reconciled['mismatch'];
+            $linkedMismatchQty = $reconciled['linked_mismatch'] ?? $linkedMismatchQty;
+            $zeroQty = $reconciled['zero'];
+        }
+
+        $liveRows = $liveService->peekCached();
+        if (! is_array($liveRows) || $liveRows === []) {
+            $liveRows = $liveService->all(false);
+        }
+        $overlay = MarketplacePortalStatusTabs::overlayQtyAndPortal(
+            $classified['counts'] ?? [],
+            $matchedQty,
+            $mismatchQty,
+            $zeroQty,
+            $liveRows
+        );
+        $linkedMismatchQty = MarketplacePortalStatusTabs::withoutInactiveSkus($linkedMismatchQty, $liveRows);
+
+        return $scope === 'linked_mismatch'
+            ? array_values($linkedMismatchQty)
+            : array_values($overlay['mismatchActive']);
     }
 
     /**
