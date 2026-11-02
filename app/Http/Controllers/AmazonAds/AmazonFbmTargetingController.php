@@ -1211,12 +1211,64 @@ class AmazonFbmTargetingController extends Controller
         ]);
         $campaignIds = ! empty($v['campaign_ids']) ? array_values(array_unique($v['campaign_ids'])) : null;
 
+        // The check lists the live keywords of every campaign on Amazon (about a minute for hundreds of campaigns),
+        // so it runs in the background too and the page polls checkStatus(); the modal can never hang on a request.
+        $token = bin2hex(random_bytes(8));
+        Cache::put(self::CHECK_PREFIX.$token, ['status' => 'running', 'heartbeat' => time(), 'message' => 'Starting the check…'], now()->addHour());
+        Cache::put(self::CHECK_PREFIX.'ids_'.$token, $campaignIds, now()->addHour());
+        try {
+            $this->spawnArtisan('app:amazon-kw-targeting-push --check='.$token, 'fbm-targeting-push.log');
+
+            return response()->json(['success' => true, 'dry_run' => true, 'check' => true, 'token' => $token, 'message' => 'Check started in the background.']);
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: check spawn failed, running it inline', ['error' => $e->getMessage()]);
+            Cache::forget(self::CHECK_PREFIX.$token);
+        }
+
         $r = $push->run($this->kwCampaignsForPush($campaignIds), true);
         if ($r['errors'] !== [] && $r['rows'] === []) {
             return response()->json(['success' => false, 'message' => implode(' ', $r['errors']), 'dry_run' => true], 502);
         }
 
         return response()->json($this->pushPayload($r, true));
+    }
+
+    private const CHECK_PREFIX = 'amz_fbm_check_';
+
+    /** The check is treated as dead when its background process has not reported for this long. */
+    private const CHECK_STALE_SECONDS = 180;
+
+    /** Result of a background check started by pushKeywords(dry_run). */
+    public function checkStatus(Request $request): JsonResponse
+    {
+        $token = (string) $request->query('token', '');
+        if (! preg_match('/^[a-f0-9]{16}$/', $token)) {
+            return response()->json(['success' => false, 'status' => 'error', 'message' => 'Unknown check.'], 422);
+        }
+        $s = Cache::get(self::CHECK_PREFIX.$token);
+        if (! is_array($s)) {
+            return response()->json(['success' => false, 'status' => 'error', 'message' => 'The check expired. Close this window and try again.']);
+        }
+        if (($s['status'] ?? '') === 'running' && (time() - (int) ($s['heartbeat'] ?? 0)) >= self::CHECK_STALE_SECONDS) {
+            $s = ['status' => 'error', 'message' => 'The background check stopped (see storage/logs/fbm-targeting-push.log). Try again.'];
+        }
+        unset($s['heartbeat']);
+
+        return response()->json(['success' => ($s['status'] ?? '') !== 'error'] + $s);
+    }
+
+    /** Background worker side of the check: campaign ids picked for a given token (null = every campaign). */
+    public function checkCampaignIds(string $token): ?array
+    {
+        $ids = Cache::get(self::CHECK_PREFIX.'ids_'.$token);
+
+        return is_array($ids) && $ids !== [] ? array_values($ids) : null;
+    }
+
+    /** @param  array<string, mixed>  $state */
+    public function recordCheckState(string $token, array $state): void
+    {
+        Cache::put(self::CHECK_PREFIX.$token, $state + ['heartbeat' => time()], now()->addHour());
     }
 
     /** Non-PT SP campaigns that can receive keywords. */

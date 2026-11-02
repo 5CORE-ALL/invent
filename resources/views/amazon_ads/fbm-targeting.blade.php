@@ -1834,7 +1834,36 @@
     pkEl.selShown.addEventListener('click', function () { pkShownRows().forEach(function (r) { pkState.selected.add(pkKey(r)); }); pkDraw(); });
     pkEl.selNone.addEventListener('click', function () { pkShownRows().forEach(function (r) { pkState.selected.delete(pkKey(r)); }); pkDraw(); });
 
+    // The check runs in the background on the server (it reads every campaign's live keywords from Amazon);
+    // poll it until it is done, with a visible timer so the window never looks frozen.
+    const pushCheckUrl = @json(route('amazon.ads.fbm-targeting.push-check'));
+    let pkOpenSeq = 0;
+    function pkWaitCheck(token, mine) {
+        const startedAt = Date.now();
+        return new Promise(function (resolve) {
+            const tick = function () {
+                if (mine !== pkOpenSeq) { resolve(null); return; }
+                const secs = Math.round((Date.now() - startedAt) / 1000);
+                pkSummary.textContent = 'Checking what is missing on Amazon… ' + secs + 's (large selections take about a minute)';
+                if (secs > 600) {
+                    resolve({ ok: false, body: { message: 'The check took too long. Close this window and try again.' } });
+                    return;
+                }
+                fetch(pushCheckUrl + '?token=' + encodeURIComponent(token), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function (res) { return res.json(); })
+                    .then(function (b) {
+                        if (b.status === 'done') { resolve({ ok: true, body: b }); return; }
+                        if (b.status === 'error') { resolve({ ok: false, body: b }); return; }
+                        setTimeout(tick, 2000);
+                    })
+                    .catch(function () { setTimeout(tick, 3000); });
+            };
+            tick();
+        });
+    }
+
     function pkOpen() {
+        const mine = ++pkOpenSeq;
         pkSummary.className = 'fw-semibold mb-2';
         pkSummary.textContent = 'Checking what is missing on Amazon…';
         pkWrap.innerHTML = '<span class="aft-empty">Loading…</span>';
@@ -1852,8 +1881,11 @@
             .catch(function () { return {}; })
             .then(function (st) {
                 if (st && st.status === 'running') { pkPollPush(); return null; }
-                return pkPost(true);
+                return pkPost(true).then(function (r) {
+                    return (r.ok && r.body && r.body.check) ? pkWaitCheck(r.body.token, mine) : r;
+                });
             }).then(function (r) {
+            if (mine !== pkOpenSeq) return; // the window was reopened meanwhile
             if (!r) return;
             const b = r.body || {};
             if (!r.ok) {

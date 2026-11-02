@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
  */
 class AmazonKwTargetingPush extends Command
 {
-    protected $signature = 'app:amazon-kw-targeting-push';
+    protected $signature = 'app:amazon-kw-targeting-push {--check= : token of a dry-run check started from the page (nothing is pushed)}';
 
     protected $description = 'Push the app keywords to every KW campaign and each parent\'s HL campaign (background worker for the FBM targeting page)';
 
@@ -21,6 +21,11 @@ class AmazonKwTargetingPush extends Command
     {
         @set_time_limit(0);
         @ini_set('memory_limit', '1024M');
+
+        $token = (string) $this->option('check');
+        if ($token !== '') {
+            return $this->handleCheck($token, $page, $push);
+        }
 
         try {
             $r = $push->run(
@@ -54,6 +59,28 @@ class AmazonKwTargetingPush extends Command
             report($e);
             $page->recordPushState(['status' => 'error', 'finished_at' => now()->toDateTimeString(), 'message' => 'Push failed: '.mb_substr($e->getMessage(), 0, 300)], true);
             $this->error($e->getMessage());
+
+            return 1;
+        }
+    }
+
+    /** Dry run for the page's "what is missing" check: same result as before, but off the web request. */
+    private function handleCheck(string $token, AmazonFbmTargetingController $page, AmazonKwTargetingPushService $push): int
+    {
+        try {
+            $page->recordCheckState($token, ['status' => 'running', 'message' => 'Checking what is missing on Amazon…']);
+            $r = $push->run($page->kwCampaignsForPush($page->checkCampaignIds($token)), true);
+            if ($r['errors'] !== [] && $r['rows'] === []) {
+                $page->recordCheckState($token, ['status' => 'error', 'message' => implode(' ', $r['errors'])]);
+
+                return 1;
+            }
+            $page->recordCheckState($token, ['status' => 'done'] + $page->pushPayload($r, true));
+
+            return 0;
+        } catch (\Throwable $e) {
+            report($e);
+            $page->recordCheckState($token, ['status' => 'error', 'message' => 'Check failed: '.mb_substr($e->getMessage(), 0, 300)]);
 
             return 1;
         }
