@@ -9,6 +9,7 @@ use App\Services\AmazonAdsService;
 use App\Services\AmazonKwCousinLinkService;
 use App\Services\AmazonKwTargetingPushService;
 use App\Support\AmazonAdsCampaignSkuMetrics;
+use App\Support\AmazonAdsTargetCounts;
 use App\Support\Marketplace\AmazonAdsMissingLinks;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -2655,6 +2656,20 @@ class AmazonFbmTargetingController extends Controller
             );
         } else {
             $remote = $this->ads->listKeywordsByCampaignIdsBulk(array_keys($names));
+        }
+
+        // Real "Total targets" per campaign as Amazon's console shows it (enabled + paused + archived), kept for the Targets
+        // column of both pages. Only the keyword pull stores it; a failed archived lookup leaves the old figure alone.
+        if ($kind === 'kw') {
+            try {
+                $totals = array_fill_keys(array_map('strval', array_keys($names)), 0);
+                $seenIds = [];
+                AmazonAdsTargetCounts::tally($remote, $totals, $seenIds);
+                AmazonAdsTargetCounts::tally($this->ads->listArchivedKeywordsByCampaignIdsBulk(array_keys($names)), $totals, $seenIds);
+                AmazonAdsTargetCounts::upsert(AmazonAdsTargetCounts::SP_KEYWORDS, $totals);
+            } catch (\Throwable $e) {
+                Log::warning('AmazonFbmTargetingController: could not store the real keyword totals', ['error' => $e->getMessage()]);
+            }
         }
 
         // Keys already in the app, so they are retained as-is.

@@ -12,6 +12,9 @@ class AmazonAdsTargetCounts
 {
     public const TABLE = 'amazon_ads_target_counts';
 
+    /** SP keyword campaigns: total keywords on Amazon (enabled + paused + archived), stored by the FBM keyword pull / push. */
+    public const SP_KEYWORDS = 'spkw';
+
     /**
      * @param  list<string>  $campaignIds
      * @return array<string, int> campaign id => count (campaigns with no stored row are omitted)
@@ -78,6 +81,18 @@ class AmazonAdsTargetCounts
                 [$column, 'updated_at']
             );
         }
+    }
+
+    /**
+     * Add keywords that were just pushed to a campaign whose real total is already stored.
+     */
+    public static function increment(string $adProduct, string $campaignId, int $by): void
+    {
+        if ($by <= 0 || ! Schema::hasTable(self::TABLE)) {
+            return;
+        }
+        DB::table(self::TABLE)->where('ad_product', $adProduct)->where('campaign_id', trim($campaignId))
+            ->update(['targets' => DB::raw('targets + '.(int) $by), 'updated_at' => now()]);
     }
 
     /**

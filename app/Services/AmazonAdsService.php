@@ -489,6 +489,27 @@ class AmazonAdsService
     }
 
     /**
+     * ARCHIVED SP keywords of the campaigns. Amazon's console "Total targets" still counts them, while the normal
+     * keyword lists (ENABLED / PAUSED) do not.
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    public function listArchivedKeywordsByCampaignIdsBulk(array $campaignIds, int $maxPages = 40): array
+    {
+        return $this->listSpEntitiesByCampaignIds(
+            '/sp/keywords/list',
+            'application/vnd.spKeyword.v3+json',
+            ['keywords'],
+            $campaignIds,
+            $maxPages,
+            1000,
+            50,
+            ['ARCHIVED']
+        );
+    }
+
+    /**
      * Same as listKeywordsByCampaignIds but with large pages (1000 keywords) and 50 campaigns per call:
      * far fewer requests for the "KW K Count" column and keyword modal.
      *

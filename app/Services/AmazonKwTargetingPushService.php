@@ -154,6 +154,9 @@ class AmazonKwTargetingPushService
                         }
                     }
                     $row['message'] = implode(' ', $msgs);
+                    if ($row['added'] > 0) {
+                        \App\Support\AmazonAdsTargetCounts::increment(\App\Support\AmazonAdsTargetCounts::SP_KEYWORDS, $cid, (int) $row['added']);
+                    }
                 }
             }
             $rows[] = $row;
