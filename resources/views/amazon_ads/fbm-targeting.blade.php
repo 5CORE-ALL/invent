@@ -345,6 +345,8 @@
                            placeholder="Filter campaigns..." autocomplete="off">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="pk-sel-shown" title="Tick every campaign currently shown">Select shown</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="pk-sel-none" title="Untick every campaign currently shown">Clear shown</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary d-none" id="pk-sel-mine"
+                            title="Keep only the campaigns you ticked in the grid (and the HL of their parents); untick the linked KW cousin campaigns that were added">Only my selected</button>
                     <span class="small text-muted ms-auto" id="pk-sel-text"></span>
                 </div>
                 <div id="pk-table-wrap" style="max-height: 420px; overflow-y: auto;"></div>
@@ -1837,6 +1839,7 @@
         selText: document.getElementById('pk-sel-text'),
         selShown: document.getElementById('pk-sel-shown'),
         selNone: document.getElementById('pk-sel-none'),
+        selMine: document.getElementById('pk-sel-mine'),
     };
     const pkState = { rows: [], selected: new Set(), filter: '' };
     const pkKey = function (r) { return String(r.type) + '|' + String(r.campaign_id); };
@@ -1866,6 +1869,24 @@
         }
     }
 
+    // Bulk push: KW rows that were not ticked in the grid come from KW cousin links of the ticked campaigns.
+    function pkIsCousinRow(r) {
+        return !!(pkBulk && pkBulk.length && r.type === 'KW' && pkBulk.indexOf(String(r.campaign_id)) === -1);
+    }
+    function pkOnlyMine() {
+        const parents = new Set();
+        pkState.rows.forEach(function (r) {
+            if (r.type === 'KW' && !pkIsCousinRow(r)) String(r.parent || '').split(',').forEach(function (x) { if (x.trim()) parents.add(x.trim().toUpperCase()); });
+        });
+        pkState.selected = new Set();
+        pkState.rows.forEach(function (r) {
+            if (r.type === 'KW') { if (!pkIsCousinRow(r)) pkState.selected.add(pkKey(r)); return; }
+            const ps = String(r.parent || '').split(',').map(function (x) { return x.trim().toUpperCase(); });
+            if (ps.some(function (x) { return parents.has(x); })) pkState.selected.add(pkKey(r));
+        });
+        pkDraw();
+    }
+
     function pkDraw() {
         const rows = pkShownRows();
         if (!rows.length) {
@@ -1880,7 +1901,7 @@
                 const k = pkKey(r);
                 return '<tr><td><input type="checkbox" class="pk-row" data-key="' + escapeHtml(k) + '"' + (pkState.selected.has(k) ? ' checked' : '') + '></td>' +
                     '<td><span class="badge ' + (r.type === 'HL' ? 'bg-info' : 'bg-primary') + '">' + escapeHtml(r.type) + '</span></td>' +
-                    '<td>' + escapeHtml(r.campaign_name) + '</td>' +
+                    '<td>' + escapeHtml(r.campaign_name) + (pkIsCousinRow(r) ? ' <span class="badge bg-warning text-dark" title="Not ticked in the grid - added because it is linked as a KW cousin of a ticked campaign">cousin</span>' : '') + '</td>' +
                     '<td class="text-end">' + Number(r.to_add || 0).toLocaleString() + '</td></tr>';
             }).join('') + '</tbody></table>';
         pkUpdateSelection();
@@ -1933,6 +1954,7 @@
     });
     pkEl.filter.addEventListener('input', function () { pkState.filter = pkEl.filter.value; pkDraw(); });
     pkEl.selShown.addEventListener('click', function () { pkShownRows().forEach(function (r) { pkState.selected.add(pkKey(r)); }); pkDraw(); });
+    if (pkEl.selMine) pkEl.selMine.addEventListener('click', pkOnlyMine);
     pkEl.selNone.addEventListener('click', function () { pkShownRows().forEach(function (r) { pkState.selected.delete(pkKey(r)); }); pkDraw(); });
 
     // The check runs in the background on the server (it reads every campaign's live keywords from Amazon);
@@ -1995,7 +2017,10 @@
                 pkWrap.innerHTML = '';
                 return;
             }
-            pkSummary.textContent = (pkBulk ? 'Bulk push of ' + pkBulk.length.toLocaleString() + ' selected campaign(s). ' : '') + (b.message || '');
+            const cousinRows = (b.rows || []).filter(pkIsCousinRow).length;
+            pkSummary.textContent = (pkBulk ? 'Bulk push of ' + pkBulk.length.toLocaleString() + ' selected campaign(s)' +
+                (cousinRows ? ' + ' + cousinRows.toLocaleString() + ' linked KW cousin campaign(s) (marked "cousin" - use "Only my selected" to skip them)' : '') + '. ' : '') + (b.message || '');
+            if (pkEl.selMine) pkEl.selMine.classList.toggle('d-none', !(pkBulk && pkBulk.length && cousinRows));
             pkRender(b, false); // enables / labels the button from the ticked campaigns
             const t = b.totals || {};
             if ((Number(t.kw_to_add || 0) + Number(t.hl_to_add || 0)) === 0) pkConfirm.disabled = true;
