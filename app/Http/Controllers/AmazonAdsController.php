@@ -3421,7 +3421,7 @@ class AmazonAdsController extends Controller
      * @param  list<string>  $campaignIds
      * @return array<string, int>
      */
-    private static function targetCountsForCampaigns(string $table, array $campaignIds): array
+    public static function targetCountsForCampaigns(string $table, array $campaignIds): array
     {
         $adProduct = self::targetCountAdProduct($table);
         if ($adProduct === null) {
@@ -3483,7 +3483,7 @@ class AmazonAdsController extends Controller
      * @param  list<string>  $campaignIds
      * @return array<string, int>
      */
-    private static function negativeTargetCountsForCampaigns(array $campaignIds, ?string $table = null): array
+    public static function negativeTargetCountsForCampaigns(array $campaignIds, ?string $table = null): array
     {
         $ids = AmazonAdsTargetCounts::normalizeIds($campaignIds);
         $adProduct = $table === null ? null : self::targetCountAdProduct($table);

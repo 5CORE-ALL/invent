@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\AmazonAds;
 
+use App\Http\Controllers\AmazonAdsController;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonKwTargetingKeyword;
 use App\Services\AmazonAdsService;
@@ -317,6 +318,28 @@ class AmazonFbmTargetingController extends Controller
 
         $nameMap = $this->cousinNameMap();
 
+        // Targets / Negative KW counts come from the same source as the Targets / N Targets columns on
+        // /amazon-ads/all (SP: L30 keyword report + synced negatives; SB: synced amazon_ads_target_counts).
+        // The lists behind the counts (targets modal) are unchanged. Falls back to the list size on failure.
+        $adsCounts = ['SP' => ['t' => [], 'n' => []], 'SB' => ['t' => [], 'n' => []]];
+        try {
+            foreach (['SP' => 'amazon_sp_campaign_reports', 'SB' => 'amazon_sb_campaign_reports'] as $type => $reportTable) {
+                $ids = [];
+                foreach ($rows as $r) {
+                    if (($r['ad_type'] ?? 'SP') === $type && $r['campaign_id'] !== '') {
+                        $ids[] = $r['campaign_id'];
+                    }
+                }
+                if ($ids !== []) {
+                    $adsCounts[$type]['t'] = AmazonAdsController::targetCountsForCampaigns($reportTable, $ids);
+                    $adsCounts[$type]['n'] = AmazonAdsController::negativeTargetCountsForCampaigns($ids, $reportTable);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: target counts from Ads All failed', ['error' => $e->getMessage()]);
+            $adsCounts = ['SP' => ['t' => [], 'n' => []], 'SB' => ['t' => [], 'n' => []]];
+        }
+
         // Lifetime clicks / sold of every campaign in each row's KW cousin group (own parent + cousin parents).
         $lt = $ltAll ?? $this->lifetimeForRows($rows, $groups);
         $mark('lifetime');
@@ -361,10 +384,10 @@ class AmazonFbmTargetingController extends Controller
                 'ad_type' => $row['ad_type'] ?? 'SP',
                 'status' => $row['status'],
                 'targets' => $targets,
-                'target_count' => count($targets),
+                'target_count' => $adsCounts[$row['ad_type'] ?? 'SP']['t'][$id] ?? count($targets),
                 'ignored_targets' => $ignoredTargets,
                 'negatives' => $negatives,
-                'negative_count' => count($negatives),
+                'negative_count' => $adsCounts[$row['ad_type'] ?? 'SP']['n'][$id] ?? count($negatives),
                 'ignored_negatives' => $ignoredNegatives,
                 'specific' => $specific,
                 'specific_count' => count($specific),
@@ -436,7 +459,7 @@ class AmazonFbmTargetingController extends Controller
         ];
     }
 
-    private const BADGE_CACHE_KEY = 'amz_kw_targeting_badges_v2';
+    private const BADGE_CACHE_KEY = 'amz_kw_targeting_badges_v3';
 
     protected function forgetBadges(): void
     {
@@ -537,6 +560,29 @@ class AmazonFbmTargetingController extends Controller
                     $bump((string) $r->campaign_id, $k, (int) $r->c);
                 }
             }
+        }
+
+        // kw / neg use the same source as the Targets / N Targets columns on /amazon-ads/all (and as the Targets /
+        // Negative KW columns of this grid), so the "low" badges and filters agree with the numbers shown.
+        // On any failure the counts above (reports + app store) stay as they were.
+        try {
+            $ids = [];
+            foreach ($this->campaignsGroupedByParent() as $c) {
+                if ($c['campaign_id'] !== '') {
+                    $ids[$c['campaign_id']] = true;
+                }
+            }
+            foreach (array_chunk(array_keys($ids), 1000) as $chunk) {
+                $chunk = array_map('strval', $chunk);
+                $t = AmazonAdsController::targetCountsForCampaigns('amazon_sp_campaign_reports', $chunk);
+                $n = AmazonAdsController::negativeTargetCountsForCampaigns($chunk, 'amazon_sp_campaign_reports');
+                foreach ($chunk as $cid) {
+                    $bump($cid, 'kw', (int) ($t[$cid] ?? 0));
+                    $bump($cid, 'neg', (int) ($n[$cid] ?? 0));
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: low-badge counts from Ads All failed', ['error' => $e->getMessage()]);
         }
 
         return $out;
