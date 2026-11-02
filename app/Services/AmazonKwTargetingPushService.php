@@ -54,7 +54,10 @@ class AmazonKwTargetingPushService
         // App keywords per KW campaign, unique by text + match type.
         $appByCampaign = [];
         foreach (array_chunk($kwIds, 1000) as $chunk) {
+            // A campaign gets its OWN keywords only. Keywords the app merely copied into it from its KW cousins ("cousin"
+            // source) belong to other campaigns and are never pushed.
             $q = DB::table(self::STORE_TABLE)->whereIn('campaign_id', $chunk)->whereIn('match_type', self::MATCH_TYPES)
+                ->where('source', '!=', 'cousin')
                 ->get(['campaign_id', 'keyword', 'keyword_key', 'match_type']);
             // Targets ignored (or deleted) in the targets modal are not pushed.
             $skip = [];

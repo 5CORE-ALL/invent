@@ -1296,7 +1296,7 @@ class AmazonFbmTargetingController extends Controller
     }
 
     /** Non-PT SP campaigns that can receive keywords. */
-    public function kwCampaignsForPush(?array $onlyCampaignIds = null, bool $withCousins = true): array
+    public function kwCampaignsForPush(?array $onlyCampaignIds = null, bool $withCousins = false): array
     {
         $only = $onlyCampaignIds === null ? null : array_flip(array_map('strval', $onlyCampaignIds));
 
