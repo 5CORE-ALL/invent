@@ -1627,7 +1627,7 @@
             pkWrap.innerHTML = '<span class="aft-empty">No campaigns match the filter</span>';
             pkUpdateSelection();
             return;
-        }
+        }                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
         pkWrap.innerHTML = '<table class="table table-sm table-bordered align-middle mb-0"><thead class="table-light"><tr>' +
             '<th style="width:36px"><input type="checkbox" id="pk-all" title="Select all shown"></th>' +
             '<th style="width:70px">Type</th><th>Campaign</th><th style="width:140px" class="text-end">To add</th></tr></thead><tbody>' +
