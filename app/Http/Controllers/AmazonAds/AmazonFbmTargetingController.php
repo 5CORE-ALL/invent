@@ -196,7 +196,11 @@ class AmazonFbmTargetingController extends Controller
         // Separate filters: campaign name, parent, and the parent's Product Master title (every word must match).
         if ($search !== '') {
             $needle = mb_strtolower($search);
-            $all = array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['campaign_name']), $needle)));
+            // A campaign matches by its name OR by a SKU advertised in it (the SKUs shown by "Campaign SKUs" on
+            // /amazon-ads/all), e.g. "WF 10 140 PP 4OHM" finds "PARENT 10 CW KW" which advertises that SKU.
+            $bySku = $this->campaignIdsAdvertisingSku($search);
+            $all = array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['campaign_name']), $needle)
+                || ($c['campaign_id'] !== '' && isset($bySku[$c['campaign_id']]))));
         }
         $parentQ = mb_strtolower(trim((string) $request->query('parent', '')));
         if ($parentQ !== '') {
@@ -710,6 +714,35 @@ class AmazonFbmTargetingController extends Controller
         }
 
         return $map;
+    }
+
+    /**
+     * Campaign ids whose ads advertise a SKU containing the search text (amazon_ads_campaign_skus, archived ads ignored).
+     *
+     * @return array<string, true> campaign_id => true
+     */
+    protected function campaignIdsAdvertisingSku(string $search): array
+    {
+        $search = trim(preg_replace('/\s+/u', ' ', str_replace("\xC2\xA0", ' ', $search)) ?? '');
+        if (mb_strlen($search) < 3 || ! $this->hasTable('amazon_ads_campaign_skus')) {
+            return [];
+        }
+        $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
+
+        $out = [];
+        foreach (DB::table('amazon_ads_campaign_skus')
+            ->where('sku', 'like', $like)
+            ->where(function ($q) {
+                $q->whereNull('state')->orWhereRaw("UPPER(state) <> 'ARCHIVED'");
+            })
+            ->whereNotNull('campaign_id')
+            ->distinct()
+            ->limit(5000)
+            ->pluck('campaign_id') as $cid) {
+            $out[(string) $cid] = true;
+        }
+
+        return $out;
     }
 
     private const LIVE_CAMPAIGNS = 'amz_fbm_live_campaigns';
