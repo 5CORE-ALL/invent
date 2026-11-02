@@ -341,6 +341,27 @@ class AmazonFbmTargetingController extends Controller
             $adsCounts = ['SP' => ['t' => [], 'n' => []], 'SB' => ['t' => [], 'n' => []]];
         }
 
+        // Keywords copied from KW cousins that are not on Amazon yet (waiting for a push): shown as "+N" next to Targets.
+        $pending = [];
+        try {
+            $spIds = [];
+            foreach ($rows as $r) {
+                if (($r['ad_type'] ?? 'SP') === 'SP' && $r['campaign_id'] !== '') {
+                    $spIds[] = $r['campaign_id'];
+                }
+            }
+            if ($spIds !== [] && $this->hasTable(self::STORE_TABLE)) {
+                foreach (array_chunk(array_values(array_unique($spIds)), 1000) as $chunk) {
+                    foreach (DB::table(self::STORE_TABLE)->whereIn('campaign_id', $chunk)->where('source', 'cousin')
+                        ->selectRaw('campaign_id, COUNT(*) AS c')->groupBy('campaign_id')->get() as $o) {
+                        $pending[(string) $o->campaign_id] = (int) $o->c;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: pending cousin keyword counts failed', ['error' => $e->getMessage()]);
+        }
+
         // Lifetime clicks / sold of every campaign in each row's KW cousin group (own parent + cousin parents).
         $lt = $ltAll ?? $this->lifetimeForRows($rows, $groups);
         $mark('lifetime');
@@ -387,6 +408,7 @@ class AmazonFbmTargetingController extends Controller
                 'targets' => $targets,
                 // Same function as /amazon-ads/all (L30 report + keywords pulled from / pushed to Amazon), so both pages match.
                 'target_count' => $adsCounts[$row['ad_type'] ?? 'SP']['t'][$id] ?? count($targets),
+                'target_pending' => $pending[$id] ?? 0,
                 'ignored_targets' => $ignoredTargets,
                 'negatives' => $negatives,
                 'negative_count' => $adsCounts[$row['ad_type'] ?? 'SP']['n'][$id] ?? count($negatives),

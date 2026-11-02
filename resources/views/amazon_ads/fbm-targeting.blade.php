@@ -885,7 +885,11 @@
                 headerSort: false,
                 formatter: function (cell) {
                     const n = Number(cell.getValue() || 0);
-                    return '<span class="aft-count-badge" title="View targets">' + n.toLocaleString() + '</span>';
+                    const p = Number((cell.getRow().getData() || {}).target_pending || 0);
+                    // n = keywords really on Amazon; +p = copied from KW cousins, waiting for a push (not on Amazon yet).
+                    return '<span class="aft-count-badge" title="View targets">' + n.toLocaleString() + '</span>' +
+                        (p > 0 ? ' <span class="badge bg-warning text-dark" style="font-size:.7rem;" title="' + p.toLocaleString() +
+                            ' keyword(s) copied from KW cousins, not pushed to Amazon yet (use Sync / Push)">+' + p.toLocaleString() + '</span>' : '');
                 },
                 cellClick: function (_e, cell) {
                     openTargetsModal(cell.getRow().getData() || {}, 'kw');
