@@ -198,9 +198,16 @@ class AmazonFbmTargetingController extends Controller
             $needle = mb_strtolower($search);
             // A campaign matches by its name OR by a SKU advertised in it (the SKUs shown by "Campaign SKUs" on
             // /amazon-ads/all), e.g. "WF 10 140 PP 4OHM" finds "PARENT 10 CW KW" which advertises that SKU.
-            $bySku = $this->campaignIdsAdvertisingSku($search);
-            $all = array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['campaign_name']), $needle)
-                || ($c['campaign_id'] !== '' && isset($bySku[$c['campaign_id']]))));
+            // When the text is exactly a SKU, only the campaigns advertising that exact SKU are shown
+            // ("WF 10 140 PP 4OHM" no longer pulls in the "… 4OHM 2PCS" SKU); otherwise it is a contains search.
+            $exactSku = $this->campaignIdsAdvertisingSku($search, true);
+            if ($exactSku !== []) {
+                $all = array_values(array_filter($all, static fn (array $c) => $c['campaign_id'] !== '' && isset($exactSku[$c['campaign_id']])));
+            } else {
+                $bySku = $this->campaignIdsAdvertisingSku($search);
+                $all = array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['campaign_name']), $needle)
+                    || ($c['campaign_id'] !== '' && isset($bySku[$c['campaign_id']]))));
+            }
         }
         $parentQ = mb_strtolower(trim((string) $request->query('parent', '')));
         if ($parentQ !== '') {
@@ -721,7 +728,7 @@ class AmazonFbmTargetingController extends Controller
      *
      * @return array<string, true> campaign_id => true
      */
-    protected function campaignIdsAdvertisingSku(string $search): array
+    protected function campaignIdsAdvertisingSku(string $search, bool $exact = false): array
     {
         $search = trim(preg_replace('/\s+/u', ' ', str_replace("\xC2\xA0", ' ', $search)) ?? '');
         if (mb_strlen($search) < 3 || ! $this->hasTable('amazon_ads_campaign_skus')) {
@@ -731,7 +738,7 @@ class AmazonFbmTargetingController extends Controller
 
         $out = [];
         foreach (DB::table('amazon_ads_campaign_skus')
-            ->where('sku', 'like', $like)
+            ->when($exact, fn ($q) => $q->whereRaw('TRIM(sku) = ?', [$search]), fn ($q) => $q->where('sku', 'like', $like))
             ->where(function ($q) {
                 $q->whereNull('state')->orWhereRaw("UPPER(state) <> 'ARCHIVED'");
             })
