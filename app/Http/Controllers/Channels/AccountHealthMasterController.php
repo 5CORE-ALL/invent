@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use App\Services\AccountHealthDashboardEntryLog;
 use App\Services\EbayApiService;
 
 class AccountHealthMasterController extends Controller
@@ -251,6 +252,10 @@ class AccountHealthMasterController extends Controller
         }
 
         $odr = OdrRate::where('channel_id', $channelId)->first();
+        AccountHealthDashboardEntryLog::recordRequest((int) $channelId, (string) $request->channel, 'odr_rate', $odr, $request, [
+            'current' => ['current', 'odr_rate'],
+            'allowed' => ['allowed', 'odr_rate_allowed'],
+        ]);
 
         $nowDate = now()->toDateString();
 
@@ -408,6 +413,10 @@ class AccountHealthMasterController extends Controller
         }
 
         $fulfillment = FullfillmentRate::where('channel_id', $channelId)->first();
+        AccountHealthDashboardEntryLog::recordRequest((int) $channelId, (string) $request->channel, 'fulfillment_rate', $fulfillment, $request, [
+            'current' => ['current', 'fulfillment_rate'],
+            'allowed' => ['allowed', 'fulfillment_rate_allowed'],
+        ]);
 
         $nowDate = now()->toDateString();
 
@@ -565,6 +574,10 @@ class AccountHealthMasterController extends Controller
         }
 
         $validTracking = ValidTrackingRate::where('channel_id', $channelId)->first();
+        AccountHealthDashboardEntryLog::recordRequest((int) $channelId, (string) $request->channel, 'valid_tracking_rate', $validTracking, $request, [
+            'current' => ['current', 'valid_tracking_rate'],
+            'allowed' => ['allowed', 'valid_tracking_rate_allowed'],
+        ]);
 
         $nowDate = now()->toDateString();
 
@@ -722,6 +735,10 @@ class AccountHealthMasterController extends Controller
         }
 
         $lateShipment = LateShipmentRate::where('channel_id', $channelId)->first();
+        AccountHealthDashboardEntryLog::recordRequest((int) $channelId, (string) $request->channel, 'late_shipment_rate', $lateShipment, $request, [
+            'current' => ['current', 'late_shipment_rate'],
+            'allowed' => ['allowed', 'late_shipment_rate_allowed'],
+        ]);
 
         $nowDate = now()->toDateString();
 
@@ -879,6 +896,10 @@ class AccountHealthMasterController extends Controller
         }
 
         $onTimeDelivery = OnTimeDeliveryRate::where('channel_id', $channelId)->first();
+        AccountHealthDashboardEntryLog::recordRequest((int) $channelId, (string) $request->channel, 'on_time_delivery', $onTimeDelivery, $request, [
+            'current' => ['current', 'on_time_delivery'],
+            'allowed' => ['allowed', 'on_time_delivery_allowed'],
+        ]);
 
         $nowDate = now()->toDateString();
 
@@ -1036,6 +1057,10 @@ class AccountHealthMasterController extends Controller
         }
 
         $negativeSeller = NegativeSellerRate::where('channel_id', $channelId)->first();
+        AccountHealthDashboardEntryLog::recordRequest((int) $channelId, (string) $request->channel, 'negative_seller_rate', $negativeSeller, $request, [
+            'current' => ['current', 'negative_seller_rate'],
+            'allowed' => ['allowed', 'negative_seller_rate_allowed'],
+        ]);
 
         $nowDate = now()->toDateString();
 
@@ -1271,6 +1296,10 @@ class AccountHealthMasterController extends Controller
         }
 
         $atozClaims = AtoZClaimsRate::where('channel_id', $channelId)->first();
+        AccountHealthDashboardEntryLog::recordRequest((int) $channelId, (string) $request->channel, 'atoz_claims_rate', $atozClaims, $request, [
+            'current' => ['current', 'atoz_claims_rate'],
+            'allowed' => ['allowed', 'atoz_claims_rate_allowed'],
+        ]);
 
         $nowDate = now()->toDateString();
         $cases = $this->normalizeAtoZCases($request->input('cases'), [
@@ -1524,6 +1553,10 @@ class AccountHealthMasterController extends Controller
         }
 
         $violation = VoilanceRate::where('channel_id', $channelId)->first();
+        AccountHealthDashboardEntryLog::recordRequest((int) $channelId, (string) $request->channel, 'violation_rate', $violation, $request, [
+            'current' => ['current', 'violation_rate'],
+            'allowed' => ['allowed', 'violation_rate_allowed'],
+        ]);
 
         $nowDate = now()->toDateString();
 
@@ -1681,6 +1714,10 @@ class AccountHealthMasterController extends Controller
         }
 
         $refund = RefundRate::where('channel_id', $channelId)->first();
+        AccountHealthDashboardEntryLog::recordRequest((int) $channelId, (string) $request->channel, 'refund_rate', $refund, $request, [
+            'current' => ['current', 'refund_rate'],
+            'allowed' => ['allowed', 'refund_rate_allowed'],
+        ]);
 
         $nowDate = now()->toDateString();
 
