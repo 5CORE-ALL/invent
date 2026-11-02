@@ -258,6 +258,12 @@ class AmazonKwTargetingPushService
                         $adGroupSb[$cid] = (string) $kw['adGroupId'];
                     }
                 }
+                // The Targets column of an HL campaign shows what is live on Amazon: refresh it from this read (a push adds below).
+                $hlCounts = [];
+                foreach (array_keys($hlIds) as $hid) {
+                    $hlCounts[(string) $hid] = count($liveSb[(string) $hid] ?? []);
+                }
+                \App\Support\AmazonAdsTargetCounts::upsert('sb', $hlCounts, 'targets');
             } catch (\Throwable $e) {
                 Log::warning('KW targeting push: SB keyword list failed', ['error' => $e->getMessage()]);
                 $errors[] = 'Could not read live HL campaigns from Amazon: '.$e->getMessage();
@@ -339,6 +345,9 @@ class AmazonKwTargetingPushService
                             $row['failed'] += count($chunk);
                             $row['message'] = $this->ads->amazonErrorMessage($e);
                         }
+                    }
+                    if ($row['added'] > 0) {
+                        \App\Support\AmazonAdsTargetCounts::increment('sb', $hid, (int) $row['added']);
                     }
                 }
             }
