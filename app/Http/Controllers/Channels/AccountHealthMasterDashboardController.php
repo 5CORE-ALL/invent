@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Channels;
 
 use App\Http\Controllers\Controller;
 use App\Models\AccountHealthMaster;
+use App\Services\AccountHealthDashboardEntryLog;
 use App\Models\AmazonDatasheet;
 use App\Models\AtoZClaimsRate;
 use App\Models\BestbuyUsaProduct;
@@ -92,10 +93,36 @@ class AccountHealthMasterDashboardController extends Controller
         // A channel can have more than one row per rate table, and the dashboard,
         // the update endpoints and this action don't all pick the same row. Clear
         // every row of the channel so the cell is empty whichever one is shown.
+        $existing = $model::where('channel_id', $channelId)->orderByDesc('id')->first();
+        $old = $existing ? ($existing->{$column} ?? null) : null;
         $model::where('channel_id', $channelId)
             ->update([$column => $column === 'allowed' ? '' : null]);
+        AccountHealthDashboardEntryLog::write((int) $channelId, trim($validated['channel']), $field, $column, $old, $column === 'allowed' ? '' : null);
 
         return response()->json(['success' => true, 'message' => 'Cell data deleted.']);
+    }
+
+    public function chartSeries(Request $request)
+    {
+        $series = AccountHealthDashboardEntryLog::series(
+            (string) $request->query('channel', ''),
+            $request->query('metric')
+        );
+        if ($series === null) {
+            return response()->json(['message' => 'Channel not found'], 404);
+        }
+
+        return response()->json($series);
+    }
+
+    public function entryHistory(Request $request)
+    {
+        $history = AccountHealthDashboardEntryLog::history((string) $request->query('channel', ''));
+        if ($history === null) {
+            return response()->json(['message' => 'Channel not found'], 404);
+        }
+
+        return response()->json($history);
     }
 
     public function getMasterChannelDataHealthDashboard(Request $request)

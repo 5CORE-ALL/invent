@@ -129,6 +129,140 @@
             overflow: auto !important;
             flex: none !important;
         }
+
+        .dropdown-search-container {
+            position: relative;
+            min-width: 260px;
+        }
+
+        .ahm-search-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+
+        .dropdown-search-container .ahm-search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #64748b;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .dropdown-search-container .form-control {
+            padding-left: 34px;
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+            height: 38px;
+        }
+
+        .dropdown-search-results {
+            display: none;
+            position: fixed;
+            z-index: 10050;
+            max-height: 280px;
+            overflow-y: auto;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, .16);
+            padding: 6px;
+        }
+
+        .dropdown-search-item {
+            padding: 8px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #0f172a;
+        }
+
+        .dropdown-search-item:hover,
+        .dropdown-search-item.active {
+            background: #eef2ff;
+            color: #3730a3;
+        }
+
+        .dropdown-search-empty {
+            padding: 10px;
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        .ahm-metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 12px;
+        }
+
+        .ahm-metric-card {
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 10px 12px 8px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+        }
+
+        .ahm-metric-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 2px;
+        }
+
+        .ahm-metric-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .ahm-metric-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            flex: none;
+        }
+
+        .ahm-metric-date {
+            font-size: 11px;
+            color: #64748b;
+            text-align: right;
+            line-height: 1.3;
+            white-space: pre-line;
+        }
+
+        .ahm-metric-canvas {
+            position: relative;
+            height: 132px;
+        }
+
+        .ahm-metric-foot {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 11px;
+            color: #334155;
+            margin-top: 4px;
+        }
+
+        .ahm-chart-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: flex-end;
+            justify-content: space-between;
+            width: 100%;
+        }
     </style>
 @endsection
 
@@ -181,15 +315,6 @@
                             data-bs-target="#accountHealthImportModal">
                             <i class="fas fa-file-import me-1"></i> Import Health Data
                         </button>
-                    </div>
-                </div>
-                <div class="col-auto">
-                    <div class="dropdown-search-container" style="position: relative;">
-                        <input type="text" class="form-control form-control-sm channel-search"
-                            placeholder="Search Channel" id="channelSearchInput">
-                        <div class="dropdown-search-results" id="channelSearchDropdown"
-                            style="position: absolute; top: 100%; left: 0; right: 0; z-index: 9999; background: #fff; border: 1px solid #ccc; display: none; max-height: 200px; overflow-y: auto;">
-                        </div>
                     </div>
                 </div>
             </div>
@@ -343,7 +468,7 @@
 
         <div class="row mb-4 g-3">
             <div class="col-12 col-lg-4 col-xl-3">
-                <div class="card shadow-sm h-100">
+                <div class="card shadow-sm">
                     <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2 py-2">
                         <span class="fw-semibold">Escalated Claims</span>
                         <a href="{{ route('escalated.claims.tabulator') }}" class="small text-decoration-none">Open page</a>
@@ -365,7 +490,68 @@
                 </div>
             </div>
             <div class="col-12 col-lg-8 col-xl-9">
-                <div id="channelSalesChart" style="width: 100%; height: 400px;"></div>
+                <div class="card shadow-sm">
+                    <div class="card-header py-2">
+                        <div class="ahm-chart-toolbar">
+                            <div>
+                                <div class="fw-semibold" id="ahmChartTitle">Marketplace columns</div>
+                                <div class="small text-muted" id="ahmChartSubtitle">Search a marketplace. Each column gets its own graph and updated date.</div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 align-items-end">
+                                <div>
+                                    <label class="ahm-search-label" for="ahmChartSearch">Marketplace</label>
+                                    <div class="dropdown-search-container">
+                                        <i class="fas fa-search ahm-search-icon"></i>
+                                        <input type="text" class="form-control form-control-sm" id="ahmChartSearch" placeholder="Type to search" autocomplete="off">
+                                        <div class="dropdown-search-results" id="ahmChartSearchDropdown"></div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="ahmHistoryBtn" data-bs-toggle="modal" data-bs-target="#ahmHistoryModal">History</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body py-2">
+                        <div id="ahmMetricGrid" class="ahm-metric-grid"></div>
+                        <p id="ahmChartEmpty" class="small text-muted text-center mb-0">Search a marketplace to see a graph for every column.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="ahmHistoryModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Entry history <span id="ahmHistoryChannel" class="text-muted"></span></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body p-0">
+                        <div class="d-flex align-items-center gap-2 px-3 py-2 border-bottom">
+                            <label class="small mb-0 text-muted" for="ahmHistoryColumn">Column</label>
+                            <select id="ahmHistoryColumn" class="form-select form-select-sm" style="max-width: 240px;">
+                                <option value="">All columns</option>
+                            </select>
+                        </div>
+                        <div id="ahmHistoryLoading" class="p-3 text-muted">Loading...</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Updated date</th>
+                                        <th>When</th>
+                                        <th>User</th>
+                                        <th>Column</th>
+                                        <th>Field</th>
+                                        <th>From</th>
+                                        <th>To</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ahmHistoryBody"></tbody>
+                            </table>
+                        </div>
+                        <p id="ahmHistoryEmpty" class="p-3 text-muted mb-0" style="display:none;">No entries for this marketplace yet.</p>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -468,6 +654,8 @@
     <script>
         var jq = jQuery.noConflict(true);
         let originalChannelData = [];
+        let ahmCharts = [];
+        let ahmHistoryRows = [];
         let table;
         let isPlaying = false;
         let currentChannelIndex = 0;
@@ -580,7 +768,7 @@
                         return [];
                     }
                     originalChannelData = response.data;
-                    drawChannelChart(response.data);
+                    rememberMarketplace(response.data);
                     updateL30OrdersTotal(response.data);
                     return response.data.map(item => ({
                         channel: pick(item, ['channel', 'Channel', 'Channel '], ''),
@@ -1534,6 +1722,10 @@
                             const indicator = cell.getElement().querySelector('.save-indicator');
                             if (indicator) indicator.remove();
                         }, 2000);
+                        const selectedSite = document.getElementById('ahmChartSearch');
+                        if (selectedSite && String(selectedSite.value).trim().toLowerCase() === String(rowData.channel || '').trim().toLowerCase()) {
+                            loadAhmChart();
+                        }
                         console.log(`Updated ${fieldName}:`, response);
                     } else {
                         alert(`Error: ${response.message || 'Failed to save field'}`);
@@ -1559,197 +1751,322 @@
             }
         }
 
-        function drawChannelChart(data) {
-            console.log('Drawing chart with data:', data);
-            if (!data || data.length === 0) {
-                console.warn('No data for chart');
+        const ahmPalette = {
+            odr_rate: '#ef4444',
+            fulfillment_rate: '#2563eb',
+            valid_tracking_rate: '#059669',
+            late_shipment_rate: '#d97706',
+            on_time_delivery: '#7c3aed',
+            negative_seller_rate: '#db2777',
+            atoz_claims_rate: '#0891b2',
+            violation_rate: '#ea580c',
+            refund_rate: '#4f46e5'
+        };
+
+        function marketplaceNames(data) {
+            const rows = data || originalChannelData || [];
+            const names = [];
+            rows.forEach(row => {
+                const name = String(row.channel || row.Channel || row['Channel '] || '').trim();
+                if (name && names.indexOf(name) === -1) names.push(name);
+            });
+            names.sort((a, b) => a.localeCompare(b));
+            return names;
+        }
+
+        function rememberMarketplace(data) {
+            const saved = localStorage.getItem('ahm-dash-chart-channel') || '';
+            const match = marketplaceNames(data).find(name => name.toLowerCase() === saved.toLowerCase());
+            if (!match) return;
+            jq('#ahmChartSearch').val(match);
+            setTimeout(function() {
+                if (table) table.setFilter('channel', '=', match);
+            }, 0);
+            loadAhmChart();
+        }
+
+        function selectedMarketplace() {
+            const chartSearch = document.getElementById('ahmChartSearch');
+            const typed = chartSearch ? String(chartSearch.value || '').trim() : '';
+            if (!typed) return '';
+            return marketplaceNames().find(name => name.toLowerCase() === typed.toLowerCase()) || '';
+        }
+
+        function formatEntryDate(iso) {
+            if (!iso) return '';
+            const date = new Date(String(iso).slice(0, 10) + 'T00:00:00');
+            if (Number.isNaN(date.getTime())) return String(iso);
+            return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+
+        function formatMetricValue(value) {
+            if (value === null || value === undefined || value === '') return '—';
+            const number = Number(value);
+            if (!Number.isFinite(number)) return String(value);
+            return Math.abs(number) >= 100 ? number.toLocaleString('en-US', { maximumFractionDigits: 1 }) : String(Math.round(number * 100) / 100);
+        }
+
+        function destroyAhmCharts() {
+            ahmCharts.forEach(chart => {
+                try { chart.destroy(); } catch (e) {}
+            });
+            ahmCharts = [];
+        }
+
+        function chooseMarketplace(name, options) {
+            const clean = String(name || '').trim();
+            const filterTable = !options || options.filterTable !== false;
+            jq('#ahmChartSearch').val(clean);
+            jq('.dropdown-search-results').hide();
+            if (clean) {
+                localStorage.setItem('ahm-dash-chart-channel', clean);
+                if (filterTable && table && !isPlaying) table.setFilter('channel', '=', clean);
+            } else {
+                localStorage.removeItem('ahm-dash-chart-channel');
+                if (filterTable && table && !isPlaying) table.clearFilter();
+                destroyAhmCharts();
+                const grid = document.getElementById('ahmMetricGrid');
+                const empty = document.getElementById('ahmChartEmpty');
+                const title = document.getElementById('ahmChartTitle');
+                const subtitle = document.getElementById('ahmChartSubtitle');
+                if (grid) grid.innerHTML = '';
+                if (title) title.textContent = 'Marketplace columns';
+                if (subtitle) subtitle.textContent = 'Search a marketplace. Each column gets its own graph and updated date.';
+                if (empty) {
+                    empty.style.display = 'block';
+                    empty.textContent = 'Search a marketplace to see a graph for every column.';
+                }
                 return;
             }
-            google.charts.load('current', {
-                packages: ['corechart']
-            });
-            google.charts.setOnLoadCallback(function() {
-                renderChart(data);
-            });
+            loadAhmChart();
         }
 
-        function renderChart(data) {
-            console.log('Rendering chart with data:', data);
-            let chartData = [
-                ['Channel', 'L30 Orders', 'ODR Rate', 'ODR Rate Allowed', 'Fulfillment Rate',
-                    'Fulfillment Rate Allowed', 'Valid Tracking Rate', 'Valid Tracking Rate Allowed',
-                    'On Time Delivery', 'On Time Delivery Allowed', 'A-to-Z Claims', 'A-to-Z Claims Allowed',
-                    'Violation/Compliance', 'Violation/Compliance Allowed', 'Late Shipment Rate',
-                    'Late Shipment Rate Allowed', 'Negative Seller Rate', 'Negative Seller Rate Allowed',
-                    'Refund Rate', 'Refund Rate Allowed', {
-                        role: 'annotation'
-                    }
-                ]
-            ];
-
-            data.forEach(row => {
-                let channel = row['channel'] || row['Channel'] || row['Channel '] || '';
-                let l30Orders = parseFloat(row['l30_orders'] || row['L30 Orders'] || 0);
-                let odrRate = parseNumber(row['odr_rate'] || row['ODR'] || row['ODR Rate'] || 'N/A');
-                let odrRateAllowed = parseNumber(row['odr_rate_allowed'] || 0);
-                let fulfillmentRate = parseNumber(row['fulfillment_rate'] || row['Fulfillment Rate'] || 'N/A');
-                let fulfillmentRateAllowed = parseNumber(row['fulfillment_rate_allowed'] || 0);
-                let validTrackingRate = parseNumber(row['valid_tracking_rate'] || row['Valid Tracking Rate'] ||
-                    'N/A');
-                let validTrackingRateAllowed = parseNumber(row['valid_tracking_rate_allowed'] || 0);
-                let onTimeDelivery = parseNumber(row['on_time_delivery'] || row['On Time Delivery Rate'] || 'N/A');
-                let onTimeDeliveryAllowed = parseNumber(row['on_time_delivery_allowed'] || 0);
-                let atozClaimsRate = parseNumber(row['atoz_claims_rate'] || row['AtoZ Claims Rate'] || 'N/A');
-                let atozClaimsRateAllowed = parseNumber(row['atoz_claims_rate_allowed'] || 0);
-                let violationRate = parseNumber(row['violation_rate'] || row['Violation Rate'] || 'N/A');
-                let violationRateAllowed = parseNumber(row['violation_rate_allowed'] || 0);
-                let lateShipmentRate = parseNumber(row['late_shipment_rate'] || row['Late Shipment Rate'] || 'N/A');
-                let lateShipmentRateAllowed = parseNumber(row['late_shipment_rate_allowed'] || 0);
-                let negativeSellerRate = parseNumber(row['negative_seller_rate'] || row['Negative Seller Rate'] ||
-                    'N/A');
-                let negativeSellerRateAllowed = parseNumber(row['negative_seller_rate_allowed'] || 0);
-                let refundRate = parseNumber(row['refund_rate'] || row['Refund Rate'] || 'N/A');
-                let refundRateAllowed = parseNumber(row['refund_rate_allowed'] || 0);
-
-                chartData.push([
-                    channel,
-                    l30Orders,
-                    odrRate,
-                    odrRateAllowed,
-                    fulfillmentRate,
-                    fulfillmentRateAllowed,
-                    validTrackingRate,
-                    validTrackingRateAllowed,
-                    onTimeDelivery,
-                    onTimeDeliveryAllowed,
-                    atozClaimsRate,
-                    atozClaimsRateAllowed,
-                    violationRate,
-                    violationRateAllowed,
-                    lateShipmentRate,
-                    lateShipmentRateAllowed,
-                    negativeSellerRate,
-                    negativeSellerRateAllowed,
-                    refundRate,
-                    refundRateAllowed,
-                    channel
-                ]);
-            });
-
-            let dataTable = google.visualization.arrayToDataTable(chartData);
-            let options = {
-                title: 'Channel Performance Metrics',
-                curveType: 'function',
-                legend: {
-                    position: 'bottom'
-                },
-                hAxis: {
-                    textPosition: 'none'
-                },
-                vAxis: {
-                    title: 'Value',
-                    minValue: 0
-                },
-                pointSize: 5,
-                annotations: {
-                    alwaysOutside: true,
-                    textStyle: {
-                        fontSize: 11,
-                        bold: true,
-                        color: '#000'
-                    }
-                },
-                series: {
-                    0: {
-                        color: '#1E88E5',
-                        lineWidth: 4
-                    }, // L30 Orders
-                    1: {
-                        color: '#E53935',
-                        lineWidth: 2
-                    }, // ODR Rate
-                    2: {
-                        color: '#E57373',
-                        lineWidth: 2,
-                        lineDashStyle: [4, 4]
-                    }, // ODR Rate Allowed
-                    3: {
-                        color: '#43A047',
-                        lineWidth: 2
-                    }, // Fulfillment Rate
-                    4: {
-                        color: '#81C784',
-                        lineWidth: 2,
-                        lineDashStyle: [4, 4]
-                    }, // Fulfillment Rate Allowed
-                    5: {
-                        color: '#F06292',
-                        lineWidth: 2
-                    }, // Valid Tracking Rate
-                    6: {
-                        color: '#F8BBD0',
-                        lineWidth: 2,
-                        lineDashStyle: [4, 4]
-                    }, // Valid Tracking Rate Allowed
-                    7: {
-                        color: '#FFB300',
-                        lineWidth: 2
-                    }, // On Time Delivery
-                    8: {
-                        color: '#FFCA28',
-                        lineWidth: 2,
-                        lineDashStyle: [4, 4]
-                    }, // On Time Delivery Allowed
-                    9: {
-                        color: '#8E24AA',
-                        lineWidth: 2
-                    }, // A-to-Z Claims
-                    10: {
-                        color: '#BA68C8',
-                        lineWidth: 2,
-                        lineDashStyle: [4, 4]
-                    }, // A-to-Z Claims Allowed
-                    11: {
-                        color: '#26A69A',
-                        lineWidth: 2
-                    }, // Violation/Compliance
-                    12: {
-                        color: '#4DB6AC',
-                        lineWidth: 2,
-                        lineDashStyle: [4, 4]
-                    }, // Violation/Compliance Allowed
-                    13: {
-                        color: '#D81B60',
-                        lineWidth: 2
-                    }, // Late Shipment Rate
-                    14: {
-                        color: '#F06292',
-                        lineWidth: 2,
-                        lineDashStyle: [4, 4]
-                    }, // Late Shipment Rate Allowed
-                    15: {
-                        color: '#0288D1',
-                        lineWidth: 2
-                    }, // Negative Seller Rate
-                    16: {
-                        color: '#4FC3F7',
-                        lineWidth: 2,
-                        lineDashStyle: [4, 4]
-                    }, // Negative Seller Rate Allowed
-                    17: {
-                        color: '#7CB342',
-                        lineWidth: 2
-                    }, // Refund Rate
-                    18: {
-                        color: '#AED581',
-                        lineWidth: 2,
-                        lineDashStyle: [4, 4]
-                    } // Refund Rate Allowed
+        function loadAhmChart() {
+            const channel = selectedMarketplace();
+            const empty = document.getElementById('ahmChartEmpty');
+            const grid = document.getElementById('ahmMetricGrid');
+            if (!channel) {
+                destroyAhmCharts();
+                if (grid) grid.innerHTML = '';
+                if (empty) {
+                    empty.style.display = 'block';
+                    empty.textContent = 'Search a marketplace to see a graph for every column.';
                 }
-            };
-            let chart = new google.visualization.LineChart(document.getElementById('channelSalesChart'));
-            chart.draw(dataTable, options);
+                return;
+            }
+            const url = '/account-health-master/dashboard/series?channel=' + encodeURIComponent(channel);
+            fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(res => res.ok ? res.json() : Promise.reject(res))
+                .then(payload => renderMarketplaceCharts(payload))
+                .catch(() => {
+                    destroyAhmCharts();
+                    if (grid) grid.innerHTML = '';
+                    if (empty) {
+                        empty.style.display = 'block';
+                        empty.textContent = 'Could not load the graphs for this marketplace.';
+                    }
+                });
         }
+
+        function renderMarketplaceCharts(payload) {
+            const grid = document.getElementById('ahmMetricGrid');
+            const empty = document.getElementById('ahmChartEmpty');
+            const title = document.getElementById('ahmChartTitle');
+            const subtitle = document.getElementById('ahmChartSubtitle');
+            const columns = (payload && payload.columns) ? payload.columns : [];
+            destroyAhmCharts();
+            if (grid) grid.innerHTML = '';
+            if (title) title.textContent = (payload && payload.channel) ? payload.channel : 'Marketplace';
+            if (subtitle) subtitle.textContent = 'One graph per column, plotted on the date the value was updated.';
+            if (!grid || !columns.length || typeof Chart === 'undefined') {
+                if (empty) {
+                    empty.style.display = 'block';
+                    empty.textContent = 'No columns to chart for this marketplace.';
+                }
+                return;
+            }
+            if (empty) empty.style.display = 'none';
+            columns.forEach(column => {
+                const color = ahmPalette[column.key] || '#2563eb';
+                const card = document.createElement('div');
+                card.className = 'ahm-metric-card';
+                const updated = column.updated_on ? ('Updated ' + formatEntryDate(column.updated_on)) : 'No current entry';
+                const allowedUpdated = column.allowed_updated_on ? ('Allowed ' + formatEntryDate(column.allowed_updated_on)) : '';
+                card.innerHTML =
+                    '<div class="ahm-metric-head">' +
+                        '<div class="ahm-metric-title"><span class="ahm-metric-dot" style="background:' + color + '"></span><span></span></div>' +
+                        '<div class="ahm-metric-date"></div>' +
+                    '</div>' +
+                    '<div class="ahm-metric-canvas"><canvas></canvas></div>' +
+                    '<div class="ahm-metric-foot"><span></span><span></span></div>';
+                card.querySelector('.ahm-metric-title span:last-child').textContent = column.label || column.key;
+                card.querySelector('.ahm-metric-date').textContent = allowedUpdated ? (updated + '\n' + allowedUpdated) : updated;
+                card.querySelector('.ahm-metric-foot span:first-child').textContent = 'Current ' + formatMetricValue(column.latest);
+                card.querySelector('.ahm-metric-foot span:last-child').textContent = 'Allowed ' + (column.latest_allowed || '—');
+                grid.appendChild(card);
+
+                const dates = [];
+                (column.points || []).forEach(point => { if (dates.indexOf(point.date) === -1) dates.push(point.date); });
+                (column.allowed_points || []).forEach(point => { if (dates.indexOf(point.date) === -1) dates.push(point.date); });
+                dates.sort();
+                const currentMap = {};
+                const allowedMap = {};
+                (column.points || []).forEach(point => { currentMap[point.date] = point.value; });
+                (column.allowed_points || []).forEach(point => { allowedMap[point.date] = point.value; });
+                const canvas = card.querySelector('canvas');
+                if (!dates.length || !canvas) {
+                    const holder = card.querySelector('.ahm-metric-canvas');
+                    if (holder) holder.innerHTML = '<div class="small text-muted text-center" style="padding-top:42px;">No dated entries yet</div>';
+                    return;
+                }
+                const datasets = [
+                    {
+                        label: 'Current',
+                        data: dates.map(day => currentMap[day] === undefined ? null : currentMap[day]),
+                        borderColor: color,
+                        backgroundColor: color + '33',
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: color,
+                        pointRadius: 4,
+                        pointHoverRadius: 5,
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.35,
+                        spanGaps: false
+                    }
+                ];
+                if ((column.allowed_points || []).length) {
+                    datasets.push({
+                        label: 'Allowed',
+                        data: dates.map(day => allowedMap[day] === undefined ? null : allowedMap[day]),
+                        borderColor: '#0f172a',
+                        backgroundColor: 'transparent',
+                        pointBackgroundColor: '#0f172a',
+                        pointRadius: 3,
+                        borderWidth: 1.5,
+                        borderDash: [5, 4],
+                        fill: false,
+                        tension: 0.2,
+                        spanGaps: false
+                    });
+                }
+                const chart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: dates.map(formatEntryDate),
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: true, labels: { boxWidth: 10, font: { size: 10 } } },
+                            tooltip: { mode: 'index', intersect: false }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 4 } },
+                            y: { beginAtZero: true, ticks: { font: { size: 10 } } }
+                        }
+                    }
+                });
+                ahmCharts.push(chart);
+            });
+        }
+
+        function historyCell(value) {
+            const text = document.createElement('div');
+            text.textContent = value || '';
+            return text.innerHTML;
+        }
+
+        function renderAhmHistoryRows() {
+            const body = document.getElementById('ahmHistoryBody');
+            const empty = document.getElementById('ahmHistoryEmpty');
+            const filter = document.getElementById('ahmHistoryColumn');
+            const metric = filter ? filter.value : '';
+            const rows = ahmHistoryRows.filter(row => !metric || row.metric_key === metric || row.metric === metric);
+            if (!body) return;
+            body.innerHTML = '';
+            if (!rows.length) {
+                if (empty) {
+                    empty.style.display = 'block';
+                    empty.textContent = 'No entries for this column yet.';
+                }
+                return;
+            }
+            if (empty) empty.style.display = 'none';
+            body.innerHTML = rows.map(row => {
+                return '<tr><td>' + historyCell(formatEntryDate(row.updated_on || row.at)) + '</td><td>' + historyCell(row.at) +
+                    '</td><td>' + historyCell(row.user_name) + '</td><td>' + historyCell(row.metric) +
+                    '</td><td>' + historyCell(row.column) + '</td><td>' + historyCell(row.old_value) +
+                    '</td><td>' + historyCell(row.new_value) + '</td></tr>';
+            }).join('');
+        }
+
+        function openAhmHistory() {
+            const channel = selectedMarketplace();
+            if (!channel) {
+                alert('Search and select a marketplace first.');
+                return;
+            }
+            const title = document.getElementById('ahmHistoryChannel');
+            const body = document.getElementById('ahmHistoryBody');
+            const loading = document.getElementById('ahmHistoryLoading');
+            const empty = document.getElementById('ahmHistoryEmpty');
+            const filter = document.getElementById('ahmHistoryColumn');
+            if (title) title.textContent = '— ' + channel;
+            if (body) body.innerHTML = '';
+            if (loading) loading.style.display = 'block';
+            if (empty) empty.style.display = 'none';
+            ahmHistoryRows = [];
+            fetch('/account-health-master/dashboard/history?channel=' + encodeURIComponent(channel), {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            }).then(res => res.ok ? res.json() : Promise.reject(res)).then(payload => {
+                if (loading) loading.style.display = 'none';
+                ahmHistoryRows = (payload && payload.rows) ? payload.rows : [];
+                if (filter) {
+                    const current = filter.value;
+                    const seen = {};
+                    filter.innerHTML = '<option value="">All columns</option>';
+                    ahmHistoryRows.forEach(row => {
+                        const key = row.metric_key || row.metric;
+                        if (!key || seen[key]) return;
+                        seen[key] = true;
+                        const option = document.createElement('option');
+                        option.value = key;
+                        option.textContent = row.metric || key;
+                        filter.appendChild(option);
+                    });
+                    filter.value = seen[current] ? current : '';
+                }
+                if (!ahmHistoryRows.length) {
+                    if (empty) {
+                        empty.style.display = 'block';
+                        empty.textContent = 'No entries for this marketplace yet.';
+                    }
+                    return;
+                }
+                renderAhmHistoryRows();
+            }).catch(() => {
+                if (loading) loading.style.display = 'none';
+                if (empty) {
+                    empty.style.display = 'block';
+                    empty.textContent = 'Could not load history.';
+                }
+            });
+        }
+
+        document.getElementById('ahmHistoryBtn')?.addEventListener('click', function (event) {
+            if (!selectedMarketplace()) {
+                event.preventDefault();
+                event.stopPropagation();
+                alert('Search and select a marketplace first.');
+                return;
+            }
+            openAhmHistory();
+        });
+        document.getElementById('ahmHistoryColumn')?.addEventListener('change', renderAhmHistoryRows);
 
         function startPlayback() {
             if (!originalChannelData.length) return;
@@ -1772,8 +2089,14 @@
 
         function stopPlayback() {
             isPlaying = false;
-            table.setData(originalChannelData);
-            table.setPageSize(50);
+            const name = selectedMarketplace();
+            const done = table.setData(originalChannelData);
+            const applyFilter = function() {
+                table.setPageSize(50);
+                if (name) table.setFilter('channel', '=', name);
+            };
+            if (done && typeof done.then === 'function') done.then(applyFilter);
+            else applyFilter();
             jq('#play-auto').show();
             jq('#play-pause').hide();
         }
@@ -1783,8 +2106,12 @@
             const currentRow = uniqueChannelRows[currentChannelIndex];
             if (currentRow) {
                 table.setData([currentRow]);
-                jq('#channelSearchInput').val(currentRow['channel']?.trim() || currentRow['Channel ']?.trim() || currentRow[
-                    'Channel']?.trim() || '');
+                const playingName = currentRow['channel']?.trim() || currentRow['Channel ']?.trim() || currentRow['Channel']?.trim() || '';
+                jq('#ahmChartSearch').val(playingName);
+                if (playingName) {
+                    localStorage.setItem('ahm-dash-chart-channel', playingName);
+                    loadAhmChart();
+                }
                 const tableContainer = jq('#channelTable').parent();
                 if (tableContainer.length) tableContainer.scrollTop(0);
                 setTimeout(() => updatePlayButtonColor(), 500);
@@ -1822,24 +2149,69 @@
             }
         }
 
-        function populateChannelDropdown(searchTerm = '') {
-            const channelData = originalChannelData.map(row => row['channel'] || row['Channel '] || row['Channel']);
-            const uniqueChannels = [...new Set(channelData)].filter(ch => ch && ch.trim() !== '').sort();
-            const lowerSearch = searchTerm.toLowerCase();
-            const sortedChannels = uniqueChannels.sort((a, b) => {
-                const aMatch = a.toLowerCase().includes(lowerSearch);
-                const bMatch = b.toLowerCase().includes(lowerSearch);
-                if (aMatch && !bMatch) return -1;
-                if (!aMatch && bMatch) return 1;
-                return a.localeCompare(b);
+        function placeMarketplaceMenu(input, dropdown) {
+            const rect = input.get(0).getBoundingClientRect();
+            dropdown.css({
+                top: (rect.bottom + 4) + 'px',
+                left: rect.left + 'px',
+                width: Math.max(rect.width, 260) + 'px'
             });
+        }
 
-            const dropdown = jq('#channelSearchDropdown');
+        function renderMarketplaceMenu(input, dropdown) {
+            const term = String(input.val() || '').trim().toLowerCase();
+            const matches = marketplaceNames().filter(name => !term || name.toLowerCase().includes(term));
             dropdown.empty();
-            sortedChannels.forEach(channel => {
-                dropdown.append(`<div class="dropdown-search-item" data-value="${channel}">${channel}</div>`);
-            });
+            if (!matches.length) {
+                dropdown.append('<div class="dropdown-search-empty">No marketplace found</div>');
+            } else {
+                matches.forEach(name => {
+                    const item = document.createElement('div');
+                    item.className = 'dropdown-search-item';
+                    item.dataset.value = name;
+                    item.textContent = name;
+                    dropdown.append(item);
+                });
+            }
+            placeMarketplaceMenu(input, dropdown);
             dropdown.show();
+        }
+
+        function bindMarketplaceSearch(inputSelector, dropdownSelector) {
+            const input = jq(inputSelector);
+            const dropdown = jq(dropdownSelector);
+            input.on('focus', function() { renderMarketplaceMenu(input, dropdown); });
+            input.on('input', function() {
+                const typed = String(this.value || '').trim();
+                if (typed === '') chooseMarketplace('');
+                renderMarketplaceMenu(input, dropdown);
+            });
+            input.on('keydown', function(event) {
+                const items = dropdown.find('.dropdown-search-item');
+                const active = items.filter('.active');
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    if (!items.length) return;
+                    let next = event.key === 'ArrowDown' ? items.first() : items.last();
+                    if (active.length) {
+                        next = event.key === 'ArrowDown' ? active.next('.dropdown-search-item') : active.prev('.dropdown-search-item');
+                        if (!next.length) next = event.key === 'ArrowDown' ? items.first() : items.last();
+                    }
+                    items.removeClass('active');
+                    next.addClass('active');
+                    return;
+                }
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    const pick = (active.data('value') || items.first().data('value') || '');
+                    if (pick) chooseMarketplace(pick);
+                    return;
+                }
+                if (event.key === 'Escape') dropdown.hide();
+            });
+            dropdown.on('click', '.dropdown-search-item', function() {
+                chooseMarketplace(jq(this).data('value'));
+            });
         }
 
         jq(document).ready(function() {
@@ -1885,30 +2257,17 @@
             jq('#play-forward').on('click', nextChannel);
             jq('#play-backward').on('click', previousChannel);
 
-            const channelSearchInput = jq('#channelSearchInput');
-            const channelSearchDropdown = jq('#channelSearchDropdown');
+            bindMarketplaceSearch('#ahmChartSearch', '#ahmChartSearchDropdown');
 
-            channelSearchInput.on('focus', () => populateChannelDropdown());
-            channelSearchInput.on('input', function() {
-                const val = this.value.trim();
-                if (val === '') {
-                    table.clearFilter();
-                } else {
-                    table.setFilter("channel", "=", val);
+            jq(window).on('scroll resize', function() {
+                if (jq('#ahmChartSearchDropdown').is(':visible')) {
+                    placeMarketplaceMenu(jq('#ahmChartSearch'), jq('#ahmChartSearchDropdown'));
                 }
-                populateChannelDropdown(val);
-            });
-
-            channelSearchDropdown.on('click', '.dropdown-search-item', function() {
-                const selectedChannel = jq(this).data('value');
-                channelSearchInput.val(selectedChannel);
-                channelSearchDropdown.hide();
-                table.setFilter("channel", "=", selectedChannel);
             });
 
             jq(document).on('click', function(e) {
                 if (!e.target.closest('.dropdown-search-container')) {
-                    channelSearchDropdown.hide();
+                    jq('.dropdown-search-results').hide();
                 }
             });
 
