@@ -1175,7 +1175,7 @@
                                         </div>
                                         <div class="col-md-3">
                                             <label for="hold_issue_replacement_tracking_40" class="form-label small mb-1">
-                                                Tracking ID
+                                                Replacement Tracking ID
                                             </label>
                                             <input type="text" class="form-control" id="hold_issue_replacement_tracking_40"
                                                 maxlength="40" placeholder="Up to 40 chars">
@@ -1225,6 +1225,13 @@
                                     <textarea class="form-control" id="hold_issue_other_notes" rows="3"
                                         placeholder="Write notes about this action..."></textarea>
                                 </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="hold_issue_tracking_number" class="form-label">Tracking ID</label>
+                                <input type="text" class="form-control" id="hold_issue_tracking_number"
+                                    name="tracking_number" maxlength="50"
+                                    placeholder="Tracking ID sent to Carrier and Claim" autocomplete="off">
                             </div>
 
                             <div class="col-md-6">
@@ -2090,8 +2097,8 @@
                     '<div class="ai-detail-section">' +
                     '<div class="ai-detail-section-title">Tracking &amp; media</div>' +
                     detailsTextRow('Carrier', d.issue_carrier) +
-                    detailsTrackingRow('Tracking', d.tracking_number) +
-                    detailsTrackingRow('Track R (replacement)', d.replacement_tracking) +
+                    detailsTrackingRow('Tracking ID', d.tracking_number) +
+                    detailsTrackingRow('Replacement Tracking ID', d.replacement_tracking) +
                     detailsImageRow('SKU image', d.image_url) +
                     detailsImageRow('Img 1', d.image_1_url) +
                     detailsImageRow('Img 2', d.image_2_url) +
@@ -2117,7 +2124,7 @@
                         replacementParts.push(detailsTextRow('Qty sending ' + n, line.qty));
                     }
                     if (String(line?.tracking || '').trim() !== '') {
-                        replacementParts.push(detailsTrackingRow('Track R ' + n, line.tracking));
+                        replacementParts.push(detailsTrackingRow('Replacement Tracking ID ' + n, line.tracking));
                     }
                     const extraOutProcessed = !!line?.outgoing_processed_at;
                     const extraOutNeeded = line?.outgoing_needed === true || line?.outgoing_needed === 1 || String(line?.outgoing_needed) === '1';
@@ -2509,15 +2516,15 @@
                 // modal (magnifier in the column right after Action). Users
                 // can re-enable any of these from the "Columns" dropdown.
                 {
-                    title: 'Tracking',
+                    title: 'Tracking ID',
                     field: 'tracking_number',
-                    width: 80,
+                    width: 110,
                     formatter: fmtTracking,
                     hozAlign: 'center',
                     visible: false
                 },
                 {
-                    title: 'Track R',
+                    title: 'Replacement Tracking ID',
                     field: 'replacement_tracking',
                     width: 80,
                     formatter: fmtTracking,
@@ -2685,15 +2692,15 @@
                 // Hidden by default — values are visible via the Details
                 // magnifier modal. Users can re-enable from the Columns menu.
                 {
-                    title: 'Tracking',
+                    title: 'Tracking ID',
                     field: 'tracking_number',
-                    width: 80,
+                    width: 110,
                     formatter: fmtTracking,
                     hozAlign: 'center',
                     visible: false
                 },
                 {
-                    title: 'Track R',
+                    title: 'Replacement Tracking ID',
                     field: 'replacement_tracking',
                     width: 80,
                     formatter: fmtTracking,
@@ -3693,7 +3700,7 @@
                     '<input type="number" min="0" step="1" class="form-control repl-extra-qty" placeholder="Qty" value="' + escAttr(qty) + '">' +
                     '</div>' +
                     '<div class="col-md-5">' +
-                    '<label class="form-label small mb-1">Tracking ID</label>' +
+                    '<label class="form-label small mb-1">Replacement Tracking ID</label>' +
                     '<input type="text" class="form-control repl-extra-tracking" maxlength="40" placeholder="Up to 40 chars" value="' + escAttr(tracking) + '">' +
                     '</div>' +
                     '<div class="col-12">' +
@@ -3749,7 +3756,7 @@
                         return null;
                     }
                     if (tracking.length > 40) {
-                        showAlert('Tracking ID must be at most 40 characters.');
+                        showAlert('Replacement Tracking ID must be at most 40 characters.');
                         rowEl.querySelector('.repl-extra-tracking')?.focus();
                         return null;
                     }
@@ -4953,7 +4960,7 @@
                         }
                     }
                     if (rtrk.length > 40) {
-                        showAlert('Tracking ID must be at most 40 characters.');
+                        showAlert('Replacement Tracking ID must be at most 40 characters.');
                         document.getElementById('hold_issue_replacement_tracking_40').focus();
                         return;
                     }
