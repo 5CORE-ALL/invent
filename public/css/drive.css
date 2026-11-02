@@ -17,8 +17,13 @@
     display: grid;
     grid-template-columns: 250px minmax(0, 1fr) 0;
     gap: 0;
+    /* drive.js sets the exact height so the box ends at the bottom of the page; this is the fallback. */
     height: calc(100vh - 120px);
-    min-height: 560px;
+    height: calc(100dvh - 120px);
+    min-height: 420px;
+    /* One row that is exactly the box height: without it the row grew with its content, the box clipped it,
+       and the file list never got a scrollbar once many folders were uploaded. */
+    grid-template-rows: minmax(0, 1fr);
     margin-top: 16px;
     background: var(--drv-bg);
     border: 1px solid var(--drv-border);
@@ -42,6 +47,7 @@
         var(--drv-soft);
     border-right: 1px solid var(--drv-border);
     overflow-y: auto;
+    min-height: 0;
 }
 .drv-brand { display: flex; gap: 10px; align-items: center; padding: 2px 6px 6px; }
 .drv-brand-logo {
@@ -89,7 +95,7 @@
 .drv-storage-legend b { display: inline-block; width: 8px; height: 8px; border-radius: 3px; margin-right: 5px; }
 
 /* ----- Main ----- */
-.drv-main { display: flex; flex-direction: column; min-width: 0; position: relative; }
+.drv-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
 .drv-top { display: flex; align-items: center; gap: 12px; padding: 14px 20px 8px; }
 .drv-search {
     flex: 1; max-width: 720px; display: flex; align-items: center; gap: 10px;
@@ -137,10 +143,16 @@
     background: var(--drv-soft-2); border-radius: 999px; animation: drvFade .15s ease;
 }
 .drv-selbar[hidden] { display: none; }
+/* Constant-height row: only its content changes with the selection, so the list below never moves. */
+.drv-selbar { min-height: 44px; box-sizing: border-box; animation: none; }
+.drv-top, .drv-subbar, .drv-selbar { flex-shrink: 0; }
+.drv-selbar.is-empty { background: transparent; border: 1px dashed var(--drv-border); }
+.drv-selbar.is-empty [data-sel="clear"] { visibility: hidden; }
+.drv-selbar.is-empty .drv-selbar-count { font-weight: 400; font-size: 13px; color: var(--drv-muted); }
 .drv-selbar-count { font-weight: 600; font-size: 14px; margin-right: 6px; }
 .drv-selbar-actions { display: flex; gap: 2px; flex-wrap: wrap; }
 
-.drv-body { flex: 1; overflow-y: auto; padding: 10px 20px 30px; position: relative; outline: none; }
+.drv-body { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 10px 20px 30px; position: relative; outline: none; }
 .drv-loading { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--drv-bg) 60%, transparent); z-index: 3; }
 .drv-loading.show { display: grid; }
 .drv-spinner { width: 38px; height: 38px; border-radius: 50%; border: 3px solid var(--drv-soft-2); border-top-color: var(--drv-accent); animation: drvSpin .8s linear infinite; }
@@ -418,7 +430,8 @@
 @keyframes drvBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 
 @media (max-width: 991px) {
-    .drv, .drv.with-details { grid-template-columns: 1fr; height: auto; min-height: calc(100vh - 140px); }
+    .drv, .drv.with-details { grid-template-columns: 1fr; grid-template-rows: none; height: auto; min-height: calc(100vh - 140px); }
+    .drv-body { flex: 1 1 auto; overflow-y: visible; }
     .drv-side { border-right: 0; border-bottom: 1px solid var(--drv-border); }
     .drv-nav { flex-direction: row; flex-wrap: wrap; }
     .drv-storage { display: none; }
