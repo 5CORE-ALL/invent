@@ -8,6 +8,7 @@ use App\Models\Inventory;
 use App\Models\OrderFulfillmentManualOrder;
 use App\Models\OrderFulfillmentTracking;
 use App\Models\ProductMaster;
+use App\Models\ShopifySku;
 use App\Services\FourSellerApiService;
 use App\Services\GofoExpressService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
@@ -28,7 +29,7 @@ use Illuminate\View\View;
 
 /**
  * Order Fulfillment — marketplace API order tables only.
- * Inventory is the CP Master (product_master) stock for the order SKU.
+ * Inventory is Shopify Available (shopify_skus.available_to_sell), not On hand and not the committed quantity held for open orders.
  */
 class OrderFulfillmentController extends SalesOrderFulfillmentController
 {
@@ -1520,16 +1521,17 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
-     * Stock for SKUs that exist on CP Master (product_master).
-     * Uses a quantity stored on the product when present, otherwise warehouse
-     * available quantity for that same SKU. Shopify tables are not read.
+     * Current stock for the order SKUs. Shopify Available (available_to_sell) wins: that is the quantity
+     * still free to sell. On hand includes units committed to open orders, so it is not used here.
+     * A number stored on the product master, then the warehouse quantity, is used only when Shopify
+     * has no row for the SKU.
      *
      * @param  list<string>  $skus
      * @return array<string, int> compact SKU => quantity
      */
     protected function cpMasterInventoryByCompactSku(array $skus): array
     {
-        if ($skus === [] || ! Schema::hasTable('product_master')) {
+        if ($skus === []) {
             return [];
         }
 
@@ -1551,25 +1553,41 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             return [];
         }
 
-        $query = ProductMaster::query();
-        $query->whereIn('sku', array_keys($needles));
-
-        $matched = [];
-        $query->get(['sku', 'Values'])->each(function ($product) use (&$matched) {
-            $key = ProductMaster::skuCompact((string) ($product->sku ?? ''));
-            if ($key === '' || array_key_exists($key, $matched)) {
-                return;
+        $out = [];
+        if (Schema::hasTable('shopify_skus')) {
+            foreach (ShopifySku::mapByProductSkus(array_keys($needles)) as $sku => $row) {
+                $key = ProductMaster::skuCompact((string) $sku);
+                if ($key === '' || array_key_exists($key, $out)) {
+                    continue;
+                }
+                $available = $row->available_to_sell;
+                $out[$key] = ($available === null || $available === '')
+                    ? (int) ($row->inv ?? 0)
+                    : (int) $available;
             }
-            $matched[$key] = $this->invFromProductValues($product->Values);
-        });
-
-        if ($matched === []) {
-            return [];
         }
 
-        $warehouse = $this->warehouseQtyByCompactSku(array_keys($needles));
-        $out = [];
+        if (! Schema::hasTable('product_master')) {
+            return $out;
+        }
+
+        $matched = [];
+        ProductMaster::query()
+            ->whereIn('sku', array_keys($needles))
+            ->get(['sku', 'Values'])
+            ->each(function ($product) use (&$matched) {
+                $key = ProductMaster::skuCompact((string) ($product->sku ?? ''));
+                if ($key === '' || array_key_exists($key, $matched)) {
+                    return;
+                }
+                $matched[$key] = $this->invFromProductValues($product->Values);
+            });
+
+        $warehouse = $matched === [] ? [] : $this->warehouseQtyByCompactSku(array_keys($needles));
         foreach ($matched as $key => $fromProduct) {
+            if (array_key_exists($key, $out)) {
+                continue;
+            }
             if ($fromProduct !== null) {
                 $out[$key] = $fromProduct;
             } elseif (array_key_exists($key, $warehouse)) {
