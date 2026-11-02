@@ -797,6 +797,8 @@
             renderStatusOptions(table.getData());
             applyFilters(table);
             setTimeout(function () {
+                statusWave = 0;
+                statusFailCount = 0;
                 fillTracking(0);
                 fillTrackingStatus(0);
             }, 400);
@@ -1105,15 +1107,21 @@
 
     function applyStatusUpdate(update) {
         const number = String(update.tracking || '').replace(/\s+/g, '').toUpperCase();
-        if (!number) return;
+        const orderId = String(update.order_id || '').trim();
+        const slug = String(update.mm_slug || '').trim().toLowerCase();
+        if (!number && !orderId) return;
         table.getRows().forEach(function (row) {
             const data = row.getData();
             const current = String(data.tracking || '').replace(/\s+/g, '').toUpperCase();
-            if (current !== number) return;
+            const sameNumber = number && current === number;
+            const sameOrder = orderId && String(data.order_id || '').trim() === orderId
+                && (!slug || String(data.mm_slug || '').trim().toLowerCase() === slug)
+                && (!current || current === number);
+            if (!sameNumber && !sameOrder) return;
             row.update({
                 carrier: update.carrier || data.carrier || '',
-                tracking_status: update.tracking_status || '',
-                tracking_status_checked: true,
+                tracking_status: update.tracking_status || data.tracking_status || '',
+                tracking_status_checked: !!update.tracking_status_checked,
             });
         });
     }
@@ -1171,6 +1179,7 @@
             trackingFailCount = 0;
             trackingLookupRunning = false;
             if (updates.some(function (update) { return String(update.tracking || '').trim(); })) {
+                statusWave = 0;
                 fillTrackingStatus(0);
             }
             fillTracking(attempt + 1);
@@ -1201,36 +1210,59 @@
     });
 
     let statusLookupRunning = false;
+    let statusFailCount = 0;
+    let statusWave = 0;
 
-    function fillTrackingStatus(attempt) {
-        if (statusLookupRunning || attempt > 3) return;
+    function pendingStatusShipments() {
         const seen = {};
-        const numbers = [];
+        const shipments = [];
         table.getData().forEach(function (row) {
             const number = String(row.tracking || '').trim();
             const key = number.replace(/\s+/g, '').toUpperCase();
-            if (!key || row.tracking_status_checked || seen[key]) return;
+            if (!key || key.length < 8 || row.tracking_status_checked || seen[key]) return;
             seen[key] = true;
-            numbers.push(number);
+            shipments.push({
+                number: number,
+                order_id: row.order_id || '',
+                mm_slug: row.mm_slug || '',
+                carrier: row.carrier || '',
+            });
         });
-        const batch = numbers.slice(0, 10);
+        return shipments;
+    }
+
+    function fillTrackingStatus(attempt) {
+        if (statusLookupRunning || attempt > 200) return;
+        const shipments = pendingStatusShipments();
+        const batch = shipments.slice(0, 10);
         if (!batch.length) return;
         statusLookupRunning = true;
         $.ajax({
             url: statusUrl,
             type: 'POST',
             dataType: 'json',
+            timeout: 50000,
             headers: { 'X-CSRF-TOKEN': csrfToken() },
-            data: { numbers: batch },
+            data: { shipments: batch },
         }).done(function (res) {
             const updates = (res && Array.isArray(res.updates)) ? res.updates : [];
             updates.forEach(applyStatusUpdate);
             statusLookupRunning = false;
-            if (updates.length && numbers.length > batch.length && attempt < 3) {
+            statusFailCount = 0;
+            if (shipments.length > batch.length) {
                 fillTrackingStatus(attempt + 1);
+                return;
+            }
+            statusWave += 1;
+            if (statusWave < 3 && pendingStatusShipments().length) {
+                setTimeout(function () { fillTrackingStatus(0); }, 3000);
             }
         }).fail(function () {
             statusLookupRunning = false;
+            statusFailCount += 1;
+            if (statusFailCount < 3) {
+                setTimeout(function () { fillTrackingStatus(attempt); }, 1500);
+            }
         });
     }
 
@@ -1342,7 +1374,12 @@
         renderStatusOptions(table.getData());
         applyFilters(table);
         setNavCount('create_orders', table.getData().filter(function (r) { return r.manual; }).length);
-        setTimeout(function () { fillTracking(0); fillTrackingStatus(0); }, 200);
+        setTimeout(function () {
+            statusWave = 0;
+            statusFailCount = 0;
+            fillTracking(0);
+            fillTrackingStatus(0);
+        }, 200);
     }
 
     // Order amount follows the item lines until the user types their own figure.

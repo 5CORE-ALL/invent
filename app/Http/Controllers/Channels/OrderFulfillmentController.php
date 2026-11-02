@@ -1729,6 +1729,10 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $checkedAt = $record->checked_at ?? null;
             $row['tracking'] = $number;
             $row['tracking_source'] = (string) ($record->source ?? '');
+            $savedCarrier = TrackingCarrierGuesser::knownLabel((string) ($record->carrier ?? ''));
+            if ($savedCarrier !== null) {
+                $row['carrier'] = $savedCarrier;
+            }
             $row['tracking_checked_at'] = $checkedAt ? \Carbon\Carbon::parse($checkedAt)->toDateTimeString() : null;
             // A saved number is final. A recent miss waits for the scheduled retry
             // instead of being re-searched on every page load; older misses are retried.
@@ -2289,72 +2293,166 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
     public function refreshTrackingStatus(Request $request, ShipmentTrackingService $tracking): JsonResponse
     {
+        @set_time_limit(50);
+
         $validated = $request->validate([
-            'numbers' => 'required|array|max:10',
+            'numbers' => 'nullable|array|max:10',
             'numbers.*' => 'required|string|max:128',
+            'shipments' => 'nullable|array|max:10',
+            'shipments.*.number' => 'required|string|max:128',
+            'shipments.*.order_id' => 'nullable|string|max:128',
+            'shipments.*.mm_slug' => 'nullable|string|max:64',
+            'shipments.*.carrier' => 'nullable|string|max:64',
         ]);
 
-        $wanted = [];
-        foreach ($validated['numbers'] as $number) {
-            $raw = trim((string) $number);
+        $items = [];
+        foreach ((array) ($validated['shipments'] ?? []) as $shipment) {
+            $raw = trim((string) ($shipment['number'] ?? ''));
             $key = strtoupper((string) preg_replace('/\s+/', '', $raw));
             if ($key === '' || strlen($key) < 8) {
                 continue;
             }
-            $wanted[$key] = $raw;
+            $items[$key] = [
+                'number' => $raw,
+                'order_id' => trim((string) ($shipment['order_id'] ?? '')),
+                'mm_slug' => strtolower(trim((string) ($shipment['mm_slug'] ?? ''))),
+                'carrier' => trim((string) ($shipment['carrier'] ?? '')),
+            ];
+        }
+        if ($items === []) {
+            foreach ((array) ($validated['numbers'] ?? []) as $number) {
+                $raw = trim((string) $number);
+                $key = strtoupper((string) preg_replace('/\s+/', '', $raw));
+                if ($key === '' || strlen($key) < 8) {
+                    continue;
+                }
+                $items[$key] = ['number' => $raw, 'order_id' => '', 'mm_slug' => '', 'carrier' => ''];
+            }
         }
 
         $updates = [];
-        $toFetch = [];
-        $cached = $this->cachedCarrierStatuses(array_keys($wanted));
-        $freshAfter = now()->subHours(6);
+        if ($items === []) {
+            return response()->json(['success' => true, 'updates' => $updates]);
+        }
 
-        foreach ($wanted as $key => $raw) {
-            $carrier = TrackingCarrierGuesser::labelFromNumber($raw) ?? '';
-            $slug = TrackingCarrierGuesser::slugFromNumber($raw);
+        $savedCarriers = $this->savedCarriersForOrders($items);
+        $toFetch = [];
+        $cached = $this->cachedCarrierStatuses(array_keys($items));
+        $freshAfter = now()->subDay();
+
+        foreach ($items as $key => $item) {
+            $raw = $item['number'];
+            $carrier = $this->carrierForOrderShipment($raw, $item, $savedCarriers);
             $row = $cached[$key] ?? null;
             $status = trim((string) ($row->shipment_status ?? ''));
             $checkedAt = $row && $row->shipment_checked_at ? \Carbon\Carbon::parse($row->shipment_checked_at) : null;
             $fresh = $status !== '' && $checkedAt !== null && $checkedAt->greaterThan($freshAfter);
-            if ($fresh || ! in_array($slug, ['usps', 'ups', 'fedex', 'gofo'], true)) {
-                $updates[] = $this->trackingStatusPayload($raw, $carrier, $status);
+            if ($fresh) {
+                $updates[] = $this->trackingStatusPayload($raw, $carrier !== '' ? $carrier : (string) ($row->carrier ?? ''), $status, $item['order_id'], true, $item['mm_slug']);
                 continue;
             }
-            $toFetch[$key] = ['number' => $raw, 'carrier' => $carrier !== '' ? $carrier : null];
+            if ($carrier === '' && trim((string) ($row->carrier ?? '')) !== '') {
+                $carrier = TrackingCarrierGuesser::knownLabel((string) $row->carrier) ?? '';
+            }
+            $toFetch[$key] = [
+                'number' => $raw,
+                'carrier' => $carrier !== '' ? $carrier : null,
+                'order_id' => $item['order_id'],
+                'mm_slug' => $item['mm_slug'],
+            ];
         }
 
-        if ($toFetch !== [] && $tracking->isConfigured() && Schema::hasTable('carrier_tracking_statuses')) {
+        $canFetch = $toFetch !== [] && $tracking->isConfigured() && Schema::hasTable('carrier_tracking_statuses');
+        $results = [];
+        if ($canFetch) {
             try {
-                $results = $tracking->track(array_values($toFetch), ['prefer_native' => true]);
+                $results = $tracking->track(array_values($toFetch), ['prefer_native' => false]);
             } catch (\Throwable $e) {
                 report($e);
                 $results = [];
             }
+        }
 
-            foreach ($toFetch as $key => $shipment) {
-                $res = $this->matchTrackingResult($results, $key, (string) $shipment['number']);
-                $carrier = (string) ($shipment['carrier'] ?? '');
-                $status = '';
-                if (ShipmentTrackingService::isPersistableResult(is_array($res) ? $res : null)) {
-                    $status = (string) $res['status'];
-                    $this->storeCarrierStatus((string) $shipment['number'], $carrier, $status, trim((string) ($res['detail'] ?? '')));
-                }
-                $updates[] = $this->trackingStatusPayload((string) $shipment['number'], $carrier, $status);
+        foreach ($toFetch as $key => $shipment) {
+            $res = $canFetch ? $this->matchTrackingResult($results, $key, (string) $shipment['number']) : null;
+            $carrier = (string) ($shipment['carrier'] ?? '');
+            $status = '';
+            $checked = ! $canFetch;
+            if (ShipmentTrackingService::isPersistableResult(is_array($res) ? $res : null)) {
+                $status = (string) $res['status'];
+                $this->storeCarrierStatus((string) $shipment['number'], $carrier, $status, trim((string) ($res['detail'] ?? '')));
+                $checked = true;
             }
-        } else {
-            foreach ($toFetch as $shipment) {
-                $updates[] = $this->trackingStatusPayload(
-                    (string) $shipment['number'],
-                    (string) ($shipment['carrier'] ?? ''),
-                    ''
-                );
-            }
+            $updates[] = $this->trackingStatusPayload((string) $shipment['number'], $carrier, $status, (string) $shipment['order_id'], $checked, (string) ($shipment['mm_slug'] ?? ''));
         }
 
         return response()->json([
             'success' => true,
             'updates' => $updates,
         ]);
+    }
+
+    /**
+     * Carrier saved against this marketplace order, used when the tracking number itself does not say which carrier it is.
+     *
+     * @param  array<string, array{number: string, order_id: string, mm_slug: string, carrier: string}>  $items
+     * @return array<string, string>
+     */
+    protected function savedCarriersForOrders(array $items): array
+    {
+        $orderIds = [];
+        foreach ($items as $item) {
+            if ($item['order_id'] !== '') {
+                $orderIds[$item['order_id']] = true;
+            }
+        }
+        if ($orderIds === [] || ! Schema::hasTable('order_fulfillment_trackings')) {
+            return [];
+        }
+
+        $out = [];
+        $records = OrderFulfillmentTracking::query()
+            ->whereIn('order_id', array_keys($orderIds))
+            ->whereNotNull('carrier')
+            ->where('carrier', '!=', '')
+            ->get(['mm_slug', 'order_id', 'carrier', 'tracking_number']);
+        foreach ($records as $record) {
+            $label = TrackingCarrierGuesser::knownLabel((string) $record->carrier);
+            if ($label === null) {
+                continue;
+            }
+            $orderKey = strtolower((string) $record->mm_slug).'|'.trim((string) $record->order_id);
+            $out[$orderKey] = $label;
+            $trackKey = strtoupper((string) preg_replace('/\s+/', '', (string) $record->tracking_number));
+            if ($trackKey !== '') {
+                $out['track:'.$trackKey] = $label;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array{number: string, order_id: string, mm_slug: string, carrier: string}  $item
+     * @param  array<string, string>  $savedCarriers
+     */
+    protected function carrierForOrderShipment(string $number, array $item, array $savedCarriers): string
+    {
+        $fromNumber = TrackingCarrierGuesser::labelFromNumber($number);
+        if ($fromNumber !== null && $fromNumber !== '') {
+            return $fromNumber;
+        }
+        $fromRequest = TrackingCarrierGuesser::knownLabel($item['carrier']);
+        if ($fromRequest !== null) {
+            return $fromRequest;
+        }
+        $orderKey = $item['mm_slug'].'|'.$item['order_id'];
+        if ($item['order_id'] !== '' && isset($savedCarriers[$orderKey])) {
+            return $savedCarriers[$orderKey];
+        }
+        $trackKey = 'track:'.strtoupper((string) preg_replace('/\s+/', '', $number));
+
+        return $savedCarriers[$trackKey] ?? '';
     }
 
     /**
@@ -2621,7 +2719,8 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $keys = [];
         foreach ($rows as &$row) {
             $tracking = trim((string) ($row['tracking'] ?? ''));
-            $row['carrier'] = TrackingCarrierGuesser::labelFromNumber($tracking) ?? '';
+            $row['carrier'] = TrackingCarrierGuesser::labelFromNumber($tracking)
+                ?? (TrackingCarrierGuesser::knownLabel((string) ($row['carrier'] ?? '')) ?? '');
             $row['tracking_status'] = '';
             $row['tracking_status_checked'] = $tracking === '';
             $key = strtoupper((string) preg_replace('/\s+/', '', $tracking));
@@ -2636,7 +2735,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         }
 
         $cached = $this->cachedCarrierStatuses(array_keys($keys));
-        $freshAfter = now()->subHours(6);
+        $freshAfter = now()->subDay();
         foreach ($rows as &$row) {
             $tracking = trim((string) ($row['tracking'] ?? ''));
             $key = strtoupper((string) preg_replace('/\s+/', '', $tracking));
@@ -2647,10 +2746,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $status = trim((string) ($hit->shipment_status ?? ''));
             $row['tracking_status'] = $this->carrierShipmentStatusLabel($status) ?? ($status !== '' ? $status : '');
             $checkedAt = $hit->shipment_checked_at ? \Carbon\Carbon::parse($hit->shipment_checked_at) : null;
-            $slug = TrackingCarrierGuesser::slugFromNumber($tracking);
-            $supported = in_array($slug, ['usps', 'ups', 'fedex', 'gofo'], true);
-            $row['tracking_status_checked'] = ! $supported
-                || ($status !== '' && $checkedAt !== null && $checkedAt->greaterThan($freshAfter));
+            $row['tracking_status_checked'] = $status !== '' && $checkedAt !== null && $checkedAt->greaterThan($freshAfter);
             if ($row['carrier'] === '' && trim((string) ($hit->carrier ?? '')) !== '') {
                 $row['carrier'] = TrackingCarrierGuesser::fill((string) $hit->carrier, $tracking) ?? (string) $hit->carrier;
             }
@@ -2759,17 +2855,19 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
-     * @return array{tracking: string, carrier: string, tracking_status: string, tracking_status_checked: bool}
+     * @return array{tracking: string, carrier: string, tracking_status: string, tracking_status_checked: bool, order_id: string, mm_slug: string}
      */
-    protected function trackingStatusPayload(string $number, string $carrier, string $status): array
+    protected function trackingStatusPayload(string $number, string $carrier, string $status, string $orderId = '', bool $checked = true, string $mmSlug = ''): array
     {
         $label = $status !== '' ? ($this->carrierShipmentStatusLabel($status) ?? $status) : '';
 
         return [
             'tracking' => $number,
+            'order_id' => $orderId,
+            'mm_slug' => $mmSlug,
             'carrier' => $carrier,
             'tracking_status' => $label,
-            'tracking_status_checked' => true,
+            'tracking_status_checked' => $checked,
         ];
     }
 }

@@ -76,7 +76,7 @@ class SyncShipmentTrackingStatus extends Command
         $staleMin = $this->resolveStaleMinutes($onlyOpen, $carrierFilter, $catchUp);
         $maxPerRun = $this->resolveMaxPerRun($tracking, $onlyOpen, $staleMin, $carrierFilter, $catchUp);
 
-        $rows = $this->selectTrackingRows($maxPerRun, $carrierFilter);
+        $rows = $this->selectTrackingRows($maxPerRun, $carrierFilter, $staleMin);
 
         $total = $rows->count();
         if ($total === 0) {
@@ -307,6 +307,7 @@ class SyncShipmentTrackingStatus extends Command
             ['shopify_raw_orders', 'tracking_company'], // legacy cache rows only — no Shopify API
             ['ebay2_daily_data', 'shipping_carrier'],
             ['ebay3_daily_data', 'shipping_carrier'],
+            ['order_fulfillment_trackings', 'carrier'],
         ];
 
         $total = 0;
@@ -670,13 +671,13 @@ class SyncShipmentTrackingStatus extends Command
      *
      * @return \Illuminate\Support\Collection<int, object>
      */
-    protected function selectTrackingRows(int $maxPerRun, string $carrierFilter)
+    protected function selectTrackingRows(int $maxPerRun, string $carrierFilter, int $staleMin)
     {
         // Most of each run rechecks shipments that already have a status.
         // Leaving them behind the never-checked backlog is why In Transit and
         // Label Created stayed on the status from the first lookup.
         $refreshLimit = min($maxPerRun, max(200, (int) floor($maxPerRun * 0.8)));
-        $refreshCutoff = now()->subMinutes(60);
+        $refreshCutoff = now()->subMinutes(max(0, $staleMin));
         $moving = [
             ShipmentTrackingService::STATUS_INFO_RECEIVED,
             ShipmentTrackingService::STATUS_PENDING,
@@ -720,6 +721,10 @@ class SyncShipmentTrackingStatus extends Command
             ->where(function ($q) {
                 $q->whereNull('shipment_status')
                     ->orWhere('shipment_status', '');
+            })
+            ->where(function ($q) use ($refreshCutoff) {
+                $q->whereNull('shipment_checked_at')
+                    ->orWhere('shipment_checked_at', '<', $refreshCutoff);
             });
         if ($exclude !== []) {
             $rest->whereNotIn('tracking_number', $exclude);
