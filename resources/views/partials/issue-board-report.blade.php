@@ -32,6 +32,7 @@
         #ibr-modal .qcr-k6 { background:linear-gradient(135deg,#a21caf,#db2777); }
         #ibr-modal .qcr-section-label { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#374151; margin-bottom:6px; }
         #ibr-modal .qcr-dept { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
+        #ibr-modal .qcr-dept:has(> :only-child) { grid-template-columns:minmax(0,1fr); }
         #ibr-modal .qcr-dcard { color:#fff; border-radius:10px; padding:12px 16px; box-shadow:0 2px 6px rgba(0,0,0,.12); }
         #ibr-modal .qcr-dq { background:linear-gradient(135deg,#1d4ed8,#4338ca); }
         #ibr-modal .qcr-dp { background:linear-gradient(135deg,#78350f,#a16207); }
@@ -49,6 +50,7 @@
         #ibr-modal .qcr-chart { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; margin-bottom:14px; }
         #ibr-modal .qcr-chart-box { position:relative; height:260px; }
         #ibr-modal .qcr-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
+        #ibr-modal .qcr-toolbar .btn-group { flex-wrap:wrap; }
         #ibr-modal .qcr-toolbar-label { font-size:11px; font-weight:700; letter-spacing:.06em; color:#6b7280; }
         #ibr-modal .qcr-pill { border:1px solid #c7d2fe; background:#fff; color:#4338ca; border-radius:999px; padding:3px 14px; font-size:12px; font-weight:600; }
         #ibr-modal .qcr-pill.qcr-pill-on { background:linear-gradient(90deg,#4f46e5,#a855f7); color:#fff; border-color:transparent; }
@@ -135,11 +137,12 @@ window.IssueBoardReport = (function () {
     const DEPTS = @json($ibrDepts);
     const SALES_URL = @json(route('customer.care.qc.and.packing.sales.12m'));
     const R = { mode: 'sku', dept: '', sort: 'issues', dir: 'desc', search: '', groups: [], sales: null, salesPromise: null, getRows: function () { return []; }, chart: null };
+    const DEPT_TITLE = @json($ibrTitle ?? null) || DEPTS.map(function (d) { return d.label; }).join(' & ');
     const MODES = {
-        sku: { title: 'SKU Report — {{ $ibrDepts[0]['label'] ?? '' }} & {{ $ibrDepts[1]['label'] ?? '' }} Issues', unit: 'SKUs', hit: 'SKUs hit', col: 'SKU' },
-        parent: { title: 'Parent Report — {{ $ibrDepts[0]['label'] ?? '' }} & {{ $ibrDepts[1]['label'] ?? '' }} Issues', unit: 'Parents', hit: 'Parents hit', col: 'Parent' },
-        supplier: { title: 'Supplier Report — {{ $ibrDepts[0]['label'] ?? '' }} & {{ $ibrDepts[1]['label'] ?? '' }} Issues', unit: 'Suppliers', hit: 'Suppliers hit', col: 'Supplier' },
-        month: { title: 'Monthly Report — {{ $ibrDepts[0]['label'] ?? '' }} & {{ $ibrDepts[1]['label'] ?? '' }} Issues', unit: 'months', hit: 'Months with issues', col: 'Month' },
+        sku: { title: 'SKU Report — ' + DEPT_TITLE + ' Issues', unit: 'SKUs', hit: 'SKUs hit', col: 'SKU' },
+        parent: { title: 'Parent Report — ' + DEPT_TITLE + ' Issues', unit: 'Parents', hit: 'Parents hit', col: 'Parent' },
+        supplier: { title: 'Supplier Report — ' + DEPT_TITLE + ' Issues', unit: 'Suppliers', hit: 'Suppliers hit', col: 'Supplier' },
+        month: { title: 'Monthly Report — ' + DEPT_TITLE + ' Issues', unit: 'months', hit: 'Months with issues', col: 'Month' },
     };
     const SORTS = { issues: 'Issues', pct: 'Issue %', loss: 'Loss $', sold: 'Units sold', open: 'Open issues', recent: 'Most recent', name: 'Name A–Z' };
 
@@ -240,7 +243,10 @@ window.IssueBoardReport = (function () {
         const n = g.rows.length;
         if (!n) return 'No issues.';
         const out = [];
-        out.push(n + ' issue' + (n === 1 ? '' : 's') + ' (' + DEPTS.map(function (d, i) { return g.dc[i] + ' ' + d.label.toLowerCase(); }).join(', ') + ')' +
+        const deptBits = DEPTS.map(function (d, i) { return g.dc[i] + ' ' + d.label.toLowerCase(); }).filter(function (txt, i) {
+            return DEPTS.length <= 2 || g.dc[i] > 0;
+        });
+        out.push(n + ' issue' + (n === 1 ? '' : 's') + (deptBits.length ? ' (' + deptBits.join(', ') + ')' : '') +
             (g.sold > 0 ? ' on ' + num(g.sold) + ' sold = ' + pctText(g.pct) + '.' : '.'));
         if ((mode === 'parent' || mode === 'supplier') && g.children.length) {
             const worst = g.children.slice().sort(function (a, b) { return b.rows.length - a.rows.length; })[0];
@@ -386,9 +392,12 @@ window.IssueBoardReport = (function () {
         if (!canvas || typeof Chart === 'undefined') return;
         const months = R.mode === 'month' ? R.groups : monthGroups(rows);
         if (R.chart) { R.chart.destroy(); R.chart = null; }
-        const colors = ['#4f46e5', '#f59e0b'];
-        const datasets = DEPTS.map(function (d, i) {
-            return { type: 'bar', label: d.label + ' issues', data: months.map(function (g) { return g.dc[i]; }), backgroundColor: colors[i % 2], stack: 'issues', yAxisID: 'y', order: 3 };
+        const barColors = ['#4f46e5', '#f59e0b', '#0891b2', '#16a34a', '#db2777', '#7c3aed', '#ea580c', '#0e7490', '#b91c1c', '#65a30d', '#9333ea', '#0284c7', '#ca8a04', '#475569'];
+        const active = DEPTS.map(function (d, i) { return i; }).filter(function (i) {
+            return DEPTS.length <= 2 || months.some(function (g) { return g.dc[i] > 0; });
+        });
+        const datasets = active.map(function (i) {
+            return { type: 'bar', label: DEPTS[i].label + ' issues', data: months.map(function (g) { return g.dc[i]; }), backgroundColor: barColors[i % barColors.length], stack: 'issues', yAxisID: 'y', order: 3 };
         });
         datasets.push({ type: 'line', label: 'Loss $', data: months.map(function (g) { return Math.round(g.loss); }), borderColor: '#dc2626', backgroundColor: '#dc2626', yAxisID: 'y1', tension: 0.3, pointRadius: 3, order: 1 });
         datasets.push({ type: 'line', label: 'Rolling 3-mo avg issues', data: months.map(function (g) { return Math.round(g.roll3I * 10) / 10; }), borderColor: '#059669', backgroundColor: '#059669', borderDash: [6, 4], yAxisID: 'y', stack: 'roll3', tension: 0.3, pointRadius: 2, order: 2 });
@@ -445,11 +454,15 @@ window.IssueBoardReport = (function () {
                 kpi('qcr-k3', 'Total loss', money(tot.loss)) + kpi('qcr-k4', 'Avg loss / issue', tot.issues ? money(tot.loss / tot.issues) : '—') +
                 kpi('qcr-k5', 'Units sold (OV, 12 mo)', num(tot.sold)) + kpi('qcr-k6', 'Overall issue %', overall === null ? '—' : pctText(overall));
         }
-        const cp = tot.dc[0] + tot.dc[1], lp = tot.dl[0] + tot.dl[1];
+        const cp = tot.dc.reduce(function (a, n) { return a + n; }, 0);
+        const lp = tot.dl.reduce(function (a, n) { return a + n; }, 0);
         const pc = function (v, t) { return t > 0 ? Math.round(v / t * 100) : 0; };
-        document.getElementById('ibr-dept').innerHTML =
-            deptCard('qcr-dq', DEPTS[0].label, tot.dc[0], pc(tot.dc[0], cp), tot.dl[0], pc(tot.dl[0], lp)) +
-            deptCard('qcr-dp', DEPTS[1].label, tot.dc[1], pc(tot.dc[1], cp), tot.dl[1], pc(tot.dl[1], lp));
+        const activeIdx = DEPTS.map(function (d, i) { return i; }).filter(function (i) {
+            return DEPTS.length <= 2 || (tot.dc[i] > 0);
+        });
+        document.getElementById('ibr-dept').innerHTML = activeIdx.map(function (i) {
+            return deptCard(i % 2 ? 'qcr-dp' : 'qcr-dq', DEPTS[i].label, tot.dc[i] || 0, pc(tot.dc[i] || 0, cp), tot.dl[i] || 0, pc(tot.dl[i] || 0, lp));
+        }).join('');
 
         const allRows = groups.reduce(function (a, g) { return a.concat(g.rows); }, []);
         drawChart(allRows);
@@ -457,9 +470,9 @@ window.IssueBoardReport = (function () {
         const th = function (t, cls) { return '<th' + (cls ? ' class="' + cls + '"' : '') + '>' + t + '</th>'; };
         let head, colspan;
         if (isMonth) {
-            head = th('Month') + DEPTS.map(function (d) { return th(esc(d.label), 'text-center'); }).join('') + th('Issues', 'text-center') + th('Loss', 'text-end') +
+            head = th('Month') + activeIdx.map(function (i) { return th(esc(DEPTS[i].label), 'text-center'); }).join('') + th('Issues', 'text-center') + th('Loss', 'text-end') +
                 th('Avg loss / issue', 'text-end') + th('Rolling 3-mo avg', 'text-center') + th('Cumulative issues', 'text-center') + th('Cumulative loss', 'text-end') + th('Open', 'text-center') + th('Summary');
-            colspan = 11;
+            colspan = 9 + activeIdx.length;
         } else {
             head = th('#') + th(cfg.col);
             if (isSku) head += th('Parent') + th('Dept', 'text-center');
@@ -479,7 +492,7 @@ window.IssueBoardReport = (function () {
         document.getElementById('ibr-body').innerHTML = shown.length ? shown.map(function (g, i) {
             let cells;
             if (isMonth) {
-                cells = '<td class="qcr-name">' + esc(g.label) + '</td>' + DEPTS.map(function (d, k) { return '<td class="text-center">' + (g.dc[k] || '<span class="text-muted">0</span>') + '</td>'; }).join('') +
+                cells = '<td class="qcr-name">' + esc(g.label) + '</td>' + activeIdx.map(function (k) { return '<td class="text-center">' + (g.dc[k] || '<span class="text-muted">0</span>') + '</td>'; }).join('') +
                     '<td class="text-center fw-bold">' + g.rows.length + '</td><td class="text-end">' + lossCell(g, maxLoss) + '</td><td class="text-end">' + (g.rows.length && g.loss > 0 ? money(g.loss / g.rows.length) : '—') +
                     '</td><td class="text-center">' + g.roll3I.toFixed(1) + '</td><td class="text-center">' + g.cumI + '</td><td class="text-end">' + money(g.cumL) + '</td><td class="text-center">' + openCell(g) +
                     '</td><td class="qcr-summary">' + esc(g.summary) + '</td>';
@@ -521,7 +534,8 @@ window.IssueBoardReport = (function () {
             html += '<div class="fw-semibold small mb-1">Issues</div><table class="qcr-sub"><thead><tr><th>Date</th>' + (withSku ? '<th>SKU</th>' : '') + '<th>Dept</th><th>Issue?</th><th>Root Cause Found</th><th>Root Cause Fixed</th><th class="text-end">Loss</th><th>By</th></tr></thead><tbody>' + issueRows(g, withSku) + '</tbody></table>';
         }
         if (!html) html = '<span class="text-muted small">No issues.</span>';
-        return '<tr class="ibr-detail"><td colspan="11" class="qcr-detail">' + html + '</td></tr>';
+        const span = document.querySelectorAll('#ibr-head th').length || 11;
+        return '<tr class="ibr-detail"><td colspan="' + span + '" class="qcr-detail">' + html + '</td></tr>';
     }
     function exportCsv() {
         const mode = R.mode;

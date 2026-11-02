@@ -105,9 +105,21 @@
         }
 
         #channelTable.tabulator .tabulator-header,
-        #channelTable.tabulator .tabulator-header .tabulator-col {
+        #channelTable.tabulator .tabulator-header .tabulator-col:not(.tabulator-frozen) {
             position: relative !important;
             top: auto !important;
+        }
+
+        #channelTable.tabulator .tabulator-header .tabulator-col.tabulator-frozen {
+            position: sticky !important;
+            z-index: 12;
+            background: #00d5d5 !important;
+        }
+
+        #channelTable.tabulator .tabulator-row .tabulator-cell.tabulator-frozen {
+            position: sticky !important;
+            z-index: 11;
+            background: #fff;
         }
 
         #channelTable.tabulator .tabulator-tableholder {
@@ -129,7 +141,9 @@
         .ahm-dash-table-wrap { max-height: none !important; overflow: visible !important; }
         #channelTable.tabulator { height: 560px !important; min-height: 560px !important; }
         #channelTable.tabulator .tabulator-header,
-        #channelTable.tabulator .tabulator-header .tabulator-col { position: relative !important; top: auto !important; }
+        #channelTable.tabulator .tabulator-header .tabulator-col:not(.tabulator-frozen) { position: relative !important; top: auto !important; }
+        #channelTable.tabulator .tabulator-header .tabulator-col.tabulator-frozen { position: sticky !important; z-index: 12; background: #00d5d5 !important; }
+        #channelTable.tabulator .tabulator-row .tabulator-cell.tabulator-frozen { position: sticky !important; z-index: 11; background: #fff; }
         #channelTable.tabulator .tabulator-tableholder {
             height: 470px !important; min-height: 470px !important; max-height: 470px !important;
             overflow: auto !important; flex: none !important;
@@ -618,6 +632,7 @@
                 columns: withCellDeleteMenu([{
                         title: "Channel",
                         field: "channel",
+                        frozen: true,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -648,6 +663,7 @@
                     {
                         title: `<small id="l30OrdersCountBadgeHeader" class="badge bg-dark text-white mb-1" style="font-size: 13px;">0</small><br>L30 Orders`,
                         field: "l30_orders",
+                        frozen: true,
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return `<span class="metric-value">${value.toLocaleString('en-US')}</span>`;
@@ -672,14 +688,14 @@
                             input.type = "number";
                             input.min = 0;
                             input.max = 100;
-                            input.step = 0.1;
+                            input.step = "any";
 
                             const currentValue = cell.getValue();
                             let numericValue = currentValue;
-                            if (typeof currentValue === 'string' && currentValue.includes('%')) {
-                                numericValue = parseFloat(currentValue.replace('%', ''));
+                            if (typeof currentValue === 'string') {
+                                numericValue = currentValue.replace('%', '').trim();
                             }
-                            input.value = isNaN(numericValue) ? '' : numericValue;
+                            input.value = (numericValue === 'N/A' || numericValue === '' || numericValue == null || isNaN(parseFloat(numericValue))) ? '' : numericValue;
 
                             onRendered(function() {
                                 input.focus();
@@ -729,9 +745,11 @@
                                         </div>`;
                             }
                             const parsed = parseFloat(value);
+                            const exact = String(value).replace(/%/g, '').replace(/,/g, '').trim();
+                            const shown = /^-?\d+(\.\d+)?$/.test(exact) ? exact : String(parsed);
                             let color = parsed > 5 ? "#dc3545" : parsed > 2 ? "#ffc107" : "#28a745";
                             return `<div class="text-center editable-field" style="background-color:${color}; color:#ffffff; padding:4px; border-radius:4px;">
-                                        <span>${parsed.toFixed(1)}%</span>
+                                        <span>${shown}%</span>
                                     </div>`;
                         },
                         cellEdited: function(cell) {

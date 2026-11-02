@@ -55,6 +55,16 @@
         .status-dot-indicator { font-size: 14px; line-height: 1; cursor: help; }
         .status-dot-missing { color: #dc3545; }
         .status-dot-available { color: #198754; }
+        .li-status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            vertical-align: middle;
+            cursor: help;
+        }
+        .li-status-dot--no { background: #dc3545; }
+        .li-status-dot--yes { background: #198754; }
         .copy-tracking-btn, .copy-order-btn {
             color: #0d6efd; font-size: 0.8rem; line-height: 1; padding: 0 2px;
             border: none; background: none; cursor: pointer;
@@ -125,9 +135,6 @@
                         <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-month"><i class="bi bi-graph-up me-1"></i> Monthly Report &amp; Graph</button>
                         <button type="button" class="btn btn-success btn-sm" id="li-export">
                             <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
-                        </button>
-                        <button type="button" class="btn btn-outline-info btn-sm" id="li-import">
-                            <i class="bi bi-upload me-1"></i> Import CSV
                         </button>
                         <div class="dropdown">
                             <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside">
@@ -439,19 +446,34 @@
                     '<button type="button" class="copy-tracking-btn" data-copy="' + escAttr(t) +
                     '" title="Copy tracking"><i class="bi bi-clipboard"></i></button></span>';
             };
-            const fmtRoot = function (cell) {
-                const d = cell.getData();
+            function rootFoundText(d) {
                 const root = String(d.issue || '').trim();
                 const rmk = String(d.issue_remark || '').trim();
-                const tip = (!root && !rmk) ? 'No data' : (!root ? rmk : (rmk ? root + ': ' + rmk : root));
-                return statusIcon(!!(root || rmk), tip);
-            };
-            const fmtRootFixed = function (cell) {
-                const d = cell.getData();
+                if (!root && !rmk) return '';
+                if (!root) return rmk;
+                return rmk ? root + ': ' + rmk : root;
+            }
+            function rootFixedText(d) {
                 const fx = String(d.c_action_1 || '').trim();
                 const rmk = String(d.c_action_1_remark || '').trim();
-                const tip = (!fx && !rmk) ? 'No data' : (!fx ? rmk : (rmk ? fx + ': ' + rmk : fx));
-                return statusIcon(!!(fx || rmk), tip);
+                if (!fx && !rmk) return '';
+                if (!fx) return rmk;
+                return rmk ? fx + ': ' + rmk : fx;
+            }
+            function statusDot(has) {
+                return '<span class="li-status-dot ' + (has ? 'li-status-dot--yes' : 'li-status-dot--no') + '"></span>';
+            }
+            const fmtRoot = function (cell) {
+                return statusDot(rootFoundText(cell.getData()) !== '');
+            };
+            const fmtRootFixed = function (cell) {
+                return statusDot(rootFixedText(cell.getData()) !== '');
+            };
+            const tipRoot = function (e, cell) {
+                return rootFoundText(cell.getData()) || 'No data';
+            };
+            const tipRootFixed = function (e, cell) {
+                return rootFixedText(cell.getData()) || 'No data';
             };
             const fmtCtn = function (cell) {
                 const d = cell.getData();
@@ -518,45 +540,39 @@
                 }
                 return html;
             };
-            const fmtDept = function (cell) {
-                const label = deptLabel(cell.getData());
-                return label ? escapeHtml(label) : '—';
-            };
-
             function dataColumns(includeActions) {
                 const cols = [
                     includeActions
-                        ? { title: '#', field: 'id', width: 55 }
-                        : { title: '#', field: 'issue_ref', width: 70, formatter: function (c) { return dash(c.getValue() || c.getData().orders_on_hold_issue_id || c.getData().id); } },
-                    { title: '', field: 'image_url', width: 56, formatter: fmtImage, headerSort: false },
-                    { title: 'SKU', field: 'sku', width: 140, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + escapeHtml(c.getValue()) + '</span>'; } },
-                    { title: 'Order ID', field: 'order_number', width: 70, formatter: fmtOrderNum, hozAlign: 'center' },
+                        ? { title: '#', field: 'id', width: 52, widthGrow: 0 }
+                        : { title: '#', field: 'issue_ref', width: 64, widthGrow: 0, formatter: function (c) { return dash(c.getValue() || c.getData().orders_on_hold_issue_id || c.getData().id); } },
+                    { title: '', field: 'image_url', width: 48, widthGrow: 0, formatter: fmtImage, headerSort: false },
+                    { title: 'SKU', field: 'sku', minWidth: 120, widthGrow: 2, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + escapeHtml(c.getValue()) + '</span>'; } },
+                    { title: 'Order ID', field: 'order_number', width: 64, widthGrow: 0, formatter: fmtOrderNum, hozAlign: 'center' },
                 ];
                 if (includeActions) {
-                    cols.push({ title: 'Loss $', field: 'total_loss', width: 90, formatter: fmtLoss, headerSort: false, tooltip: false });
+                    cols.push({ title: 'Loss $', field: 'total_loss', width: 84, widthGrow: 0, formatter: fmtLoss, headerSort: false, tooltip: false });
                 }
                 cols.push(
-                    { title: 'QTY', field: 'order_qty', width: 60, formatter: function (c) { return dash(c.getValue()); } },
-                    { title: 'MKT', field: 'marketplace_1', width: 90, formatter: function (c) { return dash(c.getValue()); } },
-                    { title: 'Issue?', field: 'what_happened', width: 70, formatter: fmtWhat, hozAlign: 'center' },
-                    { title: 'Action', field: 'action_1', width: 140, formatter: fmtAction },
-                    { title: 'Track R', field: 'replacement_tracking', width: 80, formatter: fmtTracking, hozAlign: 'center' },
-                    { title: 'Root Cause Found', field: 'issue', width: 70, formatter: fmtRoot, hozAlign: 'center' },
-                    { title: 'CTN Pkg', field: 'ctn_instructions', width: 60, formatter: fmtCtn, headerSort: false, hozAlign: 'center' },
-                    { title: 'item pkg', field: 'instructions_item_pkg', width: 60, formatter: fmtItemPkg, headerSort: false, hozAlign: 'center' },
-                    { title: 'QC Enhance', field: 'qc_enhance_issue', width: 60, formatter: fmtQcEnhance, headerSort: false, hozAlign: 'center' },
-                    { title: 'Root Cause Fixed', field: 'c_action_1', width: 70, formatter: fmtRootFixed, hozAlign: 'center' },
-                    { title: 'Dept', field: 'department', width: 90, formatter: fmtDept },
+                    { title: 'QTY', field: 'order_qty', width: 56, widthGrow: 0, formatter: function (c) { return dash(c.getValue()); } },
+                    { title: 'MKT', field: 'marketplace_1', minWidth: 70, widthGrow: 1, formatter: function (c) { return dash(c.getValue()); } },
+                    { title: 'Issue?', field: 'what_happened', width: 64, widthGrow: 0, formatter: fmtWhat, hozAlign: 'center' },
+                    { title: 'Action', field: 'action_1', minWidth: 110, widthGrow: 2, formatter: fmtAction },
+                    { title: 'Track R', field: 'replacement_tracking', width: 72, widthGrow: 0, formatter: fmtTracking, hozAlign: 'center' },
+                    { title: 'Root Cause Found', field: 'issue', width: 72, widthGrow: 0, formatter: fmtRoot, hozAlign: 'center', tooltip: tipRoot },
+                    { title: 'Root Cause Fixed', field: 'c_action_1', width: 72, widthGrow: 0, formatter: fmtRootFixed, hozAlign: 'center', tooltip: tipRootFixed },
+                    { title: 'CTN Pkg', field: 'ctn_instructions', width: 64, widthGrow: 0, formatter: fmtCtn, headerSort: false, hozAlign: 'center' },
+                    { title: 'item pkg', field: 'instructions_item_pkg', width: 64, widthGrow: 0, formatter: fmtItemPkg, headerSort: false, hozAlign: 'center' },
+                    { title: 'QC Enhance', field: 'qc_enhance_issue', width: 64, widthGrow: 0, formatter: fmtQcEnhance, headerSort: false, hozAlign: 'center' },
                 );
                 if (includeActions) {
-                    cols.push({ title: 'Close', field: '_actions', width: 70, formatter: fmtActions, headerSort: false, hozAlign: 'center' });
-                    cols.push({ title: 'Created By', field: 'created_by', width: 110, formatter: function (c) { return dash(c.getValue()); } });
-                    cols.push({ title: 'Created At', field: 'created_at', width: 80, formatter: fmtCreatedAt });
+                    cols.push({ title: 'Close', field: '_actions', width: 64, widthGrow: 0, formatter: fmtActions, headerSort: false, hozAlign: 'center' });
+                    cols.push({ title: 'Created By', field: 'created_by', minWidth: 100, widthGrow: 1, formatter: function (c) { return dash(c.getValue()); } });
+                    cols.push({ title: 'Created At', field: 'created_at', width: 72, widthGrow: 0, formatter: fmtCreatedAt });
                 } else {
-                    cols.push({ title: 'Close', field: 'close_note', width: 90, formatter: function (c) { return dash(c.getValue()); } });
-                    cols.push({ title: 'Event', field: 'event_type', width: 90, formatter: function (c) { return dash(c.getValue()); } });
-                    cols.push({ title: 'Created By', field: 'created_by', width: 110, formatter: function (c) { return dash(c.getValue()); } });
-                    cols.push({ title: 'Logged At', field: 'logged_at', width: 80, formatter: fmtLoggedAt });
+                    cols.push({ title: 'Close', field: 'close_note', minWidth: 80, widthGrow: 1, formatter: function (c) { return dash(c.getValue()); } });
+                    cols.push({ title: 'Event', field: 'event_type', width: 80, widthGrow: 0, formatter: function (c) { return dash(c.getValue()); } });
+                    cols.push({ title: 'Created By', field: 'created_by', minWidth: 100, widthGrow: 1, formatter: function (c) { return dash(c.getValue()); } });
+                    cols.push({ title: 'Logged At', field: 'logged_at', width: 72, widthGrow: 0, formatter: fmtLoggedAt });
                 }
                 return cols;
             }
@@ -764,7 +780,7 @@
                 const rows = Array.isArray(data && data.data) ? data.data : [];
                 if (!historyTable) {
                     historyTable = new Tabulator('#label-history-tabulator', {
-                        layout: 'fitDataStretch',
+                        layout: 'fitColumns',
                         height: '100%',
                         placeholder: 'No history found.',
                         index: 'id',
@@ -883,7 +899,7 @@
                 modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('li-issue-modal'));
                 window.IssueBoardReport.init({ getRows: function () { return table ? table.getData() : []; } });
                 table = new Tabulator('#label-tabulator', {
-                    layout: 'fitDataStretch',
+                    layout: 'fitColumns',
                     height: '100%',
                     placeholder: 'No records found.',
                     index: 'id',
@@ -1051,7 +1067,7 @@
                     downloadCsv(lines.join('\r\n'), 'label_issues_active_' + new Date().toISOString().slice(0, 10) + '.csv');
                 });
 
-                document.getElementById('li-import').addEventListener('click', function () {
+                document.getElementById('li-import')?.addEventListener('click', function () {
                     document.getElementById('importCsvFile').value = '';
                     document.getElementById('importCsvAlert').className = 'd-none mb-3';
                     document.getElementById('importCsvProgress').classList.add('d-none');

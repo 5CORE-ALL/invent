@@ -50,6 +50,9 @@
     // Hide Tracking / Track R / Img / Link from the table — carrier column
     // stays visible; other fields are available via the Details modal.
     'hideCarrierTrackingMediaColumns' => true,
+    // Tracking ID from All Issues (tracking_number). Replacement tracking stays off this board.
+    'showClaimTrackingColumn' => true,
+    'hideReplacementTrackingOnBoard' => true,
     // Merge the standalone "Created At" date column into the "Created By"
     // cell (name on top, short "21 JUN" date underneath, full timestamp
     // surfaced via hover tooltip).
