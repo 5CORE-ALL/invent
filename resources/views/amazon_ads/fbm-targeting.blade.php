@@ -169,6 +169,10 @@
                                 title="Pull from Amazon and push what is missing for ALL KW campaigns. Runs in the background, in chunks.">
                             <i class="fas fa-sync-alt"></i> Sync all (Pull + Push)
                         </button>
+                        <button type="button" id="aft-undo-btn" class="btn btn-outline-light btn-sm fw-bold"
+                                title="Undo a previous push: archive on Amazon the keywords it sent to KW campaigns">
+                            <i class="fas fa-undo"></i> Undo a push
+                        </button>
                         <button type="button" id="aft-push-kw" class="btn btn-warning btn-sm fw-bold"
                                 title="Send the keywords in the app to ALL KW campaigns and the HL campaigns on Amazon">
                             <i class="fas fa-upload"></i> Push KW to KW + HL Campaigns
@@ -360,6 +364,24 @@
                 <button type="button" id="pk-confirm" class="btn btn-warning btn-sm fw-bold" disabled>
                     <i class="fas fa-upload"></i> Push now
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="undoPushModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="fas fa-undo"></i> Undo a push</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-2">
+                    Archives on Amazon the keywords a push sent to KW campaigns (only keywords created by that push; older identical
+                    keywords are never touched) and removes them from the app. Archiving is permanent. HL (HEAD) keywords are not covered.
+                </p>
+                <div id="undo-runs"><span class="text-muted">Loading…</span></div>
             </div>
         </div>
     </div>
@@ -1519,6 +1541,58 @@
         });
     }
     if (syncEl.all) syncEl.all.addEventListener('click', function () { syncStart(null); });
+
+    // Undo a push: list the logged push runs, archive the chosen run's keywords on Amazon (background job + progress bar).
+    (function () {
+        const btn = document.getElementById('aft-undo-btn');
+        const modalEl = document.getElementById('undoPushModal');
+        const box = document.getElementById('undo-runs');
+        if (!btn || !modalEl || !box) return;
+        const esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); };
+        const showModal = function (on) {
+            if (window.bootstrap && bootstrap.Modal) { const m = bootstrap.Modal.getOrCreateInstance(modalEl); on ? m.show() : m.hide(); }
+            else if (window.jQuery) { window.jQuery(modalEl).modal(on ? 'show' : 'hide'); }
+        };
+        btn.addEventListener('click', function () {
+            box.innerHTML = '<span class="text-muted">Loading…</span>';
+            showModal(true);
+            fetch(@json(route('amazon.ads.fbm-targeting.push-runs')), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (res) { return res.json(); })
+                .then(function (b) {
+                    const runs = b.runs || [];
+                    if (!runs.length) { box.innerHTML = '<span class="text-muted">No logged pushes yet. Pushes made from now on can be undone here.</span>'; return; }
+                    box.innerHTML = '<table class="table table-sm table-bordered align-middle mb-0"><thead class="table-light"><tr><th>Pushed at</th><th>By</th>' +
+                        '<th class="text-end">Campaigns</th><th class="text-end">Keywords</th><th class="text-end">Already undone</th><th></th></tr></thead><tbody>' +
+                        runs.map(function (r) {
+                            const left = r.keywords - r.undone;
+                            return '<tr><td>' + esc(r.pushed_at) + '</td><td>' + esc(r.pushed_by || '') + '</td><td class="text-end">' + Number(r.campaigns).toLocaleString() +
+                                '</td><td class="text-end">' + Number(r.keywords).toLocaleString() + '</td><td class="text-end">' + Number(r.undone).toLocaleString() + '</td><td class="text-end">' +
+                                (left > 0 ? '<button type="button" class="btn btn-sm btn-danger undo-run" data-run="' + esc(r.run_token) + '" data-left="' + left + '">Undo (' + left.toLocaleString() + ')</button>' : '<span class="text-muted">done</span>') +
+                                '</td></tr>';
+                        }).join('') + '</tbody></table>';
+                })
+                .catch(function (e) { box.innerHTML = '<span class="text-danger">Could not load the pushes: ' + esc(e.message) + '</span>'; });
+        });
+        box.addEventListener('click', function (e) {
+            const t = e.target.closest ? e.target.closest('.undo-run') : null;
+            if (!t) return;
+            if (!confirm('Archive on Amazon the ' + Number(t.getAttribute('data-left')).toLocaleString() + ' keyword(s) of this push? Archived keywords cannot be re-enabled.')) return;
+            showModal(false);
+            syncLock(true);
+            syncPaint({ status: 'running', percent: 0, message: 'Starting the undo…' });
+            if (syncEl.panel && syncEl.panel.scrollIntoView) syncEl.panel.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            fetch(@json(route('amazon.ads.fbm-targeting.push-undo')), {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+                body: JSON.stringify({ run_token: t.getAttribute('data-run') }),
+            }).then(function (res) { return res.json().catch(function () { return {}; }).then(function (b) { return { ok: res.ok && b.success !== false, body: b }; }); })
+              .then(function (r) {
+                  if (!r.ok) { syncPaint({ status: 'error', percent: 0, message: r.body.message || 'Could not start the undo.' }); return; }
+                  syncPoll();
+              })
+              .catch(function (e) { syncPaint({ status: 'error', percent: 0, message: 'Could not start the undo: ' + e.message }); });
+        });
+    })();
     syncPoll(); // pick up a sync that is already running (e.g. after a page reload)
 
     // Pull missing daily campaign reports (clicks / sold) from the Amazon Ads API for the LT columns.

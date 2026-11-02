@@ -33,6 +33,8 @@ class AmazonKwTargetingPushService
     {
         $errors = [];
         $rows = [];
+        // Every real push gets a token; the keywords it sends are logged so the run can be undone later.
+        $runToken = $dryRun ? '' : (date('YmdHis').'-'.bin2hex(random_bytes(3)));
         // $only = ["KW|<campaign id>", "HL|<campaign id>", ...]: push just those campaigns (null = every campaign).
         $onlySet = $only === null ? null : array_fill_keys(array_map('strval', $only), true);
         $picked = static fn (string $type, string $id): bool => $onlySet === null || isset($onlySet[$type.'|'.$id]);
@@ -158,6 +160,9 @@ class AmazonKwTargetingPushService
                         if ((int) $r['failed'] === 0 && (int) $r['added'] > 0) {
                             $this->markOnAmazon($cid, (string) $match, $keysByMatch[$match] ?? []);
                         }
+                        if ((int) $r['added'] > 0) {
+                            $this->logPush($runToken, $cid, (string) $c['campaign_name'], (string) $match, $texts, $keysByMatch[$match] ?? []);
+                        }
                         if ($r['failed'] > 0 && $r['errors'] !== []) {
                             $msgs[] = implode(' | ', array_slice($r['errors'], 0, 2));
                         }
@@ -276,7 +281,7 @@ class AmazonKwTargetingPushService
             }
         }
 
-        return ['rows' => $rows, 'totals' => $this->totals($rows), 'errors' => $errors, 'up_to_date' => array_slice(array_values($upToDate), 0, 500)];
+        return ['rows' => $rows, 'totals' => $this->totals($rows), 'errors' => $errors, 'up_to_date' => array_slice(array_values($upToDate), 0, 500), 'run_token' => $runToken];
     }
 
     /**
@@ -303,6 +308,36 @@ class AmazonKwTargetingPushService
         }
 
         return $out;
+    }
+
+    /**
+     * Remember what a push sent (per run and campaign) so the run can be undone.
+     *
+     * @param  list<string>  $texts
+     * @param  list<string>  $keys
+     */
+    private function logPush(string $runToken, string $campaignId, string $campaignName, string $match, array $texts, array $keys): void
+    {
+        if ($runToken === '' || ! Schema::hasTable('amazon_kw_push_log')) {
+            return;
+        }
+        try {
+            $now = now();
+            $by = \Illuminate\Support\Facades\Auth::user()?->name;
+            $rows = [];
+            foreach ($texts as $i => $text) {
+                $rows[] = [
+                    'run_token' => $runToken, 'campaign_id' => $campaignId, 'campaign_name' => mb_substr($campaignName, 0, 255),
+                    'keyword_text' => mb_substr((string) $text, 0, 512), 'keyword_key' => (string) ($keys[$i] ?? mb_strtolower(trim((string) $text))),
+                    'match_type' => $match, 'pushed_at' => $now, 'pushed_by' => $by,
+                ];
+            }
+            foreach (array_chunk($rows, 500) as $chunk) {
+                DB::table('amazon_kw_push_log')->insert($chunk);
+            }
+        } catch (\Throwable $e) {
+            Log::info('KW targeting push: could not log the pushed keywords', ['error' => $e->getMessage()]);
+        }
     }
 
     /** Stored keywords that were copied from a cousin and have now been pushed count as Amazon keywords. */

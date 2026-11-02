@@ -1747,6 +1747,148 @@ class AmazonFbmTargetingController extends Controller
         ];
     }
 
+    // ---------- Undo a push: archive the keywords a push run sent ----------
+
+    private const LOG_TABLE = 'amazon_kw_push_log';
+
+    /** GET: the latest push runs that can be undone. */
+    public function pushRuns(): JsonResponse
+    {
+        if (! $this->hasTable(self::LOG_TABLE)) {
+            return response()->json(['success' => true, 'runs' => []]);
+        }
+        $runs = DB::table(self::LOG_TABLE)
+            ->selectRaw('run_token, MIN(pushed_at) AS pushed_at, MAX(pushed_by) AS pushed_by, COUNT(DISTINCT campaign_id) AS campaigns, COUNT(*) AS keywords, SUM(undone_at IS NOT NULL) AS undone')
+            ->groupBy('run_token')
+            ->orderByDesc('pushed_at')
+            ->limit(10)
+            ->get()
+            ->map(fn ($r) => [
+                'run_token' => $r->run_token, 'pushed_at' => (string) $r->pushed_at, 'pushed_by' => $r->pushed_by,
+                'campaigns' => (int) $r->campaigns, 'keywords' => (int) $r->keywords, 'undone' => (int) $r->undone,
+            ])->all();
+
+        return response()->json(['success' => true, 'runs' => $runs]);
+    }
+
+    /** POST: start undoing one push run in the background (progress through syncStatus()). */
+    public function startUndo(Request $request): JsonResponse
+    {
+        $v = $request->validate(['run_token' => ['required', 'string', 'regex:/^[A-Za-z0-9\-]{6,40}$/']]);
+        $token = $v['run_token'];
+        if (! $this->hasTable(self::LOG_TABLE) || ! DB::table(self::LOG_TABLE)->where('run_token', $token)->whereNull('undone_at')->exists()) {
+            return response()->json(['success' => false, 'message' => 'Nothing left to undo for that push.'], 422);
+        }
+        $state = Cache::get(self::SYNC_STATE);
+        $alive = is_array($state) && ($state['status'] ?? '') === 'running'
+            && (time() - (int) ($state['heartbeat'] ?? 0)) < self::PUSH_STALE_SECONDS;
+        if ($alive) {
+            return response()->json(['success' => true, 'started' => true, 'already' => true] + $this->syncStatusBody());
+        }
+        Cache::put(self::SYNC_STATE, [
+            'status' => 'running', 'phase' => 'undo', 'percent' => 0, 'started_at' => now()->toDateTimeString(),
+            'heartbeat' => time(), 'by' => Auth::user()?->name, 'message' => 'Starting the undo…',
+            'campaigns' => 0, 'done' => 0, 'chunk' => 0, 'chunks' => 0, 'fetched' => 0, 'pulled' => 0, 'to_add' => 0, 'added' => 0, 'failed' => 0, 'rows' => [],
+        ], now()->addHours(6));
+        try {
+            $this->spawnArtisan('app:amazon-kw-targeting-undo --run='.$token, 'fbm-targeting-sync.log');
+        } catch (\Throwable $e) {
+            Cache::forget(self::SYNC_STATE);
+
+            return response()->json(['success' => false, 'message' => 'Could not start the undo: '.$e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true, 'started' => true] + $this->syncStatusBody());
+    }
+
+    /**
+     * The undo itself (background command): for each campaign of the run, find the live keywords that match what the push
+     * sent AND were created at or after the push, archive exactly those, drop them from the app store, mark the log.
+     *
+     * @return array<string, mixed>
+     */
+    public function runUndo(string $token): array
+    {
+        $log = DB::table(self::LOG_TABLE)->where('run_token', $token)->whereNull('undone_at')->get();
+        if ($log->isEmpty()) {
+            return ['message' => 'Nothing left to undo for that push.', 'campaigns' => 0];
+        }
+        $byCampaign = [];
+        foreach ($log as $row) {
+            $byCampaign[(string) $row->campaign_id][] = $row;
+        }
+        $campaignIds = array_keys($byCampaign);
+        $total = count($campaignIds);
+        $this->recordSyncState(['phase' => 'undo', 'campaigns' => $total, 'chunks' => (int) ceil($total / 20), 'message' => 'Undo: reading the live keywords…']);
+
+        $archived = 0;
+        $failed = 0;
+        $done = 0;
+        foreach (array_chunk($campaignIds, 20) as $i => $chunk) {
+            $live = $this->ads->listKeywordsWithCreationDates($chunk);
+            $liveByCampaign = [];
+            foreach ($live as $kw) {
+                $liveByCampaign[(string) ($kw['campaignId'] ?? '')][] = $kw;
+            }
+            foreach ($chunk as $cid) {
+                $since = null;
+                $want = [];
+                foreach ($byCampaign[$cid] as $row) {
+                    $want[mb_strtolower(trim((string) $row->keyword_text)).'|'.strtoupper((string) $row->match_type)] = $row;
+                    $t = strtotime((string) $row->pushed_at.' '.config('app.timezone', 'UTC'));
+                    $since = $since === null ? $t : min($since, $t);
+                }
+                $ids = [];
+                $hit = [];
+                foreach ($liveByCampaign[$cid] ?? [] as $kw) {
+                    $k = mb_strtolower(trim((string) ($kw['keywordText'] ?? ''))).'|'.strtoupper((string) ($kw['matchType'] ?? ''));
+                    if (! isset($want[$k])) {
+                        continue;
+                    }
+                    // only keywords created by the push - an older identical keyword is never touched
+                    $created = strtotime((string) ($kw['extendedData']['creationDateTime'] ?? ''));
+                    if ($created === false || $since === null || $created < $since - 600) {
+                        continue;
+                    }
+                    $ids[] = (string) $kw['keywordId'];
+                    $hit[] = $want[$k];
+                }
+                if ($ids === []) {
+                    continue;
+                }
+                $r = $this->ads->archiveSpKeywords($ids);
+                $archived += $r['archived'];
+                $failed += $r['failed'];
+                if ($r['failed'] === 0) {
+                    $byMatch = [];
+                    foreach ($hit as $h) {
+                        $byMatch[strtoupper((string) $h->match_type)][] = $h;
+                    }
+                    foreach ($byMatch as $match => $hits) {
+                        foreach (array_chunk($hits, 300) as $hitChunk) {
+                            // only this match type's stored rows: the same text with another match type is a different keyword
+                            DB::table(self::STORE_TABLE)->where('campaign_id', $cid)->where('match_type', $match)
+                                ->whereIn('keyword_key', array_map(static fn ($h) => (string) $h->keyword_key, $hitChunk))->delete();
+                            DB::table(self::LOG_TABLE)->whereIn('id', array_map(static fn ($h) => $h->id, $hitChunk))->update(['undone_at' => now()]);
+                        }
+                    }
+                }
+            }
+            $done += count($chunk);
+            $this->recordSyncState([
+                'done' => $done, 'chunk' => $i + 1, 'added' => $archived, 'failed' => $failed,
+                'percent' => (int) round(100 * $done / $total),
+                'message' => 'Undo: archiving on Amazon, '.$done.' / '.$total.' campaigns · '.number_format($archived).' keyword(s) archived'.($failed ? ', '.number_format($failed).' failed' : ''),
+            ]);
+        }
+        $this->forgetBadges();
+
+        return [
+            'message' => 'Undo finished: '.number_format($archived).' keyword(s) archived on Amazon in '.$total.' campaign(s)'.($failed ? ', '.number_format($failed).' could not be archived' : '').'.',
+            'campaigns' => $total, 'added' => $archived, 'failed' => $failed,
+        ];
+    }
+
     /**
      * Manually added keywords per campaign (independent of imports and KW cousins).
      *

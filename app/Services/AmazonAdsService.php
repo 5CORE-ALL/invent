@@ -489,6 +489,61 @@ class AmazonAdsService
     }
 
     /**
+     * Live (ENABLED / PAUSED) SP keywords with Amazon's creation time (extendedData.creationDateTime), used to undo a push.
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    public function listKeywordsWithCreationDates(array $campaignIds, int $maxPages = 40): array
+    {
+        return $this->listSpEntitiesByCampaignIds(
+            '/sp/keywords/list',
+            'application/vnd.spKeyword.v3+json',
+            ['keywords'],
+            $campaignIds,
+            $maxPages,
+            1000,
+            50,
+            ['ENABLED', 'PAUSED'],
+            ['includeExtendedDataFields' => true]
+        );
+    }
+
+    /**
+     * Archive SP keywords (POST /sp/keywords/delete, 100 per call). Archived keywords cannot be re-enabled.
+     *
+     * @param  list<string>  $keywordIds
+     * @return array{archived: int, failed: int, errors: list<string>}
+     */
+    public function archiveSpKeywords(array $keywordIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(static fn ($id) => trim((string) $id), $keywordIds), static fn (string $id) => $id !== '')));
+        $out = ['archived' => 0, 'failed' => 0, 'errors' => []];
+        foreach (array_chunk($ids, 100) as $chunk) {
+            try {
+                $resp = $this->post('/sp/keywords/delete', ['keywordIdFilter' => ['include' => $chunk]], [
+                    'Content-Type' => 'application/vnd.spKeyword.v3+json',
+                    'Accept' => 'application/vnd.spKeyword.v3+json',
+                ]);
+                $ok = count((array) ($resp['keywords']['success'] ?? []));
+                $bad = count((array) ($resp['keywords']['error'] ?? []));
+                $out['archived'] += $ok;
+                $out['failed'] += $bad;
+                if ($bad > 0 && count($out['errors']) < 3) {
+                    $out['errors'][] = mb_substr((string) json_encode(($resp['keywords']['error'] ?? [])[0] ?? []), 0, 200);
+                }
+            } catch (\Throwable $e) {
+                $out['failed'] += count($chunk);
+                if (count($out['errors']) < 3) {
+                    $out['errors'][] = mb_substr($e->getMessage(), 0, 200);
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * ARCHIVED SP keywords of the campaigns. Amazon's console "Total targets" still counts them, while the normal
      * keyword lists (ENABLED / PAUSED) do not.
      *
@@ -1033,7 +1088,8 @@ class AmazonAdsService
         int $maxPages = 20,
         int $pageSize = 100,
         int $chunkSize = 8,
-        array $states = ['ENABLED', 'PAUSED']
+        array $states = ['ENABLED', 'PAUSED'],
+        array $extraBody = []
     ): array {
         $ids = array_values(array_unique(array_filter(array_map(
             static fn ($id) => trim((string) $id),
@@ -1053,7 +1109,7 @@ class AmazonAdsService
                     'campaignIdFilter' => ['include' => $chunk],
                     'stateFilter' => ['include' => array_values($states)],
                     'maxResults' => max(1, $pageSize),
-                ];
+                ] + $extraBody;
                 if (is_string($nextToken) && $nextToken !== '') {
                     $body['nextToken'] = $nextToken;
                 }
