@@ -71,6 +71,7 @@ class AmazonKwTargetingPushService
                 $appByCampaign[(string) $r->campaign_id][$r->keyword_key.'|'.$r->match_type] = [
                     'text' => (string) $r->keyword,
                     'match' => (string) $r->match_type,
+                    'key' => (string) $r->keyword_key,
                 ];
             }
         }
@@ -134,14 +135,20 @@ class AmazonKwTargetingPushService
                 } else {
                     $bid = (float) config('services.amazon_ads.default_keyword_bid', 1.0);
                     $byMatch = [];
+                    $keysByMatch = [];
                     foreach ($missing as $kw) {
                         $byMatch[$kw['match']][] = $kw['text'];
+                        $keysByMatch[$kw['match']][] = (string) ($kw['key'] ?? '');
                     }
                     $msgs = [];
                     foreach ($byMatch as $match => $texts) {
                         $r = $this->ads->pushAdGroupPositiveKeywords($cid, $adGroupId, $texts, $match, $bid);
                         $row['added'] += (int) $r['added'];
                         $row['failed'] += (int) $r['failed'];
+                        // Everything of this match type landed on Amazon: those stored keywords are Amazon keywords now.
+                        if ((int) $r['failed'] === 0 && (int) $r['added'] > 0) {
+                            $this->markOnAmazon($cid, (string) $match, $keysByMatch[$match] ?? []);
+                        }
                         if ($r['failed'] > 0 && $r['errors'] !== []) {
                             $msgs[] = implode(' | ', array_slice($r['errors'], 0, 2));
                         }
@@ -284,6 +291,20 @@ class AmazonKwTargetingPushService
         }
 
         return $out;
+    }
+
+    /** Stored keywords that were copied from a cousin and have now been pushed count as Amazon keywords. */
+    private function markOnAmazon(string $campaignId, string $match, array $keys): void
+    {
+        $keys = array_values(array_filter(array_unique($keys), static fn (string $k) => $k !== ''));
+        try {
+            foreach (array_chunk($keys, 500) as $chunk) {
+                DB::table(self::STORE_TABLE)->where('campaign_id', $campaignId)->where('match_type', $match)
+                    ->whereIn('keyword_key', $chunk)->where('source', 'cousin')->update(['source' => 'amazon']);
+            }
+        } catch (\Throwable $e) {
+            Log::info('KW targeting push: could not mark pushed keywords', ['error' => $e->getMessage()]);
+        }
     }
 
     private function sbAdGroupId(string $campaignId): string
