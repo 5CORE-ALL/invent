@@ -1986,8 +1986,11 @@
     function pkUpToDateRows() {
         const q = pkState.filter.trim().toLowerCase();
         return (pkState.upToDate || []).filter(function (u) { return !q || String(u.campaign_name).toLowerCase().indexOf(q) !== -1; }).map(function (u) {
-            return '<tr class="text-muted"><td><input type="checkbox" disabled title="Nothing to push: this campaign already has all the keywords it should (its own + the other ticked campaigns) on Amazon"></td><td><span class="badge bg-secondary">KW</span></td>' +
-                '<td>' + escapeHtml(u.campaign_name) + '</td><td class="text-end" title="Nothing missing: every keyword this campaign should have is live on Amazon">up to date' + (u.keywords ? ' <span class="text-muted">(' + Number(u.keywords).toLocaleString() + ' keywords)</span>' : '') + '</td></tr>';
+            return '<tr class="text-muted"><td><input type="checkbox" disabled title="Nothing to push: this campaign already has all the keywords it should (its own + the other ticked campaigns) on Amazon"></td><td><span class="badge bg-secondary">' + escapeHtml(u.type || 'KW') + '</span></td>' +
+                '<td>' + escapeHtml(u.type === 'HL' && !u.campaign_id ? 'Parent ' + u.campaign_name : u.campaign_name) + '</td>' +
+                (u.note
+                    ? '<td class="text-end text-warning" title="This parent has no HEAD / HL campaign linked, so nothing can be pushed to one">' + escapeHtml(u.note) + '</td></tr>'
+                    : '<td class="text-end" title="Nothing missing: every keyword this campaign should have is live on Amazon">up to date' + (u.keywords ? ' <span class="text-muted">(' + Number(u.keywords).toLocaleString() + ' keywords)</span>' : '') + '</td></tr>');
         }).join('');
     }
 
@@ -2145,7 +2148,7 @@
             }
             const cousinRows = (b.rows || []).filter(pkIsCousinRow).length;
             pkSummary.textContent = (pkBulk ? 'Bulk push of ' + pkBulk.length.toLocaleString() + ' selected campaign(s)' +
-                (cousinRows ? ' (' + cousinRows.toLocaleString() + ' linked KW cousin campaign(s) are listed but NOT ticked - "Include linked cousins" adds them)' : '') + '. ' + ((b.up_to_date || []).length ? (b.up_to_date.length.toLocaleString() + ' of them already have every keyword they should (own + the other ticked campaigns) on Amazon (shown greyed). ') : '') + 'Only the ticked rows are pushed.' : (b.message || ''));
+                (cousinRows ? ' (' + cousinRows.toLocaleString() + ' linked KW cousin campaign(s) are listed but NOT ticked - "Include linked cousins" adds them)' : '') + '. ' + (function () { const n = (b.up_to_date || []).filter(function (u) { return !u.note; }).length, w = (b.up_to_date || []).length - n; return (n ? n.toLocaleString() + ' campaign(s) already have every keyword they should (own + the other ticked campaigns) on Amazon (shown greyed). ' : '') + (w ? w.toLocaleString() + ' parent(s) have no HL campaign linked. ' : ''); })() + 'Only the ticked rows are pushed.' : (b.message || ''));
             const bulk = !!(pkBulk && pkBulk.length);
             const showCousinTools = bulk && cousinRows > 0;
             const hasHl = (b.rows || []).some(function (r) { return r.type === 'HL'; });

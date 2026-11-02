@@ -265,6 +265,14 @@ class AmazonKwTargetingPushService
             }
         }
 
+        // Parents of the picked campaigns that have no HL (HEAD) campaign linked: said so, never silently skipped.
+        foreach ($byParent as $parentKey => $_) {
+            if (! isset($hlByParent[$parentKey])) {
+                $upToDate['NOHL|'.$parentKey] = ['type' => 'HL', 'campaign_id' => '', 'campaign_name' => $parentKey, 'parent' => $parentKey,
+                    'keywords' => 0, 'note' => 'no HL campaign linked'];
+            }
+        }
+
         // Several parents can be linked to the same HL campaign: merge their keywords into one row per campaign.
         $byHl = [];
         foreach ($byParent as $parentKey => $keywords) {
@@ -294,6 +302,10 @@ class AmazonKwTargetingPushService
                 }
             }
             if ($missing === []) {
+                // reported (like the KW campaigns) so the check shows the HEAD campaign as up to date instead of ignoring it
+                $upToDate['HL|'.$hid] = ['type' => 'HL', 'campaign_id' => $hid, 'campaign_name' => $hl['name'], 'parent' => $parentKey,
+                    'keywords' => count($keywords)];
+
                 continue;
             }
 
