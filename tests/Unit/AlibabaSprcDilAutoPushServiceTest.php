@@ -213,4 +213,16 @@ class AlibabaSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
     }
+
+    public function test_saved_sprice_target_is_used_when_the_rule_gives_no_price(): void
+    {
+        $svc = new AlibabaSprcDilAutoPushService;
+
+        $out = $svc->savedSpriceTarget(['inv' => 5, 'sprice' => 52.82, 'margin' => 80, 'lp' => 10]);
+        $this->assertNotNull($out);
+        $this->assertSame(52.82, $out['sprice']);
+
+        $this->assertNull($svc->savedSpriceTarget(['inv' => 0, 'sprice' => 52.82]));
+        $this->assertNull($svc->savedSpriceTarget(['inv' => 5, 'sprice' => 0]));
+    }
 }

@@ -479,6 +479,23 @@ class ChannelPushedPricePullService
                 if (! ($live > 0) && count($rows) === 1) {
                     $live = (float) ($rows[0]['price'] ?? 0);
                 }
+                if (! ($live > 0) && $rows === []) {
+                    // A single-SKU product with no SKU code (skuId -1, the SKU is only the product's model): there is no
+                    // SKU row to match, so read its one price. Without this the pull said "price was not returned" and
+                    // the Price column stayed old for ever (GSTOOL WH, DS CH BR, GSS UKU BLU ...).
+                    $skuDefs = is_array($product['productSku']['skus'] ?? null) ? $product['productSku']['skus'] : [];
+                    if (count($skuDefs) <= 1) {
+                        $first = is_array($skuDefs[0] ?? null) ? $skuDefs[0] : [];
+                        $tiers = is_array($first['bulkDiscountPrices'] ?? null) ? $first['bulkDiscountPrices'] : [];
+                        $live = (float) ($tiers[0]['price'] ?? 0);
+                        if (! ($live > 0)) {
+                            $live = (float) ($product['wholesaleTrade']['price'] ?? 0);
+                        }
+                        if (! ($live > 0)) {
+                            $live = (float) ($product['minPrice'] ?? 0);
+                        }
+                    }
+                }
                 if (! ($live > 0)) {
                     $out[] = [
                         'success' => false,
