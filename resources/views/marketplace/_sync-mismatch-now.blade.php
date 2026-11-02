@@ -19,9 +19,21 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
     var original = btn.innerHTML;
     var url = @json($url);
     var offset = 0;
+    var total = null;
     var ready = false;
     var totals = { updated: 0, failed: 0, skipped: 0, pending: 0 };
     var problems = [];
+
+    function paint(waiting) {
+        var text = 'Starting…';
+        if (total != null) {
+            var done = Math.min(offset, total);
+            text = total
+                ? ('Syncing ' + done + ' of ' + total + (waiting ? ' — waiting, will retry' : ''))
+                : 'No mismatch SKUs';
+        }
+        btn.innerHTML = '<i class="ri-loader-4-line"></i> ' + text;
+    }
 
     function summary() {
         var text = 'Updated: ' + totals.updated
@@ -47,9 +59,7 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
     }
 
     function tick() {
-        btn.innerHTML = ready
-            ? ('<i class="ri-loader-4-line"></i> Syncing… ' + offset)
-            : '<i class="ri-loader-4-line"></i> Preparing…';
+        paint(false);
         return fetch(url, {
             method: 'POST',
             headers: {
@@ -77,9 +87,10 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 return;
             }
             retries = 0;
+            if (typeof data.total === 'number') total = data.total;
             if (data.rate_limited && rateRetries < 8) {
                 rateRetries++;
-                btn.innerHTML = '<i class="ri-loader-4-line"></i> Alibaba is busy, retrying…';
+                paint(true);
                 setTimeout(tick, data.retry_after_ms || 3000);
                 return;
             }
@@ -91,7 +102,7 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                     location.reload();
                     return;
                 }
-                btn.innerHTML = '<i class="ri-loader-4-line"></i> Prepared ' + (data.total || 0);
+                paint(false);
                 setTimeout(tick, 200);
                 return;
             }
@@ -104,7 +115,8 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 && problems.indexOf(data.message) === -1) {
                 problems.push(data.message);
             }
-            offset = data.offset || offset;
+            if (typeof data.offset === 'number') offset = data.offset;
+            paint(false);
             if (data.done) {
                 alert('Mismatch inventory sync complete.\n' + summary());
                 location.reload();
