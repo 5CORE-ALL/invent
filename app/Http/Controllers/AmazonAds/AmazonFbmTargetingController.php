@@ -1296,7 +1296,7 @@ class AmazonFbmTargetingController extends Controller
     }
 
     /** Non-PT SP campaigns that can receive keywords. */
-    public function kwCampaignsForPush(?array $onlyCampaignIds = null): array
+    public function kwCampaignsForPush(?array $onlyCampaignIds = null, bool $withCousins = true): array
     {
         $only = $onlyCampaignIds === null ? null : array_flip(array_map('strval', $onlyCampaignIds));
 
@@ -1309,7 +1309,9 @@ class AmazonFbmTargetingController extends Controller
         }
 
         // Picked campaigns also push to the campaigns they are linked to as KW cousins (and only those).
-        $only = $this->withLinkedCousinCampaigns($only, $eligible);
+        if ($withCousins) {
+            $only = $this->withLinkedCousinCampaigns($only, $eligible);
+        }
 
         return array_values(array_filter($eligible, static fn (array $c) => isset($only[$c['campaign_id']])));
     }
@@ -1534,6 +1536,9 @@ class AmazonFbmTargetingController extends Controller
 
     private const SYNC_IDS = 'amz_fbm_sync_ids';
 
+    /** Ticked campaigns ("KW|id" / "HL|id") of the push check; null = everything found. */
+    private const SYNC_ONLY = 'amz_fbm_sync_only';
+
     /** KW campaigns handled per chunk (whole parents stay together, so a parent's HL campaign is pushed once). */
     private const SYNC_CHUNK = 20;
 
@@ -1546,8 +1551,12 @@ class AmazonFbmTargetingController extends Controller
         $v = $request->validate([
             'campaign_ids' => ['nullable', 'array', 'max:5000'],
             'campaign_ids.*' => ['string', 'regex:/^\d{1,32}$/'],
+            // The ticks of the push check ("KW|<id>" / "HL|<id>"): only those campaigns are pushed, linked cousins are not added again.
+            'selected' => ['nullable', 'array', 'max:5000'],
+            'selected.*' => ['string', 'regex:/^(KW|HL)\|\d{1,32}$/'],
         ]);
         $ids = ! empty($v['campaign_ids']) ? array_values(array_unique($v['campaign_ids'])) : null;
+        $selected = ! empty($v['selected']) ? array_values(array_unique($v['selected'])) : null;
 
         $push = Cache::get(self::PUSH_STATE);
         $pushAlive = is_array($push) && ($push['status'] ?? '') === 'running'
@@ -1560,6 +1569,7 @@ class AmazonFbmTargetingController extends Controller
         }
 
         Cache::put(self::SYNC_IDS, $ids, now()->addHours(6));
+        Cache::put(self::SYNC_ONLY, $selected, now()->addHours(6));
         Cache::put(self::SYNC_STATE, [
             'status' => 'running', 'phase' => 'start', 'percent' => 0, 'started_at' => now()->toDateTimeString(),
             'heartbeat' => time(), 'by' => Auth::user()?->name, 'message' => 'Starting…',
@@ -1619,7 +1629,11 @@ class AmazonFbmTargetingController extends Controller
         $ids = Cache::get(self::SYNC_IDS);
         $ids = is_array($ids) && $ids !== [] ? array_values($ids) : null;
 
-        $camps = $this->kwCampaignsForPush($ids);
+        $only = Cache::get(self::SYNC_ONLY);
+        $only = is_array($only) && $only !== [] ? array_values($only) : null;
+
+        // From the push check the ticks are final (cousins were already added and could be unticked): no second expansion.
+        $camps = $this->kwCampaignsForPush($ids, $only === null);
         if ($camps === []) {
             return ['message' => 'No KW campaigns to sync.', 'campaigns' => 0];
         }
@@ -1669,7 +1683,9 @@ class AmazonFbmTargetingController extends Controller
         // 2) Share keywords between KW cousins (local data) so the push has the linked keywords.
         $this->recordSyncState(['phase' => 'cousins', 'percent' => 47, 'message' => 'Syncing KW cousins…']);
         try {
-            if ($ids === null) {
+            if ($only !== null) {
+                // ticks are final: the keywords were shared between cousins when the check ran
+            } elseif ($ids === null) {
                 if ($this->hasTable(self::COUSIN_TABLE)) {
                     $seen = [];
                     foreach ($this->cousins->groupsMap() as $group) {
@@ -1698,7 +1714,7 @@ class AmazonFbmTargetingController extends Controller
             $this->recordSyncState(['phase' => 'push', 'chunk' => $i + 1, 'message' => $label]);
             $r = $push->run($chunk, false, function () use ($label): void {
                 $this->recordSyncState(['message' => $label]); // heartbeat while a chunk is running
-            });
+            }, $only);
             foreach ($r['errors'] as $e) {
                 $errors[] = $e;
             }

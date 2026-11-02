@@ -157,8 +157,8 @@
                     <h4 class="mb-0"><i class="mdi mdi-bullseye-arrow"></i> Keyword Targeting</h4>
                     <div class="d-flex gap-2 align-items-center flex-wrap">
                         <button type="button" id="aft-push-sel" class="btn btn-success btn-sm fw-bold" disabled
-                                title="Tick campaigns in the grid, then push only their missing keywords to Amazon (KW campaigns and their parents' HL campaigns)">
-                            <i class="fas fa-check-square"></i> Push selected (0)
+                                title="Tick campaigns in the grid. A check shows what is missing; after you confirm, their live keywords are pulled from Amazon and the missing ones pushed (KW campaigns and their parents' HL campaigns), in the background with progress.">
+                            <i class="fas fa-check-square"></i> Pull + Push selected (0)
                         </button>
                         <button type="button" id="aft-sel-clear" class="btn btn-outline-light btn-sm d-none" title="Clear the selection">Clear</button>
                         <button type="button" id="aft-sync-sel" class="btn btn-info btn-sm fw-bold" disabled
@@ -1491,12 +1491,17 @@
     function syncStart(ids) {
         const what = ids && ids.length ? ids.length.toLocaleString() + ' selected campaign(s) (and their linked KW cousins)' : 'ALL KW campaigns';
         if (!confirm('Pull from Amazon and push the missing keywords for ' + what + '? It runs in the background, chunk by chunk.')) return;
+        syncStartRaw(ids && ids.length ? { campaign_ids: ids } : {});
+    }
+    // payload: { campaign_ids?, selected? }. selected = the ticks of the push check ("KW|id" / "HL|id").
+    function syncStartRaw(payload) {
         syncLock(true);
         syncPaint({ status: 'running', percent: 0, message: 'Starting…' });
+        if (syncEl.panel && syncEl.panel.scrollIntoView) syncEl.panel.scrollIntoView({ block: 'center', behavior: 'smooth' });
         fetch(syncStartUrl, {
             method: 'POST',
             headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
-            body: JSON.stringify(ids && ids.length ? { campaign_ids: ids } : {}),
+            body: JSON.stringify(payload),
         }).then(function (res) {
             return res.json().catch(function () { return {}; }).then(function (b) { return { ok: res.ok && b.success !== false, body: b }; });
         }).then(function (r) {
@@ -2036,7 +2041,18 @@
         pkConfirm.addEventListener('click', function () {
             const selected = Array.from(pkState.selected);
             if (!selected.length) return;
-            if (!confirm('This adds keywords to ' + selected.length.toLocaleString() + ' selected campaign(s) on Amazon. Continue?')) return;
+            if (!confirm('This pulls the live keywords of ' + selected.length.toLocaleString() + ' selected campaign(s) from Amazon and then adds the missing keywords to them. It runs in the background, chunk by chunk. Continue?')) return;
+            // Pull + push in chunks with live progress (same job as the Sync buttons). Needs at least one KW campaign tick.
+            const kwIds = selected.filter(function (k) { return k.indexOf('KW|') === 0; }).map(function (k) { return k.slice(3); });
+            if (kwIds.length) {
+                if (window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(pkModalEl).hide();
+                } else if (window.jQuery) {
+                    window.jQuery(pkModalEl).modal('hide');
+                }
+                syncStartRaw({ campaign_ids: kwIds, selected: selected });
+                return;
+            }
             const original = pkConfirm.innerHTML;
             pkConfirm.disabled = true;
             pkConfirm.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Pushing…';
@@ -2310,7 +2326,7 @@
         };
         const paint = function () {
             const n = ids().length;
-            selBtn.innerHTML = '<i class="fas fa-check-square"></i> Push selected (' + n.toLocaleString() + ')';
+            selBtn.innerHTML = '<i class="fas fa-check-square"></i> Pull + Push selected (' + n.toLocaleString() + ')';
             selBtn.disabled = n === 0;
             clearBtn.classList.toggle('d-none', n === 0);
             if (syncEl.sel) {
