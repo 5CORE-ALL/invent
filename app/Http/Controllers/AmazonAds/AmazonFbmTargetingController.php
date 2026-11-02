@@ -1391,6 +1391,7 @@ class AmazonFbmTargetingController extends Controller
             'totals' => $t,
             'rows' => $r['rows'],
             'errors' => $r['errors'],
+            'up_to_date' => $r['up_to_date'] ?? [],
         ];
     }
 

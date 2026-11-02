@@ -104,6 +104,7 @@ class AmazonKwTargetingPushService
         }
 
         $byParent = [];
+        $upToDate = [];
         $seenKw = [];
         foreach ($kwCampaigns as $c) {
             $cid = $c['campaign_id'];
@@ -117,6 +118,11 @@ class AmazonKwTargetingPushService
                 foreach ($appByCampaign[$cid] ?? [] as $k => $kw) {
                     $byParent[strtoupper($c['parent'])][$k] = $kw;
                 }
+            }
+            if ($missing === [] && $picked('KW', $cid) && ! isset($upToDate[$cid])) {
+                // nothing missing: reported so the check can show the campaign as "up to date" instead of dropping it silently
+                $upToDate[$cid] = ['campaign_id' => $cid, 'campaign_name' => $c['campaign_name'], 'parent' => $c['parent'],
+                    'keywords' => count($appByCampaign[$cid] ?? [])];
             }
             if ($missing === [] || ! $picked('KW', $cid)) {
                 continue;
@@ -270,7 +276,7 @@ class AmazonKwTargetingPushService
             }
         }
 
-        return ['rows' => $rows, 'totals' => $this->totals($rows), 'errors' => $errors];
+        return ['rows' => $rows, 'totals' => $this->totals($rows), 'errors' => $errors, 'up_to_date' => array_slice(array_values($upToDate), 0, 500)];
     }
 
     /**

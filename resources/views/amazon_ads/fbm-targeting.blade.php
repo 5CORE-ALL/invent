@@ -1852,7 +1852,7 @@
         selCousins: document.getElementById('pk-sel-cousins'),
         selHl: document.getElementById('pk-sel-hl'),
     };
-    const pkState = { rows: [], selected: new Set(), filter: '' };
+    const pkState = { rows: [], selected: new Set(), filter: '', upToDate: [] };
     const pkKey = function (r) { return String(r.type) + '|' + String(r.campaign_id); };
 
     function pkShownRows() {
@@ -1908,6 +1908,15 @@
         pkDraw();
     }
 
+    // Selected KW campaigns that already have all of their own keywords on Amazon: shown greyed so none looks missing.
+    function pkUpToDateRows() {
+        const q = pkState.filter.trim().toLowerCase();
+        return (pkState.upToDate || []).filter(function (u) { return !q || String(u.campaign_name).toLowerCase().indexOf(q) !== -1; }).map(function (u) {
+            return '<tr class="text-muted"><td></td><td><span class="badge bg-secondary">KW</span></td>' +
+                '<td>' + escapeHtml(u.campaign_name) + '</td><td class="text-end">up to date</td></tr>';
+        }).join('');
+    }
+
     function pkDraw() {
         const rows = pkShownRows();
         if (!rows.length) {
@@ -1924,12 +1933,20 @@
                     '<td><span class="badge ' + (r.type === 'HL' ? 'bg-info' : 'bg-primary') + '">' + escapeHtml(r.type) + '</span></td>' +
                     '<td>' + escapeHtml(r.campaign_name) + (pkIsCousinRow(r) ? ' <span class="badge bg-warning text-dark" title="Not ticked in the grid - added because it is linked as a KW cousin of a ticked campaign">cousin</span>' : '') + '</td>' +
                     '<td class="text-end">' + Number(r.to_add || 0).toLocaleString() + '</td></tr>';
-            }).join('') + '</tbody></table>';
+            }).join('') + pkUpToDateRows() + '</tbody></table>';
         pkUpdateSelection();
     }
 
     function pkRender(body, done) {
         const rows = body.rows || [];
+        if (!done) pkState.upToDate = body.up_to_date || [];
+        if (!rows.length && !done && pkState.upToDate.length) {
+            pkEl.toolbar.classList.add('d-none');
+            pkEl.toolbar.classList.remove('d-flex');
+            pkWrap.innerHTML = '<div class="aft-empty mb-2">Nothing to push: every selected campaign already has all of its own keywords on Amazon.</div>' +
+                '<table class="table table-sm table-bordered align-middle mb-0"><tbody>' + pkUpToDateRows() + '</tbody></table>';
+            return;
+        }
         if (!rows.length) {
             pkEl.toolbar.classList.add('d-none');
             pkEl.toolbar.classList.remove('d-flex');
@@ -2045,7 +2062,7 @@
             }
             const cousinRows = (b.rows || []).filter(pkIsCousinRow).length;
             pkSummary.textContent = (pkBulk ? 'Bulk push of ' + pkBulk.length.toLocaleString() + ' selected campaign(s)' +
-                (cousinRows ? ' (' + cousinRows.toLocaleString() + ' linked KW cousin campaign(s) are listed but NOT ticked - "Include linked cousins" adds them)' : '') + '. Only the ticked rows are pushed.' : (b.message || ''));
+                (cousinRows ? ' (' + cousinRows.toLocaleString() + ' linked KW cousin campaign(s) are listed but NOT ticked - "Include linked cousins" adds them)' : '') + '. ' + ((b.up_to_date || []).length ? (b.up_to_date.length.toLocaleString() + ' of them already have all their own keywords on Amazon (shown greyed). ') : '') + 'Only the ticked rows are pushed.' : (b.message || ''));
             const bulk = !!(pkBulk && pkBulk.length);
             const showCousinTools = bulk && cousinRows > 0;
             const hasHl = (b.rows || []).some(function (r) { return r.type === 'HL'; });
