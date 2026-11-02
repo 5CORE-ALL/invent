@@ -556,6 +556,10 @@ class Temu2ListingPublishService
                 'message' => $added['message'] ?? '',
             ]);
 
+            if (! empty($added['pending'])) {
+                return ['success' => false, 'message' => $this->shopLabel().' parent goods '.$existingGoodsId.': '.trim((string) $added['message'])];
+            }
+
             return [
                 'success' => false,
                 'message' => 'Could not add the variation(s) to the existing '.$this->shopLabel().' parent (goods '.$existingGoodsId.'). '
@@ -4527,7 +4531,7 @@ class Temu2ListingPublishService
      *
      * @param  list<array<string, mixed>>  $newSkus
      */
-    private function newSkusAreOnGoods(string $goodsId, array $newSkus): bool
+    private function newSkusAreOnGoods(string $goodsId, array $newSkus, int $waitSeconds = 3): bool
     {
         $want = [];
         foreach ($newSkus as $sku) {
@@ -4560,11 +4564,18 @@ class Temu2ListingPublishService
         if ($present()) {
             return true;
         }
-        if (! app()->runningUnitTests()) {
-            sleep(3);
+        if (app()->runningUnitTests()) {
+            return false;
+        }
+        // Temu applies an add asynchronously: keep reading for a while before calling it absent.
+        for ($waited = 0; $waited < max(3, $waitSeconds); $waited += 5) {
+            sleep(5);
+            if ($present()) {
+                return true;
+            }
         }
 
-        return $present();
+        return false;
     }
 
     /**
@@ -4590,7 +4601,11 @@ class Temu2ListingPublishService
 
         $messages = [];
         $unknownTypes = [];
-        $attempt = function (string $type, array $skus, string $label = '') use ($goodsId, $newSkus, &$messages, &$unknownTypes): ?array {
+        // Temu applies an accepted add asynchronously and locks the goods meanwhile (150010815 "You can edit the
+        // product after the processing is complete"). Either signal means "pending", not "failed": sending the
+        // heavier full update on top of a goods that is still processing only produces misleading errors.
+        $pending = '';
+        $attempt = function (string $type, array $skus, string $label = '') use ($goodsId, $newSkus, &$messages, &$unknownTypes, &$pending): ?array {
             if (isset($unknownTypes[$type])) {
                 return null;
             }
@@ -4603,10 +4618,13 @@ class Temu2ListingPublishService
             $innerFailed = is_array($data['result'] ?? null) && array_key_exists('success', $data['result']) && empty($data['result']['success']);
             if (($data['success'] ?? false) && ! $innerFailed) {
                 // Temu often answers success for a partial update that did not add the SKU. Only a read-back counts.
-                if ($this->newSkusAreOnGoods($goodsId, $newSkus)) {
+                if ($this->newSkusAreOnGoods($goodsId, $newSkus, $type === 'bg.local.goods.partial.update' ? 30 : 3)) {
                     Log::info('Temu add SKU to existing goods: SKU is on the goods', ['type' => $type, 'goods_id' => $goodsId, 'sku_count' => count($skus)]);
 
                     return $data;
+                }
+                if ($type === 'bg.local.goods.partial.update') {
+                    $pending = 'Temu accepted the add and is still processing it (goods '.$goodsId.').';
                 }
                 $messages[$label] = 'Temu answered success but the new SKU is not on goods '.$goodsId;
                 Log::warning('Temu add SKU to existing goods: success was not real', [
@@ -4620,6 +4638,9 @@ class Temu2ListingPublishService
                 return null;
             }
             $msg = $this->apiErrorMessage($data);
+            if (str_contains($msg, '150010815') || stripos($msg, 'after the processing is complete') !== false) {
+                $pending = 'Temu is still processing an earlier change to goods '.$goodsId.' and locks it until that is done.';
+            }
             if ($this->isUnknownApiType($data)) {
                 $unknownTypes[$type] = true;
             } elseif ($msg !== '') {
@@ -4639,6 +4660,16 @@ class Temu2ListingPublishService
         // 1) Partial update with just the new SKUs (touches nothing that is already live).
         if (($data = $attempt('bg.local.goods.partial.update', $newSkus)) !== null) {
             return ['success' => true, 'data' => $data];
+        }
+        if ($pending !== '') {
+            Log::info('Temu add SKU to existing goods: pending', ['goods_id' => $goodsId, 'note' => $pending]);
+
+            return [
+                'success' => false,
+                'pending' => true,
+                'message' => $pending.' It is NOT marked listed yet. Wait a few minutes, then click Refresh listings: it links the SKU as soon as Temu shows it under this goods. '
+                    .'If it never appears, Temu rejected it during processing - see the goods in Seller Center.',
+            ];
         }
 
         // 2) Full update: every SKU Temu already holds under this goods (published SKUs cannot be dropped) + the new ones.
