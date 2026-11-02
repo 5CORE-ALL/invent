@@ -69,15 +69,16 @@ class AmazonKwTargetingPushService
         $kwIds = array_map(static fn (array $c) => $c['campaign_id'], $kwCampaigns);
 
         // App keywords per KW campaign, unique by text + match type. A campaign gets its OWN keywords plus the real keywords
-        // of the other campaigns of the SAME parent (e.g. a colour variant that has a target its siblings still miss).
-        // Keywords the app merely copied in from KW cousins of other parents ("cousin" source) are never pushed.
-        $siblingIds = [];
+        // of the other campaigns of the SAME parent that are picked in this push (e.g. two ticked colour variants that miss
+        // each other's targets). Campaigns that are not picked never lend or receive keywords, and keywords the app merely
+        // copied in from KW cousins of other parents ("cousin" source) are never pushed.
+        $pickedByParent = [];
         foreach ($kwCampaigns as $c) {
-            foreach ((array) ($c['sibling_ids'] ?? []) as $sid) {
-                $siblingIds[(string) $sid] = true;
+            if ($c['parent'] !== '' && $picked('KW', (string) $c['campaign_id'])) {
+                $pickedByParent[strtoupper($c['parent'])][] = (string) $c['campaign_id'];
             }
         }
-        $storeIds = array_values(array_unique(array_merge($kwIds, array_keys($siblingIds))));
+        $storeIds = $kwIds;
         $ownByCampaign = [];
         foreach (array_chunk($storeIds, 1000) as $chunk) {
             $q = DB::table(self::STORE_TABLE)->whereIn('campaign_id', $chunk)->whereIn('match_type', self::MATCH_TYPES)
@@ -105,9 +106,14 @@ class AmazonKwTargetingPushService
         foreach ($kwCampaigns as $c) {
             $cid = (string) $c['campaign_id'];
             $merged = $ownByCampaign[$cid] ?? [];
-            foreach ((array) ($c['sibling_ids'] ?? []) as $sid) {
-                foreach ($ownByCampaign[(string) $sid] ?? [] as $k => $kw) {
-                    $merged[$k] ??= $kw;
+            if ($c['parent'] !== '' && $picked('KW', $cid)) {
+                foreach ($pickedByParent[strtoupper($c['parent'])] ?? [] as $sid) {
+                    if ($sid === $cid) {
+                        continue;
+                    }
+                    foreach ($ownByCampaign[$sid] ?? [] as $k => $kw) {
+                        $merged[$k] ??= $kw;
+                    }
                 }
             }
             foreach ($merged as $k => $kw) {

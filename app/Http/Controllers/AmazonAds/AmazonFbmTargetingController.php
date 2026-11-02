@@ -1304,18 +1304,6 @@ class AmazonFbmTargetingController extends Controller
             $this->withoutArchived($this->campaignsGroupedByParent()), // archived campaigns cannot take keywords
             fn (array $c) => $c['campaign_id'] !== '' && ! $this->isProductTargetingCampaign($c['campaign_name'])
         ));
-        // Campaigns of the same parent (the push also sends a campaign the real keywords its siblings have and it misses).
-        $idsByParent = [];
-        foreach ($eligible as $c) {
-            $pk = strtoupper(trim((string) ($c['parent'] ?? '')));
-            if ($pk !== '') {
-                $idsByParent[$pk][] = (string) $c['campaign_id'];
-            }
-        }
-        foreach ($eligible as $i => $c) {
-            $pk = strtoupper(trim((string) ($c['parent'] ?? '')));
-            $eligible[$i]['sibling_ids'] = $pk === '' ? [] : array_values(array_diff($idsByParent[$pk] ?? [], [(string) $c['campaign_id']]));
-        }
         if ($only === null) {
             return $eligible;
         }
