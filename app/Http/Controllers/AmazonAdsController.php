@@ -3474,6 +3474,27 @@ class AmazonAdsController extends Controller
             $map[trim((string) $row->campaign_id)] = (int) $row->c;
         }
 
+        // The L30 report only lists keywords with activity (nothing at all for a paused campaign). Keywords pulled from
+        // Amazon or pushed to it are stored by the FBM targeting page, so never show fewer than those. Keywords that were
+        // only copied from KW cousins and not pushed yet ("cousin" source) are not on Amazon and stay out.
+        // /amazon-ads/all and /amazon-ads/fbm-targeting both read this function, so their Targets always match.
+        if (SchemaMemo::hasTable('amazon_kw_targeting_keywords')) {
+            try {
+                $stored = DB::table('amazon_kw_targeting_keywords')
+                    ->whereIn('campaign_id', $campaignIds)
+                    ->where('source', '!=', 'cousin')
+                    ->selectRaw('campaign_id, COUNT(*) AS c')
+                    ->groupBy('campaign_id')
+                    ->get();
+                foreach ($stored as $row) {
+                    $id = trim((string) $row->campaign_id);
+                    $map[$id] = max($map[$id] ?? 0, (int) $row->c);
+                }
+            } catch (\Throwable $e) {
+                // keep the report counts
+            }
+        }
+
         return $map;
     }
 

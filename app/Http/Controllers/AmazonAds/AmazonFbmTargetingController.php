@@ -341,28 +341,6 @@ class AmazonFbmTargetingController extends Controller
             $adsCounts = ['SP' => ['t' => [], 'n' => []], 'SB' => ['t' => [], 'n' => []]];
         }
 
-        // Keywords the app holds that are really on Amazon (pulled from it, or pushed to it). Keywords only copied from KW
-        // cousins ("cousin" source) wait for a push, so they are not counted as Amazon targets.
-        $onAmazon = [];
-        try {
-            $spIds = [];
-            foreach ($rows as $r) {
-                if (($r['ad_type'] ?? 'SP') === 'SP' && $r['campaign_id'] !== '') {
-                    $spIds[] = $r['campaign_id'];
-                }
-            }
-            if ($spIds !== [] && $this->hasTable(self::STORE_TABLE)) {
-                foreach (array_chunk(array_values(array_unique($spIds)), 1000) as $chunk) {
-                    foreach (DB::table(self::STORE_TABLE)->whereIn('campaign_id', $chunk)->where('source', '!=', 'cousin')
-                        ->selectRaw('campaign_id, COUNT(*) AS c')->groupBy('campaign_id')->get() as $o) {
-                        $onAmazon[(string) $o->campaign_id] = (int) $o->c;
-                    }
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::warning('AmazonFbmTargetingController: on-Amazon keyword counts failed', ['error' => $e->getMessage()]);
-        }
-
         // Lifetime clicks / sold of every campaign in each row's KW cousin group (own parent + cousin parents).
         $lt = $ltAll ?? $this->lifetimeForRows($rows, $groups);
         $mark('lifetime');
@@ -407,12 +385,8 @@ class AmazonFbmTargetingController extends Controller
                 'ad_type' => $row['ad_type'] ?? 'SP',
                 'status' => $row['status'],
                 'targets' => $targets,
-                // The Ads-All figure is the L30 *report* count: a paused campaign, or keywords just pulled / pushed, have no
-                // report rows yet and showed 0. Never show fewer than the keywords known to be on Amazon (pulled or pushed);
-                // keywords only copied from cousins and not pushed yet stay out of the count.
-                'target_count' => ($adsCounts[$row['ad_type'] ?? 'SP']['t'][$id] ?? null) !== null || isset($onAmazon[$id])
-                    ? max((int) ($adsCounts[$row['ad_type'] ?? 'SP']['t'][$id] ?? 0), (int) ($onAmazon[$id] ?? 0))
-                    : count($targets),
+                // Same function as /amazon-ads/all (L30 report + keywords pulled from / pushed to Amazon), so both pages match.
+                'target_count' => $adsCounts[$row['ad_type'] ?? 'SP']['t'][$id] ?? count($targets),
                 'ignored_targets' => $ignoredTargets,
                 'negatives' => $negatives,
                 'negative_count' => $adsCounts[$row['ad_type'] ?? 'SP']['n'][$id] ?? count($negatives),
