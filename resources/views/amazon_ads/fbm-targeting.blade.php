@@ -161,6 +161,14 @@
                             <i class="fas fa-check-square"></i> Push selected (0)
                         </button>
                         <button type="button" id="aft-sel-clear" class="btn btn-outline-light btn-sm d-none" title="Clear the selection">Clear</button>
+                        <button type="button" id="aft-sync-sel" class="btn btn-info btn-sm fw-bold" disabled
+                                title="Pull the live keywords of the ticked campaigns (and their linked KW cousins) from Amazon, then push what is missing. Runs in the background, in chunks.">
+                            <i class="fas fa-sync-alt"></i> Sync selected (0)
+                        </button>
+                        <button type="button" id="aft-sync-all" class="btn btn-light btn-sm fw-bold"
+                                title="Pull from Amazon and push what is missing for ALL KW campaigns. Runs in the background, in chunks.">
+                            <i class="fas fa-sync-alt"></i> Sync all (Pull + Push)
+                        </button>
                         <button type="button" id="aft-push-kw" class="btn btn-warning btn-sm fw-bold"
                                 title="Send the keywords in the app to ALL KW campaigns and the HL campaigns on Amazon">
                             <i class="fas fa-upload"></i> Push KW to KW + HL Campaigns
@@ -219,6 +227,16 @@
                         </button>
                     </div>
                     <div id="aft-pull-msg" class="small mb-2" style="display:none;"></div>
+                    <div id="aft-sync-panel" class="mb-2 p-2 border rounded bg-light" style="display:none;" role="status" aria-live="polite">
+                        <div class="d-flex justify-content-between small fw-semibold">
+                            <span id="aft-sync-text">Sync…</span>
+                            <span id="aft-sync-pct" class="text-muted"></span>
+                        </div>
+                        <div class="progress my-1" style="height:10px;">
+                            <div id="aft-sync-fill" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div>
+                        </div>
+                        <div id="aft-sync-counts" class="small text-muted"></div>
+                    </div>
                     <div id="aft-loadbar" class="aft-loadbar" style="display:none;" role="status" aria-live="polite">
                         <div class="aft-loadbar-top">
                             <span id="aft-loadbar-text">Loading campaigns…</span>
@@ -1409,6 +1427,85 @@
         });
     });
 
+    // Sync with Amazon: pull + push in chunks on the server; the page only polls a tiny status endpoint.
+    const syncStartUrl = @json(route('amazon.ads.fbm-targeting.sync-start'));
+    const syncStatusUrl = @json(route('amazon.ads.fbm-targeting.sync-status'));
+    const syncEl = {
+        panel: document.getElementById('aft-sync-panel'),
+        text: document.getElementById('aft-sync-text'),
+        pct: document.getElementById('aft-sync-pct'),
+        fill: document.getElementById('aft-sync-fill'),
+        counts: document.getElementById('aft-sync-counts'),
+        all: document.getElementById('aft-sync-all'),
+        sel: document.getElementById('aft-sync-sel'),
+    };
+    let syncTimer = null;
+    let syncRunning = false;
+    function syncLock(on) {
+        syncRunning = on;
+        if (syncEl.all) syncEl.all.disabled = on;
+        if (syncEl.sel) syncEl.sel.disabled = on || !(syncEl.sel.dataset.n > 0);
+    }
+    function syncPaint(b) {
+        if (!syncEl.panel) return false;
+        const n = function (v) { return Number(v || 0).toLocaleString(); };
+        syncEl.panel.style.display = 'block';
+        const pct = Math.max(0, Math.min(100, Number(b.percent || 0)));
+        syncEl.fill.style.width = pct + '%';
+        syncEl.pct.textContent = pct + '%';
+        syncEl.counts.textContent = 'Campaigns ' + n(b.done) + ' / ' + n(b.campaigns) +
+            ' · pulled from Amazon: ' + n(b.pulled) + ' · to push: ' + n(b.to_add) + ' · pushed: ' + n(b.added) +
+            (b.failed ? ' · rejected: ' + n(b.failed) : '');
+        syncEl.text.textContent = b.message || 'Sync…';
+        if (b.status === 'done' || b.status === 'error') {
+            syncEl.fill.classList.remove('progress-bar-animated', 'progress-bar-striped');
+            syncEl.fill.classList.toggle('bg-danger', b.status === 'error');
+            syncEl.fill.classList.toggle('bg-success', b.status === 'done');
+            syncEl.text.className = b.status === 'error' ? 'text-danger' : (b.failed ? 'text-warning' : 'text-success');
+            syncLock(false);
+            if (b.status === 'done' && typeof table !== 'undefined') table.setPage(1); // refresh the counts once
+            return true;
+        }
+        syncEl.fill.classList.add('progress-bar-animated', 'progress-bar-striped');
+        syncEl.fill.classList.remove('bg-danger', 'bg-success');
+        syncEl.text.className = '';
+        syncLock(true);
+        return false;
+    }
+    function syncPoll() {
+        clearTimeout(syncTimer);
+        fetch(syncStatusUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (res) { return res.json(); })
+            .then(function (b) {
+                if (b.status === 'idle') { syncLock(false); return; }
+                if (!syncPaint(b)) syncTimer = setTimeout(syncPoll, 3000);
+            })
+            .catch(function () { syncTimer = setTimeout(syncPoll, 6000); });
+    }
+    function syncStart(ids) {
+        const what = ids && ids.length ? ids.length.toLocaleString() + ' selected campaign(s) (and their linked KW cousins)' : 'ALL KW campaigns';
+        if (!confirm('Pull from Amazon and push the missing keywords for ' + what + '? It runs in the background, chunk by chunk.')) return;
+        syncLock(true);
+        syncPaint({ status: 'running', percent: 0, message: 'Starting…' });
+        fetch(syncStartUrl, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+            body: JSON.stringify(ids && ids.length ? { campaign_ids: ids } : {}),
+        }).then(function (res) {
+            return res.json().catch(function () { return {}; }).then(function (b) { return { ok: res.ok && b.success !== false, body: b }; });
+        }).then(function (r) {
+            if (!r.ok) {
+                syncPaint({ status: 'error', percent: 0, message: r.body.message || 'Could not start the sync.' });
+                return;
+            }
+            syncPoll();
+        }).catch(function (e) {
+            syncPaint({ status: 'error', percent: 0, message: 'Could not start the sync: ' + e.message });
+        });
+    }
+    if (syncEl.all) syncEl.all.addEventListener('click', function () { syncStart(null); });
+    syncPoll(); // pick up a sync that is already running (e.g. after a page reload)
+
     // Pull missing daily campaign reports (clicks / sold) from the Amazon Ads API for the LT columns.
     (function () {
         const btn = document.getElementById('aft-pull-lt');
@@ -2187,7 +2284,13 @@
             selBtn.innerHTML = '<i class="fas fa-check-square"></i> Push selected (' + n.toLocaleString() + ')';
             selBtn.disabled = n === 0;
             clearBtn.classList.toggle('d-none', n === 0);
+            if (syncEl.sel) {
+                syncEl.sel.dataset.n = n;
+                syncEl.sel.disabled = n === 0 || syncRunning;
+                syncEl.sel.innerHTML = '<i class="fas fa-sync-alt"></i> Sync selected (' + n.toLocaleString() + ')';
+            }
         };
+        if (syncEl.sel) syncEl.sel.addEventListener('click', function () { const list = ids(); if (list.length) syncStart(list); });
         table.on('rowSelected', function (row) {
             const d = row.getData() || {};
             picked.set(String(d.id), String(d.campaign_id || ''));

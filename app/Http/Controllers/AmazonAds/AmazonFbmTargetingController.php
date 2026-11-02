@@ -1531,6 +1531,207 @@ class AmazonFbmTargetingController extends Controller
         }
     }
 
+    // ---------- Sync with Amazon: pull + push together, in chunks, in the background ----------
+
+    private const SYNC_STATE = 'amz_fbm_sync_state';
+
+    private const SYNC_IDS = 'amz_fbm_sync_ids';
+
+    /** KW campaigns handled per chunk (whole parents stay together, so a parent's HL campaign is pushed once). */
+    private const SYNC_CHUNK = 20;
+
+    /**
+     * POST: start the background sync (one at a time). campaign_ids = only those KW campaigns (and their linked
+     * KW cousins); none = every KW campaign. Returns at once; the page polls syncStatus().
+     */
+    public function startSync(Request $request): JsonResponse
+    {
+        $v = $request->validate([
+            'campaign_ids' => ['nullable', 'array', 'max:5000'],
+            'campaign_ids.*' => ['string', 'regex:/^\d{1,32}$/'],
+        ]);
+        $ids = ! empty($v['campaign_ids']) ? array_values(array_unique($v['campaign_ids'])) : null;
+
+        $push = Cache::get(self::PUSH_STATE);
+        $pushAlive = is_array($push) && ($push['status'] ?? '') === 'running'
+            && (time() - (int) ($push['heartbeat'] ?? 0)) < self::PUSH_STALE_SECONDS;
+        $state = Cache::get(self::SYNC_STATE);
+        $alive = is_array($state) && ($state['status'] ?? '') === 'running'
+            && (time() - (int) ($state['heartbeat'] ?? 0)) < self::PUSH_STALE_SECONDS;
+        if ($alive || $pushAlive) {
+            return response()->json(['success' => true, 'started' => true, 'already' => true] + $this->syncStatusBody());
+        }
+
+        Cache::put(self::SYNC_IDS, $ids, now()->addHours(6));
+        Cache::put(self::SYNC_STATE, [
+            'status' => 'running', 'phase' => 'start', 'percent' => 0, 'started_at' => now()->toDateTimeString(),
+            'heartbeat' => time(), 'by' => Auth::user()?->name, 'message' => 'Starting…',
+            'campaigns' => 0, 'done' => 0, 'chunk' => 0, 'chunks' => 0,
+            'fetched' => 0, 'pulled' => 0, 'to_add' => 0, 'added' => 0, 'failed' => 0, 'rows' => [],
+        ], now()->addHours(6));
+
+        try {
+            $this->spawnArtisan('app:amazon-kw-targeting-sync', 'fbm-targeting-sync.log');
+        } catch (\Throwable $e) {
+            Cache::forget(self::SYNC_STATE);
+            Log::warning('AmazonFbmTargetingController: sync spawn failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Could not start the sync: '.$e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true, 'started' => true] + $this->syncStatusBody());
+    }
+
+    public function syncStatus(): JsonResponse
+    {
+        return response()->json(['success' => true] + $this->syncStatusBody());
+    }
+
+    /** @return array<string, mixed> */
+    protected function syncStatusBody(): array
+    {
+        $s = Cache::get(self::SYNC_STATE);
+        if (! is_array($s)) {
+            return ['status' => 'idle'];
+        }
+        if (($s['status'] ?? '') === 'running' && (time() - (int) ($s['heartbeat'] ?? 0)) >= self::PUSH_STALE_SECONDS) {
+            $s['status'] = 'error';
+            $s['message'] = 'The background sync stopped reporting progress (see storage/logs/fbm-targeting-sync.log). Keywords already sent are kept; start it again to continue.';
+            Cache::put(self::SYNC_STATE, $s, now()->addHours(6));
+        }
+        unset($s['heartbeat']);
+
+        return $s;
+    }
+
+    /** @param  array<string, mixed>  $patch */
+    public function recordSyncState(array $patch): void
+    {
+        $s = Cache::get(self::SYNC_STATE);
+        Cache::put(self::SYNC_STATE, array_merge(is_array($s) ? $s : [], $patch, ['heartbeat' => time()]), now()->addHours(6));
+    }
+
+    /**
+     * The sync itself (background command): per chunk of campaigns, first pull their live keywords from Amazon, then -
+     * after the KW cousins were synced - push what is missing. Progress is stored for syncStatus().
+     *
+     * @return array<string, mixed>
+     */
+    public function runSync(): array
+    {
+        $ids = Cache::get(self::SYNC_IDS);
+        $ids = is_array($ids) && $ids !== [] ? array_values($ids) : null;
+
+        $camps = $this->kwCampaignsForPush($ids);
+        if ($camps === []) {
+            return ['message' => 'No KW campaigns to sync.', 'campaigns' => 0];
+        }
+
+        // Whole parents per chunk.
+        $byParent = [];
+        foreach ($camps as $c) {
+            $key = strtoupper(trim((string) ($c['parent'] ?? '')));
+            $byParent[$key !== '' ? $key : 'ID|'.$c['campaign_id']][] = $c;
+        }
+        $chunks = [];
+        $cur = [];
+        foreach ($byParent as $list) {
+            $cur = array_merge($cur, $list);
+            if (count($cur) >= self::SYNC_CHUNK) {
+                $chunks[] = $cur;
+                $cur = [];
+            }
+        }
+        if ($cur !== []) {
+            $chunks[] = $cur;
+        }
+        $total = count($camps);
+        $n = count($chunks);
+        $this->recordSyncState(['campaigns' => $total, 'chunks' => $n, 'phase' => 'pull', 'message' => 'Reading keywords from Amazon…']);
+
+        // 1) Pull
+        $fetched = 0;
+        $pulled = 0;
+        $done = 0;
+        foreach ($chunks as $i => $chunk) {
+            $names = [];
+            foreach ($chunk as $c) {
+                $names[$c['campaign_id']] = $c['campaign_name'];
+            }
+            $r = $this->ingestKeywords($names, 'kw');
+            $fetched += $r['fetched'];
+            $pulled += $r['added'];
+            $done += count($chunk);
+            $this->recordSyncState([
+                'phase' => 'pull', 'chunk' => $i + 1, 'done' => $done, 'fetched' => $fetched, 'pulled' => $pulled,
+                'percent' => (int) round(45 * $done / $total),
+                'message' => 'Step 1/2 · Pulling from Amazon: '.$done.' / '.$total.' campaigns (chunk '.($i + 1).' of '.$n.')',
+            ]);
+        }
+
+        // 2) Share keywords between KW cousins (local data) so the push has the linked keywords.
+        $this->recordSyncState(['phase' => 'cousins', 'percent' => 47, 'message' => 'Syncing KW cousins…']);
+        try {
+            if ($ids === null) {
+                if ($this->hasTable(self::COUSIN_TABLE)) {
+                    $seen = [];
+                    foreach ($this->cousins->groupsMap() as $group) {
+                        $k = implode('|', $group);
+                        if (! isset($seen[$k])) {
+                            $seen[$k] = true;
+                            $this->syncCousinKeywords($group, false, 'kw');
+                        }
+                    }
+                }
+            } else {
+                $this->withLinkedCousinCampaigns(array_flip(array_map(static fn (array $c) => (string) $c['campaign_id'], $camps)), $camps);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: sync cousin step failed', ['error' => $e->getMessage()]);
+        }
+
+        // 3) Push
+        $push = app(AmazonKwTargetingPushService::class);
+        $rows = [];
+        $errors = [];
+        $tot = ['kw_campaigns' => 0, 'hl_campaigns' => 0, 'to_add' => 0, 'added' => 0, 'failed' => 0];
+        $done = 0;
+        foreach ($chunks as $i => $chunk) {
+            $label = 'Step 2/2 · Pushing to Amazon: chunk '.($i + 1).' of '.$n;
+            $this->recordSyncState(['phase' => 'push', 'chunk' => $i + 1, 'message' => $label]);
+            $r = $push->run($chunk, false, function () use ($label): void {
+                $this->recordSyncState(['message' => $label]); // heartbeat while a chunk is running
+            });
+            foreach ($r['errors'] as $e) {
+                $errors[] = $e;
+            }
+            foreach ($r['rows'] as $row) {
+                $tot[$row['type'] === 'HL' ? 'hl_campaigns' : 'kw_campaigns']++;
+                $tot['to_add'] += (int) $row['to_add'];
+                $tot['added'] += (int) $row['added'];
+                $tot['failed'] += (int) $row['failed'];
+                $rows[] = $row;
+            }
+            $done += count($chunk);
+            $this->recordSyncState([
+                'done' => $done, 'to_add' => $tot['to_add'], 'added' => $tot['added'], 'failed' => $tot['failed'],
+                'percent' => 50 + (int) round(50 * $done / $total),
+                'rows' => array_slice($rows, -200),
+                'message' => $label.' · '.number_format($tot['added']).' keyword(s) pushed'.($tot['failed'] ? ', '.number_format($tot['failed']).' rejected' : ''),
+            ]);
+        }
+        $this->forgetBadges();
+
+        return [
+            'message' => 'Synced '.$total.' KW campaign(s): '.number_format($pulled).' keyword(s) pulled from Amazon, '
+                .number_format($tot['added']).' pushed'.($tot['failed'] ? ', '.number_format($tot['failed']).' rejected' : '')
+                .' ('.$tot['kw_campaigns'].' KW + '.$tot['hl_campaigns'].' HL campaign(s) needed keywords).',
+            'campaigns' => $total, 'fetched' => $fetched, 'pulled' => $pulled,
+            'to_add' => $tot['to_add'], 'added' => $tot['added'], 'failed' => $tot['failed'],
+            'rows' => array_slice($rows, -200), 'errors' => array_slice($errors, 0, 5),
+        ];
+    }
+
     /**
      * Manually added keywords per campaign (independent of imports and KW cousins).
      *
