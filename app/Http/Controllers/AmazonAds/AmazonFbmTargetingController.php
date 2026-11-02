@@ -1249,7 +1249,8 @@ class AmazonFbmTargetingController extends Controller
             Cache::forget(self::CHECK_PREFIX.$token);
         }
 
-        $r = $push->run($this->kwCampaignsForPush($campaignIds), true);
+        $inline = $this->kwCampaignsForPush($campaignIds);
+        $r = $push->run($inline, true, null, null, $campaignIds === null ? null : array_map(static fn (array $c) => (string) $c['campaign_id'], $inline));
         if ($r['errors'] !== [] && $r['rows'] === []) {
             return response()->json(['success' => false, 'message' => implode(' ', $r['errors']), 'dry_run' => true], 502);
         }
@@ -1741,7 +1742,7 @@ class AmazonFbmTargetingController extends Controller
             $this->recordSyncState(['phase' => 'push', 'chunk' => $i + 1, 'message' => $label]);
             $r = $push->run($chunk, false, function () use ($label): void {
                 $this->recordSyncState(['message' => $label]); // heartbeat while a chunk is running
-            }, $only);
+            }, $only, $ids === null ? null : array_map(static fn (array $c) => (string) $c['campaign_id'], $camps));
             foreach ($r['errors'] as $e) {
                 $errors[] = $e;
             }

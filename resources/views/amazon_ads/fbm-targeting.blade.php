@@ -339,7 +339,7 @@
             </div>
             <div class="modal-body">
                 <p class="text-muted small mb-2">
-                    Each ticked KW campaign gets its own keywords plus the real keywords of the other TICKED campaigns of the same parent that it is still missing (un-ticked campaigns are never touched; keywords copied from the KW cousins of other parents are not pushed), and each parent's keywords (all of its KW campaigns together)
+                    Each ticked KW campaign gets its own keywords plus the real keywords of all the OTHER ticked campaigns that it is still missing - whatever their parent or KW cousin group (up to 40 ticked campaigns; un-ticked campaigns are never touched, and keywords copied from KW cousins are not pushed), and each parent's keywords (all of its KW campaigns together)
                     are added to its HL campaign. Keywords already live on a campaign (same text + match type) are skipped.
                     Only Broad / Phrase / Exact keywords are sent. Negative keywords are not touched.
                 </p>
@@ -1986,7 +1986,7 @@
     function pkUpToDateRows() {
         const q = pkState.filter.trim().toLowerCase();
         return (pkState.upToDate || []).filter(function (u) { return !q || String(u.campaign_name).toLowerCase().indexOf(q) !== -1; }).map(function (u) {
-            return '<tr class="text-muted"><td><input type="checkbox" disabled title="Nothing to push: this campaign already has all the keywords it should (its own + the other ticked campaigns of its parent) on Amazon"></td><td><span class="badge bg-secondary">KW</span></td>' +
+            return '<tr class="text-muted"><td><input type="checkbox" disabled title="Nothing to push: this campaign already has all the keywords it should (its own + the other ticked campaigns) on Amazon"></td><td><span class="badge bg-secondary">KW</span></td>' +
                 '<td>' + escapeHtml(u.campaign_name) + '</td><td class="text-end" title="Nothing missing: every keyword this campaign should have is live on Amazon">up to date' + (u.keywords ? ' <span class="text-muted">(' + Number(u.keywords).toLocaleString() + ' keywords)</span>' : '') + '</td></tr>';
         }).join('');
     }
@@ -2023,7 +2023,7 @@
         if (!rows.length && !done && pkState.upToDate.length) {
             pkEl.toolbar.classList.add('d-none');
             pkEl.toolbar.classList.remove('d-flex');
-            pkWrap.innerHTML = '<div class="aft-empty mb-2">Nothing to push: every selected campaign already has all the keywords it should (its own + the other ticked campaigns of its parent) on Amazon.</div>' +
+            pkWrap.innerHTML = '<div class="aft-empty mb-2">Nothing to push: every selected campaign already has all the keywords it should (its own + the other ticked campaigns) on Amazon.</div>' +
                 '<table class="table table-sm table-bordered align-middle mb-0"><tbody>' + pkUpToDateRows() + '</tbody></table>';
             return;
         }
@@ -2145,7 +2145,7 @@
             }
             const cousinRows = (b.rows || []).filter(pkIsCousinRow).length;
             pkSummary.textContent = (pkBulk ? 'Bulk push of ' + pkBulk.length.toLocaleString() + ' selected campaign(s)' +
-                (cousinRows ? ' (' + cousinRows.toLocaleString() + ' linked KW cousin campaign(s) are listed but NOT ticked - "Include linked cousins" adds them)' : '') + '. ' + ((b.up_to_date || []).length ? (b.up_to_date.length.toLocaleString() + ' of them already have every keyword they should (own + the other ticked campaigns of the parent) on Amazon (shown greyed). ') : '') + 'Different parents are never compared with each other. Only the ticked rows are pushed.' : (b.message || ''));
+                (cousinRows ? ' (' + cousinRows.toLocaleString() + ' linked KW cousin campaign(s) are listed but NOT ticked - "Include linked cousins" adds them)' : '') + '. ' + ((b.up_to_date || []).length ? (b.up_to_date.length.toLocaleString() + ' of them already have every keyword they should (own + the other ticked campaigns) on Amazon (shown greyed). ') : '') + 'Only the ticked rows are pushed.' : (b.message || ''));
             const bulk = !!(pkBulk && pkBulk.length);
             const showCousinTools = bulk && cousinRows > 0;
             const hasHl = (b.rows || []).some(function (r) { return r.type === 'HL'; });

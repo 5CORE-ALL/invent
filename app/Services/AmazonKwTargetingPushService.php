@@ -29,7 +29,10 @@ class AmazonKwTargetingPushService
      * @param  list<array{parent: string, campaign_id: string, campaign_name: string}>  $kwCampaigns  non-PT SP campaigns
      * @return array{rows: list<array<string, mixed>>, totals: array<string, int>, errors: list<string>}
      */
-    public function run(array $kwCampaigns, bool $dryRun, ?callable $progress = null, ?array $only = null): array
+    /** Most hand-picked campaigns that are evened out against each other. */
+    private const MAX_SHARE_CAMPAIGNS = 40;
+
+    public function run(array $kwCampaigns, bool $dryRun, ?callable $progress = null, ?array $only = null, ?array $sharePool = null): array
     {
         $errors = [];
         $rows = [];
@@ -68,17 +71,27 @@ class AmazonKwTargetingPushService
         }
         $kwIds = array_map(static fn (array $c) => $c['campaign_id'], $kwCampaigns);
 
-        // App keywords per KW campaign, unique by text + match type. A campaign gets its OWN keywords plus the real keywords
-        // of the other campaigns of the SAME parent that are picked in this push (e.g. two ticked colour variants that miss
-        // each other's targets). Campaigns that are not picked never lend or receive keywords, and keywords the app merely
-        // copied in from KW cousins of other parents ("cousin" source) are never pushed.
-        $pickedByParent = [];
-        foreach ($kwCampaigns as $c) {
-            if ($c['parent'] !== '' && $picked('KW', (string) $c['campaign_id'])) {
-                $pickedByParent[strtoupper($c['parent'])][] = (string) $c['campaign_id'];
+        // App keywords per KW campaign, unique by text + match type. A campaign gets its OWN keywords. When the user picked
+        // campaigns by hand ($shareAcrossPicked) it also gets the real keywords of the OTHER PICKED campaigns - whatever their
+        // parent or KW cousin group - because picking them together is the instruction to even them out. A whole-account run
+        // (nothing picked) never shares between campaigns. Keywords the app merely copied in from KW cousins ("cousin"
+        // source) are never pushed.
+        // $sharePool = ids of every campaign picked by hand (null = whole-account run, no sharing). It may be larger than
+        // $kwCampaigns because the sync pushes in chunks.
+        $shareAcrossPicked = $sharePool !== null;
+        $pickedIds = [];
+        foreach ((array) $sharePool as $sid) {
+            if ($picked('KW', (string) $sid)) {
+                $pickedIds[(string) $sid] = true;
             }
         }
-        $storeIds = $kwIds;
+        if (count($pickedIds) > self::MAX_SHARE_CAMPAIGNS) {
+            // evening out a big hand-picked list would send every campaign thousands of unrelated keywords
+            $errors[] = 'More than '.self::MAX_SHARE_CAMPAIGNS.' campaigns are ticked, so keywords are NOT shared between them: each campaign only gets its own keywords. Tick fewer campaigns to even them out.';
+            $pickedIds = [];
+            $shareAcrossPicked = false;
+        }
+        $storeIds = array_values(array_unique(array_merge($kwIds, array_keys($pickedIds))));
         $ownByCampaign = [];
         foreach (array_chunk($storeIds, 1000) as $chunk) {
             $q = DB::table(self::STORE_TABLE)->whereIn('campaign_id', $chunk)->whereIn('match_type', self::MATCH_TYPES)
@@ -106,8 +119,8 @@ class AmazonKwTargetingPushService
         foreach ($kwCampaigns as $c) {
             $cid = (string) $c['campaign_id'];
             $merged = $ownByCampaign[$cid] ?? [];
-            if ($c['parent'] !== '' && $picked('KW', $cid)) {
-                foreach ($pickedByParent[strtoupper($c['parent'])] ?? [] as $sid) {
+            if ($shareAcrossPicked && isset($pickedIds[$cid])) {
+                foreach ($pickedIds as $sid => $_) {
                     if ($sid === $cid) {
                         continue;
                     }

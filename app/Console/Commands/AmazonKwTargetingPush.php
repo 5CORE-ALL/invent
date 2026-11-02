@@ -28,13 +28,16 @@ class AmazonKwTargetingPush extends Command
         }
 
         try {
+            $campaignIds = $page->pushCampaignIds();
+            $camps = $page->kwCampaignsForPush($campaignIds);
             $r = $push->run(
-                $page->kwCampaignsForPush($page->pushCampaignIds()), // bulk push from the grid = only the picked campaigns,
+                $camps, // bulk push from the grid = only the picked campaigns,
                 false,
                 function (array $rows, array $totals, string $note) use ($page): void {
                     $page->recordPushState(['message' => $note, 'totals' => $totals, 'rows' => $rows]);
                 },
-                $page->pushSelection() // only the campaigns ticked in the check
+                $page->pushSelection(), // only the campaigns ticked in the check
+                $campaignIds === null ? null : array_map(static fn (array $c) => (string) $c['campaign_id'], $camps) // picked together = evened out
             );
 
             $payload = $page->pushPayload($r, false);
@@ -75,7 +78,7 @@ class AmazonKwTargetingPush extends Command
                 $page->refreshFromAmazon($camps); // so the check compares live data, not a stale copy
                 $page->recordCheckState($token, ['status' => 'running', 'message' => 'Checking what is missing on Amazon…']);
             }
-            $r = $push->run($camps, true);
+            $r = $push->run($camps, true, null, null, $page->checkCampaignIds($token) === null ? null : array_map(static fn (array $c) => (string) $c['campaign_id'], $camps));
             if ($r['errors'] !== [] && $r['rows'] === []) {
                 $page->recordCheckState($token, ['status' => 'error', 'message' => implode(' ', $r['errors'])]);
 
