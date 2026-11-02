@@ -433,6 +433,7 @@ class Temu2ListingPublishService
         $restored = [];
         $ownLinked = [];
         $ownGoodsId = '';
+        $alreadyLive = [];
         foreach ($prepared as $index => $row) {
             $remote = $this->completeGoodsId !== null ? null : $this->remoteSkuDuplicate($row['sku']);
             if ($remote !== null) {
@@ -476,8 +477,22 @@ class Temu2ListingPublishService
                     $stillSkuList[] = $skuList[$index];
                     continue;
                 }
+                // The duplicate check names a goods, and that goods being live says nothing about this SKU: Temu
+                // reports a seller SKU as taken (e.g. by a pending add) while its SKU list does not hold it. Only
+                // link when the SKU really is under that goods; otherwise it is not listed and is published below.
+                if (! $this->newSkusAreOnGoods($remote['goodsId'], [['outSkuSn' => $row['sku']]])) {
+                    Log::warning('Temu publish: duplicate check named a goods that does not hold the SKU, not linking', [
+                        'sku' => $row['sku'],
+                        'goods_id' => $remote['goodsId'],
+                        'lifecycle' => $life,
+                    ]);
+                    $stillPrepared[] = $row;
+                    $stillSkuList[] = $skuList[$index];
+                    continue;
+                }
                 $this->api->persistNewListing($row['sku'], $remote['goodsId'], $remote['skuId'] !== '' ? $remote['skuId'] : null);
                 $this->persistExtraListingFields($row['sku'], $row['price'], $row['qty']);
+                $alreadyLive[$row['sku']] = $remote['goodsId'];
                 continue;
             }
             $stillPrepared[] = $row;
@@ -499,7 +514,8 @@ class Temu2ListingPublishService
                 'success' => true,
                 'message' => $restored !== []
                     ? 'Restored '.count($restored).' deleted '.$this->shopLabel().' listing(s) and linked them.'
-                    : 'SKU already exists on '.$this->shopLabel().' (active). Linked the existing listing.',
+                    : 'SKU already exists on '.$this->shopLabel().' (active) and Temu holds it under goods '
+                        .implode(', ', array_unique(array_values($alreadyLive))).'. Linked to that goods.',
                 'skus' => $skus,
             ];
         }
