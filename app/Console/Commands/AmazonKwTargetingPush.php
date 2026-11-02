@@ -24,7 +24,7 @@ class AmazonKwTargetingPush extends Command
 
         try {
             $r = $push->run(
-                $page->kwCampaignsForPush(),
+                $page->kwCampaignsForPush($page->pushCampaignIds()), // bulk push from the grid = only the picked campaigns,
                 false,
                 function (array $rows, array $totals, string $note) use ($page): void {
                     $page->recordPushState(['message' => $note, 'totals' => $totals, 'rows' => $rows]);

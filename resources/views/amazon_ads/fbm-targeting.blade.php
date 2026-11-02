@@ -155,10 +155,17 @@
             <div class="card shadow-sm">
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h4 class="mb-0"><i class="mdi mdi-bullseye-arrow"></i> Keyword Targeting</h4>
-                    <button type="button" id="aft-push-kw" class="btn btn-warning btn-sm fw-bold"
-                            title="Send the keywords in the app to the KW campaigns and the HL campaigns on Amazon">
-                        <i class="fas fa-upload"></i> Push KW to KW + HL Campaigns
-                    </button>
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                        <button type="button" id="aft-push-sel" class="btn btn-success btn-sm fw-bold" disabled
+                                title="Tick campaigns in the grid, then push only their missing keywords to Amazon (KW campaigns and their parents' HL campaigns)">
+                            <i class="fas fa-check-square"></i> Push selected (0)
+                        </button>
+                        <button type="button" id="aft-sel-clear" class="btn btn-outline-light btn-sm d-none" title="Clear the selection">Clear</button>
+                        <button type="button" id="aft-push-kw" class="btn btn-warning btn-sm fw-bold"
+                                title="Send the keywords in the app to ALL KW campaigns and the HL campaigns on Amazon">
+                            <i class="fas fa-upload"></i> Push KW to KW + HL Campaigns
+                        </button>
+                    </div>
                     <span class="small">Campaign names from the same SP reports table as Ads All. Targets from Amazon Ads (keywords + product targets).</span>
                 </div>
                 <div class="card-body">
@@ -519,7 +526,7 @@
     function skuState(st) {
         const s = String(st || '').trim().toUpperCase();
         if (!s) return '<span class="aft-empty">-</span>';
-        const color = s === 'ENABLED' ? '#16a34a' : (s === 'PAUSED' ? '#dc2626' : '#6b7280');
+        const color = s === 'ENABLED' ? '#16a34a' : (s === 'PAUSED' ? '#dc2626' : (s === 'ARCHIVED' ? '#ca8a04' : '#6b7280'));
         return '<strong style="color:' + color + ';">' + escapeHtml(s) + '</strong>';
     }
 
@@ -712,6 +719,21 @@
         },
         columns: [
             {
+                title: '',
+                formatter: 'rowSelection',
+                titleFormatter: 'rowSelection',
+                titleFormatterParams: { rowRange: 'active' },
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                headerSort: false,
+                width: 42,
+                minWidth: 42,
+                cellClick: function (e, cell) {
+                    if (e.target && e.target.tagName === 'INPUT') return; // the checkbox handles itself
+                    cell.getRow().toggleSelect();
+                },
+            },
+            {
                 title: 'KWC Cousin',
                 field: 'cousin_name',
                 minWidth: 110,
@@ -781,7 +803,7 @@
                     const st = String(cell.getValue() || '').trim().toUpperCase();
                     if (!st) return '<span class="aft-empty">-</span>';
                     // Dot only: Enabled = green, Paused = yellow, anything else = gray (hover for the text).
-                    const color = st === 'ENABLED' ? '#16a34a' : (st === 'PAUSED' ? '#dc2626' : '#9ca3af');
+                    const color = st === 'ENABLED' ? '#16a34a' : (st === 'PAUSED' ? '#dc2626' : (st === 'ARCHIVED' ? '#eab308' : '#9ca3af'));
                     const label = st.charAt(0) + st.slice(1).toLowerCase();
                     return '<span class="aft-status-dot" style="background:' + color + ';" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '"></span>';
                 },
@@ -1685,6 +1707,9 @@
     const pkWrap = document.getElementById('pk-table-wrap');
     const pkModalEl = document.getElementById('pushKwModal');
 
+    // KW campaign ids ticked in the grid for a bulk push; null = the normal push of every campaign.
+    let pkBulk = null;
+
     function pkPost(dryRun, selected) {
         return fetch(pushUrl, {
             method: 'POST',
@@ -1694,7 +1719,9 @@
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRF-TOKEN': csrf,
             },
-            body: JSON.stringify(selected ? { dry_run: dryRun, selected: selected } : { dry_run: dryRun }),
+            body: JSON.stringify(Object.assign({ dry_run: dryRun },
+                selected ? { selected: selected } : {},
+                pkBulk && pkBulk.length ? { campaign_ids: pkBulk } : {})),
         }).then(function (res) {
             return res.json().catch(function () { return {}; }).then(function (b) {
                 return { ok: res.ok && b.success !== false, body: b };
@@ -1835,7 +1862,7 @@
                 pkWrap.innerHTML = '';
                 return;
             }
-            pkSummary.textContent = b.message || '';
+            pkSummary.textContent = (pkBulk ? 'Bulk push of ' + pkBulk.length.toLocaleString() + ' selected campaign(s). ' : '') + (b.message || '');
             pkRender(b, false); // enables / labels the button from the ticked campaigns
             const t = b.totals || {};
             if ((Number(t.kw_to_add || 0) + Number(t.hl_to_add || 0)) === 0) pkConfirm.disabled = true;
@@ -1845,7 +1872,7 @@
         });
     }
 
-    if (pkBtn) pkBtn.addEventListener('click', pkOpen);
+    if (pkBtn) pkBtn.addEventListener('click', function () { pkBulk = null; pkOpen(); });
 
     if (pkConfirm) {
         pkConfirm.addEventListener('click', function () {
@@ -2111,6 +2138,46 @@
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
         });
     });
+
+    // ---------- Bulk push: tick campaigns, then push only those ----------
+    (function wireBulkPush() {
+        const selBtn = document.getElementById('aft-push-sel');
+        const clearBtn = document.getElementById('aft-sel-clear');
+        if (!selBtn) return;
+        const picked = new Map(); // grid row id -> KW campaign id (survives paging / filtering)
+        const ids = function () {
+            const set = new Set();
+            picked.forEach(function (cid) { if (cid) set.add(String(cid)); });
+            return Array.from(set);
+        };
+        const paint = function () {
+            const n = ids().length;
+            selBtn.innerHTML = '<i class="fas fa-check-square"></i> Push selected (' + n.toLocaleString() + ')';
+            selBtn.disabled = n === 0;
+            clearBtn.classList.toggle('d-none', n === 0);
+        };
+        table.on('rowSelected', function (row) {
+            const d = row.getData() || {};
+            picked.set(String(d.id), String(d.campaign_id || ''));
+            paint();
+        });
+        table.on('rowDeselected', function (row) {
+            const d = row.getData() || {};
+            picked.delete(String(d.id));
+            paint();
+        });
+        clearBtn.addEventListener('click', function () {
+            picked.clear();
+            table.deselectRow();
+            paint();
+        });
+        selBtn.addEventListener('click', function () {
+            const list = ids();
+            if (!list.length) return;
+            pkBulk = list;
+            pkOpen();
+        });
+    })();
 
     if (statusEl) {
         statusEl.addEventListener('change', function () { table.setPage(1); });
