@@ -317,15 +317,6 @@
                         </button>
                     </div>
                 </div>
-                <div class="col-auto">
-                    <label class="ahm-search-label" for="channelSearchInput">Marketplace</label>
-                    <div class="dropdown-search-container">
-                        <i class="fas fa-search ahm-search-icon"></i>
-                        <input type="text" class="form-control form-control-sm channel-search"
-                            placeholder="Type to search" id="channelSearchInput" autocomplete="off">
-                        <div class="dropdown-search-results" id="channelSearchDropdown"></div>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -1787,7 +1778,7 @@
             const saved = localStorage.getItem('ahm-dash-chart-channel') || '';
             const match = marketplaceNames(data).find(name => name.toLowerCase() === saved.toLowerCase());
             if (!match) return;
-            jq('#channelSearchInput, #ahmChartSearch').val(match);
+            jq('#ahmChartSearch').val(match);
             setTimeout(function() {
                 if (table) table.setFilter('channel', '=', match);
             }, 0);
@@ -1825,7 +1816,7 @@
         function chooseMarketplace(name, options) {
             const clean = String(name || '').trim();
             const filterTable = !options || options.filterTable !== false;
-            jq('#channelSearchInput, #ahmChartSearch').val(clean);
+            jq('#ahmChartSearch').val(clean);
             jq('.dropdown-search-results').hide();
             if (clean) {
                 localStorage.setItem('ahm-dash-chart-channel', clean);
@@ -2116,7 +2107,7 @@
             if (currentRow) {
                 table.setData([currentRow]);
                 const playingName = currentRow['channel']?.trim() || currentRow['Channel ']?.trim() || currentRow['Channel']?.trim() || '';
-                jq('#channelSearchInput, #ahmChartSearch').val(playingName);
+                jq('#ahmChartSearch').val(playingName);
                 if (playingName) {
                     localStorage.setItem('ahm-dash-chart-channel', playingName);
                     loadAhmChart();
@@ -2266,13 +2257,9 @@
             jq('#play-forward').on('click', nextChannel);
             jq('#play-backward').on('click', previousChannel);
 
-            bindMarketplaceSearch('#channelSearchInput', '#channelSearchDropdown');
             bindMarketplaceSearch('#ahmChartSearch', '#ahmChartSearchDropdown');
 
             jq(window).on('scroll resize', function() {
-                if (jq('#channelSearchDropdown').is(':visible')) {
-                    placeMarketplaceMenu(jq('#channelSearchInput'), jq('#channelSearchDropdown'));
-                }
                 if (jq('#ahmChartSearchDropdown').is(':visible')) {
                     placeMarketplaceMenu(jq('#ahmChartSearch'), jq('#ahmChartSearchDropdown'));
                 }
