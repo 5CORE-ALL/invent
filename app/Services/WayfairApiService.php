@@ -1954,6 +1954,131 @@ XML;
     }
 
     /**
+     * Advanced Shipment Notice. Tells Wayfair this PO has shipped. Does not read or change the order pull.
+     *
+     * @param  array<string, mixed>  $notice
+     * @return array{success: bool, message: string, handle?: string, status?: string}
+     */
+    public function sendShipNotice(array $notice): array
+    {
+        $mutation = <<<'GRAPHQL'
+        mutation shipment($notice: ShipNoticeInput!) {
+          purchaseOrders {
+            shipment(notice: $notice) {
+              id
+              handle
+              status
+              submittedAt
+              completedAt
+              errorCount
+              errors { key message }
+            }
+          }
+        }
+        GRAPHQL;
+
+        try {
+            $token = $this->getAccessTokenWithScope(null);
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+        if ($token === '') {
+            return ['success' => false, 'message' => 'Wayfair token was empty.'];
+        }
+
+        $res = $this->graphqlPost($this->graphqlUrl, $token, $mutation, ['notice' => $notice]);
+        $json = $res['json'];
+        $errors = is_array($json['errors'] ?? null) ? $json['errors'] : [];
+        $shipment = $json['data']['purchaseOrders']['shipment'] ?? null;
+        $noticeErrors = is_array($shipment) && is_array($shipment['errors'] ?? null) ? $shipment['errors'] : [];
+        $parts = [];
+        foreach (array_merge($errors, $noticeErrors) as $err) {
+            if (! is_array($err)) {
+                continue;
+            }
+            $msg = trim((string) ($err['message'] ?? ''));
+            if ($msg !== '') {
+                $parts[] = $msg;
+            }
+        }
+        if (! $res['ok'] && $parts === []) {
+            $parts[] = 'HTTP '.$res['status'];
+        }
+        $status = is_array($shipment) ? trim((string) ($shipment['status'] ?? '')) : '';
+        $handle = is_array($shipment) ? trim((string) ($shipment['handle'] ?? $shipment['id'] ?? '')) : '';
+        if ($parts !== [] || ! is_array($shipment)) {
+            return ['success' => false, 'message' => $parts !== [] ? implode('; ', $parts) : 'Wayfair returned no shipment result.', 'status' => $status];
+        }
+
+        return ['success' => true, 'message' => 'ASN accepted ('.$status.').', 'handle' => $handle, 'status' => $status];
+    }
+
+    /**
+     * Ship-from address Wayfair holds for one PO. Used only by the ASN send. A failure here does not affect the order pull.
+     *
+     * @return array{supplierId: int, name: string, street1: string, street2: string, city: string, state: string, postal: string}|null
+     */
+    public function shipFromForPo(string $poNumber): ?array
+    {
+        $poNumber = trim($poNumber);
+        if ($poNumber === '') {
+            return null;
+        }
+        $cacheKey = 'wayfair.ship-from.'.strtoupper($poNumber);
+        $cached = Cache::get($cacheKey);
+        if ($cached === 'miss') {
+            return null;
+        }
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $query = <<<'GRAPHQL'
+        query ShipFrom($po: [String]) {
+          getDropshipPurchaseOrders(limit: 1, poNumbers: $po) {
+            supplierId
+            supplierName
+            supplierAddress1
+            supplierAddress2
+            supplierCity
+            supplierState
+            supplierPostalCode
+            warehouse { id name }
+          }
+        }
+        GRAPHQL;
+
+        try {
+            $token = $this->getAccessTokenWithScope(null);
+            $res = $this->graphqlPost($this->graphqlUrl, $token, $query, ['po' => [$poNumber]]);
+        } catch (\Throwable $e) {
+            Log::warning('Wayfair ship-from lookup failed', ['po' => $poNumber, 'error' => $e->getMessage()]);
+            Cache::put($cacheKey, 'miss', now()->addMinutes(30));
+
+            return null;
+        }
+
+        $row = $res['json']['data']['getDropshipPurchaseOrders'][0] ?? null;
+        if (! is_array($row) || trim((string) ($row['supplierAddress1'] ?? '')) === '') {
+            Cache::put($cacheKey, 'miss', now()->addMinutes(30));
+
+            return null;
+        }
+        $out = [
+            'supplierId' => (int) ($row['supplierId'] ?? $row['warehouse']['id'] ?? 0),
+            'name' => trim((string) ($row['supplierName'] ?? $row['warehouse']['name'] ?? 'Warehouse')),
+            'street1' => trim((string) $row['supplierAddress1']),
+            'street2' => trim((string) ($row['supplierAddress2'] ?? '')),
+            'city' => trim((string) ($row['supplierCity'] ?? '')),
+            'state' => trim((string) ($row['supplierState'] ?? '')),
+            'postal' => trim((string) ($row['supplierPostalCode'] ?? '')),
+        ];
+        Cache::put($cacheKey, $out, now()->addHours(12));
+
+        return $out;
+    }
+
+    /**
      * @return array{ok: bool, json: array, body: string, status: int}
      */
     protected function graphqlPost(string $url, string $token, string $query, array $variables = []): array

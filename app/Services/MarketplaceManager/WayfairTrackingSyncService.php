@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\MarketplaceSyncSettings;
+use App\Models\OrderFulfillmentTracking;
 use App\Models\WayfairDailyData;
 use App\Services\WayfairApiService;
 use App\Services\WayfairDailyOrderFetchService;
@@ -12,8 +13,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Copy Wayfair-generated label tracking onto the local PO and the linked Shopify order.
- * Declaring the shipment back to Wayfair stays a stub.
+ * Copy Wayfair-generated label tracking onto the local PO and the linked Shopify order,
+ * then send Wayfair an ASN for POs that already have a tracking number.
+ * The order pull is a different job and is not called from here.
  */
 class WayfairTrackingSyncService
 {
@@ -464,8 +466,6 @@ class WayfairTrackingSyncService
      */
     public function pushTrackingForOrder(WayfairDailyData $order): array
     {
-        unset($order);
-
         if (! self::canPushTracking()) {
             return [
                 'success' => false,
@@ -474,21 +474,23 @@ class WayfairTrackingSyncService
             ];
         }
 
-        return [
-            'success' => false,
-            'skipped' => true,
-            'action' => 'not_implemented',
-            'message' => 'Wayfair tracking push is not implemented yet.',
-        ];
+        try {
+            return $this->sendAsnForPo((string) $order->po_number);
+        } catch (\Throwable $e) {
+            Log::warning('Wayfair ASN send failed', ['po' => $order->po_number, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 
     /**
+     * Send ASNs for recent POs that have a tracking number and have not been accepted yet.
+     * One PO failing is recorded and skipped. This never throws, so the order pull is not affected.
+     *
      * @return array{success: bool, message: string, attempted: int, pushed: int, skipped: int}
      */
     public function syncPending(int $limit = 40): array
     {
-        unset($limit);
-
         if (! self::canPushTracking()) {
             return [
                 'success' => true,
@@ -498,16 +500,306 @@ class WayfairTrackingSyncService
                 'skipped' => 0,
             ];
         }
+        if (! Schema::hasTable('wayfair_daily_data')) {
+            return ['success' => true, 'message' => 'wayfair_daily_data missing.', 'attempted' => 0, 'pushed' => 0, 'skipped' => 0];
+        }
 
-        Log::info('WayfairTrackingSyncService: syncPending skipped (not implemented)');
+        $limit = max(1, min(40, $limit));
+        $rows = WayfairDailyData::query()
+            ->where('po_date', '>=', now()->subDays(14)->toDateString())
+            ->orderByDesc('po_date')
+            ->orderByDesc('id')
+            ->limit($limit * 8)
+            ->get();
+
+        $byPo = [];
+        foreach ($rows as $row) {
+            $po = strtoupper(trim((string) $row->po_number));
+            if ($po === '' || isset($byPo[$po])) {
+                continue;
+            }
+            $byPo[$po] = $row;
+            if (count($byPo) >= $limit) {
+                break;
+            }
+        }
+
+        $attempted = 0;
+        $pushed = 0;
+        $skipped = 0;
+        foreach ($byPo as $po => $row) {
+            try {
+                $result = $this->sendAsnForPo($po, $row);
+            } catch (\Throwable $e) {
+                Log::warning('Wayfair ASN send failed', ['po' => $po, 'error' => $e->getMessage()]);
+                $skipped++;
+                continue;
+            }
+            if (! empty($result['skipped'])) {
+                $skipped++;
+                continue;
+            }
+            $attempted++;
+            if (! empty($result['success'])) {
+                $pushed++;
+            }
+        }
 
         return [
             'success' => true,
-            'message' => 'Wayfair tracking push is not implemented yet.',
-            'attempted' => 0,
-            'pushed' => 0,
-            'skipped' => 0,
+            'attempted' => $attempted,
+            'pushed' => $pushed,
+            'skipped' => $skipped,
+            'message' => "Wayfair ASN: sent {$pushed}, not accepted ".max(0, $attempted - $pushed).", skipped {$skipped}.",
         ];
+    }
+
+    /**
+     * @return array{success: bool, skipped?: bool, message: string, action?: string|null}
+     */
+    protected function sendAsnForPo(string $poNumber, ?WayfairDailyData $sample = null): array
+    {
+        $poNumber = trim($poNumber);
+        $lines = WayfairDailyData::query()->where('po_number', $poNumber)->get();
+        if ($lines->isEmpty() && $sample !== null) {
+            $lines = collect([$sample]);
+        }
+        if ($lines->isEmpty()) {
+            return ['success' => false, 'skipped' => true, 'message' => 'PO not stored.'];
+        }
+
+        $line = $lines->first();
+        $payload = $this->payloadOf($line);
+        if (trim((string) ($payload['asn_sent_at'] ?? '')) !== '') {
+            return ['success' => true, 'skipped' => true, 'action' => 'already_sent', 'message' => 'ASN already sent.'];
+        }
+        $errorAt = trim((string) ($payload['asn_error_at'] ?? ''));
+        if ($errorAt !== '' && abs(now()->diffInMinutes($errorAt)) < 360) {
+            return ['success' => false, 'skipped' => true, 'message' => 'ASN retry is waiting after the last Wayfair error.'];
+        }
+
+        $tracking = $this->trackingForAsn($poNumber, $payload, (string) ($line->carrier_code ?? ''));
+        if ($tracking === null) {
+            return ['success' => false, 'skipped' => true, 'message' => 'No tracking number yet, so no ASN was sent.'];
+        }
+
+        $shipFrom = $this->api->shipFromForPo($poNumber);
+        $supplierId = (int) ($shipFrom['supplierId'] ?? 0);
+        if ($supplierId <= 0) {
+            $supplierId = (int) ($line->warehouse_id ?? 0);
+        }
+        if ($supplierId <= 0) {
+            $supplierId = (int) config('services.wayfair.supplier_id');
+        }
+        $source = $this->sourceAddress($shipFrom, $line);
+        $destination = $this->destinationAddress($line);
+        if ($source === null || $destination === null || $supplierId <= 0) {
+            $this->rememberAsnError($lines, 'Ship-from or delivery address is missing, so the ASN was not sent.');
+
+            return ['success' => false, 'message' => 'Ship-from or delivery address is missing, so the ASN was not sent.'];
+        }
+
+        $items = [];
+        foreach ($lines as $row) {
+            $sku = trim((string) $row->sku);
+            if ($sku === '') {
+                continue;
+            }
+            $items[] = ['partNumber' => $sku, 'quantity' => max(1, (int) $row->quantity)];
+        }
+        if ($items === []) {
+            return ['success' => false, 'skipped' => true, 'message' => 'PO has no SKU lines.'];
+        }
+
+        $speed = strtoupper(trim((string) ($line->ship_speed ?? '')));
+        $speed = $speed !== '' ? str_replace([' ', '-'], '_', $speed) : 'GROUND';
+        $notice = [
+            'poNumber' => $poNumber,
+            'supplierId' => $supplierId,
+            'packageCount' => 1,
+            'weight' => 1,
+            'volume' => 1,
+            'carrierCode' => $tracking['carrier'],
+            'shipSpeed' => $speed,
+            'trackingNumber' => $tracking['number'],
+            'shipDate' => now('America/New_York')->format('Y-m-d H:i:s.000000 P'),
+            'sourceAddress' => $source,
+            'destinationAddress' => $destination,
+            'smallParcelShipments' => [[
+                'package' => [
+                    'code' => ['type' => 'TRACKING_NUMBER', 'value' => $tracking['number']],
+                    'weight' => 1,
+                ],
+                'items' => $items,
+            ]],
+        ];
+
+        $sent = $this->api->sendShipNotice($notice);
+        $message = (string) ($sent['message'] ?? '');
+        if (! empty($sent['success']) || $this->asnAlreadyRecorded($message)) {
+            $this->rememberAsnSent($lines, $tracking['number'], (string) ($sent['handle'] ?? ''), (string) ($sent['status'] ?? ''));
+
+            return ['success' => true, 'action' => 'asn_sent', 'message' => $message !== '' ? $message : 'ASN sent.'];
+        }
+        $this->rememberAsnError($lines, $message !== '' ? $message : 'Wayfair rejected the ASN.');
+
+        return ['success' => false, 'message' => $message !== '' ? $message : 'Wayfair rejected the ASN.'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{number: string, carrier: string}|null
+     */
+    protected function trackingForAsn(string $poNumber, array $payload, string $poCarrier = ''): ?array
+    {
+        $number = strtoupper(preg_replace('/\s+/', '', (string) ($payload['tracking_number'] ?? '')) ?? '');
+        $carrier = trim((string) ($payload['tracking_company'] ?? ''));
+        if ($number === '' && Schema::hasTable('order_fulfillment_trackings')) {
+            $row = OrderFulfillmentTracking::query()
+                ->where('mm_slug', 'wayfair')
+                ->where('order_id', $poNumber)
+                ->whereNotNull('tracking_number')
+                ->where('tracking_number', '!=', '')
+                ->orderByDesc('id')
+                ->first(['tracking_number', 'carrier']);
+            if ($row) {
+                $number = strtoupper(preg_replace('/\s+/', '', (string) $row->tracking_number) ?? '');
+                $carrier = trim((string) ($row->carrier ?? $carrier));
+            }
+        }
+        if (strlen($number) < 8) {
+            return null;
+        }
+        if ($carrier === '') {
+            $carrier = $poCarrier;
+        }
+        $code = $this->wayfairCarrierCode($carrier);
+        if ($code === '') {
+            return null;
+        }
+
+        return ['number' => $number, 'carrier' => $code];
+    }
+
+    protected function wayfairCarrierCode(string $carrier): string
+    {
+        $key = strtoupper(trim($carrier));
+        if ($key === '') {
+            return '';
+        }
+        foreach (['UPSN' => 'UPSN', 'UPS' => 'UPSN', 'FDEG' => 'FDEG', 'FEDEX' => 'FDEG', 'FDX' => 'FDEG', 'USPS' => 'USPS'] as $needle => $code) {
+            if ($key === $needle || str_contains($key, $needle)) {
+                return $code;
+            }
+        }
+
+        return $key;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $shipFrom
+     * @return array<string, string>|null
+     */
+    protected function sourceAddress(?array $shipFrom, WayfairDailyData $line): ?array
+    {
+        $name = trim((string) ($shipFrom['name'] ?? $line->warehouse_name ?? ''));
+        $street = trim((string) ($shipFrom['street1'] ?? ''));
+        $city = trim((string) ($shipFrom['city'] ?? ''));
+        if ($street === '' || $city === '' || $name === '') {
+            return null;
+        }
+        $address = [
+            'name' => $name,
+            'streetAddress1' => $street,
+            'city' => $city,
+            'state' => trim((string) ($shipFrom['state'] ?? '')),
+            'postalCode' => trim((string) ($shipFrom['postal'] ?? '')),
+            'country' => 'US',
+        ];
+        $street2 = trim((string) ($shipFrom['street2'] ?? ''));
+        if ($street2 !== '') {
+            $address['streetAddress2'] = $street2;
+        }
+
+        return $address;
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    protected function destinationAddress(WayfairDailyData $line): ?array
+    {
+        $street = trim((string) $line->customer_address1);
+        $city = trim((string) $line->customer_city);
+        $name = trim((string) $line->customer_name);
+        if ($street === '' || $city === '' || $name === '') {
+            return null;
+        }
+        $country = strtoupper(trim((string) $line->customer_country));
+        if ($country === '' || str_contains($country, 'UNITED')) {
+            $country = 'US';
+        }
+        $country = substr($country, 0, 3);
+        $address = [
+            'name' => $name,
+            'streetAddress1' => $street,
+            'city' => $city,
+            'state' => trim((string) $line->customer_state),
+            'postalCode' => trim((string) $line->customer_postal_code),
+            'country' => $country !== '' ? $country : 'US',
+        ];
+        $street2 = trim((string) $line->customer_address2);
+        if ($street2 !== '') {
+            $address['streetAddress2'] = $street2;
+        }
+
+        return $address;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function payloadOf(WayfairDailyData $row): array
+    {
+        $payload = $row->raw_payload;
+        if (is_string($payload) && $payload !== '') {
+            $decoded = json_decode($payload, true);
+            $payload = is_array($decoded) ? $decoded : [];
+        }
+
+        return is_array($payload) ? $payload : [];
+    }
+
+    protected function asnAlreadyRecorded(string $message): bool
+    {
+        $message = strtolower($message);
+
+        return str_contains($message, 'already') && (str_contains($message, 'ship') || str_contains($message, 'asn'));
+    }
+
+    protected function rememberAsnSent($lines, string $tracking, string $handle, string $status): void
+    {
+        foreach ($lines as $row) {
+            $payload = $this->payloadOf($row);
+            $payload['asn_sent_at'] = now()->toIso8601String();
+            $payload['asn_tracking'] = $tracking;
+            $payload['asn_handle'] = $handle;
+            $payload['asn_status'] = $status;
+            unset($payload['asn_error'], $payload['asn_error_at']);
+            $row->raw_payload = $payload;
+            $row->save();
+        }
+    }
+
+    protected function rememberAsnError($lines, string $message): void
+    {
+        foreach ($lines as $row) {
+            $payload = $this->payloadOf($row);
+            $payload['asn_error'] = mb_substr($message, 0, 500);
+            $payload['asn_error_at'] = now()->toIso8601String();
+            $row->raw_payload = $payload;
+            $row->save();
+        }
     }
 
     public static function canPushTracking(?array $settings = null): bool
