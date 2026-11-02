@@ -256,6 +256,7 @@ $others = [
     'cc:pull-pending-messages',
     'attendance:analyze',
     'payroll:fetch-fx-rates',
+    'tasks:generate-daily-automated',
     'tasks:expire-missed-automated',
     'tasks:automated-health-alert',
     'tasks:execute-automated',

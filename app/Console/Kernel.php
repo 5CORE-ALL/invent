@@ -1932,6 +1932,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Daily instances are created at 12:00 PM IST (India calendar). The
+        // command no-ops until that clock time, then the 5-minute tick recovers
+        // a delayed scheduler. Assignment still comes from automate_tasks.
+        $schedule->command('tasks:generate-daily-automated')
+            ->everyFiveMinutes()
+            ->timezone($taskTz)
+            ->name('generate-daily-automated-tasks')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('chat:daily-nudges')
             ->dailyAt('10:00')
             ->timezone(\App\Support\TaskBusinessTime::tz())

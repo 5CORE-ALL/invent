@@ -36,6 +36,7 @@ return [
             'users:auto-logout',
             'tasks:execute-automated',
             'tasks:expire-missed-automated',
+            'tasks:generate-daily-automated',
             'tasks:automated-health-alert',
             'sync:amazon-prices',
             'amazon:pull-pushed-prices',
