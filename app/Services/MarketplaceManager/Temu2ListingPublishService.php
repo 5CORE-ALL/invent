@@ -4506,6 +4506,22 @@ class Temu2ListingPublishService
     }
 
     /**
+     * @return array<string, float> uppercase seller SKU => base price Temu holds now
+     */
+    private function remoteBasePrices(string $goodsId): array
+    {
+        $out = [];
+        foreach ($this->remoteSkuRows($goodsId) as $row) {
+            $sn = strtoupper(trim((string) ($row['skuSn'] ?? $row['outSkuSn'] ?? $row['extCode'] ?? '')));
+            if ($sn !== '' && is_numeric($row['price'] ?? null)) {
+                $out[$sn] = (float) $row['price'];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * True only when every new seller SKU is on this goods in Temu's own SKU list.
      * A second read covers the short delay before a real add shows up.
      *
@@ -4574,9 +4590,14 @@ class Temu2ListingPublishService
 
         $messages = [];
         $unknownTypes = [];
-        $attempt = function (string $type, array $skus) use ($goodsId, $newSkus, &$messages, &$unknownTypes): ?array {
+        $attempt = function (string $type, array $skus, string $label = '') use ($goodsId, $newSkus, &$messages, &$unknownTypes): ?array {
             if (isset($unknownTypes[$type])) {
                 return null;
+            }
+            $label = $label !== '' ? $label : $type;
+            $prices = [];
+            foreach ($skus as $s) {
+                $prices[(string) ($s['outSkuSn'] ?? '')] = $s['basePrice']['amount'] ?? null;
             }
             $data = $this->temuCallBody(['type' => $type, 'language' => 'en', 'goodsId' => (int) $goodsId, 'skuList' => $skus], 120);
             $innerFailed = is_array($data['result'] ?? null) && array_key_exists('success', $data['result']) && empty($data['result']['success']);
@@ -4587,9 +4608,9 @@ class Temu2ListingPublishService
 
                     return $data;
                 }
-                $messages[$type] = 'Temu answered success but the new SKU is not on goods '.$goodsId;
+                $messages[$label] = 'Temu answered success but the new SKU is not on goods '.$goodsId;
                 Log::warning('Temu add SKU to existing goods: success was not real', [
-                    'type' => $type,
+                    'type' => $label,
                     'goods_id' => $goodsId,
                     'sku_count' => count($skus),
                     'new_spec_ids' => array_map(static fn ($s) => $s['specIdList'] ?? [], $newSkus),
@@ -4602,13 +4623,14 @@ class Temu2ListingPublishService
             if ($this->isUnknownApiType($data)) {
                 $unknownTypes[$type] = true;
             } elseif ($msg !== '') {
-                $messages[$type] = $msg;
+                $messages[$label] = $msg;
             }
             Log::warning('Temu add SKU to existing goods failed', [
-                'type' => $type,
+                'type' => $label,
                 'goods_id' => $goodsId,
                 'sku_count' => count($skus),
                 'message' => $msg,
+                'sku_base_prices' => $prices,
             ]);
 
             return null;
@@ -4641,10 +4663,44 @@ class Temu2ListingPublishService
                     return ['success' => true, 'data' => $data];
                 }
             }
+
+            // 3) Temu rejects the update when an already-live SKU's price is sent back to it ("basePrice is
+            //    incorrect": a live price is not editable through this call). Send the live SKUs by skuId only,
+            //    so their price is left alone, and the new SKU with its own price. The result is still only
+            //    accepted when the new SKU is on the goods AND no existing SKU's price moved.
+            $priceKeys = array_flip(['basePrice', 'listPrice', 'listPriceType']);
+            $before = $this->remoteBasePrices($goodsId);
+            $fullKeepPrices = [];
+            foreach ($existing as $row) {
+                $fullKeepPrices[] = array_diff_key($row, $priceKeys);
+            }
+            foreach ($newSkus as $sku) {
+                if (! isset($existingSns[strtoupper((string) ($sku['outSkuSn'] ?? ''))])) {
+                    $fullKeepPrices[] = $sku;
+                }
+            }
+            foreach (['bg.local.goods.update', 'temu.local.goods.update'] as $type) {
+                if (($data = $attempt($type, $fullKeepPrices, $type.' (live prices untouched)')) === null) {
+                    continue;
+                }
+                $after = $this->remoteBasePrices($goodsId);
+                $moved = [];
+                foreach ($before as $sn => $price) {
+                    if (isset($after[$sn]) && abs($after[$sn] - $price) > 0.004) {
+                        $moved[] = $sn.' '.$price.' -> '.$after[$sn];
+                    }
+                }
+                if ($moved !== []) {
+                    Log::error('Temu add SKU to existing goods: live prices moved after update', ['goods_id' => $goodsId, 'moved' => $moved]);
+                    $messages[$type.' (live prices untouched)'] = 'The SKU was added but Temu changed these live prices: '.implode(', ', array_slice($moved, 0, 5));
+                }
+
+                return ['success' => true, 'data' => $data];
+            }
         }
 
         $parts = [];
-        foreach (array_slice($messages, 0, 3, true) as $label => $msg) {
+        foreach (array_slice($messages, 0, 5, true) as $label => $msg) {
             $parts[] = $label.': '.$msg;
         }
         if ($existing === []) {
