@@ -53,31 +53,53 @@ class AmazonKwTargetingPushService
         $kwCampaigns = array_values(array_filter($kwCampaigns, static fn (array $c) => $c['campaign_id'] !== ''));
         $kwIds = array_map(static fn (array $c) => $c['campaign_id'], $kwCampaigns);
 
-        // App keywords per KW campaign, unique by text + match type.
-        $appByCampaign = [];
-        foreach (array_chunk($kwIds, 1000) as $chunk) {
-            // A campaign gets its OWN keywords only. Keywords the app merely copied into it from its KW cousins ("cousin"
-            // source) belong to other campaigns and are never pushed.
+        // App keywords per KW campaign, unique by text + match type. A campaign gets its OWN keywords plus the real keywords
+        // of the other campaigns of the SAME parent (e.g. a colour variant that has a target its siblings still miss).
+        // Keywords the app merely copied in from KW cousins of other parents ("cousin" source) are never pushed.
+        $siblingIds = [];
+        foreach ($kwCampaigns as $c) {
+            foreach ((array) ($c['sibling_ids'] ?? []) as $sid) {
+                $siblingIds[(string) $sid] = true;
+            }
+        }
+        $storeIds = array_values(array_unique(array_merge($kwIds, array_keys($siblingIds))));
+        $ownByCampaign = [];
+        foreach (array_chunk($storeIds, 1000) as $chunk) {
             $q = DB::table(self::STORE_TABLE)->whereIn('campaign_id', $chunk)->whereIn('match_type', self::MATCH_TYPES)
                 ->where('source', '!=', 'cousin')
                 ->get(['campaign_id', 'keyword', 'keyword_key', 'match_type']);
-            // Targets ignored (or deleted) in the targets modal are not pushed.
-            $skip = [];
-            if (Schema::hasTable('amazon_kw_targeting_flags')) {
+            foreach ($q as $r) {
+                $ownByCampaign[(string) $r->campaign_id][$r->keyword_key.'|'.$r->match_type] = [
+                    'text' => (string) $r->keyword,
+                    'match' => (string) $r->match_type,
+                    'key' => (string) $r->keyword_key,
+                ];
+            }
+        }
+        // Targets ignored (or deleted) in the targets modal are not pushed (per receiving campaign).
+        $skip = [];
+        if (Schema::hasTable('amazon_kw_targeting_flags')) {
+            foreach (array_chunk($kwIds, 1000) as $chunk) {
                 foreach (DB::table('amazon_kw_targeting_flags')->where('kind', 'kw')->whereIn('campaign_id', $chunk)
                     ->get(['campaign_id', 'keyword_key', 'match_type']) as $f) {
                     $skip[$f->campaign_id.'|'.$f->keyword_key.'|'.strtoupper((string) $f->match_type)] = true;
                 }
             }
-            foreach ($q as $r) {
-                if (isset($skip[$r->campaign_id.'|'.$r->keyword_key.'|'.strtoupper((string) $r->match_type)])) {
+        }
+        $appByCampaign = [];
+        foreach ($kwCampaigns as $c) {
+            $cid = (string) $c['campaign_id'];
+            $merged = $ownByCampaign[$cid] ?? [];
+            foreach ((array) ($c['sibling_ids'] ?? []) as $sid) {
+                foreach ($ownByCampaign[(string) $sid] ?? [] as $k => $kw) {
+                    $merged[$k] ??= $kw;
+                }
+            }
+            foreach ($merged as $k => $kw) {
+                if (isset($skip[$cid.'|'.$kw['key'].'|'.strtoupper($kw['match'])])) {
                     continue;
                 }
-                $appByCampaign[(string) $r->campaign_id][$r->keyword_key.'|'.$r->match_type] = [
-                    'text' => (string) $r->keyword,
-                    'match' => (string) $r->match_type,
-                    'key' => (string) $r->keyword_key,
-                ];
+                $appByCampaign[$cid][$k] = $kw;
             }
         }
 
