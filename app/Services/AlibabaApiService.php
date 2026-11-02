@@ -668,6 +668,7 @@ class AlibabaApiService extends AliExpressApiService
             $skuCode = (string) ($item['sku_code'] ?? '');
             $skuId = (string) $item['skuId'];
             $slots = $slotsBySku[$skuId] ?? [];
+            $slots = $this->icbuSlotsOrNodeStock($slots, $this->icbuNodeForSkuId($nodes, $skuId));
 
             if ($slots === []) {
                 if ($lookup === null) {
@@ -732,6 +733,60 @@ class AlibabaApiService extends AliExpressApiService
         }
 
         return ['list' => $list, 'sent' => $sent, 'unchanged' => $unchanged, 'failed' => $failed, 'auth' => false, 'error' => ''];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $nodes
+     * @return array<string, mixed>
+     */
+    protected function icbuNodeForSkuId(array $nodes, string $skuId): array
+    {
+        foreach ($nodes as $node) {
+            if (! is_array($node)) {
+                continue;
+            }
+            $id = $this->icbuNumericId($node['skuId'] ?? $node['sku_id'] ?? null) ?? (count($nodes) === 1 ? '-1' : null);
+            if ($id === $skuId) {
+                return $node;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Warehouse rows are what the update API changes. When they are missing or all
+     * zero but the SKU itself shows stock, use that stock. Treating it as 0 sent
+     * a plus for the whole Shopify qty and Alibaba stock went up instead of matching.
+     *
+     * @param  list<array{code: string, qty: int}>  $slots
+     * @param  array<string, mixed>  $node
+     * @return list<array{code: string, qty: int}>
+     */
+    protected function icbuSlotsOrNodeStock(array $slots, array $node): array
+    {
+        $sum = 0;
+        foreach ($slots as $slot) {
+            $sum += (int) ($slot['qty'] ?? 0);
+        }
+        if ($sum > 0 || $node === []) {
+            return $slots;
+        }
+
+        $qty = null;
+        foreach (['ipmSkuStock', 'ipm_sku_stock', 'skuStock', 'sku_stock', 'stock'] as $key) {
+            if (is_numeric($node[$key] ?? null)) {
+                $qty = max(0, (int) round((float) $node[$key]));
+                break;
+            }
+        }
+        if ($qty === null || $qty <= 0) {
+            return $slots;
+        }
+
+        $code = $slots[0]['code'] ?? $this->icbuWarehouseCode();
+
+        return [['code' => $code, 'qty' => $qty]];
     }
 
     /**

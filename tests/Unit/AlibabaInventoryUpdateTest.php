@@ -69,6 +69,49 @@ class AlibabaInventoryUpdateTest extends TestCase
         });
     }
 
+    public function test_inventory_push_uses_sku_stock_when_warehouse_rows_are_empty(): void
+    {
+        Http::fake(function ($request) {
+            $method = (string) ($request['method'] ?? '');
+            if ($method === '/icbu/product/get') {
+                return Http::response([
+                    'product' => [
+                        'productSku' => [
+                            'skus' => [[
+                                'skuCode' => '14B LED',
+                                'skuId' => 10001889397471,
+                                'skuStock' => 90,
+                            ]],
+                        ],
+                    ],
+                ]);
+            }
+            if ($method === '/icbu/product/inventory/update') {
+                return Http::response(['success' => true]);
+            }
+
+            return Http::response(['message' => 'unexpected '.$method], 400);
+        });
+
+        $result = app(AlibabaApiService::class)->batchUpdateInventory([[
+            'product_id' => '160000043250883',
+            'sku_code' => '14B LED',
+            'inventory' => 77,
+            'shopify_qty' => 77,
+        ]]);
+
+        $this->assertTrue($result['success'], $result['message'] ?? '');
+        Http::assertSent(function ($request) {
+            if (($request['method'] ?? '') !== '/icbu/product/inventory/update') {
+                return false;
+            }
+            $list = json_decode((string) $request['inventory_list'], true);
+
+            return ($list[0]['inventory'] ?? null) === 13
+                && ($list[0]['operate'] ?? '') === 'sub';
+        });
+    }
+
     public function test_inventory_push_subtracts_when_alibaba_holds_more_and_skips_when_equal(): void
     {
         Http::fake(function ($request) {
