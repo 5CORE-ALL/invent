@@ -18,4 +18,10 @@
     'defaultDepartmentFilter' => 'Dispatch',
     'lockedDepartment' => 'Dispatch',
     'hideDepartmentFieldInModal' => true,
+    'hideImportCsv' => true,
+    'showMonthlyReport' => true,
+    'monthlyReportTitle' => 'Dispatch',
+    'monthlyReportDepts' => [
+        ['key' => 'Dispatch', 'label' => 'Dispatch'],
+    ],
 ])

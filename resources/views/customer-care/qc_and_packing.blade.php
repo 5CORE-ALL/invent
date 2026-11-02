@@ -1416,6 +1416,9 @@
             width: 100%;
             max-width: 100%;
         }
+        @if (!empty($showMonthlyReport))
+            @include('partials.issue-board-report', ['ibrPart' => 'css', 'ibrDepts' => $monthlyReportDepts ?? []])
+        @endif
     </style>
 @endsection
 
@@ -1457,12 +1460,19 @@
                                     <button type="button" class="btn btn-outline-secondary btn-sm" id="btnShowHistory">
                                         <i class="bi bi-clock-history me-1"></i> History
                                     </button>
+                                    @if (!empty($showMonthlyReport))
+                                        <button type="button" class="btn btn-warning btn-sm" id="ibr-btn-month">
+                                            <i class="bi bi-graph-up me-1"></i> Monthly Report &amp; Graph
+                                        </button>
+                                    @endif
                                     <button type="button" class="btn btn-success btn-sm" id="btnExportCsv">
                                         <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
                                     </button>
-                                    <button type="button" class="btn btn-outline-info btn-sm" id="btnImportCsv">
-                                        <i class="bi bi-upload me-1"></i> Import CSV
-                                    </button>
+                                    @if (empty($hideImportCsv))
+                                        <button type="button" class="btn btn-outline-info btn-sm" id="btnImportCsv">
+                                            <i class="bi bi-upload me-1"></i> Import CSV
+                                        </button>
+                                    @endif
                                     @if ($showDispatchExtras ?? false)
                                         <div id="l30-loss-badge" class="l30-badge" role="button" data-bs-toggle="modal"
                                             data-bs-target="#l30LossModal" title="Last 30 Days Loss — click for detail">
@@ -1630,6 +1640,9 @@
                                     @if (($showCarrierColumn ?? false) && ($carrierColumnAfterAction ?? false))
                                         <th class="orders-hold-col-carrier">Carrier</th>
                                     @endif
+                                    @if ($showClaimTrackingColumn ?? false)
+                                        <th class="orders-hold-col-action">Tracking</th>
+                                    @endif
                                     {{-- Read-only "view all column data" magnifier; opens a modal
                                          showing every relevant field for the row. --}}
                                     @if ($showDetailsColumn ?? false)
@@ -1745,7 +1758,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) + $lossColspanExtra - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimableRemarkColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) - ($hideCloseColumn ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) + $lossColspanExtra - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimableRemarkColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showClaimTrackingColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) - ($hideCloseColumn ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
@@ -1776,6 +1789,9 @@
                                         class="orders-hold-col-what @if ($showDispatchExtras ?? false) dispatch-what-col @endif">
                                         Issue?</th>
                                     <th class="orders-hold-col-action">Action</th>
+                                    @if ($showClaimTrackingColumn ?? false)
+                                        <th class="orders-hold-col-action">Tracking</th>
+                                    @endif
                                     @if ($showDetailsColumn ?? false)
                                         <th class="orders-hold-col-action text-center">Details</th>
                                     @endif
@@ -1828,7 +1844,7 @@
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="{{ ($showOrderIdField ?? false ? 20 : 19) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) - ($hideCloseColumn ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showOrderIdField ?? false ? 20 : 19) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showClaimTrackingColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) - ($hideCloseColumn ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
@@ -2099,9 +2115,9 @@
 
                             @if ($showDispatchExtras ?? false)
                                 <div class="col-md-6">
-                                    <label for="hold_issue_tracking_number" class="form-label">Tracking</label>
+                                    <label for="hold_issue_tracking_number" class="form-label">Tracking ID</label>
                                     <input type="text" class="form-control" id="hold_issue_tracking_number"
-                                        name="tracking_number" maxlength="50" placeholder="Optional tracking">
+                                        name="tracking_number" maxlength="50" placeholder="Tracking ID for this claim">
                                 </div>
                                 <div class="col-md-6">
                                     <label for="hold_issue_issue_link" class="form-label">Link</label>
@@ -2405,10 +2421,19 @@
         </div>
     @endif
 
+    @if (!empty($showMonthlyReport))
+        @include('partials.issue-board-report', ['ibrPart' => 'html', 'ibrDepts' => $monthlyReportDepts ?? []])
+    @endif
+
 @endsection
 
 @section('script')
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    @if (!empty($showMonthlyReport))
+        <script>
+            @include('partials.issue-board-report', ['ibrPart' => 'js', 'ibrDepts' => $monthlyReportDepts ?? [], 'ibrTitle' => $monthlyReportTitle ?? null])
+        </script>
+    @endif
     <script>
         (function() {
             const skuSearchUrl = @json(route('customer.care.followups.skus'));
@@ -2489,6 +2514,8 @@
             const showAmtRecColumn = @json((bool) ($showAmtRecColumn ?? false));
             const showClaimReceivedColumn = @json((bool) ($showClaimReceivedColumn ?? false));
             const showCarrierColumn = @json((bool) ($showCarrierColumn ?? false));
+            const showClaimTrackingColumn = @json((bool) ($showClaimTrackingColumn ?? false));
+            const hideReplacementTrackingOnBoard = @json((bool) ($hideReplacementTrackingOnBoard ?? false));
             const claimsStatsUrl = @json($claimsStatsUrl ?? null);
             const showClaimsSummaryBadges = @json((bool) ($showClaimsSummaryBadges ?? false));
             const showDateRangeFilter = @json((bool) ($showDateRangeFilter ?? false));
@@ -2785,7 +2812,7 @@
                 const parts = [
                     r.id, r.issue_ref, r.orders_on_hold_issue_id, r.product_master_id,
                     r.sku, r.parent, r.order_number, r.order_qty,
-                    r.tracking_number, r.replacement_tracking, r.issue_carrier,
+                    r.tracking_number, hideReplacementTrackingOnBoard ? '' : r.replacement_tracking, r.issue_carrier,
                     r.what_happened, r.action_1, r.action_1_remark,
                     r.c_action_1, r.c_action_1_remark,
                     r.issue, r.issue_remark,
@@ -4319,8 +4346,11 @@
                 const headers = [
                     'When', 'Event', 'Ref', 'By', 'Dept',
                     'Issue?', 'Action', 'Root Cause', 'RC Fixed',
-                    'QTY', 'MKT', 'Tracking', 'Track R',
+                    'QTY', 'MKT', showClaimTrackingColumn ? 'Tracking ID' : 'Tracking',
                 ];
+                if (!hideReplacementTrackingOnBoard) {
+                    headers.push('Replacement Tracking ID');
+                }
                 if (showClaimDatesInHistory) {
                     headers.push('Claim Filed', 'Claim Recd');
                 }
@@ -4370,7 +4400,7 @@
                         rowHistoryCell(qty) +
                         rowHistoryCell(r.marketplace_1) +
                         rowHistoryCell(r.tracking_number) +
-                        rowHistoryCell(r.replacement_tracking) +
+                        (hideReplacementTrackingOnBoard ? '' : rowHistoryCell(r.replacement_tracking)) +
                         (showClaimDatesInHistory
                             ? claimHistoryDateCell(r.claim_filed, r.claim_filed_at_display)
                             : '') +
@@ -4547,8 +4577,10 @@
                     '<div class="ai-detail-section">' +
                     '<div class="ai-detail-section-title">Tracking &amp; media</div>' +
                     qcDetailsTextRow('Carrier', d.issue_carrier) +
-                    qcDetailsTrackingRow('Tracking', d.tracking_number) +
-                    qcDetailsTrackingRow('Track R (replacement)', d.replacement_tracking) +
+                    qcDetailsTrackingRow('Tracking ID', d.tracking_number) +
+                    @if (!($hideReplacementTrackingOnBoard ?? false))
+                    qcDetailsTrackingRow('Replacement Tracking ID', d.replacement_tracking) +
+                    @endif
                     qcDetailsImageRow('SKU image', d.image_url) +
                     qcDetailsImageRow('Img 1', d.image_1_url) +
                     qcDetailsImageRow('Img 2', d.image_2_url) +
@@ -4883,6 +4915,9 @@
                     @if (($showCarrierColumn ?? false) && ($carrierColumnAfterAction ?? false))
                         carrierSelectCellHtml(row) +
                     @endif
+                    @if ($showClaimTrackingColumn ?? false)
+                        '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
+                    @endif
                     @if ($showDetailsColumn ?? false)
                         qcDetailsCellHtml(row) +
                     @endif
@@ -5021,6 +5056,9 @@
                         @endif
                     '<td class="orders-hold-col-action">' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
                         '</td>' +
+                        @if ($showClaimTrackingColumn ?? false)
+                            '<td>' + trackingCellHtml(row.tracking_number) + '</td>' +
+                        @endif
                         @if ($showDetailsColumn ?? false)
                             qcDetailsCellHtml(row) +
                         @endif
@@ -6097,9 +6135,12 @@
                     activeHeaders.push('Action Remark');
                 }
                 if (showDispatchExtras) {
-                    activeHeaders.push('Tracking', 'Link');
+                    activeHeaders.push(showClaimTrackingColumn ? 'Tracking ID' : 'Tracking', 'Link');
                 }
-                activeHeaders.push('Track R', 'Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
+                if (!hideReplacementTrackingOnBoard) {
+                    activeHeaders.push('Replacement Tracking ID');
+                }
+                activeHeaders.push('Root Cause Found', 'Root Cause Remark', 'Root Cause Fixed',
                     'Root Cause Fixed Remark');
                 if (!hideDepartmentColumnAndFilter) {
                     activeHeaders.push('Dept');
@@ -6124,8 +6165,10 @@
                         row.push(r.tracking_number || '');
                         row.push(r.issue_link || '');
                     }
+                    if (!hideReplacementTrackingOnBoard) {
+                        row.push(r.replacement_tracking);
+                    }
                     row.push(
-                        r.replacement_tracking,
                         r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark
                     );
                     if (!hideDepartmentColumnAndFilter) {
@@ -6147,7 +6190,7 @@
                 downloadCsv(buildCsv(activeHeaders, activeData), `${safeTitle}_active_${dateStr}.csv`);
             });
 
-            document.getElementById('btnImportCsv').addEventListener('click', () => {
+            document.getElementById('btnImportCsv')?.addEventListener('click', () => {
                 document.getElementById('importCsvFile').value = '';
                 document.getElementById('importCsvAlert').className = 'd-none mb-3';
                 document.getElementById('importCsvAlert').innerHTML = '';
@@ -6648,6 +6691,25 @@
                     }
                 });
             }
+
+            @if (!empty($showMonthlyReport))
+            if (window.IssueBoardReport) {
+                window.IssueBoardReport.init({
+                    getRows: function () {
+                        return holdIssueRows.map(function (r) {
+                            const tl = r.total_loss;
+                            const hasLoss = tl != null && tl !== '' && !isNaN(parseFloat(tl));
+                            const price = r.amz_price;
+                            const loss = hasLoss ? parseFloat(tl) : ((price != null && price !== '' && !isNaN(parseFloat(price))) ? parseFloat(price) : 0);
+                            return Object.assign({}, r, {
+                                created_at: r.created_at_raw || r.created_at,
+                                total_loss: loss,
+                            });
+                        });
+                    }
+                });
+            }
+            @endif
         })();
     </script>
 @endsection
