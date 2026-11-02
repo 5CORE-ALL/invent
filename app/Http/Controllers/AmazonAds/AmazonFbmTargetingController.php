@@ -585,9 +585,24 @@ class AmazonFbmTargetingController extends Controller
      */
     protected function campaignsGroupedByParent(): array
     {
-        return Cache::remember('amz_kw_targeting_campaigns_by_parent_v5', now()->addMinutes(5), function () {
-            // Latest known status per campaign; archived campaigns are left out everywhere.
+        return Cache::remember('amz_kw_targeting_campaigns_by_parent_v6', now()->addMinutes(5), function () {
+            // Latest known status per campaign from the synced reports. A campaign that stops running (paused /
+            // archived on Amazon) stops getting report rows, so this goes stale - the live Amazon list below wins.
             $status = AmazonAdsMissingLinks::campaignStatusMap();
+            $live = $this->liveCampaigns(); // null until the first background sync has finished
+            $liveByName = $live['byName'] ?? [];
+            $liveById = $live['byId'] ?? [];
+            $liveState = static function (string $name, string $id) use ($status, $liveByName, $liveById): string {
+                $key = AmazonAdsMissingLinks::normalizeCampaignName($name);
+                if (isset($liveByName[$key])) {
+                    return (string) $liveByName[$key]['state'];
+                }
+                if ($id !== '' && isset($liveById[$id])) {
+                    return (string) $liveById[$id]['state']; // renamed on Amazon: the id still has the live state
+                }
+
+                return (string) ($status[$key] ?? '');
+            };
 
             // This page is for KW / HL work only: product-targeting (PT) campaigns are left out everywhere.
             $rows = DB::table(self::SP_TABLE)
@@ -597,8 +612,24 @@ class AmazonFbmTargetingController extends Controller
                 ->groupBy('campaignName')
                 ->get()
                 ->reject(fn ($r) => $this->isProductTargetingCampaign((string) $r->campaign_name)
-                    || ($status[AmazonAdsMissingLinks::normalizeCampaignName((string) $r->campaign_name)] ?? '') === 'ARCHIVED')
+                    || $liveState((string) $r->campaign_name, trim((string) ($r->campaign_id ?? ''))) === 'ARCHIVED')
                 ->values();
+
+            // Live KW campaigns the reports have never seen (no report rows yet) - they must be listed to be pushed to.
+            $known = [];
+            foreach ($rows as $r) {
+                $known[AmazonAdsMissingLinks::normalizeCampaignName((string) $r->campaign_name)] = true;
+            }
+            $extra = [];
+            foreach ($liveByName as $key => $c) {
+                if (isset($known[$key]) || $c['state'] === 'ARCHIVED' || $this->isProductTargetingCampaign((string) $c['name'])) {
+                    continue;
+                }
+                $extra[] = (object) ['campaign_name' => (string) $c['name'], 'campaign_id' => (string) $c['id']];
+            }
+            if ($extra !== []) {
+                $rows = $rows->concat($extra)->values();
+            }
 
             $names = $rows->map(static fn ($r) => trim((string) $r->campaign_name))->all();
             $parents = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames($names);
@@ -608,7 +639,7 @@ class AmazonFbmTargetingController extends Controller
                 $name = trim((string) $r->campaign_name);
                 $list[] = [
                     'parent' => (string) ($parents[$name] ?? ''),
-                    'status' => (string) ($status[AmazonAdsMissingLinks::normalizeCampaignName($name)] ?? ''),
+                    'status' => $liveState($name, trim((string) ($r->campaign_id ?? ''))),
                     // PARENT … campaigns vs single-SKU campaigns.
                     'is_parent' => AmazonAdsCampaignSkuMetrics::campaignKeyIsParent(
                         AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName($name)
@@ -629,6 +660,72 @@ class AmazonFbmTargetingController extends Controller
 
             return $list;
         });
+    }
+
+    private const LIVE_CAMPAIGNS = 'amz_fbm_live_campaigns';
+
+    private const LIVE_LOCK = 'amz_fbm_live_campaigns_lock';
+
+    /** Live campaign states older than this are refreshed in the background. */
+    private const LIVE_STALE_SECONDS = 1800;
+
+    /**
+     * Live SP campaign states from Amazon (name / id => state), refreshed in the background so the page never waits.
+     *
+     * @return array{at: int, byName: array<string, array{state: string, id: string, name: string}>, byId: array<string, array{state: string, name: string}>}|null
+     */
+    protected function liveCampaigns(): ?array
+    {
+        $live = Cache::get(self::LIVE_CAMPAIGNS);
+        $live = is_array($live) ? $live : null;
+        if ($live === null || (time() - (int) ($live['at'] ?? 0)) > self::LIVE_STALE_SECONDS) {
+            // One refresh at a time, and not more often than every 10 minutes even if it keeps failing.
+            if (Cache::add(self::LIVE_LOCK, 1, now()->addMinutes(10))) {
+                try {
+                    $this->spawnArtisan('app:amazon-fbm-campaigns-sync', 'fbm-targeting-live-campaigns.log');
+                } catch (\Throwable $e) {
+                    Log::warning('AmazonFbmTargetingController: live campaign sync spawn failed', ['error' => $e->getMessage()]);
+                }
+            }
+        }
+
+        return $live;
+    }
+
+    /**
+     * Read every SP campaign (with its live state) from Amazon and store it for the page. Runs in the background command.
+     *
+     * @return int number of campaigns read
+     */
+    public function syncLiveCampaigns(AmazonAdsService $ads): int
+    {
+        $ads->reuseAccessToken(); // one access token for all the pages
+        $campaigns = $ads->listAllSpCampaigns(['ENABLED', 'PAUSED', 'ARCHIVED']);
+        $rank = ['ENABLED' => 3, 'PAUSED' => 2, 'ARCHIVED' => 1];
+        $byName = [];
+        $byId = [];
+        foreach ($campaigns as $c) {
+            $name = trim((string) ($c['name'] ?? ''));
+            $id = trim((string) ($c['campaignId'] ?? ''));
+            $state = strtoupper(trim((string) ($c['state'] ?? '')));
+            if ($name === '' || $state === '') {
+                continue;
+            }
+            $key = AmazonAdsMissingLinks::normalizeCampaignName($name);
+            // The same name can exist more than once (an archived old campaign + a live one): the live one wins.
+            if (! isset($byName[$key]) || ($rank[$state] ?? 0) > ($rank[$byName[$key]['state']] ?? 0)) {
+                $byName[$key] = ['state' => $state, 'id' => $id, 'name' => $name];
+            }
+            if ($id !== '') {
+                $byId[$id] = ['state' => $state, 'name' => $name];
+            }
+        }
+
+        Cache::put(self::LIVE_CAMPAIGNS, ['at' => time(), 'byName' => $byName, 'byId' => $byId], now()->addHours(12));
+        Cache::forget('amz_kw_targeting_campaigns_by_parent_v6');
+        $this->forgetBadges();
+
+        return count($campaigns);
     }
 
     /**
