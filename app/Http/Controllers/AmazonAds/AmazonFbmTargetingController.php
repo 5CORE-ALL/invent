@@ -385,7 +385,9 @@ class AmazonFbmTargetingController extends Controller
                 'ad_type' => $row['ad_type'] ?? 'SP',
                 'status' => $row['status'],
                 'targets' => $targets,
-                'target_count' => $adsCounts[$row['ad_type'] ?? 'SP']['t'][$id] ?? count($targets),
+                // The Ads-All figure is the L30 *report* count: a paused cousin, or keywords just pushed / pulled, have no
+                // report rows yet and showed 0 although the targets modal lists them. Never show fewer than the app holds.
+                'target_count' => max((int) ($adsCounts[$row['ad_type'] ?? 'SP']['t'][$id] ?? 0), count($targets)),
                 'ignored_targets' => $ignoredTargets,
                 'negatives' => $negatives,
                 'negative_count' => $adsCounts[$row['ad_type'] ?? 'SP']['n'][$id] ?? count($negatives),
