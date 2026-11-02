@@ -3,11 +3,14 @@
 namespace App\Support;
 
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
  * Why the last Alibaba S PRC push of a SKU failed, so /alibaba-analytics can show it on the red X.
- * Kept in the cache (no migration): the push status column only says "error".
+ * Kept in the cache and in alibaba_pricing_prices.sprice_error (the push status column only says "error"); the
+ * database copy is the one that survives a cache clear.
  */
 class AlibabaPushError
 {
@@ -24,13 +27,44 @@ class AlibabaPushError
         if ($sku === '') {
             return;
         }
+        $friendly = self::friendly($message);
         try {
             Cache::put(self::key($sku), [
-                'message' => self::friendly($message),
+                'message' => $friendly,
                 'at' => now()->toDateTimeString(),
             ], now()->addDays(self::TTL_DAYS));
         } catch (Throwable $e) {
             // The reason is a convenience, never fail a push over it.
+        }
+        // The database copy survives cache clears and expiry, so a dead listing stays recognised as one.
+        self::writeDb($sku, $friendly);
+    }
+
+    private static function hasDbColumn(): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = Schema::hasTable('alibaba_pricing_prices') && Schema::hasColumn('alibaba_pricing_prices', 'sprice_error');
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+
+        return $has;
+    }
+
+    private static function writeDb(string $sku, ?string $message): void
+    {
+        if (! self::hasDbColumn()) {
+            return;
+        }
+        try {
+            DB::table('alibaba_pricing_prices')
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                ->update(['sprice_error' => $message === null ? null : mb_substr($message, 0, 2000)]);
+        } catch (Throwable $e) {
+            // ignore
         }
     }
 
@@ -45,6 +79,7 @@ class AlibabaPushError
         } catch (Throwable $e) {
             // ignore
         }
+        self::writeDb($sku, null);
     }
 
     /**
@@ -75,7 +110,31 @@ class AlibabaPushError
                 }
             }
         } catch (Throwable $e) {
-            return [];
+            $out = [];
+        }
+
+        // Cache miss (cleared, expired, other store): fall back to the reason saved on the pricing row.
+        $missing = array_values(array_diff($keys, array_keys($out)));
+        if ($missing !== [] && self::hasDbColumn()) {
+            try {
+                $rows = DB::table('alibaba_pricing_prices')
+                    ->whereNotNull('sprice_error')
+                    ->where('sprice_error', '!=', '')
+                    ->where(function ($q) use ($missing) {
+                        foreach ($missing as $norm) {
+                            $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$norm]);
+                        }
+                    })
+                    ->get(['sku', 'sprice_error', 'sprice_status_at']);
+                foreach ($rows as $r) {
+                    $out[strtoupper(trim((string) $r->sku))] = [
+                        'message' => (string) $r->sprice_error,
+                        'at' => $r->sprice_status_at !== null ? (string) $r->sprice_status_at : null,
+                    ];
+                }
+            } catch (Throwable $e) {
+                // ignore
+            }
         }
 
         return $out;
