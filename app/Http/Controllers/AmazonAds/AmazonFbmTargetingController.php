@@ -187,6 +187,13 @@ class AmazonFbmTargetingController extends Controller
         $lowTotals = $this->lowTotals($this->withoutArchived($all), $lowCounts);
         $low = strtolower(trim((string) $request->query('low', '')));
 
+        // Sponsored Brands (HEAD / HL) campaigns are listed too, like /amazon-ads/all does. They are added after
+        // the badge figures so the KW / HL work counts stay SP-only, and the "low" filter leaves them out.
+        $all = $this->mergeSbCampaigns($all);
+        if (isset(self::LOW_LIMITS[$low])) {
+            $all = array_values(array_filter($all, static fn (array $c) => ($c['ad_type'] ?? 'SP') !== 'SB'));
+        }
+
         // Status filter like /amazon-ads/all: ENABLED / PAUSED / ARCHIVED (comma separated); empty = all statuses.
         $statusWanted = array_values(array_filter(array_map(
             static fn (string $v) => strtoupper(trim($v)),
@@ -351,6 +358,7 @@ class AmazonFbmTargetingController extends Controller
                 'parent_first' => $prevParent === null || $prevParent !== $row['parent'],
                 'campaign_id' => $id,
                 'campaign_name' => $name,
+                'ad_type' => $row['ad_type'] ?? 'SP',
                 'status' => $row['status'],
                 'targets' => $targets,
                 'target_count' => count($targets),
@@ -695,6 +703,106 @@ class AmazonFbmTargetingController extends Controller
 
             return $list;
         });
+    }
+
+    /**
+     * Sponsored Brands campaigns (HEAD / HL, amazon_sb_campaign_reports) listed in the grid next to the SP ones, as on
+     * /amazon-ads/all. Status comes from the SB summary rows (L30 first). Kept apart from campaignsGroupedByParent(),
+     * which feeds the KW push, badges and cousin sync that only work on SP campaigns.
+     *
+     * @param  list<array<string, mixed>>  $sp  campaigns from campaignsGroupedByParent()
+     * @return list<array<string, mixed>>
+     */
+    protected function mergeSbCampaigns(array $sp): array
+    {
+        try {
+            $sb = Cache::remember('amz_kw_targeting_sb_campaigns_v1', now()->addMinutes(5), function () {
+                $table = 'amazon_sb_campaign_reports';
+                if (! $this->hasTable($table) || ! $this->hasColumn($table, 'campaignName')) {
+                    return [];
+                }
+                $hasStatus = $this->hasColumn($table, 'campaignStatus');
+                $status = [];
+                $ids = [];
+                foreach (['L30', 'L15', 'L7', 'L1'] as $range) { // first range with a row wins
+                    $maxIds = DB::table($table)
+                        ->where('report_date_range', $range)
+                        ->whereNotNull('campaignName')
+                        ->where('campaignName', '!=', '')
+                        ->selectRaw('MAX(id) AS max_id')
+                        ->groupBy('campaignName')
+                        ->pluck('max_id')
+                        ->filter()
+                        ->all();
+                    foreach (array_chunk($maxIds, 2000) as $chunk) {
+                        $cols = ['campaignName', 'campaign_id'];
+                        if ($hasStatus) {
+                            $cols[] = 'campaignStatus';
+                        }
+                        foreach (DB::table($table)->whereIn('id', $chunk)->get($cols) as $r) {
+                            $key = AmazonAdsMissingLinks::normalizeCampaignName((string) $r->campaignName);
+                            if ($key !== '' && ! isset($status[$key])) {
+                                $status[$key] = strtoupper(trim((string) ($r->campaignStatus ?? '')));
+                                $ids[$key] = trim((string) ($r->campaign_id ?? ''));
+                            }
+                        }
+                    }
+                }
+                $names = [];
+                foreach (DB::table($table)->where('report_date_range', 'like', 'L%')->whereNotNull('campaignName')
+                    ->where('campaignName', '!=', '')->distinct()->pluck('campaignName') as $n) {
+                    if ($this->isProductTargetingCampaign((string) $n)) {
+                        continue; // PT campaigns are left out of this page everywhere
+                    }
+                    $names[AmazonAdsMissingLinks::normalizeCampaignName((string) $n)] ??= trim((string) $n);
+                }
+                $parents = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames(array_values($names));
+
+                $list = [];
+                foreach ($names as $key => $name) {
+                    $list[] = [
+                        'parent' => (string) ($parents[$name] ?? ''),
+                        'status' => (string) ($status[$key] ?? ''),
+                        'is_parent' => AmazonAdsCampaignSkuMetrics::campaignKeyIsParent(
+                            AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName($name)
+                        ),
+                        'campaign_id' => (string) ($ids[$key] ?? ''),
+                        'campaign_name' => $name,
+                        'ad_type' => 'SB',
+                    ];
+                }
+
+                return $list;
+            });
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: SB campaigns could not be listed', ['error' => $e->getMessage()]);
+
+            return $sp;
+        }
+
+        // A name already listed as an SP campaign is not repeated.
+        $have = [];
+        foreach ($sp as $c) {
+            $have[AmazonAdsMissingLinks::normalizeCampaignName((string) $c['campaign_name'])] = true;
+        }
+        $merged = $sp;
+        foreach ($sb as $c) {
+            if (! isset($have[AmazonAdsMissingLinks::normalizeCampaignName((string) $c['campaign_name'])])) {
+                $merged[] = $c;
+            }
+        }
+
+        // Same order as campaignsGroupedByParent(): parents A-Z (unknown parent last), then campaign name.
+        usort($merged, static function (array $a, array $b) {
+            if (($a['parent'] === '') !== ($b['parent'] === '')) {
+                return $a['parent'] === '' ? 1 : -1;
+            }
+
+            return strnatcasecmp($a['parent'], $b['parent'])
+                ?: strnatcasecmp($a['campaign_name'], $b['campaign_name']);
+        });
+
+        return $merged;
     }
 
     /**
@@ -1399,11 +1507,37 @@ class AmazonFbmTargetingController extends Controller
         $soldCol = in_array('purchases30d', $cols, true) ? 'purchases30d' : (in_array('unitsSoldClicks30d', $cols, true) ? 'unitsSoldClicks30d' : null);
 
         sort($campaignIds);
-        $key = 'amz_fbm_lt_totals_v2:'.md5(implode(',', $campaignIds));
+        $key = 'amz_fbm_lt_totals_v3:'.md5(implode(',', $campaignIds));
 
         try {
             return Cache::remember($key, now()->addMinutes(5), function () use ($campaignIds, $soldCol) {
                 $out = [];
+                // Sponsored Brands (HEAD / HL) campaigns listed in the grid: same sums from the SB daily reports
+                // (clicks, purchases), as /amazon-ads/all does for its SB rows.
+                $sbTable = 'amazon_sb_campaign_reports';
+                if ($this->hasTable($sbTable)) {
+                    $sbCols = $this->columnsOf($sbTable);
+                    if (in_array('campaign_id', $sbCols, true) && in_array('report_date_range', $sbCols, true) && in_array('clicks', $sbCols, true)) {
+                        $sbSold = in_array('purchases', $sbCols, true) ? 'purchases' : (in_array('unitsSold', $sbCols, true) ? 'unitsSold' : null);
+                        foreach (array_chunk($campaignIds, 1000) as $chunk) {
+                            $sbRows = DB::table($sbTable)
+                                ->whereIn('campaign_id', $chunk)
+                                ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+                                ->selectRaw(
+                                    'campaign_id, SUM(COALESCE(`clicks`, 0)) AS clicks, '
+                                    .($sbSold !== null ? 'SUM(COALESCE(`'.$sbSold.'`, 0))' : '0').' AS sold'
+                                )
+                                ->groupBy('campaign_id')
+                                ->get();
+                            foreach ($sbRows as $r) {
+                                $cid = trim((string) $r->campaign_id);
+                                $out[$cid] ??= ['clicks' => 0, 'sold' => 0];
+                                $out[$cid]['clicks'] += (int) $r->clicks;
+                                $out[$cid]['sold'] += (int) $r->sold;
+                            }
+                        }
+                    }
+                }
                 foreach (array_chunk($campaignIds, 1000) as $chunk) {
                     $rows = DB::table(self::SP_TABLE)
                         ->whereIn('campaign_id', $chunk)
