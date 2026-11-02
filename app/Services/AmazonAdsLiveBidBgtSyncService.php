@@ -447,6 +447,13 @@ class AmazonAdsLiveBidBgtSyncService
         }
 
         if ($oldLive === null || ! is_numeric($oldLive)) {
+            // The pull only lists ENABLED and PAUSED campaigns, so an ARCHIVED one never returns a
+            // budget. Archived is final in Amazon: nothing can be pushed, so it is not a failure.
+            if ($this->isArchivedInAmazon($channel, $campaignId)) {
+                $this->persistCampaignStatus($channel, $campaignId, 'ARCHIVED');
+
+                return $this->finish($base, 'synced', 'campaign_archived', $source, $campaignName, $desired, null, 'skipped');
+            }
             // Budget still needs the live amount. A bid does not: zero-CPC campaigns
             // use both_low_fallback and that SBID still has to be written onto keywords.
             if ($field !== 'bid') {
@@ -857,6 +864,42 @@ class AmazonAdsLiveBidBgtSyncService
      */
     private function persistPausedStatus(string $channel, string $campaignId): void
     {
+        $this->persistCampaignStatus($channel, $campaignId, 'PAUSED');
+    }
+
+    private function isArchivedInAmazon(string $channel, string $campaignId): bool
+    {
+        if (isset($this->hooks['isArchived'])) {
+            return (bool) ($this->hooks['isArchived'])($channel, $campaignId);
+        }
+        try {
+            $campaigns = $channel === 'sb'
+                ? $this->ads()->listSbCampaignsByIds([$campaignId], ['ARCHIVED'])
+                : $this->ads()->listSpCampaignsByIds([$campaignId], ['ARCHIVED']);
+            foreach ($campaigns as $campaign) {
+                if (! is_array($campaign)) {
+                    continue;
+                }
+                $cid = trim((string) ($campaign['campaignId'] ?? $campaign['campaign_id'] ?? ''));
+                $state = strtoupper(trim((string) ($campaign['state'] ?? $campaign['campaignStatus'] ?? '')));
+                if ($cid === $campaignId && $state === 'ARCHIVED') {
+                    return true;
+                }
+            }
+        } catch (Throwable $e) {
+            Log::warning('amazon-ads live sync: archived check failed', ['campaign_id' => $campaignId, 'error' => $e->getMessage()]);
+        }
+
+        return false;
+    }
+
+    private function persistCampaignStatus(string $channel, string $campaignId, string $status): void
+    {
+        if (isset($this->hooks['persistStatus'])) {
+            ($this->hooks['persistStatus'])($channel, $campaignId, $status);
+
+            return;
+        }
         try {
             $table = $channel === 'sb' ? 'amazon_sb_campaign_reports' : 'amazon_sp_campaign_reports';
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'campaignStatus')) {
@@ -874,7 +917,7 @@ class AmazonAdsLiveBidBgtSyncService
                 ->where('campaign_id', $campaignId)
                 ->whereIn('report_date_range', $ranges)
                 ->update([
-                    'campaignStatus' => 'PAUSED',
+                    'campaignStatus' => $status,
                     'updated_at' => now(),
                 ]);
         } catch (Throwable) {

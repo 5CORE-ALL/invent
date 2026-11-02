@@ -102,6 +102,32 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
         $this->assertSame(AmazonAdsLiveBidBgtSyncService::PULL_ATTEMPTS, $out['pull_attempts']);
     }
 
+    public function test_archived_campaign_is_not_a_failed_budget_pull(): void
+    {
+        $pushed = false;
+        $status = null;
+        $svc = $this->service([
+            'pullBudgets' => static fn () => ['111' => null],
+            'isArchived' => static fn () => true,
+            'persistStatus' => function ($ch, $id, $s) use (&$status): void {
+                $status = $s;
+            },
+            'pushBudget' => function () use (&$pushed) {
+                $pushed = true;
+
+                return ['status' => 200, 'failed' => []];
+            },
+        ]);
+
+        $out = $svc->syncField('sp', 'bgt', '111', 'SKU PT', 2.0, 'test');
+
+        $this->assertSame('synced', $out['status']);
+        $this->assertSame('campaign_archived', $out['reason']);
+        $this->assertSame('green', $out['sync_color']);
+        $this->assertSame('ARCHIVED', $status);
+        $this->assertFalse($pushed);
+    }
+
     public function test_mismatch_push_then_verify_persists_live_not_desired_from_push(): void
     {
         $pushed = [];
@@ -489,6 +515,8 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
             'log' => static function (): void {},
             'saveState' => static function (): void {},
             'persistLive' => static function (): void {},
+            'persistStatus' => static function (): void {},
+            'isArchived' => static fn () => false,
             'pullBids' => static fn () => [],
             'pullBudgets' => static fn () => [],
             'pushBudget' => static fn () => ['status' => 200, 'failed' => []],

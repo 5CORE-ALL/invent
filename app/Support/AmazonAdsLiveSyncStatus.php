@@ -131,7 +131,7 @@ final class AmazonAdsLiveSyncStatus
                         'reason' => 'already_matched',
                         'tip' => self::greenTip('BGT', 'SBGT', 'already_matched', $shown, $want),
                     ];
-                } elseif ($field === 'bgt' && $presented['color'] === self::GREEN && self::displayedBudgetsDiffer($row['bgt'] ?? null, $row['sbgt'] ?? null)) {
+                } elseif ($field === 'bgt' && $presented['color'] === self::GREEN && $presented['reason'] !== 'campaign_archived' && self::displayedBudgetsDiffer($row['bgt'] ?? null, $row['sbgt'] ?? null)) {
                     $presented = [
                         'color' => self::YELLOW,
                         'status' => 'pending',
@@ -331,6 +331,9 @@ final class AmazonAdsLiveSyncStatus
             $want = $desired ?? '$0.00';
 
             return "Updated — {$suggested} {$want}; Amazon campaign verified PAUSED";
+        }
+        if ($reason === 'campaign_archived') {
+            return 'Skipped — campaign is ARCHIVED in Amazon, nothing to sync';
         }
         $liveTxt = $live ?? 'n/a';
         $wantTxt = $desired ?? 'n/a';
