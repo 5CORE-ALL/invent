@@ -508,6 +508,10 @@ class AlibabaSyncController extends Controller
         $counts = $overlay['counts'];
         $linkedMismatchQty = MarketplacePortalStatusTabs::withoutInactiveSkus($linkedMismatchQty, $liveRows ?? null);
         $counts['linked_mismatch'] = count($linkedMismatchQty);
+        // The Push button uses this list. Recomputing it on the click was coming back
+        // empty (the popup then said Updated 0) while this page still showed the SKUs.
+        \Illuminate\Support\Facades\Cache::put('alibaba.mismatch.page.mismatch', array_values($overlay['mismatchActive']), now()->addMinutes(30));
+        \Illuminate\Support\Facades\Cache::put('alibaba.mismatch.page.linked_mismatch', array_values($linkedMismatchQty), now()->addMinutes(30));
         $matchedActive = $overlay['matchedActive'];
         $matchedInactive = $overlay['matchedInactive'];
         $mismatchActive = $overlay['mismatchActive'];
@@ -999,10 +1003,19 @@ class AlibabaSyncController extends Controller
         // those landed back on Inv SKU Mismatch and the count went up.
         $cacheKey = 'alibaba.mismatch.push.'.$scope;
         $offset = max(0, (int) $request->input('offset', 0));
-        if ($offset === 0 || ! is_array(\Illuminate\Support\Facades\Cache::get($cacheKey))) {
-            \Illuminate\Support\Facades\Cache::put($cacheKey, $this->alibabaInventoryPushSkus($scope), now()->addMinutes(20));
+        if ($offset === 0) {
+            // The open tab already computed this list. Use it, so a second
+            // computation that comes back empty cannot skip every SKU.
+            $fromPage = \Illuminate\Support\Facades\Cache::get('alibaba.mismatch.page.'.$scope);
+            $mismatch = is_array($fromPage) ? array_values($fromPage) : [];
+            if ($mismatch === []) {
+                $mismatch = array_values($this->alibabaInventoryPushSkus($scope));
+            }
+            \Illuminate\Support\Facades\Cache::put($cacheKey, $mismatch, now()->addMinutes(20));
+        } else {
+            $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            $mismatch = is_array($cached) ? array_values($cached) : [];
         }
-        $mismatch = array_values(\Illuminate\Support\Facades\Cache::get($cacheKey) ?: []);
 
         $limit = max(1, min(40, (int) $request->input('limit', 25)));
         $total = count($mismatch);
@@ -1022,6 +1035,22 @@ class AlibabaSyncController extends Controller
         }
 
         $result = app(AlibabaInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
+        $nothingSent = (int) ($result['updated'] ?? 0) === 0
+            && (int) ($result['failed'] ?? 0) === 0
+            && (int) ($result['skipped'] ?? 0) === 0;
+        $serviceMessage = trim((string) ($result['message'] ?? ''));
+        if ($nothingSent && $serviceMessage !== '') {
+            return response()->json([
+                'success' => false,
+                'done' => true,
+                'total' => $total,
+                'offset' => $offset,
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'message' => $serviceMessage,
+            ]);
+        }
         $rateLimited = ! empty($result['rate_limited']) && (int) ($result['updated'] ?? 0) === 0;
         // A rate limit updated nothing. Retry the same SKUs after the ban instead of skipping them.
         $nextOffset = $rateLimited ? $offset : $offset + count($batch);

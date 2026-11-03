@@ -118,7 +118,9 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             if (typeof data.offset === 'number') offset = data.offset;
             paint(false);
             if (data.done) {
-                alert('Mismatch inventory sync complete.\n' + summary());
+                var idle = totals.updated === 0 && totals.failed === 0 && totals.skipped === 0 && !totals.pending && !problems.length;
+                var lead = (idle && data.message) ? data.message : 'Mismatch inventory sync complete.';
+                alert(lead + '\n' + summary());
                 location.reload();
                 return;
             }
