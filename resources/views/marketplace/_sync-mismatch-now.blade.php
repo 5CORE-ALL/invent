@@ -92,14 +92,14 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             }
             retries = 0;
             if (typeof data.total === 'number') total = data.total;
-            if (data.rate_limited && rateRetries < 8) {
+            if (data.rate_limited && rateRetries < 40) {
                 rateRetries++;
                 paint(true);
-                setTimeout(tick, data.retry_after_ms || 3000);
+                setTimeout(tick, data.retry_after_ms || 2000);
                 return;
             }
             if (data.rate_limited) {
-                finish('Alibaba is busy, so no quantity was sent. The link-map sync ("Fetching Alibaba page") or a background inventory push is using Alibaba. Wait until that finishes, then click Push Shopify inventory again.\n' + summary());
+                finish('Alibaba is still busy after waiting. A background inventory push is using the same connection. Leave this page for a minute, then click Push Shopify inventory again.\n' + summary());
                 return;
             }
             rateRetries = 0;
