@@ -78,7 +78,7 @@ class ReverbBumpRuleService
             'min_stock' => 5.0,
             'high_volume_sold' => 10,
             'premium_price' => 0.0,           // 0 = premium check off
-            'auto_enabled' => false,          // weekly scheduled apply + push
+            'auto_enabled' => false,          // daily scheduled apply + push
             'review_after_days' => 14,        // no sales this long after a change → needs price/images/title fix
         ];
         $saved = self::loadSetting(self::SETTINGS_CHANNEL);

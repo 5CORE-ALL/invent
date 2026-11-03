@@ -75,7 +75,7 @@
 
             const HELP = {
                 no_sales: 'Bump was changed at least N days ago (default 14) and the SKU still has 0 sales in the last 30 days → check price, images and title.',
-                move_to_low: 'Last update set a bump above 2% and the SKU is now selling → run Sold vs Bump again (Apply, then Push S Bump%) to move it to 2%. The weekly auto-run does this for you when enabled.',
+                move_to_low: 'Last update set a bump above 2% and the SKU is now selling → run Sold vs Bump again (Apply, then Push S Bump%) to move it to 2%. The daily auto-run does this for you when enabled.',
                 monitor: 'Every SKU with a bump update: views and sales when the bump was set vs now.',
                 history: 'Every fill, push and exception skip (latest 5000), newest first.',
             };
@@ -211,7 +211,7 @@
                 const days = payload.settings && payload.settings.review_after_days;
                 document.getElementById('summary-line').textContent =
                     (days ? 'No-sales review after ' + days + ' days · ' : '') +
-                    (payload.settings && payload.settings.auto_enabled ? 'weekly auto-run ON' : 'weekly auto-run OFF');
+                    (payload.settings && payload.settings.auto_enabled ? 'daily auto-run ON' : 'daily auto-run OFF');
             }
 
             async function load() {

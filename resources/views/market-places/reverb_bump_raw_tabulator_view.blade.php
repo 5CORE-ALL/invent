@@ -206,10 +206,10 @@
                         <div class="form-check mb-1">
                             <input class="form-check-input" type="checkbox" id="sb-auto-enabled">
                             <label class="form-check-label small fw-semibold" for="sb-auto-enabled">
-                                Auto-run weekly (Mon 11:30 IST): re-apply the rule and push to Reverb
+                                Auto-run daily (11:30 IST): re-apply the rule and push to Reverb
                             </label>
                         </div>
-                        <div class="small text-muted">Uses the saved rules + exceptions above, so a SKU that started selling moves 5% → 2% on the next cycle. Saved when you click Apply.</div>
+                        <div class="small text-muted">Uses the saved rules + exceptions above, so S Bump% follows each SKU's latest Sold (RV L30) every day. Saved when you click Apply.</div>
                         <div class="row g-2 align-items-center mt-1">
                             <div class="col-7"><label class="small mb-0" for="sb-review-days">Flag "no sales" for review after (days)</label></div>
                             <div class="col-5"><input type="number" min="1" step="1" class="form-control form-control-sm" id="sb-review-days" value="14"></div>
@@ -797,7 +797,7 @@
                     }
                     table.updateData(tableUpdates);
                     toast('S Bump% filled for ' + filled + ' row(s)' + (skipped ? ', ' + skipped + ' skipped (exceptions, see Rule note)' : '')
-                        + (settings.auto_enabled ? ' · weekly auto-run ON' : ''));
+                        + (settings.auto_enabled ? ' · daily auto-run ON' : ''));
                     bootstrap.Modal.getOrCreateInstance(document.getElementById('soldBumpModal')).hide();
                 } catch (e) {
                     toast(e.message || 'Apply failed', false);

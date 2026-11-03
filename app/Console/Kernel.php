@@ -2691,10 +2691,11 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Reverb Bump % checklist (Sold > 0 → 2%, Sold = 0 → 5%, with exceptions) — weekly, after the data
-        // refreshes above. Does nothing unless "Auto-run weekly" is enabled in Sold vs Bump… on /reverb-bump.
+        // Reverb Bump % Sold-vs-Bump rule (saved slabs + exceptions) — daily, after the data refreshes above
+        // (reverb:fetch 09:50, listing statuses 10:00, raw bump pull 10:30). Does nothing unless "Auto-run daily"
+        // is enabled in Sold vs Bump… on /reverb-bump.
         $ist($schedule->command('reverb:apply-bump-rule --scheduled')
-            ->weeklyOn(1, '11:30')
+            ->dailyAt('11:30')
             ->timezone('Asia/Kolkata')
             ->name('reverb-apply-bump-rule')
             ->withoutOverlapping(360)
