@@ -3414,9 +3414,12 @@ class Temu2ListingPublishService
         return $details;
     }
 
-    private function createSpecId(int $catId, int $parentSpecId, string $sku): ?int
+    private function createSpecId(int $catId, int $parentSpecId, string $sku, string $nameOverride = ''): ?int
     {
-        $storedName = ListingManagerFamily::attributesForSku($sku)['name'];
+        if ($catId <= 0 || $parentSpecId <= 0) {
+            return null;
+        }
+        $storedName = $nameOverride !== '' ? $nameOverride : ListingManagerFamily::attributesForSku($sku)['name'];
         $name = $this->sanitizeGoodsName($storedName !== '' ? $storedName : $sku);
         if ($name === '') {
             $name = 'Default';
@@ -3428,8 +3431,12 @@ class Temu2ListingPublishService
             'childSpecName' => mb_substr($name, 0, 50),
         ], 45);
         $specId = (int) ($data['result']['specId'] ?? 0);
+        // A parent spec id is not a child spec. Sending it in specIdList is rejected (150011018).
+        if ($specId <= 0 || $specId === $parentSpecId) {
+            return null;
+        }
 
-        return $specId > 0 ? $specId : null;
+        return $specId;
     }
 
     /**
@@ -4406,11 +4413,12 @@ class Temu2ListingPublishService
      * through the same parent spec as its siblings; a spec made from this SKU's own variation type (Size / Color)
      * under another parent was accepted by Temu's update call and then dropped, so the SKU never appeared.
      *
-     * @return array{parentSpecIds: list<int>, catId: int}
+     * @return array{parentSpecIds: list<int>, parentSpecNames: list<string>, catId: int}
      */
     private function existingGoodsSpecContext(string $goodsId): array
     {
         $parents = [];
+        $names = [];
         // The goods record carries the category its variation specs belong to (SKU rows do not).
         $catId = $this->remoteGoodsCatId($goodsId);
         foreach (array_slice($this->remoteSkuRows($goodsId), 0, 25) as $row) {
@@ -4421,6 +4429,10 @@ class Temu2ListingPublishService
                 $pid = (int) ($spec['parentSpecId'] ?? $spec['parentId'] ?? 0);
                 if ($pid > 0) {
                     $parents[$pid] = true;
+                }
+                $label = trim((string) ($spec['parentSpecName'] ?? ''));
+                if ($label !== '') {
+                    $names[$label] = true;
                 }
             }
             if ($catId === 0) {
@@ -4433,7 +4445,11 @@ class Temu2ListingPublishService
             }
         }
 
-        return ['parentSpecIds' => array_map('intval', array_keys($parents)), 'catId' => $catId];
+        return [
+            'parentSpecIds' => array_map('intval', array_keys($parents)),
+            'parentSpecNames' => array_keys($names),
+            'catId' => $catId,
+        ];
     }
 
     /**
@@ -4446,18 +4462,49 @@ class Temu2ListingPublishService
     {
         $ctx = $this->existingGoodsSpecContext($goodsId);
         Log::info('Temu add SKU to existing goods: goods spec context', ['goods_id' => $goodsId] + $ctx);
-        if (count($ctx['parentSpecIds']) !== 1) {
+        $catId = $ctx['catId'] > 0 ? $ctx['catId'] : $fallbackCatId;
+        $parentSpecIds = $ctx['parentSpecIds'];
+        if ($parentSpecIds === [] && $catId > 0 && $ctx['parentSpecNames'] !== []) {
+            $data = $this->temuCallBody([
+                'type' => 'temu.local.product.variation.get',
+                'catId' => $catId,
+                'language' => 'en',
+            ], 45);
+            $parents = $data['result']['parentSpecList']
+                ?? $data['result']['variationList']
+                ?? $data['result']['specList']
+                ?? [];
+            if (! is_array($parents)) {
+                $parents = [];
+            }
+            foreach ($ctx['parentSpecNames'] as $name) {
+                $id = $this->matchParentSpecId($parents, strtolower($name));
+                if ($id !== null && $id > 0) {
+                    $parentSpecIds[] = $id;
+                }
+            }
+            $parentSpecIds = array_values(array_unique($parentSpecIds));
+        }
+        if ($parentSpecIds === [] || $catId <= 0) {
             return $skuList;
         }
-        $parentSpecId = $ctx['parentSpecIds'][0];
-        $catId = $ctx['catId'] > 0 ? $ctx['catId'] : $fallbackCatId;
         foreach ($skuList as $i => $item) {
             $sn = (string) ($item['outSkuSn'] ?? $item['externalSkuId'] ?? '');
-            $specId = $sn !== '' ? $this->createSpecId($catId, $parentSpecId, $sn) : null;
-            if ($specId === null) {
+            if ($sn === '') {
                 continue;
             }
-            $skuList[$i]['specDetails'] = [['parentSpecId' => $parentSpecId, 'specId' => $specId]];
+            $details = [];
+            foreach ($parentSpecIds as $parentSpecId) {
+                // Same name the live variations use: the seller SKU, under this goods' own category and parent spec.
+                $specId = $this->createSpecId($catId, (int) $parentSpecId, $sn, $sn);
+                if ($specId === null) {
+                    continue;
+                }
+                $details[] = ['parentSpecId' => (int) $parentSpecId, 'specId' => $specId];
+            }
+            if ($details !== []) {
+                $skuList[$i]['specDetails'] = $details;
+            }
         }
 
         return $skuList;
@@ -4516,7 +4563,7 @@ class Temu2ListingPublishService
      */
     private function remoteGoodsCatId(string $goodsId): int
     {
-        foreach ([1, 4, 5, 6] as $searchType) {
+        foreach ([1, 2, 3, 4, 5, 6] as $searchType) {
             $data = $this->temuCallBody([
                 'type' => 'bg.local.goods.list.query',
                 'goodsSearchType' => $searchType,
@@ -4719,9 +4766,10 @@ class Temu2ListingPublishService
         };
 
         if ($existing !== []) {
-            // Live SKUs go in by identity only. Sending their price or quantity back is rejected
-            // ("basePrice / quantity is incorrect"). The new SKU carries the add-listing price shape.
-            $identityKeys = array_flip(['skuId', 'outSkuSn', 'specIdList']);
+            // Live SKUs go in by sku id only. Sending their specIdList back is rejected
+            // (150011018 "spec id list is incorrect") and their price or quantity is too
+            // ("basePrice / quantity is incorrect"). The new SKU carries the add-listing price and its own spec.
+            $identityKeys = array_flip(['skuId', 'outSkuSn']);
             $merged = [];
             foreach ($existing as $row) {
                 $merged[] = array_intersect_key($row, $identityKeys);
