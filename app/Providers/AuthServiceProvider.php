@@ -29,7 +29,14 @@ class AuthServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Gate::before(function (User $user) {
+        Gate::before(function (User $user, string $ability, array $arguments = []) {
+            // Editing / deleting a task is limited to its assignor (or the president),
+            // so super-admins must go through TaskPolicy for those abilities.
+            if (($arguments[0] ?? null) instanceof \App\Models\Task
+                && in_array($ability, ['update', 'updateLinks', 'delete', 'forceDelete', 'bulkUpdate'], true)) {
+                return null;
+            }
+
             if (SuperAdminAccess::is($user)) {
                 return true;
             }

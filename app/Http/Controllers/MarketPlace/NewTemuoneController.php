@@ -43,7 +43,8 @@ class NewTemuoneController extends Controller
         return view('market-places.new_temuone_tabulator_view', [
             'temuMargin' => TemuShopifySalesService::temuMarginDecimal(),
             'temuAds' => $this->temuChannelAdsSummary(),
-            'newtemuonePageReloadPushEnabled' => ChannelPromoPricingController::isPageReloadPushEnabled('newtemuone'),
+            // Auto push is permanently off for Temu 1: prices push only from the manual push buttons.
+            'newtemuonePageReloadPushEnabled' => false,
             'newtemuonePushSpriceLive' => ChannelPushSpriceRunner::livePushAllowed(),
         ]);
     }

@@ -255,8 +255,8 @@ class TaskController extends Controller
             ];
         }
 
-        // Full-access seniors can edit any task. Delete of someone else's task is president-only.
-        $canDeleteAnyTask = TaskPolicy::userHasSpecialTaskPermission($user);
+        // Edit and delete of someone else's task is president-only; everyone else is limited to tasks they assigned.
+        $canDeleteAnyTask = TaskPolicy::userCanEditAnyTask($user);
         $canDeleteOthersTasks = TaskPolicy::userCanDeleteAnyTask($user);
         $canDeleteCorrectiveTasks = TaskPolicy::userCanDeleteCorrectiveTasks($user);
         $canChangeTaskAssignor = TaskPolicy::userCanChangeTaskAssignor($user);
@@ -3728,7 +3728,7 @@ class TaskController extends Controller
         // Checked before authorize() so Gate::before cannot restore delete-any for seniors or super-admins.
         if (! TaskPolicy::userCanDeleteTask($user, $task)) {
             $message = TaskPolicy::taskIsCorrectiveAction($task)
-                ? 'Corrective action tasks can only be deleted by the assignee, president@5core.com, inventory@5core.com, or hr@5core.com.'
+                ? 'Corrective action tasks can only be deleted by the assignee or president@5core.com.'
                 : 'You can only delete tasks you assigned.';
 
             return response()->json([
@@ -3766,7 +3766,7 @@ class TaskController extends Controller
             $message = 'Task and ' . $deletedSubtasks . ' subtask(s) deleted successfully!';
         }
         if ($skippedCaSubtasks > 0) {
-            $message .= ' '.$skippedCaSubtasks.' corrective action subtask(s) were left — only the assignee, president@5core.com, inventory@5core.com, or hr@5core.com can delete those.';
+            $message .= ' '.$skippedCaSubtasks.' corrective action subtask(s) were left — only the assignee or president@5core.com can delete those.';
         }
 
         return response()->json(['success' => true, 'message' => $message]);
@@ -4609,7 +4609,9 @@ class TaskController extends Controller
         try {
             $user = Auth::user();
             $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
-            $canBulkEditAny = $isAdmin || TaskPolicy::userHasSpecialTaskPermission($user);
+            // Editing tasks assigned by someone else is president-only. Everyone else may bulk-edit
+            // only tasks where they are the assignor (filtered per task below).
+            $canBulkEditAny = TaskPolicy::userCanEditAnyTask($user);
 
             // Check if this is for automated tasks
             // Either based on is_automated flag or specific actions only for automated tasks
@@ -4666,6 +4668,27 @@ class TaskController extends Controller
             ], 403);
         }
 
+        // Non-president users may only bulk-edit regular tasks they assigned.
+        if (! $isAutomatedTask && $action !== 'delete' && ! $canBulkEditAny) {
+            $editableIds = Task::whereIn('id', $taskIds)->get()
+                ->filter(fn ($task) => TaskPolicy::userCanEditTask($user, $task))
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all();
+
+            if ($action === 'assign_assignor' || $editableIds === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $action === 'assign_assignor'
+                        ? 'Only president@5core.com can change assignor.'
+                        : 'You can only edit tasks you assigned.',
+                ], 403);
+            }
+
+            $taskIds = $editableIds;
+        }
+
         switch ($action) {
             case 'delete':
                 if ($isAutomatedTask) {
@@ -4694,7 +4717,7 @@ class TaskController extends Controller
 
                         if ($deletedCount === 0) {
                             $message = $skippedCa > 0
-                                ? 'Corrective action tasks can only be deleted by the assignee, president@5core.com, inventory@5core.com, or hr@5core.com.'
+                                ? 'Corrective action tasks can only be deleted by the assignee or president@5core.com.'
                                 : 'You can only delete tasks you assigned. None of the selected tasks belong to you.';
 
                             return response()->json([
@@ -4749,7 +4772,7 @@ class TaskController extends Controller
                                 $skipReasons[] = $otherSkipped.' task(s) skipped — you can only delete tasks you assigned';
                             }
                             if ($skippedCa > 0) {
-                                $skipReasons[] = $skippedCa.' corrective action task(s) skipped — only the assignee, president@5core.com, inventory@5core.com, or hr@5core.com can delete those';
+                                $skipReasons[] = $skippedCa.' corrective action task(s) skipped — only the assignee or president@5core.com can delete those';
                             }
                             if ($skipReasons !== []) {
                                 $message .= ' ('.implode('; ', $skipReasons).')';
@@ -4780,11 +4803,12 @@ class TaskController extends Controller
             case 'tid':
             case 'assignee':
             case 'etc':
-                // Bulk field edits: admins + special task-permission users
-                if (!$canBulkEditAny) {
+                // Automated templates are already checked per row above; regular tasks are filtered
+                // to the user's own assigned tasks. Cross-user bulk edits stay with the president.
+                if ($isAutomatedTask && !$canBulkEditAny) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Unauthorized. Only administrators can perform bulk updates.'
+                        'message' => 'Unauthorized. You can only edit tasks you assigned.'
                     ], 403);
                 }
                 
@@ -4876,11 +4900,11 @@ class TaskController extends Controller
                 ]);
             
             case 'assign_assignor':
-                // Bulk assign assignor (admin / special task-permission users)
+                // Bulk assign assignor (president only)
                 if (!$canBulkEditAny) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Only admins can change assignor'
+                        'message' => 'Only president@5core.com can change assignor'
                     ], 403);
                 }
                 
@@ -4934,7 +4958,7 @@ class TaskController extends Controller
                 $titleSuffix = trim((string) $request->input('duplicate_title_suffix', ''));
 
                 $duplicateAssignorEmail = null;
-                if ($isAdmin && $request->filled('duplicate_assignor_id')) {
+                if ($canBulkEditAny && $request->filled('duplicate_assignor_id')) {
                     $dupAssignor = User::find((int) $request->input('duplicate_assignor_id'));
                     if ($dupAssignor && $dupAssignor->email) {
                         $duplicateAssignorEmail = $dupAssignor->email;
@@ -5006,11 +5030,11 @@ class TaskController extends Controller
                 ]);
             
             case 'assignor':
-                // Bulk update assignor for automated tasks
-                if (!$isAdmin) {
+                // Bulk update assignor for automated tasks (president only)
+                if (!$canBulkEditAny) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Only admins can change assignor'
+                        'message' => 'Only president@5core.com can change assignor'
                     ], 403);
                 }
                 
@@ -5033,7 +5057,7 @@ class TaskController extends Controller
             
             case 'freq':
                 // Bulk update frequency (schedule_type) for automated tasks
-                if (!$isAdmin) {
+                if (!$isAdmin && !$canBulkEditAny) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Only admins can change frequency'
@@ -5663,9 +5687,9 @@ class TaskController extends Controller
             return redirect()->route('tasks.automated')->with('error', 'You are not allowed to edit this automated task.');
         }
 
-        // Only admins / full task access may reassign ownership. Everyone else keeps the current assignor.
+        // Only the president may reassign ownership. Everyone else keeps the current assignor.
         $assignorEmail = $existing->assignor ?? $user->email;
-        if (AutomatedTaskAccess::hasAdminAccess($user) && $request->filled('assignor_id')) {
+        if (TaskPolicy::userCanChangeTaskAssignor($user) && $request->filled('assignor_id')) {
             $assignorUser = User::find($validated['assignor_id']);
             $assignorEmail = $assignorUser ? $assignorUser->email : $assignorEmail;
         }

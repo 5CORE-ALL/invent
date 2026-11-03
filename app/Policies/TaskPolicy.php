@@ -58,20 +58,19 @@ class TaskPolicy
     }
 
     /**
-     * May delete tasks assigned by someone else, including corrective-action tasks.
-     * Other seniors keep full edit access, but delete stays with the assignor.
+     * The only logins that may edit or delete a task they did not assign
+     * (regular tasks and automated task templates). Everyone else, including
+     * admins, super-admins and the full-access seniors, can edit/delete only
+     * tasks where they are the assignor.
      *
      * @var list<string>
      */
-    private const DELETE_ANY_TASK_EMAILS = [
+    private const PRESIDENT_EMAILS = [
         'president@5core.com',
         'presiden@5core.com',       // Known typo login used by President
-        'inventory@5core.com',      // Ritu
-        'ritu.kaur013@gmail.com',   // Ritu
-        'hr@5core.com',             // HR
     ];
 
-    public static function userCanDeleteAnyTask(?User $user): bool
+    public static function userIsPresident(?User $user): bool
     {
         if ($user === null) {
             return false;
@@ -79,7 +78,26 @@ class TaskPolicy
 
         $email = strtolower(trim((string) ($user->email ?? '')));
 
-        return $email !== '' && in_array($email, self::DELETE_ANY_TASK_EMAILS, true);
+        return $email !== '' && in_array($email, self::PRESIDENT_EMAILS, true);
+    }
+
+    /** May edit AND delete tasks assigned by someone else. President only. */
+    public static function userCanDeleteAnyTask(?User $user): bool
+    {
+        return self::userIsPresident($user);
+    }
+
+    public static function userCanEditAnyTask(?User $user): bool
+    {
+        return self::userIsPresident($user);
+    }
+
+    /**
+     * Full edit of a regular task: the assignor, or the president.
+     */
+    public static function userCanEditTask(User $user, Task $task): bool
+    {
+        return self::userIsPresident($user) || self::userIsAssignor($user, $task->assignor);
     }
 
     public static function userCanDeleteCorrectiveTasks(?User $user): bool
@@ -89,19 +107,11 @@ class TaskPolicy
 
     /**
      * May set a task's assignor to someone else.
-     * Admins already can. HR can as well, on any task.
+     * President only — reassigning the assignor hands over edit/delete rights.
      */
     public static function userCanChangeTaskAssignor(?User $user): bool
     {
-        if ($user === null) {
-            return false;
-        }
-
-        if (SuperAdminAccess::isTaskAdmin($user)) {
-            return true;
-        }
-
-        return strtolower(trim((string) ($user->email ?? ''))) === 'hr@5core.com';
+        return self::userIsPresident($user);
     }
 
     public static function taskIsCorrectiveAction(Task $task): bool
@@ -186,7 +196,7 @@ class TaskPolicy
      */
     public static function userCanModifyAutomatedTask(User $user, object $task): bool
     {
-        if (self::userHasAutomatedTaskAdminAccess($user)) {
+        if (self::userIsPresident($user)) {
             return true;
         }
 
@@ -194,14 +204,11 @@ class TaskPolicy
     }
 
     /**
-     * Delete an automate_tasks row.
-     * Assignors may delete their own. Admins, super-admins, and the delete-any
-     * emails (president / Ritu) may delete someone else's. Other full-access
-     * seniors may edit, but delete stays with the assignor — same as regular tasks.
+     * Delete an automate_tasks row: the assignor, or the president.
      */
     public static function userCanDeleteAutomatedTask(User $user, object $task): bool
     {
-        if (SuperAdminAccess::isTaskAdmin($user) || self::userCanDeleteAnyTask($user)) {
+        if (self::userIsPresident($user)) {
             return true;
         }
 
@@ -262,7 +269,7 @@ class TaskPolicy
 
     /**
      * Single source of truth for delete (row + bulk).
-     * president@5core.com, Ritu, and HR can delete any task (including CA).
+     * president@5core.com can delete any task (including CA).
      * The assignee can delete a corrective-action task assigned to them.
      * Everyone else can delete only their own non-CA tasks.
      */
@@ -398,12 +405,8 @@ class TaskPolicy
      */
     public function update(User $user, Task $task): bool
     {
-        if (self::userHasFullTaskAccess($user)) {
-            return true;
-        }
-
-        // Otherwise only the assignor can edit their own task (name or email).
-        return self::userIsAssignor($user, $task->assignor);
+        // Only the assignor (name or email) or the president can edit.
+        return self::userCanEditTask($user, $task);
     }
 
     /**
@@ -450,7 +453,7 @@ class TaskPolicy
      */
     public function bulkUpdate(User $user): bool
     {
-        return $this->isAdmin($user) || self::userHasFullTaskAccess($user);
+        return self::userIsPresident($user);
     }
 
     /**
@@ -466,6 +469,6 @@ class TaskPolicy
      */
     public function forceDelete(User $user, Task $task): bool
     {
-        return $this->isAdmin($user) || self::userHasFullTaskAccess($user);
+        return self::userCanDeleteTask($user, $task);
     }
 }

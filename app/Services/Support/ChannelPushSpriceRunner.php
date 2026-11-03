@@ -391,6 +391,8 @@ class ChannelPushSpriceRunner
                     'error' => $error,
                 ]);
                 $this->markListingEndedIfNeeded($sku, $error);
+                // eBay 2: SKU no longer on that listing → park the stale row and pull fresh listings from eBay.
+                \App\Support\Marketplace\Ebay2VariationMissingHeal::handle($this->channel, $sku, $error);
                 if ($this->channel === 'newtemuone' && $sku !== '' && $price > 0
                     && preg_match('/review your last application/i', (string) $error)) {
                     // Temu still has the previous price change under review ("Please wait for Temu to review your last

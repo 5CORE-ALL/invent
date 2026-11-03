@@ -75,25 +75,26 @@ class AutomatedTaskAccessTest extends TestCase
         $this->assertTrue(TaskPolicy::userCanDeleteAutomatedTask($user, $own));
     }
 
-    public function test_role_admin_can_view_modify_and_delete_any_template(): void
+    public function test_role_admin_can_view_but_not_modify_or_delete_others_template(): void
     {
         $admin = $this->user('admin.user@5core.com', 'Admin User', 'admin');
         $theirs = $this->template(5, 'b@5core.com', 'c@5core.com');
 
         $this->assertTrue(TaskPolicy::userCanViewAutomatedTask($admin, $theirs));
-        $this->assertTrue(TaskPolicy::userCanModifyAutomatedTask($admin, $theirs));
-        $this->assertTrue(TaskPolicy::userCanDeleteAutomatedTask($admin, $theirs));
+        $this->assertFalse(TaskPolicy::userCanModifyAutomatedTask($admin, $theirs));
+        $this->assertFalse(TaskPolicy::userCanDeleteAutomatedTask($admin, $theirs));
     }
 
-    public function test_full_access_senior_can_edit_but_not_delete_someone_elses_template(): void
+    public function test_full_access_senior_can_view_but_not_edit_or_delete_someone_elses_template(): void
     {
         $senior = $this->user('sr.manager@5core.com', 'Jasmine');
         $theirs = $this->template(6, 'b@5core.com', 'c@5core.com');
 
         $this->assertTrue(TaskPolicy::userHasFullTaskAccess($senior));
         $this->assertTrue(TaskPolicy::userCanViewAutomatedTask($senior, $theirs));
-        $this->assertTrue(TaskPolicy::userCanModifyAutomatedTask($senior, $theirs));
+        $this->assertFalse(TaskPolicy::userCanModifyAutomatedTask($senior, $theirs));
         $this->assertFalse(TaskPolicy::userCanDeleteAutomatedTask($senior, $theirs));
+        $this->assertTrue(TaskPolicy::userCanModifyAutomatedTask($senior, $this->template(7, 'sr.manager@5core.com')));
         $this->assertTrue(TaskPolicy::userCanDeleteAutomatedTask($senior, $this->template(7, 'sr.manager@5core.com')));
     }
 
@@ -103,6 +104,7 @@ class AutomatedTaskAccessTest extends TestCase
         $theirs = $this->template(8, 'b@5core.com');
 
         $this->assertTrue(TaskPolicy::userCanDeleteAutomatedTask($president, $theirs));
+        $this->assertTrue(TaskPolicy::userCanModifyAutomatedTask($president, $theirs));
     }
 
     public function test_listing_hides_other_users_templates_and_keeps_owned_and_assigned(): void

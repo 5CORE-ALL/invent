@@ -1019,6 +1019,7 @@
                             <span class="badge bg-danger fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="zero" data-metric="zero_sold_count" data-live-value="0" data-invert="1" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Click dot for trend">
                                 <span class="summary-trend-dot none" data-metric="zero_sold_count" title="Rolling history"></span>0 Sold: <span id="zero-sold-count">0</span>
                             </span>
+                            <span class="badge fs-6 p-2" id="amazon-coupon-count-badge" style="background-color: #20c997; color: black; font-weight: bold;" title="SKUs with a coupon applied (CPN % above 0)">Coupon: <span id="amazon-coupon-count">0</span></span>
                         </div>
                     </div>
                     <div class="amz-sum-block amz-sum-block--alerts">
@@ -6665,7 +6666,15 @@
                 let totalViewsAll = 0;
                 let blueTriangleCount = 0;
                 let clearanceCount = 0;
+                let couponCount = 0;
                 allData.forEach(row => {
+                    if (!row['is_parent_summary']) {
+                        const couponSku = String(row['(Child) sku'] || row['Parent'] || '').trim().toUpperCase();
+                        if (couponSku.indexOf('PARENT') !== 0) {
+                            const cpnRaw = (row['cpn_pct'] != null && row['cpn_pct'] !== '') ? row['cpn_pct'] : row['_cpn_pct_applied'];
+                            if ((parseFloat(cpnRaw) || 0) > 0) couponCount++;
+                        }
+                    }
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
                         totalViewsAll += parseFloat(row['Sess30'] || 0);
                         const sku = String(row['(Child) sku'] || row['Parent'] || '').trim().toUpperCase();
@@ -6689,6 +6698,7 @@
                 // /amazon/daily-sales) so it matches that page — do NOT overwrite it with the per-SKU
                 // A_L30 sum here.
                 // Update sold counts
+                $('#amazon-coupon-count').text(couponCount.toLocaleString());
                 $('#total-sold-count').text(totalSoldCount.toLocaleString());
                 $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
                 $('.sold-filter-badge[data-metric="sold_count"]').attr('data-live-value', totalSoldCount);

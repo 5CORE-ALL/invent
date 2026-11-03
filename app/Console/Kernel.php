@@ -1601,12 +1601,15 @@ class Kernel extends ConsoleKernel
         // NTO_SPRICE where it changed, pushes blue-triangle SKUs (INV > 0, S Base ≠ Temu base). Every 10 min, 24/7
         // on purpose (no $ist()), so a price change is pushed with the page closed.
         // --respect-switch: the page Auto push switch decides; when it is OFF this job does nothing.
-        $schedule->command('newtemuone:push-blue-prices --respect-switch')
-            ->everyTenMinutes()
-            ->name('newtemuone-push-blue-prices')
-            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // DISABLED: Temu 1 background price push is off. Prices push only from the manual push button on /new-temuone.
+        if (false) {
+            $schedule->command('newtemuone:push-blue-prices --respect-switch')
+                ->everyTenMinutes()
+                ->name('newtemuone-push-blue-prices')
+                ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
 
         // The twice-daily command below is replaced by the 10-minute job above.
         // Temu 1 is priced by dil:rule-sprice-apply temu in the loop below.
@@ -1864,10 +1867,10 @@ class Kernel extends ConsoleKernel
         // page. The enqueue only picks SKUs where saved S PRC ≠ live Price, merges into a running job
         // without duplicating pending SKUs, and the runner still applies the negative-SNROI guard and the
         // "already live" check. Staggered, 24/7 on purpose (no $ist()).
+        // newtemuone removed: Temu 1 prices push only from the manual button on /new-temuone.
         foreach ([
             ['dil', 5, 'dil'],
             ['shopify_b2c', 10, 'shopify-b2c'],
-            ['newtemuone', 20, 'newtemuone'],
         ] as [$blueArg, $blueOffset, $blueName]) {
             $schedule->command('channel:push-sprice-daily '.$blueArg)
                 ->cron(sprintf('%d,%d * * * *', $blueOffset, $blueOffset + 30))
