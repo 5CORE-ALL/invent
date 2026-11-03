@@ -146,16 +146,21 @@ class AmazonAdsMissingController extends Controller
 
         $statusMap = $this->campaignStatusMap();
         $childrenByParent = $this->childrenMetaByParent($rows, $parents);
+        $metrics = $this->campaignL30Metrics();
 
         $data = collect($parents)->map(function ($parent, $parentKey) use (
             $linksBySku,
             $inventoryByParent,
             $statusMap,
-            $childrenByParent
+            $childrenByParent,
+            $metrics
         ) {
             $sku = 'PARENT '.$parent;
             $links = $linksBySku->get($sku, collect());
             $meta = $childrenByParent[$parentKey] ?? ['children' => [], 'target_sku' => ''];
+            $kwList = $this->linkListForType($links, 'KW', $statusMap);
+            $ptList = $this->linkListForType($links, 'PT', $statusMap);
+            $hlList = $this->linkListForType($links, 'HL', $statusMap);
 
             return [
                 'parent' => $parent,
@@ -165,9 +170,12 @@ class AmazonAdsMissingController extends Controller
                 'campaign_pick' => '',
                 'target_sku' => (string) ($meta['target_sku'] ?? ''),
                 'children' => is_array($meta['children'] ?? null) ? $meta['children'] : [],
-                'pt' => $this->linkListForType($links, 'PT', $statusMap),
-                'kw' => $this->linkListForType($links, 'KW', $statusMap),
-                'hl' => $this->linkListForType($links, 'HL', $statusMap),
+                'pt' => $ptList,
+                'kw' => $kwList,
+                'hl' => $hlList,
+                'kw_m' => $this->sumCampaignMetrics($kwList, $metrics['sp']),
+                'pt_m' => $this->sumCampaignMetrics($ptList, $metrics['sp']),
+                'hl_m' => $this->sumCampaignMetrics($hlList, $metrics['sb']),
             ];
         })->values();
 
@@ -3013,6 +3021,82 @@ PROMPT;
     private function linkListForType($links, string $type, array $statusMap = []): array
     {
         return AmazonAdsMissingLinks::linkListForType($links, $type, $statusMap);
+    }
+
+    /**
+     * L30 spend / sold / sales / clicks per campaign (latest L30 report row per campaign name), keyed by normalized name.
+     * SP (KW + PT campaigns) and SB (HL campaigns) come from their own report tables.
+     *
+     * @return array{sp: array<string, array{spend: float, sold: int, sales: float, clicks: int}>, sb: array<string, array{spend: float, sold: int, sales: float, clicks: int}>}
+     */
+    private function campaignL30Metrics(): array
+    {
+        $out = ['sp' => [], 'sb' => []];
+        $sources = [
+            'sp' => [self::SP_TABLE, 'purchases30d', 'sales30d'],
+            'sb' => [self::SB_TABLE, 'purchases', 'sales'],
+        ];
+        foreach ($sources as $key => [$table, $soldCol, $salesCol]) {
+            try {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $soldCol) || ! Schema::hasColumn($table, $salesCol)) {
+                    continue;
+                }
+                $ids = DB::table($table)
+                    ->where('report_date_range', 'L30')
+                    ->whereNotNull('campaignName')
+                    ->selectRaw('MAX(id) AS max_id')
+                    ->groupBy('campaignName')
+                    ->pluck('max_id')
+                    ->filter()
+                    ->all();
+                foreach (array_chunk($ids, 1000) as $chunk) {
+                    foreach (DB::table($table)->whereIn('id', $chunk)->get(['campaignName', 'clicks', 'cost', $soldCol, $salesCol]) as $r) {
+                        $name = $this->normalizeCampaignName((string) $r->campaignName);
+                        if ($name === '') {
+                            continue;
+                        }
+                        $out[$key][$name] = [
+                            'spend' => (float) ($r->cost ?? 0),
+                            'sold' => (int) ($r->{$soldCol} ?? 0),
+                            'sales' => (float) ($r->{$salesCol} ?? 0),
+                            'clicks' => (int) ($r->clicks ?? 0),
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Amazon ads missing: L30 campaign metrics failed', ['table' => $table, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Sum the L30 metrics over a parent's linked campaigns of one type (each campaign counted once).
+     *
+     * @param  array<int, array<string, mixed>>  $links  linkListForType() rows
+     * @param  array<string, array{spend: float, sold: int, sales: float, clicks: int}>  $byName
+     * @return array{spend: float, sold: int, sales: float, clicks: int}
+     */
+    private function sumCampaignMetrics(array $links, array $byName): array
+    {
+        $sum = ['spend' => 0.0, 'sold' => 0, 'sales' => 0.0, 'clicks' => 0];
+        $seen = [];
+        foreach ($links as $l) {
+            $name = $this->normalizeCampaignName((string) ($l['campaign_name'] ?? ''));
+            if ($name === '' || isset($seen[$name]) || ! isset($byName[$name])) {
+                continue;
+            }
+            $seen[$name] = true;
+            $sum['spend'] += $byName[$name]['spend'];
+            $sum['sold'] += $byName[$name]['sold'];
+            $sum['sales'] += $byName[$name]['sales'];
+            $sum['clicks'] += $byName[$name]['clicks'];
+        }
+        $sum['spend'] = round($sum['spend'], 2);
+        $sum['sales'] = round($sum['sales'], 2);
+
+        return $sum;
     }
 
     /**

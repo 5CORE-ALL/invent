@@ -23,6 +23,10 @@
         .amz-ads-missing .parent-copy-btn:hover {
             color: #1971c2;
         }
+        .amz-ads-missing .amz-acos { display: inline-block; min-width: 56px; padding: 1px 8px; border-radius: 4px; font-weight: 600; text-align: center; }
+        .amz-ads-missing .amz-acos-low { background: #198754; color: #fff; }
+        .amz-ads-missing .amz-acos-mid { background: #ffc107; color: #212529; }
+        .amz-ads-missing .amz-acos-high { background: #dc3545; color: #fff; }
         .amz-ads-missing .amz-missing-badge {
             display: inline-flex;
             align-items: center;
@@ -339,6 +343,21 @@
                         <label class="d-flex align-items-center gap-1 mb-0 small text-muted">Campaign HL
                             <select class="form-select form-select-sm amz-top-link-filter" id="amzFilterHl" data-type="hl" style="width: 110px;">
                                 <option value="">All</option><option value="missing">Missing</option><option value="linked">Linked</option>
+                            </select>
+                        </label>
+                        <label class="d-flex align-items-center gap-1 mb-0 small text-muted">KW ACOS%
+                            <select class="form-select form-select-sm" id="amzFilterAcosKw" style="width: 130px;">
+                                <option value="">All</option><option value="low">Lowest (green)</option><option value="mid">Middle (yellow)</option><option value="high">Highest (red)</option><option value="none">No ACOS</option>
+                            </select>
+                        </label>
+                        <label class="d-flex align-items-center gap-1 mb-0 small text-muted">PT ACOS%
+                            <select class="form-select form-select-sm" id="amzFilterAcosPt" style="width: 130px;">
+                                <option value="">All</option><option value="low">Lowest (green)</option><option value="mid">Middle (yellow)</option><option value="high">Highest (red)</option><option value="none">No ACOS</option>
+                            </select>
+                        </label>
+                        <label class="d-flex align-items-center gap-1 mb-0 small text-muted">HL ACOS%
+                            <select class="form-select form-select-sm" id="amzFilterAcosHl" style="width: 130px;">
+                                <option value="">All</option><option value="low">Lowest (green)</option><option value="mid">Middle (yellow)</option><option value="high">Highest (red)</option><option value="none">No ACOS</option>
                             </select>
                         </label>
                     </div>
@@ -1175,6 +1194,75 @@
                 return sum;
             }
             // Column definition shared by "KW K Count" (keywords) and "PT Count" (targets).
+            // ---- L30 performance columns (Spend / Sold / ACOS% / CVR%) summed over a parent's linked campaigns of one type ----
+            function amzMetricValue(row, kind, metric) {
+                var m = row && row[kind + '_m'];
+                if (!m) { return null; }
+                var linked = Array.isArray(row[kind]) && row[kind].length > 0;
+                if (!linked) { return null; }
+                var spend = Number(m.spend) || 0, sold = Number(m.sold) || 0, sales = Number(m.sales) || 0, clicks = Number(m.clicks) || 0;
+                if (metric === 'spend') { return spend; }
+                if (metric === 'sold') { return sold; }
+                if (metric === 'acos') { return sales > 0 ? (spend / sales) * 100 : null; }
+                if (metric === 'cvr') { return clicks > 0 ? (sold / clicks) * 100 : null; }
+                return null;
+            }
+            // ACOS colour: compare the parent's KW / PT / HL ACOS with each other (its sibling ad types).
+            // Lowest = green, highest = red, in between = yellow. Needs at least two different values to compare.
+            function amzAcosTier(row, kind) {
+                var mine = amzMetricValue(row, kind, 'acos');
+                if (mine == null) { return null; }
+                var vals = ['kw', 'pt', 'hl'].map(function (k) { return amzMetricValue(row, k, 'acos'); })
+                    .filter(function (v) { return v != null; });
+                if (vals.length < 2) { return null; }
+                var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+                if (lo === hi) { return null; }
+                if (mine === lo) { return 'low'; }
+                if (mine === hi) { return 'high'; }
+                return 'mid';
+            }
+            // Top-bar ACOS filter: '' = all, low / mid / high = colour, none = no ACOS (no sales or no linked campaign).
+            function acosTierFilter(filterValue, row, kind) {
+                if (!filterValue) { return true; }
+                if (filterValue === 'none') { return amzMetricValue(row, kind, 'acos') == null; }
+                return amzAcosTier(row, kind) === filterValue;
+            }
+            function amzMetricText(v, metric) {
+                if (v == null) { return ''; }
+                if (metric === 'spend') { return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+                if (metric === 'sold') { return Math.round(v).toLocaleString('en-US'); }
+                return v.toFixed(1) + '%';
+            }
+            function metricColumnDefs(kind, label) {
+                var defs = [
+                    ['spend', 'Spend', 'L30 ad spend of the linked ' + label + ' campaign(s).'],
+                    ['sold', 'Sold', 'L30 units sold (purchases) from the linked ' + label + ' campaign(s).'],
+                    ['acos', 'ACOS%', 'L30 ACOS = Spend / Sales x 100 for the linked ' + label + ' campaign(s). Blank when there are no sales.'],
+                    ['cvr', 'CVR%', 'L30 CVR = Sold / Clicks x 100 for the linked ' + label + ' campaign(s). Blank when there are no clicks.']
+                ];
+                return defs.map(function (d) {
+                    var metric = d[0];
+                    return {
+                        title: label + ' ' + d[1], field: '_' + kind + '_' + metric, width: 100,
+                        headerTooltip: d[2],
+                        hozAlign: 'right', headerHozAlign: 'right',
+                        headerSort: true,
+                        sorter: function (a, b, aRow, bRow) {
+                            var av = amzMetricValue(aRow.getData(), kind, metric);
+                            var bv = amzMetricValue(bRow.getData(), kind, metric);
+                            return (av == null ? -Infinity : av) - (bv == null ? -Infinity : bv) || 0;
+                        },
+                        formatter: function (cell) {
+                            var txt = amzMetricText(amzMetricValue(cell.getData(), kind, metric), metric);
+                            if (metric !== 'acos' || txt === '') { return txt; }
+                            var tier = amzAcosTier(cell.getData(), kind);
+                            return tier ? '<span class="amz-acos amz-acos-' + tier + '">' + txt + '</span>' : txt;
+                        },
+                        accessorDownload: function (value, data) { return amzMetricText(amzMetricValue(data, kind, metric), metric); }
+                    };
+                });
+            }
+
             function countColumnDef(kind, title, tip) {
                 return {
                     title: title, field: '_' + kind + '_count', width: 110,
@@ -1231,8 +1319,8 @@
             }
 
             // Top-bar filters (replace the old per-column header filters).
-            var topFilterState = { parent: '', inventory: '', kw: '', pt: '', hl: '' };
-            var TOP_FILTER_IDS = { parent: 'amzFilterParent', inventory: 'amzFilterInventory', kw: 'amzFilterKw', pt: 'amzFilterPt', hl: 'amzFilterHl' };
+            var topFilterState = { parent: '', inventory: '', kw: '', pt: '', hl: '', acos_kw: '', acos_pt: '', acos_hl: '' };
+            var TOP_FILTER_IDS = { parent: 'amzFilterParent', inventory: 'amzFilterInventory', kw: 'amzFilterKw', pt: 'amzFilterPt', hl: 'amzFilterHl', acos_kw: 'amzFilterAcosKw', acos_pt: 'amzFilterAcosPt', acos_hl: 'amzFilterAcosHl' };
 
             function topFilterMatch(data) {
                 var s = topFilterState;
@@ -1243,7 +1331,10 @@
                 return inventoryHeaderFilter(s.inventory, data.inventory)
                     && missingHeaderFilter(s.kw, data.kw)
                     && missingHeaderFilter(s.pt, data.pt)
-                    && missingHeaderFilter(s.hl, data.hl);
+                    && missingHeaderFilter(s.hl, data.hl)
+                    && acosTierFilter(s.acos_kw, data, 'kw')
+                    && acosTierFilter(s.acos_pt, data, 'pt')
+                    && acosTierFilter(s.acos_hl, data, 'hl');
             }
 
             function combinedRowFilter(data) {
@@ -2329,7 +2420,7 @@
                             headerTooltip: 'The Amazon Ads variation check: every child SKU of this parent that needs ads is in the parent\'s KW campaign (2/2 = all present). Hover a value for the SKU lists.',
                             hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                             formatter: function (cell) { return amzPvaCell(cell.getData().parent, 'kw'); }
-                        },
+                        }].concat(metricColumnDefs('kw', 'KW')).concat([
                         {
                             title: 'CT/UP PT', field: '_create_pt', width: 100,
                             headerTooltip: 'CT = Create a new PT campaign (auto groups or ASIN targets). UP = Update an existing linked PT campaign (add targets / auto groups). Click + on a row to choose.',
@@ -2358,7 +2449,7 @@
                             headerTooltip: 'The Amazon Ads variation check: every child SKU of this parent that needs ads is in the parent\'s PT campaign (2/2 = all present). Hover a value for the SKU lists.',
                             hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                             formatter: function (cell) { return amzPvaCell(cell.getData().parent, 'pt'); }
-                        },
+                        }].concat(metricColumnDefs('pt', 'PT')).concat([
                         {
                             title: 'CT/UP HL', field: '_create_hl', width: 100,
                             headerTooltip: 'CT = Create a new HL (Sponsored Brands) campaign, PAUSED, with the brand logo / headline copied from an existing HL campaign. UP = Add the in-stock child ASINs to an existing linked HL campaign.',
@@ -2389,7 +2480,7 @@
                             hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                             formatter: function (cell) { return amzHlPvaCell(cell.getData().parent); }
                         }
-                    ]
+                    ].concat(metricColumnDefs('hl', 'HL'))))
                 });
 
                 table.on('tableBuilt', function () {
