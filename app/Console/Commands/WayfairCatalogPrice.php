@@ -16,6 +16,39 @@ class WayfairCatalogPrice extends Command
 
     private const URL = 'https://api.wayfair.io/v1/supplier-catalog-api/graphql';
 
+    /**
+     * Introspect an object type and build a "{ a b c { d e } }" selection of its scalar/enum leaves,
+     * descending into nested objects up to $depth levels. Prints each field's type as it goes.
+     */
+    private function buildSelection(callable $post, string $typeName, int $depth): string
+    {
+        $ofType = 'name kind ofType { name kind ofType { name kind ofType { name kind } } }';
+        $res = $post('query($n: String!) { __type(name: $n) { fields { name type { '.$ofType.' } } } }', ['n' => $typeName]);
+        $parts = [];
+        foreach ((array) ($res['data']['__type']['fields'] ?? []) as $f) {
+            $leaf = $f['type'];
+            $wrapped = [];
+            while (! empty($leaf['ofType'])) {
+                $wrapped[] = (string) $leaf['kind'];
+                $leaf = $leaf['ofType'];
+            }
+            $leafKind = (string) ($leaf['kind'] ?? '');
+            $leafName = (string) ($leaf['name'] ?? '');
+            $this->line(sprintf('  %s.%s : %s%s (%s)', $typeName, $f['name'], $wrapped ? implode('>', $wrapped).'>' : '', $leafName, $leafKind));
+
+            if ($leafKind === 'SCALAR' || $leafKind === 'ENUM') {
+                $parts[] = $f['name'];
+            } elseif ($leafKind === 'OBJECT' && $depth > 1 && ! in_array($leafName, [$typeName], true)) {
+                $inner = $this->buildSelection($post, $leafName, $depth - 1);
+                if (! preg_match('/\{\s*\}/', $inner)) {
+                    $parts[] = $f['name'].' '.$inner;
+                }
+            }
+        }
+
+        return '{ '.implode(' ', $parts).' }';
+    }
+
     public function handle(WayfairApiService $wayfair): int
     {
         if (! $wayfair->isConfigured()) {
@@ -73,24 +106,13 @@ class WayfairCatalogPrice extends Command
 
         $selection = 'retailPrice';
         if ($kind === 'OBJECT') {
-            $sub = $post('query($n: String!) { __type(name: $n) { fields { name type { name kind ofType { name kind } } } } }', ['n' => $typeName]);
-            $names = [];
-            foreach ((array) ($sub['data']['__type']['fields'] ?? []) as $f) {
-                $leaf = $f['type'];
-                while (empty($leaf['name']) && ! empty($leaf['ofType'])) {
-                    $leaf = $leaf['ofType'];
-                }
-                if (($leaf['kind'] ?? '') === 'SCALAR' || ($leaf['kind'] ?? '') === 'ENUM') {
-                    $names[] = $f['name'];
-                }
-            }
-            if ($names === []) {
-                $this->error("retailPrice is an object ({$typeName}) with no scalar subfields I can select.");
+            $selection = 'retailPrice '.$this->buildSelection($post, $typeName, 3);
+            $this->line('  selection: '.$selection);
+            if (! str_contains($selection, '{') || preg_match('/\{\s*\}/', $selection)) {
+                $this->error("retailPrice is an object ({$typeName}) and I could not find any readable subfields.");
 
                 return self::FAILURE;
             }
-            $this->line('  subfields: '.implode(', ', $names));
-            $selection = 'retailPrice { '.implode(' ', $names).' }';
         }
 
         // 2) SKUs to read
