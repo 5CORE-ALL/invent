@@ -42,31 +42,26 @@
 
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <h4 class="mb-2">Reverb Bump — Raw API Data</h4>
-                <div id="summary-stats" class="mb-2 p-2 bg-light rounded">
-                    <div class="d-flex flex-wrap align-items-center gap-1">
-                        <span class="badge flex-shrink-0" id="rd-ads-percent-badge"
-                            style="background-color: #fd7e14; color: white; font-weight: bold;"
-                            title="Reverb Ads% (Bump fees ÷ L30 Sales) — same value as the Ads badge on /reverb-pricing{{ !empty($reverbBumpAds['sales']) ? ' · L30 bump fees $'.number_format((float) $reverbBumpAds['spend'], 2).' ÷ L30 sales $'.number_format((float) $reverbBumpAds['sales'], 2) : '' }}">Ads: {{ isset($reverbAdsPercent) ? round((float) $reverbAdsPercent, 1) . '%' : 'N/A' }}</span>
-                    </div>
-                </div>
-                <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                    <input type="text" id="sku-search" class="form-control form-control-sm" style="max-width: 260px;"
-                        placeholder="Search SKU / listing id / title...">
-                    <select id="filter-status" class="form-select form-select-sm" style="max-width: 190px;">
+            <div class="card-body py-2">
+                <div class="d-flex align-items-center flex-nowrap gap-1" id="bump-toolbar" style="overflow-x:auto;">
+                    <span class="badge flex-shrink-0" id="rd-ads-percent-badge"
+                        style="background-color: #fd7e14; color: white; font-weight: bold;"
+                        title="Reverb Ads% (Bump fees ÷ L30 Sales) — same value as the Ads badge on /reverb-pricing{{ !empty($reverbBumpAds['sales']) ? ' · L30 bump fees $'.number_format((float) $reverbBumpAds['spend'], 2).' ÷ L30 sales $'.number_format((float) $reverbBumpAds['sales'], 2) : '' }}">Ads: {{ isset($reverbAdsPercent) ? round((float) $reverbAdsPercent, 1) . '%' : 'N/A' }}</span>
+                    <input type="text" id="sku-search" class="form-control form-control-sm flex-shrink-0" style="width: 150px;"
+                        placeholder="Search SKU...">
+                    <select id="filter-status" class="form-select form-select-sm flex-shrink-0" style="width: 118px;" title="Pull status">
                         <option value="all">All listings</option>
                         <option value="pulled">Pulled (HTTP 200)</option>
                         <option value="failed">Pull failed</option>
                         <option value="never">Never pulled</option>
                     </select>
-                    <select id="filter-sold" class="form-select form-select-sm" style="max-width: 210px;"
+                    <select id="filter-sold" class="form-select form-select-sm flex-shrink-0" style="width: 150px;"
                         title="Filter by the Sold (L30) dot">
                         <option value="all">🔴🟢 All sold</option>
                         <option value="green">🟢 Green — Sold &gt; 0 (performing)</option>
                         <option value="red">🔴 Red — Sold = 0 (non-performing)</option>
                     </select>
-                    <select id="filter-rule" class="form-select form-select-sm" style="max-width: 230px;"
+                    <select id="filter-rule" class="form-select form-select-sm flex-shrink-0" style="width: 140px;"
                         title="Filter by the Rule note (exceptions skipped by the Bump rule)">
                         <option value="all">Rule note: all</option>
                         <option value="none">No exception (will be updated)</option>
@@ -75,28 +70,29 @@
                         <option value="high">High volume</option>
                         <option value="premium">Premium item</option>
                     </select>
-                    <button type="button" class="btn btn-sm btn-primary" id="pull-all-btn">
+                    <button type="button" class="btn btn-sm btn-primary flex-shrink-0" id="pull-all-btn" title="Pull raw Bump data for every listing">
                         <i class="fa fa-download"></i> Pull All
                     </button>
-                    <button type="button" class="btn btn-sm btn-danger d-none" id="pull-stop-btn">
+                    <button type="button" class="btn btn-sm btn-danger d-none flex-shrink-0" id="pull-stop-btn">
                         <i class="fa fa-stop"></i> Stop
                     </button>
-                    <span id="pull-progress" class="small text-muted"></span>
-                    <button type="button" class="btn btn-sm btn-outline-warning" id="sold-bump-btn"
+                    <button type="button" class="btn btn-sm btn-outline-warning flex-shrink-0" id="sold-bump-btn"
                         title="Sold vs Bump rules — fill S Bump% from L30 sales (same rules as /reverb-pricing)">
-                        <i class="fa fa-sliders"></i> Sold vs Bump…
+                        <i class="fa fa-sliders"></i> Sold vs Bump
                     </button>
-                    <button type="button" class="btn btn-sm btn-success" id="push-sbump-btn"
+                    <button type="button" class="btn btn-sm btn-success flex-shrink-0" id="push-sbump-btn"
                         title="Push S Bump% to the live Reverb Bump bid for the rows shown">
                         <i class="fa fa-upload"></i> Push S Bump%
                     </button>
-                    <a href="{{ route('reverb.bump.log') }}" class="btn btn-sm btn-outline-info"
+                    <a href="{{ route('reverb.bump.log') }}" class="btn btn-sm btn-outline-info flex-shrink-0"
                         title="Change log, no-sales review list and 5% → 2% candidates">
-                        <i class="fa fa-clipboard-list"></i> History &amp; Monitor
+                        <i class="fa fa-clipboard-list"></i> History
                     </a>
-                    <span id="sbump-progress" class="small text-muted"></span>
+                    <span id="pull-progress" class="small text-muted flex-shrink-0"></span>
+                    <span id="sbump-progress" class="small text-muted flex-shrink-0"></span>
+                    <span class="small text-muted text-truncate" id="summary-line" style="flex: 1 1 0; min-width: 60px;"></span>
 
-                    <div class="dropdown d-inline-block ms-auto">
+                    <div class="dropdown d-inline-block flex-shrink-0">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
                             data-bs-auto-close="outside" aria-expanded="false">
                             <i class="fa fa-eye"></i> Columns
@@ -104,14 +100,13 @@
                         <ul class="dropdown-menu dropdown-menu-end" id="column-dropdown-menu"
                             style="width: min(1280px, 94vw); max-height: 75vh; overflow: hidden; padding: 8px 0;"></ul>
                     </div>
-                    <button type="button" class="btn btn-sm btn-success" id="export-btn">
-                        <i class="fa fa-file-csv"></i> Export CSV
+                    <button type="button" class="btn btn-sm btn-success flex-shrink-0" id="export-btn" title="Export CSV">
+                        <i class="fa fa-file-csv"></i> CSV
                     </button>
                 </div>
-                <div class="small text-muted" id="summary-line"></div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <div id="bump-table" style="height: calc(100vh - 260px);"></div>
+                <div id="bump-table" style="height: calc(100vh - 215px);"></div>
             </div>
         </div>
     </div>
@@ -584,10 +579,13 @@
                 ro[3].textContent = 'Low stock (' + rk.low + ')';
                 ro[4].textContent = 'High volume (' + rk.high + ')';
                 ro[5].textContent = 'Premium item (' + rk.premium + ')';
-                document.getElementById('summary-line').textContent =
+                const sumEl = document.getElementById('summary-line');
+                const summary =
                     all.length + ' listings · ' + green + ' green · ' + red + ' red · ' + pulled + ' pulled · ' + failed + ' failed · ' +
                     (all.length - pulled - failed) + ' never pulled · ' + table.getDataCount('active') + ' shown · ' +
                     rawKeys.length + ' raw fields';
+                sumEl.textContent = summary;
+                sumEl.title = summary;   // full text on hover when the row truncates it
             }
             const scheduleSummary = debounce(updateSummary, 300);
 
