@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Shopify Open Box Analytics — its own page and its own calculations.
@@ -102,8 +103,13 @@ class ShopifyOpenBoxAnalyticsController extends Controller
         // One pass over shopify_skus: index every SKU (for the base-product lookup) and collect open box SKUs.
         $byNorm = [];
         $openBox = [];
+        // b2b_price holds Shopify's compare-at (struck-through) price = the open box listing's original price.
+        $columns = ['id', 'sku', 'variant_id', 'inv', 'quantity', 'price', 'views', 'image_src', 'product_link'];
+        if (Schema::hasColumn('shopify_skus', 'b2b_price')) {
+            $columns[] = 'b2b_price';
+        }
         ShopifySku::query()
-            ->select(['id', 'sku', 'variant_id', 'inv', 'quantity', 'price', 'views', 'image_src', 'product_link'])
+            ->select($columns)
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->orderBy('id')
@@ -143,7 +149,10 @@ class ShopifyOpenBoxAnalyticsController extends Controller
             $inv = (float) ($shopify->inv ?? 0);
             $l30 = (float) max((int) ($shopify->quantity ?? 0), ShopifySku::ovL30SoldForSku($shopify->sku));
             $views = (float) ($shopify->views ?? 0);
-            $basePrice = $baseShopify ? (float) ($baseShopify->price ?? 0) : null;
+            $baseShopifyPrice = $baseShopify ? (float) ($baseShopify->price ?? 0) : null;
+            // Original price: the open box SKU's own compare-at price; if not set, the new (base) SKU's price.
+            $compareAt = is_numeric($shopify->b2b_price ?? null) ? (float) $shopify->b2b_price : 0.0;
+            $basePrice = $compareAt > 0 ? $compareAt : $baseShopifyPrice;
 
             $calc = self::calc($price, $lp, $ship, $inv, $l30, $views, $basePrice);
 

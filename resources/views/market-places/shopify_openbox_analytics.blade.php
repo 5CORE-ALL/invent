@@ -144,7 +144,7 @@
                     }},
                     {title: 'CVR %', field: 'cvr', hozAlign: 'center', sorter: 'number', width: 70, formatter: (c) => num(c.getValue()).toFixed(1) + '%'},
                     {title: 'Price', field: 'price', hozAlign: 'right', sorter: 'number', width: 80, formatter: (c) => moneyCell(c)},
-                    {title: 'Base Price', field: 'base_price', hozAlign: 'right', sorter: 'number', width: 90, formatter: (c) => moneyCell(c)},
+                    {title: 'Original Price', field: 'base_price', hozAlign: 'right', sorter: 'number', width: 100, formatter: (c) => moneyCell(c)},
                     {title: 'Disc vs Base', field: 'discount_vs_base', hozAlign: 'center', sorter: 'number', width: 90, formatter: (c) => {
                         const v = c.getValue();
                         return (v === null || v === undefined) ? '<span class="text-muted">—</span>' : `${Math.round(num(v))}%`;
