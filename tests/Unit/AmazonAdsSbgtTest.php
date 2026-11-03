@@ -46,6 +46,23 @@ class AmazonAdsSbgtTest extends TestCase
         $this->assertSame(0, AmazonAdsSbgt::sumFromParts(0.4, 0.3, null)); // < 1 → pause
     }
 
+    public function test_negative_total_is_kept_not_clamped_to_zero(): void
+    {
+        $this->assertSame(-3, AmazonAdsSbgt::sumFromParts(-8, 5, null)); // -8 + 5
+        $this->assertSame(-6, AmazonAdsSbgt::sumFromParts(0, 0, 0, 0, -6, 0));
+        $this->assertSame(-2, AmazonAdsSbgt::sumFromParts(-8, 1, 2, 3, 0, 0, 0, 0));
+        $this->assertSame(-3, AmazonAdsSbgt::sumFromParts(-3.5, 0, null)); // toward zero
+        $this->assertSame(0, AmazonAdsSbgt::sumFromParts(-0.4, 0, null));
+        $this->assertSame('-3.00', AmazonAdsSbgt::storageValue(-3));
+    }
+
+    public function test_negative_total_is_never_pushed_and_pauses_like_zero(): void
+    {
+        $this->assertTrue(AmazonAdsSbgt::isExplicitZero(-3));
+        $this->assertTrue(AmazonAdsSbgt::isExplicitZero('-8'));
+        $this->assertNull(AmazonAdsSbgt::parsePushableBudget(-3));
+    }
+
     public function test_decimal_budget_is_pushed_as_floor(): void
     {
         $this->assertSame(4, AmazonAdsSbgt::parsePushableBudget(4.5));

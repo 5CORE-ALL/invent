@@ -2297,7 +2297,10 @@
                 }
                 if (!has) return null;
                 // Parts may carry decimals (e.g. 1.5); the SBGT total is floored (4.5 → 4) before push.
-                sum = Math.floor(Math.round(sum * 1e6) / 1e6);
+                // A negative total (e.g. -8 + 5 = -3) is KEPT so the column is a true sum; it is never pushed as a budget (pauses like 0).
+                sum = Math.round(sum * 1e6) / 1e6;
+                if (sum < 0) return Math.ceil(sum) || 0;
+                sum = Math.floor(sum);
                 return sum < 1 ? 0 : sum;
             }
             function amzApplyAcosDrivenBgt(rows) {
@@ -2549,7 +2552,7 @@
                 var ad = row && row.ad_type != null ? String(row.ad_type) : '';
                 var trend = kind === 'lbid' ? (row.lbid_trend || 'na') : (kind === 'sbid' ? (row.sbid_trend || 'na') : (row.sbgt_trend || 'na'));
                 var current = parseFloat(kind === 'lbid' ? row.last_sbid : (kind === 'sbid' ? row.sbid : row.sbgt));
-                if (kind === 'sbgt' && isFinite(current) && current === 0) trend = 'down';
+                if (kind === 'sbgt' && isFinite(current) && current <= 0) trend = 'down';
                 // Lbid starts green: first day (no previous day yet) shows green, not gray.
                 if (kind === 'lbid' && trend === 'na' && isFinite(current)) trend = 'up';
                 // API already saved today and the bid is unchanged: green, not gray.
@@ -2787,15 +2790,17 @@
                 var gpftBgt = amzBgtPartNum(row && row.bgtGpft);
                 var flagBgt = amzBgtPartNum(row && row.bgtFlag);
                 var bgt = parseFloat(row && row.bgt);
-                var inSync = isFinite(bgt) && Math.round(bgt) === t;
-                var color = t === 0 ? '#dc2626' : (inSync ? '#64748b' : '#0f766e');
+                var inSync = isFinite(bgt) && Math.round(bgt) === Math.max(0, t);
+                var color = t <= 0 ? '#dc2626' : (inSync ? '#64748b' : '#0f766e');
                 var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt GPFT + Bgt FLAG';
                 var partsSum = (isFinite(views) ? views : 0) + (isFinite(cvr) ? cvr : 0) + (isFinite(acos) ? acos : 0) + (isFinite(prc) ? prc : 0) + (isFinite(rev) ? rev : 0) + (isFinite(dilBgt) ? dilBgt : 0) + (isFinite(gpftBgt) ? gpftBgt : 0) + (isFinite(flagBgt) ? flagBgt : 0);
                 tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0) + ' + ' + (isFinite(dilBgt) ? dilBgt : 0) + ' + ' + ' + ' + (isFinite(gpftBgt) ? gpftBgt : 0) + ' + ' + (isFinite(flagBgt) ? flagBgt : 0);
                 if (Math.abs(partsSum - Math.round(partsSum)) > 0.0001) {
                     tip += ' = ' + (Math.round(partsSum * 100) / 100) + ' → floored to ' + t;
                 }
-                if (t === 0) {
+                if (t < 0) {
+                    tip += ' · total is negative ($' + t + ') — cannot push a negative budget, campaign will be paused';
+                } else if (t === 0) {
                     tip += ' · total is $0 — cannot push $0, campaign will be paused';
                 } else if (isFinite(bgt)) {
                     tip += inSync ? ' · matches BGT' : (' · BGT ' + Math.round(bgt) + ' → auto-push');
@@ -3678,12 +3683,12 @@
             }
             function amzShownBudgetMatches(row) {
                 var live = parseFloat(row && row.bgt);
-                var want = parseFloat(row && row.sbgt);
+                var want = Math.max(0, parseFloat(row && row.sbgt)); // negative SBGT total = pause ($0)
                 return isFinite(live) && isFinite(want) && Math.abs(live - want) <= 0.015;
             }
             function amzShownBudgetDiffers(row) {
                 var live = parseFloat(row && row.bgt);
-                var want = parseFloat(row && row.sbgt);
+                var want = Math.max(0, parseFloat(row && row.sbgt)); // negative SBGT total = pause ($0)
                 return isFinite(live) && isFinite(want) && Math.abs(live - want) > 0.015;
             }
             function amzFmtMoneyWithSync(cell, field, historyKind) {
@@ -5789,8 +5794,9 @@
             function amzPickSbgtTierFromRow(row) {
                 if (row.sbgt === null || row.sbgt === undefined || row.sbgt === '') return null;
                 var t = parseInt(row.sbgt, 10);
-                if (isNaN(t) || t < 0 || t > 9999) return null;
-                return t;
+                if (isNaN(t) || t > 9999) return null;
+                // A negative total cannot be pushed as a budget: send 0 so the campaign is paused (same as a $0 total).
+                return t < 0 ? 0 : t;
             }
             function amzCurrentPushRows() {
                 if (!table) return [];

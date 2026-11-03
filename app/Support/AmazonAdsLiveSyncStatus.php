@@ -247,6 +247,8 @@ final class AmazonAdsLiveSyncStatus
         if ($live === null || $want === null) {
             return false;
         }
+        // A negative SBGT total means "pause" (budget $0), so compare against 0.
+        $want = max(0.0, (float) $want);
 
         return AmazonAdsApiRetry::valuesMatch($live, $want, 0.015);
     }
@@ -258,6 +260,8 @@ final class AmazonAdsLiveSyncStatus
         if ($live === null || $want === null) {
             return false;
         }
+        // A negative SBGT total means "pause" (budget $0), so compare against 0.
+        $want = max(0.0, (float) $want);
 
         return ! AmazonAdsApiRetry::valuesMatch($live, $want, 0.015);
     }

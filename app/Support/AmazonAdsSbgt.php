@@ -35,7 +35,25 @@ public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAc
             return null;
         }
 
-        return self::floorBudget($sum);
+        return self::floorSum($sum);
+    }
+
+    /**
+     * Total of the rule parts, shown as-is on the grid. Unlike {@see floorBudget} a negative total is KEPT
+     * (e.g. -8 + 5 = -3) so the column is a true sum. 0..<1 is 0; 4.5 → 4; -3.5 → -3 (toward zero).
+     * A total of 0 or below is never pushed as a budget — callers pause the campaign (see {@see isExplicitZero}).
+     */
+    public static function floorSum(float $value): int
+    {
+        if (! is_finite($value)) {
+            return 0;
+        }
+        $n = round($value, 6);
+        if ($n < 0) {
+            return (int) ceil($n);
+        }
+
+        return (int) floor($n) < 1 ? 0 : (int) floor($n);
     }
 
     /**
@@ -74,7 +92,8 @@ public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAc
             return false;
         }
 
-        return (int) round((float) $raw, 6) === 0;
+        // 0 and any negative total (e.g. -3) mean "no budget": pause, never push.
+        return (int) round((float) $raw, 6) <= 0;
     }
 
     /**
@@ -103,7 +122,8 @@ public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAc
             return null;
         }
         $n = round((float) $computed, 2);
-        if (! is_finite($n) || $n < 0) {
+        // Negative totals are stored as-is (-3.00) so the SBGT column shows the real sum.
+        if (! is_finite($n)) {
             return null;
         }
 

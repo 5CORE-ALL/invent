@@ -4152,7 +4152,7 @@ class AmazonAdsController extends Controller
         $budget = self::storedBudgetAmountSql($table);
         $sbgt = self::storedSbgtColumnSql($table);
 
-        return "({$budget} IS NOT NULL AND {$sbgt} IS NOT NULL AND ABS(({$budget} + 0) - ({$sbgt} + 0)) <= 0.015)";
+        return "({$budget} IS NOT NULL AND {$sbgt} IS NOT NULL AND ABS(({$budget} + 0) - GREATEST({$sbgt} + 0, 0)) <= 0.015)";
     }
 
     private static function storedBudgetDiffersSql(string $table): string
@@ -4160,7 +4160,7 @@ class AmazonAdsController extends Controller
         $budget = self::storedBudgetAmountSql($table);
         $sbgt = self::storedSbgtColumnSql($table);
 
-        return "({$budget} IS NOT NULL AND {$sbgt} IS NOT NULL AND ABS(({$budget} + 0) - ({$sbgt} + 0)) > 0.015)";
+        return "({$budget} IS NOT NULL AND {$sbgt} IS NOT NULL AND ABS(({$budget} + 0) - GREATEST({$sbgt} + 0, 0)) > 0.015)";
     }
 
     private static function storedBudgetDesiredMatchesSql(string $table): string

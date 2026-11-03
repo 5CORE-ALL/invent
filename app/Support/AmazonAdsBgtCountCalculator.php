@@ -281,6 +281,8 @@ final class AmazonAdsBgtCountCalculator
             );
             // A campaign no slab gives a budget to has $0, so every campaign is counted.
             $total ??= 0;
+            // A negative total also pauses the campaign, so it is counted (and budgeted) as $0.
+            $total = max(0, $total);
             $campaigns++;
             $sbgtTotal += $total;
             $buckets[$total] = ($buckets[$total] ?? 0) + 1;
