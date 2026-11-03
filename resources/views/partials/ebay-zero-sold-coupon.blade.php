@@ -666,6 +666,9 @@
             const sku = rowSku(data);
             if (!sku || codeBySku[sku.toUpperCase()]) return;
             codeBySku[sku.toUpperCase()] = true;
+            // Not listed on this eBay account (no listing id): the server can only answer "item_id not found",
+            // so do not send it on every load.
+            if (Object.prototype.hasOwnProperty.call(data, 'eBay_item_id') && !String(data.eBay_item_id || '').trim()) return;
             const stored = String(data.zero_sold_coupon_code || '').trim().toUpperCase();
             const want = columnCode(data).toUpperCase();
             if (want && stored === want) return;
