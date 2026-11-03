@@ -396,8 +396,6 @@
             function baseColumns() {
                 return [
                     { title: 'SKU', field: 'sku', frozen: true, width: 170, headerFilter: 'input', hozAlign: 'left', headerHozAlign: 'left' },
-                    { title: 'Listing ID', field: 'listing_id', width: 110, headerFilter: 'input' },
-                    { title: 'Title', field: 'title', width: 220, headerFilter: 'input' },
                     { title: 'State', field: 'listing_state', width: 80 },
                     { title: 'Live Bump%', field: 'bump_bid', width: 90 },
                     {
