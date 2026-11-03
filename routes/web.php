@@ -4229,6 +4229,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/reverb-bump/data', [\App\Http\Controllers\MarketPlace\ReverbBumpController::class, 'data'])->name('reverb.bump.raw.data');
     Route::post('/reverb-bump/pull', [\App\Http\Controllers\MarketPlace\ReverbBumpController::class, 'pull'])->name('reverb.bump.raw.pull');
     Route::post('/reverb-bump/push', [\App\Http\Controllers\MarketPlace\ReverbBumpController::class, 'push'])->name('reverb.bump.raw.push');
+    Route::get('/reverb-bump/rule-config', [\App\Http\Controllers\MarketPlace\ReverbBumpController::class, 'ruleConfig'])->name('reverb.bump.rule.config');
+    Route::post('/reverb-bump/rule-apply', [\App\Http\Controllers\MarketPlace\ReverbBumpController::class, 'ruleApply'])->name('reverb.bump.rule.apply');
+    Route::get('/reverb-bump-log', [\App\Http\Controllers\MarketPlace\ReverbBumpController::class, 'logIndex'])->name('reverb.bump.log');
+    Route::get('/reverb-bump-log/data', [\App\Http\Controllers\MarketPlace\ReverbBumpController::class, 'logData'])->name('reverb.bump.log.data');
     Route::post('/reverb-save-links', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveLinks'])->name('reverb.save.links');
     Route::post('/reverb-save-recommended-bid', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveRecommendedBid'])->name('reverb.save.recommended.bid');
     Route::post('/reverb-save-recommended-bids', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveRecommendedBids'])->name('reverb.save.recommended.bids');

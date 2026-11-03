@@ -150,6 +150,11 @@ class ReverbPushBumpRunner
                 $error = null;
                 $display = null;
                 try {
+                    $snapshot = ReverbBumpRuleService::snapshot($sku);
+                } catch (\Throwable) {
+                    $snapshot = [];
+                }
+                try {
                     $res = $api->applyListingBumpBid($sku, $bump);
                     if (! empty($res['success'])) {
                         $ok = true;
@@ -165,6 +170,12 @@ class ReverbPushBumpRunner
                         'bump' => $bump,
                         'error' => $error,
                     ]);
+                }
+
+                try {
+                    ReverbBumpRuleService::logPush((string) ($state['id'] ?? ''), 'manual', $sku, $snapshot, $bump, $ok, $ok ? ($display ?: 'pushed') : $error);
+                } catch (\Throwable $e) {
+                    $logger->warning('Reverb Push B% change-log write failed', ['sku' => $sku, 'error' => $e->getMessage()]);
                 }
 
                 $store->update(function (array $state) use ($index, $sku, $ok, $error, $display) {

@@ -60,6 +60,10 @@
                         title="Push S Bump% to the live Reverb Bump bid for the rows shown">
                         <i class="fa fa-upload"></i> Push S Bump%
                     </button>
+                    <a href="{{ route('reverb.bump.log') }}" class="btn btn-sm btn-outline-info"
+                        title="Change log, no-sales review list and 5% → 2% candidates">
+                        <i class="fa fa-clipboard-list"></i> History &amp; Monitor
+                    </a>
                     <span id="sbump-progress" class="small text-muted"></span>
 
                     <div class="dropdown d-inline-block ms-auto">
@@ -114,8 +118,23 @@
                             <div class="col-5"><input type="number" min="0" step="1" class="form-control form-control-sm" id="sb-skip-low-stock" value="0" title="0 = off"></div>
                             <div class="col-7"><label class="small mb-0" for="sb-skip-high-volume">Skip high-volume (Sold above)</label></div>
                             <div class="col-5"><input type="number" min="0" step="1" class="form-control form-control-sm" id="sb-skip-high-volume" value="0" title="0 = off"></div>
+                            <div class="col-7"><label class="small mb-0" for="sb-premium-price">Premium item (Price above $) — review manually</label></div>
+                            <div class="col-5"><input type="number" min="0" step="1" class="form-control form-control-sm" id="sb-premium-price" value="0" title="0 = off"></div>
                         </div>
-                        <div class="small text-muted mt-1">0 = off. Premium items: review manually after applying.</div>
+                        <div class="small text-muted mt-1">0 = off. Skipped rows keep their S Bump% and are logged with the reason.</div>
+                    </div>
+                    <div class="border rounded p-2 mt-2">
+                        <div class="form-check mb-1">
+                            <input class="form-check-input" type="checkbox" id="sb-auto-enabled">
+                            <label class="form-check-label small fw-semibold" for="sb-auto-enabled">
+                                Auto-run weekly (Mon 11:30 IST): re-apply the rule and push to Reverb
+                            </label>
+                        </div>
+                        <div class="small text-muted">Uses the saved rules + exceptions above, so a SKU that started selling moves 5% → 2% on the next cycle. Saved when you click Apply.</div>
+                        <div class="row g-2 align-items-center mt-1">
+                            <div class="col-7"><label class="small mb-0" for="sb-review-days">Flag "no sales" for review after (days)</label></div>
+                            <div class="col-5"><input type="number" min="1" step="1" class="form-control form-control-sm" id="sb-review-days" value="14"></div>
+                        </div>
                     </div>
                     <div class="small text-muted mt-2" id="sold-bump-status"></div>
                 </div>
@@ -155,8 +174,8 @@
                 data: @json(route('reverb.bump.raw.data')),
                 pull: @json(route('reverb.bump.raw.pull')),
                 push: @json(route('reverb.bump.raw.push')),
-                rules: @json(url('/channel-promo-pricing/reverb/dil-bump')),
-                saveSBumps: @json(route('reverb.save.recommended.bids')),
+                ruleConfig: @json(route('reverb.bump.rule.config')),
+                ruleApply: @json(route('reverb.bump.rule.apply')),
                 queuePush: @json(route('reverb.push-bump.queue')),
                 pushStatus: @json(route('reverb.push-bump.status')),
             };
@@ -178,7 +197,7 @@
             const BASE_FIELD_GROUP = {
                 sku: 'basic', listing_id: 'basic', title: 'basic', listing_state: 'basic',
                 http_status: 'basic', fetched_at: 'basic',
-                bump_bid: 'bid', push_bump: 'bid', sold: 'bid', inv: 'bid', s_bump: 'bid',
+                bump_bid: 'bid', push_bump: 'bid', sold: 'bid', inv: 'bid', price: 'bid', s_bump: 'bid', skip_reason: 'bid',
             };
 
             /** Group of a column definition: base fields by name, raw fields by their data path. */
@@ -325,10 +344,19 @@
                     { title: 'Sold (L30)', field: 'sold', width: 80, hozAlign: 'right', headerTooltip: 'RV L30 — Reverb sales, last 30 days' },
                     { title: 'INV', field: 'inv', width: 70, hozAlign: 'right', headerTooltip: 'Shopify inventory' },
                     {
+                        title: 'Price', field: 'price', width: 80, hozAlign: 'right',
+                        formatter: c => (c.getValue() === null || c.getValue() === undefined) ? '<span class="rb-null">—</span>' : Number(c.getValue()).toFixed(2),
+                    },
+                    {
                         title: 'S Bump%', field: 's_bump', width: 85, hozAlign: 'right',
                         headerTooltip: 'Seller Bump% (same as /reverb-pricing). Filled by Sold vs Bump; pushed with Push S Bump%.',
                         formatter: c => (c.getValue() === null || c.getValue() === undefined || c.getValue() === '')
                             ? '<span class="rb-null">—</span>' : String(c.getValue()).replace(/</g, '&lt;'),
+                    },
+                    {
+                        title: 'Rule note', field: 'skip_reason', width: 180,
+                        headerTooltip: 'Why the last Apply skipped this row (low stock / high volume / premium)',
+                        formatter: c => c.getValue() ? '<span class="text-warning">' + String(c.getValue()).replace(/</g, '&lt;') + '</span>' : '',
                     },
                     { title: 'HTTP', field: 'http_status', width: 70, formatter: statusFormatter, hozAlign: 'center' },
                     { title: 'Pulled At', field: 'fetched_at', width: 140 },
@@ -614,20 +642,6 @@
             const BUMP_CHECKLIST = { soldBump: 2, noSaleBump: 5, minStock: 5, highVolumeSold: 10 };
             let soldBumpRules = SOLD_BUMP_DEFAULTS.map(r => Object.assign({}, r));
 
-            function soldSlabKey(sold) {
-                const n = Math.round(Number(sold));
-                if (!isFinite(n) || n <= 0) return '0';
-                if (n > 10) return 'gt-10';
-                if (n >= 8) return '8-10';
-                return String(n);
-            }
-            function bumpForSold(sold) {
-                const rule = soldBumpRules.find(r => r.key === soldSlabKey(sold));
-                const n = rule ? Number(rule.bump) : 0;
-                return isFinite(n) && n >= 0 ? n : 0;
-            }
-            function fmtSBump(n) { return String(Math.round(n)) + '%'; }
-
             function renderSoldBumpRules() {
                 const tb = document.getElementById('sold-bump-tbody');
                 tb.innerHTML = '';
@@ -652,10 +666,16 @@
                 const st = document.getElementById('sold-bump-status');
                 st.textContent = 'Loading…';
                 try {
-                    const res = await fetch(URLS.rules, { headers: { 'Accept': 'application/json' } });
+                    const res = await fetch(URLS.ruleConfig, { headers: { 'Accept': 'application/json' } });
                     const j = await res.json();
                     if (j && Array.isArray(j.rules) && j.rules.length) soldBumpRules = j.rules.map(r => Object.assign({}, r));
-                    st.textContent = j && j.is_default ? 'Using first-time defaults. Apply to save & fill S Bump%.' : 'Saved Sold vs Bump rules loaded.';
+                    const s = (j && j.settings) || {};
+                    document.getElementById('sb-skip-low-stock').value = s.min_stock ?? 0;
+                    document.getElementById('sb-skip-high-volume').value = s.high_volume_sold ?? 0;
+                    document.getElementById('sb-premium-price').value = s.premium_price ?? 0;
+                    document.getElementById('sb-review-days').value = s.review_after_days ?? 14;
+                    document.getElementById('sb-auto-enabled').checked = !!s.auto_enabled;
+                    st.textContent = 'Saved rules & exceptions loaded (same rules as /reverb-pricing).';
                 } catch (e) {
                     st.textContent = 'Could not load saved rules — showing defaults.';
                 }
@@ -666,6 +686,7 @@
                 renderSoldBumpRules();
                 document.getElementById('sb-skip-low-stock').value = BUMP_CHECKLIST.minStock;
                 document.getElementById('sb-skip-high-volume').value = BUMP_CHECKLIST.highVolumeSold;
+                // premium threshold has no checklist default (0 = off) — set it to review premium items
                 document.getElementById('sold-bump-status').textContent =
                     '2% / 5% rule loaded (skip INV < ' + BUMP_CHECKLIST.minStock + ', Sold > ' + BUMP_CHECKLIST.highVolumeSold + '). Click Apply to save & fill S Bump%.';
             }
@@ -676,31 +697,30 @@
                 if (!rows.length) return toast('No rows to apply', false);
                 if (!confirm('Save rules and fill S Bump% for ' + rows.length + ' shown row(s)?')) return;
 
-                const minStock = Math.max(0, parseFloat(document.getElementById('sb-skip-low-stock').value) || 0);
-                const highVolume = Math.max(0, parseFloat(document.getElementById('sb-skip-high-volume').value) || 0);
+                const settings = {
+                    min_stock: Math.max(0, parseFloat(document.getElementById('sb-skip-low-stock').value) || 0),
+                    high_volume_sold: Math.max(0, parseInt(document.getElementById('sb-skip-high-volume').value, 10) || 0),
+                    premium_price: Math.max(0, parseFloat(document.getElementById('sb-premium-price').value) || 0),
+                    review_after_days: Math.max(1, parseInt(document.getElementById('sb-review-days').value, 10) || 14),
+                    auto_enabled: document.getElementById('sb-auto-enabled').checked,
+                };
                 const btn = document.getElementById('sold-bump-apply-btn');
                 btn.disabled = true;
                 try {
-                    const saved = await post(URLS.rules, { rules });
-                    if (!saved.ok) throw new Error('Could not save rules (HTTP ' + saved.status + ')');
-
-                    const updates = [], tableUpdates = [];
-                    let skipped = 0;
-                    rows.forEach(row => {
-                        const d = row.getData();
-                        const sold = Number(d.sold) || 0;
-                        const inv = Number(d.inv) || 0;
-                        if ((minStock > 0 && inv < minStock) || (highVolume > 0 && sold > highVolume)) { skipped++; return; }
-                        const value = fmtSBump(inv === 0 ? 0 : bumpForSold(sold));
-                        updates.push({ sku: d.sku, recommended_bid: value });
-                        tableUpdates.push({ listing_id: d.listing_id, s_bump: value });
-                    });
-                    for (let i = 0; i < updates.length; i += 500) {
-                        const r = await post(URLS.saveSBumps, { updates: updates.slice(i, i + 500) });
-                        if (!r.ok) throw new Error('Saving S Bump% failed (HTTP ' + r.status + ')');
+                    // The server evaluates the rule (so the manual run, the weekly auto-run and the log all agree),
+                    // saves S Bump% and writes the change log.
+                    const ids = rows.map(r => r.getData().listing_id);
+                    let filled = 0, skipped = 0;
+                    const tableUpdates = [];
+                    for (let i = 0; i < ids.length; i += 1000) {
+                        const r = await post(URLS.ruleApply, { rules, settings, listing_ids: ids.slice(i, i + 1000) });
+                        if (!r.ok || !r.json.success) throw new Error((r.json && r.json.message) || ('Apply failed (HTTP ' + r.status + ')'));
+                        filled += r.json.filled; skipped += r.json.skipped;
+                        r.json.rows.forEach(x => tableUpdates.push({ listing_id: String(x.listing_id), s_bump: x.s_bump, skip_reason: x.skip_reason }));
                     }
                     table.updateData(tableUpdates);
-                    toast('S Bump% filled for ' + updates.length + ' row(s)' + (skipped ? ', ' + skipped + ' skipped (exceptions)' : ''));
+                    toast('S Bump% filled for ' + filled + ' row(s)' + (skipped ? ', ' + skipped + ' skipped (exceptions, see Rule note)' : '')
+                        + (settings.auto_enabled ? ' · weekly auto-run ON' : ''));
                     bootstrap.Modal.getOrCreateInstance(document.getElementById('soldBumpModal')).hide();
                 } catch (e) {
                     toast(e.message || 'Apply failed', false);
@@ -712,8 +732,8 @@
             // ---------- push S Bump% to Reverb (background job, same as /reverb-pricing Push B%) ----------
             async function pushSBumps() {
                 const rows = table.getRows('active').map(r => r.getData())
-                    .filter(d => d.s_bump !== null && d.s_bump !== undefined && d.s_bump !== '' && isFinite(parseFloat(d.s_bump)));
-                if (!rows.length) return toast('No shown rows have an S Bump% — run Sold vs Bump first', false);
+                    .filter(d => !d.skip_reason && d.s_bump !== null && d.s_bump !== undefined && d.s_bump !== '' && isFinite(parseFloat(d.s_bump)));
+                if (!rows.length) return toast('No shown rows have an S Bump% to push (rows skipped by exceptions are never pushed) — run Sold vs Bump first', false);
                 if (!confirm('Push S Bump% to Reverb for ' + rows.length + ' shown listing(s)? This changes live Bump bids (0% removes the bid).')) return;
 
                 const btn = document.getElementById('push-sbump-btn');

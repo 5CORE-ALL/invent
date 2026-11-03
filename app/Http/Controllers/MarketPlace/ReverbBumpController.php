@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Models\ReverbBumpChangeLog;
 use App\Models\ReverbBumpRaw;
 use App\Models\ReverbProduct;
 use App\Models\ShopifySku;
 use App\Services\ReverbApiService;
 use App\Services\Support\ReverbBumpRawPuller;
+use App\Services\Support\ReverbBumpRuleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -36,7 +38,7 @@ class ReverbBumpController extends Controller
         // Ended listings can't carry a Bump bid — hidden here and skipped by every pull.
         $products = ReverbBumpRawPuller::pullableProductsQuery()
             ->orderBy('sku')
-            ->get(['id', 'sku', 'reverb_listing_id', 'product_title', 'listing_state', 'bump_bid', 'r_l30', 'recommended_bid']);
+            ->get(['id', 'sku', 'reverb_listing_id', 'product_title', 'listing_state', 'bump_bid', 'r_l30', 'recommended_bid', 'price']);
 
         // Same sources as /reverb-pricing: Sold = reverb_products.r_l30 (RV L30), INV = Shopify inventory, S Bump% = recommended_bid.
         $shopifyData = ShopifySku::mapByProductSkus($products->pluck('sku')->filter()->unique()->values()->all());
@@ -48,9 +50,19 @@ class ReverbBumpController extends Controller
             }
         }
 
+        $rules = ReverbBumpRuleService::rules();
+        $ruleSettings = ReverbBumpRuleService::settings();
+
         $rows = [];
         foreach ($products as $p) {
             $listingId = trim((string) $p->reverb_listing_id);
+            $invNow = (float) ($shopifyData->get($p->sku)?->inv ?? 0);
+            $priceNow = is_numeric($p->price) ? (float) $p->price : null;
+            $verdict = ReverbBumpRuleService::evaluate(
+                ['sold' => (int) ($p->r_l30 ?? 0), 'inv' => $invNow, 'price' => $priceNow],
+                $rules,
+                $ruleSettings
+            );
             $raw = $rawByListing[$listingId] ?? null;
             $decoded = null;
             if ($raw && $raw->raw_response !== null && $raw->raw_response !== '') {
@@ -65,8 +77,10 @@ class ReverbBumpController extends Controller
                 'listing_state' => $p->listing_state,
                 'bump_bid' => $p->bump_bid,
                 'sold' => (int) ($p->r_l30 ?? 0),
-                'inv' => (float) ($shopifyData->get($p->sku)?->inv ?? 0),
+                'inv' => $invNow,
                 's_bump' => $p->recommended_bid,
+                'price' => $priceNow,
+                'skip_reason' => $verdict['status'] === 'skip' ? $verdict['reason'] : null,
                 'http_status' => $raw?->http_status,
                 'error' => $raw?->error,
                 'fetched_at' => $raw?->fetched_at?->toDateTimeString(),
@@ -78,6 +92,103 @@ class ReverbBumpController extends Controller
         return response()->json([
             'rows' => $rows,
             'table_ready' => $hasRawTable,
+        ]);
+    }
+
+    /**
+     * Saved Sold→Bump slab rules (shared with /reverb-pricing) + checklist exception settings.
+     */
+    public function ruleConfig(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'rules' => ReverbBumpRuleService::rules(),
+            'settings' => ReverbBumpRuleService::settings(),
+        ]);
+    }
+
+    /**
+     * Save rules + settings and fill S Bump% (reverb_products.recommended_bid) server-side for the given listings,
+     * honouring the exceptions. Every fill / skip is written to the change log.
+     * Body: { rules: [{key,bump}], settings: {...}, listing_ids: [..] }
+     */
+    public function ruleApply(Request $request): JsonResponse
+    {
+        $request->validate([
+            'rules' => 'required|array|min:1',
+            'settings' => 'required|array',
+            'listing_ids' => 'required|array|min:1',
+            'listing_ids.*' => 'required|string|max:64',
+        ]);
+
+        if (! Schema::hasTable('reverb_bump_change_log')) {
+            return response()->json(['success' => false, 'message' => 'Run php artisan migrate (reverb_bump_change_log table missing).'], 500);
+        }
+
+        $rules = ReverbBumpRuleService::saveRules($request->input('rules'));
+        $settings = ReverbBumpRuleService::saveSettings($request->input('settings'));
+
+        $plan = ReverbBumpRuleService::plan(array_values(array_unique($request->input('listing_ids'))), $rules, $settings);
+        $res = ReverbBumpRuleService::applyFill($plan, ReverbBumpRuleService::newRunId(), 'manual');
+
+        $rows = [];
+        foreach ($plan as $r) {
+            $rows[] = [
+                'listing_id' => $r['listing_id'],
+                's_bump' => $r['eval']['status'] === 'fill' ? ReverbBumpRuleService::formatBump($r['eval']['bump']) : $r['old_s_bump'],
+                'skip_reason' => $r['eval']['status'] === 'skip' ? $r['eval']['reason'] : null,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'filled' => $res['filled'],
+            'skipped' => $res['skipped'],
+            'rows' => $rows,
+            'settings' => $settings,
+        ]);
+    }
+
+    /** Change log + monitoring page. */
+    public function logIndex()
+    {
+        return view('market-places.reverb_bump_log_view');
+    }
+
+    public function logData(): JsonResponse
+    {
+        $ready = Schema::hasTable('reverb_bump_change_log');
+        if (! $ready) {
+            return response()->json(['table_ready' => false, 'history' => [], 'monitor' => []]);
+        }
+
+        $history = ReverbBumpChangeLog::query()
+            ->orderByDesc('id')
+            ->limit(5000)
+            ->get()
+            ->map(fn ($l) => [
+                'id' => $l->id,
+                'at' => $l->created_at?->toDateTimeString(),
+                'run_id' => $l->run_id,
+                'source' => $l->source,
+                'action' => $l->action,
+                'status' => $l->status,
+                'sku' => $l->sku,
+                'sold' => $l->sold,
+                'inv' => (float) $l->inv,
+                'price' => $l->price !== null ? (float) $l->price : null,
+                'old_s_bump' => $l->old_s_bump,
+                'old_live_bump' => $l->old_live_bump,
+                'new_bump' => $l->new_bump,
+                'reason' => $l->reason,
+                'message' => $l->message,
+            ])->values();
+
+        return response()->json([
+            'table_ready' => true,
+            'history' => $history,
+            'monitor' => ReverbBumpRuleService::monitorRows(),
+            'settings' => ReverbBumpRuleService::settings(),
         ]);
     }
 
