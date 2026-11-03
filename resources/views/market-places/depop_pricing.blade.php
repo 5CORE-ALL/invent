@@ -197,6 +197,14 @@
                         <button type="button" id="refresh-pricing-table" class="btn btn-sm btn-outline-primary" title="Refresh">
                             <i class="fa fa-refresh"></i>
                         </button>
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                                title="Columns" aria-label="Columns">
+                                <i class="fa fa-eye"></i>
+                            </button>
+                            <ul class="dropdown-menu column-dropdown-multicol" id="column-dropdown-menu"></ul>
+                        </div>
                         <a href="{{ route('depop.pricing.export') }}" class="btn btn-sm btn-success" id="export-btn">
                             <i class="fa fa-file-csv"></i>
                         </a>
@@ -1243,6 +1251,45 @@
             });
             ParentExpand.bind();
         }
+
+        // Columns show/hide menu (grouped Basic / Pricing / Discounts / Advertisement / Other), saved per user.
+        function saveDpColumnVisibility() {
+            const visibility = {};
+            table.getColumns().forEach(function(col) {
+                const f = col.getField();
+                if (f && f !== '_select') visibility[f] = col.isVisible();
+            });
+            $.ajax({ url: '{{ route("depop.pricing.column.set") }}', method: 'POST', data: { visibility: visibility } });
+        }
+        function buildDpColumnDropdown(savedMap) {
+            if (!window.AnalyticsColVis) return;
+            window.AnalyticsColVis.install({
+                getTable: function() { return table; },
+                menuId: 'column-dropdown-menu',
+                storageKey: 'depop_col_cats_v1',
+                skipFields: ['_select'],
+                onSave: saveDpColumnVisibility
+            }).rebuild(savedMap || null);
+        }
+        function applyDpColumnVisibilityFromServer() {
+            $.ajax({
+                url: '{{ route("depop.pricing.column.get") }}', method: 'GET',
+                success: function(visibility) {
+                    if (visibility && Object.keys(visibility).length > 0) {
+                        Object.keys(visibility).forEach(function(field) {
+                            const col = table.getColumn(field);
+                            if (col) visibility[field] ? col.show() : col.hide();
+                        });
+                    }
+                    buildDpColumnDropdown();
+                },
+                error: function() { buildDpColumnDropdown(); }
+            });
+        }
+        table.on('tableBuilt', function() {
+            buildDpColumnDropdown();
+            applyDpColumnVisibilityFromServer();
+        });
 
         table.on('tableBuilt', function() {
             // Header "C n" badge: count of clearance SKUs, click to filter them. Cells repaint once the clearance list is loaded.

@@ -4442,6 +4442,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/depop/pricing/export',  [\App\Http\Controllers\MarketPlace\DepopController::class, 'exportCsv'])->name('depop.pricing.export');
     Route::post('/depop/pricing/import', [\App\Http\Controllers\MarketPlace\DepopController::class, 'importCsv'])->name('depop.pricing.import');
     Route::post('/depop/pricing/save-sprice', [\App\Http\Controllers\MarketPlace\DepopController::class, 'saveSprice'])->name('depop.pricing.save.sprice');
+    Route::get('/depop/pricing/column-visibility', [\App\Http\Controllers\MarketPlace\DepopController::class, 'getColumnVisibility'])->name('depop.pricing.column.get');
+    Route::post('/depop/pricing/column-visibility', [\App\Http\Controllers\MarketPlace\DepopController::class, 'setColumnVisibility'])->name('depop.pricing.column.set');
     Route::post('/depop/pricing/sop-sheet', [\App\Http\Controllers\MarketPlace\DepopController::class, 'saveSopSheet'])->name('depop.pricing.sop-sheet');
 
     // Vinted Analytics — full pricing grid (GPFT/ROI/SPRICE filters) + CSV price import

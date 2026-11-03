@@ -188,6 +188,21 @@ class DepopController extends Controller
         }
     }
 
+    public function getColumnVisibility(Request $request)
+    {
+        $key = 'depop_tabulator_column_visibility_'.(auth()->id() ?? 'guest');
+
+        return response()->json(Cache::get($key, []));
+    }
+
+    public function setColumnVisibility(Request $request)
+    {
+        $key = 'depop_tabulator_column_visibility_'.(auth()->id() ?? 'guest');
+        Cache::put($key, $request->input('visibility', []), now()->addDays(365));
+
+        return response()->json(['success' => true]);
+    }
+
     public function exportCsv(Request $request): StreamedResponse
     {
         $filename = 'depop_pricing_'.now()->format('Y-m-d_His').'.csv';
