@@ -53,6 +53,12 @@
                         <option value="failed">Pull failed</option>
                         <option value="never">Never pulled</option>
                     </select>
+                    <select id="filter-sold" class="form-select form-select-sm" style="max-width: 210px;"
+                        title="Filter by the Sold (L30) dot">
+                        <option value="all">🔴🟢 All sold</option>
+                        <option value="green">🟢 Green — Sold &gt; 0 (performing)</option>
+                        <option value="red">🔴 Red — Sold = 0 (non-performing)</option>
+                    </select>
                     <button type="button" class="btn btn-sm btn-primary" id="pull-all-btn">
                         <i class="fa fa-download"></i> Pull All
                     </button>
@@ -500,27 +506,41 @@
                 return true;
             }
 
+            // Sold dot filter: green = Sold > 0 (performing), red = Sold = 0 (non-performing)
+            function soldFilterFn(data) {
+                const mode = document.getElementById('filter-sold').value;
+                if (mode === 'all') return true;
+                const sold = Number(data.sold) || 0;
+                return mode === 'green' ? sold > 0 : sold <= 0;
+            }
+
             function applyFilters() {
                 const q = document.getElementById('sku-search').value.trim().toLowerCase();
                 const mode = document.getElementById('filter-status').value;
-                if (!q && mode === 'all') {
+                const soldMode = document.getElementById('filter-sold').value;
+                if (!q && mode === 'all' && soldMode === 'all') {
                     table.clearFilter();
                 } else {
-                    table.setFilter(data => statusFilterFn(data) && (!q || searchText(data).includes(q)));
+                    table.setFilter(data => statusFilterFn(data) && soldFilterFn(data) && (!q || searchText(data).includes(q)));
                 }
             }
 
             function updateSummary() {
                 if (!table) return;
-                let pulled = 0, failed = 0;
+                let pulled = 0, failed = 0, green = 0, red = 0;
                 const all = table.getData();
                 for (let i = 0; i < all.length; i++) {
+                    (Number(all[i].sold) || 0) > 0 ? green++ : red++;
                     const s = all[i].http_status;
                     if (s === null || s === undefined) continue;
                     (Number(s) >= 200 && Number(s) < 300) ? pulled++ : failed++;
                 }
+                const opts = document.getElementById('filter-sold').options;
+                opts[0].textContent = '🔴🟢 All sold (' + all.length + ')';
+                opts[1].textContent = '🟢 Green — Sold > 0 (' + green + ')';
+                opts[2].textContent = '🔴 Red — Sold = 0 (' + red + ')';
                 document.getElementById('summary-line').textContent =
-                    all.length + ' listings · ' + pulled + ' pulled · ' + failed + ' failed · ' +
+                    all.length + ' listings · ' + green + ' green · ' + red + ' red · ' + pulled + ' pulled · ' + failed + ' failed · ' +
                     (all.length - pulled - failed) + ' never pulled · ' + table.getDataCount('active') + ' shown · ' +
                     rawKeys.length + ' raw fields';
             }
@@ -941,6 +961,7 @@
 
                 document.getElementById('sku-search').addEventListener('input', debounce(applyFilters, 300));
                 document.getElementById('filter-status').addEventListener('change', applyFilters);
+                document.getElementById('filter-sold').addEventListener('change', applyFilters);
                 document.getElementById('pull-all-btn').addEventListener('click', () => {
                     const ids = table.getData().map(r => r.listing_id);
                     if (confirm('Pull raw Bump data for ' + ids.length + ' listings from Reverb? This can take a while.')) pullMany(ids, 'Pull All');
