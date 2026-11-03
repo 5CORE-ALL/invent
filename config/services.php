@@ -720,6 +720,9 @@ return [
         'connect_timeout' => (int) env('WAYFAIR_CONNECT_TIMEOUT', 30),
         'oauth_retries' => (int) env('WAYFAIR_OAUTH_RETRIES', 3),
         'supplier_id' => env('WAYFAIR_SUPPLIER_ID', '2603'),
+        // When true, wayfair:daily also writes the newest PO price into wayfair_pricing_prices.price.
+        // Off by default: check `php artisan wayfair:sync-prices --dry-run` first (promo-priced PO lines would lower Price).
+        'price_sync_auto' => filter_var(env('WAYFAIR_PRICE_SYNC_AUTO', false), FILTER_VALIDATE_BOOLEAN),
         'manufacturer_id' => env('WAYFAIR_MANUFACTURER_ID'),
         'default_class_id' => env('WAYFAIR_DEFAULT_CLASS_ID'),
         // Scope for catalog/title updates. If you get "Access Denied", run: php artisan wayfair:test-scopes

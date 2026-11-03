@@ -146,7 +146,7 @@ class FetchWayfairDailyData extends Command
      */
     protected function syncPricesFromOrders(array $purchaseOrders): void
     {
-        if ($purchaseOrders === []) {
+        if ($purchaseOrders === [] || ! config('services.wayfair.price_sync_auto')) {
             return;
         }
 
