@@ -3227,7 +3227,7 @@ class Temu2ListingPublishService
      *
      * @return array{importDesignation: string, originRegion1: string, originRegion2?: string}
      */
-    private function buildGoodsOriginInfo(): array
+    protected function buildGoodsOriginInfo(): array
     {
         $origin1 = $this->normalizeOriginRegion1((string) $this->shopConfig('origin_region1', 'China'));
         $isChina = strcasecmp($origin1, 'China') === 0;
