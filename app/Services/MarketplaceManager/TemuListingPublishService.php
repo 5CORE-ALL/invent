@@ -78,6 +78,18 @@ class TemuListingPublishService extends Temu2ListingPublishService
     }
 
     /**
+     * Temu 1 variation add. The goods update lives on the shared publisher; this shop uses the same
+     * color-spec list (GRN is sent as Green) and stops when Temu accepts one spec.
+     *
+     * @param  list<array<string, mixed>>  $skuList
+     * @return array{success: bool, data?: array<string, mixed>, message?: string}
+     */
+    protected function addSkusToExistingGoods(string $goodsId, array $skuList): array
+    {
+        return parent::addSkusToExistingGoods($goodsId, $skuList);
+    }
+
+    /**
      * Temu 1's seller token is authorized for the older local add API.
      * temu.local.goods.v2.add returns 3000032 on this shop.
      *
