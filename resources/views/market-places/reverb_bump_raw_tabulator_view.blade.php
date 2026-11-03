@@ -402,13 +402,13 @@
 
             function baseColumns() {
                 return [
-                    { title: 'SKU', field: 'sku', frozen: true, width: 170, headerFilter: 'input' },
+                    { title: 'SKU', field: 'sku', frozen: true, width: 170, headerFilter: 'input', hozAlign: 'left', headerHozAlign: 'left' },
                     { title: 'Listing ID', field: 'listing_id', width: 110, headerFilter: 'input' },
                     { title: 'Title', field: 'title', width: 220, headerFilter: 'input' },
                     { title: 'State', field: 'listing_state', width: 80 },
                     { title: 'Live Bump%', field: 'bump_bid', width: 90 },
                     {
-                        title: 'Sold (L30)', field: 'sold', width: 90, hozAlign: 'right',
+                        title: 'Sold (L30)', field: 'sold', width: 90, hozAlign: 'center',
                         headerTooltip: 'RV L30 — Reverb sales, last 30 days. Green dot = Sold > 0 (performing), red dot = Sold = 0 (non-performing). Click for the graph.',
                         cellClick: (e, cell) => openSoldChart(cell.getRow().getData()),
                         formatter: c => {
@@ -417,13 +417,13 @@
                                 + '<span class="rb-dot-label">' + v + '</span>';
                         },
                     },
-                    { title: 'INV', field: 'inv', width: 70, hozAlign: 'right', headerTooltip: 'Shopify inventory' },
+                    { title: 'INV', field: 'inv', width: 70, hozAlign: 'center', headerTooltip: 'Shopify inventory' },
                     {
-                        title: 'Price', field: 'price', width: 80, hozAlign: 'right',
+                        title: 'Price', field: 'price', width: 80, hozAlign: 'center',
                         formatter: c => (c.getValue() === null || c.getValue() === undefined) ? '<span class="rb-null">—</span>' : Number(c.getValue()).toFixed(2),
                     },
                     {
-                        title: 'S Bump%', field: 's_bump', width: 85, hozAlign: 'right',
+                        title: 'S Bump%', field: 's_bump', width: 85, hozAlign: 'center',
                         headerTooltip: 'Seller Bump% (same as /reverb-pricing). Filled by Sold vs Bump; pushed with Push S Bump%.',
                         formatter: c => (c.getValue() === null || c.getValue() === undefined || c.getValue() === '')
                             ? '<span class="rb-null">—</span>' : String(c.getValue()).replace(/</g, '&lt;'),
@@ -991,7 +991,7 @@
                     movableColumns: true,
                     index: 'listing_id',
                     placeholder: 'No Reverb listings found',
-                    columnDefaults: { headerSort: true },
+                    columnDefaults: { headerSort: true, hozAlign: 'center', headerHozAlign: 'center' },
                 });
                 table.on('tableBuilt', () => {
                     applySavedColVis();
