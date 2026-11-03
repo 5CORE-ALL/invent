@@ -2422,6 +2422,19 @@ class Temu2ListingPublishService
         return (bool) preg_match('/\.(jpe?g|png)$/', $path);
     }
 
+    /**
+     * A picture already stored on a Temu goods. goods.update can load these when a newly uploaded link is refused.
+     */
+    private function isTemuCdnUrl(string $url): bool
+    {
+        if (! preg_match('#^https://#i', $url)) {
+            return false;
+        }
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+
+        return str_contains($host, 'kwcdn.com');
+    }
+
     protected function sameImageUrl(string $left, string $right): bool
     {
         $normalize = static function (string $url): string {
@@ -2478,40 +2491,6 @@ class Temu2ListingPublishService
         }
 
         return array_slice($images, 0, self::MAX_IMAGES);
-    }
-
-    /**
-     * Image sets to send after Temu refuses a picture: the full gallery, then the gallery
-     * with each photo left out in turn. The first set Temu accepts is the one that is published.
-     *
-     * @param  list<string>  $images
-     * @return list<list<string>>
-     */
-    private function imageSetsDroppingRefused(array $images): array
-    {
-        $unique = [];
-        foreach ($images as $url) {
-            $url = trim((string) $url);
-            if ($url !== '' && ! in_array($url, $unique, true)) {
-                $unique[] = $url;
-            }
-        }
-        $sets = [];
-        $push = function (array $set) use (&$sets): void {
-            $set = array_values($set);
-            if ($set === []) {
-                return;
-            }
-            $sets[implode("\n", $set)] = $set;
-        };
-        $push($unique);
-        foreach (array_keys($unique) as $index) {
-            $without = $unique;
-            array_splice($without, (int) $index, 1);
-            $push($without);
-        }
-
-        return array_slice(array_values($sets), 0, self::MAX_IMAGES + 1);
     }
 
     private function temu2IpWhitelistError(): ?string
@@ -4968,7 +4947,7 @@ class Temu2ListingPublishService
             foreach ($existing as $row) {
                 foreach ((array) ($row['images'] ?? []) as $url) {
                     $url = trim((string) $url);
-                    if ($this->isTemuGoodsImageUrl($url) && ! in_array($url, $siblingImages, true)) {
+                    if ($this->isTemuCdnUrl($url) && ! in_array($url, $siblingImages, true)) {
                         $siblingImages[] = $url;
                     }
                 }
@@ -5015,7 +4994,14 @@ class Temu2ListingPublishService
                         40
                     );
                 };
-                $plans = $this->imageSetsDroppingRefused((array) ($freshUpdate[0]['images'] ?? []));
+                $plans = [];
+                $ownImages = array_values((array) ($freshUpdate[0]['images'] ?? []));
+                if ($ownImages !== []) {
+                    $plans[] = $ownImages;
+                }
+                if ($siblingImages !== []) {
+                    $plans[] = array_slice($siblingImages, 0, 3);
+                }
                 if ($plans === []) {
                     $plans = [[]];
                 }
