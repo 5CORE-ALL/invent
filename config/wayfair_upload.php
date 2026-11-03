@@ -86,8 +86,8 @@ return [
     */
     'base_cost_pull' => [
         'enabled' => filter_var(env('WAYFAIR_BASE_COST_PULL_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
-        // Page that has the "Export Product Spreadsheet" button. Falls back to WAYFAIR_UPLOAD_URL.
-        'export_url' => env('WAYFAIR_EXPORT_URL', ''),
+        // Pricing Home product list (no cost-change projectId, so it does not go stale).
+        'export_url' => env('WAYFAIR_EXPORT_URL', 'https://partners.wayfair.com/d/pricing-home/products'),
         'export_label' => env('WAYFAIR_EXPORT_LABEL', 'Export Product Spreadsheet'),
         // Runs well after the 12:00 AM PT push and 12:30 AM PT upload so Wayfair has processed them.
         'cron' => env('WAYFAIR_BASE_COST_PULL_CRON', '0 6 * * *'),
