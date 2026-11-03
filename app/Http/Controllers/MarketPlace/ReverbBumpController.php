@@ -120,8 +120,8 @@ class ReverbBumpController extends Controller
         $request->validate([
             'rules' => 'required|array|min:1',
             'settings' => 'required|array',
-            'listing_ids' => 'required|array|min:1',
-            'listing_ids.*' => 'required|string|max:64',
+            'listing_ids' => 'nullable|array',
+            'listing_ids.*' => 'nullable|max:64',
         ]);
 
         if (! Schema::hasTable('reverb_bump_change_log')) {
@@ -131,7 +131,18 @@ class ReverbBumpController extends Controller
         $rules = ReverbBumpRuleService::saveRules($request->input('rules'));
         $settings = ReverbBumpRuleService::saveSettings($request->input('settings'));
 
-        $plan = ReverbBumpRuleService::plan(array_values(array_unique($request->input('listing_ids'))), $rules, $settings);
+        // Rules + settings are saved above even when no listing ids are sent (or some rows have none).
+        $ids = array_values(array_unique(array_filter(
+            array_map(fn ($v) => trim((string) $v), (array) $request->input('listing_ids', [])),
+            fn ($v) => $v !== ''
+        )));
+        if ($ids === []) {
+            return response()->json([
+                'success' => true, 'filled' => 0, 'skipped' => 0, 'rows' => [], 'settings' => $settings, 'rules' => $rules,
+            ]);
+        }
+
+        $plan = ReverbBumpRuleService::plan($ids, $rules, $settings);
         $res = ReverbBumpRuleService::applyFill($plan, ReverbBumpRuleService::newRunId(), 'manual');
 
         $rows = [];
@@ -149,6 +160,7 @@ class ReverbBumpController extends Controller
             'skipped' => $res['skipped'],
             'rows' => $rows,
             'settings' => $settings,
+            'rules' => $rules,
         ]);
     }
 

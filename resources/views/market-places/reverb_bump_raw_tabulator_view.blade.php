@@ -739,9 +739,12 @@
                 });
                 return soldBumpRules.map(r => ({ key: r.key, label: r.label, bump: Number(r.bump) || 0 }));
             }
+            let soldBumpLoading = false;
             async function loadSoldBumpRules() {
                 const st = document.getElementById('sold-bump-status');
                 st.textContent = 'Loading…';
+                soldBumpLoading = true;
+                document.getElementById('sold-bump-apply-btn').disabled = true;
                 try {
                     const res = await fetch(URLS.ruleConfig, { headers: { 'Accept': 'application/json' } });
                     const j = await res.json();
@@ -757,6 +760,8 @@
                     st.textContent = 'Could not load saved rules — showing defaults.';
                 }
                 renderSoldBumpRules();
+                soldBumpLoading = false;
+                document.getElementById('sold-bump-apply-btn').disabled = false;
             }
             function applyChecklistPreset() {
                 soldBumpRules.forEach(r => { r.bump = r.key === '0' ? BUMP_CHECKLIST.noSaleBump : BUMP_CHECKLIST.soldBump; });
@@ -769,10 +774,13 @@
             }
 
             async function applySoldBump() {
+                if (soldBumpLoading) return toast('Rules are still loading — try again in a second', false);
+                const st = document.getElementById('sold-bump-status');
                 const rules = readSoldBumpRules();
-                const rows = table.getRows('active');
-                if (!rows.length) return toast('No rows to apply', false);
-                if (!confirm('Save rules and fill S Bump% for ' + rows.length + ' shown row(s)?')) return;
+                const rows = table.getRows('active').filter(r => String(r.getData().listing_id || '').trim() !== '');
+                if (!confirm(rows.length
+                    ? 'Save rules and fill S Bump% for ' + rows.length + ' shown row(s)?'
+                    : 'No rows shown — save the rules and exceptions only?')) return;
 
                 const settings = {
                     min_stock: Math.max(0, parseFloat(document.getElementById('sb-skip-low-stock').value) || 0),
@@ -786,20 +794,29 @@
                 try {
                     // The server evaluates the rule (so the manual run, the weekly auto-run and the log all agree),
                     // saves S Bump% and writes the change log.
-                    const ids = rows.map(r => r.getData().listing_id);
+                    const ids = rows.map(r => String(r.getData().listing_id).trim());
                     let filled = 0, skipped = 0;
                     const tableUpdates = [];
-                    for (let i = 0; i < ids.length; i += 1000) {
+                    st.textContent = 'Saving…';
+                    // Always send at least one request so the rules + exceptions are saved even with no rows.
+                    for (let i = 0; i === 0 || i < ids.length; i += 1000) {
                         const r = await post(URLS.ruleApply, { rules, settings, listing_ids: ids.slice(i, i + 1000) });
-                        if (!r.ok || !r.json.success) throw new Error((r.json && r.json.message) || ('Apply failed (HTTP ' + r.status + ')'));
+                        if (!r.ok || !r.json.success) {
+                            const errs = r.json && r.json.errors ? Object.values(r.json.errors).flat().join(' ') : '';
+                            throw new Error((r.json && r.json.message) || errs || ('Apply failed (HTTP ' + r.status + ')'));
+                        }
                         filled += r.json.filled; skipped += r.json.skipped;
                         r.json.rows.forEach(x => tableUpdates.push({ listing_id: String(x.listing_id), s_bump: x.s_bump, skip_reason: x.skip_reason }));
+                        // keep the modal in sync with what the server actually saved
+                        if (Array.isArray(r.json.rules)) soldBumpRules = r.json.rules.map(x => Object.assign({}, x, { key: String(x.key) }));
                     }
                     table.updateData(tableUpdates);
-                    toast('S Bump% filled for ' + filled + ' row(s)' + (skipped ? ', ' + skipped + ' skipped (exceptions, see Rule note)' : '')
+                    st.textContent = 'Saved ✓ · S Bump% filled for ' + filled + ' row(s)' + (skipped ? ', ' + skipped + ' skipped' : '');
+                    toast('Rules saved · S Bump% filled for ' + filled + ' row(s)' + (skipped ? ', ' + skipped + ' skipped (exceptions, see Rule note)' : '')
                         + (settings.auto_enabled ? ' · daily auto-run ON' : ''));
                     bootstrap.Modal.getOrCreateInstance(document.getElementById('soldBumpModal')).hide();
                 } catch (e) {
+                    st.textContent = 'Save failed: ' + (e.message || 'error');
                     toast(e.message || 'Apply failed', false);
                 } finally {
                     btn.disabled = false;
