@@ -12,15 +12,19 @@ use Illuminate\Support\Facades\Schema;
  * wayfair_pricing_prices.price, which is the Price column on /wayfair-pricing.
  *
  * Wayfair exposes no standalone "read price" call to this app (the old price-feed endpoint 404s and the
- * catalog / inventory queries return no price). The dependable API source is the `price` on each
- * dropship purchase-order line: the unit cost Wayfair is paying us, i.e. the live Base Cost.
+ * catalog / inventory queries return no price). The only API price available is the `price` on each
+ * dropship purchase-order line. THAT IS NOT RELIABLE AS THE BASE COST: verified on production, a SKU whose
+ * Partner Home Base Cost is 41.98 shows 29.39 (exactly 70%) on its PO, so PO lines can carry a Wayfair-side
+ * discount. About 60 of 162 SKUs differed that way, almost all lower by exact 20/25/30% steps.
  *
- * Rules:
- *  - For every SKU the newest PO line wins.
- *  - Event / promo lines (Way Day, flash events) carry event pricing, so they are ignored unless asked for.
- *  - A SKU's Price only moves when its newest PO is NEWER than the PO the stored Price came from. A manual
- *    sheet upload or a just-pushed S PRC therefore stays put until a fresh PO proves Wayfair's real cost.
- *  - Only SKUs already in wayfair_pricing_prices are updated; rows are never created here.
+ * So by default this only FILLS prices that are missing (stored price <= 0) and never overwrites a
+ * stored price; differing SKUs are only reported. Overwriting is opt-in ($overwrite) and not recommended.
+ *
+ * Other rules:
+ *  - For every SKU the newest PO line is the candidate.
+ *  - Event lines (event.id set) are ignored unless asked for.
+ *  - In overwrite mode a SKU only moves when its newest PO is NEWER than the PO the stored price came from.
+ *  - Only SKUs already in wayfair_pricing_prices are touched; rows are never created here.
  */
 class WayfairPriceSyncService
 {
@@ -88,9 +92,9 @@ class WayfairPriceSyncService
      * Write the newest PO prices into wayfair_pricing_prices.
      *
      * @param  array<int, array<string, mixed>>  $purchaseOrders
-     * @return array{success: bool, message: string, skus_in_orders: int, updated: int, unchanged: int, stale: int, no_row: int, skipped_events: int, changes: list<array{sku: string, old: float, new: float, po_number: string, po_date: string}>}
+     * @return array{success: bool, message: string, skus_in_orders: int, updated: int, unchanged: int, stale: int, no_row: int, skipped_events: int, kept_stored: int, changes: list<array{sku: string, old: float, new: float, po_number: string, po_date: string}>}
      */
-    public function syncFromPurchaseOrders(array $purchaseOrders, bool $includeEventLines = false, bool $dryRun = false): array
+    public function syncFromPurchaseOrders(array $purchaseOrders, bool $includeEventLines = false, bool $dryRun = false, bool $overwrite = false): array
     {
         $stats = [
             'success' => true,
@@ -101,6 +105,7 @@ class WayfairPriceSyncService
             'stale' => 0,
             'no_row' => 0,
             'skipped_events' => 0,
+            'kept_stored' => 0,
             'changes' => [],
         ];
 
@@ -145,6 +150,26 @@ class WayfairPriceSyncService
             }
 
             foreach ($rows as $row) {
+                $storedPrice = (float) $row->price;
+                $priceChanged = abs($storedPrice - $hit['price']) >= 0.005;
+
+                // Default: a stored price is never overwritten (PO lines can carry a Wayfair-side discount).
+                if (! $overwrite && $storedPrice > 0) {
+                    if ($priceChanged) {
+                        $stats['kept_stored']++;
+                        $stats['changes'][] = [
+                            'sku' => (string) $row->sku,
+                            'old' => round($storedPrice, 2),
+                            'new' => $hit['price'],
+                            'po_number' => $hit['po_number'],
+                            'po_date' => $hit['po_date']->toDateString(),
+                        ];
+                    } else {
+                        $stats['unchanged']++;
+                    }
+                    continue;
+                }
+
                 $storedPoDate = $row->price_po_date
                     ? Carbon::parse((string) $row->price_po_date, 'UTC')
                     : null;
@@ -153,12 +178,11 @@ class WayfairPriceSyncService
                     continue;
                 }
 
-                $priceChanged = abs((float) $row->price - $hit['price']) >= 0.005;
                 if ($priceChanged) {
                     $stats['updated']++;
                     $stats['changes'][] = [
                         'sku' => (string) $row->sku,
-                        'old' => round((float) $row->price, 2),
+                        'old' => round($storedPrice, 2),
                         'new' => $hit['price'],
                         'po_number' => $hit['po_number'],
                         'po_date' => $hit['po_date']->toDateString(),
@@ -185,10 +209,11 @@ class WayfairPriceSyncService
         }
 
         $stats['message'] = sprintf(
-            '%d SKU price(s) %s, %d already current, %d with no newer PO since the stored price, %d not in wayfair_pricing_prices%s.',
+            '%d SKU price(s) %s, %d match the PO price, %d keep their stored price although the PO differs (not overwritten), %d with no newer PO, %d not in wayfair_pricing_prices%s.',
             $stats['updated'],
-            $dryRun ? 'would change' : 'updated from Wayfair POs',
+            $dryRun ? 'would be filled/changed' : ($overwrite ? 'updated from Wayfair POs' : 'filled from Wayfair POs (were missing)'),
             $stats['unchanged'],
+            $stats['kept_stored'],
             $stats['stale'],
             $stats['no_row'],
             $stats['skipped_events'] > 0 ? ", {$stats['skipped_events']} only had event pricing (ignored)" : ''

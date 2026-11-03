@@ -14,11 +14,12 @@ class WayfairSyncPrices extends Command
                             {--days=60 : How many days of Wayfair purchase orders to read}
                             {--include-event : Also use event / promo PO lines (ignored by default)}
                             {--dry-run : Show what would change without saving (lists every change)}
+                            {--overwrite : Replace existing stored prices too (NOT recommended: PO lines can carry discounts)}
                             {--sku=* : Print every PO line (date, price, event) for these SKUs and stop, no saving}
                             {--show : List every changed SKU when saving too}
                             {--no-sleep : Do not pause between Wayfair pages}';
 
-    protected $description = 'Pull the current Wayfair price per SKU from the Wayfair API (newest PO line) into wayfair_pricing_prices.price';
+    protected $description = 'Fill missing Wayfair prices from API purchase-order lines (never overwrites a stored price unless --overwrite)';
 
     public function handle(WayfairApiService $api, WayfairDailyOrderFetchService $orders, WayfairPriceSyncService $sync): int
     {
@@ -80,7 +81,15 @@ class WayfairSyncPrices extends Command
             return self::SUCCESS;
         }
 
-        $stats = $sync->syncFromPurchaseOrders($purchaseOrders, (bool) $this->option('include-event'), (bool) $this->option('dry-run'));
+        $overwrite = (bool) $this->option('overwrite');
+        if ($overwrite && ! $this->option('dry-run')) {
+            $this->warn('--overwrite replaces stored prices with PO prices. PO lines can carry Wayfair-side discounts (e.g. 70% of Base Cost), so this can LOWER correct prices.');
+            if (! $this->confirm('Overwrite stored Wayfair prices from PO lines?', false)) {
+                return self::FAILURE;
+            }
+        }
+
+        $stats = $sync->syncFromPurchaseOrders($purchaseOrders, (bool) $this->option('include-event'), (bool) $this->option('dry-run'), $overwrite);
         $this->line($stats['message']);
 
         if (($this->option('dry-run') || $this->option('show')) && ! empty($stats['changes'])) {
