@@ -20,12 +20,17 @@
         #pull-progress { min-width: 220px; }
         .rb-dot.summary-trend-dot { width: 10px !important; height: 10px !important; min-width: 10px !important; min-height: 10px !important; margin: 0 2px !important; vertical-align: middle; cursor: default; }
         .rb-dots { white-space: nowrap; }
+        .tabulator-cell[tabulator-field="sold"], .tabulator-cell[tabulator-field="sold_hist"] { cursor: pointer; }
+        #soldChartModal.modal { --tz-modal-width: 100%; padding-left: 0 !important; padding-right: 0 !important; z-index: 10800; }
+        #soldChartModal .modal-dialog { width: 100% !important; max-width: none !important; margin: 0.5rem 0 0 0 !important; }
+        #soldChartModal .modal-content { border-radius: 0; }
         .rb-dot-label { margin-left: 4px; vertical-align: middle; }
     </style>
 @endsection
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 @endsection
 
 @section('content')
@@ -85,6 +90,60 @@
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="bump-table" style="height: calc(100vh - 260px);"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sold / metrics graph (same Graph UI + range filter as /reverb-pricing; data from /reverb-metrics-history) -->
+    <div class="modal fade p-0" id="soldChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0" style="max-width:100%;">
+            <div class="modal-content" style="overflow:hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size:13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        Reverb - <span id="sc-sku"></span> - <span id="sc-metric-label">Sold (L30)</span> <span id="sc-suffix">(Rolling L30)</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="sc-metric" class="form-select form-select-sm bg-white" style="width:120px;height:26px;font-size:11px;padding:1px 8px;">
+                            <option value="sold" selected>Sold (L30)</option>
+                            <option value="views">Views</option>
+                            <option value="cvr">CVR%</option>
+                            <option value="price">Price</option>
+                        </select>
+                        <select id="sc-days" class="form-select form-select-sm bg-white" style="width:110px;height:26px;font-size:11px;padding:1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size:10px;" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="sc-wrap" style="height:38vh;display:flex;align-items:stretch;">
+                        <div style="flex:1;min-width:0;position:relative;"><canvas id="sc-canvas"></canvas></div>
+                        <div style="width:96px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;">
+                            <div class="text-center"><div style="font-size:8px;font-weight:700;color:#dc3545;">HIGH</div><div id="sc-high" style="font-size:13px;font-weight:700;color:#dc3545;">-</div></div>
+                            <div class="text-center" style="border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;"><div style="font-size:8px;font-weight:700;color:#6c757d;">MEDIAN</div><div id="sc-med" style="font-size:13px;font-weight:700;color:#6c757d;">-</div></div>
+                            <div class="text-center"><div style="font-size:8px;font-weight:700;color:#198754;">LOW</div><div id="sc-low" style="font-size:13px;font-weight:700;color:#198754;">-</div></div>
+                        </div>
+                    </div>
+                    <div id="sc-loading" class="text-center py-3" style="display:none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="sc-nodata" class="text-center py-3" style="display:none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No historical data for this SKU yet. It builds day by day from the daily metrics collection.</p>
+                    </div>
+                    <div class="small text-muted mt-1">
+                        <span class="summary-trend-dot rb-dot up"></span> Sold &gt; 0 (performing)
+                        <span class="summary-trend-dot rb-dot down ms-2"></span> Sold = 0 (non-performing)
+                        <span class="ms-2">— for Views / CVR% / Price the dot shows up (green) / down (red) vs the previous day.</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -181,6 +240,7 @@
                 ruleApply: @json(route('reverb.bump.rule.apply')),
                 queuePush: @json(route('reverb.push-bump.queue')),
                 pushStatus: @json(route('reverb.push-bump.status')),
+                metricsHistory: @json(route('reverb.metrics.history')),
             };
             const PULL_CHUNK = 10;
             const MAX_RAW_COLUMNS = 250;
@@ -349,7 +409,8 @@
                     { title: 'Live Bump%', field: 'bump_bid', width: 90 },
                     {
                         title: 'Sold (L30)', field: 'sold', width: 90, hozAlign: 'right',
-                        headerTooltip: 'RV L30 — Reverb sales, last 30 days. Green dot = Sold > 0 (performing), red dot = Sold = 0 (non-performing)',
+                        headerTooltip: 'RV L30 — Reverb sales, last 30 days. Green dot = Sold > 0 (performing), red dot = Sold = 0 (non-performing). Click for the graph.',
+                        cellClick: (e, cell) => openSoldChart(cell.getRow().getData()),
                         formatter: c => {
                             const v = Number(c.getValue()) || 0;
                             return sdot(v > 0 ? 'up' : 'down', v > 0 ? 'Performing — Sold > 0' : 'Non-performing — Sold = 0')
@@ -358,7 +419,8 @@
                     },
                     {
                         title: 'Sold history', field: 'sold_hist', width: 110, headerSort: false, download: false,
-                        headerTooltip: 'Daily snapshots of Sold (L30), oldest → newest, last 7 days. Green = Sold > 0, red = Sold = 0. Hover a dot for the day.',
+                        headerTooltip: 'Daily snapshots of Sold (L30), oldest → newest, last 7 days. Green = Sold > 0, red = Sold = 0. Hover a dot for the day, click for the graph.',
+                        cellClick: (e, cell) => openSoldChart(cell.getRow().getData()),
                         formatter: c => {
                             const list = c.getValue();
                             if (!Array.isArray(list) || !list.length) return '<span class="rb-dots">' + sdot('none', 'No daily snapshots yet') + '</span>';
@@ -788,8 +850,133 @@
                 }
             }
 
+            // ---------- Sold / metrics graph (rolling history + range filter, like /reverb-pricing) ----------
+            const SC = { chart: null, sku: null, stats: null };
+            const SC_METRICS = {
+                sold:  { label: 'Sold (L30)', field: 'rv_l30', color: '#198754', bg: 'rgba(25,135,84,0.10)', fmt: v => Math.round(Number(v) || 0).toLocaleString('en-US') },
+                views: { label: 'Views', field: 'views', color: '#0000FF', bg: 'rgba(0,0,255,0.10)', fmt: v => Math.round(Number(v) || 0).toLocaleString('en-US') },
+                cvr:   { label: 'CVR%', field: 'cvr_percent', color: '#008000', bg: 'rgba(0,128,0,0.10)', fmt: v => Number(v || 0).toFixed(1) + '%' },
+                price: { label: 'Price', field: 'price', color: '#6c757d', bg: 'rgba(108,117,125,0.08)', fmt: v => '$' + Number(v || 0).toFixed(2) },
+            };
+
+            function scEnsureChart() {
+                if (SC.chart || typeof Chart === 'undefined') return;
+                const medianLine = {
+                    id: 'scMedianLine',
+                    afterDraw(chart) {
+                        if (!SC.stats) return;
+                        const y = chart.scales.y.getPixelForValue(SC.stats.median);
+                        const c = chart.ctx;
+                        c.save(); c.setLineDash([6, 4]); c.strokeStyle = '#6c757d'; c.lineWidth = 1.2;
+                        c.beginPath(); c.moveTo(chart.scales.x.left, y); c.lineTo(chart.scales.x.right, y); c.stroke(); c.restore();
+                    },
+                };
+                const valueLabels = {
+                    id: 'scValueLabels',
+                    afterDatasetsDraw(chart) {
+                        if (!SC.stats) return;
+                        const ds = chart.data.datasets[0], meta = chart.getDatasetMeta(0), c = chart.ctx;
+                        if (ds.data.length > 45) return;   // too dense to label
+                        c.save(); c.font = 'bold 8px Inter, system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'bottom';
+                        meta.data.forEach((pt, i) => {
+                            if (ds.data[i] == null) return;
+                            c.fillStyle = SC.stats.dotColors[i] || '#6c757d';
+                            c.fillText(SC.stats.fmt(ds.data[i]), pt.x, pt.y + (i % 2 === 0 ? -7 : -15));
+                        });
+                        c.restore();
+                    },
+                };
+                SC.chart = new Chart(document.getElementById('sc-canvas').getContext('2d'), {
+                    type: 'line',
+                    data: { labels: [], datasets: [{ label: 'Sold (L30)', data: [], borderColor: '#198754', backgroundColor: 'rgba(25,135,84,0.10)', borderWidth: 1.5, pointRadius: 3.5, pointHoverRadius: 6, tension: 0.3, fill: true, spanGaps: true }] },
+                    plugins: [medianLine, valueLabels],
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        layout: { padding: { top: 22, left: 2, right: 8, bottom: 2 } },
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                titleFont: { size: 10 }, bodyFont: { size: 10 }, padding: 6,
+                                callbacks: { label: ctx => ctx.parsed.y == null ? '' : (SC.stats ? SC.stats.label + ': ' + SC.stats.fmt(ctx.parsed.y) : String(ctx.parsed.y)) },
+                            },
+                        },
+                        scales: {
+                            x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } } },
+                            y: { beginAtZero: true, ticks: { font: { size: 9 } } },
+                        },
+                    },
+                });
+            }
+
+            function scStats(arr) {
+                const valid = arr.filter(v => v != null && !isNaN(v));
+                if (!valid.length) return { min: 0, max: 0, median: 0 };
+                const sorted = [...valid].sort((a, b) => a - b);
+                const mid = Math.floor(sorted.length / 2);
+                return {
+                    min: sorted[0], max: sorted[sorted.length - 1],
+                    median: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
+                };
+            }
+
+            async function scLoad() {
+                const metric = document.getElementById('sc-metric').value;
+                const days = parseInt(document.getElementById('sc-days').value, 10) || 0;
+                const m = SC_METRICS[metric];
+                document.getElementById('sc-metric-label').textContent = m.label;
+                document.getElementById('sc-suffix').textContent = '(Rolling ' + (days === 0 ? 'Lifetime' : 'L' + days) + ')';
+                const wrap = document.getElementById('sc-wrap'), load = document.getElementById('sc-loading'), nod = document.getElementById('sc-nodata');
+                wrap.style.display = 'none'; nod.style.display = 'none'; load.style.display = 'block';
+                try {
+                    const res = await fetch(URLS.metricsHistory + '?days=' + days + '&sku=' + encodeURIComponent(SC.sku), { headers: { 'Accept': 'application/json' } });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const data = await res.json();
+                    load.style.display = 'none';
+                    if (!Array.isArray(data) || !data.length) { SC.stats = null; nod.style.display = 'block'; return; }
+
+                    wrap.style.display = 'flex';
+                    const values = data.map(d => Number(d[m.field]) || 0);
+                    const st = scStats(values);
+                    // Sold: green = sold > 0, red = 0. Other metrics: green up / red down vs previous day.
+                    const dotColors = values.map((v, i) => {
+                        if (metric === 'sold') return v > 0 ? '#28a745' : '#dc3545';
+                        if (i === 0) return '#6c757d';
+                        return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? '#dc3545' : '#6c757d';
+                    });
+                    SC.stats = { label: m.label, fmt: m.fmt, median: st.median, dotColors };
+                    scEnsureChart();
+                    const ds = SC.chart.data.datasets[0];
+                    SC.chart.data.labels = data.map(d => d.date_formatted || d.date || '');
+                    ds.data = values; ds.label = m.label; ds.borderColor = m.color; ds.backgroundColor = m.bg;
+                    ds.pointBackgroundColor = dotColors; ds.pointBorderColor = dotColors;
+                    SC.chart.options.scales.y.ticks.callback = v => m.fmt(v);
+                    SC.chart.update('active');
+                    document.getElementById('sc-high').textContent = m.fmt(st.max);
+                    document.getElementById('sc-med').textContent = m.fmt(st.median);
+                    document.getElementById('sc-low').textContent = m.fmt(st.min);
+                } catch (e) {
+                    load.style.display = 'none'; SC.stats = null; nod.style.display = 'block';
+                    console.error('Reverb bump graph load failed', e);
+                }
+            }
+
+            function openSoldChart(d) {
+                if (!d || !d.sku) return;
+                if (typeof Chart === 'undefined') return toast('Chart library failed to load', false);
+                SC.sku = d.sku;
+                document.getElementById('sc-sku').textContent = d.sku;
+                document.getElementById('sc-metric').value = 'sold';
+                document.getElementById('sc-days').value = '30';
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('soldChartModal')).show();
+                scEnsureChart();
+                scLoad();
+            }
+
             // ---------- init ----------
             async function init() {
+                document.getElementById('sc-metric').addEventListener('change', scLoad);
+                document.getElementById('sc-days').addEventListener('change', scLoad);
                 const res = await fetch(URLS.data, { headers: { 'Accept': 'application/json' } });
                 const payload = await res.json();
                 if (payload.table_ready === false) {
