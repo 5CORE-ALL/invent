@@ -105,6 +105,71 @@ final class EbaySpricePush
         return null;
     }
 
+    /**
+     * Why a SKU can never take a price push right now (no live listing to revise), or null when it can.
+     * Queueing such a SKU only produces a "failed" row again and again, so the queue endpoint drops it up front.
+     */
+    public static function unpushableReason(?object $metric): ?string
+    {
+        if (! $metric || trim((string) ($metric->item_id ?? '')) === '') {
+            return 'No eBay item_id';
+        }
+        if (EbayListingEnded::isEnded($metric->listing_status ?? null)) {
+            return 'Ended listing';
+        }
+        if (EbayListingEnded::isNotListed($metric->listing_status ?? null)) {
+            return 'Not listed on eBay (SKU missing from live listing)';
+        }
+
+        return null;
+    }
+
+    /**
+     * Splits queue tasks into those that can be pushed and those that cannot (see unpushableReason()).
+     *
+     * @param  list<array<string, mixed>>  $tasks  each with a "sku"
+     * @return array{0: list<array<string, mixed>>, 1: array<string, string>}  [pushable tasks, skipped SKU => reason]
+     */
+    public static function splitPushable(string $channel, array $tasks): array
+    {
+        $metricClass = self::MAP[$channel][0] ?? null;
+        if (! $metricClass || $tasks === []) {
+            return [$tasks, []];
+        }
+        $keys = [];
+        foreach ($tasks as $t) {
+            $k = strtoupper(trim((string) ($t['sku'] ?? '')));
+            if ($k !== '') {
+                $keys[$k] = true;
+            }
+        }
+        $byKey = [];
+        try {
+            foreach (array_chunk(array_keys($keys), 400) as $chunk) {
+                foreach ($metricClass::query()->whereIn(\Illuminate\Support\Facades\DB::raw('UPPER(TRIM(sku))'), $chunk)->orderBy('id')->get() as $m) {
+                    $byKey[strtoupper(trim((string) $m->sku))][] = $m;
+                }
+            }
+        } catch (\Throwable) {
+            return [$tasks, []]; // cannot tell: let the runner decide
+        }
+
+        $kept = [];
+        $skipped = [];
+        foreach ($tasks as $t) {
+            $k = strtoupper(trim((string) ($t['sku'] ?? '')));
+            $reason = $k === '' ? null : self::unpushableReason(isset($byKey[$k]) ? EbayListingEnded::preferLiveMetric($byKey[$k]) : null);
+            if ($reason !== null) {
+                $skipped[$k] = $reason;
+
+                continue;
+            }
+            $kept[] = $t;
+        }
+
+        return [$kept, $skipped];
+    }
+
     public static function savedSprice(string $channel, string $sku): ?float
     {
         $viewClass = self::MAP[$channel][1] ?? null;

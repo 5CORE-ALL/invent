@@ -123,13 +123,22 @@ class ChannelPromoPricingController extends Controller
             }
         }
 
+        // eBay: SKUs with no live listing (ended / not listed / no item id) can never be revised. Queueing them only made the
+        // job fail the same SKUs on every reload, so they are left out here and reported instead.
+        $notPushable = [];
+        if (\App\Support\Marketplace\EbaySpricePush::supports($channel)) {
+            [$tasks, $notPushable] = \App\Support\Marketplace\EbaySpricePush::splitPushable($channel, $tasks);
+        }
+        $skipNote = $notPushable === [] ? '' : ' '.count($notPushable).' SKU(s) skipped: no live eBay listing to revise ('.implode(', ', array_slice(array_keys($notPushable), 0, 5)).(count($notPushable) > 5 ? ', …' : '').').';
+
         $store = ChannelPushSpriceJobStore::for($channel);
         if ($tasks === []) {
             return response()->json(array_merge($store->toApiResponse($store->load()), [
                 'success' => true,
                 'mode' => 'none',
                 'worker_spawned' => false,
-                'message' => 'Nothing to push — Price already equals S PRC.',
+                'skipped_not_listed' => array_keys($notPushable),
+                'message' => $notPushable === [] ? 'Nothing to push — Price already equals S PRC.' : 'Nothing to push.'.$skipNote,
             ]));
         }
 
@@ -185,9 +194,10 @@ class ChannelPromoPricingController extends Controller
             'success' => true,
             'mode' => $mode,
             'worker_spawned' => $spawned,
-            'message' => $mode === 'append'
+            'skipped_not_listed' => array_keys($notPushable),
+            'message' => ($mode === 'append'
                 ? ('Added to running S PRC queue ('.$api['total'].' total). Page close is OK.')
-                : ('S PRC push started in background ('.$api['total'].' SKU(s)). Page close is OK.'),
+                : ('S PRC push started in background ('.$api['total'].' SKU(s)). Page close is OK.')).$skipNote,
         ]));
     }
 
