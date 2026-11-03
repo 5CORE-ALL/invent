@@ -60,8 +60,11 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
 
     function tick() {
         paint(false);
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { ctrl.abort(); }, 35000);
         return fetch(url, {
             method: 'POST',
+            signal: ctrl.signal,
             headers: {
                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
                 'Accept': 'application/json',
@@ -82,6 +85,7 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 return data;
             });
         }).then(function (data) {
+            clearTimeout(timer);
             if (!data.success) {
                 finish(data.message || ('Sync failed at offset ' + offset + '.'));
                 return;
@@ -92,6 +96,10 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 rateRetries++;
                 paint(true);
                 setTimeout(tick, data.retry_after_ms || 3000);
+                return;
+            }
+            if (data.rate_limited) {
+                finish('Alibaba is busy, so no quantity was sent. The link-map sync ("Fetching Alibaba page") or a background inventory push is using Alibaba. Wait until that finishes, then click Push Shopify inventory again.\n' + summary());
                 return;
             }
             rateRetries = 0;
@@ -126,9 +134,10 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             }
             setTimeout(tick, 400);
         }).catch(function (err) {
+            clearTimeout(timer);
             var msg = String((err && err.message) || '');
-            var timeoutish = /504|502|503|timeout|gateway|empty response/i.test(msg);
-            var maxRetries = timeoutish ? 3 : 1;
+            var timeoutish = /504|502|503|timeout|gateway|empty response|abort/i.test(msg);
+            var maxRetries = 1;
             if (retries < maxRetries) {
                 retries++;
                 setTimeout(tick, timeoutish ? 2000 : 1500);
