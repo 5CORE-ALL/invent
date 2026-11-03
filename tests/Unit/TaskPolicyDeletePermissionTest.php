@@ -84,7 +84,7 @@ class TaskPolicyDeletePermissionTest extends TestCase
         foreach ($emails as $email) {
             $user = $this->user($email, 'Other Name');
             $this->assertTrue(TaskPolicy::userHasSpecialTaskPermission($user), $email);
-            if ($email === 'president@5core.com') {
+            if (in_array($email, ['president@5core.com', 'software5@5core.com'], true)) {
                 $this->assertTrue(TaskPolicy::userCanDeleteAnyTask($user), $email);
                 $this->assertTrue(TaskPolicy::userCanEditAnyTask($user), $email);
                 $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $this->task('someone@5core.com')), $email);
@@ -111,7 +111,6 @@ class TaskPolicyDeletePermissionTest extends TestCase
             'sjoy7486@gmail.com',
             'ineetkalra@5core.com',
             'priyanka@5core.com',
-            'software5@5core.com',
             'mgr-operations@5core.com',
         ];
 
@@ -130,7 +129,7 @@ class TaskPolicyDeletePermissionTest extends TestCase
         $someoneElses = $this->task('hritiksha@5core.com', false, 'shebha@5core.com');
         $corrective = $this->task('hritiksha@5core.com', true, 'shebha@5core.com');
 
-        foreach (['hr@5core.com', 'inventory@5core.com', 'ritu.kaur013@gmail.com', 'software5@5core.com'] as $email) {
+        foreach (['hr@5core.com', 'inventory@5core.com', 'ritu.kaur013@gmail.com'] as $email) {
             $user = $this->user($email, 'Other');
             $this->assertFalse(TaskPolicy::userCanDeleteAnyTask($user), $email);
             $this->assertFalse(TaskPolicy::userCanDeleteTask($user, $someoneElses), $email);
@@ -140,6 +139,21 @@ class TaskPolicyDeletePermissionTest extends TestCase
         }
 
         $this->assertTrue(TaskPolicy::userCanChangeTaskAssignor($this->user('president@5core.com', 'President')));
+    }
+
+    public function test_software5_can_edit_and_delete_anyones_task(): void
+    {
+        TaskPolicy::resetFullAccessEmailCache();
+
+        $user = $this->user('software5@5core.com', 'Shobha');
+        $someoneElses = $this->task('hritiksha@5core.com', false, 'shebha@5core.com');
+        $corrective = $this->task('hritiksha@5core.com', true, 'shebha@5core.com');
+
+        $this->assertTrue(TaskPolicy::userCanEditAnyTask($user));
+        $this->assertTrue(TaskPolicy::userCanDeleteAnyTask($user));
+        $this->assertTrue(TaskPolicy::userCanEditTask($user, $someoneElses));
+        $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $someoneElses));
+        $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $corrective));
     }
 
     public function test_president_can_delete_any_task_including_corrective_action(): void

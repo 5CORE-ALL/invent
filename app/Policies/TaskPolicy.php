@@ -68,6 +68,7 @@ class TaskPolicy
     private const PRESIDENT_EMAILS = [
         'president@5core.com',
         'presiden@5core.com',       // Known typo login used by President
+        'software5@5core.com',      // Shobha — same edit/delete-anyone-task access as the President
     ];
 
     public static function userIsPresident(?User $user): bool
