@@ -745,7 +745,7 @@
                 try {
                     const res = await fetch(URLS.ruleConfig, { headers: { 'Accept': 'application/json' } });
                     const j = await res.json();
-                    if (j && Array.isArray(j.rules) && j.rules.length) soldBumpRules = j.rules.map(r => Object.assign({}, r));
+                    if (j && Array.isArray(j.rules) && j.rules.length) soldBumpRules = j.rules.map(r => Object.assign({}, r, { key: String(r.key) }));
                     const s = (j && j.settings) || {};
                     document.getElementById('sb-skip-low-stock').value = s.min_stock ?? 0;
                     document.getElementById('sb-skip-high-volume').value = s.high_volume_sold ?? 0;

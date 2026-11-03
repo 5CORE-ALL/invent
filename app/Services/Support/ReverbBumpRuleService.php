@@ -43,6 +43,9 @@ class ReverbBumpRuleService
     {
         $out = [];
         foreach (self::SLABS as $key => $label) {
+            // PHP turns numeric string array keys ('0'..'7') into ints, so always cast back to string —
+            // slabKey()/bumpForSold() compare keys as strings.
+            $key = (string) $key;
             $out[] = ['key' => $key, 'label' => $label, 'bump' => $key === '0' ? self::NO_SALE_BUMP : self::SOLD_BUMP];
         }
 
@@ -164,7 +167,7 @@ class ReverbBumpRuleService
     {
         $key = self::slabKey($sold);
         foreach ($rules as $r) {
-            if (($r['key'] ?? null) === $key) {
+            if ((string) ($r['key'] ?? '') === $key) {
                 return max(0.0, (float) $r['bump']);
             }
         }
