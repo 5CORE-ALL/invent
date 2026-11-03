@@ -5530,7 +5530,12 @@ class EbayController extends Controller
             foreach ($rows as $row) {
                 $syncItems[] = ['sku' => $row['sku'], 'on' => $key !== 'off'];
             }
-            $result = $service->syncZeroSoldCoupons($syncItems, $pct, $promoId);
+            try {
+                $result = $service->syncZeroSoldCoupons($syncItems, $pct, $promoId);
+            } catch (\Throwable $e) {
+                Log::error('eBay EL30 coupon sync crashed', ['channel' => $channel, 'pct' => $pct, 'error' => $e->getMessage()]);
+                $result = ['success' => false, 'message' => 'Coupon sync error: '.$e->getMessage(), 'results' => []];
+            }
             if ($key !== 'off') {
                 $savedId = trim((string) ($result['promotion_id'] ?? ''));
                 if ($savedId !== '') {
@@ -5565,7 +5570,9 @@ class EbayController extends Controller
         $latest = $this->ebayZeroSoldCouponConfig($channel);
         $enabled = $latest['enabled'];
         $slabs = $latest['slabs'];
-        $promos = array_merge($latest['promotions'], $promos);
+        // array_replace keeps the percent keys. array_merge renumbered them to 0, 1, … and every
+        // saved promotion id was then dropped (promotions stayed empty), forcing a full coupon scan per push.
+        $promos = array_replace($latest['promotions'], $promos);
         $this->persistZeroSoldCouponSetting($channel, $enabled, $slabs, $promos);
         $legacyPct = EbayDilCoupon::legacyPct($slabs);
         $code = $legacyPct >= 5 ? $service->zeroSoldCouponCode($legacyPct) : '';

@@ -307,10 +307,23 @@
         try { document.dispatchEvent(new CustomEvent('ebayZeroSoldChanged', { detail: { channel: @json($ebayZeroSoldChannel) } })); } catch (e) {}
     }
 
+    // eBay 3 sends a tree: child SKUs sit inside each parent's `_children`. Flatten it, or the coupon
+    // rule only ever sees the parent rows (which it skips) and no child SKU gets a coupon.
+    function flatten(list) {
+        const out = [];
+        (function walk(arr) {
+            arr.forEach(function(d) {
+                if (!d) return;
+                out.push(d);
+                if (Array.isArray(d._children) && d._children.length) walk(d._children);
+            });
+        })(list);
+        return out;
+    }
     function rows() {
-        if (Array.isArray(window.allTableData) && window.allTableData.length) return window.allTableData;
+        if (Array.isArray(window.allTableData) && window.allTableData.length) return flatten(window.allTableData);
         const table = window.table;
-        if (table && typeof table.getData === 'function') return table.getData() || [];
+        if (table && typeof table.getData === 'function') return flatten(table.getData() || []);
         return [];
     }
     function counts() {
@@ -628,16 +641,21 @@
             if (!data || rowSku(data).toUpperCase() !== want) return;
             data.zero_sold_coupon_code = code || null;
         };
-        try { if (typeof allTableData !== 'undefined' && Array.isArray(allTableData)) allTableData.forEach(apply); } catch (e) {}
-        if (window.allTableData) window.allTableData.forEach(apply);
+        try { if (typeof allTableData !== 'undefined' && Array.isArray(allTableData)) flatten(allTableData).forEach(apply); } catch (e) {}
+        if (Array.isArray(window.allTableData)) flatten(window.allTableData).forEach(apply);
         const table = window.table;
         if (table && typeof table.getRows === 'function') {
-            table.getRows().forEach(function(row) {
+            // Child SKU rows of a tree table (eBay 3) are nested under their parent row.
+            const visit = function(row) {
                 const data = row.getData() || {};
                 if (rowSku(data).toUpperCase() === want && typeof row.update === 'function') {
                     row.update({ zero_sold_coupon_code: code || null });
                 }
-            });
+                if (typeof row.getTreeChildren === 'function') {
+                    (row.getTreeChildren() || []).forEach(visit);
+                }
+            };
+            table.getRows().forEach(visit);
         }
     }
     function jobs() {

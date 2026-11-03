@@ -400,15 +400,16 @@ class Ebay1CouponService
             $sku = $row['sku'];
             $metric = $this->findMetric($sku);
             $itemId = $metric?->item_id ? trim((string) $metric->item_id) : '';
-            $dv = $this->findOrNewDataView($sku);
-            $val = is_array($dv->value) ? $dv->value : [];
-            $apiSku = trim((string) ($metric->sku ?: $sku));
-
+            // A SKU with no metric row (not listed on this eBay account) must fail alone.
+            // Reading $metric->sku on null threw a 500 that dropped the whole chunk of SKUs.
             if ($itemId === '') {
                 $results[] = ['sku' => $sku, 'success' => false, 'on' => false, 'message' => 'item_id not found'];
 
                 continue;
             }
+            $dv = $this->findOrNewDataView($sku);
+            $val = is_array($dv->value) ? $dv->value : [];
+            $apiSku = trim((string) ($metric?->sku ?: $sku));
 
             if (! $row['on']) {
                 $removed = $this->removeSkuFromZeroSoldCoupons($token, $apiSku, $itemId, $val, $promoId);
