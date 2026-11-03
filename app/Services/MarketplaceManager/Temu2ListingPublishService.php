@@ -4467,6 +4467,7 @@ class Temu2ListingPublishService
         $catId = $ctx['catId'];
         unset($fallbackCatId);
         $parentSpecIds = $ctx['parentSpecIds'];
+        $parents = [];
         if ($catId > 0) {
             $data = $this->temuCallBody([
                 'type' => 'temu.local.product.variation.get',
@@ -4514,9 +4515,20 @@ class Temu2ListingPublishService
             if ($sn === '') {
                 continue;
             }
+            // A spec minted with spec.id.get (370004488) is rejected on this goods. Use the color
+            // Temu already publishes for the category (Green for GRN) when that value exists.
+            $catalog = $this->matchVariationChild($parents, $parentSpecIds, $sn)
+                ?? $this->catalogSpecForSku($catId, $parentSpecIds, $sn);
+            if ($catalog !== null) {
+                $skuList[$i]['specDetails'] = [[
+                    'parentSpecId' => $catalog['parentSpecId'] > 0 ? $catalog['parentSpecId'] : (int) $parentSpecIds[0],
+                    'specId' => $catalog['specId'],
+                    'property' => $catalog['property'],
+                ]];
+                continue;
+            }
             $details = [];
             foreach ($parentSpecIds as $parentSpecId) {
-                // Same name the live variations use: the seller SKU, under this goods' own category and parent spec.
                 $specId = $this->createSpecId($catId, (int) $parentSpecId, $sn, $sn);
                 if ($specId === null) {
                     continue;
@@ -4833,6 +4845,175 @@ class Temu2ListingPublishService
     }
 
     /**
+     * Names that can identify this SKU's variation on Temu: the SKU, its variation name, and the color word.
+     * DPAD COMBO GRN matches the catalog value Green.
+     *
+     * @return list<string>
+     */
+    private function specNameCandidates(string $sku): array
+    {
+        $names = [];
+        $add = function (string $name) use (&$names): void {
+            $name = strtolower(trim($name));
+            if ($name !== '') {
+                $names[$name] = true;
+            }
+        };
+        $add($sku);
+        $add(ListingManagerFamily::attributesForSku($sku)['name']);
+        $token = strtoupper((string) preg_replace('/^.*\s+/', '', trim($sku)));
+        $colors = [
+            'GRN' => 'green', 'GREEN' => 'green',
+            'BLK' => 'black', 'BLACK' => 'black',
+            'BLU' => 'blue', 'BLUE' => 'blue',
+            'GREY' => 'grey', 'GRAY' => 'gray', 'GRY' => 'grey',
+            'ORG' => 'orange', 'ORANGE' => 'orange',
+            'RED' => 'red',
+            'YLW' => 'yellow', 'YELLOW' => 'yellow',
+            'PNK' => 'pink', 'PINK' => 'pink',
+            'WHT' => 'white', 'WHITE' => 'white',
+            'BRN' => 'brown', 'BROWN' => 'brown',
+            'PUR' => 'purple', 'PURPLE' => 'purple',
+            'GLD' => 'gold', 'GOLD' => 'gold',
+            'SLV' => 'silver', 'SILVER' => 'silver',
+        ];
+        if (isset($colors[$token])) {
+            $add($colors[$token]);
+            $add($token);
+        }
+
+        return array_keys($names);
+    }
+
+    /**
+     * A predefined child spec under the goods' parent (variation.get), when its name is this SKU's color.
+     *
+     * @param  list<mixed>  $parents
+     * @param  list<int>  $parentSpecIds
+     * @return array{specId: int, parentSpecId: int, property: array<string, mixed>}|null
+     */
+    private function matchVariationChild(array $parents, array $parentSpecIds, string $sku): ?array
+    {
+        $want = array_flip($this->specNameCandidates($sku));
+        $allowed = array_flip(array_map('intval', $parentSpecIds));
+        foreach ($parents as $parent) {
+            if (! is_array($parent)) {
+                continue;
+            }
+            $parentSpecId = (int) ($parent['parentSpecId'] ?? $parent['parentId'] ?? $parent['id'] ?? 0);
+            if ($parentSpecId <= 0 || ! isset($allowed[$parentSpecId])) {
+                continue;
+            }
+            $children = $parent['specList'] ?? $parent['childSpecList'] ?? $parent['values'] ?? [];
+            if (! is_array($children)) {
+                continue;
+            }
+            foreach ($children as $child) {
+                if (! is_array($child)) {
+                    continue;
+                }
+                $specId = (int) ($child['specId'] ?? $child['id'] ?? 0);
+                $label = strtolower(trim((string) ($child['specName'] ?? $child['value'] ?? $child['name'] ?? '')));
+                if ($specId <= 0 || $label === '' || ! isset($want[$label])) {
+                    continue;
+                }
+
+                return [
+                    'specId' => $specId,
+                    'parentSpecId' => $parentSpecId,
+                    'property' => [
+                        'parentSpecId' => $parentSpecId,
+                        'specId' => $specId,
+                        'value' => (string) ($child['specName'] ?? $child['value'] ?? $child['name'] ?? $label),
+                    ],
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The sale-spec value Temu's category template already has for this SKU (bg.local.goods.template.get).
+     * That specId is what goods.update accepts. A spec.id.get id is not.
+     *
+     * @param  list<int>  $parentSpecIds
+     * @return array{specId: int, parentSpecId: int, property: array<string, mixed>}|null
+     */
+    private function catalogSpecForSku(int $catId, array $parentSpecIds, string $sku): ?array
+    {
+        if ($catId <= 0) {
+            return null;
+        }
+        $template = $this->temuCallBody([
+            'type' => 'bg.local.goods.template.get',
+            'catId' => $catId,
+            'language' => 'en',
+        ], 45);
+        $info = $template['result']['templateInfo'] ?? $template['result'] ?? [];
+        if (! is_array($info)) {
+            return null;
+        }
+        $groups = [];
+        if (is_array($info['goodsSpecProperties'] ?? null)) {
+            $groups[] = $info['goodsSpecProperties'];
+        }
+        if (is_array($info['goodsProperties'] ?? null)) {
+            $groups[] = $info['goodsProperties'];
+        }
+        $want = array_flip($this->specNameCandidates($sku));
+        $allowed = array_flip(array_map('intval', $parentSpecIds));
+        foreach ($groups as $props) {
+            foreach ($props as $prop) {
+                if (! is_array($prop)) {
+                    continue;
+                }
+                $propParent = (int) ($prop['parentSpecId'] ?? $prop['parentId'] ?? 0);
+                if ($allowed !== [] && $propParent > 0 && ! isset($allowed[$propParent])) {
+                    continue;
+                }
+                $values = $prop['values'] ?? $prop['valueList'] ?? $prop['specList'] ?? [];
+                if (! is_array($values)) {
+                    continue;
+                }
+                foreach ($values as $value) {
+                    if (! is_array($value)) {
+                        continue;
+                    }
+                    $specId = (int) ($value['specId'] ?? 0);
+                    $label = strtolower(trim((string) ($value['value'] ?? $value['specName'] ?? $value['name'] ?? '')));
+                    if ($specId <= 0 || $label === '' || ! isset($want[$label])) {
+                        continue;
+                    }
+                    $entry = [
+                        'specId' => $specId,
+                        'value' => (string) ($value['value'] ?? $value['specName'] ?? $label),
+                    ];
+                    if ($propParent > 0) {
+                        $entry['parentSpecId'] = $propParent;
+                    }
+                    foreach (['templatePid', 'refPid', 'pid'] as $key) {
+                        if (isset($prop[$key]) && $prop[$key] !== '' && $prop[$key] !== null) {
+                            $entry[$key] = (int) $prop[$key];
+                        }
+                    }
+                    if (isset($value['vid']) && $value['vid'] !== '' && $value['vid'] !== null) {
+                        $entry['vid'] = (int) $value['vid'];
+                    }
+
+                    return [
+                        'specId' => $specId,
+                        'parentSpecId' => $propParent,
+                        'property' => $entry,
+                    ];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Sale specs for goodsProperty: the specs already on the goods, plus the new SKU's spec.
      * Temu rejects a specIdList value that was not also sent as a goods property.
      *
@@ -4876,6 +5057,15 @@ class Temu2ListingPublishService
             $name = (string) ($item['outSkuSn'] ?? $item['externalSkuId'] ?? '');
             foreach ((array) ($item['specDetails'] ?? []) as $spec) {
                 if (! is_array($spec)) {
+                    continue;
+                }
+                $property = $spec['property'] ?? null;
+                if (is_array($property) && (int) ($property['specId'] ?? 0) > 0) {
+                    $sid = (int) $property['specId'];
+                    if (! isset($seen[$sid])) {
+                        $seen[$sid] = true;
+                        $props[] = $property;
+                    }
                     continue;
                 }
                 $add((int) ($spec['specId'] ?? 0), (int) ($spec['parentSpecId'] ?? 0), $name);
