@@ -4939,11 +4939,49 @@ class Temu2ListingPublishService
             $identityKeys = array_flip(['skuId', 'outSkuSn']);
             // The update checks the pictures of every SKU it carries. A live SKU sent with no picture is
             // reported as 150010022 as well, so each one keeps the photo Temu already stores for it.
+            // Temu also checks package size on every carried SKU (150011019 "volumeUnit:null"). Each live SKU keeps
+            // the weight and size Temu holds; where Temu holds none, the new SKU's package size fills the gap.
+            $measureKeys = ['weight', 'weightUnit', 'length', 'width', 'height', 'volumeUnit'];
+            $measureFallback = [];
+            foreach ($freshUpdate as $freshRow) {
+                foreach ($measureKeys as $key) {
+                    if (isset($freshRow[$key]) && $freshRow[$key] !== '' && ! isset($measureFallback[$key])) {
+                        $measureFallback[$key] = $freshRow[$key];
+                    }
+                }
+            }
             $kept = [];
             $keptPlain = [];
             foreach ($existing as $row) {
                 $identity = array_intersect_key($row, $identityKeys);
                 $keptPlain[] = $identity;
+                // Package size comes from our masters (Dim & Wt) for that SKU. Temu's own value is used only
+                // when the masters hold no complete package for it.
+                $fromMasters = [];
+                $liveSku = trim((string) ($row['outSkuSn'] ?? ''));
+                if ($liveSku !== '') {
+                    $liveProduct = $this->findProductLoose($liveSku);
+                    if ($liveProduct && $this->hasDimWt($liveProduct, $liveSku)) {
+                        $pkg = $this->resolveDimensions($liveProduct, $liveSku);
+                        $fromMasters = [
+                            'weight' => $this->v1Measure($pkg['weight'] ?? '1', 4),
+                            'length' => $this->v1Measure($pkg['length'] ?? '1', 3),
+                            'width' => $this->v1Measure($pkg['width'] ?? '1', 3),
+                            'height' => $this->v1Measure($pkg['height'] ?? '1', 3),
+                            'weightUnit' => $this->v1WeightUnit($pkg['weightUnit'] ?? 2),
+                            'volumeUnit' => $this->v1VolumeUnit($pkg['volumeUnit'] ?? 2),
+                        ];
+                    }
+                }
+                foreach ($measureKeys as $key) {
+                    if (isset($fromMasters[$key])) {
+                        $identity[$key] = $fromMasters[$key];
+                    } elseif (isset($row[$key]) && $row[$key] !== '' && $row[$key] !== null) {
+                        $identity[$key] = $row[$key];
+                    } elseif (isset($measureFallback[$key])) {
+                        $identity[$key] = $measureFallback[$key];
+                    }
+                }
                 $own = [];
                 foreach ((array) ($row['images'] ?? []) as $url) {
                     $url = trim((string) $url);
