@@ -6,14 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\ReverbBumpChangeLog;
 use App\Models\ReverbBumpRaw;
 use App\Models\ReverbProduct;
-use App\Models\ReverbSkuDailyData;
 use App\Models\ShopifySku;
 use App\Services\ReverbApiService;
 use App\Services\Support\ReverbBumpRawPuller;
 use App\Services\Support\ReverbBumpRuleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -54,8 +52,6 @@ class ReverbBumpController extends Controller
 
         $rules = ReverbBumpRuleService::rules();
         $ruleSettings = ReverbBumpRuleService::settings();
-        $soldHistory = $this->soldHistoryBySku();
-
         $rows = [];
         foreach ($products as $p) {
             $listingId = trim((string) $p->reverb_listing_id);
@@ -80,7 +76,6 @@ class ReverbBumpController extends Controller
                 'listing_state' => $p->listing_state,
                 'bump_bid' => $p->bump_bid,
                 'sold' => (int) ($p->r_l30 ?? 0),
-                'sold_hist' => $this->soldHistoryFor($soldHistory, (string) $p->sku, (int) ($p->r_l30 ?? 0)),
                 'inv' => $invNow,
                 's_bump' => $p->recommended_bid,
                 'price' => $priceNow,
@@ -97,61 +92,6 @@ class ReverbBumpController extends Controller
             'rows' => $rows,
             'table_ready' => $hasRawTable,
         ]);
-    }
-
-    private const SOLD_HISTORY_DAYS = 7;
-
-    /**
-     * Daily RV L30 snapshots (reverb_sku_daily_data, written by reverb:collect-metrics) for the last few days,
-     * keyed by UPPER(TRIM(sku)) → [Y-m-d => rv_l30]. One query for all SKUs.
-     *
-     * @return array<string, array<string, int>>
-     */
-    private function soldHistoryBySku(): array
-    {
-        if (! Schema::hasTable('reverb_sku_daily_data')) {
-            return [];
-        }
-
-        $from = Carbon::now('America/Los_Angeles')->startOfDay()->subDays(self::SOLD_HISTORY_DAYS)->toDateString();
-        $map = [];
-        try {
-            $records = ReverbSkuDailyData::query()
-                ->where('record_date', '>=', $from)
-                ->select(['sku', 'record_date', 'daily_data'])
-                ->cursor();
-            foreach ($records as $r) {
-                $data = is_array($r->daily_data) ? $r->daily_data : (json_decode((string) $r->daily_data, true) ?: []);
-                $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $r->sku)));
-                $map[$key][Carbon::parse($r->record_date)->format('Y-m-d')] = (int) ($data['rv_l30'] ?? 0);
-            }
-        } catch (\Throwable) {
-            return [];
-        }
-
-        return $map;
-    }
-
-    /**
-     * Last few days of Sold (oldest → newest), today's live value last. [{d: 'Nov 02', v: 3}, ...]
-     *
-     * @param  array<string, array<string, int>>  $history
-     * @return list<array{d: string, v: int}>
-     */
-    private function soldHistoryFor(array $history, string $sku, int $liveSold): array
-    {
-        $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
-        $days = $history[$key] ?? [];
-        $today = Carbon::now('America/Los_Angeles')->toDateString();
-        $days[$today] = $liveSold;
-        ksort($days);
-
-        $out = [];
-        foreach (array_slice($days, -self::SOLD_HISTORY_DAYS, null, true) as $date => $v) {
-            $out[] = ['d' => Carbon::parse($date)->format('M d'), 'v' => (int) $v];
-        }
-
-        return $out;
     }
 
     /**
