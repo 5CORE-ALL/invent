@@ -541,7 +541,7 @@ class Temu2ListingPublishService
 
                 return [
                     'success' => true,
-                    'message' => 'Added '.count($prepared).' variation(s) to the existing '.$this->shopLabel().' listing. Temu will show a new version on that parent.',
+                    'message' => 'Added '.count($prepared).' variation(s) to the existing '.$this->shopLabel().' listing.',
                     'goods_id' => $existingGoodsId,
                     'sku_id' => $firstSkuId !== '' ? $firstSkuId : null,
                     'skus' => array_values(array_map(static fn ($row) => $row['sku'], $prepared)),
@@ -849,7 +849,7 @@ class Temu2ListingPublishService
      * @param  array<string, mixed>  $item
      * @return array{sku: array<string, mixed>, listPrice: ?array{amount: string, currency: string}}
      */
-    private function v1SkuFromV2(array $item): array
+    protected function v1SkuFromV2(array $item): array
     {
         $specIds = [];
         foreach ($item['specDetails'] ?? [] as $row) {
@@ -937,7 +937,7 @@ class Temu2ListingPublishService
     /**
      * @param  array<string, mixed>  $data
      */
-    private function isUnknownApiType(array $data): bool
+    protected function isUnknownApiType(array $data): bool
     {
         $msg = strtolower(trim((string) ($data['errorMsg'] ?? $data['message'] ?? '')));
 
@@ -981,7 +981,7 @@ class Temu2ListingPublishService
     /**
      * bg.local.goods.add wants measure fields as strings with at most one decimal place.
      */
-    private function v1Measure(mixed $value, int $maxIntegers): string
+    protected function v1Measure(mixed $value, int $maxIntegers): string
     {
         $number = is_numeric($value) ? (float) $value : 1.0;
         if ($number <= 0) {
@@ -996,7 +996,7 @@ class Temu2ListingPublishService
         return number_format($number, 1, '.', '');
     }
 
-    private function v1WeightUnit(mixed $unit): string
+    protected function v1WeightUnit(mixed $unit): string
     {
         $unit = is_string($unit) ? strtolower(trim($unit)) : (string) $unit;
 
@@ -1008,7 +1008,7 @@ class Temu2ListingPublishService
         };
     }
 
-    private function v1VolumeUnit(mixed $unit): string
+    protected function v1VolumeUnit(mixed $unit): string
     {
         $unit = is_string($unit) ? strtolower(trim($unit)) : (string) $unit;
 
@@ -1297,7 +1297,7 @@ class Temu2ListingPublishService
         return strtoupper((string) preg_replace('/[^A-Z0-9]/i', '', $sku));
     }
 
-    private function findProductLoose(string $sku): ?ProductMaster
+    protected function findProductLoose(string $sku): ?ProductMaster
     {
         $sku = trim($sku);
         if ($sku === '') {
@@ -1598,7 +1598,7 @@ class Temu2ListingPublishService
     /**
      * @param  list<mixed>  $parents
      */
-    private function matchParentSpecId(array $parents, string $preferName): ?int
+    protected function matchParentSpecId(array $parents, string $preferName): ?int
     {
         $fallback = null;
         foreach ($parents as $parent) {
@@ -1726,7 +1726,7 @@ class Temu2ListingPublishService
         return $a !== '' && $b !== '' && $a === $b;
     }
 
-    private function sanitizeGoodsName(string $name): string
+    protected function sanitizeGoodsName(string $name): string
     {
         $name = html_entity_decode(trim($name), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $name = preg_replace('/[®©™~!*$?_{}#<>|;^¬¦]/u', ' ', $name) ?? $name;
@@ -2240,22 +2240,21 @@ class Temu2ListingPublishService
      * @param  list<string>  $sourceImages
      * @return array{map: array<string, string>, error: ?string}
      */
-    private function uploadImageMap(array $sourceImages): array
+    protected function uploadImageMap(array $sourceImages): array
     {
         $map = [];
         foreach ($sourceImages as $url) {
             if (isset($map[$url])) {
                 continue;
             }
-            if ($this->isTemuGoodsImageUrl($url)) {
+            if ($this->isTemuHostedImageUrl($url)) {
                 $map[$url] = $url;
                 continue;
             }
 
             $res = $this->uploadImageToTemu2($url);
-            $hosted = trim((string) ($res['url'] ?? ''));
-            if (! empty($res['success']) && $hosted !== '' && $this->isTemuGoodsImageUrl($hosted) && ! $this->sameImageUrl($hosted, $url)) {
-                $map[$url] = $hosted;
+            if (! empty($res['success']) && ! empty($res['url'])) {
+                $map[$url] = (string) $res['url'];
                 continue;
             }
 
@@ -2269,11 +2268,12 @@ class Temu2ListingPublishService
                 return ['map' => [], 'error' => $this->ipWhitelistUserMessage()];
             }
 
-            // One photo Temu will not take is left out. The rest of this SKU's photos still go up.
-        }
-
-        if ($map === []) {
-            return ['map' => [], 'error' => $this->shopLabel().' refused every image for this SKU.'];
+            return [
+                'map' => [],
+                'error' => $msg !== ''
+                    ? $this->shopLabel().' image upload failed: '.$msg
+                    : $this->shopLabel().' image upload failed.',
+            ];
         }
 
         return ['map' => $map, 'error' => null];
@@ -2405,94 +2405,6 @@ class Temu2ListingPublishService
         );
     }
 
-    /**
-     * goods.update only loads a direct kwcdn jpeg or png. A page link, a WebP, or our own site is not an image Temu can fetch.
-     */
-    protected function isTemuGoodsImageUrl(string $url): bool
-    {
-        if (! preg_match('#^https://#i', $url)) {
-            return false;
-        }
-        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
-        if (! str_contains($host, 'kwcdn.com')) {
-            return false;
-        }
-        $path = strtolower((string) (parse_url(strtok($url, '?') ?: $url, PHP_URL_PATH) ?? ''));
-
-        return (bool) preg_match('/\.(jpe?g|png)$/', $path);
-    }
-
-    /**
-     * A picture already stored on a Temu goods. goods.update can load these when a newly uploaded link is refused.
-     */
-    private function isTemuCdnUrl(string $url): bool
-    {
-        if (! preg_match('#^https://#i', $url)) {
-            return false;
-        }
-        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
-
-        return str_contains($host, 'kwcdn.com');
-    }
-
-    protected function sameImageUrl(string $left, string $right): bool
-    {
-        $normalize = static function (string $url): string {
-            return strtolower(rtrim(strtok($url, '?') ?: $url, '/'));
-        };
-
-        return $normalize($left) === $normalize($right);
-    }
-
-    /**
-     * This SKU's own pictures for a variation update, up to the gallery limit.
-     *
-     * @param  list<mixed>  $preferred
-     * @param  list<string>  $fallback
-     * @return list<string>
-     */
-    private function temuUpdateImages(array $preferred, array $fallback): array
-    {
-        $out = [];
-        foreach ([$preferred, $fallback] as $list) {
-            foreach ($list as $url) {
-                $url = trim((string) $url);
-                if ($url === '' || ! $this->isTemuGoodsImageUrl($url) || in_array($url, $out, true)) {
-                    continue;
-                }
-                $out[] = $url;
-                if (count($out) >= self::MAX_IMAGES) {
-                    return $out;
-                }
-            }
-            if ($out !== []) {
-                break;
-            }
-        }
-
-        return $out;
-    }
-
-    /**
-     * Temu wants at least three picture slots. Fewer than three real photos are repeated; a full gallery is left as it is.
-     *
-     * @param  list<string>  $images
-     * @return list<string>
-     */
-    private function padTemuUpdateImages(array $images): array
-    {
-        $images = array_values(array_filter($images, static fn ($url) => trim((string) $url) !== ''));
-        if ($images === []) {
-            return [];
-        }
-        $unique = array_values(array_unique($images));
-        while (count($images) < 3) {
-            $images[] = $unique[0];
-        }
-
-        return array_slice($images, 0, self::MAX_IMAGES);
-    }
-
     private function temu2IpWhitelistError(): ?string
     {
         $data = $this->api->callOpenApi('bg.local.goods.list.query', [
@@ -2520,7 +2432,7 @@ class Temu2ListingPublishService
             || stripos($message, 'IP_WHITE') !== false;
     }
 
-    private function ipWhitelistUserMessage(): string
+    protected function ipWhitelistUserMessage(): string
     {
         $ip = $this->detectPublicIp();
         $ipBit = $ip !== '' ? " Your public IP is {$ip}." : '';
@@ -3502,12 +3414,9 @@ class Temu2ListingPublishService
         return $details;
     }
 
-    private function createSpecId(int $catId, int $parentSpecId, string $sku, string $nameOverride = ''): ?int
+    private function createSpecId(int $catId, int $parentSpecId, string $sku): ?int
     {
-        if ($catId <= 0 || $parentSpecId <= 0) {
-            return null;
-        }
-        $storedName = $nameOverride !== '' ? $nameOverride : ListingManagerFamily::attributesForSku($sku)['name'];
+        $storedName = ListingManagerFamily::attributesForSku($sku)['name'];
         $name = $this->sanitizeGoodsName($storedName !== '' ? $storedName : $sku);
         if ($name === '') {
             $name = 'Default';
@@ -3519,12 +3428,8 @@ class Temu2ListingPublishService
             'childSpecName' => mb_substr($name, 0, 50),
         ], 45);
         $specId = (int) ($data['result']['specId'] ?? 0);
-        // A parent spec id is not a child spec. Sending it in specIdList is rejected (150011018).
-        if ($specId <= 0 || $specId === $parentSpecId) {
-            return null;
-        }
 
-        return $specId;
+        return $specId > 0 ? $specId : null;
     }
 
     /**
@@ -4173,7 +4078,7 @@ class Temu2ListingPublishService
         return $this->dimWtMasterItemPackage($this->dimWtMasterValues($row));
     }
 
-    private function hasDimWt(?ProductMaster $product, ?string $sku = null): bool
+    protected function hasDimWt(?ProductMaster $product, ?string $sku = null): bool
     {
         $sku = trim((string) ($sku ?: ($product->sku ?? '')));
         if ($sku === '' && ! $product) {
@@ -4188,7 +4093,7 @@ class Temu2ListingPublishService
      *
      * @return array{weight: string, length: string, width: string, height: string, weightUnit: int, volumeUnit: int}
      */
-    private function resolveDimensions(ProductMaster $product, ?string $sku = null): array
+    protected function resolveDimensions(ProductMaster $product, ?string $sku = null): array
     {
         $sku = trim((string) ($sku ?: $product->sku));
         $pkg = $this->dimWtMasterPackageForSku($sku, $product);
@@ -4422,7 +4327,7 @@ class Temu2ListingPublishService
      * @param  array<string, mixed>  $item  v2 SKU row
      * @return array<string, mixed>
      */
-    private function updateSkuFromV2(array $item): array
+    protected function updateSkuFromV2(array $item): array
     {
         $converted = $this->v1SkuFromV2($item);
         $sku = $converted['sku'];
@@ -4463,8 +4368,7 @@ class Temu2ListingPublishService
     private function remoteSkuRows(string $goodsId): array
     {
         $found = [];
-        // 2 and 3 are the live lists. 1 and 4 cover a SKU Temu has accepted but not put on sale yet.
-        foreach ([2, 3, 1, 4] as $searchType) {
+        foreach ([2, 3] as $searchType) {
             for ($page = 1; $page <= 10; $page++) {
                 $res = $this->temuCallBody([
                     'type' => 'bg.local.goods.sku.list.query',
@@ -4501,12 +4405,11 @@ class Temu2ListingPublishService
      * through the same parent spec as its siblings; a spec made from this SKU's own variation type (Size / Color)
      * under another parent was accepted by Temu's update call and then dropped, so the SKU never appeared.
      *
-     * @return array{parentSpecIds: list<int>, parentSpecNames: list<string>, catId: int}
+     * @return array{parentSpecIds: list<int>, catId: int}
      */
     private function existingGoodsSpecContext(string $goodsId): array
     {
         $parents = [];
-        $names = [];
         // The goods record carries the category its variation specs belong to (SKU rows do not).
         $catId = $this->remoteGoodsCatId($goodsId);
         foreach (array_slice($this->remoteSkuRows($goodsId), 0, 25) as $row) {
@@ -4517,10 +4420,6 @@ class Temu2ListingPublishService
                 $pid = (int) ($spec['parentSpecId'] ?? $spec['parentId'] ?? 0);
                 if ($pid > 0) {
                     $parents[$pid] = true;
-                }
-                $label = trim((string) ($spec['parentSpecName'] ?? ''));
-                if ($label !== '') {
-                    $names[$label] = true;
                 }
             }
             if ($catId === 0) {
@@ -4533,11 +4432,7 @@ class Temu2ListingPublishService
             }
         }
 
-        return [
-            'parentSpecIds' => array_map('intval', array_keys($parents)),
-            'parentSpecNames' => array_keys($names),
-            'catId' => $catId,
-        ];
+        return ['parentSpecIds' => array_map('intval', array_keys($parents)), 'catId' => $catId];
     }
 
     /**
@@ -4546,86 +4441,22 @@ class Temu2ListingPublishService
      * @param  list<array<string, mixed>>  $skuList  v2 SKU rows
      * @return list<array<string, mixed>>
      */
-    private function alignSpecsToGoods(string $goodsId, array $skuList, int $fallbackCatId): array
+    protected function alignSpecsToGoods(string $goodsId, array $skuList, int $fallbackCatId): array
     {
         $ctx = $this->existingGoodsSpecContext($goodsId);
         Log::info('Temu add SKU to existing goods: goods spec context', ['goods_id' => $goodsId] + $ctx);
-        // A spec minted under the recommended category is rejected on this goods (150011018).
-        // Only the category Temu already stored on the parent is valid. $fallbackCatId is unused.
-        $catId = $ctx['catId'];
-        unset($fallbackCatId);
-        $parentSpecIds = $ctx['parentSpecIds'];
-        $parents = [];
-        if ($catId > 0) {
-            $data = $this->temuCallBody([
-                'type' => 'temu.local.product.variation.get',
-                'catId' => $catId,
-                'language' => 'en',
-            ], 45);
-            $parents = $data['result']['parentSpecList']
-                ?? $data['result']['variationList']
-                ?? $data['result']['specList']
-                ?? [];
-            if (! is_array($parents)) {
-                $parents = [];
-            }
-            $valid = [];
-            foreach ($parents as $parent) {
-                if (! is_array($parent)) {
-                    continue;
-                }
-                $id = (int) ($parent['parentSpecId'] ?? $parent['parentId'] ?? $parent['id'] ?? 0);
-                if ($id > 0) {
-                    $valid[$id] = true;
-                }
-            }
-            if ($valid !== []) {
-                $parentSpecIds = array_values(array_filter(
-                    $parentSpecIds,
-                    static fn ($id) => isset($valid[(int) $id])
-                ));
-            }
-            if ($parentSpecIds === [] && $ctx['parentSpecNames'] !== []) {
-                foreach ($ctx['parentSpecNames'] as $name) {
-                    $id = $this->matchParentSpecId($parents, strtolower($name));
-                    if ($id !== null && $id > 0) {
-                        $parentSpecIds[] = $id;
-                    }
-                }
-                $parentSpecIds = array_values(array_unique($parentSpecIds));
-            }
-        }
-        if ($parentSpecIds === [] || $catId <= 0) {
+        if (count($ctx['parentSpecIds']) !== 1) {
             return $skuList;
         }
+        $parentSpecId = $ctx['parentSpecIds'][0];
+        $catId = $ctx['catId'] > 0 ? $ctx['catId'] : $fallbackCatId;
         foreach ($skuList as $i => $item) {
             $sn = (string) ($item['outSkuSn'] ?? $item['externalSkuId'] ?? '');
-            if ($sn === '') {
+            $specId = $sn !== '' ? $this->createSpecId($catId, $parentSpecId, $sn) : null;
+            if ($specId === null) {
                 continue;
             }
-            // A spec minted with spec.id.get (370004488) is rejected on this goods. Use the color
-            // Temu already publishes for the category (Green for GRN) when that value exists.
-            $catalog = $this->matchVariationChild($parents, $parentSpecIds, $sn)
-                ?? $this->catalogSpecForSku($catId, $parentSpecIds, $sn);
-            if ($catalog !== null) {
-                $skuList[$i]['specDetails'] = [[
-                    'parentSpecId' => $catalog['parentSpecId'] > 0 ? $catalog['parentSpecId'] : (int) $parentSpecIds[0],
-                    'specId' => $catalog['specId'],
-                    'property' => $catalog['property'],
-                ]];
-                continue;
-            }
-            $details = [];
-            foreach ($parentSpecIds as $parentSpecId) {
-                $specId = $this->createSpecId($catId, (int) $parentSpecId, $sn, $sn);
-                if ($specId === null) {
-                    continue;
-                }
-                $details[] = ['parentSpecId' => (int) $parentSpecId, 'specId' => $specId];
-            }
-            if ($details !== []) {
-                $skuList[$i]['specDetails'] = $details;
-            }
+            $skuList[$i]['specDetails'] = [['parentSpecId' => $parentSpecId, 'specId' => $specId]];
         }
 
         return $skuList;
@@ -4635,7 +4466,7 @@ class Temu2ListingPublishService
      * @param  array<string, mixed>  $row  one entry of bg.local.goods.sku.list.query
      * @return array<string, mixed>
      */
-    private function updateSkuFromRemote(array $row): array
+    protected function updateSkuFromRemote(array $row): array
     {
         $specIds = [];
         foreach ((array) ($row['specList'] ?? []) as $spec) {
@@ -4684,60 +4515,19 @@ class Temu2ListingPublishService
      */
     private function remoteGoodsCatId(string $goodsId): int
     {
-        // Status filter is optional. A filtered query can miss an on-sale goods and leave the category at 0,
-        // which is how a spec from the wrong category (370004488) kept being sent.
-        foreach ([[1, false], [1, true], [4, false], [2, false], [3, false], [5, false], [6, false]] as [$searchType, $withStatus]) {
-            $body = [
+        foreach ([1, 4, 5, 6] as $searchType) {
+            $data = $this->temuCallBody([
                 'type' => 'bg.local.goods.list.query',
                 'goodsSearchType' => $searchType,
                 'goodsIdList' => [(int) $goodsId],
-                'searchText' => $goodsId,
                 'pageSize' => 5,
                 'pageNumber' => 1,
                 'pageNo' => 1,
                 'language' => 'en',
-            ];
-            if ($withStatus) {
-                $body['goodsStatusFilterType'] = $searchType;
-            }
-            $catId = $this->catIdFromGoodsPayload($this->temuCallBody($body, 30), $goodsId);
-            if ($catId > 0) {
-                return $catId;
-            }
-        }
-
-        return $this->catIdFromGoodsPayload($this->temuCallBody([
-            'type' => 'temu.local.goods.list.retrieve',
-            'goodsIdList' => [(int) $goodsId],
-            'pageSize' => 5,
-            'pageNo' => 1,
-            'language' => 'en',
-        ], 30), $goodsId);
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    private function catIdFromGoodsPayload(array $data, string $goodsId): int
-    {
-        $lists = [
-            $data['result']['goodsList'] ?? null,
-            $data['result']['goods'] ?? null,
-            $data['result'] ?? null,
-        ];
-        foreach ($lists as $list) {
-            if (! is_array($list)) {
-                continue;
-            }
-            $rows = array_is_list($list) ? $list : [$list];
-            foreach ($rows as $row) {
-                if (! is_array($row) || trim((string) ($row['goodsId'] ?? '')) !== $goodsId) {
-                    continue;
-                }
-                foreach (['catId', 'leafCatId', 'categoryId'] as $key) {
-                    if ((int) ($row[$key] ?? 0) > 0) {
-                        return (int) $row[$key];
-                    }
+            ], 30);
+            foreach ((array) ($data['result']['goodsList'] ?? []) as $row) {
+                if (is_array($row) && trim((string) ($row['goodsId'] ?? '')) === $goodsId && (int) ($row['catId'] ?? 0) > 0) {
+                    return (int) $row['catId'];
                 }
             }
         }
@@ -4751,7 +4541,7 @@ class Temu2ListingPublishService
      *
      * @param  list<array<string, mixed>>  $newSkus
      */
-    private function newSkusAreOnGoods(string $goodsId, array $newSkus, int $waitSeconds = 3): bool
+    protected function newSkusAreOnGoods(string $goodsId, array $newSkus, int $waitSeconds = 3): bool
     {
         $want = [];
         foreach ($newSkus as $sku) {
@@ -4800,9 +4590,10 @@ class Temu2ListingPublishService
 
     /**
      * Add SKUs to a goods that is already live, so they end up as variations of that same goods id.
-     * The new SKU is sent in the add-listing shape (nested price). Live SKUs are sent by id only.
-     * When Temu accepts the update, that is success: the app shows the green tick, and Temu shows the new version
-     * on the parent. bg.local.goods.partial.update is not used.
+     * Temu has no "add SKU" call, so this goes through the goods update APIs: the full update with every live SKU
+     * (by identity, then as listed) plus the new ones, and the partial update only as a last resort (on this shop it
+     * answers "success" and changes nothing). A result counts only when Temu's own SKU list then shows the new SKU
+     * under the goods. Nothing here can create another goods; if every attempt fails the caller gets Temu's errors.
      *
      * @param  list<array<string, mixed>>  $skuList  v2 SKU rows
      * @return array{success: bool, data?: array<string, mixed>, message?: string}
@@ -4825,36 +4616,35 @@ class Temu2ListingPublishService
         // product after the processing is complete"). Either signal means "pending", not "failed": sending the
         // heavier full update on top of a goods that is still processing only produces misleading errors.
         $pending = '';
-        $attempt = function (string $type, array $skus, string $label = '', int $wait = 3, array $extra = [], int $timeout = 120) use ($goodsId, $newSkus, &$messages, &$unknownTypes, &$pending): ?array {
+        $attempt = function (string $type, array $skus, string $label = '', int $wait = 3) use ($goodsId, $newSkus, &$messages, &$unknownTypes, &$pending): ?array {
             if (isset($unknownTypes[$type])) {
                 return null;
             }
             $label = $label !== '' ? $label : $type;
             $prices = [];
             foreach ($skus as $s) {
-                $prices[(string) ($s['outSkuSn'] ?? '')] = $s['basePrice']['amount'] ?? ($s['price']['basePrice']['amount'] ?? null);
+                $prices[(string) ($s['outSkuSn'] ?? '')] = $s['basePrice']['amount'] ?? null;
             }
-            $data = $this->temuCallBody(array_merge([
-                'type' => $type,
-                'language' => 'en',
-                'goodsId' => (int) $goodsId,
-                'skuList' => $skus,
-            ], $extra), $timeout);
+            $data = $this->temuCallBody(['type' => $type, 'language' => 'en', 'goodsId' => (int) $goodsId, 'skuList' => $skus], 120);
             $innerFailed = is_array($data['result'] ?? null) && array_key_exists('success', $data['result']) && empty($data['result']['success']);
             if (($data['success'] ?? false) && ! $innerFailed) {
-                // Same as a single listing: Temu accepted the request, so the app shows the green tick now.
-                // The new version appears on Temu after that, while Temu finishes processing.
-                if (! is_array($data['result'] ?? null)) {
-                    $data['result'] = [];
+                // Temu often answers success for a partial update that did not add the SKU. Only a read-back counts.
+                if ($this->newSkusAreOnGoods($goodsId, $newSkus, $wait)) {
+                    Log::info('Temu add SKU to existing goods: SKU is on the goods', ['type' => $label, 'goods_id' => $goodsId, 'sku_count' => count($skus)]);
+
+                    return $data;
                 }
-                $data['result']['goodsId'] = $data['result']['goodsId'] ?? (int) $goodsId;
-                Log::info('Temu add SKU to existing goods: Temu accepted', [
+                $pending = 'Temu accepted the add ('.$label.') but the SKU is not under goods '.$goodsId.' yet.';
+                $messages[$label] = 'Temu answered success but the new SKU is not on goods '.$goodsId;
+                Log::warning('Temu add SKU to existing goods: success was not real', [
                     'type' => $label,
                     'goods_id' => $goodsId,
                     'sku_count' => count($skus),
+                    'new_spec_ids' => array_map(static fn ($s) => $s['specIdList'] ?? [], $newSkus),
+                    'response' => mb_substr((string) json_encode($data['result'] ?? $data), 0, 600),
                 ]);
 
-                return $data;
+                return null;
             }
             $msg = $this->apiErrorMessage($data);
             if (str_contains($msg, '150010815') || stripos($msg, 'after the processing is complete') !== false) {
@@ -4905,197 +4695,45 @@ class Temu2ListingPublishService
             ];
         };
 
-        // bg.local.goods.update reads a flat basePrice on the SKU (see the update API), not the nested
-        // price object that bg.local.goods.add uses. Live SKUs stay as sku id + their own spec only:
-        // sending their price or quantity back is rejected.
-        $freshUpdate = $fresh;
-        $freshV1 = [];
-        foreach ($skuList as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-            $converted = $this->v1SkuFromV2($item);
-            $sn = strtoupper(trim((string) ($converted['sku']['outSkuSn'] ?? '')));
-            if ($sn === '' || isset($existingSns[$sn])) {
-                continue;
-            }
-            $freshV1[] = $converted['sku'];
-        }
-        if ($freshUpdate === []) {
-            $freshUpdate = $freshV1;
-        }
-
-        $tryAdd = function (string $type, array $skus, string $label, array $extra = [], int $timeout = 120) use ($attempt, $pendingResult): ?array {
-            if (($data = $attempt($type, $skus, $label, 30, $extra, $timeout)) !== null) {
-                return ['success' => true, 'data' => $data];
-            }
-
-            return $pendingResult();
-        };
-
+        // Without the existing SKUs the goods update could not keep the live variations, so it is not sent at all.
         if ($existing !== []) {
-            // Live rows are identified by sku id. Their spec ids are not sent back: the only spec Temu
-            // has to accept is the new variation's, and echoing the old ones was rejected as well.
-            $identityKeys = array_flip(['skuId', 'outSkuSn']);
-            // The update checks the pictures of every SKU it carries. A live SKU sent with no picture is
-            // reported as 150010022 as well, so each one keeps the photo Temu already stores for it.
-            // Temu also checks package size on every carried SKU (150011019 "volumeUnit:null"). Each live SKU keeps
-            // the weight and size Temu holds; where Temu holds none, the new SKU's package size fills the gap.
-            $measureKeys = ['weight', 'weightUnit', 'length', 'width', 'height', 'volumeUnit'];
-            $measureFallback = [];
-            foreach ($freshUpdate as $freshRow) {
-                foreach ($measureKeys as $key) {
-                    if (isset($freshRow[$key]) && $freshRow[$key] !== '' && ! isset($measureFallback[$key])) {
-                        $measureFallback[$key] = $freshRow[$key];
-                    }
-                }
-            }
-            $kept = [];
-            $keptPlain = [];
+            // 1) Full update. Live SKUs go in by identity only (skuId, seller SKU, spec): Temu rejects their price
+            //    and quantity when they are sent back ("basePrice / quantity is incorrect"), so those stay untouched.
+            //    The new SKU carries its own price, stock, images and measures.
+            $identityKeys = array_flip(['skuId', 'outSkuSn', 'specIdList']);
+            $byIdentity = [];
             foreach ($existing as $row) {
-                $identity = array_intersect_key($row, $identityKeys);
-                $keptPlain[] = $identity;
-                // Package size comes from our masters (Dim & Wt) for that SKU. Temu's own value is used only
-                // when the masters hold no complete package for it.
-                $fromMasters = [];
-                $liveSku = trim((string) ($row['outSkuSn'] ?? ''));
-                if ($liveSku !== '') {
-                    $liveProduct = $this->findProductLoose($liveSku);
-                    if ($liveProduct && $this->hasDimWt($liveProduct, $liveSku)) {
-                        $pkg = $this->resolveDimensions($liveProduct, $liveSku);
-                        $fromMasters = [
-                            'weight' => $this->v1Measure($pkg['weight'] ?? '1', 4),
-                            'length' => $this->v1Measure($pkg['length'] ?? '1', 3),
-                            'width' => $this->v1Measure($pkg['width'] ?? '1', 3),
-                            'height' => $this->v1Measure($pkg['height'] ?? '1', 3),
-                            'weightUnit' => $this->v1WeightUnit($pkg['weightUnit'] ?? 2),
-                            'volumeUnit' => $this->v1VolumeUnit($pkg['volumeUnit'] ?? 2),
-                        ];
-                    }
-                }
-                foreach ($measureKeys as $key) {
-                    if (isset($fromMasters[$key])) {
-                        $identity[$key] = $fromMasters[$key];
-                    } elseif (isset($row[$key]) && $row[$key] !== '' && $row[$key] !== null) {
-                        $identity[$key] = $row[$key];
-                    } elseif (isset($measureFallback[$key])) {
-                        $identity[$key] = $measureFallback[$key];
-                    }
-                }
-                $own = [];
-                foreach ((array) ($row['images'] ?? []) as $url) {
-                    $url = trim((string) $url);
-                    if ($url !== '' && $this->isTemuCdnUrl($url) && ! in_array($url, $own, true)) {
-                        $own[] = $url;
-                    }
-                }
-                if ($own !== []) {
-                    $identity['images'] = $this->padTemuUpdateImages($own);
-                }
-                $kept[] = $identity;
+                $byIdentity[] = array_intersect_key($row, $identityKeys);
             }
-            $firstSn = '';
-            $currentSpecIds = [];
-            $siblingImages = [];
-            foreach ($existing as $row) {
-                foreach ((array) ($row['images'] ?? []) as $url) {
-                    $url = trim((string) $url);
-                    if ($this->isTemuCdnUrl($url) && ! in_array($url, $siblingImages, true)) {
-                        $siblingImages[] = $url;
-                    }
+            $byIdentity = array_merge($byIdentity, $fresh);
+            foreach (['bg.local.goods.update', 'temu.local.goods.update'] as $type) {
+                if (($data = $attempt($type, $byIdentity, $type.' (live SKUs by id)', 30)) !== null) {
+                    return ['success' => true, 'data' => $data];
+                }
+                if (($p = $pendingResult()) !== null) {
+                    return $p;
                 }
             }
-            foreach ($freshUpdate as $i => $row) {
-                if ($firstSn === '') {
-                    $firstSn = (string) ($row['outSkuSn'] ?? '');
-                }
-                foreach ((array) ($row['specIdList'] ?? []) as $specId) {
-                    if ((int) $specId > 0) {
-                        $currentSpecIds[] = (int) $specId;
-                    }
-                }
-                $rawImages = [];
-                foreach ((array) ($row['images'] ?? []) as $url) {
-                    $url = trim((string) $url);
-                    if ($url !== '' && preg_match('#^https://#i', $url) && ! in_array($url, $rawImages, true)) {
-                        $rawImages[] = $url;
-                    }
-                }
-                $rawImages = array_slice($rawImages, 0, self::MAX_IMAGES);
-                $own = $this->temuUpdateImages($rawImages, []);
-                $freshUpdate[$i]['images'] = $own !== []
-                    ? $own
-                    : $this->temuUpdateImages($siblingImages, []);
-            }
-            $lastMsg = '';
-            foreach ($this->specIdsToTry($goodsId, $firstSn, $currentSpecIds) as $specId) {
-                $send = function (array $rows, bool $withLivePhotos) use ($tryAdd, $kept, $keptPlain, $specId): ?array {
-                    $freshForSpec = [];
-                    $imageCount = 0;
-                    $firstImage = '';
-                    foreach ($rows as $row) {
-                        $row['specIdList'] = [$specId];
-                        $row['images'] = $this->padTemuUpdateImages((array) ($row['images'] ?? []));
-                        $imageCount = max($imageCount, count($row['images']));
-                        if ($firstImage === '' && isset($row['images'][0])) {
-                            $firstImage = (string) $row['images'][0];
-                        }
-                        $freshForSpec[] = $row;
-                    }
-                    $tail = $firstImage !== '' ? substr(parse_url($firstImage, PHP_URL_PATH) ?: $firstImage, -42) : 'none';
 
-                    return $tryAdd(
-                        'bg.local.goods.update',
-                        array_merge($withLivePhotos ? $kept : $keptPlain, $freshForSpec),
-                        'bg.local.goods.update (spec '.$specId.', '.$imageCount.' images'
-                            .($withLivePhotos ? ', live photos' : ', no live photos').', '.$tail.')',
-                        [],
-                        40
-                    );
-                };
-                $plans = [];
-                $ownImages = array_values((array) ($freshUpdate[0]['images'] ?? []));
-                if ($ownImages !== []) {
-                    $plans[] = $ownImages;
+            // 2) Full update with the live SKUs exactly as Temu lists them.
+            $echo = array_merge($existing, $fresh);
+            foreach (['bg.local.goods.update', 'temu.local.goods.update'] as $type) {
+                if (($data = $attempt($type, $echo, $type.' (live SKUs as listed)', 30)) !== null) {
+                    return ['success' => true, 'data' => $data];
                 }
-                if ($siblingImages !== []) {
-                    $plans[] = array_slice($siblingImages, 0, 3);
-                }
-                if ($plans === []) {
-                    $plans = [[]];
-                }
-                $imageRejected = false;
-                foreach ($plans as $imageSet) {
-                    $attemptRows = [];
-                    foreach ($freshUpdate as $index => $candidate) {
-                        if ($index === 0) {
-                            $candidate['images'] = $imageSet;
-                        }
-                        $attemptRows[] = $candidate;
-                    }
-                    if (($done = $send($attemptRows, true)) !== null) {
-                        return $done;
-                    }
-                    $lastMsg = '';
-                    foreach ($messages as $msg) {
-                        $lastMsg = $msg;
-                    }
-                    $imageRejected = str_contains(strtolower($lastMsg), 'image') || str_contains($lastMsg, '150010022');
-                    if (! $imageRejected) {
-                        break;
-                    }
-                }
-                if ($imageRejected || ($lastMsg !== '' && ! str_contains(strtolower($lastMsg), 'spec'))) {
-                    break;
+                if (($p = $pendingResult()) !== null) {
+                    return $p;
                 }
             }
         }
 
-        if (($done = $tryAdd('bg.local.goods.sku.add', $freshV1, 'bg.local.goods.sku.add')) !== null) {
-            return $done;
+        // 3) Partial update with just the new SKUs. On this shop Temu has answered it with "success" and changed
+        //    nothing, so it is the last resort and still only counts when the read-back shows the SKU.
+        if (($data = $attempt('bg.local.goods.partial.update', $newSkus, '', 15)) !== null) {
+            return ['success' => true, 'data' => $data];
         }
-        if (($done = $tryAdd('temu.local.goods.sku.add', $freshV1, 'temu.local.goods.sku.add')) !== null) {
-            return $done;
+        if (($p = $pendingResult()) !== null) {
+            return $p;
         }
 
         $parts = [];
@@ -5107,249 +4745,6 @@ class Temu2ListingPublishService
         }
 
         return ['success' => false, 'message' => implode(' | ', $parts)];
-    }
-
-    /**
-     * Spec ids to offer Temu for one new variation, best first. The generated id 370004488 is last because
-     * this parent already rejected it. Temu 1, Temu 2, and Temu 3 all add variations this way.
-     *
-     * @param  list<int>  $fallbackIds
-     * @return list<int>
-     */
-    protected function specIdsToTry(string $goodsId, string $sku, array $fallbackIds): array
-    {
-        $ids = [];
-        $push = function (?int $id) use (&$ids): void {
-            if ($id !== null && $id > 0 && ! in_array($id, $ids, true)) {
-                $ids[] = $id;
-            }
-        };
-        $ctx = $this->existingGoodsSpecContext($goodsId);
-        $catId = (int) ($ctx['catId'] ?? 0);
-        $parentIds = array_values(array_map('intval', $ctx['parentSpecIds'] ?? []));
-        if ($catId > 0 && $parentIds !== []) {
-            $catalog = $this->catalogSpecForSku($catId, [], $sku)
-                ?? $this->catalogSpecForSku($catId, $parentIds, $sku);
-            if ($catalog !== null) {
-                $push($catalog['specId']);
-            }
-            foreach ($this->specLabelsForCreate($sku) as $label) {
-                $push($this->createSpecId($catId, (int) $parentIds[0], $sku, $label));
-            }
-        }
-        foreach ($fallbackIds as $id) {
-            $push((int) $id);
-        }
-
-        return array_slice($ids, 0, 4);
-    }
-
-    /**
-     * Names used to create a spec under the parent. Color words come first (GRN -> Green) because a spec
-     * named after the whole SKU was rejected.
-     *
-     * @return list<string>
-     */
-    protected function specLabelsForCreate(string $sku): array
-    {
-        $labels = [];
-        $token = strtoupper((string) preg_replace('/^.*\s+/', '', trim($sku)));
-        $colors = [
-            'GRN' => 'Green', 'GREEN' => 'Green',
-            'BLK' => 'Black', 'BLACK' => 'Black',
-            'BLU' => 'Blue', 'BLUE' => 'Blue',
-            'GREY' => 'Grey', 'GRAY' => 'Gray', 'GRY' => 'Grey',
-            'ORG' => 'Orange', 'ORANGE' => 'Orange',
-            'RED' => 'Red',
-            'YLW' => 'Yellow', 'YELLOW' => 'Yellow',
-            'PNK' => 'Pink', 'PINK' => 'Pink',
-            'WHT' => 'White', 'WHITE' => 'White',
-            'BRN' => 'Brown', 'BROWN' => 'Brown',
-            'PUR' => 'Purple', 'PURPLE' => 'Purple',
-            'GLD' => 'Gold', 'GOLD' => 'Gold',
-            'SLV' => 'Silver', 'SILVER' => 'Silver',
-        ];
-        if (isset($colors[$token])) {
-            $labels[] = $colors[$token];
-        }
-        $variation = trim(ListingManagerFamily::attributesForSku($sku)['name']);
-        if ($variation !== '') {
-            $labels[] = $variation;
-        }
-        if (trim($sku) !== '') {
-            $labels[] = trim($sku);
-        }
-
-        return array_values(array_unique($labels));
-    }
-
-    /**
-     * Names that can identify this SKU's variation on Temu: the SKU, its variation name, and the color word.
-     * DPAD COMBO GRN matches the catalog value Green.
-     *
-     * @return list<string>
-     */
-    private function specNameCandidates(string $sku): array
-    {
-        $names = [];
-        $add = function (string $name) use (&$names): void {
-            $name = strtolower(trim($name));
-            if ($name !== '') {
-                $names[$name] = true;
-            }
-        };
-        $add($sku);
-        $add(ListingManagerFamily::attributesForSku($sku)['name']);
-        $token = strtoupper((string) preg_replace('/^.*\s+/', '', trim($sku)));
-        $colors = [
-            'GRN' => 'green', 'GREEN' => 'green',
-            'BLK' => 'black', 'BLACK' => 'black',
-            'BLU' => 'blue', 'BLUE' => 'blue',
-            'GREY' => 'grey', 'GRAY' => 'gray', 'GRY' => 'grey',
-            'ORG' => 'orange', 'ORANGE' => 'orange',
-            'RED' => 'red',
-            'YLW' => 'yellow', 'YELLOW' => 'yellow',
-            'PNK' => 'pink', 'PINK' => 'pink',
-            'WHT' => 'white', 'WHITE' => 'white',
-            'BRN' => 'brown', 'BROWN' => 'brown',
-            'PUR' => 'purple', 'PURPLE' => 'purple',
-            'GLD' => 'gold', 'GOLD' => 'gold',
-            'SLV' => 'silver', 'SILVER' => 'silver',
-        ];
-        if (isset($colors[$token])) {
-            $add($colors[$token]);
-            $add($token);
-        }
-
-        return array_keys($names);
-    }
-
-    /**
-     * A predefined child spec under the goods' parent (variation.get), when its name is this SKU's color.
-     *
-     * @param  list<mixed>  $parents
-     * @param  list<int>  $parentSpecIds
-     * @return array{specId: int, parentSpecId: int, property: array<string, mixed>}|null
-     */
-    private function matchVariationChild(array $parents, array $parentSpecIds, string $sku): ?array
-    {
-        $want = array_flip($this->specNameCandidates($sku));
-        $allowed = array_flip(array_map('intval', $parentSpecIds));
-        foreach ($parents as $parent) {
-            if (! is_array($parent)) {
-                continue;
-            }
-            $parentSpecId = (int) ($parent['parentSpecId'] ?? $parent['parentId'] ?? $parent['id'] ?? 0);
-            if ($parentSpecId <= 0 || ! isset($allowed[$parentSpecId])) {
-                continue;
-            }
-            $children = $parent['specList'] ?? $parent['childSpecList'] ?? $parent['values'] ?? [];
-            if (! is_array($children)) {
-                continue;
-            }
-            foreach ($children as $child) {
-                if (! is_array($child)) {
-                    continue;
-                }
-                $specId = (int) ($child['specId'] ?? $child['id'] ?? 0);
-                $label = strtolower(trim((string) ($child['specName'] ?? $child['value'] ?? $child['name'] ?? '')));
-                if ($specId <= 0 || $label === '' || ! isset($want[$label])) {
-                    continue;
-                }
-
-                return [
-                    'specId' => $specId,
-                    'parentSpecId' => $parentSpecId,
-                    'property' => [
-                        'parentSpecId' => $parentSpecId,
-                        'specId' => $specId,
-                        'value' => (string) ($child['specName'] ?? $child['value'] ?? $child['name'] ?? $label),
-                    ],
-                ];
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * The sale-spec value Temu's category template already has for this SKU (bg.local.goods.template.get).
-     * That specId is what goods.update accepts. A spec.id.get id is not.
-     *
-     * @param  list<int>  $parentSpecIds
-     * @return array{specId: int, parentSpecId: int, property: array<string, mixed>}|null
-     */
-    private function catalogSpecForSku(int $catId, array $parentSpecIds, string $sku): ?array
-    {
-        if ($catId <= 0) {
-            return null;
-        }
-        $template = $this->temuCallBody([
-            'type' => 'bg.local.goods.template.get',
-            'catId' => $catId,
-            'language' => 'en',
-        ], 45);
-        $info = $template['result']['templateInfo'] ?? $template['result'] ?? [];
-        if (! is_array($info)) {
-            return null;
-        }
-        $groups = [];
-        if (is_array($info['goodsSpecProperties'] ?? null)) {
-            $groups[] = $info['goodsSpecProperties'];
-        }
-        if (is_array($info['goodsProperties'] ?? null)) {
-            $groups[] = $info['goodsProperties'];
-        }
-        $want = array_flip($this->specNameCandidates($sku));
-        $allowed = array_flip(array_map('intval', $parentSpecIds));
-        foreach ($groups as $props) {
-            foreach ($props as $prop) {
-                if (! is_array($prop)) {
-                    continue;
-                }
-                $propParent = (int) ($prop['parentSpecId'] ?? $prop['parentId'] ?? 0);
-                if ($allowed !== [] && $propParent > 0 && ! isset($allowed[$propParent])) {
-                    continue;
-                }
-                $values = $prop['values'] ?? $prop['valueList'] ?? $prop['specList'] ?? [];
-                if (! is_array($values)) {
-                    continue;
-                }
-                foreach ($values as $value) {
-                    if (! is_array($value)) {
-                        continue;
-                    }
-                    $specId = (int) ($value['specId'] ?? 0);
-                    $label = strtolower(trim((string) ($value['value'] ?? $value['specName'] ?? $value['name'] ?? '')));
-                    if ($specId <= 0 || $label === '' || ! isset($want[$label])) {
-                        continue;
-                    }
-                    $entry = [
-                        'specId' => $specId,
-                        'value' => (string) ($value['value'] ?? $value['specName'] ?? $label),
-                    ];
-                    if ($propParent > 0) {
-                        $entry['parentSpecId'] = $propParent;
-                    }
-                    foreach (['templatePid', 'refPid', 'pid'] as $key) {
-                        if (isset($prop[$key]) && $prop[$key] !== '' && $prop[$key] !== null) {
-                            $entry[$key] = (int) $prop[$key];
-                        }
-                    }
-                    if (isset($value['vid']) && $value['vid'] !== '' && $value['vid'] !== null) {
-                        $entry['vid'] = (int) $value['vid'];
-                    }
-
-                    return [
-                        'specId' => $specId,
-                        'parentSpecId' => $propParent,
-                        'property' => $entry,
-                    ];
-                }
-            }
-        }
-
-        return null;
     }
 
     private function uniqueOutGoodsSn(string $preferred, string $fallback): string
@@ -5722,7 +5117,7 @@ class Temu2ListingPublishService
      * @param  array<string, mixed>  $body
      * @return array<string, mixed>
      */
-    private function temuCallBody(array $body, int $timeout = 60): array
+    protected function temuCallBody(array $body, int $timeout = 60): array
     {
         $type = (string) ($body['type'] ?? '');
         unset($body['type']);
@@ -5765,7 +5160,7 @@ class Temu2ListingPublishService
     /**
      * @param  array<string, mixed>  $data
      */
-    private function apiErrorMessage(array $data): string
+    protected function apiErrorMessage(array $data): string
     {
         $code = trim((string) ($data['errorCode'] ?? ''));
         $msg = trim((string) ($data['errorMsg'] ?? $data['message'] ?? ''));
