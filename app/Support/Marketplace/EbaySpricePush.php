@@ -98,6 +98,9 @@ final class EbaySpricePush
         if (EbayListingEnded::isEnded($metric->listing_status ?? null)) {
             return 'Ended listing';
         }
+        if (EbayListingEnded::isNotListed($metric->listing_status ?? null)) {
+            return 'Not listed on eBay (SKU missing from live listing)';
+        }
 
         return null;
     }

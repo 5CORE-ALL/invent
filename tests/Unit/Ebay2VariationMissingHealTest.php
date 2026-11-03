@@ -28,4 +28,18 @@ class Ebay2VariationMissingHealTest extends TestCase
         $this->assertSame('366634843558', Ebay2VariationMissingHeal::itemIdFromMessage(self::REAL_ERROR));
         $this->assertNull(Ebay2VariationMissingHeal::itemIdFromMessage('no item here'));
     }
+
+    public function test_not_listed_rows_are_not_pushable(): void
+    {
+        $this->assertTrue(\App\Support\Marketplace\EbayListingEnded::isNotListed('MISSING'));
+        $this->assertTrue(\App\Support\Marketplace\EbayListingEnded::isNotListed('not_listed'));
+        $this->assertFalse(\App\Support\Marketplace\EbayListingEnded::isNotListed('ACTIVE'));
+
+        $metric = (object) ['item_id' => '366634843558', 'listing_status' => 'MISSING'];
+        $reason = \App\Support\Marketplace\EbaySpricePush::blockReason(10.0, 10.0, $metric, 5.0);
+        $this->assertStringContainsString('Not listed on eBay', (string) $reason);
+
+        $live = (object) ['item_id' => '366634843558', 'listing_status' => 'ACTIVE'];
+        $this->assertNull(\App\Support\Marketplace\EbaySpricePush::blockReason(10.0, 10.0, $live, 5.0));
+    }
 }

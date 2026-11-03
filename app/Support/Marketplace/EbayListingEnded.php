@@ -27,6 +27,15 @@ final class EbayListingEnded
     }
 
     /**
+     * The portal status sync found no live listing for this SKU (MISSING / NOT_LISTED).
+     * Such a row cannot take a price push, so the push and the 10-minute catch-up skip it.
+     */
+    public static function isNotListed(?string $status): bool
+    {
+        return in_array(strtoupper(trim((string) $status)), ['MISSING', 'NOT_LISTED'], true);
+    }
+
+    /**
      * @return array{listing_status: string, listing_ended: bool}
      */
     public static function fields(?object $metric): array
@@ -75,7 +84,7 @@ final class EbayListingEnded
                 continue;
             }
             $status = strtoupper(trim((string) ($metric->listing_status ?? '')));
-            $ended = self::isEnded($status);
+            $ended = self::isEnded($status) || self::isNotListed($status);
             $unknown = $status === '';
             // ACTIVE (2) beats unknown (1) beats ENDED (0); newer row wins ties.
             $score = $ended ? 0 : ($unknown ? 1 : 2);

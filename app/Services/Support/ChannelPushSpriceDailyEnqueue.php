@@ -217,7 +217,8 @@ class ChannelPushSpriceDailyEnqueue
                     }
                     $metric = EbayListingEnded::preferLiveMetric($metrics[$sku]);
                     if (! $metric || trim((string) ($metric->item_id ?? '')) === ''
-                        || EbayListingEnded::isEnded($metric->listing_status ?? null)) {
+                        || EbayListingEnded::isEnded($metric->listing_status ?? null)
+                        || EbayListingEnded::isNotListed($metric->listing_status ?? null)) {
                         continue;
                     }
                     $live = round((float) ($metric->ebay_price ?? 0), 2);
