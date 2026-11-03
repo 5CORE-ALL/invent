@@ -748,6 +748,15 @@
                 return def;
             };
 
+            function formatExactPercent(raw) {
+                const text = String(raw == null ? '' : raw).replace(/%/g, '').replace(/,/g, '').trim();
+                if (/^-?\d+(\.\d+)?$/.test(text)) {
+                    return text + '%';
+                }
+                const parsed = parseFloat(text);
+                return (Number.isFinite(parsed) ? String(parsed) : text) + '%';
+            }
+
             table = new Tabulator("#channelTable", {
                 ajaxURL: "/account-health-master/dashboard-data",
                 ajaxConfig: "GET",
@@ -1037,7 +1046,7 @@
                             const parsed = parseFloat(value);
                             let color = parsed < 95 ? "#dc3545" : parsed < 98 ? "#ffc107" : "#28a745";
                             return `<div class="text-center editable-field" style="background-color:${color}; color:#ffffff; padding:4px; border-radius:4px;">
-                                        <span>${parsed.toFixed(1)}%</span>
+                                        <span>${formatExactPercent(value)}</span>
                                     </div>`;
                         },
                         cellEdited: function(cell) {
@@ -1137,7 +1146,7 @@
                             const parsed = parseFloat(value);
                             let color = parsed < 90 ? "#dc3545" : parsed < 95 ? "#ffc107" : "#28a745";
                             return `<div class="text-center editable-field" style="background-color:${color}; color:#ffffff; padding:4px; border-radius:4px;">
-                                        <span>${parsed.toFixed(1)}%</span>
+                                        <span>${formatExactPercent(value)}</span>
                                     </div>`;
                         },
                         cellEdited: function(cell) {
@@ -1237,7 +1246,7 @@
                             const parsed = parseFloat(value);
                             let color = parsed < 90 ? "#dc3545" : parsed < 95 ? "#ffc107" : "#28a745";
                             return `<div class="text-center editable-field" style="background-color:${color}; color:#ffffff; padding:4px; border-radius:4px;">
-                                        <span>${parsed.toFixed(1)}%</span>
+                                        <span>${formatExactPercent(value)}</span>
                                     </div>`;
                         },
                         cellEdited: function(cell) {
@@ -1337,7 +1346,7 @@
                             const parsed = parseFloat(value);
                             let color = parsed > 5 ? "#dc3545" : parsed > 2 ? "#ffc107" : "#28a745";
                             return `<div class="text-center editable-field" style="background-color:${color}; color:#ffffff; padding:4px; border-radius:4px;">
-                                        <span>${parsed.toFixed(1)}%</span>
+                                        <span>${formatExactPercent(value)}</span>
                                     </div>`;
                         },
                         cellEdited: function(cell) {
@@ -1437,7 +1446,7 @@
                             const parsed = parseFloat(value);
                             let color = parsed > 10 ? "#dc3545" : parsed > 5 ? "#ffc107" : "#28a745";
                             return `<div class="text-center editable-field" style="background-color:${color}; color:#ffffff; padding:4px; border-radius:4px;">
-                                        <span>${parsed.toFixed(1)}%</span>
+                                        <span>${formatExactPercent(value)}</span>
                                     </div>`;
                         },
                         cellEdited: function(cell) {
@@ -1537,7 +1546,7 @@
                             const parsed = parseFloat(value);
                             let color = parsed > 3 ? "#dc3545" : parsed > 1 ? "#ffc107" : "#28a745";
                             return `<div class="text-center editable-field" style="background-color:${color}; color:#ffffff; padding:4px; border-radius:4px;">
-                                        <span>${parsed.toFixed(1)}%</span>
+                                        <span>${formatExactPercent(value)}</span>
                                     </div>`;
                         },
                         cellEdited: function(cell) {
@@ -1637,7 +1646,7 @@
                             const parsed = parseFloat(value);
                             let color = parsed > 2 ? "#dc3545" : parsed > 1 ? "#ffc107" : "#28a745";
                             return `<div class="text-center editable-field" style="background-color:${color}; color:#ffffff; padding:4px; border-radius:4px;">
-                                        <span>${parsed.toFixed(1)}%</span>
+                                        <span>${formatExactPercent(value)}</span>
                                     </div>`;
                         },
                         cellEdited: function(cell) {
