@@ -133,6 +133,63 @@
             color: #fff;
             border-color: #0d6efd;
         }
+
+        /* ---- Compact layout: everything fits on one screen ---- */
+        #promotions-table .tabulator-header .tabulator-col {
+            font-size: 12px;
+        }
+        #promotions-table .tabulator-header .tabulator-col .tabulator-col-content {
+            padding: 4px 6px;
+        }
+        #promotions-table .tabulator-row .tabulator-cell {
+            padding: 2px 6px;
+            font-size: 12px;
+        }
+        #promotions-table .promo-channel-logo,
+        #promotions-table .promo-channel-logo-placeholder {
+            width: 24px;
+            height: 24px;
+            padding: 1px;
+            font-size: 11px;
+        }
+        #promotions-table .promo-status-chip {
+            padding: 1px 8px;
+            font-size: 11px;
+        }
+        #promotions-table .promo-tick,
+        #promotions-table .promo-cross {
+            width: 20px;
+            height: 20px;
+            font-size: 11px;
+        }
+        #promotions-table .promo-rule-btn,
+        #promotions-table .promo-edit-btn {
+            width: 24px;
+            height: 24px;
+            font-size: 12px;
+            border-radius: 6px;
+        }
+        #promotions-table .promo-notes-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+        }
+        /* Frozen Img + Channels columns: keep them opaque with a divider */
+        #promotions-table .tabulator-frozen {
+            background: #fff;
+            z-index: 3;
+        }
+        #promotions-table .tabulator-header .tabulator-frozen {
+            background: #f8f9fa;
+        }
+        #promotions-table .tabulator-row.tabulator-row-even .tabulator-frozen {
+            background: #fafafa;
+        }
+        #promotions-table .tabulator-frozen.tabulator-frozen-right,
+        #promotions-table .promo-frozen-last {
+            border-right: 2px solid #cbd5e1 !important;
+        }
     </style>
 @endsection
 
@@ -168,7 +225,7 @@
                             </div>
                         </div>
                     </div>
-                    <div id="promotions-table" style="height: calc(100vh - 320px);"></div>
+                    <div id="promotions-table" style="height: calc(100vh - 260px);"></div>
                 </div>
             </div>
         </div>
@@ -277,7 +334,8 @@
             {
                 title: 'Img',
                 field: 'image',
-                width: 90,
+                width: 56,
+                frozen: true,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: false,
@@ -300,7 +358,9 @@
             {
                 title: 'Channels',
                 field: 'channel',
-                minWidth: 220,
+                width: 190,
+                frozen: true,
+                cssClass: 'promo-frozen-last',
                 formatter: function (cell) {
                     return `<span class="promo-channel-name">${escapeHtml(cell.getValue() || '')}</span>`;
                 },
@@ -308,7 +368,7 @@
             {
                 title: 'Status',
                 field: 'status',
-                width: 130,
+                width: 90,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 formatter: function (cell) {
@@ -354,7 +414,7 @@
                 return {
                     title: col.name,
                     field: 'dyn_' + col.id,
-                    minWidth: 150,
+                    minWidth: 90,
                     hozAlign: 'center',
                     headerHozAlign: 'center',
                     headerSort: true,
@@ -370,7 +430,7 @@
             return {
                 title: col.name,
                 field: 'dyn_' + col.id,
-                minWidth: 150,
+                minWidth: 100,
                 headerSort: true,
                 formatter: function (cell) {
                     return textCell(cell.getValue(), 'promo-dyn-text');
@@ -381,7 +441,7 @@
         const notes = {
             title: 'Notes and Remarks',
             field: 'notes_remarks',
-            minWidth: 240,
+            minWidth: 160,
             headerSort: false,
             formatter: function (cell) {
                 return textCell(cell.getValue(), 'promo-notes-text');
@@ -391,7 +451,7 @@
         const edit = {
             title: 'Edit',
             field: '_edit',
-            width: 80,
+            width: 56,
             hozAlign: 'center',
             headerHozAlign: 'center',
             headerSort: false,
@@ -408,7 +468,7 @@
         const rule = {
             title: 'Rule',
             field: 'coupon_rule',
-            width: 90,
+            width: 60,
             hozAlign: 'center',
             headerHozAlign: 'center',
             headerSort: false,
@@ -460,9 +520,9 @@
     table = new Tabulator('#promotions-table', {
         layout: 'fitColumns',
         placeholder: 'Loading channels…',
-        pagination: true,
-        paginationSize: 50,
-        paginationSizeSelector: [25, 50, 100, true],
+        height: '100%',
+        rowHeight: 32,
+        pagination: false,
         movableColumns: false,
         data: [],
         columns: buildColumns(),
@@ -486,6 +546,18 @@
         });
     }
     table.on('tableBuilt', loadData);
+
+    // Size the grid to exactly fill the rest of the viewport so all rows fit on one screen.
+    function fitTableHeight() {
+        const el = document.getElementById('promotions-table');
+        if (!el) return;
+        const top = el.getBoundingClientRect().top + window.scrollY;
+        const h = Math.max(240, window.innerHeight - top - 24);
+        el.style.height = h + 'px';
+        if (table && table.redraw) table.redraw(true);
+    }
+    window.addEventListener('resize', fitTableHeight);
+    setTimeout(fitTableHeight, 0);
 
     // ---------- Add Column ----------
     let addColumnModal = null;
