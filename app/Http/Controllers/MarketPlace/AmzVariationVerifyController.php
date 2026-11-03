@@ -10,6 +10,7 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonSpProductAd;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\AmazonAdsService;
 use App\Support\Marketplace\AmazonAdsMissingLinks;
 use App\Support\Marketplace\AmazonListingCounts;
 use Illuminate\Http\JsonResponse;
@@ -953,7 +954,64 @@ class AmzVariationVerifyController extends Controller
             ];
         }
 
-        return array_values($out);
+        return $this->applyLiveCampaignStatus(array_values($out));
+    }
+
+    /**
+     * The stored campaign status comes from the Amazon report, which only lists campaigns with activity in the
+     * window. A campaign archived / paused on Amazon with no activity since keeps its last stored status (often
+     * ENABLED), so it kept showing as an active "Extra" SKU. Replace the stored status with Amazon's live one.
+     * Falls back to the stored status when Amazon cannot be reached.
+     *
+     * @param  list<array{campaign_id: string, campaign_name: string, campaign_status: string, base: string}>  $campaigns
+     * @return list<array{campaign_id: string, campaign_name: string, campaign_status: string, base: string}>
+     */
+    private function applyLiveCampaignStatus(array $campaigns): array
+    {
+        if ($campaigns === []) {
+            return $campaigns;
+        }
+
+        $statuses = [];
+        $missing = [];
+        foreach ($campaigns as $c) {
+            $cid = (string) $c['campaign_id'];
+            $cached = Cache::get('amz_live_sp_campaign_status_'.$cid);
+            if (is_string($cached) && $cached !== '') {
+                $statuses[$cid] = $cached;
+            } else {
+                $missing[$cid] = true;
+            }
+        }
+
+        if ($missing !== []) {
+            try {
+                $live = app(AmazonAdsService::class)->listSpCampaignsByIds(
+                    array_keys($missing),
+                    ['ENABLED', 'PAUSED', 'ARCHIVED']
+                );
+                foreach ($live as $row) {
+                    $cid = preg_replace('/\D+/', '', trim((string) ($row['campaignId'] ?? $row['campaign_id'] ?? ''))) ?: '';
+                    $state = strtoupper(trim((string) ($row['state'] ?? $row['status'] ?? '')));
+                    if ($cid === '' || $state === '') {
+                        continue;
+                    }
+                    $statuses[$cid] = $state;
+                    Cache::put('amz_live_sp_campaign_status_'.$cid, $state, 600);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Live campaign status lookup for Extra SKUs failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        foreach ($campaigns as $i => $c) {
+            $state = $statuses[(string) $c['campaign_id']] ?? null;
+            if ($state !== null) {
+                $campaigns[$i]['campaign_status'] = $state;
+            }
+        }
+
+        return $campaigns;
     }
 
     /**
