@@ -541,7 +541,7 @@ class Temu2ListingPublishService
 
                 return [
                     'success' => true,
-                    'message' => 'Added '.count($prepared).' variation(s) to the existing '.$this->shopLabel().' listing.',
+                    'message' => 'Added '.count($prepared).' variation(s) to the existing '.$this->shopLabel().' listing. Temu will show a new version on that parent.',
                     'goods_id' => $existingGoodsId,
                     'sku_id' => $firstSkuId !== '' ? $firstSkuId : null,
                     'skus' => array_values(array_map(static fn ($row) => $row['sku'], $prepared)),
@@ -4368,7 +4368,8 @@ class Temu2ListingPublishService
     private function remoteSkuRows(string $goodsId): array
     {
         $found = [];
-        foreach ([2, 3] as $searchType) {
+        // 2 and 3 are the live lists. 1 and 4 cover a SKU Temu has accepted but not put on sale yet.
+        foreach ([2, 3, 1, 4] as $searchType) {
             for ($page = 1; $page <= 10; $page++) {
                 $res = $this->temuCallBody([
                     'type' => 'bg.local.goods.sku.list.query',
@@ -4590,10 +4591,9 @@ class Temu2ListingPublishService
 
     /**
      * Add SKUs to a goods that is already live, so they end up as variations of that same goods id.
-     * Temu has no "add SKU" call, so this goes through the goods update APIs: the full update with every live SKU
-     * (by identity, then as listed) plus the new ones, and the partial update only as a last resort (on this shop it
-     * answers "success" and changes nothing). A result counts only when Temu's own SKU list then shows the new SKU
-     * under the goods. Nothing here can create another goods; if every attempt fails the caller gets Temu's errors.
+     * The new SKU is sent in the add-listing shape (nested price). Live SKUs are sent by id only.
+     * When Temu accepts the update, that is success: the app shows the green tick, and Temu shows the new version
+     * on the parent. bg.local.goods.partial.update is not used.
      *
      * @param  list<array<string, mixed>>  $skuList  v2 SKU rows
      * @return array{success: bool, data?: array<string, mixed>, message?: string}
@@ -4628,23 +4628,19 @@ class Temu2ListingPublishService
             $data = $this->temuCallBody(['type' => $type, 'language' => 'en', 'goodsId' => (int) $goodsId, 'skuList' => $skus], 120);
             $innerFailed = is_array($data['result'] ?? null) && array_key_exists('success', $data['result']) && empty($data['result']['success']);
             if (($data['success'] ?? false) && ! $innerFailed) {
-                // Temu often answers success for a partial update that did not add the SKU. Only a read-back counts.
-                if ($this->newSkusAreOnGoods($goodsId, $newSkus, $wait)) {
-                    Log::info('Temu add SKU to existing goods: SKU is on the goods', ['type' => $label, 'goods_id' => $goodsId, 'sku_count' => count($skus)]);
-
-                    return $data;
+                // Same as a single listing: Temu accepted the request, so the app shows the green tick now.
+                // The new version appears on Temu after that, while Temu finishes processing.
+                if (! is_array($data['result'] ?? null)) {
+                    $data['result'] = [];
                 }
-                $pending = 'Temu accepted the add ('.$label.') but the SKU is not under goods '.$goodsId.' yet.';
-                $messages[$label] = 'Temu answered success but the new SKU is not on goods '.$goodsId;
-                Log::warning('Temu add SKU to existing goods: success was not real', [
+                $data['result']['goodsId'] = $data['result']['goodsId'] ?? (int) $goodsId;
+                Log::info('Temu add SKU to existing goods: Temu accepted', [
                     'type' => $label,
                     'goods_id' => $goodsId,
                     'sku_count' => count($skus),
-                    'new_spec_ids' => array_map(static fn ($s) => $s['specIdList'] ?? [], $newSkus),
-                    'response' => mb_substr((string) json_encode($data['result'] ?? $data), 0, 600),
                 ]);
 
-                return null;
+                return $data;
             }
             $msg = $this->apiErrorMessage($data);
             if (str_contains($msg, '150010815') || stripos($msg, 'after the processing is complete') !== false) {
@@ -4695,45 +4691,55 @@ class Temu2ListingPublishService
             ];
         };
 
-        // Without the existing SKUs the goods update could not keep the live variations, so it is not sent at all.
+        // The new SKU must use the same body as a new listing. A flat basePrice is the field Temu 1
+        // rejects (skuList[0].basePrice), and bg.local.goods.partial.update answers success without adding
+        // the SKU, then locks the parent in "New version processing". That call is not used here.
+        $freshV1 = [];
+        foreach ($skuList as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $converted = $this->v1SkuFromV2($item);
+            $sn = strtoupper(trim((string) ($converted['sku']['outSkuSn'] ?? '')));
+            if ($sn === '' || isset($existingSns[$sn])) {
+                continue;
+            }
+            $freshV1[] = $converted['sku'];
+        }
+        if ($freshV1 === []) {
+            $freshV1 = $fresh;
+        }
+
+        $tryAdd = function (string $type, array $skus, string $label) use ($attempt, $pendingResult): ?array {
+            if (($data = $attempt($type, $skus, $label, 30)) !== null) {
+                return ['success' => true, 'data' => $data];
+            }
+
+            return $pendingResult();
+        };
+
         if ($existing !== []) {
-            // 1) Full update. Live SKUs go in by identity only (skuId, seller SKU, spec): Temu rejects their price
-            //    and quantity when they are sent back ("basePrice / quantity is incorrect"), so those stay untouched.
-            //    The new SKU carries its own price, stock, images and measures.
+            // Live SKUs go in by identity only. Sending their price or quantity back is rejected
+            // ("basePrice / quantity is incorrect"). The new SKU carries the add-listing price shape.
             $identityKeys = array_flip(['skuId', 'outSkuSn', 'specIdList']);
-            $byIdentity = [];
+            $merged = [];
             foreach ($existing as $row) {
-                $byIdentity[] = array_intersect_key($row, $identityKeys);
+                $merged[] = array_intersect_key($row, $identityKeys);
             }
-            $byIdentity = array_merge($byIdentity, $fresh);
-            foreach (['bg.local.goods.update', 'temu.local.goods.update'] as $type) {
-                if (($data = $attempt($type, $byIdentity, $type.' (live SKUs by id)', 30)) !== null) {
-                    return ['success' => true, 'data' => $data];
-                }
-                if (($p = $pendingResult()) !== null) {
-                    return $p;
-                }
+            $merged = array_merge($merged, $freshV1);
+            if (($done = $tryAdd('bg.local.goods.update', $merged, 'bg.local.goods.update (new SKU in add shape)')) !== null) {
+                return $done;
             }
-
-            // 2) Full update with the live SKUs exactly as Temu lists them.
-            $echo = array_merge($existing, $fresh);
-            foreach (['bg.local.goods.update', 'temu.local.goods.update'] as $type) {
-                if (($data = $attempt($type, $echo, $type.' (live SKUs as listed)', 30)) !== null) {
-                    return ['success' => true, 'data' => $data];
-                }
-                if (($p = $pendingResult()) !== null) {
-                    return $p;
-                }
+            if (($done = $tryAdd('temu.local.goods.update', $merged, 'temu.local.goods.update (new SKU in add shape)')) !== null) {
+                return $done;
             }
         }
 
-        // 3) Partial update with just the new SKUs. On this shop Temu has answered it with "success" and changed
-        //    nothing, so it is the last resort and still only counts when the read-back shows the SKU.
-        if (($data = $attempt('bg.local.goods.partial.update', $newSkus, '', 15)) !== null) {
-            return ['success' => true, 'data' => $data];
+        if (($done = $tryAdd('bg.local.goods.sku.add', $freshV1, 'bg.local.goods.sku.add')) !== null) {
+            return $done;
         }
-        if (($p = $pendingResult()) !== null) {
-            return $p;
+        if (($done = $tryAdd('temu.local.goods.sku.add', $freshV1, 'temu.local.goods.sku.add')) !== null) {
+            return $done;
         }
 
         $parts = [];
