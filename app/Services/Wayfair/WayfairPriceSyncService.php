@@ -88,7 +88,7 @@ class WayfairPriceSyncService
      * Write the newest PO prices into wayfair_pricing_prices.
      *
      * @param  array<int, array<string, mixed>>  $purchaseOrders
-     * @return array{success: bool, message: string, skus_in_orders: int, updated: int, unchanged: int, stale: int, no_row: int, skipped_events: int}
+     * @return array{success: bool, message: string, skus_in_orders: int, updated: int, unchanged: int, stale: int, no_row: int, skipped_events: int, changes: list<array{sku: string, old: float, new: float, po_number: string, po_date: string}>}
      */
     public function syncFromPurchaseOrders(array $purchaseOrders, bool $includeEventLines = false, bool $dryRun = false): array
     {
@@ -101,6 +101,7 @@ class WayfairPriceSyncService
             'stale' => 0,
             'no_row' => 0,
             'skipped_events' => 0,
+            'changes' => [],
         ];
 
         foreach (['price_po_number', 'price_po_date', 'price_synced_at'] as $column) {
@@ -155,6 +156,13 @@ class WayfairPriceSyncService
                 $priceChanged = abs((float) $row->price - $hit['price']) >= 0.005;
                 if ($priceChanged) {
                     $stats['updated']++;
+                    $stats['changes'][] = [
+                        'sku' => (string) $row->sku,
+                        'old' => round((float) $row->price, 2),
+                        'new' => $hit['price'],
+                        'po_number' => $hit['po_number'],
+                        'po_date' => $hit['po_date']->toDateString(),
+                    ];
                 } else {
                     $stats['unchanged']++;
                 }
