@@ -4596,20 +4596,60 @@ class Temu2ListingPublishService
      */
     private function remoteGoodsCatId(string $goodsId): int
     {
-        foreach ([1, 2, 3, 4, 5, 6] as $searchType) {
-            $data = $this->temuCallBody([
+        // Status filter is optional. A filtered query can miss an on-sale goods and leave the category at 0,
+        // which is how a spec from the wrong category (370004488) kept being sent.
+        foreach ([[1, false], [1, true], [4, false], [2, false], [3, false], [5, false], [6, false]] as [$searchType, $withStatus]) {
+            $body = [
                 'type' => 'bg.local.goods.list.query',
                 'goodsSearchType' => $searchType,
-                'goodsStatusFilterType' => $searchType,
                 'goodsIdList' => [(int) $goodsId],
+                'searchText' => $goodsId,
                 'pageSize' => 5,
                 'pageNumber' => 1,
                 'pageNo' => 1,
                 'language' => 'en',
-            ], 30);
-            foreach ((array) ($data['result']['goodsList'] ?? []) as $row) {
-                if (is_array($row) && trim((string) ($row['goodsId'] ?? '')) === $goodsId && (int) ($row['catId'] ?? 0) > 0) {
-                    return (int) $row['catId'];
+            ];
+            if ($withStatus) {
+                $body['goodsStatusFilterType'] = $searchType;
+            }
+            $catId = $this->catIdFromGoodsPayload($this->temuCallBody($body, 30), $goodsId);
+            if ($catId > 0) {
+                return $catId;
+            }
+        }
+
+        return $this->catIdFromGoodsPayload($this->temuCallBody([
+            'type' => 'temu.local.goods.list.retrieve',
+            'goodsIdList' => [(int) $goodsId],
+            'pageSize' => 5,
+            'pageNo' => 1,
+            'language' => 'en',
+        ], 30), $goodsId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function catIdFromGoodsPayload(array $data, string $goodsId): int
+    {
+        $lists = [
+            $data['result']['goodsList'] ?? null,
+            $data['result']['goods'] ?? null,
+            $data['result'] ?? null,
+        ];
+        foreach ($lists as $list) {
+            if (! is_array($list)) {
+                continue;
+            }
+            $rows = array_is_list($list) ? $list : [$list];
+            foreach ($rows as $row) {
+                if (! is_array($row) || trim((string) ($row['goodsId'] ?? '')) !== $goodsId) {
+                    continue;
+                }
+                foreach (['catId', 'leafCatId', 'categoryId'] as $key) {
+                    if ((int) ($row[$key] ?? 0) > 0) {
+                        return (int) $row[$key];
+                    }
                 }
             }
         }
@@ -4679,7 +4719,7 @@ class Temu2ListingPublishService
      * @param  list<array<string, mixed>>  $skuList  v2 SKU rows
      * @return array{success: bool, data?: array<string, mixed>, message?: string}
      */
-    private function addSkusToExistingGoods(string $goodsId, array $skuList): array
+    protected function addSkusToExistingGoods(string $goodsId, array $skuList): array
     {
         $newSkus = [];
         foreach ($skuList as $item) {
@@ -4805,24 +4845,43 @@ class Temu2ListingPublishService
             return $pendingResult();
         };
 
-        $saleProps = $this->salePropertiesForGoods($goodsId, $skuList);
-
         if ($existing !== []) {
-            $identityKeys = array_flip(['skuId', 'outSkuSn', 'specIdList']);
-            $merged = [];
+            // Live rows are identified by sku id. Their spec ids are not sent back: the only spec Temu
+            // has to accept is the new variation's, and echoing the old ones was rejected as well.
+            $identityKeys = array_flip(['skuId', 'outSkuSn']);
+            $kept = [];
             foreach ($existing as $row) {
-                $merged[] = array_intersect_key($row, $identityKeys);
+                $kept[] = array_intersect_key($row, $identityKeys);
             }
-            $merged = array_merge($merged, $freshUpdate);
-            $withProps = $saleProps === [] ? [] : ['goodsProperty' => ['goodsProperties' => $saleProps]];
-            if (($done = $tryAdd('bg.local.goods.update', $merged, 'bg.local.goods.update (flat price, parent spec)')) !== null) {
-                return $done;
+            $firstSn = '';
+            $currentSpecIds = [];
+            foreach ($freshUpdate as $row) {
+                if ($firstSn === '') {
+                    $firstSn = (string) ($row['outSkuSn'] ?? '');
+                }
+                foreach ((array) ($row['specIdList'] ?? []) as $specId) {
+                    if ((int) $specId > 0) {
+                        $currentSpecIds[] = (int) $specId;
+                    }
+                }
             }
-            if ($withProps !== [] && ($done = $tryAdd('bg.local.goods.update', $merged, 'bg.local.goods.update (spec also in goods properties)', $withProps)) !== null) {
-                return $done;
-            }
-            if (($done = $tryAdd('temu.local.goods.update', $merged, 'temu.local.goods.update (flat price, parent spec)', $withProps)) !== null) {
-                return $done;
+            foreach ($this->specIdsToTry($goodsId, $firstSn, $currentSpecIds) as $specId) {
+                $freshForSpec = [];
+                foreach ($freshUpdate as $row) {
+                    $row['specIdList'] = [$specId];
+                    $freshForSpec[] = $row;
+                }
+                $merged = array_merge($kept, $freshForSpec);
+                if (($done = $tryAdd('bg.local.goods.update', $merged, 'bg.local.goods.update (spec '.$specId.')')) !== null) {
+                    return $done;
+                }
+                $lastMsg = '';
+                foreach ($messages as $msg) {
+                    $lastMsg = $msg;
+                }
+                if ($lastMsg !== '' && ! str_contains(strtolower($lastMsg), 'spec')) {
+                    break;
+                }
             }
         }
 
@@ -4842,6 +4901,80 @@ class Temu2ListingPublishService
         }
 
         return ['success' => false, 'message' => implode(' | ', $parts)];
+    }
+
+    /**
+     * Spec ids to offer Temu for one new variation, best first. The generated id 370004488 is last because
+     * this parent already rejected it. Temu 1, Temu 2, and Temu 3 all add variations this way.
+     *
+     * @param  list<int>  $fallbackIds
+     * @return list<int>
+     */
+    protected function specIdsToTry(string $goodsId, string $sku, array $fallbackIds): array
+    {
+        $ids = [];
+        $push = function (?int $id) use (&$ids): void {
+            if ($id !== null && $id > 0 && ! in_array($id, $ids, true)) {
+                $ids[] = $id;
+            }
+        };
+        $ctx = $this->existingGoodsSpecContext($goodsId);
+        $catId = (int) ($ctx['catId'] ?? 0);
+        $parentIds = array_values(array_map('intval', $ctx['parentSpecIds'] ?? []));
+        if ($catId > 0 && $parentIds !== []) {
+            $catalog = $this->catalogSpecForSku($catId, [], $sku)
+                ?? $this->catalogSpecForSku($catId, $parentIds, $sku);
+            if ($catalog !== null) {
+                $push($catalog['specId']);
+            }
+            foreach ($this->specLabelsForCreate($sku) as $label) {
+                $push($this->createSpecId($catId, (int) $parentIds[0], $sku, $label));
+            }
+        }
+        foreach ($fallbackIds as $id) {
+            $push((int) $id);
+        }
+
+        return array_slice($ids, 0, 4);
+    }
+
+    /**
+     * Names used to create a spec under the parent. Color words come first (GRN -> Green) because a spec
+     * named after the whole SKU was rejected.
+     *
+     * @return list<string>
+     */
+    protected function specLabelsForCreate(string $sku): array
+    {
+        $labels = [];
+        $token = strtoupper((string) preg_replace('/^.*\s+/', '', trim($sku)));
+        $colors = [
+            'GRN' => 'Green', 'GREEN' => 'Green',
+            'BLK' => 'Black', 'BLACK' => 'Black',
+            'BLU' => 'Blue', 'BLUE' => 'Blue',
+            'GREY' => 'Grey', 'GRAY' => 'Gray', 'GRY' => 'Grey',
+            'ORG' => 'Orange', 'ORANGE' => 'Orange',
+            'RED' => 'Red',
+            'YLW' => 'Yellow', 'YELLOW' => 'Yellow',
+            'PNK' => 'Pink', 'PINK' => 'Pink',
+            'WHT' => 'White', 'WHITE' => 'White',
+            'BRN' => 'Brown', 'BROWN' => 'Brown',
+            'PUR' => 'Purple', 'PURPLE' => 'Purple',
+            'GLD' => 'Gold', 'GOLD' => 'Gold',
+            'SLV' => 'Silver', 'SILVER' => 'Silver',
+        ];
+        if (isset($colors[$token])) {
+            $labels[] = $colors[$token];
+        }
+        $variation = trim(ListingManagerFamily::attributesForSku($sku)['name']);
+        if ($variation !== '') {
+            $labels[] = $variation;
+        }
+        if (trim($sku) !== '') {
+            $labels[] = trim($sku);
+        }
+
+        return array_values(array_unique($labels));
     }
 
     /**
@@ -5011,68 +5144,6 @@ class Temu2ListingPublishService
         }
 
         return null;
-    }
-
-    /**
-     * Sale specs for goodsProperty: the specs already on the goods, plus the new SKU's spec.
-     * Temu rejects a specIdList value that was not also sent as a goods property.
-     *
-     * @param  list<array<string, mixed>>  $skuList  v2 rows for the SKUs being added
-     * @return list<array<string, mixed>>
-     */
-    private function salePropertiesForGoods(string $goodsId, array $skuList): array
-    {
-        $props = [];
-        $seen = [];
-        $add = function (int $specId, int $parentSpecId, string $value) use (&$props, &$seen): void {
-            if ($specId <= 0 || isset($seen[$specId])) {
-                return;
-            }
-            $seen[$specId] = true;
-            $entry = ['specId' => $specId];
-            if ($parentSpecId > 0) {
-                $entry['parentSpecId'] = $parentSpecId;
-            }
-            $value = trim($value);
-            if ($value !== '') {
-                $entry['value'] = $value;
-            }
-            $props[] = $entry;
-        };
-        foreach ($this->remoteSkuRows($goodsId) as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            foreach ((array) ($row['specList'] ?? []) as $spec) {
-                if (! is_array($spec)) {
-                    continue;
-                }
-                $add((int) ($spec['specId'] ?? 0), (int) ($spec['parentSpecId'] ?? 0), (string) ($spec['specName'] ?? ''));
-            }
-        }
-        foreach ($skuList as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-            $name = (string) ($item['outSkuSn'] ?? $item['externalSkuId'] ?? '');
-            foreach ((array) ($item['specDetails'] ?? []) as $spec) {
-                if (! is_array($spec)) {
-                    continue;
-                }
-                $property = $spec['property'] ?? null;
-                if (is_array($property) && (int) ($property['specId'] ?? 0) > 0) {
-                    $sid = (int) $property['specId'];
-                    if (! isset($seen[$sid])) {
-                        $seen[$sid] = true;
-                        $props[] = $property;
-                    }
-                    continue;
-                }
-                $add((int) ($spec['specId'] ?? 0), (int) ($spec['parentSpecId'] ?? 0), $name);
-            }
-        }
-
-        return $props;
     }
 
     private function uniqueOutGoodsSn(string $preferred, string $fallback): string
