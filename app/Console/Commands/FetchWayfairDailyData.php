@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\WayfairDailyData;
+use App\Services\Wayfair\WayfairPriceSyncService;
 use App\Services\WayfairApiService;
 use App\Services\WayfairDailyOrderFetchService;
 use Carbon\Carbon;
@@ -133,6 +134,28 @@ class FetchWayfairDailyData extends Command
         }
 
         $this->info('Fetched '.count($purchaseOrders).' POs, stored '.$insertedProducts.' products.');
+
+        $this->syncPricesFromOrders($purchaseOrders);
+    }
+
+    /**
+     * Same API response, no extra Wayfair calls: refresh wayfair_pricing_prices.price from the newest PO lines.
+     * Never lets a price problem fail the order fetch.
+     *
+     * @param  array<int, array<string, mixed>>  $purchaseOrders
+     */
+    protected function syncPricesFromOrders(array $purchaseOrders): void
+    {
+        if ($purchaseOrders === []) {
+            return;
+        }
+
+        try {
+            $stats = app(WayfairPriceSyncService::class)->syncFromPurchaseOrders($purchaseOrders);
+            $stats['success'] ? $this->info('Wayfair price sync: '.$stats['message']) : $this->warn('Wayfair price sync: '.$stats['message']);
+        } catch (\Throwable $e) {
+            $this->warn('Wayfair price sync failed: '.$e->getMessage());
+        }
     }
 
     /**
