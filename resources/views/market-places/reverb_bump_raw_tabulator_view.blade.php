@@ -392,13 +392,6 @@
             // same green (up) / red (down) / grey (none) dots as the rolling-history dots on the analytics pages
             const sdot = (kind, tip) => '<span class="summary-trend-dot rb-dot ' + kind + '" title="' + String(tip).replace(/"/g, '&quot;') + '"></span>';
 
-            function statusFormatter(cell) {
-                const r = cell.getRow().getData();
-                if (r.http_status === null || r.http_status === undefined) return '<span class="rb-pill rb-none">never</span>';
-                const ok = Number(r.http_status) >= 200 && Number(r.http_status) < 300;
-                return '<span class="rb-pill ' + (ok ? 'rb-ok' : 'rb-err') + '" title="' + (r.error || '') + '">' + r.http_status + '</span>';
-            }
-
             function baseColumns() {
                 return [
                     { title: 'SKU', field: 'sku', frozen: true, width: 170, headerFilter: 'input', hozAlign: 'left', headerHozAlign: 'left' },
@@ -431,14 +424,6 @@
                         title: 'Rule note', field: 'skip_reason', width: 180,
                         headerTooltip: 'Why the last Apply skipped this row (low stock / high volume / premium)',
                         formatter: c => c.getValue() ? '<span class="text-warning">' + String(c.getValue()).replace(/</g, '&lt;') + '</span>' : '',
-                    },
-                    { title: 'HTTP', field: 'http_status', width: 70, formatter: statusFormatter, hozAlign: 'center' },
-                    {
-                        title: 'Actions', field: 'actions', width: 90, headerSort: false, download: false, frozen: false,
-                        formatter: () => '<button class="btn btn-sm btn-outline-secondary py-0" data-act="json">JSON</button>',
-                        cellClick: (e, cell) => {
-                            if (e.target?.dataset?.act === 'json') return showJson(cell.getRow().getData());
-                        },
                     },
                 ];
             }
@@ -473,15 +458,6 @@
                 table.setColumns(baseColumns().concat(rawKeys.map(rawColumnDef)));
                 applySavedColVis();
                 buildColumnMenu();
-            }
-
-            function showJson(d) {
-                document.getElementById('raw-json-title').textContent = d.sku + ' — listing ' + d.listing_id;
-                const stored = rawStore.get(String(d.listing_id)) || {};
-                const body = stored.raw ? JSON.stringify(stored.raw, null, 2)
-                    : (stored.raw_text || (d.error ? 'Error: ' + d.error : 'Not pulled yet.'));
-                document.getElementById('raw-json-body').textContent = body;
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('rawJsonModal')).show();
             }
 
             // ---------- pull many ----------
