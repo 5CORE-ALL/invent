@@ -4009,6 +4009,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/missing/delete', [\App\Http\Controllers\AmazonAdsMissingController::class, 'delete'])->name('amazon.ads.missing.delete');
     Route::post('/amazon-ads/missing/hl-create', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlCreate'])->name('amazon.ads.missing.hl-create');
     Route::post('/amazon-ads/missing/hl-import', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlImport'])->name('amazon.ads.missing.hl-import');
+    Route::get('/amazon-ads/missing/hl-unmatched', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlUnmatched'])->name('amazon.ads.missing.hl-unmatched');
     Route::post('/amazon-ads/missing/hl-update', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlUpdate'])->name('amazon.ads.missing.hl-update');
     Route::get('/amazon-ads/missing/hl-parent-vs-ads', [\App\Http\Controllers\AmazonAdsMissingController::class, 'hlParentVsAds'])->name('amazon.ads.missing.hl-parent-vs-ads');
     Route::post('/amazon-ads/missing/ai-negatives', [\App\Http\Controllers\AmazonAdsMissingController::class, 'aiNegativeKeywords'])->name('amazon.ads.missing.ai-negatives');

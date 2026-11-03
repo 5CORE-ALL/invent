@@ -367,32 +367,8 @@ class AmazonAdsMissingController extends Controller
         try {
             $parents = $this->distinctParentsForImport();
 
-            // Latest report row per campaign name = its current status / id.
-            $latestIds = DB::table(self::SB_TABLE)
-                ->whereNotNull('campaignName')
-                ->where('campaignName', '!=', '')
-                ->selectRaw('MAX(id) AS max_id')
-                ->groupBy('campaignName')
-                ->pluck('max_id')
-                ->filter()
-                ->map(fn ($v) => (int) $v)
-                ->all();
-
-            $campaigns = [];
-            foreach (array_chunk($latestIds, 1000) as $chunk) {
-                foreach (DB::table(self::SB_TABLE)->whereIn('id', $chunk)->get(['campaignName', 'campaign_id', 'campaignStatus']) as $r) {
-                    $name = trim((string) $r->campaignName);
-                    $key = $this->normalizeCampaignName($name);
-                    if ($key === '') {
-                        continue;
-                    }
-                    $campaigns[$key] = [
-                        'name' => $name,
-                        'id' => preg_replace('/\D+/', '', (string) ($r->campaign_id ?? '')) ?: null,
-                        'status' => strtoupper(trim((string) ($r->campaignStatus ?? ''))),
-                    ];
-                }
-            }
+            $liveNote = '';
+            $campaigns = $this->collectSbCampaigns($liveNote);
 
             $existing = AmazonAdsMissingLink::query()->where('type', 'HL')->get(['id', 'sku', 'campaign_id', 'campaign_name']);
             $linked = [];
@@ -474,13 +450,114 @@ class AmazonAdsMissingController extends Controller
                 'unmatched_campaigns' => $orphans,
                 'unmatched_inactive' => $orphanInactive,
                 'skipped_not_hl' => $notHl,
-                'message' => $this->hlImportMessage($imported, $removed, $orphans, $orphanInactive, $notHl),
+                'message' => $this->hlImportMessage($imported, $removed, $orphans, $orphanInactive, $notHl).$liveNote,
             ]);
         } catch (\Throwable $e) {
             Log::warning('Amazon ads missing: HL import failed', ['error' => $e->getMessage()]);
 
             return response()->json(['ok' => false, 'message' => 'HL import failed: '.$e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Read-only: running / paused HL campaigns on Amazon that are not linked to any parent row, so they can be
+     * renamed (or their parent restored). Parent-less ones are "no_parent"; the rest "not_imported" (Import HL links them).
+     */
+    public function hlUnmatched(): JsonResponse
+    {
+        if (! Schema::hasTable('amazon_ads_missing_links') || ! Schema::hasTable(self::SB_TABLE)) {
+            return response()->json(['ok' => false, 'message' => 'Sponsored Brands campaign reports are not available.'], 503);
+        }
+
+        try {
+            $parents = $this->distinctParentsForImport();
+            $liveNote = '';
+            $campaigns = $this->collectSbCampaigns($liveNote);
+
+            $linkedNames = [];
+            foreach (AmazonAdsMissingLink::query()->where('type', 'HL')->get(['campaign_name']) as $l) {
+                $linkedNames[$this->normalizeCampaignName((string) $l->campaign_name)] = true;
+            }
+
+            $items = [];
+            foreach ($campaigns as $key => $c) {
+                if ($c['status'] === 'ARCHIVED' || $this->hlBaseFromCampaignName($key) === null || isset($linkedNames[$key])) {
+                    continue;
+                }
+                $items[] = [
+                    'name' => $c['name'],
+                    'status' => $c['status'],
+                    'campaign_id' => $c['id'],
+                    'reason' => $this->parentKeyFromHlCampaignName($key, $parents) === null ? 'no_parent' : 'not_imported',
+                ];
+            }
+            usort($items, fn ($a, $b) => [$a['reason'], $a['status'] === 'ENABLED' ? 0 : 1, $a['name']] <=> [$b['reason'], $b['status'] === 'ENABLED' ? 0 : 1, $b['name']]);
+
+            return response()->json(['ok' => true, 'count' => count($items), 'data' => $items, 'note' => $liveNote]);
+        } catch (\Throwable $e) {
+            Log::warning('Amazon ads missing: HL unmatched failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['ok' => false, 'message' => 'Failed: '.$e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Every Sponsored Brands campaign keyed by normalized name: latest report row, overridden by the live Amazon list.
+     *
+     * @return array<string, array{name: string, id: ?string, status: string}>
+     */
+    private function collectSbCampaigns(string &$liveNote): array
+    {
+        // Latest report row per campaign name = its current status / id.
+        $latestIds = DB::table(self::SB_TABLE)
+            ->whereNotNull('campaignName')
+            ->where('campaignName', '!=', '')
+            ->selectRaw('MAX(id) AS max_id')
+            ->groupBy('campaignName')
+            ->pluck('max_id')
+            ->filter()
+            ->map(fn ($v) => (int) $v)
+            ->all();
+
+        $campaigns = [];
+        foreach (array_chunk($latestIds, 1000) as $chunk) {
+            foreach (DB::table(self::SB_TABLE)->whereIn('id', $chunk)->get(['campaignName', 'campaign_id', 'campaignStatus']) as $r) {
+                $name = trim((string) $r->campaignName);
+                $key = $this->normalizeCampaignName($name);
+                if ($key === '') {
+                    continue;
+                }
+                $campaigns[$key] = [
+                    'name' => $name,
+                    'id' => preg_replace('/\D+/', '', (string) ($r->campaign_id ?? '')) ?: null,
+                    'status' => strtoupper(trim((string) ($r->campaignStatus ?? ''))),
+                ];
+            }
+        }
+
+        // The report table only holds campaigns that had activity, so paused / new campaigns are missing from it.
+        // Merge the live list from the Amazon Ads API (current status + id win over the report row).
+        $liveNote = '';
+        try {
+            $live = app(AmazonAdsService::class)->listAllSbCampaigns(['ENABLED', 'PAUSED', 'ARCHIVED']);
+            foreach ($live as $lc) {
+                $name = trim((string) ($lc['name'] ?? ''));
+                $key = $this->normalizeCampaignName($name);
+                if ($key === '') {
+                    continue;
+                }
+                $campaigns[$key] = [
+                    'name' => $name,
+                    'id' => preg_replace('/\D+/', '', (string) ($lc['campaignId'] ?? '')) ?: ($campaigns[$key]['id'] ?? null),
+                    'status' => strtoupper(trim((string) ($lc['state'] ?? ''))),
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon ads missing: live SB campaign list failed, using reports only', ['error' => $e->getMessage()]);
+            $liveNote = ' (Live Amazon list unavailable, used report data only.)';
+        }
+
+        return $campaigns;
     }
 
     /**

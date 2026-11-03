@@ -255,6 +255,10 @@
                             <span class="amz-missing-badge-label">Missing HL</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingHlValue">0</span>
                         </div>
+                        <div class="amz-missing-badge amz-missing-badge--missing" id="amzUnmatchedHlWrap" role="button" tabindex="0" title="Unmatched HL: HL campaigns on Amazon (enabled or paused) that are not linked to any parent. Click to list them: rename the campaign to 'PARENT {parent} HL', or restore the parent, then Import HL.">
+                            <span class="amz-missing-badge-label">Unmatched HL</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzUnmatchedHlValue">…</span>
+                        </div>
                         <span class="vr mx-1"></span>
                         <div class="amz-missing-badge amz-missing-badge--avail" id="amzAvailAllWrap" title="Available All: distinct KW + PT + HL campaigns linked to the rows in the current view.">
                             <span class="amz-missing-badge-label">Available All</span>
@@ -2610,6 +2614,7 @@
                             if (out.ok && b.ok) {
                                 window.alert(b.message || 'HL import done.');
                                 table.setData(missingDataUrl);
+                                if (typeof loadUnmatchedHl === 'function') { loadUnmatchedHl(); }
                             } else {
                                 window.alert(b.message || ('HL import failed (HTTP ' + out.status + ').'));
                             }
@@ -3441,6 +3446,27 @@
                             campaignBadgeNames[grp[0]][t].forEach(function (n) { out.push(t.toUpperCase() + ' · ' + n); });
                         });
                         return out;
+                    });
+                });
+                // Unmatched HL: live Amazon HL campaigns not linked to any parent (loaded once, refreshed after Import HL).
+                var unmatchedHl = null;
+                function loadUnmatchedHl() {
+                    var valEl = document.getElementById('amzUnmatchedHlValue');
+                    if (valEl) { valEl.textContent = '…'; }
+                    fetch(@json(route('amazon.ads.missing.hl-unmatched')), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                        .then(function (r) { return r.json(); })
+                        .then(function (b) {
+                            unmatchedHl = (b && b.ok && Array.isArray(b.data)) ? b.data : null;
+                            if (valEl) { valEl.textContent = unmatchedHl ? Number(unmatchedHl.length).toLocaleString('en-US') : '?'; }
+                        })
+                        .catch(function () { unmatchedHl = null; if (valEl) { valEl.textContent = '?'; } });
+                }
+                loadUnmatchedHl();
+                bindBadge('amzUnmatchedHlWrap', 'Unmatched HL campaigns', function () {
+                    if (!unmatchedHl) { return ['Not loaded (Amazon list unavailable). Reload the page.']; }
+                    var label = { no_parent: 'no parent', not_imported: 'run Import HL' };
+                    return unmatchedHl.map(function (c) {
+                        return c.name + ' [' + (c.status || '?') + '] — ' + (label[c.reason] || c.reason);
                     });
                 });
                 bindMissingColumnBadge('amzMissingKwWrap', 'kw');
