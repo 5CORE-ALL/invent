@@ -13,7 +13,9 @@ class ApplyReverbBumpRule extends Command
         {--dry-run : Only print what would change (no S Bump% saved, nothing pushed, nothing logged)}
         {--no-push : Fill S Bump% only, do not push to Reverb}
         {--scheduled : Called by the scheduler — does nothing unless auto-run is enabled on /reverb-bump}
-        {--limit= : Only process the first N listings}';
+        {--limit= : Only process the first N listings (applied after --only-fill)}
+        {--sku=* : Only process these SKUs (repeatable), e.g. --sku="3501 USB WB"}
+        {--only-fill : Drop listings skipped by the exceptions before applying --limit (handy to test a real push on a few rows)}';
 
     protected $description = 'Reverb Bump % checklist: Sold > 0 → 2%, Sold = 0 → 5% (override), skip low stock / high volume / premium, push to Reverb and log';
 
@@ -43,6 +45,12 @@ class ApplyReverbBumpRule extends Command
         }
 
         $plan = ReverbBumpRuleService::plan();
+        if ($skus = array_filter((array) $this->option('sku'))) {
+            $plan = array_values(array_filter($plan, fn ($r) => in_array($r['sku'], $skus, true)));
+        }
+        if ($this->option('only-fill')) {
+            $plan = array_values(array_filter($plan, fn ($r) => $r['eval']['status'] === 'fill'));
+        }
         if ($this->option('limit')) {
             $plan = array_slice($plan, 0, (int) $this->option('limit'));
         }
