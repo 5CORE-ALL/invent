@@ -1142,6 +1142,15 @@ class TemuListingPublishService extends Temu2ListingPublishService
             $extra['goodsServicePromise'] = $service;
         }
 
+        // Country of origin is required too (150011019 "originRegion1:null"). Our products are made in China,
+        // so that is what is sent, with the province this shop already uses on new listings.
+        $listingOrigin = $this->buildGoodsOriginInfo();
+        $province = trim((string) ($listingOrigin['originRegion2'] ?? ''));
+        $extra['goodsOriginInfo'] = [
+            'originRegion1' => 'China',
+            'originRegion2' => $province !== '' ? $province : 'Guangdong',
+        ];
+
         $allowed = array_flip(['vid', 'specId', 'imgUrl', 'note', 'parentSpecId', 'valueUnitId', 'groupId', 'valueUnit',
             'templatePid', 'numberInputValue', 'value', 'refPid', 'pid']);
         $properties = [];
