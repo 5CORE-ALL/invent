@@ -235,7 +235,6 @@
             const URLS = {
                 data: @json(route('reverb.bump.raw.data')),
                 pull: @json(route('reverb.bump.raw.pull')),
-                push: @json(route('reverb.bump.raw.push')),
                 ruleConfig: @json(route('reverb.bump.rule.config')),
                 ruleApply: @json(route('reverb.bump.rule.apply')),
                 queuePush: @json(route('reverb.push-bump.queue')),
@@ -259,8 +258,8 @@
             ];
             const BASE_FIELD_GROUP = {
                 sku: 'basic', listing_id: 'basic', title: 'basic', listing_state: 'basic',
-                http_status: 'basic', fetched_at: 'basic',
-                bump_bid: 'bid', push_bump: 'bid', sold: 'bid', inv: 'bid', price: 'bid', s_bump: 'bid', skip_reason: 'bid',
+                http_status: 'basic',
+                bump_bid: 'bid', sold: 'bid', inv: 'bid', price: 'bid', s_bump: 'bid', skip_reason: 'bid',
             };
 
             /** Group of a column definition: base fields by name, raw fields by their data path. */
@@ -434,27 +433,11 @@
                         formatter: c => c.getValue() ? '<span class="text-warning">' + String(c.getValue()).replace(/</g, '&lt;') + '</span>' : '',
                     },
                     { title: 'HTTP', field: 'http_status', width: 70, formatter: statusFormatter, hozAlign: 'center' },
-                    { title: 'Pulled At', field: 'fetched_at', width: 140 },
                     {
-                        title: 'Push B%', field: 'push_bump', width: 90, editor: 'number',
-                        editorParams: { min: 0, max: 30, step: 0.5 },
-                        headerTooltip: 'Type 0.5–30 (0 removes Bump), then click Push',
-                        formatter: c => c.getValue() === undefined || c.getValue() === null || c.getValue() === ''
-                            ? '<span class="rb-null">edit…</span>' : c.getValue() + '%',
-                        download: false,
-                    },
-                    {
-                        title: 'Actions', field: 'actions', width: 200, headerSort: false, download: false, frozen: false,
-                        formatter: () =>
-                            '<button class="btn btn-sm btn-outline-success py-0 me-1" data-act="push">Push</button>' +
-                            '<button class="btn btn-sm btn-outline-secondary py-0" data-act="json">JSON</button>',
-                        cellClick: async (e, cell) => {
-                            const act = e.target?.dataset?.act;
-                            if (!act) return;
-                            const row = cell.getRow();
-                            const d = row.getData();
-                            if (act === 'json') return showJson(d);
-                            if (act === 'push') return pushRow(row, e.target);
+                        title: 'Actions', field: 'actions', width: 90, headerSort: false, download: false, frozen: false,
+                        formatter: () => '<button class="btn btn-sm btn-outline-secondary py-0" data-act="json">JSON</button>',
+                        cellClick: (e, cell) => {
+                            if (e.target?.dataset?.act === 'json') return showJson(cell.getRow().getData());
                         },
                     },
                 ];
@@ -490,25 +473,6 @@
                 table.setColumns(baseColumns().concat(rawKeys.map(rawColumnDef)));
                 applySavedColVis();
                 buildColumnMenu();
-            }
-
-            async function pushRow(row, btn) {
-                const d = row.getData();
-                const v = d.push_bump;
-                if (v === undefined || v === null || v === '' || isNaN(Number(v))) {
-                    return toast('Enter a Push B% (0–30) first for ' + d.sku, false);
-                }
-                if (!confirm('Push Bump ' + v + '% to Reverb for ' + d.sku + '?')) return;
-                btn.disabled = true;
-                const r = await post(URLS.push, { sku: d.sku, bump: Number(v) });
-                btn.disabled = false;
-                if (r.ok && r.json.success) {
-                    toast(r.json.message || 'Pushed');
-                    if (r.json.pulled) applyPullResults([r.json.pulled]);
-                    if (r.json.display) row.update({ bump_bid: r.json.display });
-                } else {
-                    toast('Push failed: ' + (r.json.message || ('HTTP ' + r.status)), false);
-                }
             }
 
             function showJson(d) {
