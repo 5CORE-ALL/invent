@@ -10,6 +10,11 @@
         .rb-pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; color: #fff; }
         .rb-ok { background: #198754; } .rb-err { background: #dc3545; } .rb-none { background: #6c757d; } .rb-warn { background: #fd7e14; }
         .rb-null { color: #adb5bd; }
+        /* Same green / red / grey dots as the rolling-history dots on the analytics pages (.summary-trend-dot in head-css) */
+        .rb-dot.summary-trend-dot { width: 10px !important; height: 10px !important; min-width: 10px !important; min-height: 10px !important; margin: 0 2px !important; vertical-align: middle; cursor: default; }
+        .rb-dot.skip { background: #f59e0b; }
+        .rb-dots { white-space: nowrap; }
+        .rb-dot-label { margin-left: 4px; vertical-align: middle; }
     </style>
 @endsection
 
@@ -31,6 +36,13 @@
                     <a href="{{ route('reverb.bump.raw') }}" class="btn btn-sm btn-outline-secondary"><i class="fa fa-arrow-left"></i> Back to /reverb-bump</a>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="reload-btn"><i class="fa fa-rotate"></i> Reload</button>
                     <button type="button" class="btn btn-sm btn-success ms-auto" id="export-btn"><i class="fa fa-file-csv"></i> Export CSV</button>
+                </div>
+                <div class="small mb-2">
+                    <span class="summary-trend-dot rb-dot up"></span> ok / up
+                    <span class="summary-trend-dot rb-dot down ms-2"></span> failed / down
+                    <span class="summary-trend-dot rb-dot skip ms-2"></span> skipped (exception)
+                    <span class="summary-trend-dot rb-dot none ms-2"></span> none / no change
+                    <span class="text-muted ms-2">— hover a dot for details. History column = last 8 pushes per SKU (oldest → newest).</span>
                 </div>
                 <div class="small text-muted mb-2" id="summary-line"></div>
 
@@ -75,6 +87,40 @@
             }
             const pill = (txt, cls) => '<span class="rb-pill ' + cls + '">' + esc(txt) + '</span>';
 
+            // dot kinds: up = green, down = red, none = grey, skip = amber
+            const dot = (kind, tip) => '<span class="summary-trend-dot rb-dot ' + kind + '" title="' + esc(tip) + '"></span>';
+            const DOT_OF_STATUS = { ok: 'up', failed: 'down', skipped: 'skip' };
+            const trendKind = (now, then) => {
+                if (now === null || now === undefined || then === null || then === undefined) return 'none';
+                return now > then ? 'up' : (now < then ? 'down' : 'flat');
+            };
+            const trendDot = (now, then, what) => {
+                const kind = trendKind(now, then);
+                if (kind === 'none') return dot('none', 'No ' + what + ' baseline');
+                const d = Number(now) - Number(then);
+                return dot(kind, what + ': ' + then + ' → ' + now + (d ? ' (' + (d > 0 ? '+' : '') + d + ')' : ' (same)'));
+            };
+
+            // last results per SKU (newest last) from the change log → the dots shown in the "History" column
+            function historyBySku() {
+                const map = {};
+                (payload.history || []).forEach(h => {          // history is newest first
+                    if (h.action === 'fill') return;             // a push (or skip) is the outcome that matters
+                    (map[h.sku] = map[h.sku] || []).push(h);
+                });
+                Object.keys(map).forEach(k => { map[k] = map[k].slice(0, 8).reverse(); });
+                return map;
+            }
+            function historyDotsFormatter(cell) {
+                const list = (historyMap[cell.getRow().getData().sku] || []);
+                if (!list.length) return '<span class="rb-dots">' + dot('none', 'No push history yet') + '</span>';
+                return '<span class="rb-dots">' + list.map(h =>
+                    dot(DOT_OF_STATUS[h.status] || 'none',
+                        h.at + ' · ' + h.action + ' ' + (h.new_bump || '') + ' · ' + h.status + (h.reason ? ' · ' + h.reason : '') + (h.message && h.status === 'failed' ? ' · ' + h.message : ''))
+                ).join('') + '</span>';
+            }
+            let historyMap = {};
+
             const monitorCols = [
                 { title: 'SKU', field: 'sku', frozen: true, width: 170, headerFilter: 'input', formatter: linkFormatter },
                 { title: 'Title', field: 'title', width: 240, headerFilter: 'input' },
@@ -83,13 +129,20 @@
                 { title: 'Bump set', field: 'new_bump', width: 80, hozAlign: 'right' },
                 { title: 'Live Bump%', field: 'live_bump', width: 90, hozAlign: 'right', formatter: c => dash(c.getValue()) },
                 { title: 'Sold then', field: 'sold_then', width: 80, hozAlign: 'right' },
-                { title: 'Sold now (L30)', field: 'sold_now', width: 95, hozAlign: 'right' },
+                {
+                    title: 'Sold now (L30)', field: 'sold_now', width: 105, hozAlign: 'right',
+                    formatter: c => { const d = c.getRow().getData(); return trendDot(d.sold_now, d.sold_then, 'Sold') + '<span class="rb-dot-label">' + esc(c.getValue()) + '</span>'; },
+                },
                 { title: 'Views then', field: 'views_then', width: 85, hozAlign: 'right', formatter: c => dash(c.getValue()) },
-                { title: 'Views now', field: 'views_now', width: 85, hozAlign: 'right', formatter: c => dash(c.getValue()) },
+                {
+                    title: 'Views now', field: 'views_now', width: 100, hozAlign: 'right',
+                    formatter: c => { const d = c.getRow().getData(); return trendDot(d.views_now, d.views_then, 'Views') + '<span class="rb-dot-label">' + (c.getValue() === null || c.getValue() === undefined ? '—' : esc(c.getValue())) + '</span>'; },
+                },
                 {
                     title: 'Views Δ', field: 'views_delta', width: 80, hozAlign: 'right',
                     formatter: c => { const v = c.getValue(); return v === null ? dash(null) : (v > 0 ? '+' : '') + v; },
                 },
+                { title: 'History', field: 'sku', width: 120, headerSort: false, download: false, formatter: historyDotsFormatter },
                 { title: 'Price', field: 'price', width: 80, hozAlign: 'right', formatter: money },
                 {
                     title: 'Verdict', field: 'review', width: 140,
@@ -103,8 +156,13 @@
                 { title: 'Source', field: 'source', width: 70 },
                 { title: 'Action', field: 'action', width: 70, headerFilter: 'list', headerFilterParams: { values: ['', 'fill', 'push', 'skip'], clearable: true } },
                 {
-                    title: 'Status', field: 'status', width: 80,
-                    formatter: c => c.getValue() === 'ok' ? pill('ok', 'rb-ok') : c.getValue() === 'failed' ? pill('failed', 'rb-err') : pill('skipped', 'rb-warn'),
+                    title: 'Status', field: 'status', width: 95,
+                    headerFilter: 'list', headerFilterParams: { values: ['', 'ok', 'failed', 'skipped'], clearable: true },
+                    formatter: c => {
+                        const s = c.getValue();
+                        const d = c.getRow().getData();
+                        return dot(DOT_OF_STATUS[s] || 'none', d.message || d.reason || s) + '<span class="rb-dot-label">' + esc(s) + '</span>';
+                    },
                 },
                 { title: 'SKU', field: 'sku', width: 170, headerFilter: 'input' },
                 { title: 'Sold', field: 'sold', width: 55, hozAlign: 'right' },
@@ -129,6 +187,7 @@
             }
 
             function render() {
+                historyMap = historyBySku();
                 const rows = rowsForTab();
                 document.getElementById('tab-help').textContent = HELP[tab];
                 const cols = tab === 'history' ? historyCols : monitorCols;
