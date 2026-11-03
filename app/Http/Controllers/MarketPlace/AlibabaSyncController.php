@@ -508,6 +508,11 @@ class AlibabaSyncController extends Controller
         $counts = $overlay['counts'];
         $linkedMismatchQty = MarketplacePortalStatusTabs::withoutInactiveSkus($linkedMismatchQty, $liveRows ?? null);
         $counts['linked_mismatch'] = count($linkedMismatchQty);
+        $inventorySyncFailed = AlibabaInventorySyncService::inventorySyncFailed();
+        if ($inventorySyncFailed) {
+            $counts['mismatch'] = 0;
+            $counts['linked_mismatch'] = 0;
+        }
         // The Push button uses this list. Recomputing it on the click was coming back
         // empty (the popup then said Updated 0) while this page still showed the SKUs.
         \Illuminate\Support\Facades\Cache::put('alibaba.mismatch.page.mismatch', array_values($overlay['mismatchActive']), now()->addMinutes(30));
@@ -544,6 +549,7 @@ class AlibabaSyncController extends Controller
                 'apiError' => $apiError,
                 'connected' => $this->apiConfig->isConfigured('alibaba'),
                 'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
+                'inventorySyncFailed' => $inventorySyncFailed,
             ]);
         }
 
@@ -587,7 +593,8 @@ class AlibabaSyncController extends Controller
         $aeStockMap = $this->alibabaStockMapForSkus($skus);
         $liveShopifyQty = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
 
-        $enriched = collect($paginator->items())->map(function (ShopifySku $row) use ($aeMap, $aeStockMap, $liveShopifyQty) {
+        $markSyncFailed = $inventorySyncFailed && in_array($linkTab, ['mismatch', 'linked_mismatch'], true);
+        $enriched = collect($paginator->items())->map(function (ShopifySku $row) use ($aeMap, $aeStockMap, $liveShopifyQty, $markSyncFailed) {
             $sku = (string) $row->sku;
             $metric = $aeMap[$sku] ?? null;
             $linked = $this->isShopifySkuLinkedOnAlibaba($metric, $sku);
@@ -609,6 +616,7 @@ class AlibabaSyncController extends Controller
                 'shopify_quantity' => $shopifyQty,
                 'linked' => $linked,
                 'listing_status' => $linked ? 'linked' : 'unlinked',
+                'inventory_sync_failed' => $markSyncFailed,
             ];
         });
 
@@ -624,6 +632,7 @@ class AlibabaSyncController extends Controller
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('alibaba'),
             'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
+            'inventorySyncFailed' => $inventorySyncFailed,
         ]);
     }
 

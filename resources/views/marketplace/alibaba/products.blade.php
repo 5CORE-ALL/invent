@@ -34,9 +34,17 @@
                     @elseif(($linkTab ?? '') === 'matched')
                         {{ $products->total() }} Inv SKU Match
                     @elseif(($linkTab ?? '') === 'mismatch')
-                        {{ $products->total() }} Inv SKU Mismatch
+                        @if(!empty($inventorySyncFailed))
+                            inventory sync failed
+                        @else
+                            {{ $products->total() }} Inv SKU Mismatch
+                        @endif
                     @elseif(($linkTab ?? '') === 'linked_mismatch')
-                        {{ $products->total() }} Linked mismatch SKU
+                        @if(!empty($inventorySyncFailed))
+                            inventory sync failed
+                        @else
+                            {{ $products->total() }} Linked mismatch SKU
+                        @endif
                     @elseif(($linkTab ?? '') === 'mismatch_inactive')
                         {{ $products->total() }} Active SKU
                     @elseif(($linkTab ?? '') === 'matched_inactive')
@@ -157,12 +165,16 @@
                                     </td>
                                     <td class="small">{{ $p->product_id ?? '—' }}</td>
                                     <td class="small">
-                                        @php $stVal = $p->mp_state ?? $p->tiktok_state ?? $p->temu_state ?? null; @endphp
-                                        @if(!empty($stVal))
-                                            @php $st = strtolower((string)$stVal); @endphp
-                                            <span class="badge {{ $st === 'active' ? 'bg-success-subtle text-success' : ($st === 'inactive' ? 'bg-warning-subtle text-warning' : 'bg-light text-muted') }}">{{ $stVal }}</span>
+                                        @if(!empty($p->inventory_sync_failed))
+                                            <span class="badge bg-danger">inventory sync failed</span>
                                         @else
-                                            —
+                                            @php $stVal = $p->mp_state ?? $p->tiktok_state ?? $p->temu_state ?? null; @endphp
+                                            @if(!empty($stVal))
+                                                @php $st = strtolower((string)$stVal); @endphp
+                                                <span class="badge {{ $st === 'active' ? 'bg-success-subtle text-success' : ($st === 'inactive' ? 'bg-warning-subtle text-warning' : 'bg-light text-muted') }}">{{ $stVal }}</span>
+                                            @else
+                                                —
+                                            @endif
                                         @endif
                                     </td>
                                     <td class="small">{{ !empty($p->inactive_reason) ? $p->inactive_reason : '—' }}</td>

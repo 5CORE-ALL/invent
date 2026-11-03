@@ -9,12 +9,57 @@ use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
 use App\Services\AlibabaApiService;
 use App\Services\ShopifyApiService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class AlibabaInventorySyncService
 {
+    /** 'failed' while Alibaba is not accepting inventory updates. */
+    public const SYNC_STATE_KEY = 'alibaba.inventory.sync_state';
+
+    /**
+     * True when the last inventory push did not update Alibaba, or failed SKUs are still waiting to retry.
+     * Those SKUs stay on the listings page but are not an Inv SKU Mismatch.
+     */
+    public static function inventorySyncFailed(): bool
+    {
+        if (Cache::get(self::SYNC_STATE_KEY) === 'failed') {
+            return true;
+        }
+
+        $attempts = Cache::get('mm.sku_push.attempts.alibaba', []);
+
+        return is_array($attempts) && $attempts !== [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    public static function rememberSyncResult(array $result): void
+    {
+        $updated = (int) ($result['updated'] ?? 0);
+        $failed = (int) ($result['failed'] ?? 0);
+        $rateLimited = ! empty($result['rate_limited']);
+        $message = strtolower((string) ($result['message'] ?? ''));
+        $blocked = $rateLimited
+            || $failed > 0
+            || str_contains($message, 'frequency')
+            || str_contains($message, 'access token')
+            || str_contains($message, 'inventory update failed');
+
+        if ($updated > 0 && ! $blocked) {
+            Cache::put(self::SYNC_STATE_KEY, 'ok', now()->addHours(12));
+
+            return;
+        }
+
+        if ($blocked) {
+            Cache::put(self::SYNC_STATE_KEY, 'failed', now()->addHours(12));
+        }
+    }
+
     public function __construct(
         protected AlibabaApiService $aliExpressApi,
         protected ShopifyApiService $shopifyApi
@@ -40,7 +85,10 @@ class AlibabaInventorySyncService
         }
 
         if (empty($this->aliExpressApi->getAccessToken())) {
-            return ['updated' => 0, 'failed' => 0, 'skipped' => 0, 'message' => 'ALIBABA_ACCESS_TOKEN missing.'];
+            $result = ['updated' => 0, 'failed' => 0, 'skipped' => 0, 'message' => 'ALIBABA_ACCESS_TOKEN missing.'];
+            self::rememberSyncResult($result);
+
+            return $result;
         }
 
         $settings = MarketplaceSyncSettings::getFor('alibaba');
@@ -129,12 +177,15 @@ class AlibabaInventorySyncService
             $this->updateLocalPlatformQuantities($okRows);
         }
         if (! empty($invResult['success'])) {
-            return [
+            $result = [
                 'updated' => count($inventoryRows),
                 'failed' => 0,
                 'skipped' => $skipped,
                 'message' => 'Synced '.count($inventoryRows).' SKU(s) to Alibaba and local platform.',
             ];
+            self::rememberSyncResult($result);
+
+            return $result;
         }
 
         // Still refresh Shopify qty on our platform even if the Alibaba API push failed.
@@ -145,13 +196,16 @@ class AlibabaInventorySyncService
             'result' => $invResult,
         ]);
 
-        return [
+        $result = [
             'updated' => $pushed,
             'failed' => count($invResult['failed_skus'] ?? []),
             'skipped' => $skipped,
             'rate_limited' => ! empty($invResult['rate_limited']),
             'message' => $invResult['message'] ?? 'Alibaba inventory update failed.',
         ];
+        self::rememberSyncResult($result);
+
+        return $result;
     }
 
     /**
