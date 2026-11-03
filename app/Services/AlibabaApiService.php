@@ -75,48 +75,30 @@ class AlibabaApiService extends AliExpressApiService
     {
         $page = max(1, $page);
         $pageSize = max(1, min(50, $pageSize));
-        $base = array_merge([
-            'current_page' => $page,
-            'page_size' => $pageSize,
-            'language' => 'ENGLISH',
-        ], $extraListParams);
-
-        $attempts = [
-            ['alibaba.icbu.product.list', $base],
-            ['alibaba.icbu.product.list.get', $base],
-            ['alibaba.product.list.get', [
-                'current_page' => $page,
-                'page_size' => $pageSize,
-            ]],
-        ];
-
-        $last = ['success' => false, 'message' => 'Alibaba product list API failed.'];
-        foreach ($attempts as [$method, $params]) {
-            $raw = $this->callIcbu($method, $params);
-            if (empty($raw['success'])) {
-                $last = $raw;
-                if ($this->isAuthError($raw)) {
-                    return $raw;
-                }
-                continue;
-            }
-
-            $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
-            $parsed = $this->parseSolutionProductListResponse($payload);
-            if ($parsed['products'] === [] && $parsed['total_count'] === null) {
-                $parsed = $this->parseIcbuProductList($payload);
-            }
-
+        // One list call. The older method names each tried the sync host as well,
+        // so "Fetching Alibaba page 1" never returned and blocked inventory pushes.
+        $listed = $this->listIcbuProducts($page, $pageSize);
+        if (empty($listed['success'])) {
             return [
-                'success' => true,
-                'status' => $raw['status'] ?? 200,
-                'data' => $parsed,
-                'raw' => $payload,
-                'request_id' => $raw['request_id'] ?? null,
+                'success' => false,
+                'message' => (string) ($listed['message'] ?? 'Alibaba product list failed.'),
             ];
         }
 
-        return $last;
+        $size = (int) ($listed['page_size'] ?? $pageSize);
+        $total = $listed['total_item'] ?? null;
+        $totalPage = (is_numeric($total) && $size > 0) ? (int) ceil(((int) $total) / $size) : null;
+
+        return [
+            'success' => true,
+            'data' => [
+                'products' => $listed['products'] ?? [],
+                'total_count' => $total,
+                'total_page' => $totalPage,
+                'current_page' => $page,
+                'page_size' => $size,
+            ],
+        ];
     }
 
     public function extractSkuRowsFromListItem(array $item, bool $fetchDetail = false): array
@@ -144,37 +126,13 @@ class AlibabaApiService extends AliExpressApiService
                 'language' => 'ENGLISH',
             ],
         ]);
-        if (! empty($listed['success'])) {
-            $payload = is_array($listed['data'] ?? null) ? $listed['data'] : [];
-            $result = is_array($payload['result'] ?? null) ? $payload['result'] : $payload;
-            if (isset($result['product']) && is_array($result['product'])) {
-                $result = $result['product'];
-            }
-
-            return [
-                'success' => true,
-                'status' => $listed['status'] ?? 200,
-                'data' => is_array($result) ? $result : [],
-                'request_id' => $listed['request_id'] ?? null,
-            ];
+        if (empty($listed['success'])) {
+            // One call only. Falling through to the older method names called Alibaba
+            // again (and the sync host) and the browser request sat there for minutes.
+            return $listed;
         }
 
-        $params = [
-            'product_id' => $productId,
-            'language' => 'ENGLISH',
-        ];
-
-        $raw = $this->callIcbuFirst([
-            'alibaba.icbu.product.get',
-            'alibaba.product.get',
-            'alibaba.icbu.product.info.get',
-        ], $params);
-
-        if (empty($raw['success'])) {
-            return $raw;
-        }
-
-        $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
+        $payload = is_array($listed['data'] ?? null) ? $listed['data'] : [];
         $result = is_array($payload['result'] ?? null) ? $payload['result'] : $payload;
         if (isset($result['product']) && is_array($result['product'])) {
             $result = $result['product'];
@@ -182,9 +140,9 @@ class AlibabaApiService extends AliExpressApiService
 
         return [
             'success' => true,
-            'status' => $raw['status'] ?? 200,
+            'status' => $listed['status'] ?? 200,
             'data' => is_array($result) ? $result : [],
-            'request_id' => $raw['request_id'] ?? null,
+            'request_id' => $listed['request_id'] ?? null,
         ];
     }
 
@@ -439,6 +397,10 @@ class AlibabaApiService extends AliExpressApiService
             return ['success' => true, 'message' => 'No linked SKUs to update.', 'updated' => 0, 'errors' => [], 'failed_skus' => []];
         }
 
+        $savedTimeout = $this->httpTimeout;
+        $savedConnect = $this->httpConnectTimeout;
+        $this->httpTimeout = min($savedTimeout, 20);
+        $this->httpConnectTimeout = min($savedConnect, 8);
         $this->useIcbuRest();
         $updated = 0;
         $errors = [];
@@ -449,6 +411,19 @@ class AlibabaApiService extends AliExpressApiService
         foreach ($productIds as $index => $productId) {
             $group = $byProduct[$productId];
             $resolved = $this->icbuInventoryItems((string) $productId, $group);
+            if (! empty($resolved['rate_limited'])) {
+                $this->httpTimeout = $savedTimeout;
+                $this->httpConnectTimeout = $savedConnect;
+
+                return [
+                    'success' => false,
+                    'message' => (string) ($resolved['error'] ?? 'Alibaba asked us to slow down.'),
+                    'updated' => $updated,
+                    'errors' => [],
+                    'failed_skus' => $failedSkus,
+                    'rate_limited' => true,
+                ];
+            }
             if ($resolved['auth']) {
                 foreach (array_slice($productIds, $index) as $laterId) {
                     foreach ($byProduct[$laterId] as $item) {
@@ -537,6 +512,9 @@ class AlibabaApiService extends AliExpressApiService
             }
         }
 
+        $this->httpTimeout = $savedTimeout;
+        $this->httpConnectTimeout = $savedConnect;
+
         $failedSkus = array_values(array_unique($failedSkus));
         $shown = array_slice(array_values(array_unique($errors)), 0, 2);
         $extra = count($errors) - count($shown);
@@ -562,6 +540,18 @@ class AlibabaApiService extends AliExpressApiService
     protected function icbuInventoryItems(string $productId, array $rows): array
     {
         $info = $this->getProductInfo($productId);
+        if ($this->isFrequencyLimit($info) || ! empty($info['network_error'])) {
+            return [
+                'items' => [],
+                'missing' => [],
+                'error' => (string) ($info['message'] ?? 'Alibaba is busy.'),
+                'auth' => false,
+                'rate_limited' => true,
+                'nodes' => [],
+                'lookup' => null,
+                'product_found' => false,
+            ];
+        }
         if ($this->isAuthError($info)) {
             return [
                 'items' => [],
@@ -1946,7 +1936,7 @@ class AlibabaApiService extends AliExpressApiService
     {
         $this->useIcbuRest();
         $page = max(1, $page);
-        $pageSize = max(1, min(20, $pageSize));
+        $pageSize = max(1, min(50, $pageSize));
         $raw = $this->callRestGateway('/alibaba/icbu/product/list', [
             'current_page' => $page,
             'page_size' => $pageSize,

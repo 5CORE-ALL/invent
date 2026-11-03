@@ -60,8 +60,11 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
 
     function tick() {
         paint(false);
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { ctrl.abort(); }, 35000);
         return fetch(url, {
             method: 'POST',
+            signal: ctrl.signal,
             headers: {
                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
                 'Accept': 'application/json',
@@ -82,16 +85,21 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 return data;
             });
         }).then(function (data) {
+            clearTimeout(timer);
             if (!data.success) {
                 finish(data.message || ('Sync failed at offset ' + offset + '.'));
                 return;
             }
             retries = 0;
             if (typeof data.total === 'number') total = data.total;
-            if (data.rate_limited && rateRetries < 8) {
+            if (data.rate_limited && rateRetries < 40) {
                 rateRetries++;
                 paint(true);
-                setTimeout(tick, data.retry_after_ms || 3000);
+                setTimeout(tick, data.retry_after_ms || 2000);
+                return;
+            }
+            if (data.rate_limited) {
+                finish('Alibaba is still busy after waiting. A background inventory push is using the same connection. Leave this page for a minute, then click Push Shopify inventory again.\n' + summary());
                 return;
             }
             rateRetries = 0;
@@ -126,9 +134,10 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             }
             setTimeout(tick, 400);
         }).catch(function (err) {
+            clearTimeout(timer);
             var msg = String((err && err.message) || '');
-            var timeoutish = /504|502|503|timeout|gateway|empty response/i.test(msg);
-            var maxRetries = timeoutish ? 3 : 1;
+            var timeoutish = /504|502|503|timeout|gateway|empty response|abort/i.test(msg);
+            var maxRetries = 1;
             if (retries < maxRetries) {
                 retries++;
                 setTimeout(tick, timeoutish ? 2000 : 1500);

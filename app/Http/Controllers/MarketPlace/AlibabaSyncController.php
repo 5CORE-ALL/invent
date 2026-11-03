@@ -1035,11 +1035,13 @@ class AlibabaSyncController extends Controller
         }
 
         $result = app(AlibabaInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
+        $rateLimited = ! empty($result['rate_limited']) && (int) ($result['updated'] ?? 0) === 0;
         $nothingSent = (int) ($result['updated'] ?? 0) === 0
             && (int) ($result['failed'] ?? 0) === 0
             && (int) ($result['skipped'] ?? 0) === 0;
         $serviceMessage = trim((string) ($result['message'] ?? ''));
-        if ($nothingSent && $serviceMessage !== '') {
+        // A 1-second Alibaba ban is not a failed SKU. The button waits and retries it.
+        if ($nothingSent && $serviceMessage !== '' && ! $rateLimited) {
             return response()->json([
                 'success' => false,
                 'done' => true,
@@ -1051,7 +1053,6 @@ class AlibabaSyncController extends Controller
                 'message' => $serviceMessage,
             ]);
         }
-        $rateLimited = ! empty($result['rate_limited']) && (int) ($result['updated'] ?? 0) === 0;
         // A rate limit updated nothing. Retry the same SKUs after the ban instead of skipping them.
         $nextOffset = $rateLimited ? $offset : $offset + count($batch);
         $done = ! $rateLimited && $nextOffset >= $total;
