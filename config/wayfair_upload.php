@@ -78,6 +78,26 @@ return [
     // A queued file older than this is cancelled instead of uploaded (0 disables the check).
     'max_file_age_hours' => (int) env('WAYFAIR_UPLOAD_MAX_FILE_AGE_HOURS', 12),
 
+    /*
+    | Base-cost pull (wayfair:pull-base-cost).
+    | Partner Home's "Export Product Spreadsheet" carries "Current Base Cost" for every product,
+    | which is Wayfair's real price (no API exposes it). The browser job downloads that workbook
+    | and writes it into wayfair_pricing_prices.price, the Price column on /wayfair-pricing.
+    */
+    'base_cost_pull' => [
+        'enabled' => filter_var(env('WAYFAIR_BASE_COST_PULL_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // Page that has the "Export Product Spreadsheet" button. Falls back to WAYFAIR_UPLOAD_URL.
+        'export_url' => env('WAYFAIR_EXPORT_URL', ''),
+        'export_label' => env('WAYFAIR_EXPORT_LABEL', 'Export Product Spreadsheet'),
+        // Runs well after the 12:00 AM PT push and 12:30 AM PT upload so Wayfair has processed them.
+        'cron' => env('WAYFAIR_BASE_COST_PULL_CRON', '0 6 * * *'),
+        'timezone' => env('WAYFAIR_BASE_COST_PULL_TZ', 'America/Los_Angeles'),
+        // Abort (unless --force) when more than this % of matched SKUs would change: a wrong export must not rewrite everything.
+        'max_change_percent' => (float) env('WAYFAIR_BASE_COST_MAX_CHANGE_PERCENT', 50),
+        'directory' => 'wayfair/exports',
+        'browser_script' => env('WAYFAIR_EXPORT_SCRIPT', base_path('scripts/wayfair/export-base-cost.js')),
+    ],
+
     'outgoing_directory' => 'wayfair/outgoing',
     'error_directory' => 'wayfair/errors',
 

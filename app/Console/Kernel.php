@@ -1694,6 +1694,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Wayfair's real price: download the Partner Home product export once a day (after the push and
+        // upload above have been processed) and store Current Base Cost as the Price column.
+        // Off until WAYFAIR_BASE_COST_PULL_ENABLED=true (the command also checks it).
+        $schedule->command('wayfair:pull-base-cost --scheduled')
+            ->cron((string) config('wayfair_upload.base_cost_pull.cron', '0 6 * * *'))
+            ->timezone((string) config('wayfair_upload.base_cost_pull.timezone', 'America/Los_Angeles'))
+            ->name('wayfair-pull-base-cost')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('wayfair:check-upload-status')
             ->everyFifteenMinutes()
             ->name('wayfair-check-upload-status')
