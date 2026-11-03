@@ -2253,8 +2253,9 @@ class Temu2ListingPublishService
             }
 
             $res = $this->uploadImageToTemu2($url);
-            if (! empty($res['success']) && ! empty($res['url'])) {
-                $map[$url] = (string) $res['url'];
+            $hosted = trim((string) ($res['url'] ?? ''));
+            if (! empty($res['success']) && $hosted !== '' && $this->isTemuGoodsImageUrl($hosted) && ! $this->sameImageUrl($hosted, $url)) {
+                $map[$url] = $hosted;
                 continue;
             }
 
@@ -2405,16 +2406,29 @@ class Temu2ListingPublishService
     }
 
     /**
-     * goods.update only loads a direct kwcdn picture. A temu.com page link is not an image.
+     * goods.update only loads a direct kwcdn jpeg or png. A page link, a WebP, or our own site is not an image Temu can fetch.
      */
-    private function isTemuGoodsImageUrl(string $url): bool
+    protected function isTemuGoodsImageUrl(string $url): bool
     {
         if (! preg_match('#^https://#i', $url)) {
             return false;
         }
         $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+        if (! str_contains($host, 'kwcdn.com')) {
+            return false;
+        }
+        $path = strtolower((string) (parse_url(strtok($url, '?') ?: $url, PHP_URL_PATH) ?? ''));
 
-        return str_contains($host, 'kwcdn.com');
+        return (bool) preg_match('/\.(jpe?g|png)$/', $path);
+    }
+
+    protected function sameImageUrl(string $left, string $right): bool
+    {
+        $normalize = static function (string $url): string {
+            return strtolower(rtrim(strtok($url, '?') ?: $url, '/'));
+        };
+
+        return $normalize($left) === $normalize($right);
     }
 
     /**
@@ -4979,7 +4993,7 @@ class Temu2ListingPublishService
                 $own = $this->temuUpdateImages($rawImages, []);
                 $freshUpdate[$i]['images'] = $own !== []
                     ? $own
-                    : ($rawImages !== [] ? $rawImages : $this->temuUpdateImages($siblingImages, []));
+                    : $this->temuUpdateImages($siblingImages, []);
             }
             $lastMsg = '';
             foreach ($this->specIdsToTry($goodsId, $firstSn, $currentSpecIds) as $specId) {
