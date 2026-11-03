@@ -899,9 +899,29 @@
                             <tbody id="reverb-dil-s-bump-tbody"></tbody>
                         </table>
                     </div>
+                    <div class="border rounded p-2 mt-2 bg-light">
+                        <div class="small fw-semibold mb-1">Exceptions (rows skipped — S Bump% left unchanged)</div>
+                        <div class="row g-2 align-items-center">
+                            <div class="col-7"><label class="small mb-0" for="reverb-s-bump-skip-low-stock">Skip if INV below</label></div>
+                            <div class="col-5">
+                                <input type="number" min="0" step="1" class="form-control form-control-sm"
+                                    id="reverb-s-bump-skip-low-stock" value="0" title="0 = off">
+                            </div>
+                            <div class="col-7"><label class="small mb-0" for="reverb-s-bump-skip-high-volume">Skip high-volume (Sold above)</label></div>
+                            <div class="col-5">
+                                <input type="number" min="0" step="1" class="form-control form-control-sm"
+                                    id="reverb-s-bump-skip-high-volume" value="0" title="0 = off">
+                            </div>
+                        </div>
+                        <div class="small text-muted mt-1">0 = off. Premium items: review manually after applying.</div>
+                    </div>
                     <div class="small text-muted mt-2" id="reverb-dil-s-bump-status"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-secondary me-auto" id="reverb-s-bump-checklist-preset-btn"
+                        title="Sold &gt; 0 → 2%, Sold = 0 → 5%; skip INV &lt; 5 and Sold &gt; 10">
+                        Use 2% / 5% rule
+                    </button>
                     <button type="button" class="btn btn-sm btn-primary" id="reverb-dil-s-bump-apply-btn"
                         title="Save Sold→Bump rules, then fill S Bump% — selected rows if checked, otherwise all visible">
                         Apply
@@ -1852,6 +1872,19 @@
             const n = rule ? Number(rule.bump) : 0;
             return isFinite(n) && n >= 0 ? n : 0;
         }
+        // Checklist rule: Sold > 0 → 2% (performing), Sold = 0 → 5% (non-performing). Overrides — never incremental.
+        const REVERB_BUMP_CHECKLIST = { soldBump: 2, noSaleBump: 5, minStock: 5, highVolumeSold: 10 };
+        function applyReverbBumpChecklistPreset() {
+            reverbDilSBumpRules.forEach(function(r) {
+                r.bump = r.key === '0' ? REVERB_BUMP_CHECKLIST.noSaleBump : REVERB_BUMP_CHECKLIST.soldBump;
+            });
+            renderReverbDilSBumpModalTable();
+            $('#reverb-s-bump-skip-low-stock').val(REVERB_BUMP_CHECKLIST.minStock);
+            $('#reverb-s-bump-skip-high-volume').val(REVERB_BUMP_CHECKLIST.highVolumeSold);
+            $('#reverb-dil-s-bump-status').text('2% / 5% rule loaded (skip INV < '
+                + REVERB_BUMP_CHECKLIST.minStock + ', Sold > ' + REVERB_BUMP_CHECKLIST.highVolumeSold
+                + '). Click Apply to save & fill S Bump%.');
+        }
         function renderReverbDilSBumpModalTable() {
             const $tb = $('#reverb-dil-s-bump-tbody').empty();
             reverbDilSBumpRules.forEach(function(r, idx) {
@@ -1935,6 +1968,9 @@
             }
             const updates = [];
             let filled = 0;
+            let skipped = 0;
+            const minStock = Math.max(0, parseFloat($('#reverb-s-bump-skip-low-stock').val()) || 0);
+            const highVolume = Math.max(0, parseFloat($('#reverb-s-bump-skip-high-volume').val()) || 0);
             for (let i = 0; i < targets.length; i++) {
                 const job = targets[i];
                 const d = job.d || (job.row && job.row.getData()) || {};
@@ -1942,6 +1978,11 @@
                 if (!sku) continue;
                 const inv = (typeof chPromoInv === 'function') ? chPromoInv(d) : (parseFloat(d.INV) || 0);
                 const sold = parseFloat(d['RV L30']) || 0;
+                // Exceptions: low stock / high-volume SKUs keep their current S Bump%.
+                if ((minStock > 0 && inv < minStock) || (highVolume > 0 && sold > highVolume)) {
+                    skipped++;
+                    continue;
+                }
                 const bump = inv === 0 ? 0 : reverbBumpForSold(sold);
                 const value = reverbFormatSBump(bump);
                 try {
@@ -1961,7 +2002,8 @@
                     data: JSON.stringify({ updates: updates }),
                 });
             }
-            showToast('Sold vs Bump (' + label + '): S Bump% → ' + filled + ' row(s)', 'success');
+            showToast('Sold vs Bump (' + label + '): S Bump% → ' + filled + ' row(s)'
+                + (skipped ? ', ' + skipped + ' skipped (exceptions)' : ''), 'success');
         }
         async function saveAndApplyReverbSBump() {
             if (!$('#reverb-dil-s-bump-tbody tr').length) {
@@ -3668,6 +3710,9 @@
             e.preventDefault();
             loadReverbDilSBumpRules();
             $('#reverbDilVsSBumpModal').modal('show');
+        });
+        $('#reverb-s-bump-checklist-preset-btn').on('click', function() {
+            applyReverbBumpChecklistPreset();
         });
         $('#reverb-dil-s-bump-apply-btn').on('click', function() {
             saveAndApplyReverbSBump();

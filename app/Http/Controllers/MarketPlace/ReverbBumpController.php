@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Models\ReverbBumpRaw;
 use App\Models\ReverbProduct;
+use App\Models\ShopifySku;
 use App\Services\ReverbApiService;
 use App\Services\Support\ReverbBumpRawPuller;
 use Illuminate\Http\JsonResponse;
@@ -35,7 +36,10 @@ class ReverbBumpController extends Controller
         // Ended listings can't carry a Bump bid — hidden here and skipped by every pull.
         $products = ReverbBumpRawPuller::pullableProductsQuery()
             ->orderBy('sku')
-            ->get(['id', 'sku', 'reverb_listing_id', 'product_title', 'listing_state', 'bump_bid']);
+            ->get(['id', 'sku', 'reverb_listing_id', 'product_title', 'listing_state', 'bump_bid', 'r_l30', 'recommended_bid']);
+
+        // Same sources as /reverb-pricing: Sold = reverb_products.r_l30 (RV L30), INV = Shopify inventory, S Bump% = recommended_bid.
+        $shopifyData = ShopifySku::mapByProductSkus($products->pluck('sku')->filter()->unique()->values()->all());
 
         $rawByListing = [];
         if ($hasRawTable) {
@@ -60,6 +64,9 @@ class ReverbBumpController extends Controller
                 'title' => $p->product_title,
                 'listing_state' => $p->listing_state,
                 'bump_bid' => $p->bump_bid,
+                'sold' => (int) ($p->r_l30 ?? 0),
+                'inv' => (float) ($shopifyData->get($p->sku)?->inv ?? 0),
+                's_bump' => $p->recommended_bid,
                 'http_status' => $raw?->http_status,
                 'error' => $raw?->error,
                 'fetched_at' => $raw?->fetched_at?->toDateTimeString(),
