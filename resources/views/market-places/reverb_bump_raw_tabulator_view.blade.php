@@ -18,6 +18,9 @@
         .rb-null { color: #adb5bd; }
         #raw-json-body { max-height: 70vh; overflow: auto; font-size: 12px; background: #f8f9fa; padding: 12px; border-radius: 6px; }
         #pull-progress { min-width: 220px; }
+        .rb-dot.summary-trend-dot { width: 10px !important; height: 10px !important; min-width: 10px !important; min-height: 10px !important; margin: 0 2px !important; vertical-align: middle; cursor: default; }
+        .rb-dots { white-space: nowrap; }
+        .rb-dot-label { margin-left: 4px; vertical-align: middle; }
     </style>
 @endsection
 
@@ -197,7 +200,7 @@
             const BASE_FIELD_GROUP = {
                 sku: 'basic', listing_id: 'basic', title: 'basic', listing_state: 'basic',
                 http_status: 'basic', fetched_at: 'basic',
-                bump_bid: 'bid', push_bump: 'bid', sold: 'bid', inv: 'bid', price: 'bid', s_bump: 'bid', skip_reason: 'bid',
+                bump_bid: 'bid', push_bump: 'bid', sold: 'bid', sold_hist: 'bid', inv: 'bid', price: 'bid', s_bump: 'bid', skip_reason: 'bid',
             };
 
             /** Group of a column definition: base fields by name, raw fields by their data path. */
@@ -327,6 +330,9 @@
                 };
             }
 
+            // same green (up) / red (down) / grey (none) dots as the rolling-history dots on the analytics pages
+            const sdot = (kind, tip) => '<span class="summary-trend-dot rb-dot ' + kind + '" title="' + String(tip).replace(/"/g, '&quot;') + '"></span>';
+
             function statusFormatter(cell) {
                 const r = cell.getRow().getData();
                 if (r.http_status === null || r.http_status === undefined) return '<span class="rb-pill rb-none">never</span>';
@@ -341,7 +347,26 @@
                     { title: 'Title', field: 'title', width: 220, headerFilter: 'input' },
                     { title: 'State', field: 'listing_state', width: 80 },
                     { title: 'Live Bump%', field: 'bump_bid', width: 90 },
-                    { title: 'Sold (L30)', field: 'sold', width: 80, hozAlign: 'right', headerTooltip: 'RV L30 — Reverb sales, last 30 days' },
+                    {
+                        title: 'Sold (L30)', field: 'sold', width: 90, hozAlign: 'right',
+                        headerTooltip: 'RV L30 — Reverb sales, last 30 days. Green dot = Sold > 0 (performing), red dot = Sold = 0 (non-performing)',
+                        formatter: c => {
+                            const v = Number(c.getValue()) || 0;
+                            return sdot(v > 0 ? 'up' : 'down', v > 0 ? 'Performing — Sold > 0' : 'Non-performing — Sold = 0')
+                                + '<span class="rb-dot-label">' + v + '</span>';
+                        },
+                    },
+                    {
+                        title: 'Sold history', field: 'sold_hist', width: 110, headerSort: false, download: false,
+                        headerTooltip: 'Daily snapshots of Sold (L30), oldest → newest, last 7 days. Green = Sold > 0, red = Sold = 0. Hover a dot for the day.',
+                        formatter: c => {
+                            const list = c.getValue();
+                            if (!Array.isArray(list) || !list.length) return '<span class="rb-dots">' + sdot('none', 'No daily snapshots yet') + '</span>';
+                            return '<span class="rb-dots">' + list.map(h =>
+                                sdot(h.v > 0 ? 'up' : 'down', h.d + ': Sold ' + h.v + (h.v > 0 ? ' (performing)' : ' (non-performing)'))
+                            ).join('') + '</span>';
+                        },
+                    },
                     { title: 'INV', field: 'inv', width: 70, hozAlign: 'right', headerTooltip: 'Shopify inventory' },
                     {
                         title: 'Price', field: 'price', width: 80, hozAlign: 'right',
