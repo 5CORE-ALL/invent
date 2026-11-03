@@ -712,9 +712,15 @@ class TemuListingPublishService extends Temu2ListingPublishService
                     ? $own
                     : $this->temuUpdateImages($siblingImages, []);
             }
+            // bg.local.goods.update replaces the whole goods and rejects a call without the product name
+            // (150010009). The parent's own name, photos, description and service promise are read from Temu
+            // and sent back unchanged, so the parent keeps its title.
+            $parentFields = $this->t1ParentUpdateFields($goodsId);
+            $parentExtra = $parentFields['extra'];
+            $parentProps = $parentFields['properties'];
             $lastMsg = '';
             foreach ($this->specIdsToTry($goodsId, $firstSn, $currentSpecIds) as $specId) {
-                $send = function (array $rows, bool $withLivePhotos) use ($tryAdd, $kept, $keptPlain, $specId): ?array {
+                $send = function (array $rows, bool $withLivePhotos, array $extra = []) use ($tryAdd, $kept, $keptPlain, $specId): ?array {
                     $freshForSpec = [];
                     $imageCount = 0;
                     $firstImage = '';
@@ -734,7 +740,7 @@ class TemuListingPublishService extends Temu2ListingPublishService
                         array_merge($withLivePhotos ? $kept : $keptPlain, $freshForSpec),
                         'bg.local.goods.update (spec '.$specId.', '.$imageCount.' images'
                             .($withLivePhotos ? ', live photos' : ', no live photos').', '.$tail.')',
-                        [],
+                        $extra,
                         40
                     );
                 };
@@ -758,12 +764,31 @@ class TemuListingPublishService extends Temu2ListingPublishService
                         }
                         $attemptRows[] = $candidate;
                     }
-                    if (($done = $send($attemptRows, true)) !== null) {
+                    if (($done = $send($attemptRows, true, $parentExtra)) !== null) {
                         return $done;
                     }
                     $lastMsg = '';
                     foreach ($messages as $msg) {
                         $lastMsg = $msg;
+                    }
+                    // The update replaces the whole goods, so Temu may also want the parent's attributes and the
+                    // new color listed among them (150010237). Sent only when Temu says so.
+                    if ($parentProps !== [] && preg_match('/propert|150010237|150011025/i', $lastMsg)) {
+                        $propsExtra = $parentExtra;
+                        $entries = $parentProps;
+                        $cat = (int) ($this->t1ExistingGoodsSpecContext($goodsId)['catId'] ?? 0);
+                        $catalog = $cat > 0 ? $this->catalogSpecForSku($cat, [], $firstSn) : null;
+                        if ($catalog !== null && (int) $catalog['specId'] === (int) $specId) {
+                            $entries[] = $catalog['property'];
+                        }
+                        $propsExtra['goodsProperty'] = ['goodsProperties' => $entries];
+                        if (($done = $send($attemptRows, true, $propsExtra)) !== null) {
+                            return $done;
+                        }
+                        $lastMsg = '';
+                        foreach ($messages as $msg) {
+                            $lastMsg = $msg;
+                        }
                     }
                     $imageRejected = str_contains(strtolower($lastMsg), 'image') || str_contains($lastMsg, '150010022');
                     if (! $imageRejected) {
@@ -1035,6 +1060,107 @@ class TemuListingPublishService extends Temu2ListingPublishService
         }
 
         return null;
+    }
+
+    /**
+     * What Temu already holds for the parent goods, shaped for bg.local.goods.update: name, photos, description,
+     * bullets, service promise, and the attribute list (kept apart, used only when Temu asks for it).
+     *
+     * @return array{extra: array<string, mixed>, properties: list<array<string, mixed>>}
+     */
+    private function t1ParentUpdateFields(string $goodsId): array
+    {
+        $result = [];
+        foreach ([2, 1] as $versionType) {
+            $data = $this->temuCallBody([
+                'type' => 'bg.local.goods.detail.query',
+                'goodsId' => (int) $goodsId,
+                'language' => 'en',
+                'versionQueryType' => $versionType,
+            ], 45);
+            $candidate = is_array($data['result'] ?? null) ? $data['result'] : [];
+            if (($data['success'] ?? false) && trim((string) ($candidate['goodsName'] ?? '')) !== '') {
+                $result = $candidate;
+                break;
+            }
+        }
+        if ($result === []) {
+            Log::warning('Temu 1 variation add: could not read the parent goods', ['goods_id' => $goodsId]);
+
+            return ['extra' => [], 'properties' => []];
+        }
+
+        $urls = static function (mixed $list): array {
+            return array_values(array_filter(array_map(
+                static fn ($url) => trim((string) $url),
+                is_array($list) ? $list : []
+            ), static fn ($url) => $url !== ''));
+        };
+
+        $basic = ['goodsName' => trim((string) $result['goodsName'])];
+        $gallery = [];
+        $carousel = $urls($result['goodsGallery']['goodsCarouselImage'] ?? []);
+        $detail = $urls($result['goodsGallery']['detailImage'] ?? []);
+        if ($carousel !== []) {
+            $gallery['goodsCarouselImage'] = $carousel;
+        }
+        if ($detail !== []) {
+            $gallery['detailImage'] = $detail;
+        }
+        if ($gallery !== []) {
+            $basic['goodsGallery'] = $gallery;
+        }
+        $import = trim((string) ($result['importDesignation'] ?? ''));
+        if ($import !== '') {
+            $basic['importDesignation'] = $import;
+        }
+        if ((int) ($result['productType'] ?? 0) > 0) {
+            $basic['productType'] = (int) $result['productType'];
+        }
+
+        $extra = ['goodsBasic' => $basic];
+        $desc = trim((string) ($result['goodsDesc'] ?? ''));
+        if ($desc !== '') {
+            $extra['goodsDesc'] = $desc;
+        }
+        $bullets = $urls($result['bulletPoints'] ?? []);
+        if ($bullets !== []) {
+            $extra['bulletPoints'] = $bullets;
+        }
+        $promise = is_array($result['goodsServicePromise'] ?? null) ? $result['goodsServicePromise'] : [];
+        $service = [];
+        if (trim((string) ($promise['costTemplateId'] ?? '')) !== '') {
+            $service['costTemplateId'] = (string) $promise['costTemplateId'];
+        }
+        if ((int) ($promise['shipmentLimitDay'] ?? 0) > 0) {
+            $service['shipmentLimitDay'] = (int) $promise['shipmentLimitDay'];
+        }
+        if ((int) ($promise['fulfillmentType'] ?? 0) > 0) {
+            $service['fulfillmentType'] = (int) $promise['fulfillmentType'];
+        }
+        if ($service !== []) {
+            $extra['goodsServicePromise'] = $service;
+        }
+
+        $allowed = array_flip(['vid', 'specId', 'imgUrl', 'note', 'parentSpecId', 'valueUnitId', 'groupId', 'valueUnit',
+            'templatePid', 'numberInputValue', 'value', 'refPid', 'pid']);
+        $properties = [];
+        foreach ((array) ($result['goodsProperties'] ?? []) as $prop) {
+            if (! is_array($prop)) {
+                continue;
+            }
+            $entry = array_intersect_key($prop, $allowed);
+            foreach ($entry as $key => $value) {
+                if ($value === null || $value === '') {
+                    unset($entry[$key]);
+                }
+            }
+            if ($entry !== []) {
+                $properties[] = $entry;
+            }
+        }
+
+        return ['extra' => $extra, 'properties' => $properties];
     }
 
     /**
