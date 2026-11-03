@@ -86,8 +86,9 @@ return [
     */
     'base_cost_pull' => [
         'enabled' => filter_var(env('WAYFAIR_BASE_COST_PULL_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
-        // Pricing Home product list (no cost-change projectId, so it does not go stale).
-        'export_url' => env('WAYFAIR_EXPORT_URL', 'https://partners.wayfair.com/d/pricing-home/products'),
+        // Empty = use WAYFAIR_UPLOAD_URL (the New Cost Change > Select Products page). That page has the
+        // "Export Product Spreadsheet" button; the Pricing Home /products dashboard does not.
+        'export_url' => env('WAYFAIR_EXPORT_URL', ''),
         'export_label' => env('WAYFAIR_EXPORT_LABEL', 'Export Product Spreadsheet'),
         // Runs well after the 12:00 AM PT push and 12:30 AM PT upload so Wayfair has processed them.
         'cron' => env('WAYFAIR_BASE_COST_PULL_CRON', '0 6 * * *'),
