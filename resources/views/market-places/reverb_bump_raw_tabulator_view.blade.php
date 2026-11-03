@@ -244,7 +244,8 @@
             const PULL_CHUNK = 10;
             const MAX_RAW_COLUMNS = 250;
             // Raw fields that never become columns (the server drops them too): description, _links, deleted_bid, bids, budgets
-            const HIDDEN_RAW_PATH = /(^|\.)(description|_links|deleted_bid|budgets)(\.|$)|^bids(\.|$)/;
+            // Also hidden: the constant USD / $ currency fields of bump_v2_stats.cost and bump_v2_stats.sales
+            const HIDDEN_RAW_PATH = /(^|\.)(description|_links|deleted_bid|budgets)(\.|$)|^bids(\.|$)|^bump_v2_stats\.(cost|sales)\.(currency|symbol)$/;
             const COL_VIS_KEY = 'reverb_bump_raw_cols_v2';
 
             // The basic column groups (description fields get their own area) shown in the Columns menu.
