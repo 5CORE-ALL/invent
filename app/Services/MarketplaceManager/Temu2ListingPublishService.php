@@ -2247,7 +2247,7 @@ class Temu2ListingPublishService
             if (isset($map[$url])) {
                 continue;
             }
-            if ($this->isTemuHostedImageUrl($url)) {
+            if ($this->isTemuGoodsImageUrl($url)) {
                 $map[$url] = $url;
                 continue;
             }
@@ -2268,12 +2268,11 @@ class Temu2ListingPublishService
                 return ['map' => [], 'error' => $this->ipWhitelistUserMessage()];
             }
 
-            return [
-                'map' => [],
-                'error' => $msg !== ''
-                    ? $this->shopLabel().' image upload failed: '.$msg
-                    : $this->shopLabel().' image upload failed.',
-            ];
+            // One photo Temu will not take is left out. The rest of this SKU's photos still go up.
+        }
+
+        if ($map === []) {
+            return ['map' => [], 'error' => $this->shopLabel().' refused every image for this SKU.'];
         }
 
         return ['map' => $map, 'error' => null];
@@ -2403,6 +2402,102 @@ class Temu2ListingPublishService
             str_contains($host, 'kwcdn.com')
             || str_contains($host, 'temu.com')
         );
+    }
+
+    /**
+     * goods.update only loads a direct kwcdn picture. A temu.com page link is not an image.
+     */
+    private function isTemuGoodsImageUrl(string $url): bool
+    {
+        if (! preg_match('#^https://#i', $url)) {
+            return false;
+        }
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+
+        return str_contains($host, 'kwcdn.com');
+    }
+
+    /**
+     * This SKU's own pictures for a variation update, up to the gallery limit.
+     *
+     * @param  list<mixed>  $preferred
+     * @param  list<string>  $fallback
+     * @return list<string>
+     */
+    private function temuUpdateImages(array $preferred, array $fallback): array
+    {
+        $out = [];
+        foreach ([$preferred, $fallback] as $list) {
+            foreach ($list as $url) {
+                $url = trim((string) $url);
+                if ($url === '' || ! $this->isTemuGoodsImageUrl($url) || in_array($url, $out, true)) {
+                    continue;
+                }
+                $out[] = $url;
+                if (count($out) >= self::MAX_IMAGES) {
+                    return $out;
+                }
+            }
+            if ($out !== []) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Temu wants at least three picture slots. Fewer than three real photos are repeated; a full gallery is left as it is.
+     *
+     * @param  list<string>  $images
+     * @return list<string>
+     */
+    private function padTemuUpdateImages(array $images): array
+    {
+        $images = array_values(array_filter($images, static fn ($url) => trim((string) $url) !== ''));
+        if ($images === []) {
+            return [];
+        }
+        $unique = array_values(array_unique($images));
+        while (count($images) < 3) {
+            $images[] = $unique[0];
+        }
+
+        return array_slice($images, 0, self::MAX_IMAGES);
+    }
+
+    /**
+     * Image sets to send after Temu refuses a picture: the full gallery, then the gallery
+     * with each photo left out in turn. The first set Temu accepts is the one that is published.
+     *
+     * @param  list<string>  $images
+     * @return list<list<string>>
+     */
+    private function imageSetsDroppingRefused(array $images): array
+    {
+        $unique = [];
+        foreach ($images as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && ! in_array($url, $unique, true)) {
+                $unique[] = $url;
+            }
+        }
+        $sets = [];
+        $push = function (array $set) use (&$sets): void {
+            $set = array_values($set);
+            if ($set === []) {
+                return;
+            }
+            $sets[implode("\n", $set)] = $set;
+        };
+        $push($unique);
+        foreach (array_keys($unique) as $index) {
+            $without = $unique;
+            array_splice($without, (int) $index, 1);
+            $push($without);
+        }
+
+        return array_slice(array_values($sets), 0, self::MAX_IMAGES + 1);
     }
 
     private function temu2IpWhitelistError(): ?string
@@ -4737,7 +4832,7 @@ class Temu2ListingPublishService
         // product after the processing is complete"). Either signal means "pending", not "failed": sending the
         // heavier full update on top of a goods that is still processing only produces misleading errors.
         $pending = '';
-        $attempt = function (string $type, array $skus, string $label = '', int $wait = 3, array $extra = []) use ($goodsId, $newSkus, &$messages, &$unknownTypes, &$pending): ?array {
+        $attempt = function (string $type, array $skus, string $label = '', int $wait = 3, array $extra = [], int $timeout = 120) use ($goodsId, $newSkus, &$messages, &$unknownTypes, &$pending): ?array {
             if (isset($unknownTypes[$type])) {
                 return null;
             }
@@ -4751,7 +4846,7 @@ class Temu2ListingPublishService
                 'language' => 'en',
                 'goodsId' => (int) $goodsId,
                 'skuList' => $skus,
-            ], $extra), 120);
+            ], $extra), $timeout);
             $innerFailed = is_array($data['result'] ?? null) && array_key_exists('success', $data['result']) && empty($data['result']['success']);
             if (($data['success'] ?? false) && ! $innerFailed) {
                 // Same as a single listing: Temu accepted the request, so the app shows the green tick now.
@@ -4837,8 +4932,8 @@ class Temu2ListingPublishService
             $freshUpdate = $freshV1;
         }
 
-        $tryAdd = function (string $type, array $skus, string $label, array $extra = []) use ($attempt, $pendingResult): ?array {
-            if (($data = $attempt($type, $skus, $label, 30, $extra)) !== null) {
+        $tryAdd = function (string $type, array $skus, string $label, array $extra = [], int $timeout = 120) use ($attempt, $pendingResult): ?array {
+            if (($data = $attempt($type, $skus, $label, 30, $extra, $timeout)) !== null) {
                 return ['success' => true, 'data' => $data];
             }
 
@@ -4855,7 +4950,16 @@ class Temu2ListingPublishService
             }
             $firstSn = '';
             $currentSpecIds = [];
-            foreach ($freshUpdate as $row) {
+            $siblingImages = [];
+            foreach ($existing as $row) {
+                foreach ((array) ($row['images'] ?? []) as $url) {
+                    $url = trim((string) $url);
+                    if ($this->isTemuGoodsImageUrl($url) && ! in_array($url, $siblingImages, true)) {
+                        $siblingImages[] = $url;
+                    }
+                }
+            }
+            foreach ($freshUpdate as $i => $row) {
                 if ($firstSn === '') {
                     $firstSn = (string) ($row['outSkuSn'] ?? '');
                 }
@@ -4864,22 +4968,65 @@ class Temu2ListingPublishService
                         $currentSpecIds[] = (int) $specId;
                     }
                 }
+                $rawImages = [];
+                foreach ((array) ($row['images'] ?? []) as $url) {
+                    $url = trim((string) $url);
+                    if ($url !== '' && preg_match('#^https://#i', $url) && ! in_array($url, $rawImages, true)) {
+                        $rawImages[] = $url;
+                    }
+                }
+                $rawImages = array_slice($rawImages, 0, self::MAX_IMAGES);
+                $own = $this->temuUpdateImages($rawImages, []);
+                $freshUpdate[$i]['images'] = $own !== []
+                    ? $own
+                    : ($rawImages !== [] ? $rawImages : $this->temuUpdateImages($siblingImages, []));
             }
+            $lastMsg = '';
             foreach ($this->specIdsToTry($goodsId, $firstSn, $currentSpecIds) as $specId) {
-                $freshForSpec = [];
-                foreach ($freshUpdate as $row) {
-                    $row['specIdList'] = [$specId];
-                    $freshForSpec[] = $row;
+                $send = function (array $rows) use ($tryAdd, $kept, $specId): ?array {
+                    $freshForSpec = [];
+                    $imageCount = 0;
+                    foreach ($rows as $row) {
+                        $row['specIdList'] = [$specId];
+                        $row['images'] = $this->padTemuUpdateImages((array) ($row['images'] ?? []));
+                        $imageCount = max($imageCount, count($row['images']));
+                        $freshForSpec[] = $row;
+                    }
+
+                    return $tryAdd(
+                        'bg.local.goods.update',
+                        array_merge($kept, $freshForSpec),
+                        'bg.local.goods.update (spec '.$specId.', '.$imageCount.' images)',
+                        [],
+                        40
+                    );
+                };
+                $plans = $this->imageSetsDroppingRefused((array) ($freshUpdate[0]['images'] ?? []));
+                if ($plans === []) {
+                    $plans = [[]];
                 }
-                $merged = array_merge($kept, $freshForSpec);
-                if (($done = $tryAdd('bg.local.goods.update', $merged, 'bg.local.goods.update (spec '.$specId.')')) !== null) {
-                    return $done;
+                $imageRejected = false;
+                foreach ($plans as $imageSet) {
+                    $attemptRows = [];
+                    foreach ($freshUpdate as $index => $candidate) {
+                        if ($index === 0) {
+                            $candidate['images'] = $imageSet;
+                        }
+                        $attemptRows[] = $candidate;
+                    }
+                    if (($done = $send($attemptRows)) !== null) {
+                        return $done;
+                    }
+                    $lastMsg = '';
+                    foreach ($messages as $msg) {
+                        $lastMsg = $msg;
+                    }
+                    $imageRejected = str_contains(strtolower($lastMsg), 'image') || str_contains($lastMsg, '150010022');
+                    if (! $imageRejected) {
+                        break;
+                    }
                 }
-                $lastMsg = '';
-                foreach ($messages as $msg) {
-                    $lastMsg = $msg;
-                }
-                if ($lastMsg !== '' && ! str_contains(strtolower($lastMsg), 'spec')) {
+                if ($imageRejected || ($lastMsg !== '' && ! str_contains(strtolower($lastMsg), 'spec'))) {
                     break;
                 }
             }
