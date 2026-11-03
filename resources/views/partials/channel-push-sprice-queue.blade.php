@@ -1560,6 +1560,8 @@
                 // Blue SKUs that are not queued, so the bar can say why the badge count is higher than the queue.
                 const waitingPushed = [];
                 let sentThisLoad = 0;
+                // Blue SKUs eBay has no live listing for (status MISSING / NOT_LISTED): a price push can never reach them.
+                let notListed = 0;
                 function consider(row, d) {
                     if (!chPushSpriceIsChild(d)) return;
                     if (chPushSpriceRowBlocked(d)) return;
@@ -1567,6 +1569,10 @@
                     const key = sku.toUpperCase();
                     if (!sku || seen.has(key)) return;
                     seen.add(key);
+                    if (['MISSING', 'NOT_LISTED'].indexOf(String(d.listing_status || '').trim().toUpperCase()) !== -1) {
+                        notListed++;
+                        return;
+                    }
                     let saved = chPushSpriceSavedFromRow(d);
                     saved = chPushSpriceCapMacysToAmz(d, saved);
                     if (!(saved > 0)) return;
@@ -1632,6 +1638,7 @@
                         const why = [];
                         if (waitingPushed.length) why.push(waitingPushed.length + ' pushed, waiting for the marketplace Price');
                         if (sentThisLoad) why.push(sentThisLoad + ' sent, still processing');
+                        if (notListed) why.push(notListed + ' not listed on eBay (cannot be pushed)');
                         setChannelPushSpriceProgress({
                             active: false,
                             done: 0,
