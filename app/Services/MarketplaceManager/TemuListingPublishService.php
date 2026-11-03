@@ -142,7 +142,25 @@ class TemuListingPublishService extends Temu2ListingPublishService
             ] as $params) {
                 $data = $this->api->callOpenApi('bg.local.goods.image.upload', $params, 60);
                 $hosted = $this->extractUploadedImageUrl($data);
-                if ($hosted !== null) {
+                if ($hosted !== null && $this->isTemuGoodsImageUrl($hosted) && ! $this->sameImageUrl($hosted, $url)) {
+                    return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
+                }
+                if ($remember($data)) {
+                    return ['success' => false, 'message' => $lastMsg];
+                }
+            }
+        }
+
+        if (is_string($prepared['bytes']) && $prepared['bytes'] !== '') {
+            $b64 = base64_encode($prepared['bytes']);
+            foreach ([
+                ['image' => 'data:image/jpeg;base64,'.$b64, 'formatConversionType' => 1],
+                ['fileBase64' => $b64, 'formatConversionType' => 1],
+                ['imageBase64' => $b64],
+            ] as $params) {
+                $data = $this->api->callOpenApi('bg.local.goods.image.upload', $params, 90);
+                $hosted = $this->extractUploadedImageUrl($data);
+                if ($hosted !== null && $this->isTemuGoodsImageUrl($hosted)) {
                     return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
                 }
                 if ($remember($data)) {
