@@ -408,15 +408,27 @@ class AmazonAdsMissingController extends Controller
             }
 
             $imported = 0;
-            $unmatched = 0;
+            $notHl = 0;
+            $orphanInactive = 0;
+            $orphans = [];
             foreach ($campaigns as $key => $c) {
                 if ($c['status'] === 'ARCHIVED') {
                     continue;
                 }
+                // Matching rule: only "[PARENT ]{parent} HL|HEAD[ n]" names are HL campaigns. Anything else
+                // (e.g. "PARENT X HEAD KW" keyword campaigns) is not an HL campaign, so it is not a miss.
+                if ($this->hlBaseFromCampaignName($key) === null) {
+                    $notHl++;
+                    continue;
+                }
                 $parentKey = $this->parentKeyFromHlCampaignName($key, $parents);
                 if ($parentKey === null) {
-                    $unmatched++;
-
+                    // Follows the HL naming but its parent is not in Product Master (deleted / renamed / legacy name).
+                    if ($c['status'] === 'ENABLED') {
+                        $orphans[] = $c['name'];
+                    } else {
+                        $orphanInactive++;
+                    }
                     continue;
                 }
                 $sku = 'PARENT '.$parents[$parentKey];
@@ -458,9 +470,11 @@ class AmazonAdsMissingController extends Controller
                 'ok' => true,
                 'imported' => $imported,
                 'removed' => $removed,
-                'unmatched' => $unmatched,
-                'message' => "Imported {$imported} HL campaign(s), removed {$removed} archived over ".self::HL_ARCHIVED_KEEP_DAYS.' days.'
-                    .($unmatched > 0 ? " {$unmatched} active HL campaign(s) did not match any parent name." : ''),
+                'unmatched' => count($orphans),
+                'unmatched_campaigns' => $orphans,
+                'unmatched_inactive' => $orphanInactive,
+                'skipped_not_hl' => $notHl,
+                'message' => $this->hlImportMessage($imported, $removed, $orphans, $orphanInactive, $notHl),
             ]);
         } catch (\Throwable $e) {
             Log::warning('Amazon ads missing: HL import failed', ['error' => $e->getMessage()]);
@@ -500,17 +514,54 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
+     * The part before the HL|HEAD suffix ("PARENT FOO HEAD 2" => "PARENT FOO"), or null when the name does not
+     * follow the HL naming rule (e.g. "PARENT FOO HEAD KW" is a keyword campaign, not an HL campaign).
+     */
+    private function hlBaseFromCampaignName(string $normalizedName): ?string
+    {
+        if (! preg_match('/^(.*?)\s+(?:HL|HEAD)(?:\s*\d+)?$/', $normalizedName, $m)) {
+            return null;
+        }
+        $base = trim($m[1]);
+
+        return $base === '' ? null : $base;
+    }
+
+    /**
+     * Result text of the HL import. Names the running HL campaigns that could not be linked so they can be
+     * fixed at the source, instead of only reporting a count.
+     *
+     * @param  list<string>  $orphans
+     */
+    private function hlImportMessage(int $imported, int $removed, array $orphans, int $orphanInactive, int $notHl): string
+    {
+        $msg = "Imported {$imported} HL campaign(s), removed {$removed} archived over ".self::HL_ARCHIVED_KEEP_DAYS.' days.';
+        if ($orphans !== []) {
+            $shown = array_slice($orphans, 0, 10);
+            $more = count($orphans) - count($shown);
+            $msg .= ' '.count($orphans).' running HL campaign(s) have no parent in Product Master (parent deleted/renamed, or name is not "PARENT {parent} HEAD"): '
+                .implode('; ', $shown).($more > 0 ? "; +{$more} more" : '')
+                .'. Rename the campaign in Amazon Ads to match its parent, or restore the parent.';
+        }
+        if ($orphanInactive > 0) {
+            $msg .= " {$orphanInactive} paused HL campaign(s) without a parent were ignored.";
+        }
+        if ($notHl > 0) {
+            $msg .= " {$notHl} non-HL campaign(s) (e.g. HEAD KW) were skipped.";
+        }
+
+        return $msg;
+    }
+
+    /**
      * Parent key (UPPER) for an HL campaign name like "PARENT FOO HL", "PARENT FOO HEAD 2" or "FOO HL".
      *
      * @param  array<string, string>  $parents
      */
     private function parentKeyFromHlCampaignName(string $normalizedName, array $parents): ?string
     {
-        if (! preg_match('/^(.*?)\s+(?:HL|HEAD)(?:\s*\d+)?$/', $normalizedName, $m)) {
-            return null;
-        }
-        $base = trim($m[1]);
-        if ($base === '') {
+        $base = $this->hlBaseFromCampaignName($normalizedName);
+        if ($base === null) {
             return null;
         }
         if (isset($parents[$base])) {
@@ -2650,7 +2701,7 @@ PROMPT;
     }
 
     /**
-     * Count Missing PT + Missing KW + Missing HL across all parent rows (in-stock or not).
+     * Count Missing PT + Missing KW + Missing HL across parent rows with inventory (> 0).
      */
     private function computeMissingTotal(): int
     {
@@ -2697,8 +2748,13 @@ PROMPT;
                 return $links->pluck('type')->map(fn ($t) => (string) $t)->unique()->all();
             });
 
+        $inventoryByParent = $this->buildInventorySumByParent($rows);
+
         foreach ($parents as $parentKey => $parent) {
-            // All parents count (in-stock and out-of-stock), matching the page badges.
+            // Parents with 0 inventory are not counted as missing.
+            if ((int) round($inventoryByParent[$parentKey] ?? 0) <= 0) {
+                continue;
+            }
             $types = $linkedTypesBySku->get('PARENT '.$parent, []);
             if (! in_array('PT', $types, true)) {
                 $counts['PT']++;
@@ -2748,12 +2804,17 @@ PROMPT;
         $missing = array_fill_keys($types, 0);
         $avail = array_fill_keys($types, []);
         $live = array_fill_keys($types, []);
-        foreach ($parents as $parent) {
+        $inventoryByParent = $this->buildInventorySumByParent($rows);
+        foreach ($parents as $parentKey => $parent) {
             $links = $linksBySku->get('PARENT '.$parent, collect());
+            $hasInv = (int) round($inventoryByParent[$parentKey] ?? 0) > 0;
             foreach ($types as $t) {
                 $of = $links->filter(fn ($l) => (string) $l->type === $t);
                 if ($of->isEmpty()) {
-                    $missing[$t]++;
+                    // Parents with 0 inventory are not counted as missing.
+                    if ($hasInv) {
+                        $missing[$t]++;
+                    }
                     continue;
                 }
                 foreach ($of as $l) {

@@ -40,7 +40,7 @@ final class AmazonAdsBgtCountStore
     public static function updatedAt(): ?string
     {
         self::ensureRulesTable();
-        $value = DB::table('amazon_ads_rules')->where('key', self::KEY)->value('updated_at');
+        $value = DB::table('amazon_ads_rules')->where('key', AmazonAdsRuleScope::keyFor(self::KEY))->value('updated_at');
 
         return $value !== null && $value !== '' ? (string) $value : null;
     }
@@ -73,6 +73,10 @@ final class AmazonAdsBgtCountStore
                 'unmatched' => max(0, (int) ($col['unmatched'] ?? 0)),
                 'campaigns' => max(0, (int) ($col['campaigns'] ?? 0)),
             ];
+            // Size of the whole campaign set the scope was cut from. The page uses it to tell full counts from partial ones.
+            if (isset($col['universe'])) {
+                $entry['universe'] = max(0, (int) $col['universe']);
+            }
             $ranges = self::normalizeRanges($col['ranges'] ?? null, count($list));
             if ($ranges !== null) {
                 $entry['ranges'] = $ranges;
@@ -113,6 +117,7 @@ final class AmazonAdsBgtCountStore
                 'totalN' => max(0, (int) ($input['sum']['totalN'] ?? 0)),
                 'sbgtTotal' => self::finiteNumber($input['sum']['sbgtTotal'] ?? 0),
                 'campaigns' => max(0, (int) ($input['sum']['campaigns'] ?? 0)),
+                'universe' => max(0, (int) ($input['sum']['universe'] ?? 0)),
                 'countTotal' => max(0, (int) ($input['sum']['countTotal'] ?? 0)),
                 'bgtTotal' => self::finiteNumber($input['sum']['bgtTotal'] ?? 0),
                 'parts' => $parts,

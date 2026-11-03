@@ -17,42 +17,83 @@ final class AmazonAdsBgtCountCalculator
     private const COLORS = ['#7c3aed', '#2563eb', '#16a34a', '#f59e0b', '#f97316', '#dc2626', '#64748b', '#0ea5e9'];
 
     /**
+     * Counts both rule sets from one download of the campaigns: the standard BGT Rules (SP + SB campaigns, HL
+     * left out) and the SBGT HL rules (HL campaigns only). Returns the standard counts.
+     *
      * @return array<string, mixed>
      */
     public function calculate(): array
     {
         @set_time_limit(0);
-        $campaigns = $this->campaigns();
-        $acos = AmazonAcosSbgtRule::resolvedRule()['bands'] ?? [];
-        $views = AmazonAdsBgtViewsRule::resolvedRule()['bands'] ?? [];
-        $cvr = AmazonAdsBgtCvrRule::resolvedRule()['bands'] ?? [];
-        $prc = AmazonAdsBgtPrcRule::resolvedRule()['bands'] ?? [];
-        $reviews = AmazonAdsBgtReviewsRule::resolvedRule()['bands'] ?? [];
-        $dil = AmazonAdsBgtDilRule::resolvedRule()['bands'] ?? [];
-        $gpft = AmazonAdsBgtGpftRule::resolvedRule()['bands'] ?? [];
-        $flag = AmazonAdsBgtFlagRule::resolvedRule()['bands'] ?? [];
-        // BGT Vs FLAG counts flagged campaigns only (rows carry bgt_flag_value = GPFT% − ACOS%).
-        $flaggedRows = array_values(array_filter($campaigns, fn (array $row): bool => $this->num($row['bgt_flag_value'] ?? null) !== null));
+        $all = $this->campaigns();
 
-        $columns = [
-            'acos' => $this->tally($campaigns, $acos, 'acos_from', 'acos_to', fn (array $row): ?float => $this->num($row['ACOS'] ?? null)),
-            'views' => $this->tally($campaigns, $views, 'views_from', 'views_to', fn (array $row): ?float => $this->viewsOf($row)),
-            'cvr' => $this->tally($campaigns, $cvr, 'cvr_from', 'cvr_to', fn (array $row): ?float => $this->cvrOf($row)),
-            'prc' => $this->tally($campaigns, $prc, 'prc_from', 'prc_to', fn (array $row): ?float => $this->picked($row, 'bgt_prc_price', 'price')),
-            'reviews' => $this->tallyReviews($campaigns, $reviews),
-            'dil' => $this->tally($campaigns, $dil, 'dil_from', 'dil_to', fn (array $row): ?float => $this->dilOf($row)),
-            'gpft' => $this->tally($campaigns, $gpft, 'gpft_from', 'gpft_to', fn (array $row): ?float => $this->picked($row, 'bgt_gpft_value', 'gpft')),
-            'flag' => $this->tally($flaggedRows, $flag, 'flag_from', 'flag_to', fn (array $row): ?float => $this->num($row['bgt_flag_value'] ?? null)),
-        ];
+        // HL first: the page notices the standard counts changing, and by then the HL total it adds is already saved.
+        $this->calculateScope(AmazonAdsRuleScope::HL, $all);
 
-        $saved = [
-            'filter' => self::STATUS,
-            'columns' => $columns,
-            'sum' => $this->sum($campaigns, $views, $cvr, $acos, $prc, $reviews, $dil, $gpft, $flag),
-        ];
-        AmazonAdsBgtCountStore::write($saved);
+        return $this->calculateScope(AmazonAdsRuleScope::DEFAULT, $all);
+    }
 
-        return AmazonAdsBgtCountStore::read() ?? $saved;
+    /**
+     * @param  list<array<string, mixed>>  $all
+     * @return array<string, mixed>
+     */
+    private function calculateScope(string $scope, array $all): array
+    {
+        return AmazonAdsRuleScope::run($scope, function () use ($scope, $all): array {
+            $wantHl = $scope === AmazonAdsRuleScope::HL;
+            $campaigns = array_values(array_filter($all, fn (array $row): bool => $this->isHlRow($row) === $wantHl));
+            $universe = count($all);
+
+            $acos = AmazonAcosSbgtRule::resolvedRule()['bands'] ?? [];
+            $views = AmazonAdsBgtViewsRule::resolvedRule()['bands'] ?? [];
+            $cvr = AmazonAdsBgtCvrRule::resolvedRule()['bands'] ?? [];
+            $prc = AmazonAdsBgtPrcRule::resolvedRule()['bands'] ?? [];
+            $reviews = AmazonAdsBgtReviewsRule::resolvedRule()['bands'] ?? [];
+            $dil = AmazonAdsBgtDilRule::resolvedRule()['bands'] ?? [];
+            $gpft = AmazonAdsBgtGpftRule::resolvedRule()['bands'] ?? [];
+            $flag = AmazonAdsBgtFlagRule::resolvedRule()['bands'] ?? [];
+            // BGT Vs FLAG counts flagged campaigns only (rows carry bgt_flag_value = GPFT% − ACOS%).
+            $flaggedRows = array_values(array_filter($campaigns, fn (array $row): bool => $this->num($row['bgt_flag_value'] ?? null) !== null));
+
+            $columns = [
+                'acos' => $this->tally($campaigns, $acos, 'acos_from', 'acos_to', fn (array $row): ?float => $this->num($row['ACOS'] ?? null)),
+                'views' => $this->tally($campaigns, $views, 'views_from', 'views_to', fn (array $row): ?float => $this->viewsOf($row)),
+                'cvr' => $this->tally($campaigns, $cvr, 'cvr_from', 'cvr_to', fn (array $row): ?float => $this->cvrOf($row)),
+                'prc' => $this->tally($campaigns, $prc, 'prc_from', 'prc_to', fn (array $row): ?float => $this->picked($row, 'bgt_prc_price', 'price')),
+                'reviews' => $this->tallyReviews($campaigns, $reviews),
+                'dil' => $this->tally($campaigns, $dil, 'dil_from', 'dil_to', fn (array $row): ?float => $this->dilOf($row)),
+                'gpft' => $this->tally($campaigns, $gpft, 'gpft_from', 'gpft_to', fn (array $row): ?float => $this->picked($row, 'bgt_gpft_value', 'gpft')),
+                'flag' => $this->tally($flaggedRows, $flag, 'flag_from', 'flag_to', fn (array $row): ?float => $this->num($row['bgt_flag_value'] ?? null)),
+            ];
+            foreach ($columns as $key => $column) {
+                $columns[$key]['universe'] = $universe;
+            }
+
+            $sum = $this->sum($campaigns, $views, $cvr, $acos, $prc, $reviews, $dil, $gpft, $flag);
+            $sum['universe'] = $universe;
+
+            $saved = [
+                'filter' => self::STATUS,
+                'columns' => $columns,
+                'sum' => $sum,
+            ];
+            AmazonAdsBgtCountStore::write($saved);
+
+            return AmazonAdsBgtCountStore::read() ?? $saved;
+        });
+    }
+
+    /** HL campaign: the server tags every campaign row with is_hl; fall back to the name for older rows. */
+    private function isHlRow(array $row): bool
+    {
+        if (array_key_exists('is_hl', $row) && $row['is_hl'] !== null) {
+            return (bool) $row['is_hl'];
+        }
+
+        return AmazonAdsRuleScope::isHlCampaign(
+            (string) ($row['campaignName'] ?? ''),
+            AmazonAdsRuleScope::isSbSource((string) ($row['ad_type'] ?? ''))
+        );
     }
 
     /**

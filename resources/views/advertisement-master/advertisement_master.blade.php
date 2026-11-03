@@ -1534,7 +1534,7 @@
                 if (rnSel) rnSel.value = 'REQ';
                 table.clearFilter();
                 showAdmLoading();
-                table.setData(dataUrl);
+                table.setData(dataUrl, { refresh: 1 });
             });
 
             const admEditSaveUrl = "{{ route('advertisement.master.label.save') }}";
@@ -1832,7 +1832,7 @@
                         if (inst) inst.hide();
                     }
                     showAdmLoading();
-                    table.setData(dataUrl);
+                    table.setData(dataUrl, { refresh: 1 });
                 }).catch(function () {
                     btn.disabled = false;
                     btn.textContent = oldText;

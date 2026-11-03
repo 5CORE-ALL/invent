@@ -6,6 +6,9 @@ use App\Services\Crm\Contracts\FollowUpServiceInterface;
 use App\Services\Crm\Contracts\ShopifyServiceInterface;
 use App\Services\Crm\FollowUpService;
 use App\Services\Crm\ShopifyService;
+use App\Database\MemoizedMySqlBuilder;
+use App\Database\MemoizedMySqlConnection;
+use Illuminate\Database\Connection;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\View as ViewInstance;
@@ -40,6 +43,14 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->pinScheduleRunClock();
+
+        // Memoize Schema::hasTable()/hasColumn() lookups (each one is a slow
+        // information_schema query). Web requests only; CLI keeps stock behaviour.
+        MemoizedMySqlBuilder::$enabled = ! $this->app->runningInConsole();
+        Connection::resolverFor('mysql', function ($connection, $database, $prefix, $config) {
+            return new MemoizedMySqlConnection($connection, $database, $prefix, $config);
+        });
+
         $this->app->singleton(FollowUpServiceInterface::class, FollowUpService::class);
         $this->app->singleton(ShopifyServiceInterface::class, ShopifyService::class);
     }

@@ -239,19 +239,19 @@
                             <span class="amz-missing-badge-label">Parent</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzParentValue">0</span>
                         </div>
-                        <div class="amz-missing-badge amz-missing-badge--missing" id="amzMissingWrap" title="Missing All: Missing KW + Missing PT + Missing HL (all parent rows in the current view, in-stock or not).">
+                        <div class="amz-missing-badge amz-missing-badge--missing" id="amzMissingWrap" title="Missing All: Missing KW + Missing PT + Missing HL (parent rows in the current view with inventory > 0).">
                             <span class="amz-missing-badge-label">Missing All</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingValue">0</span>
                         </div>
-                        <div class="amz-missing-badge amz-missing-badge--kw" id="amzMissingKwWrap" role="button" tabindex="0" aria-pressed="false" title="Missing KW: parent rows (any inventory) with no linked KW campaign. Click to show only those rows; click again to clear.">
+                        <div class="amz-missing-badge amz-missing-badge--kw" id="amzMissingKwWrap" role="button" tabindex="0" aria-pressed="false" title="Missing KW: parent rows with inventory > 0 and no linked KW campaign. Click to show only those rows; click again to clear.">
                             <span class="amz-missing-badge-label">Missing KW</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingKwValue">0</span>
                         </div>
-                        <div class="amz-missing-badge amz-missing-badge--pt" id="amzMissingPtWrap" role="button" tabindex="0" aria-pressed="false" title="Missing PT: parent rows (any inventory) with no linked PT campaign. Click to show only those rows; click again to clear.">
+                        <div class="amz-missing-badge amz-missing-badge--pt" id="amzMissingPtWrap" role="button" tabindex="0" aria-pressed="false" title="Missing PT: parent rows with inventory > 0 and no linked PT campaign. Click to show only those rows; click again to clear.">
                             <span class="amz-missing-badge-label">Missing PT</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingPtValue">0</span>
                         </div>
-                        <div class="amz-missing-badge amz-missing-badge--hl" id="amzMissingHlWrap" role="button" tabindex="0" aria-pressed="false" title="Missing HL: parent rows (any inventory) with no linked HL (Headline / Sponsored Brands) campaign. Click to show only those rows; click again to clear.">
+                        <div class="amz-missing-badge amz-missing-badge--hl" id="amzMissingHlWrap" role="button" tabindex="0" aria-pressed="false" title="Missing HL: parent rows with inventory > 0 and no linked HL (Headline / Sponsored Brands) campaign. Click to show only those rows; click again to clear.">
                             <span class="amz-missing-badge-label">Missing HL</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingHlValue">0</span>
                         </div>
@@ -3236,8 +3236,8 @@
                     var kw = 0;
                     var hl = 0;
                     rows.forEach(function (r) {
-                        // Every parent counts (in-stock and out-of-stock) so Missing + linked = total parents.
-                        if (!r) { return; }
+                        // Parents with 0 inventory are not counted as missing.
+                        if (!r || !(Number(r.inventory) > 0)) { return; }
                         if (!r.pt || !r.pt.length) { pt++; }
                         if (!r.kw || !r.kw.length) { kw++; }
                         if (!r.hl || !r.hl.length) { hl++; }
@@ -3334,7 +3334,7 @@
 
                 function isMissingTypeBadgeFilterOn(type) {
                     return headerFilterValue(type) === 'missing'
-                        && headerFilterValue('inventory') === ''
+                        && headerFilterValue('inventory') === 'in'
                         && otherMissingTypes(type).every(function (o) { return headerFilterValue(o) !== 'missing'; });
                 }
 
@@ -3357,7 +3357,7 @@
                         setTopFilter('inventory', '', true);
                     } else {
                         otherMissingTypes(type).forEach(function (o) { setTopFilter(o, '', true); });
-                        setTopFilter('inventory', '', true);
+                        setTopFilter('inventory', 'in', true);
                         setTopFilter(type, 'missing', true);
                     }
                     applyTopFilters();
@@ -3423,7 +3423,7 @@
                 });
                 bindBadge('amzMissingWrap', 'Missing All', function () {
                     return parentNamesFrom(table.getData('active'), function (r) {
-                        if (!r) { return false; }
+                        if (!r || !(Number(r.inventory) > 0)) { return false; }
                         return (!r.pt || !r.pt.length) || (!r.kw || !r.kw.length) || (!r.hl || !r.hl.length);
                     });
                 });

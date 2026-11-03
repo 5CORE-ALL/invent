@@ -47,6 +47,7 @@ use App\Support\EbayAdsAdvertisementMasterHistory;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -815,7 +816,65 @@ class AdvertisementMasterController extends Controller
         }
     }
 
+    /** Cache key + TTL for the assembled grid payload (data()). */
+    private const DATA_CACHE_KEY = 'advertisement_master:data:v1';
+    private const DATA_CACHE_TTL = 120;
+
+    public static function forgetDataCache(): void
+    {
+        try {
+            Cache::forget(self::DATA_CACHE_KEY);
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master cache flush failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Building the grid runs ~800 queries and writes daily snapshots, so serve
+     * a short-lived cached payload. "Refresh" (?refresh=1) and any edit
+     * (label / NR-REQ / delete / data-alert) bypass or flush it.
+     */
     public function data(
+        Request $request,
+        AmazonAdsController $amazonAds,
+        EbayCampaignAdsController $ebayCampaignAds,
+        Ebay2CampaignAdsController $ebay2CampaignAds,
+        Ebay3CampaignAdsController $ebay3CampaignAds,
+        ShopifyAdsMasterController $shopifyAdsMaster,
+        Tiktok1AdsRawDataController $tiktok1Ads,
+        TemuAdsController $temuAds,
+        Temu2AdsController $temu2Ads
+    ) {
+        $forceFresh = $request->boolean('refresh');
+
+        if (! $forceFresh) {
+            try {
+                $cached = Cache::get(self::DATA_CACHE_KEY);
+                if (is_array($cached)) {
+                    return response()->json($cached);
+                }
+            } catch (\Throwable $e) {
+                // fall through and rebuild
+            }
+        }
+
+        $response = $this->buildData(
+            $amazonAds, $ebayCampaignAds, $ebay2CampaignAds, $ebay3CampaignAds,
+            $shopifyAdsMaster, $tiktok1Ads, $temuAds, $temu2Ads
+        );
+
+        if ($response->getStatusCode() === 200) {
+            try {
+                Cache::put(self::DATA_CACHE_KEY, $response->getData(true), self::DATA_CACHE_TTL);
+            } catch (\Throwable $e) {
+                \Log::warning('Advertisement Master cache write failed: '.$e->getMessage());
+            }
+        }
+
+        return $response;
+    }
+
+    private function buildData(
         AmazonAdsController $amazonAds,
         EbayCampaignAdsController $ebayCampaignAds,
         Ebay2CampaignAdsController $ebay2CampaignAds,
@@ -1003,6 +1062,7 @@ class AdvertisementMasterController extends Controller
      */
     public function saveLabel(Request $request): JsonResponse
     {
+        self::forgetDataCache();
         $data = $request->validate([
             'channel_key' => 'nullable|string|max:191',
             'group_name' => 'required|string|max:80',
@@ -1094,6 +1154,7 @@ class AdvertisementMasterController extends Controller
      */
     public function deleteRow(Request $request): JsonResponse
     {
+        self::forgetDataCache();
         $data = $request->validate([
             'channel_key' => 'required|string|max:191',
         ]);
@@ -1144,6 +1205,7 @@ class AdvertisementMasterController extends Controller
      */
     public function saveNrReq(Request $request): JsonResponse
     {
+        self::forgetDataCache();
         $data = $request->validate([
             'channel_key' => 'required|string|max:191',
             'nr_req' => 'required|string|in:REQ,NR',
@@ -1182,6 +1244,7 @@ class AdvertisementMasterController extends Controller
      */
     public function ignoreDataAlert(Request $request): JsonResponse
     {
+        self::forgetDataCache();
         $data = $request->validate([
             'channel_key' => 'required|string|max:191',
             'field' => 'required|string|max:64',
@@ -1228,6 +1291,7 @@ class AdvertisementMasterController extends Controller
      */
     public function autofixDataAlert(Request $request): JsonResponse
     {
+        self::forgetDataCache();
         $request->validate([
             'channel_key' => 'required|string|max:191',
         ]);
@@ -2709,7 +2773,10 @@ class AdvertisementMasterController extends Controller
                 $today->copy()->subDays($backfillDays)->toDateString(),
                 $today->toDateString()
             );
-            $response = app()->call([$this, 'data']);
+            // Snapshot job must rebuild (and write snapshots), never serve the cache.
+            $response = app()->call([$this, 'data'], [
+                'request' => Request::create('/', 'GET', ['refresh' => 1]),
+            ]);
         } catch (\Throwable $e) {
             \Log::error('Advertisement Master scheduled snapshot failed: '.$e->getMessage());
 

@@ -14,6 +14,7 @@ use App\Models\AmazonDatasheet;
 use App\Models\ShopifySku;
 use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Support\AmazonAdsBgtCountRunner;
+use App\Support\AmazonAdsRuleScope;
 use App\Support\AmazonAdsBgtCountStore;
 use App\Support\AmazonAdsBgtCvrRule;
 use App\Support\AmazonAdsBgtDilRule;
@@ -4390,6 +4391,18 @@ class AmazonAdsController extends Controller
             'amazonAdsBgtGpftRule' => AmazonAdsBgtGpftRule::resolvedRule(),
             'amazonAdsBgtFlagRule' => AmazonAdsBgtFlagRule::resolvedRule(),
             'amazonAdsBgtCounts' => AmazonAdsBgtCountStore::read(),
+            // SBGT HL: the same rule set, kept for HL campaigns only (opens in the same modal).
+            'amazonAdsHlRules' => AmazonAdsRuleScope::run(AmazonAdsRuleScope::HL, fn (): array => [
+                'acos' => AmazonAcosSbgtRule::resolvedRule(),
+                'views' => AmazonAdsBgtViewsRule::resolvedRule(),
+                'cvr' => AmazonAdsBgtCvrRule::resolvedRule(),
+                'prc' => AmazonAdsBgtPrcRule::resolvedRule(),
+                'reviews' => AmazonAdsBgtReviewsRule::resolvedRule(),
+                'dil' => AmazonAdsBgtDilRule::resolvedRule(),
+                'gpft' => AmazonAdsBgtGpftRule::resolvedRule(),
+                'flag' => AmazonAdsBgtFlagRule::resolvedRule(),
+            ]),
+            'amazonAdsHlBgtCounts' => AmazonAdsRuleScope::run(AmazonAdsRuleScope::HL, fn (): ?array => AmazonAdsBgtCountStore::read()),
             'amazonAdsSbidRule' => AmazonAdsSbidRule::resolvedRule(),
             'amazonAdsPauseRule' => AmazonAdsPauseRule::resolvedRule(),
         ]);
@@ -4481,9 +4494,12 @@ class AmazonAdsController extends Controller
     {
         return response()->json([
             'ok' => true,
+            'scope' => AmazonAdsRuleScope::current(),
             'counts' => AmazonAdsBgtCountStore::read(),
             'updated_at' => AmazonAdsBgtCountStore::updatedAt(),
             'running' => AmazonAdsBgtCountRunner::isRunning(),
+            // The page badge adds HL campaigns' budget to the BGT Rules total.
+            'hl_counts' => AmazonAdsRuleScope::run(AmazonAdsRuleScope::HL, fn (): ?array => AmazonAdsBgtCountStore::read()),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
@@ -7093,7 +7109,7 @@ class AmazonAdsController extends Controller
     /** Same request (ignoring draw, token and fresh, and empty filters) -> same key. */
     public static function rawDataCacheKey(Request $request, string $source): string
     {
-        return 'amz_ads_raw:'.self::rawDataVersion().':'.$source.':'.md5(json_encode(self::cleanRawParams($request)));
+        return 'amz_ads_raw2:'.self::rawDataVersion().':'.$source.':'.md5(json_encode(self::cleanRawParams($request)));
     }
 
     /** Drop every cached grid answer (after a push or anything else that changes what the grid shows). */
@@ -7588,12 +7604,17 @@ class AmazonAdsController extends Controller
         $suggestedSbidByCampaign = [];
         $suggestedSbgtByRowId = [];
         $suggestedSbgtByCampaign = [];
+        $scopeBeforeRows = AmazonAdsRuleScope::current();
         foreach ($rows as $row) {
             $rowArr = (array) $row;
             $arr = array_merge($empty, $rowArr);
             $cid = isset($rowArr['campaign_id']) ? trim((string) $rowArr['campaign_id']) : '';
             $adType = in_array('ad_type', $dbColumns, true) ? ($rowArr['ad_type'] ?? null) : null;
             $adTypeStr = is_string($adType) ? $adType : null;
+            // HL campaigns (Sponsored Brands "... HL|HEAD") are budgeted by the SBGT HL rules, all others by BGT Rules.
+            $rowRuleScope = AmazonAdsRuleScope::scopeForCampaign((string) ($rowArr['campaignName'] ?? ''), $adTypeStr ?? $table);
+            AmazonAdsRuleScope::set($rowRuleScope);
+            $arr['is_hl'] = $rowRuleScope === AmazonAdsRuleScope::HL;
             $lkSalesRow = '';
             if ($cid !== '') {
                 $adKeySales0 = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
@@ -8021,6 +8042,7 @@ class AmazonAdsController extends Controller
             $arr['sku_inv_min'] = is_array($skuInv) ? ($skuInv['min'] ?? null) : null;
             $data[] = $arr;
         }
+        AmazonAdsRuleScope::set($scopeBeforeRows);
 
         if ($usePhpSort && ! $phpSortPaged && ! $forBgtUniverse) {
             usort($data, static function ($a, $b) use ($requestedOrderCol, $orderDir) {
@@ -8184,7 +8206,7 @@ class AmazonAdsController extends Controller
     private static function bgtUniverseCampaign(array $row): array
     {
         $keys = [
-            'campaign_id', 'ad_type', 'ACOS', 'ltAcos', 'viewsL7', 'page_cvr_sess7',
+            'campaign_id', 'campaignName', 'ad_type', 'ACOS', 'ltAcos', 'viewsL7', 'page_cvr_sess7',
             'bgt_cvr_page_cvr', 'pageCvr', 'bgt_prc_price', 'price',
             'bgt_reviews_rating', 'reviews', 'bgt_dil_value', 'dil', 'Inv', 'ovl30', 'bgt_gpft_value', 'gpft', 'bgt_flag_value',
             'cost', 'spend', 'bgt', 'U7%', 'U1%', 'costPerClick', 'CPC2', 'CPC3', 'CPCAvg',
@@ -8193,6 +8215,12 @@ class AmazonAdsController extends Controller
         foreach ($keys as $key) {
             $out[$key] = $row[$key] ?? null;
         }
+        // HL campaigns are counted by the SBGT HL rules, everything else by the standard BGT Rules.
+        $adType = trim((string) ($row['ad_type'] ?? ''));
+        $out['is_hl'] = AmazonAdsRuleScope::isHlCampaign(
+            (string) ($row['campaignName'] ?? ''),
+            AmazonAdsRuleScope::isSbSource($adType !== '' ? $adType : (string) ($row['_bgt_src'] ?? ''))
+        );
 
         return $out;
     }
@@ -8726,9 +8754,11 @@ class AmazonAdsController extends Controller
             'lmp_price' => null,
         ];
         $keys = [];
+        $scopeBeforeKeys = AmazonAdsRuleScope::current();
         foreach ($list as $row) {
             $r = (array) $row;
             $cn = trim((string) ($r['campaignName'] ?? ''));
+            AmazonAdsRuleScope::set(AmazonAdsRuleScope::scopeForCampaign($cn, ($hasAd ? trim((string) ($r['ad_type'] ?? '')) : '') ?: $table));
             $cidRaw = trim((string) ($r['campaign_id'] ?? ''));
             $cid = preg_replace('/\D+/', '', $cidRaw) ?: '';
             $ad = $hasAd ? trim((string) ($r['ad_type'] ?? '')) : '';
@@ -8858,6 +8888,7 @@ class AmazonAdsController extends Controller
                 $keys[] = null;
             }
         }
+        AmazonAdsRuleScope::set($scopeBeforeKeys);
 
         return $keys;
     }

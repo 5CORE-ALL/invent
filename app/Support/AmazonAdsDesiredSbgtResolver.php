@@ -90,8 +90,14 @@ final class AmazonAdsDesiredSbgtResolver
         }
 
         $out = [];
+        $scopeBefore = AmazonAdsRuleScope::current();
         foreach ($rows as $cid => $arr) {
             $name = trim((string) ($arr['campaignName'] ?? $arr['campaign_name'] ?? ''));
+            // HL campaigns use the SBGT HL rules, every other campaign BGT Rules (same split as the grid).
+            AmazonAdsRuleScope::set(AmazonAdsRuleScope::scopeForCampaign(
+                $name,
+                $channel === 'sb' ? 'sb' : ($channel === 'sp' ? 'sp' : (string) ($arr['ad_type'] ?? ''))
+            ));
             $pc = $pageCvr[$name] ?? AmazonAdsCampaignSkuMetrics::emptyParentListingCvr();
             $mSku = (isset($metricsByName[$name]) && is_array($metricsByName[$name]))
                 ? $metricsByName[$name]
@@ -146,6 +152,7 @@ final class AmazonAdsDesiredSbgtResolver
             }
             $out[$cid] = $sum;
         }
+        AmazonAdsRuleScope::set($scopeBefore);
 
         return $out;
     }

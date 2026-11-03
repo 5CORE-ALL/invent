@@ -749,6 +749,8 @@
             flex: 0 0 auto;
         }
         #amazonAdsBgtRulesModal .modal-title { font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+        #amazonAdsBgtRulesModal.amz-bgt-mode-hl .modal-header { border-top: 4px solid #7c3aed; }
+        #amazonAdsBgtRulesModal.amz-bgt-mode-hl .modal-title { color: #5b21b6; }
         #amazonAdsBgtRulesModal .amz-bgt-sub {
             color: #64748b;
             font-size: 11px;
@@ -1408,13 +1410,11 @@
                                 <i class="fas fa-file-csv"></i>
                             </button>
                             <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-secondary" title="Failed / skipped bid & budget pushes">Fail Cpg</a>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRulesBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRulesModal" title="Edit ACOS, Views, CVR, Price, Reviews, and Dil budget rules together">BGT Rules</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRulesBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRulesModal" title="Budget rules for SP and SB campaigns (HL campaigns are set in SBGT HL)">BGT Rules</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbgtHlRulesBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRulesModal" title="Budget rules for HL campaigns only (Sponsored Brands &quot;... HL&quot; / &quot;... HEAD&quot;)">SBGT HL</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause campaigns when Dil% is at or above your threshold. Only PARENT campaigns turn back on.">Pause Rule</button>
                             <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
-                            <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 5 as daily budget for the rows on this page (SP/SB only).">
-                                <i class="fa fa-cloud-upload-alt"></i> SBGT
-                            </button>
                             <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbidBtn" title="Push SBID in chunks of 5 using the values shown on this page (SP/SB only).">
                                 <i class="fa fa-cloud-upload-alt"></i> SBID
                             </button>
@@ -1768,7 +1768,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="amazonAdsBgtRulesModalLabel">BGT Rules</h5>
-                        <div class="amz-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt GPFT + Bgt FLAG. Save and apply writes every rule, then refreshes the page. Auto Push &amp; Pull, when on, pulls live Amazon BGT and BID and pushes only mismatches.</div>
+                        <div class="amz-bgt-sub" id="amazonAdsBgtRulesModalSub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt GPFT + Bgt FLAG. Save and apply writes every rule, then refreshes the page. Auto Push &amp; Pull, when on, pulls live Amazon BGT and BID and pushes only mismatches.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -2226,6 +2226,9 @@
             window.amazonAdsBgtGpftRule = @json($amazonAdsBgtGpftRule ?? null);
             window.amazonAdsBgtFlagRule = @json($amazonAdsBgtFlagRule ?? null);
             window.amazonAdsBgtCounts = @json($amazonAdsBgtCounts ?? null);
+            // SBGT HL: same rule set, stored separately for HL campaigns. The modal swaps between the two sets.
+            window.amazonAdsHlRules = @json($amazonAdsHlRules ?? null);
+            window.amazonAdsHlBgtCounts = @json($amazonAdsHlBgtCounts ?? null);
             window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
             window.amazonAdsPauseRule = @json($amazonAdsPauseRule ?? null);
 
@@ -2256,15 +2259,37 @@
                 return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
             }
 
+            // ---- BGT Rules (SP + SB) vs SBGT HL (HL campaigns) ----
+            // One modal edits either rule set. window.amazonAdsBgt*Rule always holds the set shown in the modal;
+            // the set that is not shown is parked in amzBgtRuleSets.
+            var amzBgtMode = 'default';
+            var amzBgtRuleSets = { default: null, hl: (window.amazonAdsHlRules && typeof window.amazonAdsHlRules === 'object') ? window.amazonAdsHlRules : null };
+            var AMZ_BGT_RULE_SLOTS = {
+                acos: 'amazonAdsBgtRule', views: 'amazonAdsBgtViewsRule', cvr: 'amazonAdsBgtCvrRule', prc: 'amazonAdsBgtPrcRule',
+                reviews: 'amazonAdsBgtReviewsRule', dil: 'amazonAdsBgtDilRule', gpft: 'amazonAdsBgtGpftRule', flag: 'amazonAdsBgtFlagRule'
+            };
+            // Rule endpoints work on the SBGT HL set when asked with ?scope=hl.
+            function amzBgtScoped(url) {
+                if (amzBgtMode !== 'hl' || !url) return url;
+                return url + (String(url).indexOf('?') >= 0 ? '&' : '?') + 'scope=hl';
+            }
+            // ACOS rule of one set, whichever set the modal is showing.
+            function amzBgtAcosRuleFor(isHl) {
+                var wantMode = isHl ? 'hl' : 'default';
+                if (wantMode === amzBgtMode) return window.amazonAdsBgtRule || {};
+                var set = amzBgtRuleSets[wantMode];
+                return (set && set.acos) || {};
+            }
+
             // ---- rule helpers (ACOS bands / SBGT tiers) ----
-            function amzBgtRuleBands() {
-                var r = window.amazonAdsBgtRule || {};
+            function amzBgtRuleBands(isHl) {
+                var r = amzBgtAcosRuleFor(!!isHl);
                 return (r && Array.isArray(r.bands)) ? r.bands : [];
             }
-            function amzBandForAcos(acos) {
+            function amzBandForAcos(acos, isHl) {
                 var a = typeof acos === 'number' ? acos : parseFloat(String(acos));
                 if (isNaN(a)) return null;
-                var bands = amzBgtRuleBands();
+                var bands = amzBgtRuleBands(isHl);
                 var highest = null;
                 var lowest = null;
                 for (var i = 0; i < bands.length; i++) {
@@ -2279,8 +2304,8 @@
                 if (highest && a >= parseFloat(highest.acos_from || 0)) return highest;
                 return lowest;
             }
-            function amzBgtAcosFromAcos(acos) {
-                var band = amzBandForAcos(acos);
+            function amzBgtAcosFromAcos(acos, isHl) {
+                var band = amzBandForAcos(acos, isHl);
                 if (!band) return null;
                 var t = amzBgtPartNum(band.sbgt);
                 return isNaN(t) ? null : t;
@@ -2306,7 +2331,7 @@
             function amzApplyAcosDrivenBgt(rows) {
                 (rows || []).forEach(function (row) {
                     if (!row) return;
-                    var tier = amzBgtAcosFromAcos(row.ACOS);
+                    var tier = amzBgtAcosFromAcos(row.ACOS, !!row.is_hl);
                     if (tier !== null) row.bgtAcos = tier;
                     var sum = amzSumSbgtFromRow(row);
                     if (sum !== null) row.sbgt = sum;
@@ -2327,8 +2352,8 @@
                 });
                 return rows;
             }
-            function amzAcosTierColor(acos) {
-                var band = amzBandForAcos(acos);
+            function amzAcosTierColor(acos, isHl) {
+                var band = amzBandForAcos(acos, isHl);
                 return (band && band.color) ? band.color : '#6b7280';
             }
             function amzAcosBandRangeLabel(band) {
@@ -2741,7 +2766,8 @@
                 var n = typeof v === 'number' ? v : parseFloat(v);
                 if (isNaN(n)) return amzDash();
                 var r = Math.round(n);
-                return '<span class="fw-semibold" style="color:' + amzAcosTierColor(r) + ';">' + r + '%</span>';
+                var acosRow = cell.getRow ? cell.getRow().getData() : null;
+                return '<span class="fw-semibold" style="color:' + amzAcosTierColor(r, !!(acosRow && acosRow.is_hl)) + ';">' + r + '%</span>';
             }
             function amzDilTextColor(row) {
                 var inv = parseFloat(row && row.Inv);
@@ -2763,7 +2789,7 @@
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var field = cell.getField ? cell.getField() : '';
                 if (field === 'bgtAcos') {
-                    var fromAcos = amzBgtAcosFromAcos(row && row.ACOS);
+                    var fromAcos = amzBgtAcosFromAcos(row && row.ACOS, !!(row && row.is_hl));
                     if (fromAcos !== null) v = fromAcos;
                 }
                 if (v === null || v === undefined || v === '') return amzDash();
@@ -2772,7 +2798,7 @@
                 if (t === 0) {
                     return '<span class="fw-semibold" style="color:#dc2626;" title="This part adds $0">0</span>';
                 }
-                var color = (field === 'bgtAcos') ? amzAcosTierColor(row && row.ACOS) : amzSbgtTierColor(t);
+                var color = (field === 'bgtAcos') ? amzAcosTierColor(row && row.ACOS, !!(row && row.is_hl)) : amzSbgtTierColor(t);
                 return '<span class="fw-semibold" style="color:' + color + ';">' + t + '</span>';
             }
             function fmtSbgtSum(cell) {
@@ -4720,19 +4746,12 @@
 
             function amzUpdatePushButtons() {
                 var sbidBtn = document.getElementById('amazonAdsPushSbidBtn');
-                var sbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
                 var ok = activeRawSourceKey === 'sp_reports' || activeRawSourceKey === 'sb_reports' || activeRawSourceKey === 'all_reports';
                 if (sbidBtn) {
                     sbidBtn.disabled = !ok;
                     sbidBtn.title = ok
                         ? 'Pulls live Amazon bid, compares to SBID, pushes only if different, then verifies.'
                         : 'Switch to All / SP / SB reports to sync SBID';
-                }
-                if (sbgtBtn) {
-                    sbgtBtn.disabled = !ok;
-                    sbgtBtn.title = ok
-                        ? 'Pulls live Amazon BGT, compares to SBGT, pushes only if different, then verifies. SBGT 0 pauses.'
-                        : 'Switch to All / SP / SB reports to sync SBGT';
                 }
             }
             function amzUpdatePieButton() {
@@ -6113,25 +6132,6 @@
                     });
                 });
             }
-            var pushSbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
-            if (pushSbgtBtn) {
-                pushSbgtBtn.addEventListener('click', function () {
-                    var rows = amzCollectLiveSyncRows('bgt');
-                    var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
-                    var scope = nSel > 0 ? ('the ' + rows.length + ' checked row(s)') : ('all ' + rows.length + ' eligible row(s) on this page');
-                    amzRunPush({
-                        url: syncLiveBidBgtUrl,
-                        btn: pushSbgtBtn,
-                        rows: rows,
-                        chunkSize: AMZ_PUSH_CHUNK_SIZE,
-                        label: 'SBGT live sync',
-                        confirmMsg: 'Sync SBGT for ' + scope + '? Pulls live Amazon BGT first, pushes only mismatches, and marks synced only after verify. SBGT 0 pauses.',
-                        loadingTitle: 'Verifying SBGT…',
-                        loadingDetail: 'Pull → compare → push → verify for ' + rows.length + ' row(s) in chunks of ' + AMZ_PUSH_CHUNK_SIZE + '.'
-                    });
-                });
-            }
-
             // ---- U7% pie + history (Highcharts) ----
             function amzPieSource() {
                 return PIE_SOURCES.indexOf(activeRawSourceKey) !== -1 ? activeRawSourceKey : null;
@@ -6296,7 +6296,7 @@
             function amzBgtStatusCount() {
                 try {
                     if (amzBgtUniverse.key === amzBgtFilterKey() && Array.isArray(amzBgtUniverse.rows)) {
-                        return { n: amzBgtUniverse.rows.length, full: true };
+                        return { n: amzBgtModeRows(amzBgtUniverse.rows, false).length, full: true };
                     }
                     if (typeof amzDistinctCampaignCount === 'number' && isFinite(amzDistinctCampaignCount)) {
                         return { n: amzDistinctCampaignCount, full: false };
@@ -6442,20 +6442,29 @@
             function amzBgtPollStoredCounts() {
                 if (amzBgtPollStoredCounts.timer) return;
                 var tick = function () {
-                    fetch(bgtCountsGetUrl, {
+                    var tickMode = amzBgtMode;
+                    fetch(amzBgtScoped(bgtCountsGetUrl), {
                         method: 'GET',
                         headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                         credentials: 'same-origin',
                         cache: 'no-store'
                     }).then(function (r) { return r.json(); }).then(function (body) {
                         var next = body && body.counts;
+                        // Both rule sets are counted by one job, so either one landing means a new recount.
                         var stamp = body && body.updated_at ? String(body.updated_at) : '';
                         var running = !!(body && body.running);
+                        // The HL total is part of the page's SUGG DAILY BGT. Keep it in step in either mode.
+                        if (tickMode === 'default' && body && body.hl_counts) window.amazonAdsHlBgtCounts = body.hl_counts;
+                        if (tickMode !== amzBgtMode) {
+                            // The modal switched rule sets while this was in flight. The next poll answers for the new one.
+                            amzBgtPollStoredCounts.timer = setTimeout(function () { amzBgtPollStoredCounts.timer = null; tick(); }, 300);
+                            return;
+                        }
                         if (next && next.columns && stamp !== amzBgtCountsStamp) {
                             var firstLoad = amzBgtCountsStamp === '';
                             amzBgtCountsStamp = stamp;
                             amzBgtSaved = next;
-                            window.amazonAdsBgtCounts = next;
+                            if (tickMode === 'hl') window.amazonAdsHlBgtCounts = next; else window.amazonAdsBgtCounts = next;
                             // A recount that was requested after a save has landed (the job writes once, at the end).
                             if (!running && !firstLoad && amzBgtAwaitingRecount) {
                                 amzBgtAwaitingRecount = false;
@@ -6574,16 +6583,27 @@
             }
             // Full set when the universe is loaded, otherwise the rows already on the grid (instant).
             // A page-only set is tagged _partial so it is shown but never saved over the real counts.
+            // Only the campaigns the shown rule set governs: HL campaigns for SBGT HL, every other campaign for BGT Rules.
+            // _universe is the size of the whole set it was cut from; that is what tells a full count from a partial one.
+            var amzBgtModeRowsMemo = { src: null, mode: '', n: -1, out: null };
+            function amzBgtModeRows(list, partial) {
+                var memoOk = !partial && amzBgtModeRowsMemo.src === list && amzBgtModeRowsMemo.mode === amzBgtMode && amzBgtModeRowsMemo.n === list.length;
+                if (memoOk) return amzBgtModeRowsMemo.out;
+                var wantHl = amzBgtMode === 'hl';
+                var out = list.filter(function (r) { return !!(r && r.is_hl) === wantHl; });
+                out._universe = list.length;
+                out._partial = !!partial;
+                if (!partial) amzBgtModeRowsMemo = { src: list, mode: amzBgtMode, n: list.length, out: out };
+                return out;
+            }
             function amzBgtCountRows() {
                 amzBgtSeedRuleBands();
                 var key = amzBgtFilterKey();
-                if (amzBgtUniverse.key === key && Array.isArray(amzBgtUniverse.rows)) return amzBgtUniverse.rows;
+                if (amzBgtUniverse.key === key && Array.isArray(amzBgtUniverse.rows)) return amzBgtModeRows(amzBgtUniverse.rows, false);
                 var page = amzBgtGridRows();
                 if (!page.length) return null;
-                var rows = page.slice();
                 var total = (typeof amzDistinctCampaignCount === 'number' && isFinite(amzDistinctCampaignCount)) ? amzDistinctCampaignCount : null;
-                rows._partial = !(total !== null && rows.length >= total);
-                return rows;
+                return amzBgtModeRows(page, !(total !== null && page.length >= total));
             }
             var amzBgtBandRangePairs = [
                 ['acos_from', 'acos_to'], ['views_from', 'views_to'], ['cvr_from', 'cvr_to'], ['prc_from', 'prc_to'],
@@ -6636,10 +6656,12 @@
                 var rows = amzBgtCountRows();
                 if (!rows) return null;
                 var partial = !!rows._partial;
+                var universeN = rows._universe;
                 // onlyWithValue (BGT Vs FLAG): rows without a value (campaigns with no flag) are not part of this rule at all.
                 if (onlyWithValue) {
                     rows = rows.filter(function (row) { return valueOfRow(row) !== null; });
                     rows._partial = partial;
+                    rows._universe = universeN;
                 }
                 var counts = (bands || []).map(function () { return 0; });
                 var unmatched = 0;
@@ -6650,6 +6672,7 @@
                 });
                 counts.unmatched = unmatched;
                 counts.campaigns = rows.length;
+                counts.universe = universeN;
                 counts._live = !rows._partial;
                 counts._partial = !!rows._partial;
                 return counts;
@@ -6675,12 +6698,12 @@
             }
             // The full-campaign sum is kept for this browser tab (per filter set, 10 minutes) so a reload or a filter
             // toggle does not download every campaign again. Only the small sum is kept, never the rows.
-            var AMZ_BGT_SUM_CACHE_KEY = 'amzBgtSumCache.v1';
+            var AMZ_BGT_SUM_CACHE_KEY = 'amzBgtSumCache.v2';
             var AMZ_BGT_SUM_CACHE_MS = 10 * 60 * 1000;
             function amzBgtSumCacheRead() {
                 try {
                     var raw = JSON.parse(sessionStorage.getItem(AMZ_BGT_SUM_CACHE_KEY) || '{}');
-                    var hit = raw && raw[amzBgtFilterKey()];
+                    var hit = raw && raw[amzBgtMode + '\n' + amzBgtFilterKey()];
                     if (hit && hit.sum && Date.now() - Number(hit.ts || 0) < AMZ_BGT_SUM_CACHE_MS) return hit.sum;
                 } catch (e) {}
                 return null;
@@ -6691,7 +6714,7 @@
                     try { raw = JSON.parse(sessionStorage.getItem(AMZ_BGT_SUM_CACHE_KEY) || '{}') || {}; } catch (e0) { raw = {}; }
                     var keys = Object.keys(raw);
                     if (keys.length > 6) delete raw[keys[0]];
-                    raw[amzBgtFilterKey()] = { ts: Date.now(), sum: sum };
+                    raw[amzBgtMode + '\n' + amzBgtFilterKey()] = { ts: Date.now(), sum: sum };
                     sessionStorage.setItem(AMZ_BGT_SUM_CACHE_KEY, JSON.stringify(raw));
                 } catch (e) {}
             }
@@ -6722,7 +6745,9 @@
                 var counts = saved.counts.map(function (n) { return Number(n) || 0; });
                 counts.unmatched = Number(saved.unmatched) || 0;
                 counts.campaigns = Number(saved.campaigns) || 0;
-                if (!amzBgtCoversAllCampaigns(counts.campaigns)) return null;
+                // Counts saved before the campaigns were split into BGT Rules and SBGT HL carry no universe and may mix both.
+                counts.universe = Number(saved.universe) || 0;
+                if (!amzBgtCoversAllCampaigns(counts.universe)) return null;
                 return counts;
             }
             function amzBgtStageColumn(key, counts, bands) {
@@ -6733,7 +6758,8 @@
                     counts: list,
                     ranges: amzBgtRangesOf(bands),
                     unmatched: Number(counts.unmatched) || 0,
-                    campaigns: Number(counts.campaigns) || 0
+                    campaigns: Number(counts.campaigns) || 0,
+                    universe: Number(counts.universe) || 0
                 };
                 amzBgtStaged.dirty = true;
             }
@@ -6755,7 +6781,8 @@
                         columns: columns,
                         sum: amzBgtStaged.sum || (amzBgtSaved && amzBgtSaved.sum) || null
                     };
-                    fetch(bgtCountsSaveUrl, {
+                    var saveMode = amzBgtMode;
+                    fetch(amzBgtScoped(bgtCountsSaveUrl), {
                         method: 'POST',
                         headers: {
                             'X-CSRF-TOKEN': csrfToken,
@@ -6766,9 +6793,10 @@
                         credentials: 'same-origin',
                         body: JSON.stringify({ counts: payload })
                     }).then(function (res) { return res.json(); }).then(function (body) {
+                        if (saveMode !== amzBgtMode) return;
                         if (body && body.counts) {
                             amzBgtSaved = body.counts;
-                            window.amazonAdsBgtCounts = body.counts;
+                            if (saveMode === 'hl') window.amazonAdsHlBgtCounts = body.counts; else window.amazonAdsBgtCounts = body.counts;
                         } else {
                             amzBgtSaved = payload;
                         }
@@ -6946,7 +6974,7 @@
                 var stored = amzBgtStoredColumn(key, bands);
                 if (stored && !(counts && counts._live)) counts = stored;
                 if (!counts) { amzBgtWriteBandCounts(key, null, 0, ''); return; }
-                if (counts._live && amzBgtCoversAllCampaigns(counts.campaigns)) {
+                if (counts._live && amzBgtCoversAllCampaigns(counts.universe)) {
                     amzBgtStageColumn(key, counts, bands);
                     amzBgtScheduleSaveCounts();
                 }
@@ -7014,13 +7042,20 @@
                 try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date()); }
                 catch (e) { return new Date().toISOString().slice(0, 10); }
             }
+            // SBGT HL keeps its own count history next to the BGT Rules one.
+            function amzHistScopeKey(key) {
+                key = String(key);
+                return (amzBgtMode === 'hl' && key.indexOf('bgt_') === 0) ? 'hl_' + key : key;
+            }
             function amzHistDot(key, label, color, group, lower) {
+                key = amzHistScopeKey(key);
                 return '<button type="button" class="amz-hist-dot" data-hkey="' + amzEsc(key) + '" data-label="' + amzEsc(label)
                     + '" data-group="' + amzEsc(group || 'Count') + '"' + (lower ? ' data-lower="1"' : '')
                     + ' data-color="' + amzEsc(color) + '" style="background:' + amzEsc(color) + ';" title="' + amzEsc(label) + ' daily history"></button>';
             }
             // prefix: the group (for example bgt_reviews); map: slug -> count. Only full, saved-rule counts are recorded.
             function amzHistRecord(prefix, map) {
+                prefix = amzHistScopeKey(prefix);
                 var counts = {};
                 Object.keys(map).forEach(function (k) { counts[prefix + ':' + k] = map[k]; });
                 var sig = amzHistToday() + JSON.stringify(counts);
@@ -7095,16 +7130,32 @@
                 var dailyRounded = Math.round(sbgtTotal);
                 var money = '$' + dailyRounded.toLocaleString('en-US');
                 var monthMoney = '$' + (dailyRounded * 30).toLocaleString('en-US');
+                // The page badge is every campaign's budget: BGT Rules campaigns here, plus the HL campaigns' stored total.
+                var pageDaily = dailyRounded;
+                var pageN = totalN;
+                if (amzBgtMode !== 'hl') {
+                    var hlSum = window.amazonAdsHlBgtCounts && window.amazonAdsHlBgtCounts.sum;
+                    if (hlSum && Number(hlSum.universe) > 0 && isFinite(Number(hlSum.sbgtTotal))) {
+                        pageDaily = Math.round(sbgtTotal + Number(hlSum.sbgtTotal));
+                        pageN = totalN + (Number(hlSum.totalN) || 0);
+                    }
+                }
+                var pageMoney = '$' + pageDaily.toLocaleString('en-US');
+                var pageMonthMoney = '$' + (pageDaily * 30).toLocaleString('en-US');
                 var lines = (rows || []).map(function (r) {
                     var day = Number(r.label) * r.n;
                     return r.n.toLocaleString('en-US') + ' campaigns at $' + r.label + ' = $' + Math.round(day).toLocaleString('en-US') + '/day';
                 });
                 var tip = (lines.length ? lines.join('\n') + '\n' : '') + 'Total daily budget ' + money + ' across ' + totalN.toLocaleString('en-US') + ' campaigns';
                 var monthTip = 'Monthly budget ' + monthMoney + ' = daily budget ' + money + ' × 30';
-                if (dailyEl) dailyEl.textContent = money;
-                if (dailyWrap) dailyWrap.title = tip;
-                if (monthlyEl) monthlyEl.textContent = monthMoney;
-                if (monthlyWrap) monthlyWrap.title = monthTip;
+                // SBGT HL only shows its own total in the modal; the page badge is repainted from BGT Rules.
+                if (amzBgtMode !== 'hl') {
+                    var pageTip = (lines.length ? lines.join('\n') + '\n' : '') + 'Total daily budget ' + pageMoney + ' across ' + pageN.toLocaleString('en-US') + ' campaigns (BGT Rules + SBGT HL)';
+                    if (dailyEl) dailyEl.textContent = pageMoney;
+                    if (dailyWrap) dailyWrap.title = pageTip;
+                    if (monthlyEl) monthlyEl.textContent = pageMonthMoney;
+                    if (monthlyWrap) monthlyWrap.title = 'Monthly budget ' + pageMonthMoney + ' = daily budget ' + pageMoney + ' × 30';
+                }
                 if (!box) return;
                 var chips = (rows || []).map(function (r) {
                     var day = Number(r.label) * r.n;
@@ -7148,7 +7199,7 @@
                 var campaigns = 0;
                 var sbgtTotal = 0;
                 var sumRows = amzBgtCountRows();
-                var savedSum = amzBgtSaved && amzBgtSaved.sum && amzBgtSavedMatchesView() && amzBgtCoversAllCampaigns(amzBgtSaved.sum.campaigns) ? amzBgtSaved.sum : null;
+                var savedSum = amzBgtSaved && amzBgtSaved.sum && amzBgtSavedMatchesView() && amzBgtCoversAllCampaigns(Number(amzBgtSaved.sum.universe) || 0) ? amzBgtSaved.sum : null;
                 // Full stored sum is exact while the rules are unchanged. Prefer it over a page-only count.
                 if ((!sumRows || sumRows._partial) && savedSum && !amzBgtSumIsStale() && amzBgtApplySavedSum(savedSum)) return;
                 if (!sumRows) {
@@ -7159,7 +7210,7 @@
                 // Same filters were counted a moment ago in this tab: reuse that instead of downloading every campaign again.
                 if (sumPartial && !amzBgtSumIsStale()) {
                     var cachedSum = amzBgtSumCacheRead();
-                    if (cachedSum && amzBgtCoversAllCampaigns(cachedSum.campaigns) && amzBgtApplySavedSum(cachedSum)) return;
+                    if (cachedSum && amzBgtCoversAllCampaigns(Number(cachedSum.universe) || 0) && amzBgtApplySavedSum(cachedSum)) return;
                 }
                 // No usable stored sum (for example one saved before GPFT existed). The grid holds one page only,
                 // so load every campaign. It repaints this panel when it lands and stores the new full sum.
@@ -7265,13 +7316,14 @@
                     totalN: totalN,
                     sbgtTotal: sbgtTotal,
                     campaigns: campaigns,
+                    universe: Number(sumRows._universe) || 0,
                     countTotal: countTotal,
                     bgtTotal: bgtTotal,
                     parts: order.map(function (p) {
                         return { label: p.label, count: partCount[p.key], sum: partSum[p.key] };
                     })
                 };
-                if (!sumPartial && !amzBgtDraftEdited && amzBgtCoversAllCampaigns(campaigns)) {
+                if (!sumPartial && !amzBgtDraftEdited && amzBgtCoversAllCampaigns(Number(sumRows._universe) || 0)) {
                     amzBgtSumCacheWrite(amzBgtStaged.sum);
                     // A sum built from unsaved draft amounts is never stored; it would show wrong totals after a reload.
                     amzBgtStaged.dirty = true;
@@ -7405,7 +7457,7 @@
             var amzBgtServerLoadGen = 0;
             function amzBgtFetchRule(url, apply) {
                 var gen = amzBgtServerLoadGen;
-                fetch(url, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin', cache: 'no-store' })
+                fetch(amzBgtScoped(url), { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin', cache: 'no-store' })
                     .then(function (r) { return r.json(); })
                     .then(function (body) {
                         if (gen !== amzBgtServerLoadGen) return;
@@ -8055,6 +8107,7 @@
                 });
                 counts.unmatched = unmatched;
                 counts.campaigns = rows.length;
+                counts.universe = rows._universe;
                 counts._live = !rows._partial;
                 counts._partial = !!rows._partial;
                 return counts;
@@ -8624,7 +8677,7 @@
                 return '';
             }
             function amzBgtPostRule(url, bands) {
-                return fetch(url, {
+                return fetch(amzBgtScoped(url), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
                     credentials: 'same-origin',
@@ -8763,6 +8816,64 @@
             amzLoadBgtGpftBandsFromRule(window.amazonAdsBgtGpftRule || {});
             amzLoadBgtFlagBandsFromRule(window.amazonAdsBgtFlagRule || {});
             amzBgtPollStoredCounts();
+
+            // ---- BGT Rules (SP + SB) / SBGT HL switch: one modal, two rule sets ----
+            var amzBgtRuleLoaders = {
+                acos: amzLoadBandsFromRule, views: amzLoadBgtViewsBandsFromRule, cvr: amzLoadBgtCvrBandsFromRule, prc: amzLoadBgtPrcBandsFromRule,
+                reviews: amzLoadBgtReviewsBandsFromRule, dil: amzLoadBgtDilBandsFromRule, gpft: amzLoadBgtGpftBandsFromRule, flag: amzLoadBgtFlagBandsFromRule
+            };
+            var amzBgtSubDefault = (function () { var el = document.getElementById('amazonAdsBgtRulesModalSub'); return el ? el.textContent : ''; })();
+            function amzBgtPaintModeUi() {
+                var hl = amzBgtMode === 'hl';
+                var modalEl = document.getElementById('amazonAdsBgtRulesModal');
+                var titleEl = document.getElementById('amazonAdsBgtRulesModalLabel');
+                var subEl = document.getElementById('amazonAdsBgtRulesModalSub');
+                if (modalEl) modalEl.classList.toggle('amz-bgt-mode-hl', hl);
+                if (titleEl) titleEl.textContent = hl ? 'SBGT HL Rules' : 'BGT Rules';
+                if (subEl) {
+                    subEl.textContent = hl
+                        ? 'Rules for HL campaigns only (Sponsored Brands campaigns named "… HL" or "… HEAD"). They do not change SP or other SB campaigns, which follow BGT Rules. ' + amzBgtSubDefault
+                        : 'Rules for SP and SB campaigns. HL campaigns are set in SBGT HL. ' + amzBgtSubDefault;
+                }
+            }
+            function amzBgtSetMode(mode) {
+                mode = mode === 'hl' ? 'hl' : 'default';
+                if (mode === amzBgtMode) return;
+                var leaving = {};
+                Object.keys(AMZ_BGT_RULE_SLOTS).forEach(function (k) { leaving[k] = window[AMZ_BGT_RULE_SLOTS[k]]; });
+                amzBgtRuleSets[amzBgtMode] = leaving;
+                amzBgtMode = mode;
+                var incoming = amzBgtRuleSets[mode] || {};
+                // Nothing counted, staged or edited for the other set may leak into this one.
+                amzBgtServerLoadGen++;
+                amzBgtDraftEdited = false;
+                amzBgtAwaitingRecount = false;
+                if (amzBgtSaveCountsTimer) { clearTimeout(amzBgtSaveCountsTimer); amzBgtSaveCountsTimer = null; }
+                amzBgtStaged = { columns: {}, sum: null, dirty: false };
+                amzBgtCountsStamp = '';
+                var counts = mode === 'hl' ? window.amazonAdsHlBgtCounts : window.amazonAdsBgtCounts;
+                amzBgtSaved = (counts && typeof counts === 'object') ? counts : null;
+                amzBgtPaintModeUi();
+                Object.keys(amzBgtRuleLoaders).forEach(function (k) {
+                    var rule = incoming[k] || leaving[k] || {};
+                    window[AMZ_BGT_RULE_SLOTS[k]] = rule;
+                    amzBgtRuleLoaders[k](rule);
+                });
+                if (typeof amzFillAcosFilterOptions === 'function') amzFillAcosFilterOptions();
+                if (typeof amzBgtRefreshAllRuleCounts === 'function') amzBgtRefreshAllRuleCounts();
+                if (amzBgtPollStoredCounts.timer) { clearTimeout(amzBgtPollStoredCounts.timer); amzBgtPollStoredCounts.timer = null; }
+                amzBgtPollStoredCounts();
+            }
+            window.amzBgtSetMode = amzBgtSetMode;
+            (function () {
+                // These buttons sit on the element, so they run before Bootstrap's own click handler opens the modal.
+                var bgtBtn = document.getElementById('amazonAdsBgtRulesBtn');
+                var hlBtn = document.getElementById('amazonAdsSbgtHlRulesBtn');
+                var modalEl = document.getElementById('amazonAdsBgtRulesModal');
+                if (bgtBtn) bgtBtn.addEventListener('click', function () { amzBgtSetMode('default'); });
+                if (hlBtn) hlBtn.addEventListener('click', function () { amzBgtSetMode('hl'); });
+                if (modalEl) modalEl.addEventListener('hidden.bs.modal', function () { amzBgtSetMode('default'); });
+            })();
             (function () {
                 // Capture phase: runs before a slab input repaints, so stored sums are skipped once a rule is being edited.
                 var modal = document.getElementById('amazonAdsBgtRulesModal');

@@ -30,7 +30,23 @@ trait StoresAmazonAdsRuleJson
 
     private static bool $rulesTableKnown = false;
 
+    /**
+     * The rule saved for the scope in force ({@see AmazonAdsRuleScope}). The HL scope falls back to the standard
+     * rule until an HL rule is saved, so HL campaigns keep behaving as before until someone edits them.
+     * Chart counts never fall back: they describe one campaign set.
+     */
     private static function readStoredRule(string $key): ?array
+    {
+        $scoped = AmazonAdsRuleScope::keyFor($key);
+        $decoded = self::readStoredRuleRow($scoped);
+        if (($decoded === null || $decoded === []) && $scoped !== $key && $key !== 'counts') {
+            return self::readStoredRuleRow($key);
+        }
+
+        return $decoded;
+    }
+
+    private static function readStoredRuleRow(string $key): ?array
     {
         $memo = self::ruleMemoOn();
         $now = microtime(true);
@@ -72,6 +88,7 @@ trait StoresAmazonAdsRuleJson
      */
     private static function storeRuleJson(string $key, array $rule): void
     {
+        $key = AmazonAdsRuleScope::keyFor($key);
         self::ensureRulesTable();
         unset(self::$ruleMemo[$key]);
         $exists = DB::table('amazon_ads_rules')->where('key', $key)->exists();

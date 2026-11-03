@@ -445,7 +445,11 @@ class AutoUpdateAmazonBgtHl extends Command
             foreach ($validCampaignsForTotal as $row) {
                 $acos = (float) ($row['acos_L30'] ?? 0);
 
-                $row['sbgt'] = AmazonAcosSbgtRule::sbgtFromAcosL30($acos);
+                // HL campaigns follow the SBGT HL ACOS rule (same as BGT Rules until edited).
+                $row['sbgt'] = \App\Support\AmazonAdsRuleScope::run(
+                    \App\Support\AmazonAdsRuleScope::HL,
+                    fn () => AmazonAcosSbgtRule::sbgtFromAcosL30($acos)
+                );
 
                 $result[] = (object) $row;
             }
