@@ -418,8 +418,10 @@ class ChannelPushSpriceRunner
                     }
                 }
                 if (EbaySpricePush::supports($this->channel) && $sku !== '' && $price > 0) {
-                    // A SKU eBay refuses (e.g. multi-variation) is not retried on every 10-minute catch-up.
-                    EbaySpricePush::startCooldown($this->channel, $sku, (float) $price, 60);
+                    // A SKU eBay refuses (e.g. multi-variation) is not retried on every 10-minute catch-up. A refusal that only a
+                    // change on eBay can fix (the same item is listed twice: Duplicate Listing policy, error 21919067) waits a day.
+                    $permanent = str_contains((string) $error, '21919067') || stripos((string) $error, 'Duplicate Listing policy') !== false;
+                    EbaySpricePush::startCooldown($this->channel, $sku, (float) $price, $permanent ? 1440 : 60);
                 }
             }
 
