@@ -43,7 +43,14 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4 class="mb-3">Reverb Bump — Raw API Data</h4>
+                <h4 class="mb-2">Reverb Bump — Raw API Data</h4>
+                <div id="summary-stats" class="mb-2 p-2 bg-light rounded">
+                    <div class="d-flex flex-wrap align-items-center gap-1">
+                        <span class="badge flex-shrink-0" id="rd-ads-percent-badge"
+                            style="background-color: #fd7e14; color: white; font-weight: bold;"
+                            title="Reverb Ads% (Bump fees ÷ L30 Sales) — same value as the Ads badge on /reverb-pricing{{ !empty($reverbBumpAds['sales']) ? ' · L30 bump fees $'.number_format((float) $reverbBumpAds['spend'], 2).' ÷ L30 sales $'.number_format((float) $reverbBumpAds['sales'], 2) : '' }}">Ads: {{ isset($reverbAdsPercent) ? round((float) $reverbAdsPercent, 1) . '%' : 'N/A' }}</span>
+                    </div>
+                </div>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
                     <input type="text" id="sku-search" class="form-control form-control-sm" style="max-width: 260px;"
                         placeholder="Search SKU / listing id / title...">
@@ -58,6 +65,15 @@
                         <option value="all">🔴🟢 All sold</option>
                         <option value="green">🟢 Green — Sold &gt; 0 (performing)</option>
                         <option value="red">🔴 Red — Sold = 0 (non-performing)</option>
+                    </select>
+                    <select id="filter-rule" class="form-select form-select-sm" style="max-width: 230px;"
+                        title="Filter by the Rule note (exceptions skipped by the Bump rule)">
+                        <option value="all">Rule note: all</option>
+                        <option value="none">No exception (will be updated)</option>
+                        <option value="any">Any exception (skipped)</option>
+                        <option value="low">Low stock</option>
+                        <option value="high">High volume</option>
+                        <option value="premium">Premium item</option>
                     </select>
                     <button type="button" class="btn btn-sm btn-primary" id="pull-all-btn">
                         <i class="fa fa-download"></i> Pull All
@@ -514,23 +530,45 @@
                 return mode === 'green' ? sold > 0 : sold <= 0;
             }
 
+            // Rule note filter: the reason a row is skipped by the Bump rule (low stock / high volume / premium)
+            function ruleKind(data) {
+                const r = String(data.skip_reason || '').toLowerCase();
+                if (!r) return 'none';
+                if (r.startsWith('low stock')) return 'low';
+                if (r.startsWith('high volume')) return 'high';
+                if (r.startsWith('premium')) return 'premium';
+                return 'other';
+            }
+            function ruleFilterFn(data) {
+                const mode = document.getElementById('filter-rule').value;
+                if (mode === 'all') return true;
+                const kind = ruleKind(data);
+                if (mode === 'any') return kind !== 'none';
+                return kind === mode;
+            }
+
             function applyFilters() {
                 const q = document.getElementById('sku-search').value.trim().toLowerCase();
                 const mode = document.getElementById('filter-status').value;
                 const soldMode = document.getElementById('filter-sold').value;
-                if (!q && mode === 'all' && soldMode === 'all') {
+                const ruleMode = document.getElementById('filter-rule').value;
+                if (!q && mode === 'all' && soldMode === 'all' && ruleMode === 'all') {
                     table.clearFilter();
                 } else {
-                    table.setFilter(data => statusFilterFn(data) && soldFilterFn(data) && (!q || searchText(data).includes(q)));
+                    table.setFilter(data => statusFilterFn(data) && soldFilterFn(data) && ruleFilterFn(data) && (!q || searchText(data).includes(q)));
                 }
             }
 
             function updateSummary() {
                 if (!table) return;
                 let pulled = 0, failed = 0, green = 0, red = 0;
+                const rk = { none: 0, any: 0, low: 0, high: 0, premium: 0 };
                 const all = table.getData();
                 for (let i = 0; i < all.length; i++) {
                     (Number(all[i].sold) || 0) > 0 ? green++ : red++;
+                    const kind = ruleKind(all[i]);
+                    if (kind === 'none') rk.none++; else rk.any++;
+                    if (rk[kind] !== undefined && kind !== 'none') rk[kind]++;
                     const s = all[i].http_status;
                     if (s === null || s === undefined) continue;
                     (Number(s) >= 200 && Number(s) < 300) ? pulled++ : failed++;
@@ -539,6 +577,13 @@
                 opts[0].textContent = '🔴🟢 All sold (' + all.length + ')';
                 opts[1].textContent = '🟢 Green — Sold > 0 (' + green + ')';
                 opts[2].textContent = '🔴 Red — Sold = 0 (' + red + ')';
+                const ro = document.getElementById('filter-rule').options;
+                ro[0].textContent = 'Rule note: all (' + all.length + ')';
+                ro[1].textContent = 'No exception — will be updated (' + rk.none + ')';
+                ro[2].textContent = 'Any exception — skipped (' + rk.any + ')';
+                ro[3].textContent = 'Low stock (' + rk.low + ')';
+                ro[4].textContent = 'High volume (' + rk.high + ')';
+                ro[5].textContent = 'Premium item (' + rk.premium + ')';
                 document.getElementById('summary-line').textContent =
                     all.length + ' listings · ' + green + ' green · ' + red + ' red · ' + pulled + ' pulled · ' + failed + ' failed · ' +
                     (all.length - pulled - failed) + ' never pulled · ' + table.getDataCount('active') + ' shown · ' +
@@ -962,6 +1007,7 @@
                 document.getElementById('sku-search').addEventListener('input', debounce(applyFilters, 300));
                 document.getElementById('filter-status').addEventListener('change', applyFilters);
                 document.getElementById('filter-sold').addEventListener('change', applyFilters);
+                document.getElementById('filter-rule').addEventListener('change', applyFilters);
                 document.getElementById('pull-all-btn').addEventListener('click', () => {
                     const ids = table.getData().map(r => r.listing_id);
                     if (confirm('Pull raw Bump data for ' + ids.length + ' listings from Reverb? This can take a while.')) pullMany(ids, 'Pull All');

@@ -730,6 +730,15 @@ class ReverbController extends Controller
      */
     private function getReverbChannelAdsPercent(): float
     {
+        return self::channelAdsPercent();
+    }
+
+    /**
+     * Same value as the Ads badge on /reverb-pricing (channel master, falling back to L30 bump fees ÷ L30 sales).
+     * Public so other Reverb pages (e.g. /reverb-bump) show the identical number.
+     */
+    public static function channelAdsPercent(): float
+    {
         $ads = null;
         if (Schema::hasTable('channel_master_calculated_data')) {
             $ads = ChannelMasterCalculatedData::where('channel', 'Reverb')->value('ads_percentage');

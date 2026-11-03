@@ -25,7 +25,11 @@ class ReverbBumpController extends Controller
 
     public function index()
     {
-        return view('market-places.reverb_bump_raw_tabulator_view');
+        // Ads% badge — identical source to the Ads badge on /reverb-pricing
+        return view('market-places.reverb_bump_raw_tabulator_view', [
+            'reverbAdsPercent' => ReverbController::channelAdsPercent(),
+            'reverbBumpAds' => ReverbController::l30BumpAds(),
+        ]);
     }
 
     /**
