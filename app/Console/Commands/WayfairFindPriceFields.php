@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 class WayfairFindPriceFields extends Command
 {
     protected $signature = 'wayfair:find-price-fields
-                            {--pattern=price|cost|wholesale|msrp|map : Regex (case-insensitive) for field/type names to list}';
+                            {--pattern= : Regex (case-insensitive) for field names to list. Default: price, cost, wholesale, msrp, map}';
 
     protected $description = 'Read-only: introspect the Wayfair GraphQL APIs and list any price / cost fields this app can read';
 
@@ -35,7 +35,8 @@ class WayfairFindPriceFields extends Command
             'supplier catalog API' => ['https://api.wayfair.io/v1/supplier-catalog-api/graphql', true],
         ];
 
-        $pattern = '/'.str_replace('/', '\/', (string) $this->option('pattern')).'/i';
+        $raw = trim((string) $this->option('pattern'));
+        $pattern = '/'.str_replace('/', '\/', $raw !== '' ? $raw : 'price|cost|wholesale|msrp|map').'/i';
         $query = '{ __schema { types { name kind fields { name } inputFields { name } } } }';
         $found = false;
 
