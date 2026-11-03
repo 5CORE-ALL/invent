@@ -4937,9 +4937,24 @@ class Temu2ListingPublishService
             // Live rows are identified by sku id. Their spec ids are not sent back: the only spec Temu
             // has to accept is the new variation's, and echoing the old ones was rejected as well.
             $identityKeys = array_flip(['skuId', 'outSkuSn']);
+            // The update checks the pictures of every SKU it carries. A live SKU sent with no picture is
+            // reported as 150010022 as well, so each one keeps the photo Temu already stores for it.
             $kept = [];
+            $keptPlain = [];
             foreach ($existing as $row) {
-                $kept[] = array_intersect_key($row, $identityKeys);
+                $identity = array_intersect_key($row, $identityKeys);
+                $keptPlain[] = $identity;
+                $own = [];
+                foreach ((array) ($row['images'] ?? []) as $url) {
+                    $url = trim((string) $url);
+                    if ($url !== '' && $this->isTemuCdnUrl($url) && ! in_array($url, $own, true)) {
+                        $own[] = $url;
+                    }
+                }
+                if ($own !== []) {
+                    $identity['images'] = $this->padTemuUpdateImages($own);
+                }
+                $kept[] = $identity;
             }
             $firstSn = '';
             $currentSpecIds = [];
@@ -4976,20 +4991,26 @@ class Temu2ListingPublishService
             }
             $lastMsg = '';
             foreach ($this->specIdsToTry($goodsId, $firstSn, $currentSpecIds) as $specId) {
-                $send = function (array $rows) use ($tryAdd, $kept, $specId): ?array {
+                $send = function (array $rows, bool $withLivePhotos) use ($tryAdd, $kept, $keptPlain, $specId): ?array {
                     $freshForSpec = [];
                     $imageCount = 0;
+                    $firstImage = '';
                     foreach ($rows as $row) {
                         $row['specIdList'] = [$specId];
                         $row['images'] = $this->padTemuUpdateImages((array) ($row['images'] ?? []));
                         $imageCount = max($imageCount, count($row['images']));
+                        if ($firstImage === '' && isset($row['images'][0])) {
+                            $firstImage = (string) $row['images'][0];
+                        }
                         $freshForSpec[] = $row;
                     }
+                    $tail = $firstImage !== '' ? substr(parse_url($firstImage, PHP_URL_PATH) ?: $firstImage, -42) : 'none';
 
                     return $tryAdd(
                         'bg.local.goods.update',
-                        array_merge($kept, $freshForSpec),
-                        'bg.local.goods.update (spec '.$specId.', '.$imageCount.' images)',
+                        array_merge($withLivePhotos ? $kept : $keptPlain, $freshForSpec),
+                        'bg.local.goods.update (spec '.$specId.', '.$imageCount.' images'
+                            .($withLivePhotos ? ', live photos' : ', no live photos').', '.$tail.')',
                         [],
                         40
                     );
@@ -5014,7 +5035,7 @@ class Temu2ListingPublishService
                         }
                         $attemptRows[] = $candidate;
                     }
-                    if (($done = $send($attemptRows)) !== null) {
+                    if (($done = $send($attemptRows, true)) !== null) {
                         return $done;
                     }
                     $lastMsg = '';
