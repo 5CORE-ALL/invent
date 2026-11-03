@@ -31,7 +31,21 @@ class ListingCountsEngine
      */
     public static function productMasters(): Collection
     {
-        return self::$productMastersMemo ??= ProductMaster::whereNull('deleted_at')->get();
+        return self::$productMastersMemo ??= ProductMaster::whereNull('deleted_at')
+            ->get()
+            ->reject(fn ($item) => self::isSourcingParent($item))
+            ->values();
+    }
+
+    /**
+     * Products whose Parent is "sourcing" are not listed anywhere yet, so they are
+     * never part of the listing / Missing L universe.
+     */
+    public static function isSourcingParent(mixed $item): bool
+    {
+        $parent = is_array($item) ? ($item['parent'] ?? '') : ($item->parent ?? '');
+
+        return strtolower(trim((string) $parent)) === 'sourcing';
     }
 
     /**

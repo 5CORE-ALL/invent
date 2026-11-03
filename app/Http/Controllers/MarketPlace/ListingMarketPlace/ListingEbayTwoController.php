@@ -41,7 +41,9 @@ class ListingEbayTwoController extends Controller
 
     public function getViewListingEbayTwoData(Request $request)
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $productMasters = ProductMaster::whereNull('deleted_at')->get()
+            ->reject(fn ($item) => ListingCountsEngine::isSourcingParent($item))
+            ->values();
         $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
 
         $shopifyData = ListingCountsEngine::shopifyMap($skus);

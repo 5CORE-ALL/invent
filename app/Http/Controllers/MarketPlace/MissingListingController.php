@@ -43,7 +43,7 @@ class MissingListingController extends Controller
         'tiendamia' => 'https://www.tiendamia.com/',
     ];
 
-    public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v7';
+    public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v8';
 
     private const PAGE_CACHE_TTL_DAYS = 7;
 
