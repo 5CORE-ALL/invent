@@ -204,6 +204,18 @@ class ListingChannelCounts
     ];
 
     /**
+     * Channels kept off /missing-listing. Their listing pages stay as they are.
+     */
+    public static function isHiddenFromMissingListing(string $channel): bool
+    {
+        return in_array(self::normalize($channel), [
+            'fbmarketplace',
+            'facebookmarketplace',
+            'instagramshop',
+        ], true);
+    }
+
+    /**
      * Absolute URL to the channel's listing page, or null when none is registered.
      */
     public static function listingUrl(string $channel): ?string
@@ -235,6 +247,9 @@ class ListingChannelCounts
      */
     public static function shouldShowOnMissingListing(string $channel, mixed $status = 'active'): bool
     {
+        if (self::isHiddenFromMissingListing($channel)) {
+            return false;
+        }
         if (! self::hasListingSource($channel)) {
             return false;
         }
@@ -510,6 +525,7 @@ class ListingChannelCounts
     private static function sumPageRows(array $rows): int
     {
         return (int) collect($rows)
+            ->filter(fn ($row) => ! self::isHiddenFromMissingListing((string) ($row['channel'] ?? '')))
             ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
             ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
     }

@@ -10,6 +10,7 @@ use App\Support\Marketplace\VariationListingContent;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -32,6 +33,37 @@ class VariationMasterController extends Controller
     {
         return response()->json([
             'data' => $this->productRows(),
+        ]);
+    }
+
+    /**
+     * A+ HTML for one child SKU, read live from Description Master.
+     * Shopify A+ when that snapshot exists, otherwise the HTML description.
+     */
+    public function skuAplus(Request $request): JsonResponse
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        if ($sku === '' || ListingManagerFamily::isParentSku($sku)) {
+            return response()->json(['success' => false, 'message' => 'Child SKU is required.'], 422);
+        }
+
+        $product = ProductMaster::query()->where('sku', $sku)->first();
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'SKU was not found on CP master.'], 404);
+        }
+
+        $html = '';
+        if (Schema::hasColumn('product_master', 'shopify_aplus_content')) {
+            $html = trim((string) ($product->shopify_aplus_content ?? ''));
+        }
+        if ($html === '' && Schema::hasColumn('product_master', 'description_html')) {
+            $html = trim((string) ($product->description_html ?? ''));
+        }
+
+        return response()->json([
+            'success' => true,
+            'html' => $html,
+            'chars' => mb_strlen($html),
         ]);
     }
 
@@ -897,8 +929,24 @@ class VariationMasterController extends Controller
      */
     private function productRows(): array
     {
-        $products = ProductMaster::query()
-            ->select(['id', 'parent', 'sku', 'Values'])
+        $select = ['id', 'parent', 'sku', 'Values'];
+        if (Schema::hasColumn('product_master', 'main_image')) {
+            $select[] = 'main_image';
+        }
+        for ($i = 1; $i <= 20; $i++) {
+            $column = 'image'.$i;
+            if (Schema::hasColumn('product_master', $column)) {
+                $select[] = $column;
+            }
+        }
+        $productsQuery = ProductMaster::query()->select($select);
+        if (Schema::hasColumn('product_master', 'shopify_aplus_content')) {
+            $productsQuery->addSelect(DB::raw("CHAR_LENGTH(COALESCE(shopify_aplus_content, '')) as shopify_aplus_chars"));
+        }
+        if (Schema::hasColumn('product_master', 'description_html')) {
+            $productsQuery->addSelect(DB::raw("CHAR_LENGTH(COALESCE(description_html, '')) as description_html_chars"));
+        }
+        $products = $productsQuery
             ->orderBy('parent')
             ->orderBy('sku')
             ->get();
@@ -976,8 +1024,9 @@ class VariationMasterController extends Controller
                 'bullet_3' => $listing['bullet_3'],
                 'bullet_4' => $listing['bullet_4'],
                 'bullet_5' => $listing['bullet_5'],
-                'aplus' => $listing['aplus'],
-                'parent_images' => $listing['parent_images'],
+                'aplus' => '',
+                'aplus_chars' => $this->childAplusChars($product),
+                'parent_images' => $this->imageMasterUrls($product),
             ];
             $sortKeys[] = [strtoupper($parent), 1, strtoupper($this->normalizeDisplay($product->sku))];
         }
@@ -1015,8 +1064,42 @@ class VariationMasterController extends Controller
     }
 
     /**
-     * @return array{title: string, description: string, bullet_1: string, bullet_2: string, bullet_3: string, bullet_4: string, bullet_5: string}
+     * Description Master A+ length for a child SKU. The HTML itself is loaded when the cell is opened.
      */
+    private function childAplusChars(ProductMaster $product): int
+    {
+        $aplus = (int) ($product->shopify_aplus_chars ?? 0);
+        if ($aplus > 0) {
+            return $aplus;
+        }
+
+        return (int) ($product->description_html_chars ?? 0);
+    }
+
+    /**
+     * Image Master photos for a child SKU (image1–image20, then main image).
+     *
+     * @return list<string>
+     */
+    private function imageMasterUrls(ProductMaster $product): array
+    {
+        $urls = [];
+        for ($i = 1; $i <= 20; $i++) {
+            $value = trim((string) ($product->{'image'.$i} ?? ''));
+            if ($value !== '') {
+                $urls[] = $value;
+            }
+        }
+        if ($urls === []) {
+            $main = trim((string) ($product->main_image ?? ''));
+            if ($main !== '') {
+                $urls[] = $main;
+            }
+        }
+
+        return $urls;
+    }
+
     private function emptyListingText(): array
     {
         return [
