@@ -456,15 +456,8 @@
                     headerSort: false,
                     width: 110,
                     formatter: function (cell) {
-                        const row = cell.getRow().getData();
-                        const checked = !!row.is_missing;
-                        const by = row.is_missing_by ? esc(row.is_missing_by) : '';
-                        const dot = hasVideo(row) ? '' : '<span class="ration-missing-dot" title="No video link"></span>';
-                        return `<div class="text-center">
-                            ${dot}
-                            <input type="checkbox" class="status-box form-check-input" data-flag="is_missing" ${checked ? 'checked' : ''}>
-                            ${checked && by ? `<div class="status-meta">${by}</div>` : ''}
-                        </div>`;
+                        const checked = !!cell.getRow().getData().is_missing;
+                        return `<div class="text-center"><input type="checkbox" class="status-box form-check-input" data-flag="is_missing" ${checked ? 'checked' : ''}></div>`;
                     },
                     cellClick: onStatusClick,
                 },
