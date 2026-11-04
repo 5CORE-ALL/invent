@@ -287,7 +287,8 @@
                     },
                     titleFormatter: function () {
                         return `<div>
-                            16:9 Video <i class='fa fa-link'></i>
+                            16:9 Video <i class='fa fa-link'></i><br>
+                            <span id="total-sixteen-link-header" style="font-size:13px;color:white;font-weight:600;"></span>
                         </div>`;
                     },
                     hozAlign: "center",
@@ -316,6 +317,10 @@
             setTimeout(() => updateTotalInvAndL30(table), 100);
         });
 
+        table.on("dataFiltered", function() {
+            setTimeout(() => updateTotalInvAndL30(table), 50);
+        });
+
         table.on("tableBuilt", function () {
             buildColumnDropdown();
         });
@@ -340,6 +345,7 @@
             .then(res => res.json())
             .then(res => {
                 if (!res.success) alert("Failed to save data.");
+                updateTotalInvAndL30(table);
             });
         });
 
@@ -455,9 +461,12 @@
 
             const totalINV = data.reduce((sum, row) => sum + (parseFloat(row["INV"]) || 0), 0);
             const totalL30 = data.reduce((sum, row) => sum + (parseFloat(row["L30"]) || 0), 0);
+            const totalLinks = data.filter(row => String(row.sixteen_ratio_link || "").trim() !== "").length;
 
             document.getElementById("total-inv-header").textContent = totalINV.toLocaleString();
             document.getElementById("total-l30-header").textContent = totalL30.toLocaleString();
+            const linkHeader = document.getElementById("total-sixteen-link-header");
+            if (linkHeader) linkHeader.textContent = totalLinks.toLocaleString();
         }
 
         // Play/Pause Controls
