@@ -84,6 +84,21 @@
     .video-link-badge.is-active {
         box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.35);
     }
+    .video-link-badge.ration-badge--missing { background: #dc2626; }
+    .video-link-badge.ration-badge--checked { background: #16a34a; }
+    .video-link-badge.ration-badge--ad { background: #2c6ed5; }
+    .video-link-badge.ration-badge--redo { background: #d97706; }
+    .video-link-badge.ration-badge--redone { background: #7c3aed; }
+    .ration-missing-dot {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #dc2626;
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+    }
+    .status-box { width: 16px; height: 16px; cursor: pointer; }
+    .status-meta { font-size: 10px; color: #4b5563; line-height: 1.2; margin-top: 2px; }
 </style>
 @endsection
 
@@ -171,6 +186,21 @@
                     <button type="button" id="video-link-filter" class="video-link-badge" title="Show rows that have a 16:9 video">
                         <i class="fa fa-link"></i> 16:9 Video: <span id="total-sixteen-link-count">0</span>
                     </button>
+                    <button type="button" class="video-link-badge ration-badge--missing" data-status="missing" title="Show rows missing a video">
+                        Missing: <span id="count-missing">0</span>
+                    </button>
+                    <button type="button" class="video-link-badge ration-badge--checked" data-status="checked" title="Show checked rows">
+                        Checked: <span id="count-checked">0</span>
+                    </button>
+                    <button type="button" class="video-link-badge ration-badge--ad" data-status="ad" title="Show rows marked AD">
+                        AD: <span id="count-ad">0</span>
+                    </button>
+                    <button type="button" class="video-link-badge ration-badge--redo" data-status="redo" title="Show rows marked REDO">
+                        Redo: <span id="count-redo">0</span>
+                    </button>
+                    <button type="button" class="video-link-badge ration-badge--redone" data-status="redone" title="Show rows marked REDONE">
+                        Redone: <span id="count-redone">0</span>
+                    </button>
 
                 </div>
                 <div id="sixteen-ration-video"></div>
@@ -231,6 +261,10 @@
         let currentRowTypeFilter = "all";
         let currentDilColorFilter = "";
         let filterHasVideo = false;
+        const statusFilters = { missing: false, checked: false, ad: false, redo: false, redone: false };
+        const currentUserName = @json(auth()->user()->name ?? '');
+        const LINK_FIELD = 'sixteen_ratio_link';
+        const SAVE_URL = '/sixteen-ration-video/save';
         let currentIndex = 0;
         let isPlaying = false;
         let selectedColor = null;
@@ -241,6 +275,59 @@
             if (percent >= 25 && percent < 50) return 'green';
             return 'pink';
         };    
+
+        function hasVideo(row) {
+            return String(row[LINK_FIELD] || '').trim() !== '';
+        }
+
+        function esc(value) {
+            return String(value).replace(/[&<>"']/g, function (c) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+            });
+        }
+
+        function statusBoxFormatter(flag) {
+            return function (cell) {
+                const row = cell.getRow().getData();
+                const checked = !!row[flag];
+                const by = row[flag + '_by'] ? esc(row[flag + '_by']) : '';
+                return `<div class="text-center">
+                    <input type="checkbox" class="status-box form-check-input" data-flag="${flag}" ${checked ? 'checked' : ''}>
+                    ${checked && by ? `<div class="status-meta">${by}</div>` : ''}
+                </div>`;
+            };
+        }
+
+        function saveStatus(sku, value) {
+            fetch(SAVE_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({ sku: sku, value: value })
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (!res.success) alert('Failed to save data.');
+                updateTotalInvAndL30(table);
+            });
+        }
+
+        function onStatusClick(e, cell) {
+            const box = e.target.closest('.status-box');
+            if (!box) return;
+            const flag = box.getAttribute('data-flag');
+            const row = cell.getRow();
+            const data = row.getData();
+            const next = !data[flag];
+            const patch = {};
+            patch[flag] = next;
+            patch[flag + '_by'] = next ? currentUserName : '';
+            patch[flag + '_at'] = next ? new Date().toISOString() : '';
+            row.update(patch);
+            saveStatus(data.Sku, patch);
+        }
 
         function groupBy(array, key) {
             return array.reduce((result, obj) => {
@@ -352,6 +439,54 @@
                     },
                     hozAlign: "center",
                 },
+                {
+                    title: "MISSING",
+                    field: "_missing",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 100,
+                    formatter: function (cell) {
+                        return hasVideo(cell.getRow().getData())
+                            ? ''
+                            : '<span class="ration-missing-dot" title="Video missing"></span>';
+                    }
+                },
+                {
+                    title: "CHECK",
+                    field: "is_checked",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 100,
+                    formatter: statusBoxFormatter('is_checked'),
+                    cellClick: onStatusClick,
+                },
+                {
+                    title: "AD",
+                    field: "ad_checked",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 100,
+                    formatter: statusBoxFormatter('ad_checked'),
+                    cellClick: onStatusClick,
+                },
+                {
+                    title: "REDO",
+                    field: "redo_checked",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 100,
+                    formatter: statusBoxFormatter('redo_checked'),
+                    cellClick: onStatusClick,
+                },
+                {
+                    title: "REDONE",
+                    field: "redone_checked",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 110,
+                    formatter: statusBoxFormatter('redone_checked'),
+                    cellClick: onStatusClick,
+                },
             ],
             ajaxResponse: function (url, params, response) {
                 const rows = response.data;
@@ -404,6 +539,7 @@
             .then(res => res.json())
             .then(res => {
                 if (!res.success) alert("Failed to save data.");
+                if (cell.getField() === LINK_FIELD) cell.getRow().reformat();
                 updateTotalInvAndL30(table);
             });
         });
@@ -526,6 +662,50 @@
             document.getElementById("total-l30-header").textContent = totalL30.toLocaleString();
             const linkBadge = document.getElementById("total-sixteen-link-count");
             if (linkBadge) linkBadge.textContent = totalLinks.toLocaleString();
+
+            const base = table.getData().filter(row => matchesBaseFilters(row));
+            const setCount = (id, count) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = count.toLocaleString();
+            };
+            setCount("count-missing", base.filter(row => !hasVideo(row)).length);
+            setCount("count-checked", base.filter(row => !!row.is_checked).length);
+            setCount("count-ad", base.filter(row => !!row.ad_checked).length);
+            setCount("count-redo", base.filter(row => !!row.redo_checked).length);
+            setCount("count-redone", base.filter(row => !!row.redone_checked).length);
+        }
+
+        function matchesBaseFilters(data) {
+            let matchesParent = true;
+            let matchesRowType = true;
+            let matchesDilColor = true;
+            let matchesVideo = true;
+
+            if (currentParentFilter) {
+                matchesParent = data.Parent === currentParentFilter;
+            }
+            if (currentRowTypeFilter === "sku") {
+                matchesRowType = !(data.Sku || '').toUpperCase().includes("PARENT");
+            } else if (currentRowTypeFilter === "parent") {
+                matchesRowType = (data.Sku || '').toUpperCase().includes("PARENT");
+            }
+            if (currentDilColorFilter) {
+                matchesDilColor = data.dilColor === currentDilColorFilter;
+            }
+            if (filterHasVideo) {
+                matchesVideo = hasVideo(data);
+            }
+
+            return matchesParent && matchesRowType && matchesDilColor && matchesVideo;
+        }
+
+        function matchesStatusFilters(data) {
+            if (statusFilters.missing && hasVideo(data)) return false;
+            if (statusFilters.checked && !data.is_checked) return false;
+            if (statusFilters.ad && !data.ad_checked) return false;
+            if (statusFilters.redo && !data.redo_checked) return false;
+            if (statusFilters.redone && !data.redone_checked) return false;
+            return true;
         }
 
         // Play/Pause Controls
@@ -533,33 +713,7 @@
             table.clearFilter();
 
             table.setFilter(function (data) {
-                let matchesParent = true;
-                let matchesRowType = true;
-                let matchesDilColor = true;
-                let matchesVideo = true;
-
-                // Parent filter
-                if (currentParentFilter) {
-                    matchesParent = data.Parent === currentParentFilter;
-                }
-
-                // Row type filter
-                if (currentRowTypeFilter === "sku") {
-                    matchesRowType = !data.Sku.toUpperCase().includes("PARENT");
-                } else if (currentRowTypeFilter === "parent") {
-                    matchesRowType = data.Sku.toUpperCase().includes("PARENT");
-                }
-
-                // Dil color filter
-                if (currentDilColorFilter) {
-                    matchesDilColor = data.dilColor === currentDilColorFilter;
-                }
-
-                if (filterHasVideo) {
-                    matchesVideo = String(data.sixteen_ratio_link || "").trim() !== "";
-                }
-
-                return matchesParent && matchesRowType && matchesDilColor && matchesVideo;
+                return matchesBaseFilters(data) && matchesStatusFilters(data);
             });
         }
 
@@ -623,6 +777,15 @@
                 ? 'Showing rows that have a 16:9 video. Click to show all.'
                 : 'Show rows that have a 16:9 video';
             setCombinedFilters();
+        });
+
+        document.querySelectorAll('[data-status]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const key = this.dataset.status;
+                statusFilters[key] = !statusFilters[key];
+                this.classList.toggle('is-active', statusFilters[key]);
+                setCombinedFilters();
+            });
         });
 
         // Import Modal functionality

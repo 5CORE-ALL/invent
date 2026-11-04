@@ -235,6 +235,29 @@ class ShoppableVideoController extends Controller
         ]);
     }
 
+    private function rationStatusFields(?array $value): array
+    {
+        $value = $value ?? [];
+        $bool = function (string $key) use ($value): bool {
+            return filter_var($value[$key] ?? false, FILTER_VALIDATE_BOOLEAN);
+        };
+
+        return [
+            'is_checked' => $bool('is_checked'),
+            'checked_by' => $value['checked_by'] ?? '',
+            'checked_at' => $value['checked_at'] ?? '',
+            'ad_checked' => $bool('ad_checked'),
+            'ad_checked_by' => $value['ad_checked_by'] ?? '',
+            'ad_checked_at' => $value['ad_checked_at'] ?? '',
+            'redo_checked' => $bool('redo_checked'),
+            'redo_checked_by' => $value['redo_checked_by'] ?? '',
+            'redo_checked_at' => $value['redo_checked_at'] ?? '',
+            'redone_checked' => $bool('redone_checked'),
+            'redone_checked_by' => $value['redone_checked_by'] ?? '',
+            'redone_checked_at' => $value['redone_checked_at'] ?? '',
+        ];
+    }
+
     public function nineRation(){
         return view('marketing-masters.video-required.shoppable-video.nine-ration');
     }
@@ -259,6 +282,7 @@ class ShoppableVideoController extends Controller
             // Default social links
             $nine_ratio_link = '';
             $remark = '';
+            $stored = [];
 
             // Get social links from video_posted_values table if available
             if (isset($videoPostedValues[$sku])) {
@@ -266,8 +290,9 @@ class ShoppableVideoController extends Controller
                 if (is_string($value)) {
                     $value = json_decode($value, true);
                 }
-                $nine_ratio_link = $value['nine_ratio_link'] ?? '';
-                $remark = $value['remark'] ?? '';
+                $stored = is_array($value) ? $value : [];
+                $nine_ratio_link = $stored['nine_ratio_link'] ?? '';
+                $remark = $stored['remark'] ?? '';
             }
 
             // Initialize the data structure
@@ -280,6 +305,7 @@ class ShoppableVideoController extends Controller
 
             $processedItem['nine_ratio_link'] = $nine_ratio_link;
             $processedItem['remark'] = $remark;
+            $processedItem = array_merge($processedItem, $this->rationStatusFields($stored));
 
 
             // Add data from shopify_skus if available
@@ -636,6 +662,7 @@ class ShoppableVideoController extends Controller
 
             // Default social links
             $sixteen_ratio_link = '';
+            $stored = [];
 
             // Get social links from video_posted_values table if available
             if (isset($videoPostedValues[$sku])) {
@@ -643,7 +670,8 @@ class ShoppableVideoController extends Controller
                 if (is_string($value)) {
                     $value = json_decode($value, true);
                 }
-                $sixteen_ratio_link = $value['sixteen_ratio_link'] ?? '';
+                $stored = is_array($value) ? $value : [];
+                $sixteen_ratio_link = $stored['sixteen_ratio_link'] ?? '';
             }
 
             // Initialize the data structure
@@ -655,6 +683,7 @@ class ShoppableVideoController extends Controller
             ];
 
             $processedItem['sixteen_ratio_link'] = $sixteen_ratio_link;
+            $processedItem = array_merge($processedItem, $this->rationStatusFields($stored));
 
 
             // Add data from shopify_skus if available
