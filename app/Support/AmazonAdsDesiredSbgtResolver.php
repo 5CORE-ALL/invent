@@ -22,7 +22,7 @@ final class AmazonAdsDesiredSbgtResolver
      * @param  array<string, float|array{rating?: mixed}>|null  $reviewRatingByCid  test/override map; null loads the campaign SKU rating used by the SBGT column
      * @return array<string, int|null>
      */
-    public static function sbgtForCampaigns(iterable $campaigns, ?string $channel = null, ?array $lifetimeAcosByCid = null, ?array $reviewRatingByCid = null): array
+    public static function sbgtForCampaigns(iterable $campaigns, ?string $channel = null, ?array $lifetimeAcosByCid = null, ?array $reviewRatingByCid = null, bool $applyCap = true): array
     {
         $rows = [];
         $names = [];
@@ -149,6 +149,10 @@ final class AmazonAdsDesiredSbgtResolver
             $sum = AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil, $bgtGpft, $bgtFlag);
             if ($sum === null && isset($arr['sbgt']) && is_numeric($arr['sbgt'])) {
                 $sum = (int) $arr['sbgt'];
+            }
+            // BGT CAP rules: yellow / red ad types are capped at their $ amount.
+            if ($applyCap) {
+                $sum = AmazonAdsBgtCapRule::apply($sum, $name);
             }
             $out[$cid] = $sum;
         }

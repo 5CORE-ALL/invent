@@ -28,6 +28,8 @@ use App\Support\AmazonAdsCampaignSkuSync;
 use App\Support\AmazonAdsLbidDaily;
 use App\Support\AmazonAdsLRangeMetrics;
 use App\Support\AmazonAdsYesterdayBadgeHistory;
+use App\Support\AmazonAdsAcosPauseRules;
+use App\Support\AmazonAdsBgtCapRule;
 use App\Support\AmazonAdsPauseRule;
 use App\Support\AmazonAdsSbAdEditor;
 use App\Support\AmazonAdsSbidRule;
@@ -6544,10 +6546,67 @@ class AmazonAdsController extends Controller
 
         return response()->json([
             'rule' => AmazonAdsPauseRule::resolvedRule(),
+            'counts' => $this->pauseRuleCounts(),
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache')
           ->header('Expires', '0');
+    }
+
+    /**
+     * BGT CAP rules: ON/OFF, $ cap per ad type and ACOS colour, and how many budgets are capped.
+     */
+    public function getBgtCapRule(Request $request): JsonResponse
+    {
+        return $this->bgtCapRuleResponse($request->boolean('fresh'));
+    }
+
+    public function saveBgtCapRule(Request $request): JsonResponse
+    {
+        try {
+            AmazonAdsBgtCapRule::persist([
+                'enabled' => $request->boolean('enabled'),
+                'caps' => (array) $request->input('caps', []),
+            ]);
+            self::forgetRawDataCache();
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage(), 'status' => 422], 422);
+        } catch (\Throwable $e) {
+            Log::error('Could not save BGT CAP rule', ['error' => $e->getMessage()]);
+
+            return response()->json(['message' => 'Could not save BGT CAP rule. '.$e->getMessage(), 'status' => 500], 500);
+        }
+
+        return $this->bgtCapRuleResponse(true, 'BGT CAP rule saved.');
+    }
+
+    private function bgtCapRuleResponse(bool $fresh, string $message = ''): JsonResponse
+    {
+        @ini_set('max_execution_time', '300');
+        @ini_set('memory_limit', '512M');
+        $rule = AmazonAdsBgtCapRule::resolvedRule();
+
+        return response()->json([
+            'message' => $message,
+            'rule' => $rule,
+            'counts' => AmazonAdsBgtCapRule::counts($fresh),
+            'status' => 200,
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    /**
+     * Ads currently paused by each Pause Rule: dil (rule 1), kw / pt / hl (rules 2-4).
+     *
+     * @return array{dil: int, kw: int, pt: int, hl: int}
+     */
+    private function pauseRuleCounts(): array
+    {
+        try {
+            return AmazonAdsPauseRuleState::openCountsByRule();
+        } catch (\Throwable $e) {
+            return ['dil' => 0, 'kw' => 0, 'pt' => 0, 'hl' => 0];
+        }
     }
 
     /**
@@ -6564,6 +6623,9 @@ class AmazonAdsController extends Controller
                 'price_enabled' => false,
                 'reviews_enabled' => false,
             ]);
+            if (is_array($request->input('acos_rules'))) {
+                AmazonAdsPauseRule::persistAcosRules($request->input('acos_rules'));
+            }
             AmazonAdsPauseRule::forgetResolvedCache();
         } catch (\InvalidArgumentException $e) {
             return response()->json([
@@ -6591,11 +6653,19 @@ class AmazonAdsController extends Controller
             $th = rtrim(rtrim(number_format((float) ($pr['dil_above'] ?? 100), 2, '.', ''), '0'), '.');
             $parts[] = 'Dil% ≥ '.$th.'%';
         }
+        $onRules = [];
+        if ($parts !== []) {
+            $onRules[] = 'Rule 1 (Dil%)';
+        }
+        foreach (AmazonAdsAcosPauseRules::enabledKeys($freshRule) as $k) {
+            $onRules[] = 'Rule '.AmazonAdsAcosPauseRules::RULES[$k]['n'].' ('.AmazonAdsAcosPauseRules::RULES[$k]['label'].' ACOS%)';
+        }
         $payload = [
-            'message' => (! empty($pr['enabled']) && $parts !== []
-                ? 'Pause Rule saved. PARENT campaigns matching '.implode(' or ', $parts).' will be paused, and child SKU campaigns in those families will be paused too. Old ads stay off; only recently Dil-paused PARENT campaigns activate again.'
-                : 'Pause Rule saved. Dil% will not auto-pause campaigns.'),
+            'message' => $onRules !== []
+                ? 'Pause Rule saved. ON: '.implode(', ', $onRules).'.'
+                : 'Pause Rule saved. All rules are OFF.',
             'rule' => $freshRule,
+            'counts' => $this->pauseRuleCounts(),
             'status' => 200,
             'timestamp' => time(),
         ];
@@ -6603,13 +6673,15 @@ class AmazonAdsController extends Controller
         if ($request->boolean('apply')) {
             try {
                 $payload['apply'] = app(AmazonAdsPauseRuleApplicator::class)->applyAll(false);
+                $payload['counts'] = $this->pauseRuleCounts();
                 $payload['message'] = 'Pause Rule saved and applied to Amazon.'
-                    .($parts !== [] ? ' Paused PARENT and child SKU campaigns where '.implode(' or ', $parts).'. Active Again SKUs are paused again. Old ads stay off; only recently Dil-paused PARENT campaigns can activate again.' : '');
+                    .($onRules !== [] ? ' ON: '.implode(', ', $onRules).'.' : '');
             } catch (\Throwable $e) {
                 return response()->json([
-                    'message' => 'PR saved, but Amazon apply failed.',
+                    'message' => 'Pause Rule saved, but Amazon apply failed.',
                     'error' => $e->getMessage(),
                     'rule' => $freshRule,
+                    'counts' => $this->pauseRuleCounts(),
                     'status' => 500,
                 ], 500);
             }
@@ -7981,6 +8053,8 @@ class AmazonAdsController extends Controller
                     $arr['bgtGpft'] ?? null,
                     $arr['bgtFlag'] ?? null
                 );
+                // BGT CAP rules: yellow / red ad types are capped at their $ amount.
+                $arr['sbgt'] = AmazonAdsBgtCapRule::apply($arr['sbgt'], (string) ($rowArr['campaignName'] ?? ''));
                 if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
                     $wantSbgt = AmazonAdsSbgt::storageValue($arr['sbgt'] ?? null);
                     $cidSbgt = trim((string) ($rowArr['campaign_id'] ?? ''));
@@ -8839,7 +8913,7 @@ class AmazonAdsController extends Controller
                 $pricePrc = $gm['price'] ?? (isset($m['price']) && is_numeric($m['price']) ? (float) $m['price'] : null);
                 $sess7 = isset($pc['sess7']) && is_numeric($pc['sess7']) ? (float) $pc['sess7'] : 0.0;
                 $cvrIn = isset($pc['page_cvr']) && is_numeric($pc['page_cvr']) ? (float) $pc['page_cvr'] : 0.0;
-                $keys[] = self::summedSbgtFromParts(
+                $keys[] = AmazonAdsBgtCapRule::apply(self::summedSbgtFromParts(
                     AmazonAdsBgtViewsRule::apply($sess7)['bgt'],
                     AmazonAdsBgtCvrRule::apply($cvrIn)['bgt'],
                     ($l30AcosForSbgt = self::l30AcosForSortRow($r, $dbColumns, $l30FlagMap, $lk)) !== null ? AmazonAcosSbgtRule::bgtAcosDecimal($l30AcosForSbgt) : null,
@@ -8848,7 +8922,7 @@ class AmazonAdsController extends Controller
                     AmazonAdsBgtDilRule::apply($dil)['bgt'],
                     AmazonAdsBgtGpftRule::apply(isset($m['gpft']) && is_numeric($m['gpft']) ? (float) $m['gpft'] : null)['bgt'],
                     AmazonAdsBgtFlagRule::apply(self::flagGapForSortRow($r, $dbColumns, $l30FlagMap, $lk, isset($m['gpft']) && is_numeric($m['gpft']) ? (float) $m['gpft'] : null))['bgt']
-                );
+                ), $cn);
             } elseif ($column === 'ruleStatus') {
                 $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
                 $decision = AmazonAdsPauseRule::decide($pauseRule, [

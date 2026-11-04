@@ -3960,6 +3960,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'saveSbidRule'])->name('amazon.ads.sbid-rule.save');
     Route::get('/amazon-ads/pause-rule', [AmazonAdsController::class, 'getPauseRule'])->name('amazon.ads.pause-rule');
     Route::post('/amazon-ads/pr-rule', [AmazonAdsController::class, 'savePrRule'])->name('amazon.ads.pr-rule.save');
+    Route::get('/amazon-ads/bgt-cap-rule', [AmazonAdsController::class, 'getBgtCapRule'])->name('amazon.ads.bgt-cap-rule');
+    Route::post('/amazon-ads/bgt-cap-rule', [AmazonAdsController::class, 'saveBgtCapRule'])->name('amazon.ads.bgt-cap-rule.save');
 
     // Amazon SP campaign linking (like /purchase-master/sku-link-lmp) — link campaigns into groups.
     Route::controller(AmazonCampaignLinkController::class)->prefix('amazon-ads/campaign-link')->group(function () {

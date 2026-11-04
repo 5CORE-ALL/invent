@@ -1411,6 +1411,7 @@
                             </button>
                             <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-secondary" title="Failed / skipped bid & budget pushes">Fail Cpg</a>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRulesBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRulesModal" title="Budget rules for SP and SB campaigns (HL campaigns are set in SBGT HL)">BGT Rules</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtCapRulesBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtCapModal" title="Cap the suggested budget of yellow and red ACOS% ads (KW, PT, HL)">BGT CAP rules</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbgtHlRulesBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRulesModal" title="Budget rules for HL campaigns only (Sponsored Brands &quot;... HL&quot; / &quot;... HEAD&quot;)">SBGT HL</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause campaigns when Dil% is at or above your threshold. Only PARENT campaigns turn back on.">Pause Rule</button>
@@ -2074,6 +2075,60 @@
         </div>
     </div>
 
+    <div class="modal fade" id="amazonAdsBgtCapModal" tabindex="-1" aria-labelledby="amazonAdsBgtCapModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsBgtCapModalLabel">BGT CAP rules</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                        <p class="small text-muted mb-0">Caps SBGT of a parent's KW / PT / HL ads when their ACOS% is yellow or red on <a href="{{ route('amazon.ads.missing') }}" target="_blank" rel="noopener">Missing Ads</a> (L30). Only lowers a budget.</p>
+                        <div class="form-check form-switch mb-0 flex-shrink-0">
+                            <input class="form-check-input" type="checkbox" role="switch" id="amazonAdsBgtCapEnabled">
+                            <label class="form-check-label small fw-semibold" for="amazonAdsBgtCapEnabled"><span id="amazonAdsBgtCapEnabledLbl">OFF</span></label>
+                        </div>
+                    </div>
+                    <table class="table table-sm align-middle mb-2">
+                        <thead>
+                            <tr class="small text-muted">
+                                <th style="width: 20%;">Slab</th>
+                                <th><span class="badge" style="background:#ffc107;color:#212529;">Yellow</span> cap $ · capped</th>
+                                <th><span class="badge bg-danger">Red</span> cap $ · capped</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ([['kw', 'KW'], ['pt', 'PT'], ['hl', 'HL']] as [$capKey, $capLabel])
+                                <tr>
+                                    <td class="fw-semibold small">{{ $capLabel }}</td>
+                                    @foreach (['yellow', 'red'] as $capColour)
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="input-group input-group-sm" style="max-width: 100px;">
+                                                    <span class="input-group-text">$</span>
+                                                    <input type="number" min="1" max="9999" step="1" value="1" class="form-control amz-bgt-cap-input" id="amazonAdsBgtCap_{{ $capKey }}_{{ $capColour }}" data-key="{{ $capKey }}" data-colour="{{ $capColour }}">
+                                                </div>
+                                                <span class="small text-muted"><strong id="amazonAdsBgtCapCount_{{ $capKey }}_{{ $capColour }}">0</strong></span>
+                                            </div>
+                                        </td>
+                                    @endforeach
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                    <div class="small">Total capped BGTs: <strong id="amazonAdsBgtCapTotal">0</strong> <span class="text-muted" id="amazonAdsBgtCapNote"></span></div>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtCapError" role="alert"></p>
+                    <p class="small text-success mb-0 mt-2 d-none" id="amazonAdsBgtCapOk" role="status"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtCapSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="amazonAdsPrRuleModal" tabindex="-1" aria-labelledby="amazonAdsPrRuleModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -2082,26 +2137,38 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv).
-                        Pause when Dil% is ≥ the threshold (default 100) for PARENT campaigns, and for <strong>child SKU</strong> campaigns when their Dil or the <strong>PARENT family Dil</strong> is ≥ the threshold.
-                        Save (with auto-pause on) applies matching pauses on Amazon now.
-                        Only <strong>PARENT</strong> campaigns this Dil Pause Rule paused recently (last 31 days) are turned back on when Dil% is no longer ≥ the threshold — those rows show <strong>Active Again</strong>.
-                        Child SKU campaigns that show <strong>Active Again</strong> are paused again (PARENT Active Again stays on).
-                        Old ads stay paused: Price leftovers, Reviews, ACOS, old pink DIL, and anything paused before this Dil rule or older than 31 days are never turned back on. The job also runs daily at 18:25 IST.
-                    </p>
-                    <div class="form-check mb-1">
-                        <input class="form-check-input" type="checkbox" id="amazonAdsPrDilEnabled" checked>
-                        <label class="form-check-label small" for="amazonAdsPrDilEnabled">Pause when Dil% ≥</label>
+                    <p class="small text-muted mb-3">Runs on <strong>Save &amp; apply</strong> and daily at 18:25 IST. Old ads stay paused.</p>
+
+                    <div class="border rounded p-2 mb-2">
+                        <div class="d-flex align-items-center justify-content-between gap-2">
+                            <div class="fw-semibold small">1. Dil% <span class="text-muted fw-normal">— pause PARENT + child SKU when Dil% ≥</span></div>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" role="switch" id="amazonAdsPrEnabled" checked>
+                                <label class="form-check-label small" for="amazonAdsPrEnabled"><span id="amazonAdsPrEnabledLbl">ON</span></label>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center justify-content-between gap-2 mt-2">
+                            <div class="input-group input-group-sm" style="max-width: 140px;">
+                                <input type="number" min="0" max="100000" step="1" class="form-control" id="amazonAdsPrDilAbove" value="100">
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <span class="small text-muted">Paused by this rule: <strong id="amazonAdsPauseCount_dil">0</strong></span>
+                        </div>
+                        <div class="small text-muted mt-1">Only recently Dil-paused PARENT campaigns turn back on (Active Again).</div>
                     </div>
-                    <div class="input-group input-group-sm mb-3" style="max-width: 220px;">
-                        <input type="number" min="0" max="100000" step="1" class="form-control" id="amazonAdsPrDilAbove" value="100">
-                        <span class="input-group-text">%</span>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="amazonAdsPrEnabled" checked>
-                        <label class="form-check-label small" for="amazonAdsPrEnabled">Enable auto-pause</label>
-                    </div>
+
+                    @foreach ([['kw', 2, 'KW'], ['pt', 3, 'PT'], ['hl', 4, 'HL']] as [$acosKey, $acosNum, $acosLabel])
+                        <div class="border rounded p-2 mb-2">
+                            <div class="d-flex align-items-center justify-content-between gap-2">
+                                <div class="fw-semibold small">{{ $acosNum }}. {{ $acosLabel }} ACOS% <span class="text-muted fw-normal">— pause {{ $acosLabel }} ads when ACOS% is red on <a href="{{ route('amazon.ads.missing') }}" target="_blank" rel="noopener">Missing Ads</a></span></div>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input amz-acos-rule-switch" type="checkbox" role="switch" id="amazonAdsAcosRule_{{ $acosKey }}" data-rule="{{ $acosKey }}">
+                                    <label class="form-check-label small" for="amazonAdsAcosRule_{{ $acosKey }}"><span id="amazonAdsAcosRuleLbl_{{ $acosKey }}">OFF</span></label>
+                                </div>
+                            </div>
+                            <div class="small text-muted mt-1">Paused by this rule: <strong id="amazonAdsPauseCount_{{ $acosKey }}">0</strong> · never turned back on automatically.</div>
+                        </div>
+                    @endforeach
                     <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsPrRuleModalError" role="alert"></p>
                     <p class="small text-success mb-0 mt-2 d-none" id="amazonAdsPrRuleModalOk" role="status"></p>
                 </div>
@@ -2201,6 +2268,8 @@
             var sbidRuleSaveUrl = @json(route('amazon.ads.sbid-rule.save'));
             var pauseRuleGetUrl = @json(route('amazon.ads.pause-rule'));
             var prRuleSaveUrl = @json(route('amazon.ads.pr-rule.save'));
+            var bgtCapRuleUrl = @json(route('amazon.ads.bgt-cap-rule'));
+            var bgtCapRuleSaveUrl = @json(route('amazon.ads.bgt-cap-rule.save'));
             var campaignSkusUrl = @json(route('amazon.ads.campaign-skus'));
             var sbAdAddUrl = @json(route('amazon.ads.sb-ads.products.add'));
             var sbAdRemoveUrl = @json(route('amazon.ads.sb-ads.products.remove'));
@@ -9337,6 +9406,100 @@
                 });
             }
 
+            // ---- BGT CAP rules modal ----
+            var AMZ_CAP_KEYS = ['kw', 'pt', 'hl'];
+            var AMZ_CAP_COLOURS = ['yellow', 'red'];
+            function amzCapEl(id) { return document.getElementById(id); }
+            function amzCapSyncLabel() {
+                var en = amzCapEl('amazonAdsBgtCapEnabled'), lbl = amzCapEl('amazonAdsBgtCapEnabledLbl');
+                if (en && lbl) lbl.textContent = en.checked ? 'ON' : 'OFF';
+                var note = amzCapEl('amazonAdsBgtCapNote');
+                if (note) note.textContent = (en && en.checked) ? '' : '(rule is OFF — nothing is capped yet)';
+            }
+            function amzCapFill(rule, counts) {
+                rule = rule || {};
+                var caps = rule.caps || {};
+                var en = amzCapEl('amazonAdsBgtCapEnabled');
+                if (en) en.checked = !!rule.enabled;
+                AMZ_CAP_KEYS.forEach(function (k) {
+                    AMZ_CAP_COLOURS.forEach(function (c) {
+                        var inp = amzCapEl('amazonAdsBgtCap_' + k + '_' + c);
+                        var v = caps[k] && caps[k][c];
+                        if (inp) inp.value = String(v != null ? v : 1);
+                        var cnt = amzCapEl('amazonAdsBgtCapCount_' + k + '_' + c);
+                        var n = counts && counts.counts && counts.counts[k] ? counts.counts[k][c] : 0;
+                        if (cnt) cnt.textContent = String(Number(n) || 0);
+                    });
+                });
+                var tot = amzCapEl('amazonAdsBgtCapTotal');
+                if (tot) tot.textContent = String(counts && counts.total ? counts.total : 0);
+                amzCapSyncLabel();
+            }
+            function amzCapLoad(fresh) {
+                var tot = amzCapEl('amazonAdsBgtCapTotal');
+                if (tot) tot.textContent = '…';
+                return fetch(bgtCapRuleUrl + (fresh ? '?fresh=1' : ''), { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (b) { amzCapFill(b.rule, b.counts); })
+                    .catch(function () { if (tot) tot.textContent = '0'; });
+            }
+            function amzCapSave() {
+                var err = amzCapEl('amazonAdsBgtCapError'), ok = amzCapEl('amazonAdsBgtCapOk');
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
+                var caps = {};
+                for (var i = 0; i < AMZ_CAP_KEYS.length; i++) {
+                    var k = AMZ_CAP_KEYS[i];
+                    caps[k] = {};
+                    for (var j = 0; j < AMZ_CAP_COLOURS.length; j++) {
+                        var c = AMZ_CAP_COLOURS[j];
+                        var inp = amzCapEl('amazonAdsBgtCap_' + k + '_' + c);
+                        var n = inp ? parseFloat(String(inp.value).trim()) : NaN;
+                        if (!isFinite(n) || n < 1) {
+                            if (err) { err.textContent = k.toUpperCase() + ' ' + c + ' cap must be $1 or more.'; err.classList.remove('d-none'); }
+                            return;
+                        }
+                        caps[k][c] = n;
+                    }
+                }
+                var en = amzCapEl('amazonAdsBgtCapEnabled');
+                var btn = amzCapEl('amazonAdsBgtCapSaveBtn');
+                if (btn) btn.disabled = true;
+                fetch(bgtCapRuleSaveUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ enabled: !!(en && en.checked), caps: caps })
+                })
+                    .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                    .then(function (out) {
+                        var b = out.body || {};
+                        if (!out.ok || b.status === 422 || b.status === 500) {
+                            if (err) { err.textContent = b.message || 'Save failed.'; err.classList.remove('d-none'); }
+                            return null;
+                        }
+                        amzCapFill(b.rule, b.counts);
+                        if (ok) { ok.textContent = (b.message || 'Saved.') + ' ' + (b.counts && b.counts.total ? b.counts.total : 0) + ' budget(s) capped.'; ok.classList.remove('d-none'); }
+                        return table ? Promise.resolve(amzSetDataFresh()) : null;
+                    })
+                    .then(function () { amzRefreshUiSoon(); })
+                    .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                    .finally(function () { if (btn) btn.disabled = false; });
+            }
+            var capModalEl = amzCapEl('amazonAdsBgtCapModal');
+            if (capModalEl) {
+                capModalEl.addEventListener('show.bs.modal', function () {
+                    var err = amzCapEl('amazonAdsBgtCapError'), ok = amzCapEl('amazonAdsBgtCapOk');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
+                    amzCapLoad(false);
+                });
+            }
+            var capSaveBtn = amzCapEl('amazonAdsBgtCapSaveBtn');
+            if (capSaveBtn) capSaveBtn.addEventListener('click', amzCapSave);
+            var capEnabledEl = amzCapEl('amazonAdsBgtCapEnabled');
+            if (capEnabledEl) capEnabledEl.addEventListener('change', amzCapSyncLabel);
+
             function amzPrFromRule(rule) {
                 var pr = (rule && rule.pr) ? rule.pr : {};
                 var dil = Number(pr.dil_above);
@@ -9346,27 +9509,64 @@
                     dil_enabled: pr.dil_enabled !== false
                 };
             }
+            var AMZ_ACOS_RULE_KEYS = ['kw', 'pt', 'hl'];
+            function amzAcosRulesFromRule(rule) {
+                var src = (rule && rule.acos_rules) ? rule.acos_rules : {};
+                var out = {};
+                AMZ_ACOS_RULE_KEYS.forEach(function (k) { out[k] = !!src[k]; });
+                return out;
+            }
+            function amzAcosRulesFromModal() {
+                var out = {};
+                AMZ_ACOS_RULE_KEYS.forEach(function (k) {
+                    var el = document.getElementById('amazonAdsAcosRule_' + k);
+                    out[k] = !!(el && el.checked);
+                });
+                return out;
+            }
+            function amzSyncPrSwitchLabels() {
+                var en = document.getElementById('amazonAdsPrEnabled');
+                var lbl = document.getElementById('amazonAdsPrEnabledLbl');
+                if (lbl && en) lbl.textContent = en.checked ? 'ON' : 'OFF';
+                AMZ_ACOS_RULE_KEYS.forEach(function (k) {
+                    var el = document.getElementById('amazonAdsAcosRule_' + k);
+                    var l = document.getElementById('amazonAdsAcosRuleLbl_' + k);
+                    if (l && el) l.textContent = el.checked ? 'ON' : 'OFF';
+                });
+            }
+            function amzSetPauseCounts(counts) {
+                if (!counts) return;
+                ['dil', 'kw', 'pt', 'hl'].forEach(function (k) {
+                    var el = document.getElementById('amazonAdsPauseCount_' + k);
+                    if (el) el.textContent = String(Number(counts[k]) || 0);
+                });
+            }
             function amzRefreshPrBtn() {
                 var btn = document.getElementById('amazonAdsPrRuleBtn');
                 if (!btn) return;
                 var pr = amzPrFromRule(window.amazonAdsPauseRule);
+                var acosOn = amzAcosRulesFromRule(window.amazonAdsPauseRule);
                 btn.textContent = 'Pause Rule';
-                var on = pr.enabled && pr.dil_enabled;
+                var on = (pr.enabled && pr.dil_enabled) || AMZ_ACOS_RULE_KEYS.some(function (k) { return acosOn[k]; });
                 btn.classList.toggle('btn-danger', on);
                 btn.classList.toggle('text-white', on);
                 btn.classList.toggle('btn-outline-danger', !on);
                 btn.title = on
-                    ? ('Auto-pause campaigns when Dil% ≥ ' + pr.dil_above + '%. Only PARENT campaigns turn back on.')
-                    : 'Dil% pause rule — click to set the threshold';
+                    ? 'Pause Rules ON — click to review (Dil% + red KW / PT / HL ACOS%).'
+                    : 'Pause Rules — click to turn rules ON';
             }
             function amzFillPrModal() {
                 var pr = amzPrFromRule(window.amazonAdsPauseRule);
+                var acosOn = amzAcosRulesFromRule(window.amazonAdsPauseRule);
                 var dilInput = document.getElementById('amazonAdsPrDilAbove');
-                var dilEn = document.getElementById('amazonAdsPrDilEnabled');
                 var en = document.getElementById('amazonAdsPrEnabled');
                 if (dilInput) dilInput.value = String(pr.dil_above);
-                if (dilEn) dilEn.checked = pr.dil_enabled;
                 if (en) en.checked = pr.enabled;
+                AMZ_ACOS_RULE_KEYS.forEach(function (k) {
+                    var el = document.getElementById('amazonAdsAcosRule_' + k);
+                    if (el) el.checked = acosOn[k];
+                });
+                amzSyncPrSwitchLabels();
             }
             function amzSavePrRule(apply) {
                 var err = document.getElementById('amazonAdsPrRuleModalError');
@@ -9374,8 +9574,9 @@
                 if (err) { err.classList.add('d-none'); err.textContent = ''; }
                 if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
                 var dilInput = document.getElementById('amazonAdsPrDilAbove');
-                var dilEn = document.getElementById('amazonAdsPrDilEnabled');
                 var en = document.getElementById('amazonAdsPrEnabled');
+                var acosRules = amzAcosRulesFromModal();
+                var anyOn = !!(en && en.checked) || AMZ_ACOS_RULE_KEYS.some(function (k) { return acosRules[k]; });
                 var dil = dilInput ? parseFloat(String(dilInput.value).trim()) : NaN;
                 if (!isFinite(dil) || dil < 0) {
                     if (err) { err.textContent = 'Enter a Dil% threshold (0 or higher).'; err.classList.remove('d-none'); }
@@ -9392,10 +9593,11 @@
                     body: JSON.stringify({
                         enabled: !!(en && en.checked),
                         dil_above: dil,
-                        dil_enabled: !!(dilEn && dilEn.checked),
+                        dil_enabled: true,
+                        acos_rules: acosRules,
                         price_enabled: false,
                         reviews_enabled: false,
-                        apply: !!apply || !!(en && en.checked)
+                        apply: !!apply
                     })
                 })
                     .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
@@ -9407,6 +9609,7 @@
                         }
                         window.amazonAdsPauseRule = b.rule || window.amazonAdsPauseRule;
                         amzRefreshPrBtn();
+                        amzSetPauseCounts(b.counts);
                         var msg = b.message || 'Saved.';
                         if (b.apply) {
                             msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
@@ -9424,7 +9627,7 @@
                             if ((b.apply.paused || 0) > 0) amzEnsureStatIncludesPaused();
                         }
                         if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }
-                        if (!apply && !(en && en.checked) && typeof bootstrap !== 'undefined') {
+                        if (!apply && !anyOn && typeof bootstrap !== 'undefined') {
                             var inst = bootstrap.Modal.getInstance(document.getElementById('amazonAdsPrRuleModal'));
                             if (inst) inst.hide();
                         }
@@ -9449,6 +9652,7 @@
                         .then(function (body) {
                             if (body && body.rule) window.amazonAdsPauseRule = body.rule;
                             amzFillPrModal();
+                            amzSetPauseCounts(body && body.counts);
                             amzRefreshPrBtn();
                         })
                         .catch(function () { amzFillPrModal(); });
@@ -9459,15 +9663,21 @@
             var prApplyBtn = document.getElementById('amazonAdsPrRuleApplyBtn');
             if (prApplyBtn) prApplyBtn.addEventListener('click', function () {
                 var dilInput = document.getElementById('amazonAdsPrDilAbove');
-                var dilEn = document.getElementById('amazonAdsPrDilEnabled');
                 var en = document.getElementById('amazonAdsPrEnabled');
-                var on = !!(en && en.checked);
-                var dilOn = !!(dilEn && dilEn.checked);
-                var msg = on && dilOn
-                    ? ('Save Pause Rule and pause matching PARENT and child SKU campaigns when Dil% ≥ ' + (dilInput ? dilInput.value : '100') + '% on Amazon now? Only PARENT campaigns will turn back on later.')
-                    : 'Save Pause Rule with Dil% auto-pause off? Matching campaigns will not be auto-paused by this rule.';
+                var acosRules = amzAcosRulesFromModal();
+                var on = [];
+                if (en && en.checked) on.push('1 (Dil% ≥ ' + (dilInput ? dilInput.value : '100') + '%)');
+                var labels = { kw: '2 (KW ACOS% red)', pt: '3 (PT ACOS% red)', hl: '4 (HL ACOS% red)' };
+                AMZ_ACOS_RULE_KEYS.forEach(function (k) { if (acosRules[k]) on.push(labels[k]); });
+                var msg = on.length
+                    ? ('Save and pause matching campaigns on Amazon now for rule ' + on.join(', ') + '?')
+                    : 'All rules are OFF. Save with nothing to pause?';
                 if (!window.confirm(msg)) return;
                 amzSavePrRule(true);
+            });
+            ['amazonAdsPrEnabled'].concat(AMZ_ACOS_RULE_KEYS.map(function (k) { return 'amazonAdsAcosRule_' + k; })).forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.addEventListener('change', amzSyncPrSwitchLabels);
             });
             amzRefreshPrBtn();
 

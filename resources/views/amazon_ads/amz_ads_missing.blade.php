@@ -1226,6 +1226,7 @@
             function amzAcosTier(row, kind) {
                 var mine = amzMetricValue(row, kind, 'acos');
                 if (mine == null) { return null; }
+                if (mine >= 100) { return 'high'; }   // 100% (or worse) is always red, whatever the siblings are
                 var vals = ['kw', 'pt', 'hl'].map(function (k) { return amzMetricValue(row, k, 'acos'); })
                     .filter(function (v) { return v != null; });
                 if (vals.length < 2) { return null; }

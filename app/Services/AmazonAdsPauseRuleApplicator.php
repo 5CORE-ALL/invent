@@ -7,6 +7,7 @@ use App\Models\AmazonSbCampaignReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Services\FbaInventoryService;
 use App\Support\AmazonAcosSbgtRule;
+use App\Support\AmazonAdsAcosPauseRules;
 use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsPauseRule;
 use Illuminate\Support\Facades\Log;
@@ -88,6 +89,11 @@ class AmazonAdsPauseRuleApplicator
             $this->applyChannel('sb', $sb, $rule, $metricsByName, $familyByName, $parentDilByFam, $dryRun, $stats);
         }
 
+        $acosKeys = AmazonAdsAcosPauseRules::enabledKeys($rule);
+        if ($acosKeys !== []) {
+            $this->applyAcosRules($acosKeys, $dryRun, $stats);
+        }
+
         $again = $this->pauseReactivatedChildCampaigns($dryRun);
         $stats['paused'] += (int) ($again['paused'] ?? 0);
         $stats['unchanged'] += (int) ($again['unchanged'] ?? 0);
@@ -103,12 +109,61 @@ class AmazonAdsPauseRuleApplicator
         $stats['paused_names'] = array_values(array_unique(array_filter($this->queuedPauseNames)));
         $stats['enabled_names'] = array_values(array_unique(array_filter($this->queuedEnableNames)));
 
-        if (! $hasCampaign && $stats['paused'] === 0) {
-            $stats['errors'][] = 'No Dil% pause rule configured — Amazon was not updated.';
-            Log::warning('amazon:ads-pause-rule skipped: empty pause rule (PR Dil% off).');
+        if (! $hasCampaign && $acosKeys === [] && $stats['paused'] === 0) {
+            $stats['errors'][] = 'No pause rule is ON — Amazon was not updated.';
+            Log::warning('amazon:ads-pause-rule skipped: all pause rules are off.');
         }
 
         return $stats;
+    }
+
+    /**
+     * Rules 2-4: pause a parent's KW / PT / HL campaigns while that ad type's ACOS% is red on
+     * /amazon-ads/missing. Only ENABLED campaigns are paused; nothing is ever turned back on here.
+     *
+     * @param  list<string>  $keys  kw / pt / hl
+     * @param  array<string, mixed>  $stats
+     */
+    private function applyAcosRules(array $keys, bool $dryRun, array &$stats): void
+    {
+        $red = AmazonAdsAcosPauseRules::redCampaigns($keys);
+        if ($red === []) {
+            return;
+        }
+        $this->trackRuleState = true;
+        $latest = [];
+        foreach (['sp', 'sb'] as $channel) {
+            foreach ($this->collectLatestCampaigns($channel) as $row) {
+                $latest[$channel][AmazonAdsPauseRule::normalizeCampaignName($row['campaignName'])] = $row;
+            }
+        }
+
+        $pauseIds = ['sp' => [], 'sb' => []];
+        foreach ($red as $hit) {
+            $channel = AmazonAdsAcosPauseRules::RULES[$hit['key']]['channel'];
+            $row = $latest[$channel][AmazonAdsPauseRule::normalizeCampaignName($hit['campaign_name'])] ?? null;
+            if ($row === null) {
+                $stats['skipped']++;
+                continue;
+            }
+            if ($row['campaignStatus'] !== AmazonAdsPauseRule::ACTION_ENABLED) {
+                $stats['unchanged']++;
+                continue;
+            }
+            $cid = $row['campaign_id'];
+            $pauseIds[$channel][] = $cid;
+            $this->namesByCid[$cid] = $row['campaignName'];
+            $this->reasonsByCid[$cid] = AmazonAdsAcosPauseRules::reason($hit['key'], $hit['acos']);
+            $this->queuedPauseNames[$cid] = $row['campaignName'];
+        }
+
+        foreach ($pauseIds as $channel => $ids) {
+            if ($dryRun) {
+                $stats['paused'] += count(array_unique($ids));
+            } else {
+                $this->pushState($channel, $ids, AmazonAdsPauseRule::ACTION_PAUSED, $stats);
+            }
+        }
     }
 
     /**

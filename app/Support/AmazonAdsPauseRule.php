@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Amazon Ads All pause/activate rule: Dil% only.
+ * Amazon Ads All pause/activate rule 1: Dil%. Rules 2-4 (KW / PT / HL red ACOS%)
+ * are in {@see AmazonAdsAcosPauseRules}; they only pause and are never auto-enabled.
  *
  * Price and Reviews rules are retired. Dil% ≥ threshold pauses PARENT and child
  * SKU campaigns. Only PARENT campaigns are turned back on after a recent Pause
@@ -46,6 +47,7 @@ final class AmazonAdsPauseRule
             'acos' => [],
             'pr' => self::defaultPr(),
             'reviews' => self::defaultReviews(),
+            'acos_rules' => AmazonAdsAcosPauseRules::defaults(),
         ];
     }
 
@@ -193,7 +195,20 @@ final class AmazonAdsPauseRule
             'acos' => [],
             'pr' => self::normalizePr($input['pr'] ?? self::defaultPr()),
             'reviews' => self::normalizeReviews($input['reviews'] ?? self::defaultReviews()),
+            'acos_rules' => AmazonAdsAcosPauseRules::normalize($input['acos_rules'] ?? null),
         ];
+    }
+
+    /**
+     * Rules 2-4 (KW / PT / HL red ACOS%) ON/OFF flags.
+     *
+     * @param  array<string, mixed>  $acosRules  e.g. ['kw' => true, 'pt' => false, 'hl' => false]
+     */
+    public static function persistAcosRules(array $acosRules): void
+    {
+        $current = self::loadResolvedRule();
+        $current['acos_rules'] = AmazonAdsAcosPauseRules::normalize($acosRules);
+        self::persistRule($current);
     }
 
     /**
@@ -209,6 +224,9 @@ final class AmazonAdsPauseRule
         }
         if (! array_key_exists('reviews', $rule)) {
             $normalized['reviews'] = $existing['reviews'] ?? self::defaultReviews();
+        }
+        if (! array_key_exists('acos_rules', $rule)) {
+            $normalized['acos_rules'] = $existing['acos_rules'] ?? AmazonAdsAcosPauseRules::defaults();
         }
         $row = AmazonAdsPauseRuleSetting::query()->orderBy('id')->first();
         if ($row === null) {

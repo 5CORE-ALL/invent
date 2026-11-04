@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\SchemaMemo;
+use App\Support\AmazonAdsAcosPauseRules;
 use App\Support\AmazonAdsPauseRule;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Log;
@@ -77,6 +78,29 @@ class AmazonAdsPauseRuleState extends Model
         }
 
         return $out;
+    }
+
+    /**
+     * Ads currently paused by each rule (open pauses not turned back on): dil / kw / pt / hl.
+     *
+     * @return array{dil: int, kw: int, pt: int, hl: int}
+     */
+    public static function openCountsByRule(): array
+    {
+        self::ensureTable();
+        $counts = ['dil' => 0, 'kw' => 0, 'pt' => 0, 'hl' => 0];
+        $reasons = self::query()
+            ->whereNotNull('paused_at')
+            ->whereNull('reactivated_at')
+            ->pluck('paused_reason');
+        foreach ($reasons as $reason) {
+            $key = AmazonAdsAcosPauseRules::ruleKeyFromReason($reason);
+            if ($key !== null) {
+                $counts[$key]++;
+            }
+        }
+
+        return $counts;
     }
 
     /**
