@@ -424,7 +424,7 @@ class ShoppableVideoController extends Controller
             'target' => 'required|in:9:16,16:9',
         ]);
 
-        set_time_limit(240);
+        set_time_limit(300);
 
         try {
             $url = $request->target === '16:9'
@@ -857,7 +857,7 @@ class ShoppableVideoController extends Controller
             'url' => 'required|string|max:2000',
         ]);
 
-        set_time_limit(240);
+        set_time_limit(300);
 
         try {
             $url = $converter->changeToSixteenNine($request->url, $request->sku);
