@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\Schema;
  * Per ad type (KW, PT, HL) and ACOS colour (yellow, red — same colours as /amazon-ads/missing, lifetime
  * data, ad types with lifetime spend under $30 ignored)
  * the suggested budget (SBGT) of the parent's linked campaigns is capped at an editable $ amount
- * (default $1). A cap only lowers a budget; an SBGT of 0 (pause) stays 0.
+ * (default $1). A cap only lowers a budget; an SBGT of 0 (pause) stays 0. A cap of $0 sets SBGT to 0,
+ * which the budget push / live sync treat as "pause the campaign".
  */
 final class AmazonAdsBgtCapRule
 {
@@ -72,8 +73,8 @@ final class AmazonAdsBgtCapRule
                     throw new \InvalidArgumentException(strtoupper($key).' '.$colour.' cap must be a number.');
                 }
                 $n = (int) floor((float) $raw);
-                if ($n < 1 || $n > self::MAX_CAP) {
-                    throw new \InvalidArgumentException(strtoupper($key).' '.$colour.' cap must be a whole dollar amount from 1 to '.self::MAX_CAP.'.');
+                if ($n < 0 || $n > self::MAX_CAP) {
+                    throw new \InvalidArgumentException(strtoupper($key).' '.$colour.' cap must be a whole dollar amount from 0 to '.self::MAX_CAP.'.');
                 }
                 $base['caps'][$key][$colour] = $n;
             }

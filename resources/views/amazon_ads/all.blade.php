@@ -2084,7 +2084,7 @@
                 </div>
                 <div class="modal-body">
                     <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-                        <p class="small text-muted mb-0">Caps SBGT of a parent's KW / PT / HL ads when their ACOS% is yellow or red on <a href="{{ route('amazon.ads.missing') }}" target="_blank" rel="noopener">Missing Ads</a> (lifetime data, spend under $30 ignored). Only lowers a budget.</p>
+                        <p class="small text-muted mb-0">Caps SBGT of a parent's KW / PT / HL ads when their ACOS% is yellow or red on <a href="{{ route('amazon.ads.missing') }}" target="_blank" rel="noopener">Missing Ads</a> (lifetime data, spend under $30 ignored). Only lowers a budget. A cap of <strong>$0 pauses</strong> the ad.</p>
                         <div class="form-check form-switch mb-0 flex-shrink-0">
                             <input class="form-check-input" type="checkbox" role="switch" id="amazonAdsBgtCapEnabled">
                             <label class="form-check-label small fw-semibold" for="amazonAdsBgtCapEnabled"><span id="amazonAdsBgtCapEnabledLbl">OFF</span></label>
@@ -2107,7 +2107,7 @@
                                             <div class="d-flex align-items-center gap-2">
                                                 <div class="input-group input-group-sm" style="max-width: 100px;">
                                                     <span class="input-group-text">$</span>
-                                                    <input type="number" min="1" max="9999" step="1" value="1" class="form-control amz-bgt-cap-input" id="amazonAdsBgtCap_{{ $capKey }}_{{ $capColour }}" data-key="{{ $capKey }}" data-colour="{{ $capColour }}">
+                                                    <input type="number" min="0" max="9999" step="1" value="1" class="form-control amz-bgt-cap-input" id="amazonAdsBgtCap_{{ $capKey }}_{{ $capColour }}" data-key="{{ $capKey }}" data-colour="{{ $capColour }}">
                                                 </div>
                                                 <span class="small text-muted"><strong id="amazonAdsBgtCapCount_{{ $capKey }}_{{ $capColour }}">0</strong></span>
                                             </div>
@@ -9462,8 +9462,8 @@
                         var c = AMZ_CAP_COLOURS[j];
                         var inp = amzCapEl('amazonAdsBgtCap_' + k + '_' + c);
                         var n = inp ? parseFloat(String(inp.value).trim()) : NaN;
-                        if (!isFinite(n) || n < 1) {
-                            if (err) { err.textContent = k.toUpperCase() + ' ' + c + ' cap must be $1 or more.'; err.classList.remove('d-none'); }
+                        if (!isFinite(n) || n < 0) {
+                            if (err) { err.textContent = k.toUpperCase() + ' ' + c + ' cap must be $0 or more.'; err.classList.remove('d-none'); }
                             return;
                         }
                         caps[k][c] = n;
