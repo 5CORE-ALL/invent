@@ -441,15 +441,22 @@
                 },
                 {
                     title: "MISSING",
-                    field: "_missing",
+                    field: "is_missing",
                     hozAlign: "center",
                     headerSort: false,
-                    width: 100,
+                    width: 110,
                     formatter: function (cell) {
-                        return hasVideo(cell.getRow().getData())
-                            ? ''
-                            : '<span class="ration-missing-dot" title="Video missing"></span>';
-                    }
+                        const row = cell.getRow().getData();
+                        const checked = !!row.is_missing;
+                        const by = row.is_missing_by ? esc(row.is_missing_by) : '';
+                        const dot = hasVideo(row) ? '' : '<span class="ration-missing-dot" title="No video link"></span>';
+                        return `<div class="text-center">
+                            ${dot}
+                            <input type="checkbox" class="status-box form-check-input" data-flag="is_missing" ${checked ? 'checked' : ''}>
+                            ${checked && by ? `<div class="status-meta">${by}</div>` : ''}
+                        </div>`;
+                    },
+                    cellClick: onStatusClick,
                 },
                 {
                     title: "CHECK",
@@ -668,7 +675,7 @@
                 const el = document.getElementById(id);
                 if (el) el.textContent = count.toLocaleString();
             };
-            setCount("count-missing", base.filter(row => !hasVideo(row)).length);
+            setCount("count-missing", base.filter(row => rowIsMissing(row)).length);
             setCount("count-checked", base.filter(row => !!row.is_checked).length);
             setCount("count-ad", base.filter(row => !!row.ad_checked).length);
             setCount("count-redo", base.filter(row => !!row.redo_checked).length);
@@ -699,8 +706,12 @@
             return matchesParent && matchesRowType && matchesDilColor && matchesVideo;
         }
 
+        function rowIsMissing(data) {
+            return !!data.is_missing || !hasVideo(data);
+        }
+
         function matchesStatusFilters(data) {
-            if (statusFilters.missing && hasVideo(data)) return false;
+            if (statusFilters.missing && !rowIsMissing(data)) return false;
             if (statusFilters.checked && !data.is_checked) return false;
             if (statusFilters.ad && !data.ad_checked) return false;
             if (statusFilters.redo && !data.redo_checked) return false;

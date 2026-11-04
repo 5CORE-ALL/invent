@@ -243,6 +243,9 @@ class ShoppableVideoController extends Controller
         };
 
         return [
+            'is_missing' => $bool('is_missing'),
+            'is_missing_by' => $value['is_missing_by'] ?? '',
+            'is_missing_at' => $value['is_missing_at'] ?? '',
             'is_checked' => $bool('is_checked'),
             'checked_by' => $value['checked_by'] ?? '',
             'checked_at' => $value['checked_at'] ?? '',
