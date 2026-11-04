@@ -123,16 +123,16 @@
     .ratio-player.is-open { display: flex; }
     .ratio-player-frame {
         position: relative;
-        width: min(92vw, calc(86vh * var(--video-ar, 0.5625)));
-        aspect-ratio: var(--video-ar, 0.5625);
-        max-height: 86vh;
+        width: min(70vw, calc(62vh * var(--video-ar, 1.7778)));
+        aspect-ratio: var(--video-ar, 1.7778);
+        max-height: 62vh;
         background: transparent;
     }
     .ratio-player-frame video {
         width: 100%;
         height: 100%;
         display: block;
-        object-fit: fill;
+        object-fit: contain;
         background: transparent;
     }
     .ratio-player-close {
