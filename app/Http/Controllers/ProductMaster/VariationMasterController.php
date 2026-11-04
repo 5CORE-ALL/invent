@@ -39,17 +39,17 @@ class VariationMasterController extends Controller
     {
         $request->validate([
             'id' => 'required|integer',
-            'parent' => 'nullable|string|max:255',
-            'variation_type' => 'nullable|string|max:120',
-            'variation_name' => 'nullable|string|max:500',
-            'title' => 'nullable|string|max:500',
-            'description' => 'nullable|string|max:20000',
-            'bullet_1' => 'nullable|string|max:1000',
-            'bullet_2' => 'nullable|string|max:1000',
-            'bullet_3' => 'nullable|string|max:1000',
-            'bullet_4' => 'nullable|string|max:1000',
-            'bullet_5' => 'nullable|string|max:1000',
-            'aplus' => 'nullable|string|max:200000',
+            'parent' => 'nullable|string',
+            'variation_type' => 'nullable|string',
+            'variation_name' => 'nullable|string',
+            'title' => 'nullable|string',
+            'description' => 'nullable|string',
+            'bullet_1' => 'nullable|string',
+            'bullet_2' => 'nullable|string',
+            'bullet_3' => 'nullable|string',
+            'bullet_4' => 'nullable|string',
+            'bullet_5' => 'nullable|string',
+            'aplus' => 'nullable|string',
         ]);
 
         $product = ProductMaster::query()->find($request->integer('id'));
@@ -272,18 +272,18 @@ class VariationMasterController extends Controller
     public function bulkUpdate(Request $request): JsonResponse
     {
         $request->validate([
-            'ids' => 'required|array|min:1|max:5000',
+            'ids' => 'required|array|min:1',
             'ids.*' => 'integer',
-            'variation_type' => 'nullable|string|max:120',
-            'variation_name' => 'nullable|string|max:500',
-            'title' => 'nullable|string|max:500',
-            'description' => 'nullable|string|max:20000',
-            'bullet_1' => 'nullable|string|max:1000',
-            'bullet_2' => 'nullable|string|max:1000',
-            'bullet_3' => 'nullable|string|max:1000',
-            'bullet_4' => 'nullable|string|max:1000',
-            'bullet_5' => 'nullable|string|max:1000',
-            'aplus' => 'nullable|string|max:200000',
+            'variation_type' => 'nullable|string',
+            'variation_name' => 'nullable|string',
+            'title' => 'nullable|string',
+            'description' => 'nullable|string',
+            'bullet_1' => 'nullable|string',
+            'bullet_2' => 'nullable|string',
+            'bullet_3' => 'nullable|string',
+            'bullet_4' => 'nullable|string',
+            'bullet_5' => 'nullable|string',
+            'aplus' => 'nullable|string',
         ]);
 
         $products = ProductMaster::query()->whereIn('id', array_map('intval', $request->input('ids', [])))->get();

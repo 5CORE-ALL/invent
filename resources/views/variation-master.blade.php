@@ -349,35 +349,35 @@
                         <input class="form-check-input vm-apply" type="checkbox" data-field="variation_type" title="Apply this field">
                         <div class="vm-bulk-body">
                             <label class="vm-bulk-label">Variation Type</label>
-                            <input type="text" class="form-control form-control-sm vm-bulk-input" data-field="variation_type" maxlength="120" placeholder="Color, Size…">
+                            <input type="text" class="form-control form-control-sm vm-bulk-input" data-field="variation_type" placeholder="Color, Size…">
                         </div>
                     </div>
                     <div class="vm-bulk-field">
                         <input class="form-check-input vm-apply" type="checkbox" data-field="variation_name" title="Apply this field">
                         <div class="vm-bulk-body">
                             <label class="vm-bulk-label">Variation Name</label>
-                            <input type="text" class="form-control form-control-sm vm-bulk-input" data-field="variation_name" maxlength="500" placeholder="Black, Blue…">
+                            <input type="text" class="form-control form-control-sm vm-bulk-input" data-field="variation_name" placeholder="Black, Blue…">
                         </div>
                     </div>
                     <div class="vm-bulk-field">
                         <input class="form-check-input vm-apply" type="checkbox" data-field="title" title="Apply this field">
                         <div class="vm-bulk-body">
                             <label class="vm-bulk-label">Title</label>
-                            <textarea class="form-control form-control-sm vm-bulk-input" data-field="title" rows="2" maxlength="500"></textarea>
+                            <textarea class="form-control form-control-sm vm-bulk-input" data-field="title" rows="2"></textarea>
                         </div>
                     </div>
                     <div class="vm-bulk-field">
                         <input class="form-check-input vm-apply" type="checkbox" data-field="description" title="Apply this field">
                         <div class="vm-bulk-body">
                             <label class="vm-bulk-label">Description</label>
-                            <textarea class="form-control form-control-sm vm-bulk-input" data-field="description" rows="5" maxlength="20000"></textarea>
+                            <textarea class="form-control form-control-sm vm-bulk-input" data-field="description" rows="5"></textarea>
                         </div>
                     </div>
                     <div class="vm-bulk-field">
                         <input class="form-check-input vm-apply" type="checkbox" data-field="aplus" title="Apply this field">
                         <div class="vm-bulk-body">
                             <label class="vm-bulk-label">A+ Content (HTML)</label>
-                            <textarea class="form-control form-control-sm vm-bulk-input" data-field="aplus" rows="4" maxlength="200000" placeholder="&lt;div&gt;…&lt;/div&gt;"></textarea>
+                            <textarea class="form-control form-control-sm vm-bulk-input" data-field="aplus" rows="4" placeholder="&lt;div&gt;…&lt;/div&gt;"></textarea>
                         </div>
                     </div>
                     @for ($b = 1; $b <= 5; $b++)
@@ -385,7 +385,7 @@
                             <input class="form-check-input vm-apply" type="checkbox" data-field="bullet_{{ $b }}" title="Apply this field">
                             <div class="vm-bulk-body">
                                 <label class="vm-bulk-label">Bullet {{ $b }}</label>
-                                <input type="text" class="form-control form-control-sm vm-bulk-input" data-field="bullet_{{ $b }}" maxlength="1000">
+                                <input type="text" class="form-control form-control-sm vm-bulk-input" data-field="bullet_{{ $b }}">
                             </div>
                         </div>
                     @endfor
@@ -410,12 +410,9 @@
                 </div>
                 <div class="modal-body">
                     <div class="mb-3"><strong>Product:</strong> <span id="vm-desc-product"></span> <span class="small text-muted" id="vm-desc-sku"></span></div>
-                    <p class="small text-muted mb-2"><i class="fas fa-info-circle"></i> One description is shared by every child of this parent. Pick a marketplace tab to choose which marketplace <strong>Fetch live</strong> and <strong>AI Generate</strong> use, edit in the editor, then Save. It is saved as the parent's A+ HTML: eBay sends it instead of the Description, other marketplaces keep using the Description.</p>
+                    <p class="small text-muted mb-2"><i class="fas fa-info-circle"></i> One description is shared by every child of this parent. Edit it, then Save. It is saved as the parent's A+ HTML: eBay sends it instead of the Description, other marketplaces keep using the Description.</p>
 
-                    <div id="vm-desc-tabs" class="d-flex flex-wrap gap-1 mb-2"></div>
-
-                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                        <div class="fw-semibold small" id="vm-desc-active-label">—</div>
+                    <div class="d-flex flex-wrap align-items-center justify-content-end gap-2 mb-2">
                         <div class="d-flex flex-wrap gap-2">
                             <button type="button" class="btn btn-outline-success btn-sm" id="vm-desc-fetch-live"><i class="fas fa-cloud-download-alt"></i> Fetch live</button>
                             <button type="button" class="btn btn-outline-dark btn-sm" id="vm-desc-fetch-aplus" title="Load the stored A+ content of this SKU into the editor (fetched once automatically if not stored yet)"><i class="fas fa-star"></i> Fetch A+</button>
@@ -427,7 +424,7 @@
                         <div class="small text-muted" id="vm-desc-hint">Editing the shared description of this parent.</div>
                         <div class="small text-muted" id="vm-desc-count">0 / —</div>
                     </div>
-                    <p class="vm-desc-note mb-0 mt-1"><i class="fas fa-info-circle"></i> Some marketplaces can't be fetched live yet (no read API) — those tabs return nothing.</p>
+                    <p class="vm-desc-note mb-0 mt-1"><i class="fas fa-info-circle"></i> Fetch live reads this SKU from the marketplace. Fetch A+ loads the stored Shopify A+ content.</p>
                     <div class="mt-2 small text-muted d-none" id="vm-desc-loading"><i class="fas fa-spinner fa-spin"></i> <span id="vm-desc-loading-text"></span></div>
                 </div>
                 <div class="modal-footer">
@@ -896,35 +893,10 @@
             const mpConfig = window.__ALL_MP__ || {};
             const MP_LABELS = mpConfig.labels || {};
             const ALL_MP = (mpConfig.enabled && mpConfig.enabled.length) ? mpConfig.enabled : Object.keys(MP_LABELS);
-            const MP_LIMITS = {
-                amazon: 2000, temu: 2000, temu2: 2000, walmart: 2000, shein: 2000, aliexpress: 2000,
-                reverb: 1500, bestbuy: 1500, doba: 1500, wayfair: 2000,
-                shopify_main: 500000, shopify_pls: 500000, ebay: 500000, ebay2: 500000, ebay3: 500000,
-                macy: 600, faire: 600
-            };
-            const MP_LIMIT_LABELS = {
-                amazon: '2000 (plain text, no HTML)', temu: '2000 (plain text)', temu2: '2000 (plain text)',
-                walmart: '2000', shein: '2000', aliexpress: '2000', doba: '1500',
-                shopify_main: 'no hard limit', shopify_pls: 'no hard limit',
-                ebay: '500000 (~800 on mobile)', ebay2: '500000 (~800 on mobile)', ebay3: '500000 (~800 on mobile)',
-                reverb: '1500', wayfair: '2000 (100–200 words marketing copy)', bestbuy: '1500', macy: '600', faire: '600'
-            };
-            const TIER1500 = ['amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy', 'walmart', 'shein', 'aliexpress'];
-            const TIER1000 = ['shopify_main', 'shopify_pls', 'doba'];
-            const TIER800 = ['ebay', 'ebay2', 'ebay3'];
             let descActiveMp = ALL_MP[0] || '';
             let descEditor = null;
             let descEditorPromise = null;
             let descSetting = false;
-
-            function mpLimit(mp) { return MP_LIMITS[mp] || 1500; }
-
-            function mpTier(mp) {
-                if (TIER1500.indexOf(mp) !== -1) return '1500';
-                if (TIER1000.indexOf(mp) !== -1) return '1000';
-                if (TIER800.indexOf(mp) !== -1) return '800';
-                return '600';
-            }
 
             function plainText(html) {
                 const tmp = document.createElement('div');
@@ -948,15 +920,8 @@
             function updateDescCount() {
                 const el = document.getElementById('vm-desc-count');
                 if (!el) return;
-                const len = plainText(getDescContent()).length;
-                const lim = mpLimit(descActiveMp);
-                if (lim >= 100000) {
-                    el.textContent = len + ' characters (' + (MP_LABELS[descActiveMp] || 'this marketplace') + ': no hard limit)';
-                    el.classList.remove('at-limit');
-                    return;
-                }
-                el.textContent = len + ' / ' + lim + ' plain-text characters';
-                el.classList.toggle('at-limit', len > lim);
+                el.textContent = plainText(getDescContent()).length.toLocaleString() + ' characters';
+                el.classList.remove('at-limit');
             }
 
             function ensureDescEditor() {
@@ -992,23 +957,6 @@
                     descSetting = false;
                     updateDescCount();
                 });
-            }
-
-            function buildDescTabs() {
-                document.getElementById('vm-desc-tabs').innerHTML = ALL_MP.map(function (mp) {
-                    return '<button type="button" class="btn btn-sm btn-outline-secondary mp-tab" data-mp="' + escapeHtml(mp) + '">' + escapeHtml(MP_LABELS[mp] || mp) + '</button>';
-                }).join('');
-            }
-
-            function selectDescMp(mp) {
-                descActiveMp = mp;
-                document.querySelectorAll('#vm-desc-tabs .mp-tab').forEach(function (b) {
-                    const on = b.getAttribute('data-mp') === mp;
-                    b.classList.toggle('btn-primary', on);
-                    b.classList.toggle('btn-outline-secondary', !on);
-                });
-                document.getElementById('vm-desc-active-label').textContent = (MP_LABELS[mp] || mp) + ' — max ' + (MP_LIMIT_LABELS[mp] || (mpLimit(mp) + ' plain-text characters'));
-                updateDescCount();
             }
 
             function descLoading(text) {
@@ -1100,13 +1048,11 @@
             function descAiGenerate() {
                 const mp = descActiveMp;
                 if (!mp || !panelRow) return;
-                descLoading('Generating description for ' + (MP_LABELS[mp] || mp) + ' (max ' + (MP_LIMIT_LABELS[mp] || mpLimit(mp)) + ')…');
+                descLoading('Generating description for ' + (MP_LABELS[mp] || mp) + '…');
                 descButtonLoading('vm-desc-ai', true, 'Generating...');
                 descApi('/product-description/generate', {
                     product_name: String(panelRow.title || parentLabel(panelRow) || ''),
                     current_text: plainText(getDescContent()),
-                    tier: mpTier(mp),
-                    max_chars: mpLimit(mp),
                     marketplace: mp
                 }).then(function (res) {
                     if (res.success && res.description) {
@@ -1123,18 +1069,12 @@
                 });
             }
 
-            buildDescTabs();
-            document.getElementById('vm-desc-tabs')?.addEventListener('click', function (e) {
-                const tab = e.target.closest('.mp-tab');
-                if (tab) selectDescMp(tab.getAttribute('data-mp'));
-            });
             document.getElementById('vm-desc-fetch-live')?.addEventListener('click', descFetchLive);
             document.getElementById('vm-desc-fetch-aplus')?.addEventListener('click', descFetchAplus);
             document.getElementById('vm-desc-ai')?.addEventListener('click', descAiGenerate);
             aplusModalEl?.addEventListener('shown.bs.modal', function () {
                 ensureDescEditor().then(function () {
                     setDescContent(panelRow ? (panelRow.aplus || '') : '');
-                    selectDescMp(descActiveMp || ALL_MP[0] || '');
                 });
             });
 
