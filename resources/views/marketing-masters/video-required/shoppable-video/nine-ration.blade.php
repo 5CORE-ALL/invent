@@ -30,43 +30,59 @@
         color: white;
     }
 
-    .ration-filter {
-        height: 22px;
-        font-size: 11px;
-        padding: 0 18px 0 6px;
-        background-size: 10px 8px;
+    .ration-toolbar {
+        gap: 8px !important;
     }
-    #row-data-type.ration-filter { width: 112px; }
-    #dil-color-filter.ration-filter { width: 78px; }
-
-    .video-link-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        height: 22px;
-        padding: 0 8px;
-        border: 0;
+    .ration-toolbar > .btn,
+    .ration-toolbar > a.btn,
+    .ration-toolbar .dropdown > .btn,
+    .ration-toolbar .form-select,
+    .ration-toolbar .video-link-badge {
+        height: 32px;
+        min-height: 32px;
+        padding: 0 14px;
         border-radius: 4px;
-        background: #0d6efd;
-        color: #fff;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 600;
         line-height: 1;
+        letter-spacing: 0.2px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    }
+    .ration-toolbar .form-select {
+        width: auto;
+        padding-right: 28px;
+    }
+    #row-data-type.ration-filter { min-width: 132px; }
+    #dil-color-filter.ration-filter { min-width: 108px; }
+    .ration-toolbar .btn-group .btn {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+    }
+
+    .video-link-badge {
+        border: 0;
+        background: #0ea5e9;
+        color: #fff;
+        white-space: nowrap;
         cursor: pointer;
         user-select: none;
     }
     .video-link-badge span {
-        background: #fff;
-        color: #0d6efd;
-        border-radius: 3px;
-        padding: 0 4px;
-        font-size: 10px;
-        font-weight: 700;
-        line-height: 14px;
+        font-weight: 800;
+        font-size: 13px;
+        color: #fff;
     }
-    .video-link-badge:hover { opacity: 0.88; }
+    .video-link-badge:hover { opacity: 0.85; }
     .video-link-badge.is-active {
-        box-shadow: 0 0 0 2px #fff, 0 0 0 3px #0d6efd;
+        box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.35);
     }
 </style>
 @endsection
@@ -78,24 +94,24 @@
     <div class="col-12">
         <div class="card shadow-sm">
             <div class="card-body">
-                <div class="mb-3 d-flex flex-wrap align-items-center gap-3">
+                <div class="ration-toolbar mb-3 d-flex flex-wrap align-items-center">
 
                     <!-- Play/Pause Controls -->
                     <div class="btn-group time-navigation-group me-2" role="group" aria-label="Parent navigation">
                         <button id="play-backward" class="btn btn-light rounded-circle shadow-sm"
-                            style="width: 36px; height: 36px; padding: 6px;">
+                            style="width: 32px; height: 32px; padding: 0;">
                             <i class="fas fa-step-backward"></i>
                         </button>
                         <button id="play-pause" class="btn btn-light rounded-circle shadow-sm mx-1"
-                            style="width: 36px; height: 36px; padding: 6px; display: none;">
+                            style="width: 32px; height: 32px; padding: 0; display: none;">
                             <i class="fas fa-pause"></i>
                         </button>
                         <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm mx-1"
-                            style="width: 36px; height: 36px; padding: 6px;">
+                            style="width: 32px; height: 32px; padding: 0;">
                             <i class="fas fa-play"></i>
                         </button>
                         <button id="play-forward" class="btn btn-light rounded-circle shadow-sm"
-                            style="width: 36px; height: 36px; padding: 6px;">
+                            style="width: 32px; height: 32px; padding: 0;">
                             <i class="fas fa-step-forward"></i>
                         </button>
                     </div>
@@ -123,7 +139,7 @@
 
                     <!-- Column Management -->
                     <div class="dropdown">
-                        <button class="btn btn-primary dropdown-toggle d-flex align-items-center gap-1"
+                        <button class="btn btn-sm btn-primary dropdown-toggle"
                             type="button" id="hide-column-dropdown" data-bs-toggle="dropdown">
                             <i class="bi bi-grid-3x3-gap-fill"></i>
                             Manage Columns
@@ -135,26 +151,25 @@
                     </div>
 
                     <!-- Show All Columns -->
-                    <button id="show-all-columns-btn" class="btn btn-outline-success d-flex align-items-center gap-1">
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-success">
                         <i class="bi bi-eye"></i>
                         Show All
                     </button>
 
                     <!-- Import Button -->
-                    <button id="import-btn" class="btn btn-outline-primary d-flex align-items-center gap-1">
+                    <button id="import-btn" class="btn btn-sm btn-outline-primary">
                         <i class="fas fa-upload"></i>
                         Import
                     </button>
 
                     <!-- Export Button -->
-                    <a href="/nine-ration-video/export" class="btn btn-outline-success d-flex align-items-center gap-1">
+                    <a href="/nine-ration-video/export" class="btn btn-sm btn-outline-success">
                         <i class="fas fa-download"></i>
                         Export
                     </a>
 
                     <button type="button" id="video-link-filter" class="video-link-badge" title="Show rows that have a 9:16 video">
-                        <i class="fa fa-link"></i> 9:16 Video
-                        <span id="total-nine-link-count">0</span>
+                        <i class="fa fa-link"></i> 9:16 Video: <span id="total-nine-link-count">0</span>
                     </button>
 
                 </div>
