@@ -233,8 +233,14 @@
                     sorter: "number",
                     headerTooltip: "Active SKU Mismatch from Marketplace Manager listings (Link column)",
                     formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        if (String(row.inventory_push || '') === 'failed') {
+                            const label = escapeHtml(row.inventory_push_label || 'inventory sync failed');
+                            const detail = escapeHtml(row.inventory_push_detail || '');
+                            return `<span class="badge bg-danger" title="${detail}">${label}</span>`;
+                        }
                         const v = Number(cell.getValue() || 0);
-                        const url = (cell.getRow().getData().listings_url || '').trim();
+                        const url = (row.listings_url || '').trim();
                         const color = v === 0 ? '#198754' : '#dc3545';
                         const html = `<span style="color:${color};font-weight:700;">${v.toLocaleString('en-US')}</span>`;
                         if (!url) return html;
