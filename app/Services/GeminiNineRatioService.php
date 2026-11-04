@@ -11,12 +11,12 @@ class GeminiNineRatioService
 {
     public function changeToNineSixteen(string $sourceUrl, string $sku): string
     {
-        return $this->storeConverted($sourceUrl, $sku, '720:1280', 'nine-ration', '9:16');
+        return $this->storeConverted($sourceUrl, $sku, '1080:1920', 'nine-ration', '9:16');
     }
 
     public function changeToSixteenNine(string $sourceUrl, string $sku): string
     {
-        return $this->storeConverted($sourceUrl, $sku, '1280:720', 'sixteen-ration', '16:9');
+        return $this->storeConverted($sourceUrl, $sku, '1920:1080', 'sixteen-ration', '16:9');
     }
 
     private function storeConverted(string $sourceUrl, string $sku, string $size, string $folder, string $label): string
@@ -363,8 +363,8 @@ class GeminiNineRatioService
             $ffmpeg, '-y', '-i', $input,
             '-vf', $vf,
             '-map', '0:v:0', '-map', '0:a:0?',
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-            '-c:a', 'aac', '-movflags', '+faststart',
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart',
             $output,
         ]);
         if (! $run->successful() || ! is_file($output) || filesize($output) < 1024) {
