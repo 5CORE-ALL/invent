@@ -492,12 +492,18 @@
                     field: "_change_ratio",
                     hozAlign: "center",
                     headerSort: false,
-                    width: 130,
+                    minWidth: 140,
                     formatter: function (cell) {
                         const data = cell.getRow().getData();
                         const nine = String(data.nine_ratio_link || '').trim();
                         const sixteen = String(data.sixteen_ratio_link || '').trim();
-                        if ((nine && sixteen) || (!nine && !sixteen)) return '';
+                        if (!nine && !sixteen) return '';
+                        if (nine && sixteen) {
+                            const nineMade = /\/storage\/nine-ration\//.test(nine);
+                            const sixteenMade = /\/storage\/sixteen-ration\//.test(sixteen);
+                            const target = sixteenMade && !nineMade ? '16:9' : '9:16';
+                            return `<button type="button" class="btn btn-sm btn-outline-primary change-ratio-btn re-generate-btn" data-target="${target}">RE Generated</button>`;
+                        }
                         return `<button type="button" class="btn btn-sm btn-outline-primary change-ratio-btn">Change Ratio</button>`;
                     },
                     cellClick: function (e, cell) {
@@ -507,9 +513,11 @@
                         const data = row.getData();
                         const nine = String(data.nine_ratio_link || '').trim();
                         const sixteen = String(data.sixteen_ratio_link || '').trim();
-                        const target = sixteen && !nine ? '9:16' : '16:9';
+                        const regenerate = btn.classList.contains('re-generate-btn');
+                        const target = regenerate ? btn.dataset.target : (sixteen && !nine ? '9:16' : '16:9');
                         const source = target === '9:16' ? sixteen : nine;
                         const field = target === '9:16' ? 'nine_ratio_link' : 'sixteen_ratio_link';
+                        const label = regenerate ? 'RE Generated' : 'Change Ratio';
                         if (!source) return;
                         btn.disabled = true;
                         btn.textContent = 'Changing...';
@@ -536,7 +544,7 @@
                                 }
                                 alert(message);
                                 btn.disabled = false;
-                                btn.textContent = 'Change Ratio';
+                                btn.textContent = label;
                                 return;
                             }
                             const patch = {};
@@ -549,7 +557,7 @@
                         .catch(() => {
                             alert('Could not change the ratio. The server did not finish the request.');
                             btn.disabled = false;
-                            btn.textContent = 'Change Ratio';
+                            btn.textContent = label;
                         });
                     },
                 },
