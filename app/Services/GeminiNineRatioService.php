@@ -405,10 +405,15 @@ class GeminiNineRatioService
      */
     private function framedArguments(string $ffmpeg, string $input, string $output, int $width, int $height): array
     {
+        $fit = 'scale='.$width.':'.$height.':force_original_aspect_ratio=decrease:flags=lanczos,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1';
+        $compose = '[0:v]'.$fit.',split[fg][edge];'
+            .'[edge]scale='.$width.':'.$height.':flags=bilinear[bg];'
+            .'[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]';
+
         return [
             $ffmpeg, '-y', '-i', $input,
-            '-vf', 'scale='.$width.':'.$height.':force_original_aspect_ratio=increase:flags=lanczos,crop='.$width.':'.$height.',setsar=1',
-            '-map', '0:v:0', '-map', '0:a:0?',
+            '-filter_complex', $compose,
+            '-map', '[v]', '-map', '0:a:0?',
             ...$this->encodeArguments(),
             $output,
         ];
