@@ -703,7 +703,7 @@
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--listed">Listed:<span id="listed-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed). Click again to clear.">Missing L:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L (in stock, REQ, not listed on Temu). Click again to clear.">Missing L:<span id="pending-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
                             </div>
 
@@ -893,11 +893,12 @@
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
                 const goodsId = String(item.goods_id || item.listing_id || item.eBay_item_id || '').trim();
-                // Automated: NRL from TemuDataView; Listed from temu_metrics.goods_id (API)
+                // Automated: NRL from TemuDataView; Listed from temu_metrics.goods_id (same rule as publish).
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
-                // A goods that is Incomplete in Seller Center is not Missing L: it exists and has to be finished there.
+                const temuStatus = String(item.temu_status || '');
+                // A live goods id is Listed. Incomplete (no live goods id) exists on Temu and is not Missing L.
                 const listed = goodsId ? 'Listed'
-                    : (String(item.temu_status || '') === 'Incomplete' ? 'Incomplete' : 'Pending');
+                    : (temuStatus === 'Incomplete' ? 'Incomplete' : (item.listed === 'Created' ? 'Created' : 'Pending'));
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',
@@ -973,8 +974,9 @@
                     return;
                 }
 
-                // All loaded rows, independent of the filters (INV Only, Parent/SKU, ...).
+                // Same Missing L as /missing-listing: in-stock REQ SKUs that are not already on Temu.
                 const rows = (allListingData && allListingData.length) ? allListingData : (temuListingTable.getData() || []);
+                const visible = temuListingTable.getData('active') || rows;
                 const metrics = {
                     invTotal: 0,
                     reqTotal: 0,
@@ -984,30 +986,25 @@
                     pendingTotal: 0
                 };
 
-                // Badges count every loaded row: parent rows and zero-INV SKUs included.
                 rows.forEach(item => {
-                    {
-                        metrics.invTotal += parseFloat(item.INV) || 0;
+                    if (item.is_parent || !(parseFloat(item.INV) > 0)) return;
+                    // Incomplete / Created exist on Temu. They stay in REQ and out of Listed and Missing L.
+                    const parked = item.listed === 'Incomplete' || item.listed === 'Created';
+                    metrics.invTotal += parseFloat(item.INV) || 0;
 
-                        if (item.nr_req === 'REQ') {
-                            metrics.reqTotal++;
-                            // No Link: REQ rows with no Temu goods_id (dynamic buyer link unavailable)
-                            if (!String(item.goods_id || item.eBay_item_id || '').trim()) {
-                                metrics.withoutLinkTotal++;
-                            }
+                    if (item.nr_req === 'REQ') {
+                        metrics.reqTotal++;
+                        if (!parked && item.listed !== 'Listed' && !String(item.goods_id || item.eBay_item_id || '').trim()) {
+                            metrics.withoutLinkTotal++;
                         }
-                        if (item.nr_req === 'NR') {
-                            metrics.nrlTotal++;
-                        }
-                        if (item.nr_req !== 'NR') {
-                            if (item.listed === 'Listed') {
-                                metrics.listedTotal++;
-                            }
-                            // Missing L counts SKU rows only - parent rows are never counted.
-                            if (!item.is_parent && (item.listed === 'Pending' || !item.listed)) {
-                                metrics.pendingTotal++;
-                            }
-                        }
+                    } else if (item.nr_req === 'NR') {
+                        metrics.nrlTotal++;
+                    }
+                    if (parked || item.nr_req === 'NR') return;
+                    if (item.listed === 'Listed') {
+                        metrics.listedTotal++;
+                    } else if (item.listed === 'Pending' || !item.listed) {
+                        metrics.pendingTotal++;
                     }
                 });
 
@@ -1016,7 +1013,7 @@
                 $('#without-link-total').text(metrics.withoutLinkTotal);
                 $('#listed-total').text(metrics.listedTotal);
                 $('#pending-total').text(metrics.pendingTotal);
-                $('#rows-total').text(rows.length.toLocaleString());
+                $('#rows-total').text(visible.length.toLocaleString());
             } catch (error) {
                 console.error('Error in calculateTotals:', error);
                 resetMetricsToZero();
@@ -1042,6 +1039,13 @@
             // The SKU (child) filters: INV, Listed / Missing L.
             const childPasses = function (data) {
                 if (invFilter === 'inv-only' && !(parseFloat(data.INV) > 0)) return false;
+                // The Missing L dropdown is the same set as /missing-listing: in stock, REQ, not listed.
+                if (listedFilter === 'Pending') {
+                    if (!(parseFloat(data.INV) > 0)) return false;
+                    if (data.nr_req === 'NR') return false;
+                    if (data.listed !== 'Pending' && data.listed) return false;
+                    return true;
+                }
                 if (listedFilter !== 'all' && data.listed !== listedFilter) return false;
 
                 return true;
@@ -1133,14 +1137,14 @@
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
 
+            if (String(data.temu_status || '') === 'Incomplete' || data.listed === 'Incomplete') {
+                return `<span class="listing-auto-badge listing-auto-badge--incomplete" title="Goods ${escapeHtml(data.temu_goods_id || data.goods_id || '')} is Incomplete in Temu Seller Center - finish it there">Incomplete</span>`;
+            }
             const goodsId = String(data.goods_id || data.eBay_item_id || '').trim();
             if (goodsId) {
                 return `<span class="listing-listed-tick" title="Listed (temu_metrics.goods_id)" aria-label="Listed">
                     <i class="fas fa-check"></i>
                 </span>`;
-            }
-            if (data.listed === 'Incomplete') {
-                return `<span class="listing-auto-badge listing-auto-badge--incomplete" title="Goods ${escapeHtml(data.temu_goods_id || '')} is Incomplete in Temu Seller Center - finish it there">Incomplete</span>`;
             }
             return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no Temu goods_id">Missing L</span>`;
         }
@@ -1150,19 +1154,19 @@
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
 
-            const goodsId = String(data.goods_id || data.listing_id || data.eBay_item_id || '').trim();
-            if (goodsId) {
-                return '<span class="text-muted" title="Already listed on Temu">—</span>';
-            }
-
             const sku = String(data.sku || '').trim();
             if (!sku) return '';
 
             // Incomplete goods already exists on Temu: publishing again would not complete it, update it instead.
-            if (data.listed === 'Incomplete') {
+            if (String(data.temu_status || '') === 'Incomplete' || data.listed === 'Incomplete') {
                 return `<button type="button" class="temu-complete-btn" data-sku="${escapeHtml(sku)}" title="Send the listing data to the Incomplete Temu product (goods ${escapeHtml(data.temu_goods_id || '')}) so it can be completed">
                     <i class="fas fa-check-circle"></i> Complete
                 </button>`;
+            }
+
+            const goodsId = String(data.goods_id || data.listing_id || data.eBay_item_id || '').trim();
+            if (goodsId) {
+                return '<span class="text-muted" title="Already listed on Temu">—</span>';
             }
 
             return `<button type="button" class="temu-publish-btn" data-sku="${escapeHtml(sku)}" title="Review variations for ${escapeHtml(sku)} then publish to Temu as a new listing">
@@ -1452,8 +1456,17 @@
                 ]
             });
 
+            let missingLFilterActive = false;
             temuListingTable.on('dataProcessed', function () {
                 hideLoader();
+                if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__temuMissingApplied) {
+                    window.__temuMissingApplied = true;
+                    missingLFilterActive = true;
+                    $('#row-data-type').val('sku');
+                    $('#inv-filter').val('inv-only');
+                    $('#listed-filter').val('Pending');
+                    $('#missing-l-badge').addClass('is-active');
+                }
                 applyListingFilters();
             });
             temuListingTable.on('dataFiltered', function () {
@@ -1466,8 +1479,7 @@
 
             $('#row-data-type, #inv-filter, #listed-filter').on('change', applyListingFilters);
 
-            // Missing L badge → filter table to unlisted REQ SKUs (toggle)
-            let missingLFilterActive = false;
+            // Missing L badge → filter table to in-stock REQ SKUs that are not listed (toggle)
             function applyMissingLBadgeFilter(forceOff) {
                 if (forceOff === true) {
                     missingLFilterActive = false;
@@ -1477,11 +1489,12 @@
                 const $badge = $('#missing-l-badge');
                 if (missingLFilterActive) {
                     $('#row-data-type').val('sku'); // Missing L never includes parent rows
-                    $('#inv-filter').val('all');
+                    $('#inv-filter').val('inv-only');
                     $('#listed-filter').val('Pending');
                     $badge.addClass('is-active');
                 } else {
                     $('#listed-filter').val('all');
+                    $('#inv-filter').val('all');
                     $badge.removeClass('is-active');
                 }
                 applyListingFilters();
@@ -1499,7 +1512,7 @@
                 if (!missingLFilterActive) return;
                 const stillMissing =
                     $('#listed-filter').val() === 'Pending' &&
-                    $('#inv-filter').val() === 'all' &&
+                    $('#inv-filter').val() === 'inv-only' &&
                     $('#row-data-type').val() === 'sku';
                 if (!stillMissing) {
                     missingLFilterActive = false;

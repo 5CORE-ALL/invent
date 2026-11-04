@@ -687,7 +687,7 @@
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--listed">Listed:<span id="listed-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed). Click again to clear.">Missing L:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L (in stock, REQ, not listed on Temu). Click again to clear.">Missing L:<span id="pending-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
                             </div>
 
@@ -937,7 +937,8 @@
                     return;
                 }
 
-                const rows = temu2ListingTable.getData('active') || [];
+                const rows = (allListingData && allListingData.length) ? allListingData : (temu2ListingTable.getData() || []);
+                const visible = temu2ListingTable.getData('active') || rows;
                 const metrics = {
                     invTotal: 0,
                     reqTotal: 0,
@@ -948,27 +949,22 @@
                 };
 
                 rows.forEach(item => {
-                    if ((($('#inv-filter').val() !== 'inv-only') || parseFloat(item.INV) > 0) && !isParentSku(item.sku)) {
-                        metrics.invTotal += parseFloat(item.INV) || 0;
+                    if (item.is_parent || isParentSku(item.sku) || !(parseFloat(item.INV) > 0)) return;
+                    metrics.invTotal += parseFloat(item.INV) || 0;
 
-                        if (item.nr_req === 'REQ') {
-                            metrics.reqTotal++;
-                            // No Link: REQ rows with no Temu goods_id (dynamic buyer link unavailable)
-                            if (!String(item.goods_id || item.eBay_item_id || '').trim()) {
-                                metrics.withoutLinkTotal++;
-                            }
+                    if (item.nr_req === 'REQ') {
+                        metrics.reqTotal++;
+                        if (item.listed !== 'Listed' && !String(item.goods_id || item.eBay_item_id || '').trim()) {
+                            metrics.withoutLinkTotal++;
                         }
-                        if (item.nr_req === 'NR') {
-                            metrics.nrlTotal++;
-                        }
-                        if (item.nr_req !== 'NR') {
-                            if (item.listed === 'Listed') {
-                                metrics.listedTotal++;
-                            }
-                            if (item.listed === 'Pending' || !item.listed) {
-                                metrics.pendingTotal++;
-                            }
-                        }
+                    } else if (item.nr_req === 'NR') {
+                        metrics.nrlTotal++;
+                    }
+                    if (item.nr_req === 'NR') return;
+                    if (item.listed === 'Listed') {
+                        metrics.listedTotal++;
+                    } else if (item.listed === 'Pending' || !item.listed) {
+                        metrics.pendingTotal++;
                     }
                 });
 
@@ -977,7 +973,7 @@
                 $('#without-link-total').text(metrics.withoutLinkTotal);
                 $('#listed-total').text(metrics.listedTotal);
                 $('#pending-total').text(metrics.pendingTotal);
-                $('#rows-total').text(rows.length.toLocaleString());
+                $('#rows-total').text(visible.length.toLocaleString());
             } catch (error) {
                 console.error('Error in calculateTotals:', error);
                 resetMetricsToZero();
@@ -1016,6 +1012,7 @@
                 if (linkFilter === 'with-link' && !hasItemLink) return false;
                 if (linkFilter === 'without-link' && hasItemLink) return false;
 
+                if (listedFilter === 'Pending' && !data.is_parent && !(parseFloat(data.INV) > 0)) return false;
                 if (listedFilter !== 'all' && data.listed !== listedFilter) return false;
 
                 return true;
@@ -1294,8 +1291,19 @@
                 ]
             });
 
+            let missingLFilterActive = false;
             temu2ListingTable.on('dataProcessed', function () {
                 hideLoader();
+                if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__temu2MissingApplied) {
+                    window.__temu2MissingApplied = true;
+                    missingLFilterActive = true;
+                    $('#row-data-type').val('sku');
+                    $('#nr-req-filter').val('REQ');
+                    $('#link-filter').val('all');
+                    $('#inv-filter').val('inv-only');
+                    $('#listed-filter').val('Pending');
+                    $('#missing-l-badge').addClass('is-active');
+                }
                 applyListingFilters();
             });
             temu2ListingTable.on('dataFiltered', function () {
@@ -1308,8 +1316,7 @@
 
             $('#row-data-type, #inv-filter, #nr-req-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
 
-            // Missing L badge → filter table to unlisted REQ SKUs (toggle)
-            let missingLFilterActive = false;
+            // Missing L badge → filter table to in-stock REQ SKUs that are not listed (toggle)
             function applyMissingLBadgeFilter(forceOff) {
                 if (forceOff === true) {
                     missingLFilterActive = false;
@@ -1321,11 +1328,13 @@
                     $('#row-data-type').val('sku');
                     $('#nr-req-filter').val('REQ');
                     $('#link-filter').val('all');
+                    $('#inv-filter').val('inv-only');
                     $('#listed-filter').val('Pending');
                     $badge.addClass('is-active');
                 } else {
                     $('#listed-filter').val('all');
                     $('#nr-req-filter').val('all');
+                    $('#inv-filter').val('all');
                     $badge.removeClass('is-active');
                 }
                 applyListingFilters();
@@ -1344,6 +1353,7 @@
                 const stillMissing =
                     $('#listed-filter').val() === 'Pending' &&
                     $('#nr-req-filter').val() === 'REQ' &&
+                    $('#inv-filter').val() === 'inv-only' &&
                     $('#row-data-type').val() === 'sku';
                 if (!stillMissing) {
                     missingLFilterActive = false;

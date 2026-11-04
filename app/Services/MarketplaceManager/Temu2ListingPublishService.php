@@ -1432,11 +1432,15 @@ class Temu2ListingPublishService
             return ['status' => 'skipped_listed', 'reason' => 'Already listed'];
         }
         if ($this->shopLabel() === 'Temu' && $this->completeGoodsId === null) {
-            // Temu 1 only: a SKU inside an Incomplete goods is completed with the Complete button, not published again.
+            // Temu 1 only: Seller Center is the same source the listing page uses for Missing L.
             try {
                 $hit = \App\Services\MarketplaceManager\TemuGoodsStatusSync::read()['skus'][\App\Services\MarketplaceManager\TemuGoodsStatusSync::key($sku)] ?? null;
                 if (is_array($hit) && ($hit['status'] ?? '') === 'Incomplete') {
                     return ['status' => 'skipped_incomplete', 'reason' => 'Incomplete on Temu (goods '.($hit['goods_id'] ?? '').') - use the Complete button'];
+                }
+                $sellerGoods = trim((string) (is_array($hit) ? ($hit['goods_id'] ?? '') : ''));
+                if (is_array($hit) && $sellerGoods !== '' && in_array($hit['status'] ?? '', ['Active', 'Inactive'], true)) {
+                    return ['status' => 'skipped_listed', 'reason' => 'Already listed'];
                 }
             } catch (\Throwable $e) {
                 // status cache is optional
@@ -1645,12 +1649,8 @@ class Temu2ListingPublishService
         if (! $row) {
             return '';
         }
-        $status = strtolower(trim((string) ($row->listing_status ?? '')));
-        if (in_array($status, ['deleted', 'recycle', 'removed', 'draft'], true)) {
-            return '';
-        }
 
-        return trim((string) ($row->goods_id ?? ''));
+        return ListingCountsEngine::temuLiveGoodsId($row->listing_status ?? null, $row->goods_id ?? null);
     }
 
     private function localListingStatus(string $sku): string

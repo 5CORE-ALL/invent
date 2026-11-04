@@ -172,7 +172,8 @@ class ChannelListingRegistry
             'temu' => [
                 'dataView' => \App\Models\TemuDataView::class,
                 'status' => \App\Models\TemuListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => TemuMetric::class, 'column' => 'goods_id', 'reject_sku' => true],
+                // Same "already listed" rule as the Temu publish window (live goods_id, pack aliases, Seller Center).
+                'listed' => ['type' => 'custom', 'method' => 'listedTemu'],
                 'id_field' => 'goods_id',
                 'buyer_tpl' => 'https://www.temu.com/goods.html?_bg_fs=1&goods_id={id}',
                 'seller_tpl' => 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id={id}',
@@ -812,6 +813,84 @@ class ChannelListingRegistry
             });
 
         return self::listedMapFromByNorm($skus, $byNorm);
+    }
+
+    /**
+     * Temu 1: live temu_metrics.goods_id, plus Seller Center Active/Inactive.
+     * Incomplete goods exist on Temu but are not a finished listing and are not Missing L.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedTemu(array $skus): array
+    {
+        $map = ListingCountsEngine::listedIdsFromTemuGoods(TemuMetric::class, $skus);
+
+        return self::overlayTemuSellerCenter($map, $skus);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedTemu2(array $skus): array
+    {
+        return ListingCountsEngine::listedIdsFromTemuGoods(Temu2Metric::class, $skus);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedTemu3(array $skus): array
+    {
+        return ListingCountsEngine::listedIdsFromTemuGoods(\App\Models\Temu3Metric::class, $skus);
+    }
+
+    /**
+     * @param  array<string, string>  $map
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    private static function overlayTemuSellerCenter(array $map, array $skus): array
+    {
+        try {
+            $cache = \App\Services\MarketplaceManager\TemuGoodsStatusSync::read();
+        } catch (\Throwable $e) {
+            return $map;
+        }
+        $bySku = (is_array($cache) && is_array($cache['skus'] ?? null)) ? $cache['skus'] : [];
+        if ($bySku === []) {
+            return $map;
+        }
+
+        foreach ($skus as $raw) {
+            $sku = trim((string) $raw);
+            if ($sku === '' || ListingCountsEngine::listingIdFromMap($map, $sku) !== '') {
+                continue;
+            }
+            $hit = $bySku[\App\Services\MarketplaceManager\TemuGoodsStatusSync::key($sku)] ?? null;
+            if (! is_array($hit)) {
+                continue;
+            }
+            $status = strtolower(trim((string) ($hit['status'] ?? '')));
+            $goodsId = trim((string) ($hit['goods_id'] ?? ''));
+            if ($goodsId === '' || in_array($status, ['deleted', 'draft', 'recycle', 'removed'], true)) {
+                continue;
+            }
+            // Incomplete is on Temu and must not be Missing L, and it is not a finished Listed row.
+            $id = $status === 'incomplete'
+                ? ListingCountsEngine::pageCreatedId($goodsId)
+                : $goodsId;
+            $map[strtolower($sku)] = $id;
+            foreach (ListingCountsEngine::skuIndexKeys($sku) as $key) {
+                if ($key !== '') {
+                    $map[$key] = $id;
+                }
+            }
+        }
+
+        return $map;
     }
 
     /**

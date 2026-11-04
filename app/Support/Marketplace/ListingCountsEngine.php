@@ -801,6 +801,97 @@ class ListingCountsEngine
     }
 
     /**
+     * A Temu goods id is a live listing unless that row was deleted, recycled, removed, or sent back to draft.
+     * Same rule the Temu publish window uses for "Already listed". Inactive, pending, and delisted stay listed.
+     */
+    public static function temuLiveGoodsId(?string $status, mixed $goodsId): string
+    {
+        $goodsId = trim((string) $goodsId);
+        if ($goodsId === '') {
+            return '';
+        }
+        $status = strtolower(trim((string) $status));
+        if (in_array($status, ['deleted', 'recycle', 'removed', 'draft'], true)) {
+            return '';
+        }
+
+        return $goodsId;
+    }
+
+    /**
+     * "2PCS" and "2PC" are the same pack. Used so a Temu catalog SKU matches Product Master.
+     *
+     * @return list<string>
+     */
+    public static function packCountAliasSkus(string $sku): array
+    {
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm === '' || ! preg_match('/^(.*?)(\d+)\s*(PCS|PC|PIECES|PIECE)$/', $norm, $m)) {
+            return [];
+        }
+        $base = rtrim($m[1]);
+        $n = $m[2];
+        $out = [];
+        foreach (['PC', 'PCS', 'PIECE', 'PIECES'] as $word) {
+            foreach ([trim($base.' '.$n.$word), trim($base.' '.$n.' '.$word)] as $alias) {
+                if ($alias !== '' && $alias !== $norm) {
+                    $out[] = $alias;
+                }
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Temu / Temu 2 / Temu 3 listed map: goods_id, with the publish window's live-listing rule
+     * and pack-count aliases. A goods id equal to the SKU is still listed, matching publish.
+     *
+     * @param  class-string  $modelClass
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedIdsFromTemuGoods(string $modelClass, array $skus): array
+    {
+        if ($modelClass === '' || ! class_exists($modelClass) || $skus === []) {
+            return [];
+        }
+
+        $wanted = self::wantedSkuKeySet($skus);
+        if ($wanted === []) {
+            return [];
+        }
+
+        $byKey = [];
+        $table = (new $modelClass)->getTable();
+        $columns = ['sku', 'goods_id'];
+        $hasStatus = Schema::hasColumn($table, 'listing_status');
+        if ($hasStatus) {
+            $columns[] = 'listing_status';
+        }
+
+        $modelClass::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereNotNull('goods_id')
+            ->where('goods_id', '!=', '')
+            ->get($columns)
+            ->each(function ($row) use (&$byKey, $wanted, $hasStatus) {
+                $sku = trim((string) $row->sku);
+                $id = self::temuLiveGoodsId($hasStatus ? ($row->listing_status ?? null) : null, $row->goods_id ?? null);
+                if ($sku === '' || $id === '') {
+                    return;
+                }
+                self::putListedForSku($byKey, $wanted, $sku, $id);
+                foreach (self::packCountAliasSkus($sku) as $alias) {
+                    self::putListedForSku($byKey, $wanted, $alias, $id);
+                }
+            });
+
+        return self::listedMapForProductSkus($skus, $byKey);
+    }
+
+    /**
      * Load sku_lower → id from a metric/product model column (non-empty string = listed).
      *
      * @param  class-string  $modelClass

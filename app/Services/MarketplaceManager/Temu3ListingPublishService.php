@@ -1290,12 +1290,8 @@ class Temu3ListingPublishService
         if (! $row) {
             return '';
         }
-        $status = strtolower(trim((string) ($row->listing_status ?? '')));
-        if (in_array($status, ['deleted', 'recycle', 'removed', 'draft'], true)) {
-            return '';
-        }
 
-        return trim((string) ($row->goods_id ?? ''));
+        return ListingCountsEngine::temuLiveGoodsId($row->listing_status ?? null, $row->goods_id ?? null);
     }
 
     private function localListingStatus(string $sku): string
