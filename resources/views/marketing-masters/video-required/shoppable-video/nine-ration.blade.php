@@ -89,6 +89,7 @@
     .video-link-badge.ration-badge--ad { background: #2c6ed5; }
     .video-link-badge.ration-badge--redo { background: #d97706; }
     .video-link-badge.ration-badge--redone { background: #7c3aed; }
+    .video-link-badge.ration-badge--converted { background: #0d9488; }
     .ration-missing-dot {
         display: inline-block;
         width: 12px;
@@ -201,6 +202,9 @@
                     <button type="button" class="video-link-badge ration-badge--redone" data-status="redone" title="Show rows marked REDONE">
                         Redone: <span id="count-redone">0</span>
                     </button>
+                    <button type="button" class="video-link-badge ration-badge--converted" data-status="converted" title="Show rows with a converted 9:16 video">
+                        Converted: <span id="count-converted">0</span>
+                    </button>
 
                 </div>
                 <div id="nine-ration-video"></div>
@@ -261,7 +265,7 @@
         let currentRowTypeFilter = "all";
         let currentDilColorFilter = "";
         let filterHasVideo = false;
-        const statusFilters = { missing: false, checked: false, ad: false, redo: false, redone: false };
+        const statusFilters = { missing: false, checked: false, ad: false, redo: false, redone: false, converted: false };
         const currentUserName = @json(auth()->user()->name ?? '');
         const LINK_FIELD = 'nine_ratio_link';
         const SAVE_URL = '/nine-ration-video/save';
@@ -440,13 +444,24 @@
                     hozAlign: "center",
                 },
                 {
+                    title: "16:9 Video",
+                    field: "sixteen_ratio_link",
+                    hozAlign: "center",
+                    headerSort: false,
+                    formatter: function (cell) {
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) return '';
+                        return `<a href="${value}" target="_blank" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>`;
+                    },
+                },
+                {
                     title: "Change Ratio",
                     field: "_change_ratio",
                     hozAlign: "center",
                     headerSort: false,
                     width: 130,
                     formatter: function (cell) {
-                        const link = String(cell.getRow().getData().nine_ratio_link || '').trim();
+                        const link = String(cell.getRow().getData().sixteen_ratio_link || '').trim();
                         if (!link) {
                             return '';
                         }
@@ -457,9 +472,9 @@
                         if (!btn || btn.disabled) return;
                         const row = cell.getRow();
                         const data = row.getData();
-                        const link = String(data.nine_ratio_link || '').trim();
+                        const link = String(data.sixteen_ratio_link || '').trim();
                         if (!link) return;
-                        if (!confirm('Change this video to 9:16 and replace the link?')) return;
+                        if (!confirm('Convert this 16:9 video to 9:16? It is saved in Converted 9:16.')) return;
                         btn.disabled = true;
                         btn.textContent = 'Changing...';
                         fetch('/nine-ration-video/change-ratio', {
@@ -478,13 +493,27 @@
                                 btn.textContent = 'Change Ratio';
                                 return;
                             }
-                            row.update({ nine_ratio_link: body.url });
+                            row.update({ converted_nine_link: body.url }).then(() => updateTotalInvAndL30(table));
+                            btn.disabled = false;
+                            btn.textContent = 'Change Ratio';
                         })
                         .catch(() => {
                             alert('Could not change the ratio.');
                             btn.disabled = false;
                             btn.textContent = 'Change Ratio';
                         });
+                    },
+                },
+                {
+                    title: "Converted 9:16",
+                    field: "converted_nine_link",
+                    hozAlign: "center",
+                    headerSort: false,
+                    minWidth: 140,
+                    formatter: function (cell) {
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) return '';
+                        return `<a href="${value}" target="_blank" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>`;
                     },
                 },
                 {
@@ -739,6 +768,7 @@
             setCount("count-ad", base.filter(row => !!row.ad_checked).length);
             setCount("count-redo", base.filter(row => !!row.redo_checked).length);
             setCount("count-redone", base.filter(row => !!row.redone_checked).length);
+            setCount("count-converted", base.filter(row => String(row.converted_nine_link || '').trim() !== '').length);
         }
 
         function matchesBaseFilters(data) {
@@ -775,6 +805,7 @@
             if (statusFilters.ad && !data.ad_checked) return false;
             if (statusFilters.redo && !data.redo_checked) return false;
             if (statusFilters.redone && !data.redone_checked) return false;
+            if (statusFilters.converted && String(data.converted_nine_link || '').trim() === '') return false;
             return true;
         }
 

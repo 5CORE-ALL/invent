@@ -273,6 +273,7 @@ class ShoppableVideoController extends Controller
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $videoPostedValues = NineRationVideo::whereIn('sku', $skus)->get()->keyBy('sku');
+        $sixteenValues = SixteenRationVideo::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
         $slNo = 1;
@@ -305,7 +306,18 @@ class ShoppableVideoController extends Controller
                 'is_parent' => $isParent,
             ];
 
+            $sixteenLink = '';
+            if (isset($sixteenValues[$sku])) {
+                $sixteenStored = $sixteenValues[$sku]->value;
+                if (is_string($sixteenStored)) {
+                    $sixteenStored = json_decode($sixteenStored, true);
+                }
+                $sixteenLink = is_array($sixteenStored) ? ($sixteenStored['sixteen_ratio_link'] ?? '') : '';
+            }
+
             $processedItem['nine_ratio_link'] = $nine_ratio_link;
+            $processedItem['sixteen_ratio_link'] = $sixteenLink;
+            $processedItem['converted_nine_link'] = $stored['converted_nine_link'] ?? '';
             $processedItem['remark'] = $remark;
             $processedItem = array_merge($processedItem, $this->rationStatusFields($stored));
 
@@ -408,7 +420,7 @@ class ShoppableVideoController extends Controller
 
         $saved = $this->saveNineRationVideo(new Request([
             'sku' => $request->sku,
-            'value' => ['nine_ratio_link' => $url],
+            'value' => ['converted_nine_link' => $url],
         ]));
         $payload = $saved->getData(true);
         if (empty($payload['success'])) {
