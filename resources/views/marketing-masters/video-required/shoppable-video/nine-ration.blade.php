@@ -215,9 +215,6 @@
                     <button type="button" class="video-link-badge ration-badge--redone" data-status="redone" title="Show rows marked REDONE">
                         Redone: <span id="count-redone">0</span>
                     </button>
-                    <button type="button" class="video-link-badge ration-badge--converted" data-status="converted" title="Show rows with a converted 9:16 video">
-                        Converted: <span id="count-converted">0</span>
-                    </button>
 
                 </div>
                 <div id="nine-ration-video"></div>
@@ -279,7 +276,7 @@
         let currentDilColorFilter = "";
         let filterHasVideo = false;
         let filterHasSixteen = false;
-        const statusFilters = { missing: false, checked: false, ad: false, redo: false, redone: false, converted: false };
+        const statusFilters = { missing: false, checked: false, ad: false, redo: false, redone: false };
         const currentUserName = @json(auth()->user()->name ?? '');
         const LINK_FIELD = 'nine_ratio_link';
         const SAVE_URL = '/nine-ration-video/save';
@@ -302,9 +299,6 @@
             return String(row.sixteen_ratio_link || '').trim() !== '';
         }
 
-        function hasConverted(row) {
-            return String(row.converted_nine_link || '').trim() !== '';
-        }
 
         function esc(value) {
             return String(value).replace(/[&<>"']/g, function (c) {
@@ -500,10 +494,10 @@
                     headerSort: false,
                     width: 130,
                     formatter: function (cell) {
-                        const link = String(cell.getRow().getData().sixteen_ratio_link || '').trim();
-                        if (!link) {
-                            return '';
-                        }
+                        const data = cell.getRow().getData();
+                        const nine = String(data.nine_ratio_link || '').trim();
+                        const sixteen = String(data.sixteen_ratio_link || '').trim();
+                        if ((nine && sixteen) || (!nine && !sixteen)) return '';
                         return `<button type="button" class="btn btn-sm btn-outline-primary change-ratio-btn">Change Ratio</button>`;
                     },
                     cellClick: function (e, cell) {
@@ -511,8 +505,12 @@
                         if (!btn || btn.disabled) return;
                         const row = cell.getRow();
                         const data = row.getData();
-                        const link = String(data.sixteen_ratio_link || '').trim();
-                        if (!link) return;
+                        const nine = String(data.nine_ratio_link || '').trim();
+                        const sixteen = String(data.sixteen_ratio_link || '').trim();
+                        const target = sixteen && !nine ? '9:16' : '16:9';
+                        const source = target === '9:16' ? sixteen : nine;
+                        const field = target === '9:16' ? 'nine_ratio_link' : 'sixteen_ratio_link';
+                        if (!source) return;
                         btn.disabled = true;
                         btn.textContent = 'Changing...';
                         fetch('/nine-ration-video/change-ratio', {
@@ -522,7 +520,7 @@
                                 'Accept': 'application/json',
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
                             },
-                            body: JSON.stringify({ sku: data.Sku, url: link })
+                            body: JSON.stringify({ sku: data.Sku, url: source, target: target })
                         })
                         .then(async (res) => {
                             const text = await res.text();
@@ -541,27 +539,18 @@
                                 btn.textContent = 'Change Ratio';
                                 return;
                             }
-                            row.update({ converted_nine_link: body.url }).then(() => updateTotalInvAndL30(table));
-                            btn.disabled = false;
-                            btn.textContent = 'Change Ratio';
+                            const patch = {};
+                            patch[body.field || field] = body.url;
+                            row.update(patch).then(() => {
+                                row.reformat();
+                                updateTotalInvAndL30(table);
+                            });
                         })
                         .catch(() => {
                             alert('Could not change the ratio. The server did not finish the request.');
                             btn.disabled = false;
                             btn.textContent = 'Change Ratio';
                         });
-                    },
-                },
-                {
-                    title: "Converted 9:16",
-                    field: "converted_nine_link",
-                    hozAlign: "center",
-                    headerSort: false,
-                    minWidth: 140,
-                    formatter: function (cell) {
-                        const value = String(cell.getValue() || '').trim();
-                        if (!value) return '';
-                        return `<a href="${value}" target="_blank" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>`;
                     },
                 },
                 {
@@ -815,7 +804,6 @@
             setCount("count-ad", scope.filter(row => !!row.ad_checked).length);
             setCount("count-redo", scope.filter(row => !!row.redo_checked).length);
             setCount("count-redone", scope.filter(row => !!row.redone_checked).length);
-            setCount("count-converted", scope.filter(hasConverted).length);
         }
 
         function matchesScope(data) {
@@ -855,7 +843,6 @@
             if (statusFilters.ad && !data.ad_checked) return false;
             if (statusFilters.redo && !data.redo_checked) return false;
             if (statusFilters.redone && !data.redone_checked) return false;
-            if (statusFilters.converted && !hasConverted(data)) return false;
             return true;
         }
 
