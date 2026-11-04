@@ -118,29 +118,22 @@
         align-items: center;
         justify-content: center;
         padding: 28px;
-        background: rgba(0, 0, 0, 0.82);
+        background: rgba(15, 23, 42, 0.45);
     }
     .ratio-player.is-open { display: flex; }
     .ratio-player-frame {
         position: relative;
-        background: #000;
-        max-width: 92vw;
+        width: min(92vw, calc(86vh * var(--video-ar, 0.5625)));
+        aspect-ratio: var(--video-ar, 0.5625);
         max-height: 86vh;
-    }
-    .ratio-player-frame.is-wide {
-        width: min(960px, 92vw, calc(86vh * 16 / 9));
-        aspect-ratio: 16 / 9;
-    }
-    .ratio-player-frame.is-tall {
-        width: min(420px, 86vw, calc(82vh * 9 / 16));
-        aspect-ratio: 9 / 16;
+        background: transparent;
     }
     .ratio-player-frame video {
         width: 100%;
         height: 100%;
         display: block;
-        object-fit: contain;
-        background: #000;
+        object-fit: fill;
+        background: transparent;
     }
     .ratio-player-close {
         position: absolute;
@@ -958,8 +951,13 @@
         const ratioVideo = document.getElementById('ratio-player-video');
 
         function openRatioPlayer(url, ratio) {
-            ratioFrame.classList.toggle('is-wide', ratio === '16:9');
-            ratioFrame.classList.toggle('is-tall', ratio !== '16:9');
+            const preset = ratio === '16:9' ? (16 / 9) : (ratio === '1:1' ? 1 : (9 / 16));
+            ratioFrame.style.setProperty('--video-ar', String(preset));
+            ratioVideo.onloadedmetadata = function () {
+                if (ratioVideo.videoWidth > 0 && ratioVideo.videoHeight > 0) {
+                    ratioFrame.style.setProperty('--video-ar', String(ratioVideo.videoWidth / ratioVideo.videoHeight));
+                }
+            };
             ratioVideo.src = url;
             ratioPlayer.hidden = false;
             ratioPlayer.classList.add('is-open');

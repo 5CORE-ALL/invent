@@ -463,8 +463,8 @@ class GeminiNineRatioService
      */
     private function composedFrameArguments(string $ffmpeg, string $input, string $output, int $width, int $height): array
     {
-        $fitWidth = (int) (floor($width * 0.92 / 2) * 2);
-        $fitHeight = (int) (floor($height * 0.92 / 2) * 2);
+        $fitWidth = $width;
+        $fitHeight = $height;
         $compose = '[0:v]scale='.$width.':'.$height.':force_original_aspect_ratio=increase:flags=lanczos,crop='.$width.':'.$height.',boxblur=20:4[bg];'
             .'[0:v]scale='.$fitWidth.':'.$fitHeight.':force_original_aspect_ratio=decrease:flags=lanczos[fg];'
             .'[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]';
