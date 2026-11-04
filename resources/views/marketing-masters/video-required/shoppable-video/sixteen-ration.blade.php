@@ -663,14 +663,15 @@
 
             const totalINV = data.reduce((sum, row) => sum + (parseFloat(row["INV"]) || 0), 0);
             const totalL30 = data.reduce((sum, row) => sum + (parseFloat(row["L30"]) || 0), 0);
-            const totalLinks = data.filter(row => String(row.sixteen_ratio_link || "").trim() !== "").length;
 
             document.getElementById("total-inv-header").textContent = totalINV.toLocaleString();
             document.getElementById("total-l30-header").textContent = totalL30.toLocaleString();
-            const linkBadge = document.getElementById("total-sixteen-link-count");
-            if (linkBadge) linkBadge.textContent = totalLinks.toLocaleString();
 
-            const base = table.getData().filter(row => matchesBaseFilters(row));
+            const scope = table.getData().filter(row => matchesScope(row));
+            const linkBadge = document.getElementById("total-sixteen-link-count");
+            if (linkBadge) linkBadge.textContent = scope.filter(row => String(row.sixteen_ratio_link || "").trim() !== "").length.toLocaleString();
+
+            const base = scope;
             const setCount = (id, count) => {
                 const el = document.getElementById(id);
                 if (el) el.textContent = count.toLocaleString();
@@ -682,11 +683,10 @@
             setCount("count-redone", base.filter(row => !!row.redone_checked).length);
         }
 
-        function matchesBaseFilters(data) {
+        function matchesScope(data) {
             let matchesParent = true;
             let matchesRowType = true;
             let matchesDilColor = true;
-            let matchesVideo = true;
 
             if (currentParentFilter) {
                 matchesParent = data.Parent === currentParentFilter;
@@ -699,11 +699,14 @@
             if (currentDilColorFilter) {
                 matchesDilColor = data.dilColor === currentDilColorFilter;
             }
-            if (filterHasVideo) {
-                matchesVideo = hasVideo(data);
-            }
 
-            return matchesParent && matchesRowType && matchesDilColor && matchesVideo;
+            return matchesParent && matchesRowType && matchesDilColor;
+        }
+
+        function matchesBaseFilters(data) {
+            if (!matchesScope(data)) return false;
+            if (filterHasVideo && !hasVideo(data)) return false;
+            return true;
         }
 
         function rowIsMissing(data) {

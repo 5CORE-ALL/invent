@@ -187,6 +187,9 @@
                     <button type="button" id="video-link-filter" class="video-link-badge" title="Show rows that have a 9:16 video">
                         <i class="fa fa-link"></i> 9:16 Video: <span id="total-nine-link-count">0</span>
                     </button>
+                    <button type="button" id="sixteen-link-filter" class="video-link-badge" style="background:#4f46e5;" title="Show rows that have a 16:9 video">
+                        <i class="fa fa-link"></i> 16:9 Video: <span id="total-sixteen-link-count">0</span>
+                    </button>
                     <button type="button" class="video-link-badge ration-badge--missing" data-status="missing" title="Show rows missing a video">
                         Missing: <span id="count-missing">0</span>
                     </button>
@@ -265,6 +268,7 @@
         let currentRowTypeFilter = "all";
         let currentDilColorFilter = "";
         let filterHasVideo = false;
+        let filterHasSixteen = false;
         const statusFilters = { missing: false, checked: false, ad: false, redo: false, redone: false, converted: false };
         const currentUserName = @json(auth()->user()->name ?? '');
         const LINK_FIELD = 'nine_ratio_link';
@@ -282,6 +286,14 @@
 
         function hasVideo(row) {
             return String(row[LINK_FIELD] || '').trim() !== '';
+        }
+
+        function hasSixteen(row) {
+            return String(row.sixteen_ratio_link || '').trim() !== '';
+        }
+
+        function hasConverted(row) {
+            return String(row.converted_nine_link || '').trim() !== '';
         }
 
         function esc(value) {
@@ -760,31 +772,29 @@
 
             const totalINV = data.reduce((sum, row) => sum + (parseFloat(row["INV"]) || 0), 0);
             const totalL30 = data.reduce((sum, row) => sum + (parseFloat(row["L30"]) || 0), 0);
-            const totalLinks = data.filter(row => String(row.nine_ratio_link || "").trim() !== "").length;
 
             document.getElementById("total-inv-header").textContent = totalINV.toLocaleString();
             document.getElementById("total-l30-header").textContent = totalL30.toLocaleString();
-            const linkBadge = document.getElementById("total-nine-link-count");
-            if (linkBadge) linkBadge.textContent = totalLinks.toLocaleString();
 
-            const base = table.getData().filter(row => matchesBaseFilters(row));
+            const scope = table.getData().filter(row => matchesScope(row));
             const setCount = (id, count) => {
                 const el = document.getElementById(id);
                 if (el) el.textContent = count.toLocaleString();
             };
-            setCount("count-missing", base.filter(row => rowIsMissing(row)).length);
-            setCount("count-checked", base.filter(row => !!row.is_checked).length);
-            setCount("count-ad", base.filter(row => !!row.ad_checked).length);
-            setCount("count-redo", base.filter(row => !!row.redo_checked).length);
-            setCount("count-redone", base.filter(row => !!row.redone_checked).length);
-            setCount("count-converted", base.filter(row => String(row.converted_nine_link || '').trim() !== '').length);
+            setCount("total-nine-link-count", scope.filter(hasVideo).length);
+            setCount("total-sixteen-link-count", scope.filter(hasSixteen).length);
+            setCount("count-missing", scope.filter(row => rowIsMissing(row)).length);
+            setCount("count-checked", scope.filter(row => !!row.is_checked).length);
+            setCount("count-ad", scope.filter(row => !!row.ad_checked).length);
+            setCount("count-redo", scope.filter(row => !!row.redo_checked).length);
+            setCount("count-redone", scope.filter(row => !!row.redone_checked).length);
+            setCount("count-converted", scope.filter(hasConverted).length);
         }
 
-        function matchesBaseFilters(data) {
+        function matchesScope(data) {
             let matchesParent = true;
             let matchesRowType = true;
             let matchesDilColor = true;
-            let matchesVideo = true;
 
             if (currentParentFilter) {
                 matchesParent = data.Parent === currentParentFilter;
@@ -797,11 +807,15 @@
             if (currentDilColorFilter) {
                 matchesDilColor = data.dilColor === currentDilColorFilter;
             }
-            if (filterHasVideo) {
-                matchesVideo = hasVideo(data);
-            }
 
-            return matchesParent && matchesRowType && matchesDilColor && matchesVideo;
+            return matchesParent && matchesRowType && matchesDilColor;
+        }
+
+        function matchesBaseFilters(data) {
+            if (!matchesScope(data)) return false;
+            if (filterHasVideo && !hasVideo(data)) return false;
+            if (filterHasSixteen && !hasSixteen(data)) return false;
+            return true;
         }
 
         function rowIsMissing(data) {
@@ -814,7 +828,7 @@
             if (statusFilters.ad && !data.ad_checked) return false;
             if (statusFilters.redo && !data.redo_checked) return false;
             if (statusFilters.redone && !data.redone_checked) return false;
-            if (statusFilters.converted && String(data.converted_nine_link || '').trim() === '') return false;
+            if (statusFilters.converted && !hasConverted(data)) return false;
             return true;
         }
 
@@ -886,6 +900,15 @@
             this.title = filterHasVideo
                 ? 'Showing rows that have a 9:16 video. Click to show all.'
                 : 'Show rows that have a 9:16 video';
+            setCombinedFilters();
+        });
+
+        document.getElementById('sixteen-link-filter').addEventListener('click', function () {
+            filterHasSixteen = !filterHasSixteen;
+            this.classList.toggle('is-active', filterHasSixteen);
+            this.title = filterHasSixteen
+                ? 'Showing rows that have a 16:9 video. Click to show all.'
+                : 'Show rows that have a 16:9 video';
             setCombinedFilters();
         });
 
