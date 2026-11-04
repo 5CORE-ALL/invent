@@ -9,14 +9,14 @@ use RuntimeException;
 
 class GeminiNineRatioService
 {
-    public function changeToNineSixteen(string $sourceUrl, string $sku): string
+    public function changeToNineSixteen(string $sourceUrl, string $sku, string $background = 'blur'): string
     {
-        return $this->storeConverted($sourceUrl, $sku, '1080:1920', 'nine-ration', '9:16');
+        return $this->storeConverted($sourceUrl, $sku, '1080:1920', 'nine-ration', '9:16', $background);
     }
 
-    public function changeToSixteenNine(string $sourceUrl, string $sku): string
+    public function changeToSixteenNine(string $sourceUrl, string $sku, string $background = 'blur'): string
     {
-        return $this->storeConverted($sourceUrl, $sku, '1920:1080', 'sixteen-ration', '16:9');
+        return $this->storeConverted($sourceUrl, $sku, '1920:1080', 'sixteen-ration', '16:9', $background);
     }
 
     public function changeToSquare(string $sourceUrl, string $sku): string
@@ -24,13 +24,13 @@ class GeminiNineRatioService
         return $this->storeConverted($sourceUrl, $sku, '1080:1080', 'square-ration', '1:1');
     }
 
-    private function storeConverted(string $sourceUrl, string $sku, string $size, string $folder, string $label): string
+    private function storeConverted(string $sourceUrl, string $sku, string $size, string $folder, string $label, string $background = 'blur'): string
     {
         $source = $this->resolveSource($sourceUrl);
         $output = tempnam(sys_get_temp_dir(), 'ratio-out-');
         $mp4 = $output.'.mp4';
         try {
-            $this->convertWithFfmpeg($source['path'], $mp4, $size, $label);
+            $this->convertWithFfmpeg($source['path'], $mp4, $size, $label, $background);
             $relative = $folder.'/'.preg_replace('/[^A-Za-z0-9._-]+/', '-', $sku).'-'.time().'.mp4';
             $stream = fopen($mp4, 'rb');
             if ($stream === false) {
@@ -355,7 +355,7 @@ class GeminiNineRatioService
         return $status;
     }
 
-    private function convertWithFfmpeg(string $input, string $output, string $size = '1080:1920', string $label = '9:16'): void
+    private function convertWithFfmpeg(string $input, string $output, string $size = '1080:1920', string $label = '9:16', string $background = 'blur'): void
     {
         $ffmpeg = $this->ffmpegBinary();
         if ($ffmpeg === null) {
@@ -363,9 +363,10 @@ class GeminiNineRatioService
         }
 
         [$width, $height] = $this->targetCanvas($label, $size);
-        $run = Process::timeout(300)->run(
-            $this->matchedFrameArguments($ffmpeg, $input, $output, $width, $height)
-        );
+        $arguments = $label === '16:9'
+            ? $this->framedArguments($ffmpeg, $input, $output, $width, $height, $background)
+            : $this->matchedFrameArguments($ffmpeg, $input, $output, $width, $height);
+        $run = Process::timeout(300)->run($arguments);
         if (! $run->successful() || ! is_file($output) || filesize($output) < 1024) {
             $detail = trim($run->errorOutput());
             $errors = array_values(array_filter(
@@ -397,6 +398,38 @@ class GeminiNineRatioService
         }
 
         return [$width, $height];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function framedArguments(string $ffmpeg, string $input, string $output, int $width, int $height, string $background): array
+    {
+        $background = in_array($background, ['blur', 'black', 'extended'], true) ? $background : 'blur';
+        $maps = ['-map', '0:v:0', '-map', '0:a:0?', ...$this->encodeArguments(), $output];
+        if ($background === 'black') {
+            return [
+                $ffmpeg, '-y', '-i', $input,
+                '-vf', 'scale='.$width.':'.$height.':force_original_aspect_ratio=decrease:flags=lanczos,pad='.$width.':'.$height.':(ow-iw)/2:(oh-ih)/2:black,setsar=1',
+                ...$maps,
+            ];
+        }
+
+        $blurWidth = max(160, (int) (floor($width / 4 / 2) * 2));
+        $blurHeight = max(90, (int) (floor($height / 4 / 2) * 2));
+        $sigma = $background === 'extended' ? 8 : 20;
+        $darken = $background === 'blur' ? ',eq=brightness=-0.08' : '';
+        $compose = '[0:v]scale='.$blurWidth.':'.$blurHeight.':force_original_aspect_ratio=increase,crop='.$blurWidth.':'.$blurHeight.',gblur=sigma='.$sigma.',scale='.$width.':'.$height.':flags=bilinear'.$darken.'[bg];'
+            .'[0:v]scale='.$width.':'.$height.':force_original_aspect_ratio=decrease:flags=lanczos[fg];'
+            .'[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]';
+
+        return [
+            $ffmpeg, '-y', '-i', $input,
+            '-filter_complex', $compose,
+            '-map', '[v]', '-map', '0:a:0?',
+            ...$this->encodeArguments(),
+            $output,
+        ];
     }
 
     /**
