@@ -1,9 +1,0 @@
-{
-  "name": "runway-product-ad",
-  "private": true,
-  "type": "module",
-  "description": "Runway Dev Product Ad recipe worker. Called by App\\Services\\Runway\\ProductAdService.",
-  "dependencies": {
-    "@runwayml/sdk": "^3.0.0"
-  }
-}
