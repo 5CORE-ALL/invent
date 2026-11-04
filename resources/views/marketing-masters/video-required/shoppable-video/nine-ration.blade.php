@@ -440,6 +440,54 @@
                     hozAlign: "center",
                 },
                 {
+                    title: "Change Ratio",
+                    field: "_change_ratio",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 130,
+                    formatter: function (cell) {
+                        const link = String(cell.getRow().getData().nine_ratio_link || '').trim();
+                        if (!link) {
+                            return '';
+                        }
+                        return `<button type="button" class="btn btn-sm btn-outline-primary change-ratio-btn">Change Ratio</button>`;
+                    },
+                    cellClick: function (e, cell) {
+                        const btn = e.target.closest('.change-ratio-btn');
+                        if (!btn || btn.disabled) return;
+                        const row = cell.getRow();
+                        const data = row.getData();
+                        const link = String(data.nine_ratio_link || '').trim();
+                        if (!link) return;
+                        if (!confirm('Change this video to 9:16 and replace the link?')) return;
+                        btn.disabled = true;
+                        btn.textContent = 'Changing...';
+                        fetch('/nine-ration-video/change-ratio', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            },
+                            body: JSON.stringify({ sku: data.Sku, url: link })
+                        })
+                        .then(res => res.json().then(body => ({ ok: res.ok, body })))
+                        .then(({ ok, body }) => {
+                            if (!ok || !body.success) {
+                                alert(body.message || 'Could not change the ratio.');
+                                btn.disabled = false;
+                                btn.textContent = 'Change Ratio';
+                                return;
+                            }
+                            row.update({ nine_ratio_link: body.url });
+                        })
+                        .catch(() => {
+                            alert('Could not change the ratio.');
+                            btn.disabled = false;
+                            btn.textContent = 'Change Ratio';
+                        });
+                    },
+                },
+                {
                     title: "Remark",
                     field: "remark",
                     editor: "input",

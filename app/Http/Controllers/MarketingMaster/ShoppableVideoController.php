@@ -18,6 +18,7 @@ use App\Models\SixteenRationVideo;
 use App\Models\TiktokVideoAd;
 use App\Models\YoutubeShortsAd;
 use App\Models\YoutubeVideoAd;
+use App\Services\GeminiNineRatioService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -379,6 +380,47 @@ class ShoppableVideoController extends Controller
         return response()->json([
             'success' => true,
             'data' => $videoPosted
+        ]);
+    }
+
+    public function changeNineRationRatio(Request $request, GeminiNineRatioService $gemini)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'url' => 'required|url',
+        ]);
+
+        set_time_limit(240);
+
+        try {
+            $url = $gemini->changeToNineSixteen($request->url, $request->sku);
+        } catch (\Throwable $e) {
+            Log::warning('Nine ration ratio change failed', [
+                'sku' => $request->sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        $saved = $this->saveNineRationVideo(new Request([
+            'sku' => $request->sku,
+            'value' => ['nine_ratio_link' => $url],
+        ]));
+        $payload = $saved->getData(true);
+        if (empty($payload['success'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The 9:16 video was created but could not be saved.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'url' => $url,
         ]);
     }
 

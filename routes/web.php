@@ -6916,6 +6916,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/shoppable-video/nine-ration', 'nineRation')->name('nine.ration');
         Route::get('/nine-ration-video/view-data', 'getNineRatioVideoData');
         Route::post('/nine-ration-video/save', 'saveNineRationVideo');
+        Route::post('/nine-ration-video/change-ratio', 'changeNineRationRatio');
         Route::post('/nine-ration-video/import', 'importNineRationVideo');
         Route::get('/nine-ration-video/export', 'exportNineRationVideo');
 
