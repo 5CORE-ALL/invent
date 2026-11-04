@@ -363,13 +363,9 @@ class GeminiNineRatioService
         }
 
         [$width, $height] = $this->targetCanvas($label, $size);
-        $source = $this->sourceDisplay($ffmpeg, $input);
-        $sameRatio = $source !== null && $this->ratiosMatch($source['dar'], $width / $height);
-        $arguments = $sameRatio
-            ? $this->matchedFrameArguments($ffmpeg, $input, $output, $width, $height)
-            : $this->composedFrameArguments($ffmpeg, $input, $output, $width, $height);
-
-        $run = Process::timeout(300)->run($arguments);
+        $run = Process::timeout(300)->run(
+            $this->matchedFrameArguments($ffmpeg, $input, $output, $width, $height)
+        );
         if (! $run->successful() || ! is_file($output) || filesize($output) < 1024) {
             $detail = trim($run->errorOutput());
             $errors = array_values(array_filter(
@@ -404,47 +400,6 @@ class GeminiNineRatioService
     }
 
     /**
-     * @return array{width: int, height: int, dar: float}|null
-     */
-    private function sourceDisplay(string $ffmpeg, string $input): ?array
-    {
-        $probe = Process::timeout(30)->run([$ffmpeg, '-i', $input]);
-        $detail = $probe->errorOutput();
-        if (! preg_match('/Video:.*?(\d{2,5})x(\d{2,5})/', $detail, $size)) {
-            return null;
-        }
-
-        $width = (int) $size[1];
-        $height = (int) $size[2];
-        if ($width < 2 || $height < 2) {
-            return null;
-        }
-
-        $sar = 1.0;
-        if (preg_match('/SAR (\d+):(\d+)/', $detail, $ratio) && (int) $ratio[2] > 0) {
-            $sar = (int) $ratio[1] / (int) $ratio[2];
-        }
-        if ($sar <= 0) {
-            $sar = 1.0;
-        }
-
-        return [
-            'width' => $width,
-            'height' => $height,
-            'dar' => ($width * $sar) / $height,
-        ];
-    }
-
-    private function ratiosMatch(float $sourceDar, float $targetDar): bool
-    {
-        if ($sourceDar <= 0 || $targetDar <= 0) {
-            return false;
-        }
-
-        return abs($sourceDar - $targetDar) / $targetDar < 0.04;
-    }
-
-    /**
      * @return list<string>
      */
     private function matchedFrameArguments(string $ffmpeg, string $input, string $output, int $width, int $height): array
@@ -453,26 +408,6 @@ class GeminiNineRatioService
             $ffmpeg, '-y', '-i', $input,
             '-vf', 'scale='.$width.':'.$height.':force_original_aspect_ratio=decrease:flags=lanczos,pad='.$width.':'.$height.':(ow-iw)/2:(oh-ih)/2:black,setsar=1',
             '-map', '0:v:0', '-map', '0:a:0?',
-            ...$this->encodeArguments(),
-            $output,
-        ];
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function composedFrameArguments(string $ffmpeg, string $input, string $output, int $width, int $height): array
-    {
-        $blurWidth = max(160, (int) (floor($width / 8 / 2) * 2));
-        $blurHeight = max(160, (int) (floor($height / 8 / 2) * 2));
-        $compose = '[0:v]scale='.$blurWidth.':'.$blurHeight.':force_original_aspect_ratio=increase,crop='.$blurWidth.':'.$blurHeight.',boxblur=8:2,scale='.$width.':'.$height.':flags=bilinear[bg];'
-            .'[0:v]scale='.$width.':'.$height.':force_original_aspect_ratio=decrease:flags=bilinear[fg];'
-            .'[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]';
-
-        return [
-            $ffmpeg, '-y', '-i', $input,
-            '-filter_complex', $compose,
-            '-map', '[v]', '-map', '0:a:0?',
             ...$this->encodeArguments(),
             $output,
         ];

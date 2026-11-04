@@ -1223,6 +1223,13 @@ return [
         'text_model' => env('GEMINI_TEXT_MODEL', 'gemini-3.5-flash-lite'),
     ],
 
+    // Product Ad recipe. The Python SDK reads RUNWAYML_API_SECRET; do not hard-code it.
+    'runway' => [
+        'secret' => env('RUNWAYML_API_SECRET'),
+        'recipe_version' => '2026-07',
+        'python_binary' => env('RUNWAY_PYTHON_BINARY'),
+    ],
+
     'anthropic' => [
         'key' => env('ANTHROPIC_API_KEY', env('CLAUDE_API_KEY')),
         // Default model picked from the currently-available list returned by
