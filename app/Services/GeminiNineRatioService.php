@@ -406,7 +406,7 @@ class GeminiNineRatioService
     {
         return [
             $ffmpeg, '-y', '-i', $input,
-            '-vf', 'scale='.$width.':'.$height.':force_original_aspect_ratio=decrease:flags=lanczos,pad='.$width.':'.$height.':(ow-iw)/2:(oh-ih)/2:black,setsar=1',
+            '-vf', 'scale='.$width.':'.$height.':flags=lanczos,setsar=1',
             '-map', '0:v:0', '-map', '0:a:0?',
             ...$this->encodeArguments(),
             $output,
