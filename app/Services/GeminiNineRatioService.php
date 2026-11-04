@@ -359,7 +359,7 @@ class GeminiNineRatioService
 
         $run = Process::timeout(300)->run([
             $ffmpeg, '-y', '-i', $input,
-            '-vf', 'scale='.$size.':force_original_aspect_ratio=increase,crop='.$size,
+            '-vf', 'scale='.$size.':force_original_aspect_ratio=decrease,pad='.$size.':(ow-iw)/2:(oh-ih)/2:black',
             '-map', '0:v:0', '-map', '0:a:0?',
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
             '-c:a', 'aac', '-movflags', '+faststart',
