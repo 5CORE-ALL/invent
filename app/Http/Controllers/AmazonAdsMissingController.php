@@ -146,7 +146,7 @@ class AmazonAdsMissingController extends Controller
 
         $statusMap = $this->campaignStatusMap();
         $childrenByParent = $this->childrenMetaByParent($rows, $parents);
-        $metrics = $this->campaignL30Metrics();
+        $metrics = $this->campaignPeriodMetrics();
 
         $data = collect($parents)->map(function ($parent, $parentKey) use (
             $linksBySku,
@@ -3023,24 +3023,42 @@ PROMPT;
         return AmazonAdsMissingLinks::linkListForType($links, $type, $statusMap);
     }
 
+    private const METRIC_PERIODS = ['l30', 'd90', 'lt'];
+
     /**
-     * L30 spend / sold / sales / clicks per campaign (latest L30 report row per campaign name), keyed by normalized name.
+     * Spend / sold / sales / clicks per campaign for three windows, keyed by normalized campaign name:
+     *  - l30: the latest L30 summary report row
+     *  - d90: SUM of the stored DAILY report rows (report_date_range = YYYY-MM-DD) of the last 90 days
+     *  - lt : SUM of every stored DAILY report row (the L1 / L7 / L15 / L30 rows overlap them and are left out)
      * SP (KW + PT campaigns) and SB (HL campaigns) come from their own report tables.
      *
-     * @return array{sp: array<string, array{spend: float, sold: int, sales: float, clicks: int}>, sb: array<string, array{spend: float, sold: int, sales: float, clicks: int}>}
+     * @return array{sp: array<string, array<string, array{spend: float, sold: int, sales: float, clicks: int}>>, sb: array<string, array<string, array{spend: float, sold: int, sales: float, clicks: int}>>}
      */
-    private function campaignL30Metrics(): array
+    private function campaignPeriodMetrics(): array
     {
         $out = ['sp' => [], 'sb' => []];
         $sources = [
             'sp' => [self::SP_TABLE, 'purchases30d', 'sales30d'],
             'sb' => [self::SB_TABLE, 'purchases', 'sales'],
         ];
+        $since90 = Carbon::now()->subDays(90)->toDateString();
+        $blank = ['spend' => 0.0, 'sold' => 0, 'sales' => 0.0, 'clicks' => 0];
+        $add = function (array &$bucket, string $name, string $period, $spend, $sold, $sales, $clicks) use ($blank): void {
+            $m = $bucket[$name][$period] ?? $blank;
+            $m['spend'] += (float) $spend;
+            $m['sold'] += (int) $sold;
+            $m['sales'] += (float) $sales;
+            $m['clicks'] += (int) $clicks;
+            $bucket[$name][$period] = $m;
+        };
+
         foreach ($sources as $key => [$table, $soldCol, $salesCol]) {
             try {
                 if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $soldCol) || ! Schema::hasColumn($table, $salesCol)) {
                     continue;
                 }
+
+                // l30: latest L30 row per campaign name.
                 $ids = DB::table($table)
                     ->where('report_date_range', 'L30')
                     ->whereNotNull('campaignName')
@@ -3052,19 +3070,38 @@ PROMPT;
                 foreach (array_chunk($ids, 1000) as $chunk) {
                     foreach (DB::table($table)->whereIn('id', $chunk)->get(['campaignName', 'clicks', 'cost', $soldCol, $salesCol]) as $r) {
                         $name = $this->normalizeCampaignName((string) $r->campaignName);
-                        if ($name === '') {
-                            continue;
+                        if ($name !== '') {
+                            $add($out[$key], $name, 'l30', $r->cost ?? 0, $r->{$soldCol} ?? 0, $r->{$salesCol} ?? 0, $r->clicks ?? 0);
                         }
-                        $out[$key][$name] = [
-                            'spend' => (float) ($r->cost ?? 0),
-                            'sold' => (int) ($r->{$soldCol} ?? 0),
-                            'sales' => (float) ($r->{$salesCol} ?? 0),
-                            'clicks' => (int) ($r->clicks ?? 0),
-                        ];
                     }
                 }
+
+                // d90 + lt: sums of the daily rows.
+                $rows = DB::table($table)
+                    ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+                    ->whereNotNull('campaignName')
+                    ->selectRaw(
+                        'campaignName,'
+                        .' SUM(COALESCE(`cost`, 0)) AS lt_spend, SUM(COALESCE(`'.$soldCol.'`, 0)) AS lt_sold,'
+                        .' SUM(COALESCE(`'.$salesCol.'`, 0)) AS lt_sales, SUM(COALESCE(`clicks`, 0)) AS lt_clicks,'
+                        .' SUM(CASE WHEN report_date_range >= ? THEN COALESCE(`cost`, 0) ELSE 0 END) AS d_spend,'
+                        .' SUM(CASE WHEN report_date_range >= ? THEN COALESCE(`'.$soldCol.'`, 0) ELSE 0 END) AS d_sold,'
+                        .' SUM(CASE WHEN report_date_range >= ? THEN COALESCE(`'.$salesCol.'`, 0) ELSE 0 END) AS d_sales,'
+                        .' SUM(CASE WHEN report_date_range >= ? THEN COALESCE(`clicks`, 0) ELSE 0 END) AS d_clicks',
+                        [$since90, $since90, $since90, $since90]
+                    )
+                    ->groupBy('campaignName')
+                    ->get();
+                foreach ($rows as $r) {
+                    $name = $this->normalizeCampaignName((string) $r->campaignName);
+                    if ($name === '') {
+                        continue;
+                    }
+                    $add($out[$key], $name, 'd90', $r->d_spend, $r->d_sold, $r->d_sales, $r->d_clicks);
+                    $add($out[$key], $name, 'lt', $r->lt_spend, $r->lt_sold, $r->lt_sales, $r->lt_clicks);
+                }
             } catch (\Throwable $e) {
-                Log::warning('Amazon ads missing: L30 campaign metrics failed', ['table' => $table, 'error' => $e->getMessage()]);
+                Log::warning('Amazon ads missing: campaign metrics failed', ['table' => $table, 'error' => $e->getMessage()]);
             }
         }
 
@@ -3072,15 +3109,18 @@ PROMPT;
     }
 
     /**
-     * Sum the L30 metrics over a parent's linked campaigns of one type (each campaign counted once).
+     * Sum the metrics over a parent's linked campaigns of one type (each campaign counted once), per window.
      *
      * @param  array<int, array<string, mixed>>  $links  linkListForType() rows
-     * @param  array<string, array{spend: float, sold: int, sales: float, clicks: int}>  $byName
-     * @return array{spend: float, sold: int, sales: float, clicks: int}
+     * @param  array<string, array<string, array{spend: float, sold: int, sales: float, clicks: int}>>  $byName
+     * @return array<string, array{spend: float, sold: int, sales: float, clicks: int}>
      */
     private function sumCampaignMetrics(array $links, array $byName): array
     {
-        $sum = ['spend' => 0.0, 'sold' => 0, 'sales' => 0.0, 'clicks' => 0];
+        $sum = [];
+        foreach (self::METRIC_PERIODS as $p) {
+            $sum[$p] = ['spend' => 0.0, 'sold' => 0, 'sales' => 0.0, 'clicks' => 0];
+        }
         $seen = [];
         foreach ($links as $l) {
             $name = $this->normalizeCampaignName((string) ($l['campaign_name'] ?? ''));
@@ -3088,13 +3128,21 @@ PROMPT;
                 continue;
             }
             $seen[$name] = true;
-            $sum['spend'] += $byName[$name]['spend'];
-            $sum['sold'] += $byName[$name]['sold'];
-            $sum['sales'] += $byName[$name]['sales'];
-            $sum['clicks'] += $byName[$name]['clicks'];
+            foreach (self::METRIC_PERIODS as $p) {
+                $m = $byName[$name][$p] ?? null;
+                if ($m === null) {
+                    continue;
+                }
+                $sum[$p]['spend'] += $m['spend'];
+                $sum[$p]['sold'] += $m['sold'];
+                $sum[$p]['sales'] += $m['sales'];
+                $sum[$p]['clicks'] += $m['clicks'];
+            }
         }
-        $sum['spend'] = round($sum['spend'], 2);
-        $sum['sales'] = round($sum['sales'], 2);
+        foreach (self::METRIC_PERIODS as $p) {
+            $sum[$p]['spend'] = round($sum[$p]['spend'], 2);
+            $sum[$p]['sales'] = round($sum[$p]['sales'], 2);
+        }
 
         return $sum;
     }

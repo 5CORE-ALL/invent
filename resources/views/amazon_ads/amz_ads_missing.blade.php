@@ -322,6 +322,13 @@
                         </button>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="amzTopFilters">
+                        <label class="d-flex align-items-center gap-1 mb-0 small fw-semibold">Period
+                            <select class="form-select form-select-sm" id="amzMetricPeriod" style="width: 130px;" title="Period for the Spend / Sold / ACOS% / CVR% columns (KW, PT, HL). Lifetime = every stored daily report.">
+                                <option value="l30">30 days</option>
+                                <option value="d90">90 days</option>
+                                <option value="lt">Lifetime</option>
+                            </select>
+                        </label>
                         <input type="search" class="form-control form-control-sm" id="amzFilterParent" placeholder="Search Parent..." autocomplete="off" style="width: 220px;">
                         <label class="d-flex align-items-center gap-1 mb-0 small text-muted">Inv
                             <select class="form-select form-select-sm" id="amzFilterInventory" style="width: 90px;">
@@ -1195,8 +1202,12 @@
             }
             // Column definition shared by "KW K Count" (keywords) and "PT Count" (targets).
             // ---- L30 performance columns (Spend / Sold / ACOS% / CVR%) summed over a parent's linked campaigns of one type ----
+            var AMZ_PERIOD_KEY = 'amzMissingPeriod.v1';
+            var amzPeriod = 'l30';
+            try { var savedPeriod = window.localStorage.getItem(AMZ_PERIOD_KEY); if (savedPeriod === 'l30' || savedPeriod === 'd90' || savedPeriod === 'lt') { amzPeriod = savedPeriod; } } catch (e) { /* private mode */ }
             function amzMetricValue(row, kind, metric) {
                 var m = row && row[kind + '_m'];
+                m = m && m[amzPeriod];
                 if (!m) { return null; }
                 var linked = Array.isArray(row[kind]) && row[kind].length > 0;
                 if (!linked) { return null; }
@@ -1235,10 +1246,10 @@
             }
             function metricColumnDefs(kind, label) {
                 var defs = [
-                    ['spend', 'Spend', 'L30 ad spend of the linked ' + label + ' campaign(s).'],
-                    ['sold', 'Sold', 'L30 units sold (purchases) from the linked ' + label + ' campaign(s).'],
-                    ['acos', 'ACOS%', 'L30 ACOS = Spend / Sales x 100 for the linked ' + label + ' campaign(s). Blank when there are no sales.'],
-                    ['cvr', 'CVR%', 'L30 CVR = Sold / Clicks x 100 for the linked ' + label + ' campaign(s). Blank when there are no clicks.']
+                    ['spend', 'Spend', 'Ad spend (selected period) of the linked ' + label + ' campaign(s).'],
+                    ['sold', 'Sold', 'Units sold (purchases, selected period) from the linked ' + label + ' campaign(s).'],
+                    ['acos', 'ACOS%', 'ACOS (selected period) = Spend / Sales x 100 for the linked ' + label + ' campaign(s). Blank when there are no sales.'],
+                    ['cvr', 'CVR%', 'CVR (selected period) = Sold / Clicks x 100 for the linked ' + label + ' campaign(s). Blank when there are no clicks.']
                 ];
                 return defs.map(function (d) {
                     var metric = d[0];
@@ -3421,6 +3432,20 @@
                     var evt = field === 'parent' ? 'input' : 'change';
                     el.addEventListener(evt, function () { setTopFilter(field, field === 'parent' ? el.value.trim() : el.value); });
                 });
+
+                // Period dropdown: switches the Spend / Sold / ACOS% / CVR% columns (and the ACOS colours / filters).
+                var periodEl = document.getElementById('amzMetricPeriod');
+                if (periodEl) {
+                    periodEl.value = amzPeriod;
+                    periodEl.addEventListener('change', function () {
+                        amzPeriod = periodEl.value;
+                        try { window.localStorage.setItem(AMZ_PERIOD_KEY, amzPeriod); } catch (e) { /* ignore */ }
+                        applyTopFilters();   // ACOS filters depend on the period
+                        table.getRows().forEach(function (r) { try { r.reformat(); } catch (e) {} });
+                        var sorters = table.getSorters();
+                        if (sorters && sorters.length) { table.setSort(sorters.map(function (x) { return { column: x.field, dir: x.dir }; })); }
+                    });
+                }
 
                 var MISSING_TYPES = ['kw', 'pt', 'hl'];
                 var MISSING_WRAP_IDS = { kw: 'amzMissingKwWrap', pt: 'amzMissingPtWrap', hl: 'amzMissingHlWrap' };
