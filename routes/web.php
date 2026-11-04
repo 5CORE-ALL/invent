@@ -8344,6 +8344,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/refresh-summary', [\App\Http\Controllers\Reviews\ReviewMasterController::class, 'refreshSummary'])->name('refresh-summary');
     });
 
+    Route::prefix('excel')->name('excel.')->group(function () {
+        $excel = \App\Http\Controllers\ExcelImportController::class;
+        Route::get('/', [$excel, 'index'])->name('index');
+        Route::post('/import', [$excel, 'import'])->name('import');
+        Route::get('/worksheets/{worksheet}', [$excel, 'worksheet'])->name('worksheets.show')->whereNumber('worksheet');
+        Route::get('/worksheets/{worksheet}/data', [$excel, 'data'])->name('worksheets.data')->whereNumber('worksheet');
+        Route::get('/worksheets/{worksheet}/export', [$excel, 'export'])->name('worksheets.export')->whereNumber('worksheet');
+    });
+
     Route::get('', [RoutingController::class, 'index'])->name('root');
     Route::get('{first}/{second}', [RoutingController::class, 'secondLevel'])->name('second')->where('first', '^(?!\.well-known$).+');
     Route::get('{first}/{second}/{third}', [RoutingController::class, 'thirdLevel'])->name('third');
