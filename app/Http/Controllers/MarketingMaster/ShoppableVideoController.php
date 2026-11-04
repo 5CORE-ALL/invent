@@ -422,20 +422,14 @@ class ShoppableVideoController extends Controller
             'sku' => 'required|string',
             'url' => 'required|string|max:2000',
             'target' => 'required|in:9:16,16:9',
-            'background' => 'nullable|in:blur,black,extended',
-            'save' => 'nullable|boolean',
-            'existing_url' => 'nullable|string|max:2000',
         ]);
 
         set_time_limit(300);
 
-        $readyUrl = trim((string) $request->input('existing_url', ''));
         try {
-            $url = ($request->target === '16:9' && $readyUrl !== '')
-                ? $readyUrl
-                : ($request->target === '16:9'
-                    ? $gemini->changeToSixteenNine($request->url, $request->sku)
-                    : $gemini->changeToNineSixteen($request->url, $request->sku));
+            $url = $request->target === '16:9'
+                ? $gemini->changeToSixteenNine($request->url, $request->sku)
+                : $gemini->changeToNineSixteen($request->url, $request->sku);
         } catch (\Throwable $e) {
             Log::warning('Nine ration ratio change failed', [
                 'sku' => $request->sku,
@@ -449,15 +443,6 @@ class ShoppableVideoController extends Controller
         }
 
         $sku = $request->sku;
-        if ($request->target === '16:9' && ! $request->boolean('save', true)) {
-            return response()->json([
-                'success' => true,
-                'url' => $url,
-                'field' => 'sixteen_ratio_link',
-                'saved' => false,
-            ]);
-        }
-
         if ($request->target === '16:9') {
             $existing = SixteenRationVideo::where('sku', $sku)->first();
             $merged = [];

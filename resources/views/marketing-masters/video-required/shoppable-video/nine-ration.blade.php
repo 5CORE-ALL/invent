@@ -123,17 +123,16 @@
     .ratio-player.is-open { display: flex; }
     .ratio-player-frame {
         position: relative;
-        width: min(70vw, calc(62vh * var(--video-ar, 1.7778)));
-        aspect-ratio: var(--video-ar, 1.7778);
-        max-height: 62vh;
+        width: min(92vw, calc(86vh * var(--video-ar, 0.5625)));
+        aspect-ratio: var(--video-ar, 0.5625);
+        max-height: 86vh;
         background: transparent;
     }
     .ratio-player-frame video {
         width: 100%;
         height: 100%;
         display: block;
-        object-fit: contain;
-        object-position: center;
+        object-fit: fill;
         background: transparent;
     }
     .ratio-player-close {
@@ -151,21 +150,6 @@
         line-height: 1;
         cursor: pointer;
     }
-    .vertical-preview-card {
-        width: min(920px, 94vw);
-        max-height: 90vh;
-        overflow: auto;
-        background: #fff;
-        border-radius: 10px;
-        padding: 16px;
-    }
-    .vertical-preview-card h5 { margin: 0 0 10px; font-size: 16px; }
-    .vertical-preview-pair { display: flex; gap: 12px; align-items: flex-start; }
-    .vertical-preview-pair > div { flex: 1; min-width: 0; }
-    .vertical-preview-pair p { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: #374151; }
-    .vertical-preview-pair video { width: 100%; background: #111; border-radius: 6px; }
-    #vertical-after { max-height: 420px; object-fit: contain; }
-    .vertical-preview-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 </style>
 @endsection
 
@@ -275,27 +259,6 @@
                 </div>
                 <div id="nine-ration-video"></div>
             </div>
-        </div>
-    </div>
-</div>
-
-<div id="vertical-preview" class="ratio-player" hidden>
-    <div class="vertical-preview-card">
-        <h5>Convert to 16:9</h5>
-        <div class="vertical-preview-pair">
-            <div>
-                <p>Original</p>
-                <video id="vertical-before" controls playsinline></video>
-            </div>
-            <div>
-                <p>16:9 result</p>
-                <video id="vertical-after" controls playsinline></video>
-            </div>
-        </div>
-        <div class="vertical-preview-actions">
-            <button type="button" class="btn btn-sm btn-light" id="vertical-cancel">Cancel</button>
-            <button type="button" class="btn btn-sm btn-outline-primary" id="vertical-preview-btn">Preview</button>
-            <button type="button" class="btn btn-sm btn-primary" id="vertical-save-btn" disabled>Save 16:9</button>
         </div>
     </div>
 </div>
@@ -603,10 +566,6 @@
                         const field = target === '9:16' ? 'nine_ratio_link' : 'sixteen_ratio_link';
                         const label = regenerate ? 'RE Generated' : 'Change Ratio';
                         if (!source) return;
-                        if (target === '16:9') {
-                            openVerticalPreview({ sku: data.Sku, url: source, row: row, btn: btn, label: label, field: field });
-                            return;
-                        }
                         btn.disabled = true;
                         btn.textContent = 'Changing...';
                         fetch('/nine-ration-video/change-ratio', {
@@ -991,116 +950,6 @@
         const ratioFrame = document.getElementById('ratio-player-frame');
         const ratioVideo = document.getElementById('ratio-player-video');
 
-        let verticalJob = null;
-
-        function closeVerticalPreview() {
-            const modal = document.getElementById('vertical-preview');
-            const before = document.getElementById('vertical-before');
-            const after = document.getElementById('vertical-after');
-            before.pause();
-            after.pause();
-            before.removeAttribute('src');
-            after.removeAttribute('src');
-            before.load();
-            after.load();
-            document.getElementById('vertical-save-btn').disabled = true;
-            modal.classList.remove('is-open');
-            modal.hidden = true;
-            if (verticalJob && verticalJob.btn) {
-                verticalJob.btn.disabled = false;
-                verticalJob.btn.textContent = verticalJob.label;
-            }
-            verticalJob = null;
-        }
-
-        function openVerticalPreview(job) {
-            verticalJob = job;
-            const modal = document.getElementById('vertical-preview');
-            const before = document.getElementById('vertical-before');
-            document.getElementById('vertical-after').removeAttribute('src');
-            document.getElementById('vertical-save-btn').disabled = true;
-            before.src = job.url;
-            modal.hidden = false;
-            modal.classList.add('is-open');
-        }
-
-        async function previewVerticalVideo() {
-            if (!verticalJob) return;
-            const button = document.getElementById('vertical-preview-btn');
-            const saveButton = document.getElementById('vertical-save-btn');
-            button.disabled = true;
-            button.textContent = 'Previewing...';
-            saveButton.disabled = true;
-            try {
-                const res = await fetch('/nine-ration-video/change-ratio', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                    },
-                    body: JSON.stringify({
-                        sku: verticalJob.sku,
-                        url: verticalJob.url,
-                        target: '16:9',
-                        save: false
-                    })
-                });
-                const text = await res.text();
-                let body = {};
-                try { body = JSON.parse(text); } catch (e) { body = {}; }
-                if (!res.ok || !body.success) {
-                    alert(body.message || 'Could not preview that video.');
-                    return;
-                }
-                verticalJob.previewUrl = body.url;
-                const after = document.getElementById('vertical-after');
-                after.src = body.url;
-                after.play().catch(function () {});
-                saveButton.disabled = false;
-            } finally {
-                button.disabled = false;
-                button.textContent = 'Preview';
-            }
-        }
-
-        async function saveVerticalVideo() {
-            if (!verticalJob || !verticalJob.previewUrl) return;
-            const saveButton = document.getElementById('vertical-save-btn');
-            saveButton.disabled = true;
-            saveButton.textContent = 'Saving...';
-            const res = await fetch('/nine-ration-video/change-ratio', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: JSON.stringify({
-                    sku: verticalJob.sku,
-                    url: verticalJob.url,
-                    target: '16:9',
-                    existing_url: verticalJob.previewUrl,
-                    save: true
-                })
-            });
-            const body = await res.json().catch(function () { return {}; });
-            if (!res.ok || !body.success) {
-                alert('The 16:9 video was created but could not be saved.');
-                saveButton.disabled = false;
-                saveButton.textContent = 'Save 16:9';
-                return;
-            }
-            const job = verticalJob;
-            verticalJob = null;
-            job.row.update({ sixteen_ratio_link: job.previewUrl }).then(function () {
-                job.row.reformat();
-                updateTotalInvAndL30(table);
-            });
-            closeVerticalPreview();
-            saveButton.textContent = 'Save 16:9';
-        }
-
         function openRatioPlayer(url, ratio) {
             const preset = ratio === '16:9' ? (16 / 9) : (ratio === '1:1' ? 1 : (9 / 16));
             ratioFrame.style.setProperty('--video-ar', String(preset));
@@ -1129,10 +978,6 @@
             e.preventDefault();
             openRatioPlayer(link.getAttribute('href'), link.dataset.ratio || '16:9');
         }, true);
-
-        document.getElementById('vertical-preview-btn').addEventListener('click', previewVerticalVideo);
-        document.getElementById('vertical-save-btn').addEventListener('click', saveVerticalVideo);
-        document.getElementById('vertical-cancel').addEventListener('click', closeVerticalPreview);
 
         document.getElementById('ratio-player-close').addEventListener('click', closeRatioPlayer);
         ratioPlayer.addEventListener('click', function (e) {
