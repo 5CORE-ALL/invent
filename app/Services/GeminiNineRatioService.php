@@ -358,7 +358,7 @@ class GeminiNineRatioService
         }
 
         [$width, $height] = array_pad(explode(':', $size), 2, '0');
-        $vf = 'scale='.$width.':'.$height.':force_original_aspect_ratio=increase:flags=lanczos,crop='.$width.':'.$height.',setsar=1';
+        $vf = 'scale='.$width.':'.$height.':flags=lanczos,setsar=1';
         $run = Process::timeout(300)->run([
             $ffmpeg, '-y', '-i', $input,
             '-vf', $vf,
