@@ -327,7 +327,7 @@
             </li>
 
             <li class="side-nav-item">
-                <a href="{{ route('missing.listing') }}" class="side-nav-link missing-listing-nav">
+                <a href="{{ route('missing.listing') }}" class="side-nav-link missing-listing-nav {{ request()->routeIs('missing.listing') ? 'active' : '' }}">
                     <i class="ri-error-warning-line"></i>
                     <span>Missing Listing</span>
                     @php
@@ -336,6 +336,13 @@
                     @if($missingListingCount > 0)
                         <span class="badge rounded-pill ms-auto missing-listing-badge" title="Missing L total from each channel listing page">{{ number_format($missingListingCount) }}</span>
                     @endif
+                </a>
+            </li>
+
+            <li class="side-nav-item">
+                <a href="{{ route('missing.listing.c2c') }}" class="side-nav-link {{ request()->routeIs('missing.listing.c2c') ? 'active' : '' }}">
+                    <i class="ri-group-line"></i>
+                    <span>Missing Listing C2C</span>
                 </a>
             </li>
 

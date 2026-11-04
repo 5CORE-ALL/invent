@@ -22,6 +22,44 @@ class MasterListingDetails
     private const IN_TO_CM = 2.54;
 
     /**
+     * API marketplaces that still export a master listing sheet from Missing L.
+     *
+     * @return array<string, string> slug => label
+     */
+    public static function apiChannels(): array
+    {
+        return [
+            'alibaba' => 'Alibaba',
+            'aliexpress' => 'Aliexpress',
+            'wayfair' => 'Wayfair',
+            'topdawg' => 'TopDawg',
+            'shein' => 'Shein',
+        ];
+    }
+
+    public static function supports(string $channel): bool
+    {
+        $key = ListingChannelCounts::normalize($channel);
+
+        return SheetListingCatalog::has($key) || isset(self::apiChannels()[$key]);
+    }
+
+    public static function label(string $channel): string
+    {
+        $key = ListingChannelCounts::normalize($channel);
+        if (SheetListingCatalog::has($key)) {
+            return SheetListingCatalog::label($key);
+        }
+
+        return self::apiChannels()[$key] ?? $channel;
+    }
+
+    public static function routePattern(): string
+    {
+        return SheetListingCatalog::routePattern().'|'.implode('|', array_keys(self::apiChannels()));
+    }
+
+    /**
      * CSV / table columns in order: key => header.
      *
      * @return array<string, string>

@@ -52,10 +52,25 @@ class MissingListingController extends Controller
 
     public function index()
     {
-        return view('market-places.Missing_listing');
+        return view('market-places.Missing_listing', ['c2c' => false]);
+    }
+
+    public function indexC2c()
+    {
+        return view('market-places.Missing_listing', ['c2c' => true]);
     }
 
     public function getData(Request $request)
+    {
+        return $this->pageData(false);
+    }
+
+    public function getC2cData(Request $request)
+    {
+        return $this->pageData(true);
+    }
+
+    private function pageData(bool $c2cOnly)
     {
         try {
             $cached = Cache::get(self::PAGE_CACHE_KEY);
@@ -64,15 +79,20 @@ class MissingListingController extends Controller
                     $cached['data'] = $this->overlayListingModes($cached['data']);
                     $cached['data'] = $this->overlayListingUrls($cached['data']);
                     $cached['data'] = $this->withoutHiddenChannels($cached['data']);
+                    $cached['data'] = $c2cOnly ? $this->onlyC2c($cached['data']) : $this->withoutC2c($cached['data']);
                     $cached['data'] = $this->overlayCsvListedCounts($cached['data']);
                     $cached['count'] = count($cached['data']);
                     $cached['total_missing_l'] = $this->sumMissingL($cached['data']);
-                    // The sidebar badge reads this same figure.
-                    ListingChannelCounts::storeTotalMissingL((int) $cached['total_missing_l']);
+                    // The sidebar badge is the main page, so C2C counts stay on the C2C page.
+                    if (! $c2cOnly) {
+                        ListingChannelCounts::storeTotalMissingL((int) $cached['total_missing_l']);
+                    }
                 } catch (\Throwable $e) {
                     Log::warning('Missing Listing overlayListingModes failed: '.$e->getMessage());
                 }
-                $this->dispatchPageRebuildIfNeeded($cached);
+                if (! $c2cOnly) {
+                    $this->dispatchPageRebuildIfNeeded($cached);
+                }
 
                 return response()->json($cached);
             }
@@ -85,11 +105,18 @@ class MissingListingController extends Controller
             }
             try {
                 $payload['data'] = $this->overlayCsvListedCounts($payload['data'] ?? []);
+                $payload['data'] = $c2cOnly ? $this->onlyC2c($payload['data']) : $this->withoutC2c($payload['data']);
+                $payload['count'] = count($payload['data']);
                 $payload['total_missing_l'] = $this->sumMissingL($payload['data']);
+                if (! $c2cOnly) {
+                    ListingChannelCounts::storeTotalMissingL((int) $payload['total_missing_l']);
+                }
             } catch (\Throwable $e) {
                 Log::warning('Missing Listing csv listed overlay failed: '.$e->getMessage());
             }
-            $this->dispatchPageRebuildIfNeeded(null);
+            if (! $c2cOnly) {
+                $this->dispatchPageRebuildIfNeeded(null);
+            }
 
             return response()->json($payload);
         } catch (\Throwable $e) {
@@ -122,12 +149,13 @@ class MissingListingController extends Controller
             $rawChannel = trim((string) $request->input('channel', 'all'));
             $channelKey = ListingChannelCounts::normalize($rawChannel);
             $isAll = $channelKey === '' || $channelKey === 'all';
+            $c2cOnly = $request->input('scope') === 'c2c';
             $days = (int) $request->input('days', 32);
             $badgeValue = $request->input('badge_value');
             $hasBadge = $badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue);
 
             if (! Schema::hasTable('channel_master_daily_data')) {
-                return response()->json(['success' => true, 'data' => $this->chartWithLiveOnly($isAll, $channelKey, $badgeValue)]);
+                return response()->json(['success' => true, 'data' => $this->chartWithLiveOnly($isAll, $channelKey, $badgeValue, $c2cOnly)]);
             }
 
             $query = ChannelMasterSummary::query()->orderBy('snapshot_date', 'asc');
@@ -169,6 +197,9 @@ class MissingListingController extends Controller
                             continue;
                         }
                         $ck = $this->chartCanonicalKey((string) $row->channel);
+                        if ($c2cOnly !== $this->isC2cChannelName((string) $row->channel)) {
+                            continue;
+                        }
                         if (! isset($byChannel[$ck])) {
                             $byChannel[$ck] = (float) $sd['listing_miss_count'];
                         }
@@ -201,7 +232,7 @@ class MissingListingController extends Controller
             $todayLabel = now(self::TZ)->format('M d');
             // The page already has today's Missing L. Recounting here is what made each
             // marketplace chart time out before any history could be drawn.
-            $live = $hasBadge ? (float) $badgeValue : $this->liveMissingL($isAll, $channelKey);
+            $live = $hasBadge ? (float) $badgeValue : $this->liveMissingL($isAll, $channelKey, $c2cOnly);
 
             $replaced = false;
             foreach ($chartData as &$point) {
@@ -685,6 +716,69 @@ class MissingListingController extends Controller
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
+    private function withoutC2c(array $rows): array
+    {
+        return array_values(array_filter($rows, fn ($row) => ! $this->rowIsC2c($row)));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function onlyC2c(array $rows): array
+    {
+        return array_values(array_filter($rows, fn ($row) => $this->rowIsC2c($row)));
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function rowIsC2c(array $row): bool
+    {
+        return strtoupper(trim((string) ($row['type'] ?? ''))) === 'C2C';
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function c2cChannelKeySet(): array
+    {
+        static $keys = null;
+        if (is_array($keys)) {
+            return $keys;
+        }
+        $keys = [];
+        if (! Schema::hasTable('channel_master') || ! Schema::hasColumn('channel_master', 'type')) {
+            return $keys;
+        }
+        foreach (ChannelMaster::query()->whereRaw('UPPER(TRIM(type)) = ?', ['C2C'])->pluck('channel') as $name) {
+            $name = (string) $name;
+            $normalized = ListingChannelCounts::normalize($name);
+            if ($normalized !== '') {
+                $keys[$normalized] = true;
+            }
+            $canonical = $this->chartCanonicalKey($name);
+            if ($canonical !== '') {
+                $keys[$canonical] = true;
+            }
+        }
+
+        return $keys;
+    }
+
+    private function isC2cChannelName(string $channel): bool
+    {
+        $keys = $this->c2cChannelKeySet();
+        $normalized = ListingChannelCounts::normalize($channel);
+
+        return ($normalized !== '' && isset($keys[$normalized]))
+            || isset($keys[$this->chartCanonicalKey($channel)]);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
     private function overlayListingModes(array $rows): array
     {
         if (! Schema::hasColumn('channel_master', 'listing_mode') || $rows === []) {
@@ -1044,7 +1138,7 @@ class MissingListingController extends Controller
         }
     }
 
-    private function liveMissingL(bool $isAll, string $channelKey): float
+    private function liveMissingL(bool $isAll, string $channelKey, bool $c2cOnly = false): float
     {
         if ($isAll) {
             $total = 0;
@@ -1055,6 +1149,9 @@ class MissingListingController extends Controller
 
             foreach ($masters as $master) {
                 $name = (string) $master->channel;
+                if ($c2cOnly !== $this->isC2cChannelName($name)) {
+                    continue;
+                }
                 if (! ListingChannelCounts::shouldShowOnMissingListing($name, $master->status ?? '')) {
                     continue;
                 }
@@ -1085,11 +1182,11 @@ class MissingListingController extends Controller
     /**
      * @return list<array{date: string, value: float}>
      */
-    private function chartWithLiveOnly(bool $isAll, string $channelKey, mixed $badgeValue): array
+    private function chartWithLiveOnly(bool $isAll, string $channelKey, mixed $badgeValue, bool $c2cOnly = false): array
     {
         $live = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue))
             ? (float) $badgeValue
-            : $this->liveMissingL($isAll, $channelKey);
+            : $this->liveMissingL($isAll, $channelKey, $c2cOnly);
 
         return [[
             'date' => now(self::TZ)->format('M d'),

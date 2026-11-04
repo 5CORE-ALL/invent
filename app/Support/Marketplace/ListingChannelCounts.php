@@ -526,6 +526,7 @@ class ListingChannelCounts
     {
         return (int) collect($rows)
             ->filter(fn ($row) => ! self::isHiddenFromMissingListing((string) ($row['channel'] ?? '')))
+            ->filter(fn ($row) => strtoupper(trim((string) ($row['type'] ?? ''))) !== 'C2C')
             ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
             ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
     }
@@ -640,12 +641,19 @@ class ListingChannelCounts
         $seen = [];
         $total = 0;
 
+        $columns = ['channel', 'status'];
+        if (Schema::hasColumn('channel_master', 'type')) {
+            $columns[] = 'type';
+        }
         $channels = ChannelMaster::whereNotNull('channel')
             ->where('channel', '!=', '')
-            ->get(['channel', 'status']);
+            ->get($columns);
 
         foreach ($channels as $row) {
             $name = (string) $row->channel;
+            if (strtoupper(trim((string) ($row->type ?? ''))) === 'C2C') {
+                continue;
+            }
             if (! self::shouldShowOnMissingListing($name, $row->status ?? '')) {
                 continue;
             }

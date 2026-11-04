@@ -1,4 +1,5 @@
-@extends('layouts.vertical', ['title' => 'Missing Listing', 'sidenav' => 'condensed'])
+@php($c2c = $c2c ?? false)
+@extends('layouts.vertical', ['title' => $c2c ? 'Missing Listing C2C' : 'Missing Listing', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -189,7 +190,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Missing Listing',
+        'page_title' => $c2c ? 'Missing Listing C2C' : 'Missing Listing',
         'sub_title'  => '',
     ])
 
@@ -281,6 +282,8 @@
     let table = null;
     let mlMetricChartInstance = null;
     let mlChartAjax = null;
+    const mlPageScope = @json($c2c ? 'c2c' : '');
+    const mlPageTitle = @json($c2c ? 'Missing Listing C2C' : 'Missing Listing');
     let mlCurrentChartChannel = 'all';
     let mlCurrentChartDisplayChannel = 'All';
     let mlCurrentMetricKey = 'missing_l';
@@ -385,8 +388,8 @@
 
         $('#mlChartRangeSelect').val('32');
         const label = mlCurrentChartDisplayChannel === 'All'
-            ? 'Missing Listing'
-            : (mlCurrentChartDisplayChannel + ' - Missing Listing');
+            ? mlPageTitle
+            : (mlCurrentChartDisplayChannel + ' - ' + mlPageTitle);
         $('#mlChartModalTitle').text(`${label} (Rolling ${mlChartRangeLabel(mlCurrentChartDays)}, California)`);
 
         const modal = new bootstrap.Modal(document.getElementById('mlMetricChartModal'));
@@ -405,6 +408,7 @@
             channel: mlCurrentChartChannel,
             metric: mlCurrentMetricKey,
             days: mlCurrentChartDays,
+            scope: mlPageScope,
         };
         if (mlCurrentBadgeValue !== null) {
             params.badge_value = mlCurrentBadgeValue;
@@ -583,6 +587,12 @@
         el.addEventListener('hidden.bs.toast', () => el.remove());
     }
 
+    function masterListingSlug(name) {
+        const key = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const channels = { alibaba: 'alibaba', aliexpress: 'aliexpress', wayfair: 'wayfair', topdawg: 'topdawg', shein: 'shein' };
+        return channels[key] || '';
+    }
+
     function escapeHtml(s) {
         return String(s == null ? '' : s)
             .replace(/&/g, '&amp;')
@@ -696,7 +706,7 @@
         }
 
         table = new Tabulator("#missing-listing-table", {
-            ajaxURL: "{{ route('missing.listing.data') }}",
+            ajaxURL: "{{ $c2c ? route('missing.listing.c2c.data') : route('missing.listing.data') }}",
             ajaxRequestTimeout: 20000,
             ajaxRequestFunc: function(url, _config, params) {
                 return new Promise(function(resolve, reject) {
@@ -782,9 +792,17 @@
                         const nameHtml = url
                             ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="ml-channel-listing-link" title="Open listing page">${safeName}</a>`
                             : safeName;
-                        if (!row.allows_csv_upload) return nameHtml;
                         const importUrl = String(row.csv_import_url || '').trim();
-                        return `${nameHtml}<button type="button" class="btn btn-sm btn-outline-warning ml-csv-upload-btn" data-import-url="${escapeHtml(importUrl)}" title="Upload current ${safeName} listings CSV and match to CP Master">Upload CSV</button><button type="button" class="btn btn-sm btn-outline-primary ml-master-listing-btn" data-slug="${escapeHtml(importUrl.split('/').filter(Boolean).pop() || '')}" data-label="${safeName}" title="Title, Description, Shopify images, weight / size, category, price and inventory from our masters for ${safeName} Missing L">Master Listing</button>`;
+                        const sheetSlug = row.allows_csv_upload ? (importUrl.split('/').filter(Boolean).pop() || '') : '';
+                        const masterSlug = sheetSlug || masterListingSlug(name);
+                        if (!row.allows_csv_upload && !masterSlug) return nameHtml;
+                        const csvBtn = row.allows_csv_upload
+                            ? `<button type="button" class="btn btn-sm btn-outline-warning ml-csv-upload-btn" data-import-url="${escapeHtml(importUrl)}" title="Upload current ${safeName} listings CSV and match to CP Master">Upload CSV</button>`
+                            : '';
+                        const masterBtn = masterSlug
+                            ? `<button type="button" class="btn btn-sm btn-outline-primary ml-master-listing-btn" data-slug="${escapeHtml(masterSlug)}" data-label="${safeName}" title="Title, Description, Shopify images, weight / size, category, price and inventory from our masters for ${safeName} Missing L">Master Listing</button>`
+                            : '';
+                        return nameHtml + csvBtn + masterBtn;
                     },
                 }, shortFilter()),
                 Object.assign({
