@@ -357,10 +357,13 @@ class GeminiNineRatioService
             throw new RuntimeException('ffmpeg is not installed on this server, so the video ratio cannot be changed.');
         }
 
+        $fit = '[0:v]scale='.$size.':force_original_aspect_ratio=increase,crop='.$size.',boxblur=24:5[bg];'
+            .'[0:v]scale='.$size.':force_original_aspect_ratio=decrease[fg];'
+            .'[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]';
         $run = Process::timeout(300)->run([
             $ffmpeg, '-y', '-i', $input,
-            '-vf', 'scale='.$size.',setsar=1',
-            '-map', '0:v:0', '-map', '0:a:0?',
+            '-filter_complex', $fit,
+            '-map', '[v]', '-map', '0:a:0?',
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
             '-c:a', 'aac', '-movflags', '+faststart',
             $output,
