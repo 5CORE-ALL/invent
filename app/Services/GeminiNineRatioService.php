@@ -11,26 +11,26 @@ class GeminiNineRatioService
 {
     public function changeToNineSixteen(string $sourceUrl, string $sku): string
     {
-        return $this->storeConverted($sourceUrl, $sku, '1080:1920', 'nine-ration', '9:16');
+        return $this->storeConverted($sourceUrl, $sku, 'nine-ration', '9:16');
     }
 
     public function changeToSixteenNine(string $sourceUrl, string $sku): string
     {
-        return $this->storeConverted($sourceUrl, $sku, '1920:1080', 'sixteen-ration', '16:9');
+        return $this->storeConverted($sourceUrl, $sku, 'sixteen-ration', '16:9');
     }
 
     public function changeToSquare(string $sourceUrl, string $sku): string
     {
-        return $this->storeConverted($sourceUrl, $sku, '1080:1080', 'square-ration', '1:1');
+        return $this->storeConverted($sourceUrl, $sku, 'square-ration', '1:1');
     }
 
-    private function storeConverted(string $sourceUrl, string $sku, string $size, string $folder, string $label): string
+    private function storeConverted(string $sourceUrl, string $sku, string $folder, string $label): string
     {
         $source = $this->resolveSource($sourceUrl);
         $output = tempnam(sys_get_temp_dir(), 'ratio-out-');
         $mp4 = $output.'.mp4';
         try {
-            $this->convertWithFfmpeg($source['path'], $mp4, $size, $label);
+            $this->convertWithFfmpeg($source['path'], $mp4, $label);
             $relative = $folder.'/'.preg_replace('/[^A-Za-z0-9._-]+/', '-', $sku).'-'.time().'.mp4';
             $stream = fopen($mp4, 'rb');
             if ($stream === false) {
@@ -355,18 +355,23 @@ class GeminiNineRatioService
         return $status;
     }
 
-    private function convertWithFfmpeg(string $input, string $output, string $size = '1080:1920', string $label = '9:16'): void
+    private function convertWithFfmpeg(string $input, string $output, string $label = '9:16'): void
     {
         $ffmpeg = $this->ffmpegBinary();
-        if ($ffmpeg === null) {
+        $ffprobe = $this->ffprobeBinary();
+        if ($ffmpeg === null || $ffprobe === null) {
             throw new RuntimeException('ffmpeg is not installed on this server, so the video ratio cannot be changed.');
         }
 
-        [$width, $height] = $this->targetCanvas($label, $size);
-        $arguments = $label === '16:9'
-            ? $this->framedArguments($ffmpeg, $input, $output, $width, $height)
-            : $this->matchedFrameArguments($ffmpeg, $input, $output, $width, $height);
-        $run = Process::timeout(300)->run($arguments);
+        $source = $this->videoGeometry($ffprobe, $input);
+        [$width, $height] = $this->proportionalSize($source, $label);
+        $run = Process::timeout(300)->run([
+            $ffmpeg, '-y', '-i', $input,
+            '-vf', 'scale='.$width.':'.$height.':flags=lanczos,setsar=1',
+            '-map', '0:v:0', '-map', '0:a:0?',
+            ...$this->encodeArguments(),
+            $output,
+        ]);
         if (! $run->successful() || ! is_file($output) || filesize($output) < 1024) {
             $detail = trim($run->errorOutput());
             $errors = array_values(array_filter(
@@ -376,12 +381,18 @@ class GeminiNineRatioService
             $message = $errors !== [] ? implode(' ', array_slice($errors, -2)) : 'The file could not be read as a video.';
             throw new RuntimeException('Could not convert that video to '.$label.'. '.$message);
         }
+
+        $this->assertNaturalProportions($source, $this->videoGeometry($ffprobe, $output));
     }
 
     /**
+     * A source that is already the requested ratio is resized to that standard frame.
+     * Any other ratio keeps its own proportions and is only reduced when it is larger than 1920 on the long side.
+     *
+     * @param array{width: int, height: int, display_width: int, display_height: int} $source
      * @return array{0: int, 1: int}
      */
-    private function targetCanvas(string $label, string $size): array
+    private function proportionalSize(array $source, string $label): array
     {
         $canvases = [
             '16:9' => [1920, 1080],
@@ -392,45 +403,91 @@ class GeminiNineRatioService
             throw new RuntimeException('That aspect ratio is not supported. Use 16:9, 9:16, or 1:1.');
         }
 
-        [$width, $height] = $canvases[$label];
-        if ($width < 2 || $height < 2 || $width % 2 !== 0 || $height % 2 !== 0) {
-            throw new RuntimeException('The target video size '.$size.' is not a valid even dimension.');
+        $displayWidth = $source['display_width'];
+        $displayHeight = $source['display_height'];
+        $sourceRatio = $displayWidth / $displayHeight;
+        [$canvasWidth, $canvasHeight] = $canvases[$label];
+        $canvasRatio = $canvasWidth / $canvasHeight;
+        if (abs($sourceRatio - $canvasRatio) / $canvasRatio <= 0.015) {
+            return [$canvasWidth, $canvasHeight];
         }
+
+        $longSide = max($displayWidth, $displayHeight);
+        $scale = $longSide > 1920 ? 1920 / $longSide : 1;
+        $width = $this->evenDimension((int) round($displayWidth * $scale));
+        $height = $this->evenDimension((int) round($displayHeight * $scale));
 
         return [$width, $height];
     }
 
     /**
-     * @return list<string>
+     * @return array{width: int, height: int, display_width: int, display_height: int}
      */
-    private function framedArguments(string $ffmpeg, string $input, string $output, int $width, int $height): array
+    private function videoGeometry(string $ffprobe, string $path): array
     {
-        $fit = 'scale='.$width.':'.$height.':force_original_aspect_ratio=decrease:flags=lanczos,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1';
-        $compose = '[0:v]'.$fit.',split[fg][edge];'
-            .'[edge]scale='.$width.':'.$height.':flags=bilinear[bg];'
-            .'[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]';
+        $run = Process::timeout(60)->run([
+            $ffprobe, '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height,sample_aspect_ratio',
+            '-of', 'json',
+            $path,
+        ]);
+        $decoded = json_decode($run->output(), true);
+        $stream = is_array($decoded) ? ($decoded['streams'][0] ?? null) : null;
+        if (! $run->successful() || ! is_array($stream)) {
+            throw new RuntimeException('The file could not be read as a video.');
+        }
+
+        $width = (int) ($stream['width'] ?? 0);
+        $height = (int) ($stream['height'] ?? 0);
+        $sar = $this->sampleAspectRatio((string) ($stream['sample_aspect_ratio'] ?? '1:1'));
+        $displayWidth = $this->evenDimension((int) round($width * $sar));
+        $displayHeight = $this->evenDimension($height);
+        if ($width < 2 || $height < 2 || $displayWidth < 2 || $displayHeight < 2) {
+            throw new RuntimeException('The file could not be read as a video.');
+        }
 
         return [
-            $ffmpeg, '-y', '-i', $input,
-            '-filter_complex', $compose,
-            '-map', '[v]', '-map', '0:a:0?',
-            ...$this->encodeArguments(),
-            $output,
+            'width' => $width,
+            'height' => $height,
+            'display_width' => $displayWidth,
+            'display_height' => $displayHeight,
         ];
     }
 
     /**
-     * @return list<string>
+     * @param array{width: int, height: int, display_width: int, display_height: int} $source
+     * @param array{width: int, height: int, display_width: int, display_height: int} $exported
      */
-    private function matchedFrameArguments(string $ffmpeg, string $input, string $output, int $width, int $height): array
+    private function assertNaturalProportions(array $source, array $exported): void
     {
-        return [
-            $ffmpeg, '-y', '-i', $input,
-            '-vf', 'scale='.$width.':'.$height.':flags=lanczos,setsar=1',
-            '-map', '0:v:0', '-map', '0:a:0?',
-            ...$this->encodeArguments(),
-            $output,
-        ];
+        $sourceRatio = $source['display_width'] / $source['display_height'];
+        $exportedRatio = $exported['display_width'] / $exported['display_height'];
+        if (abs($exportedRatio - $sourceRatio) / $sourceRatio > 0.02) {
+            throw new RuntimeException('The exported video changed the original proportions.');
+        }
+    }
+
+    private function sampleAspectRatio(string $value): float
+    {
+        if (preg_match('/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/', $value, $matches) === 1) {
+            $denominator = (float) $matches[2];
+            if ($denominator > 0) {
+                $ratio = ((float) $matches[1]) / $denominator;
+                if ($ratio > 0) {
+                    return $ratio;
+                }
+            }
+        }
+
+        return 1.0;
+    }
+
+    private function evenDimension(int $value): int
+    {
+        $value = max(2, $value);
+
+        return ($value % 2) === 0 ? $value : $value - 1;
     }
 
     /**
@@ -446,7 +503,17 @@ class GeminiNineRatioService
 
     private function ffmpegBinary(): ?string
     {
-        foreach (['ffmpeg', '/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg'] as $binary) {
+        return $this->mediaBinary('ffmpeg');
+    }
+
+    private function ffprobeBinary(): ?string
+    {
+        return $this->mediaBinary('ffprobe');
+    }
+
+    private function mediaBinary(string $name): ?string
+    {
+        foreach ([$name, '/usr/bin/'.$name, '/usr/local/bin/'.$name] as $binary) {
             $check = Process::run([$binary, '-version']);
             if ($check->successful()) {
                 return $binary;
