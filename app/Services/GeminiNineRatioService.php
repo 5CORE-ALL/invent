@@ -447,7 +447,7 @@ class GeminiNineRatioService
     /**
      * @return array{name: string, uri: string}
      */
-    private function uploadToGemini(string $key, string $path, string $m    ime): array
+    private function uploadToGemini(string $key, string $path, string $mime): array
     {
         $bytes = filesize($path);
         $start = Http::timeout(60)
