@@ -212,6 +212,21 @@ class ProductMaster extends Model
     }
 
     /**
+     * Missing Listing only counts Product Master rows whose STATUS is Active or 2BDC.
+     * Coming (upcoming), Inactive, DC, and a blank status stay off that page.
+     */
+    public static function isMissingListingStatus(mixed $item): bool
+    {
+        if (is_object($item) && method_exists($item, 'statusLabel')) {
+            $label = $item->statusLabel();
+        } else {
+            $label = self::statusDisplayLabel(self::statusValueFromValues($item));
+        }
+
+        return in_array($label, ['Active', '2BDC'], true);
+    }
+
+    /**
      * Landed price / COGS for one unit from Values.lp (or a raw lp attribute).
      */
     public function unitLandedPrice(): ?float

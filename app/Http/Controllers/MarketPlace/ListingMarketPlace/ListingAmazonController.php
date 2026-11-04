@@ -46,7 +46,7 @@ class ListingAmazonController extends Controller
     public function getViewListingAmazonData(Request $request)
     {
         $productMasters = ProductMaster::whereNull('deleted_at')->get()
-            ->reject(fn ($item) => ListingCountsEngine::isSourcingParent($item))
+            ->filter(fn ($item) => ProductMaster::isMissingListingStatus($item))
             ->values();
         $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
 

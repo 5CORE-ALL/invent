@@ -60,7 +60,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class ListingChannelCounts
 {
-    public const TOTAL_CACHE_KEY = 'listing_pages_missing_l_total_v1';
+    public const TOTAL_CACHE_KEY = 'listing_pages_missing_l_total_v2';
 
     /**
      * Normalized channel key → listing controller class.
@@ -546,7 +546,7 @@ class ListingChannelCounts
             'Pending' => (int) ($counts['Pending'] ?? $counts['MissingL'] ?? 0),
         ];
 
-        $cacheKey = 'listing_channel_counts_v2:inv:'.$key;
+        $cacheKey = 'listing_channel_counts_v3:inv:'.$key;
         $previous = Cache::get($cacheKey);
         Cache::put($cacheKey, $counts, now()->addMinutes(10));
 
@@ -679,7 +679,7 @@ class ListingChannelCounts
             }
         }
 
-        $cacheKey = 'listing_channel_counts_v2:'.($requirePositiveInv ? 'inv' : 'cp').':'.$key;
+        $cacheKey = 'listing_channel_counts_v3:'.($requirePositiveInv ? 'inv' : 'cp').':'.$key;
 
         try {
             return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($key, $empty, $requirePositiveInv) {
@@ -711,7 +711,7 @@ class ListingChannelCounts
     {
         $key = self::normalize($channel);
         foreach (['inv', 'cp'] as $mode) {
-            Cache::forget('listing_channel_counts_v2:'.$mode.':'.$key);
+            Cache::forget('listing_channel_counts_v3:'.$mode.':'.$key);
         }
         ListingCountsEngine::forgetCsvListedCounts();
         $counts = self::forChannel($channel, true);

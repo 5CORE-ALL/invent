@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Schema;
  * Shared listing-page count loop (same rules as /listing-ebaytwo).
  *
  * Listing pages and /missing-listing share the same universe:
- * ProductMaster (not deleted), non-PARENT, Shopify INV > 0.
+ * ProductMaster (not deleted) whose STATUS is Active or 2BDC, non-PARENT, Shopify INV > 0.
+ * Coming, Inactive, DC, and a blank status are not Missing L.
  * NRL/REQ from channel DataView.value.NRL (and listing-status overlay).
  * Listed from channel-specific id map (sku_lower → listing id string).
  * Missing L = in-stock REQ SKU not on the marketplace API.
@@ -33,19 +34,8 @@ class ListingCountsEngine
     {
         return self::$productMastersMemo ??= ProductMaster::whereNull('deleted_at')
             ->get()
-            ->reject(fn ($item) => self::isSourcingParent($item))
+            ->filter(fn ($item) => ProductMaster::isMissingListingStatus($item))
             ->values();
-    }
-
-    /**
-     * Products whose Parent is "sourcing" are not listed anywhere yet, so they are
-     * never part of the listing / Missing L universe.
-     */
-    public static function isSourcingParent(mixed $item): bool
-    {
-        $parent = is_array($item) ? ($item['parent'] ?? '') : ($item->parent ?? '');
-
-        return strtolower(trim((string) $parent)) === 'sourcing';
     }
 
     /**
@@ -79,7 +69,7 @@ class ListingCountsEngine
     public static function csvListedCounts(): array
     {
         try {
-            return Cache::remember('sheet_csv_listed_counts_v1', now()->addMinutes(10), function () {
+            return Cache::remember('sheet_csv_listed_counts_v2', now()->addMinutes(10), function () {
                 return self::loadCsvListedCounts();
             });
         } catch (\Throwable $e) {
@@ -90,7 +80,7 @@ class ListingCountsEngine
     public static function forgetCsvListedCounts(): void
     {
         try {
-            Cache::forget('sheet_csv_listed_counts_v1');
+            Cache::forget('sheet_csv_listed_counts_v2');
         } catch (\Throwable $e) {
             // ignore
         }
