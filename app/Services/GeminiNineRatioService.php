@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
@@ -11,15 +12,18 @@ class GeminiNineRatioService
     public function changeToNineSixteen(string $sourceUrl, string $sku): string
     {
         $key = trim((string) config('services.gemini.key'));
-        if ($key === '') {
-            throw new RuntimeException('GEMINI_API_KEY is not set.');
-        }
 
         $temp = $this->downloadSource($sourceUrl);
+        $output = tempnam(sys_get_temp_dir(), 'nine-out-');
+        $mp4 = $output.'.mp4';
         try {
-            $file = $this->uploadToGemini($key, $temp['path'], $temp['mime']);
-            $this->waitUntilActive($key, $file['name']);
-            $video = $this->generateNineSixteen($key, $file['uri']);
+            $video = $this->convertWithFfmpeg($temp['path'], $mp4);
+            if ($video === null) {
+                if ($key === '') {
+                    throw new RuntimeException('Video conversion is not available on this server, and GEMINI_API_KEY is not set.');
+                }
+                $video = $this->convertWithGemini($key, $temp['path'], $temp['mime']);
+            }
             $relative = 'nine-ration/'.preg_replace('/[^A-Za-z0-9._-]+/', '-', $sku).'-'.time().'.mp4';
             Storage::disk('public')->put($relative, $video);
 
@@ -27,6 +31,12 @@ class GeminiNineRatioService
         } finally {
             if (is_file($temp['path'])) {
                 @unlink($temp['path']);
+            }
+            if (is_string($output) && is_file($output)) {
+                @unlink($output);
+            }
+            if (is_file($mp4)) {
+                @unlink($mp4);
             }
         }
     }
@@ -64,13 +74,56 @@ class GeminiNineRatioService
             throw new RuntimeException('Video is larger than 30 MB. Use a shorter clip.');
         }
 
-        $mime = strtolower((string) $response->header('Content-Type'));
-        $mime = trim(explode(';', $mime)[0]);
-        if (! str_starts_with($mime, 'video/')) {
-            $mime = 'video/mp4';
-        }
+        $mime = $this->detectVideoMime($path);
 
         return ['path' => $path, 'mime' => $mime];
+    }
+
+    private function detectVideoMime(string $path): string
+    {
+        $head = (string) file_get_contents($path, false, null, 0, 64);
+        $lower = strtolower(ltrim($head));
+        if (str_starts_with($lower, '<!doctype') || str_starts_with($lower, '<html') || str_starts_with($lower, '<?xml')) {
+            throw new RuntimeException('That link opened a web page, not a video file. Use a direct mp4 link.');
+        }
+        if (str_contains($head, 'ftyp')) {
+            return 'video/mp4';
+        }
+        if (str_starts_with($head, "\x1A\x45\xDF\xA3")) {
+            return 'video/webm';
+        }
+
+        throw new RuntimeException('That file is not an mp4 or webm video. Use a direct video file link.');
+    }
+
+    private function convertWithFfmpeg(string $input, string $output): ?string
+    {
+        $ffmpeg = Process::run(['ffmpeg', '-version']);
+        if (! $ffmpeg->successful()) {
+            return null;
+        }
+
+        $run = Process::timeout(180)->run([
+            'ffmpeg', '-y', '-i', $input,
+            '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-c:a', 'aac', '-movflags', '+faststart',
+            $output,
+        ]);
+        if (! $run->successful() || ! is_file($output) || filesize($output) < 1024) {
+            $detail = trim($run->errorOutput());
+            throw new RuntimeException('Could not convert that video to 9:16. '.substr($detail, -400));
+        }
+
+        return (string) file_get_contents($output);
+    }
+
+    private function convertWithGemini(string $key, string $path, string $mime): string
+    {
+        $file = $this->uploadToGemini($key, $path, $mime);
+        $this->waitUntilActive($key, $file['name']);
+
+        return $this->generateNineSixteen($key, $file['uri']);
     }
 
     /**
@@ -124,7 +177,11 @@ class GeminiNineRatioService
                 return;
             }
             if ($state === 'FAILED') {
-                throw new RuntimeException('Gemini could not process that video file.');
+                $reason = $file['error']['message'] ?? null;
+                throw new RuntimeException(
+                    'Gemini could not process that video file.'
+                    .(is_string($reason) && $reason !== '' ? ' '.$reason : ' Use a short mp4, under 10 seconds.')
+                );
             }
             sleep(5);
         }
