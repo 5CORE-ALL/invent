@@ -15,12 +15,13 @@ use App\Models\OneRationVideo;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\SixteenRationVideo;
-use App\Models\TiktokVideoAd;
 use App\Models\YoutubeShortsAd;
 use App\Models\YoutubeVideoAd;
 use App\Services\GeminiNineRatioService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
@@ -377,11 +378,8 @@ class ShoppableVideoController extends Controller
             ['value' => json_encode($mergedValue)]
         );
 
-        // == Save to Tiktok Video Ad
-        TiktokVideoAd::updateOrCreate(
-            ['sku' => $sku],
-            ['value' => json_encode($mergedValue)]
-        );
+        // == Save to Tiktok Video Ad (sku/value table, not the imported sheet)
+        $this->saveTiktokSkuVideo($sku, $mergedValue);
 
         // == Save to Youtube Video Ad
         YoutubeShortsAd::updateOrCreate(
@@ -393,6 +391,29 @@ class ShoppableVideoController extends Controller
             'success' => true,
             'data' => $videoPosted
         ]);
+    }
+
+    private function saveTiktokSkuVideo(string $sku, array $mergedValue): void
+    {
+        if (! Schema::hasTable('tiktok_video_ads') || ! Schema::hasColumn('tiktok_video_ads', 'sku')) {
+            return;
+        }
+
+        $now = now();
+        $payload = [
+            'value' => json_encode($mergedValue),
+            'updated_at' => $now,
+        ];
+        $exists = DB::table('tiktok_video_ads')->where('sku', $sku)->exists();
+        if ($exists) {
+            DB::table('tiktok_video_ads')->where('sku', $sku)->update($payload);
+
+            return;
+        }
+
+        $payload['sku'] = $sku;
+        $payload['created_at'] = $now;
+        DB::table('tiktok_video_ads')->insert($payload);
     }
 
     public function changeNineRationRatio(Request $request, GeminiNineRatioService $gemini)
@@ -587,10 +608,7 @@ class ShoppableVideoController extends Controller
                     ['value' => json_encode($mergedValue)]
                 );
 
-                TiktokVideoAd::updateOrCreate(
-                    ['sku' => $sku],
-                    ['value' => json_encode($mergedValue)]
-                );
+                $this->saveTiktokSkuVideo($sku, $mergedValue);
 
                 YoutubeShortsAd::updateOrCreate(
                     ['sku' => $sku],
