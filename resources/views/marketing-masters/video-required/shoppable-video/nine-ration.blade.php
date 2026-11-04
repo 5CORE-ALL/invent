@@ -133,6 +133,7 @@
         height: 100%;
         display: block;
         object-fit: contain;
+        object-position: center;
         background: transparent;
     }
     .ratio-player-close {
