@@ -451,15 +451,21 @@
                 },
                 {
                     title: "MISSING",
-                    field: "is_missing",
+                    field: "missing",
+                    editor: "input",
                     hozAlign: "center",
                     headerSort: false,
-                    width: 110,
+                    minWidth: 110,
                     formatter: function (cell) {
-                        const checked = !!cell.getRow().getData().is_missing;
-                        return `<div class="text-center"><input type="checkbox" class="status-box form-check-input" data-flag="is_missing" ${checked ? 'checked' : ''}></div>`;
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) {
+                            return `<div class="text-center"><span class="ration-missing-dot" title="No data"></span></div>`;
+                        }
+                        return `<div class="text-center">${esc(value)}</div>`;
                     },
-                    cellClick: onStatusClick,
+                    cellDblClick: function (e, cell) {
+                        cell.edit();
+                    },
                 },
                 {
                     title: "CHECK",
@@ -536,6 +542,7 @@
                 value: {
                     nine_ratio_link: rowData.nine_ratio_link || '',
                     remark: rowData.remark || '',
+                    missing: rowData.missing || '',
                 }
             };
 
@@ -711,7 +718,7 @@
         }
 
         function rowIsMissing(data) {
-            return !!data.is_missing || !hasVideo(data);
+            return String(data.missing || '').trim() === '';
         }
 
         function matchesStatusFilters(data) {
