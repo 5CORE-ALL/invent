@@ -90,6 +90,16 @@
     .video-link-badge.ration-badge--redo { background: #d97706; }
     .video-link-badge.ration-badge--redone { background: #7c3aed; }
     .video-link-badge.ration-badge--converted { background: #0d9488; }
+    .delete-video-link {
+        margin-left: 8px;
+        border: 0;
+        background: transparent;
+        color: #dc2626;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 0;
+        cursor: pointer;
+    }
     .ration-missing-dot {
         display: inline-block;
         width: 12px;
@@ -463,7 +473,24 @@
                     formatter: function (cell) {
                         const value = String(cell.getValue() || '').trim();
                         if (!value) return '';
-                        return `<a href="${value}" target="_blank" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>`;
+                        return `<a href="${esc(value)}" target="_blank" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>
+                            <button type="button" class="delete-video-link" title="Delete link">Delete</button>`;
+                    },
+                    cellClick: function (e, cell) {
+                        if (!e.target.closest('.delete-video-link')) return;
+                        const row = cell.getRow();
+                        const data = row.getData();
+                        row.update({ sixteen_ratio_link: '' }).then(() => updateTotalInvAndL30(table));
+                        fetch('/sixteen-ration-video/save', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            },
+                            body: JSON.stringify({ sku: data.Sku, value: { sixteen_ratio_link: '' } })
+                        }).then(res => res.json()).then(res => {
+                            if (!res.success) alert('Could not delete that video link.');
+                        });
                     },
                 },
                 {

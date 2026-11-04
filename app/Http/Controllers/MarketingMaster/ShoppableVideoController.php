@@ -725,6 +725,7 @@ class ShoppableVideoController extends Controller
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
         $videoPostedValues = SixteenRationVideo::whereIn('sku', $skus)->get()->keyBy('sku');
+        $nineValues = NineRationVideo::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
         $slNo = 1;
@@ -755,7 +756,18 @@ class ShoppableVideoController extends Controller
                 'is_parent' => $isParent,
             ];
 
+            $nineLink = '';
+            if (isset($nineValues[$sku])) {
+                $nineStored = $nineValues[$sku]->value;
+                if (is_string($nineStored)) {
+                    $nineStored = json_decode($nineStored, true);
+                }
+                $nineLink = is_array($nineStored) ? ($nineStored['nine_ratio_link'] ?? '') : '';
+            }
+
             $processedItem['sixteen_ratio_link'] = $sixteen_ratio_link;
+            $processedItem['nine_ratio_link'] = $nineLink;
+            $processedItem['converted_sixteen_link'] = $stored['converted_sixteen_link'] ?? '';
             $processedItem = array_merge($processedItem, $this->rationStatusFields($stored));
 
 
@@ -811,6 +823,47 @@ class ShoppableVideoController extends Controller
         return response()->json([
             'success' => true,
             'data' => $videoPosted
+        ]);
+    }
+
+    public function changeSixteenRationRatio(Request $request, GeminiNineRatioService $converter)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'url' => 'required|string|max:2000',
+        ]);
+
+        set_time_limit(240);
+
+        try {
+            $url = $converter->changeToSixteenNine($request->url, $request->sku);
+        } catch (\Throwable $e) {
+            Log::warning('Sixteen ration ratio change failed', [
+                'sku' => $request->sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        $sku = $request->sku;
+        $existing = SixteenRationVideo::where('sku', $sku)->first();
+        $merged = [];
+        if ($existing) {
+            $merged = is_array($existing->value) ? $existing->value : (json_decode($existing->value, true) ?: []);
+        }
+        $merged['converted_sixteen_link'] = $url;
+        SixteenRationVideo::updateOrCreate(
+            ['sku' => $sku],
+            ['value' => json_encode($merged)]
+        );
+
+        return response()->json([
+            'success' => true,
+            'url' => $url,
         ]);
     }
 

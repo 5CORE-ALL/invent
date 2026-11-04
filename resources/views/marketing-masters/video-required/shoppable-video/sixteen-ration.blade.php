@@ -89,6 +89,17 @@
     .video-link-badge.ration-badge--ad { background: #2c6ed5; }
     .video-link-badge.ration-badge--redo { background: #d97706; }
     .video-link-badge.ration-badge--redone { background: #7c3aed; }
+    .video-link-badge.ration-badge--converted { background: #0d9488; }
+    .delete-video-link {
+        margin-left: 8px;
+        border: 0;
+        background: transparent;
+        color: #dc2626;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 0;
+        cursor: pointer;
+    }
     .ration-missing-dot {
         display: inline-block;
         width: 12px;
@@ -201,6 +212,9 @@
                     <button type="button" class="video-link-badge ration-badge--redone" data-status="redone" title="Show rows marked REDONE">
                         Redone: <span id="count-redone">0</span>
                     </button>
+                    <button type="button" class="video-link-badge ration-badge--converted" data-status="converted" title="Show rows with a converted 16:9 video">
+                        Converted: <span id="count-converted">0</span>
+                    </button>
 
                 </div>
                 <div id="sixteen-ration-video"></div>
@@ -261,7 +275,7 @@
         let currentRowTypeFilter = "all";
         let currentDilColorFilter = "";
         let filterHasVideo = false;
-        const statusFilters = { missing: false, checked: false, ad: false, redo: false, redone: false };
+        const statusFilters = { missing: false, checked: false, ad: false, redo: false, redone: false, converted: false };
         const currentUserName = @json(auth()->user()->name ?? '');
         const LINK_FIELD = 'sixteen_ratio_link';
         const SAVE_URL = '/sixteen-ration-video/save';
@@ -421,23 +435,104 @@
                     field: "sixteen_ratio_link",
                     editor: "input",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value && value.trim() !== "") {
-                            return `<a href="${value}" target="_blank" style="text-decoration:none;">
-                                        <i class="fa fa-link"></i> Open
-                                    </a>`;
-                        }
-                        return "";
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) return '';
+                        return `<a href="${esc(value)}" target="_blank" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>
+                            <button type="button" class="delete-video-link" title="Delete link">Delete</button>`;
+                    },
+                    cellClick: function (e, cell) {
+                        if (!e.target.closest('.delete-video-link')) return;
+                        const row = cell.getRow();
+                        const data = row.getData();
+                        row.update({ sixteen_ratio_link: '' }).then(() => updateTotalInvAndL30(table));
+                        fetch(SAVE_URL, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            },
+                            body: JSON.stringify({ sku: data.Sku, value: { sixteen_ratio_link: '' } })
+                        }).then(res => res.json()).then(res => {
+                            if (!res.success) alert('Could not delete that video link.');
+                        });
                     },
                     cellDblClick: function(e, cell) {
-                        cell.edit();        
+                        if (e.target.closest('.delete-video-link')) return;
+                        cell.edit();
                     },
-                    titleFormatter: function () {
-                        return `<div>
-                            16:9 Video <i class='fa fa-link'></i>
-                        </div>`;
-                    },
+                },
+                {
+                    title: "9:16 Video",
+                    field: "nine_ratio_link",
                     hozAlign: "center",
+                    headerSort: false,
+                    formatter: function (cell) {
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) return '';
+                        return `<a href="${esc(value)}" target="_blank" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>`;
+                    },
+                },
+                {
+                    title: "Change Ratio",
+                    field: "_change_ratio",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 130,
+                    formatter: function (cell) {
+                        const link = String(cell.getRow().getData().nine_ratio_link || '').trim();
+                        if (!link) return '';
+                        return `<button type="button" class="btn btn-sm btn-outline-primary change-ratio-btn">Change Ratio</button>`;
+                    },
+                    cellClick: function (e, cell) {
+                        const btn = e.target.closest('.change-ratio-btn');
+                        if (!btn || btn.disabled) return;
+                        const row = cell.getRow();
+                        const data = row.getData();
+                        const link = String(data.nine_ratio_link || '').trim();
+                        if (!link) return;
+                        btn.disabled = true;
+                        btn.textContent = 'Changing...';
+                        fetch('/sixteen-ration-video/change-ratio', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            },
+                            body: JSON.stringify({ sku: data.Sku, url: link })
+                        })
+                        .then(async (res) => {
+                            const text = await res.text();
+                            let body = {};
+                            try { body = JSON.parse(text); } catch (err) { body = {}; }
+                            if (!res.ok || !body.success) {
+                                alert(body.message || 'Could not change the ratio.');
+                                btn.disabled = false;
+                                btn.textContent = 'Change Ratio';
+                                return;
+                            }
+                            row.update({ converted_sixteen_link: body.url }).then(() => updateTotalInvAndL30(table));
+                            btn.disabled = false;
+                            btn.textContent = 'Change Ratio';
+                        })
+                        .catch(() => {
+                            alert('Could not change the ratio.');
+                            btn.disabled = false;
+                            btn.textContent = 'Change Ratio';
+                        });
+                    },
+                },
+                {
+                    title: "Converted 16:9",
+                    field: "converted_sixteen_link",
+                    hozAlign: "center",
+                    headerSort: false,
+                    minWidth: 140,
+                    formatter: function (cell) {
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) return '';
+                        return `<a href="${esc(value)}" target="_blank" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>`;
+                    },
                 },
                 {
                     title: "MISSING",
@@ -681,6 +776,7 @@
             setCount("count-ad", base.filter(row => !!row.ad_checked).length);
             setCount("count-redo", base.filter(row => !!row.redo_checked).length);
             setCount("count-redone", base.filter(row => !!row.redone_checked).length);
+            setCount("count-converted", base.filter(row => String(row.converted_sixteen_link || '').trim() !== '').length);
         }
 
         function matchesScope(data) {
@@ -719,6 +815,7 @@
             if (statusFilters.ad && !data.ad_checked) return false;
             if (statusFilters.redo && !data.redo_checked) return false;
             if (statusFilters.redone && !data.redone_checked) return false;
+            if (statusFilters.converted && String(data.converted_sixteen_link || '').trim() === '') return false;
             return true;
         }
 

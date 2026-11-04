@@ -11,12 +11,22 @@ class GeminiNineRatioService
 {
     public function changeToNineSixteen(string $sourceUrl, string $sku): string
     {
+        return $this->storeConverted($sourceUrl, $sku, '720:1280', 'nine-ration', '9:16');
+    }
+
+    public function changeToSixteenNine(string $sourceUrl, string $sku): string
+    {
+        return $this->storeConverted($sourceUrl, $sku, '1280:720', 'sixteen-ration', '16:9');
+    }
+
+    private function storeConverted(string $sourceUrl, string $sku, string $size, string $folder, string $label): string
+    {
         $source = $this->resolveSource($sourceUrl);
-        $output = tempnam(sys_get_temp_dir(), 'nine-out-');
+        $output = tempnam(sys_get_temp_dir(), 'ratio-out-');
         $mp4 = $output.'.mp4';
         try {
-            $this->convertWithFfmpeg($source['path'], $mp4);
-            $relative = 'nine-ration/'.preg_replace('/[^A-Za-z0-9._-]+/', '-', $sku).'-'.time().'.mp4';
+            $this->convertWithFfmpeg($source['path'], $mp4, $size, $label);
+            $relative = $folder.'/'.preg_replace('/[^A-Za-z0-9._-]+/', '-', $sku).'-'.time().'.mp4';
             $stream = fopen($mp4, 'rb');
             if ($stream === false) {
                 throw new RuntimeException('Could not read the converted video.');
@@ -340,7 +350,7 @@ class GeminiNineRatioService
         return $status;
     }
 
-    private function convertWithFfmpeg(string $input, string $output): void
+    private function convertWithFfmpeg(string $input, string $output, string $size = '720:1280', string $label = '9:16'): void
     {
         $ffmpeg = $this->ffmpegBinary();
         if ($ffmpeg === null) {
@@ -349,7 +359,7 @@ class GeminiNineRatioService
 
         $run = Process::timeout(300)->run([
             $ffmpeg, '-y', '-i', $input,
-            '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280',
+            '-vf', 'scale='.$size.':force_original_aspect_ratio=increase,crop='.$size,
             '-map', '0:v:0', '-map', '0:a:0?',
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
             '-c:a', 'aac', '-movflags', '+faststart',
@@ -362,7 +372,7 @@ class GeminiNineRatioService
                 static fn ($line) => str_contains($line, 'Error') || str_contains($line, 'Invalid')
             ));
             $message = $errors !== [] ? implode(' ', array_slice($errors, -2)) : 'The file could not be read as a video.';
-            throw new RuntimeException('Could not convert that video to 9:16. '.$message);
+            throw new RuntimeException('Could not convert that video to '.$label.'. '.$message);
         }
     }
 
