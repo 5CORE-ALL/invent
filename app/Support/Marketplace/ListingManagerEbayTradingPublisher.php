@@ -209,6 +209,29 @@ class ListingManagerEbayTradingPublisher
         return trim($html);
     }
 
+    /** eBay Trading API rejects a description longer than this many characters. */
+    public const DESCRIPTION_MAX = 500000;
+
+    /**
+     * Last resort when a description is still over eBay's limit: keep the start, cut on a tag.
+     */
+    public static function fitDescription(string $html): string
+    {
+        $html = self::sanitizeDescription($html);
+        $max = self::DESCRIPTION_MAX;
+        if (strlen($html) <= $max) {
+            return $html;
+        }
+
+        $cut = substr($html, 0, $max);
+        $last = strrpos($cut, '>');
+        if ($last !== false && $last > $max - 8000) {
+            $cut = substr($cut, 0, $last + 1);
+        }
+
+        return rtrim($cut);
+    }
+
     /**
      * @param  array<string, mixed>  $ctx
      * @param  array<string, mixed>  $payload
@@ -219,7 +242,7 @@ class ListingManagerEbayTradingPublisher
         $label = (string) ($ctx['label'] ?? 'eBay');
         $sku = trim((string) ($payload['sku'] ?? ''));
         $title = trim((string) ($payload['title'] ?? ''));
-        $description = self::sanitizeDescription((string) ($payload['description'] ?? ''));
+        $description = self::fitDescription((string) ($payload['description'] ?? ''));
         $price = (float) ($payload['price'] ?? 0);
         $quantity = (int) ($payload['quantity'] ?? 0);
         $categoryId = trim((string) ($payload['primary_category_id'] ?? ''));
