@@ -11,26 +11,25 @@ class GeminiNineRatioService
 {
     public function changeToNineSixteen(string $sourceUrl, string $sku): string
     {
-        $key = trim((string) config('services.gemini.key'));
-
-        $temp = $this->downloadSource($sourceUrl);
+        $source = $this->resolveSource($sourceUrl);
         $output = tempnam(sys_get_temp_dir(), 'nine-out-');
         $mp4 = $output.'.mp4';
         try {
-            $video = $this->convertWithFfmpeg($temp['path'], $mp4);
-            if ($video === null) {
-                if ($key === '') {
-                    throw new RuntimeException('Video conversion is not available on this server, and GEMINI_API_KEY is not set.');
-                }
-                $video = $this->convertWithGemini($key, $temp['path'], $temp['mime']);
-            }
+            $this->convertWithFfmpeg($source['path'], $mp4);
             $relative = 'nine-ration/'.preg_replace('/[^A-Za-z0-9._-]+/', '-', $sku).'-'.time().'.mp4';
-            Storage::disk('public')->put($relative, $video);
+            $stream = fopen($mp4, 'rb');
+            if ($stream === false) {
+                throw new RuntimeException('Could not read the converted video.');
+            }
+            Storage::disk('public')->put($relative, $stream);
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
 
             return asset('storage/'.$relative);
         } finally {
-            if (is_file($temp['path'])) {
-                @unlink($temp['path']);
+            if ($source['temporary'] && is_file($source['path'])) {
+                @unlink($source['path']);
             }
             if (is_string($output) && is_file($output)) {
                 @unlink($output);
@@ -42,6 +41,50 @@ class GeminiNineRatioService
     }
 
     /**
+     * @return array{path: string, temporary: bool}
+     */
+    private function resolveSource(string $url): array
+    {
+        $url = trim($url);
+        $local = $this->localVideoPath($url);
+        if ($local !== null) {
+            return ['path' => $local, 'temporary' => false];
+        }
+        $path = parse_url($url, PHP_URL_PATH);
+        $path = is_string($path) ? $path : $url;
+        if (preg_match('#/(storage|video-ads-master/file)/#', $path)) {
+            throw new RuntimeException('That video link points at this server, but the file is not in the video folder.');
+        }
+
+        $downloaded = $this->downloadSource($url);
+
+        return ['path' => $downloaded['path'], 'temporary' => true];
+    }
+
+    private function localVideoPath(string $url): ?string
+    {
+        $path = parse_url($url, PHP_URL_PATH);
+        $path = is_string($path) && $path !== '' ? rawurldecode($path) : $url;
+        if (str_contains($path, '..')) {
+            return null;
+        }
+
+        if (preg_match('#/video-ads-master/file/\d+/([A-Za-z0-9._-]+)$#', $path, $match)) {
+            $file = storage_path('app/video-ads/'.$match[1]);
+
+            return is_file($file) ? $file : null;
+        }
+
+        if (preg_match('#/storage/(.+)$#', $path, $match)) {
+            $file = Storage::disk('public')->path($match[1]);
+
+            return is_file($file) ? $file : null;
+        }
+
+        return null;
+    }
+
+    /**
      * @return array{path: string, mime: string}
      */
     private function downloadSource(string $url): array
@@ -50,10 +93,17 @@ class GeminiNineRatioService
         $scheme = strtolower((string) ($parts['scheme'] ?? ''));
         $host = strtolower((string) ($parts['host'] ?? ''));
         if (! in_array($scheme, ['http', 'https'], true) || $host === '') {
-            throw new RuntimeException('The 9:16 cell needs a direct http or https video link.');
+            throw new RuntimeException('Paste a direct video file link, such as an mp4 address.');
         }
         if (str_contains($host, 'youtube.com') || str_contains($host, 'youtu.be')) {
             throw new RuntimeException('YouTube page links cannot be converted. Use a direct video file link.');
+        }
+        if (str_contains($host, 'dropbox.com')) {
+            $url = str_replace('www.dropbox.com', 'dl.dropboxusercontent.com', $url);
+            $url = str_replace('dl=0', 'dl=1', $url);
+            if (! str_contains($url, 'dl=1')) {
+                $url .= (str_contains($url, '?') ? '&' : '?').'dl=1';
+            }
         }
 
         $path = tempnam(sys_get_temp_dir(), 'nine-ratio-');
@@ -61,7 +111,7 @@ class GeminiNineRatioService
             throw new RuntimeException('Could not create a temp file for the video.');
         }
 
-        $response = Http::timeout(60)
+        $response = Http::timeout(180)
             ->withOptions(['sink' => $path])
             ->get($url);
 
@@ -69,43 +119,35 @@ class GeminiNineRatioService
             @unlink($path);
             throw new RuntimeException('Could not download the video from that link.');
         }
-        if (filesize($path) > 30 * 1024 * 1024) {
+        if (filesize($path) > 500 * 1024 * 1024) {
             @unlink($path);
-            throw new RuntimeException('Video is larger than 30 MB. Use a shorter clip.');
+            throw new RuntimeException('Video is larger than 500 MB.');
         }
 
-        $mime = $this->detectVideoMime($path);
+        $this->assertDownloadedVideo($path);
 
-        return ['path' => $path, 'mime' => $mime];
+        return ['path' => $path, 'mime' => 'video/mp4'];
     }
 
-    private function detectVideoMime(string $path): string
+    private function assertDownloadedVideo(string $path): void
     {
-        $head = (string) file_get_contents($path, false, null, 0, 64);
-        $lower = strtolower(ltrim($head));
-        if (str_starts_with($lower, '<!doctype') || str_starts_with($lower, '<html') || str_starts_with($lower, '<?xml')) {
-            throw new RuntimeException('That link opened a web page, not a video file. Use a direct mp4 link.');
+        $head = strtolower(ltrim((string) file_get_contents($path, false, null, 0, 64)));
+        if (str_starts_with($head, '<!doctype') || str_starts_with($head, '<html') || str_starts_with($head, '<?xml')) {
+            throw new RuntimeException('That link opened a web page, not a video file. Paste the direct file address.');
         }
-        if (str_contains($head, 'ftyp')) {
-            return 'video/mp4';
-        }
-        if (str_starts_with($head, "\x1A\x45\xDF\xA3")) {
-            return 'video/webm';
-        }
-
-        throw new RuntimeException('That file is not an mp4 or webm video. Use a direct video file link.');
     }
 
-    private function convertWithFfmpeg(string $input, string $output): ?string
+    private function convertWithFfmpeg(string $input, string $output): void
     {
-        $ffmpeg = Process::run(['ffmpeg', '-version']);
-        if (! $ffmpeg->successful()) {
-            return null;
+        $ffmpeg = $this->ffmpegBinary();
+        if ($ffmpeg === null) {
+            throw new RuntimeException('ffmpeg is not installed on this server, so the video ratio cannot be changed.');
         }
 
-        $run = Process::timeout(180)->run([
-            'ffmpeg', '-y', '-i', $input,
+        $run = Process::timeout(300)->run([
+            $ffmpeg, '-y', '-i', $input,
             '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280',
+            '-map', '0:v:0', '-map', '0:a:0?',
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
             '-c:a', 'aac', '-movflags', '+faststart',
             $output,
@@ -114,8 +156,18 @@ class GeminiNineRatioService
             $detail = trim($run->errorOutput());
             throw new RuntimeException('Could not convert that video to 9:16. '.substr($detail, -400));
         }
+    }
 
-        return (string) file_get_contents($output);
+    private function ffmpegBinary(): ?string
+    {
+        foreach (['ffmpeg', '/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg'] as $binary) {
+            $check = Process::run([$binary, '-version']);
+            if ($check->successful()) {
+                return $binary;
+            }
+        }
+
+        return null;
     }
 
     private function convertWithGemini(string $key, string $path, string $mime): string

@@ -399,7 +399,7 @@ class ShoppableVideoController extends Controller
     {
         $request->validate([
             'sku' => 'required|string',
-            'url' => 'required|url',
+            'url' => 'required|string|max:2000',
         ]);
 
         set_time_limit(240);
