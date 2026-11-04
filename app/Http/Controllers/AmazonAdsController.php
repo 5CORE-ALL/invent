@@ -6540,13 +6540,16 @@ class AmazonAdsController extends Controller
     /**
      * Current PARENT Dil% pause-or-activate rule (Amazon Ads Pause Rule modal).
      */
-    public function getPauseRule(): JsonResponse
+    public function getPauseRule(Request $request): JsonResponse
     {
         AmazonAdsPauseRule::forgetResolvedCache();
+        @ini_set('max_execution_time', '300');
+        @ini_set('memory_limit', '512M');
 
         return response()->json([
             'rule' => AmazonAdsPauseRule::resolvedRule(),
             'counts' => $this->pauseRuleCounts(),
+            'matching' => $this->pauseRuleMatching($request->boolean('fresh')),
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache')
@@ -6593,6 +6596,20 @@ class AmazonAdsController extends Controller
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    /**
+     * Rules 2-4 count data: red campaigns now (lifetime, spend >= $30) and how many still run.
+     *
+     * @return array<string, array{red: int, active: int}>
+     */
+    private function pauseRuleMatching(bool $fresh = false): array
+    {
+        try {
+            return AmazonAdsAcosPauseRules::matchCounts($fresh);
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     /**
@@ -6674,6 +6691,7 @@ class AmazonAdsController extends Controller
             try {
                 $payload['apply'] = app(AmazonAdsPauseRuleApplicator::class)->applyAll(false);
                 $payload['counts'] = $this->pauseRuleCounts();
+                $payload['matching'] = $this->pauseRuleMatching(true);
                 $payload['message'] = 'Pause Rule saved and applied to Amazon.'
                     .($onRules !== [] ? ' ON: '.implode(', ', $onRules).'.' : '');
             } catch (\Throwable $e) {

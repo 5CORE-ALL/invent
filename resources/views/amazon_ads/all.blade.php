@@ -2084,7 +2084,7 @@
                 </div>
                 <div class="modal-body">
                     <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-                        <p class="small text-muted mb-0">Caps SBGT of a parent's KW / PT / HL ads when their ACOS% is yellow or red on <a href="{{ route('amazon.ads.missing') }}" target="_blank" rel="noopener">Missing Ads</a> (L30). Only lowers a budget.</p>
+                        <p class="small text-muted mb-0">Caps SBGT of a parent's KW / PT / HL ads when their ACOS% is yellow or red on <a href="{{ route('amazon.ads.missing') }}" target="_blank" rel="noopener">Missing Ads</a> (lifetime data, spend under $30 ignored). Only lowers a budget.</p>
                         <div class="form-check form-switch mb-0 flex-shrink-0">
                             <input class="form-check-input" type="checkbox" role="switch" id="amazonAdsBgtCapEnabled">
                             <label class="form-check-label small fw-semibold" for="amazonAdsBgtCapEnabled"><span id="amazonAdsBgtCapEnabledLbl">OFF</span></label>
@@ -2117,6 +2117,7 @@
                             @endforeach
                         </tbody>
                     </table>
+                    <div class="small text-muted mb-1">Count = budgets lowered by the cap of all campaigns in that color.</div>
                     <div class="small">Total capped BGTs: <strong id="amazonAdsBgtCapTotal">0</strong> <span class="text-muted" id="amazonAdsBgtCapNote"></span></div>
                     <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtCapError" role="alert"></p>
                     <p class="small text-success mb-0 mt-2 d-none" id="amazonAdsBgtCapOk" role="status"></p>
@@ -2137,7 +2138,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-3">Runs on <strong>Save &amp; apply</strong> and daily at 18:25 IST. Old ads stay paused.</p>
+                    <p class="small text-muted mb-3">Runs on <strong>Save &amp; apply</strong> and daily at 18:25 IST. Old ads stay paused. Rules 2–4 always use lifetime data and ignore ads with spend under $30.</p>
 
                     <div class="border rounded p-2 mb-2">
                         <div class="d-flex align-items-center justify-content-between gap-2">
@@ -2166,7 +2167,12 @@
                                     <label class="form-check-label small" for="amazonAdsAcosRule_{{ $acosKey }}"><span id="amazonAdsAcosRuleLbl_{{ $acosKey }}">OFF</span></label>
                                 </div>
                             </div>
-                            <div class="small text-muted mt-1">Paused by this rule: <strong id="amazonAdsPauseCount_{{ $acosKey }}">0</strong> · never turned back on automatically.</div>
+                            <div class="small text-muted mt-1">
+                                Red now: <strong id="amazonAdsRedNow_{{ $acosKey }}">–</strong>
+                                · Still active: <strong id="amazonAdsRedActive_{{ $acosKey }}">–</strong>
+                                · Paused by this rule: <strong id="amazonAdsPauseCount_{{ $acosKey }}">0</strong>
+                            </div>
+                            <div class="small text-muted">Lifetime data, ignores spend under $30. Never turned back on automatically.</div>
                         </div>
                     @endforeach
                     <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsPrRuleModalError" role="alert"></p>
@@ -9428,7 +9434,8 @@
                         if (inp) inp.value = String(v != null ? v : 1);
                         var cnt = amzCapEl('amazonAdsBgtCapCount_' + k + '_' + c);
                         var n = counts && counts.counts && counts.counts[k] ? counts.counts[k][c] : 0;
-                        if (cnt) cnt.textContent = String(Number(n) || 0);
+                        var matched = counts && counts.matched && counts.matched[k] ? counts.matched[k][c] : 0;
+                        if (cnt) cnt.textContent = (Number(n) || 0) + ' of ' + (Number(matched) || 0);
                     });
                 });
                 var tot = amzCapEl('amazonAdsBgtCapTotal');
@@ -9541,6 +9548,15 @@
                     if (el) el.textContent = String(Number(counts[k]) || 0);
                 });
             }
+            function amzSetRedMatching(matching) {
+                AMZ_ACOS_RULE_KEYS.forEach(function (k) {
+                    var m = matching && matching[k];
+                    var a = document.getElementById('amazonAdsRedNow_' + k);
+                    var b = document.getElementById('amazonAdsRedActive_' + k);
+                    if (a) a.textContent = m ? String(Number(m.red) || 0) : '–';
+                    if (b) b.textContent = m ? String(Number(m.active) || 0) : '–';
+                });
+            }
             function amzRefreshPrBtn() {
                 var btn = document.getElementById('amazonAdsPrRuleBtn');
                 if (!btn) return;
@@ -9610,6 +9626,7 @@
                         window.amazonAdsPauseRule = b.rule || window.amazonAdsPauseRule;
                         amzRefreshPrBtn();
                         amzSetPauseCounts(b.counts);
+                        if (b.matching) amzSetRedMatching(b.matching);
                         var msg = b.message || 'Saved.';
                         if (b.apply) {
                             msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
@@ -9653,6 +9670,7 @@
                             if (body && body.rule) window.amazonAdsPauseRule = body.rule;
                             amzFillPrModal();
                             amzSetPauseCounts(body && body.counts);
+                            amzSetRedMatching(body && body.matching);
                             amzRefreshPrBtn();
                         })
                         .catch(function () { amzFillPrModal(); });

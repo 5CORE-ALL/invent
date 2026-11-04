@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Schema;
 /**
  * BGT CAP rules on /amazon-ads/all.
  *
- * Per ad type (KW, PT, HL) and ACOS colour (yellow, red — same colours as /amazon-ads/missing, L30)
+ * Per ad type (KW, PT, HL) and ACOS colour (yellow, red — same colours as /amazon-ads/missing, lifetime
+ * data, ad types with lifetime spend under $30 ignored)
  * the suggested budget (SBGT) of the parent's linked campaigns is capped at an editable $ amount
  * (default $1). A cap only lowers a budget; an SBGT of 0 (pause) stays 0.
  */
@@ -24,9 +25,9 @@ final class AmazonAdsBgtCapRule
 
     public const MAX_CAP = 9999;
 
-    private const TIER_CACHE_KEY = 'amazon_ads_bgt_cap_tiers_v1';
+    private const TIER_CACHE_KEY = 'amazon_ads_bgt_cap_tiers_v2';
 
-    private const COUNT_CACHE_KEY = 'amazon_ads_bgt_cap_counts_v1';
+    private const COUNT_CACHE_KEY = 'amazon_ads_bgt_cap_counts_v2';
 
     /** missing-page ACOS tier => colour name used by this rule */
     private const COLOURS = ['mid' => 'yellow', 'high' => 'red'];
