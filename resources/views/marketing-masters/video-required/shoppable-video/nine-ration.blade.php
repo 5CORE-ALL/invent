@@ -160,7 +160,6 @@
         padding: 16px;
     }
     .vertical-preview-card h5 { margin: 0 0 10px; font-size: 16px; }
-    .vertical-bg-choices { display: flex; gap: 14px; margin-bottom: 12px; font-size: 13px; font-weight: 600; }
     .vertical-preview-pair { display: flex; gap: 12px; align-items: flex-start; }
     .vertical-preview-pair > div { flex: 1; min-width: 0; }
     .vertical-preview-pair p { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: #374151; }
@@ -283,11 +282,6 @@
 <div id="vertical-preview" class="ratio-player" hidden>
     <div class="vertical-preview-card">
         <h5>Convert to 16:9</h5>
-        <div class="vertical-bg-choices">
-            <label><input type="radio" name="vertical-bg" value="blur" checked> Blur</label>
-            <label><input type="radio" name="vertical-bg" value="black"> Black</label>
-            <label><input type="radio" name="vertical-bg" value="extended"> Extended</label>
-        </div>
         <div class="vertical-preview-pair">
             <div>
                 <p>Original</p>
@@ -999,11 +993,6 @@
 
         let verticalJob = null;
 
-        function selectedVerticalBackground() {
-            const picked = document.querySelector('input[name="vertical-bg"]:checked');
-            return picked ? picked.value : 'blur';
-        }
-
         function closeVerticalPreview() {
             const modal = document.getElementById('vertical-preview');
             const before = document.getElementById('vertical-before');
@@ -1054,7 +1043,6 @@
                         sku: verticalJob.sku,
                         url: verticalJob.url,
                         target: '16:9',
-                        background: selectedVerticalBackground(),
                         save: false
                     })
                 });
@@ -1145,17 +1133,6 @@
         document.getElementById('vertical-preview-btn').addEventListener('click', previewVerticalVideo);
         document.getElementById('vertical-save-btn').addEventListener('click', saveVerticalVideo);
         document.getElementById('vertical-cancel').addEventListener('click', closeVerticalPreview);
-        document.querySelectorAll('input[name="vertical-bg"]').forEach(function (input) {
-            input.addEventListener('change', function () {
-                if (!verticalJob) return;
-                verticalJob.previewUrl = '';
-                const after = document.getElementById('vertical-after');
-                after.pause();
-                after.removeAttribute('src');
-                after.load();
-                document.getElementById('vertical-save-btn').disabled = true;
-            });
-        });
 
         document.getElementById('ratio-player-close').addEventListener('click', closeRatioPlayer);
         ratioPlayer.addEventListener('click', function (e) {

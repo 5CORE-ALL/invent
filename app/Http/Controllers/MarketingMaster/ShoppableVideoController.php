@@ -434,7 +434,7 @@ class ShoppableVideoController extends Controller
             $url = ($request->target === '16:9' && $readyUrl !== '')
                 ? $readyUrl
                 : ($request->target === '16:9'
-                    ? $gemini->changeToSixteenNine($request->url, $request->sku, (string) $request->input('background', 'blur'))
+                    ? $gemini->changeToSixteenNine($request->url, $request->sku)
                     : $gemini->changeToNineSixteen($request->url, $request->sku));
         } catch (\Throwable $e) {
             Log::warning('Nine ration ratio change failed', [
