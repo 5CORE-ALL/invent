@@ -2316,7 +2316,7 @@
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value', 'bgt_flag_color', 'bgt_flag_label', 'bgt_flag_value'];
             var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'acosFlag', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'acosFlag', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltBid', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -3503,6 +3503,14 @@
                     col.formatter = fmtDashRounded;
                     col.minWidth = 68;
                     col.width = 76;
+                    return;
+                }
+                if (c === 'ltBid') {
+                    col.title = 'LT Bid';
+                    col.headerTooltip = 'Lifetime bid = LT Spend ÷ LT Clicks on all daily Amazon report rows (average cost per click actually paid). Blank when there are no clicks.';
+                    col.formatter = fmt2dec;
+                    col.minWidth = 60;
+                    col.width = 68;
                     return;
                 }
                 if (c === 'ltCps') {
