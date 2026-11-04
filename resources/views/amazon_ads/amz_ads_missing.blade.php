@@ -1214,7 +1214,10 @@
                 var spend = Number(m.spend) || 0, sold = Number(m.sold) || 0, sales = Number(m.sales) || 0, clicks = Number(m.clicks) || 0;
                 if (metric === 'spend') { return spend; }
                 if (metric === 'sold') { return sold; }
-                if (metric === 'acos') { return sales > 0 ? (spend / sales) * 100 : null; }
+                if (metric === 'acos') {
+                    if (sold === 0 && spend > 0) { return 100; }   // spend with no sales is always 100%
+                    return sales > 0 ? (spend / sales) * 100 : null;
+                }
                 if (metric === 'cvr') { return clicks > 0 ? (sold / clicks) * 100 : null; }
                 return null;
             }
@@ -1248,7 +1251,7 @@
                 var defs = [
                     ['spend', 'Spend', 'Ad spend (selected period) of the linked ' + label + ' campaign(s).'],
                     ['sold', 'Sold', 'Units sold (purchases, selected period) from the linked ' + label + ' campaign(s).'],
-                    ['acos', 'ACOS%', 'ACOS (selected period) = Spend / Sales x 100 for the linked ' + label + ' campaign(s). Blank when there are no sales.'],
+                    ['acos', 'ACOS%', 'ACOS (selected period) = Spend / Sales x 100 for the linked ' + label + ' campaign(s). Shows 100% when there is spend but nothing sold; blank when there is no spend and no sales.'],
                     ['cvr', 'CVR%', 'CVR (selected period) = Sold / Clicks x 100 for the linked ' + label + ' campaign(s). Blank when there are no clicks.']
                 ];
                 return defs.map(function (d) {
