@@ -98,34 +98,56 @@ class EbayListingPublishService
 
         $hydrated = ListingManagerAmazonHydrator::hydrate($primarySku, false);
         $details = ListingManagerAmazonHydrator::detailsFromHydration($hydrated, [], $channel);
-        $title = $this->resolveTitle($product, $primarySku, $hydrated);
-        if ($title === '') {
-            return ['success' => false, 'message' => $primarySku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
-        }
-        $title = $this->clipTitle($title);
-
-        $description = $this->aplusDescription($product);
-        if ($description === '') {
-            $description = trim((string) ($details['description'] ?? $hydrated['description'] ?? ''));
-        }
-        $description = \App\Support\Marketplace\VariationListingContent::preferDescription($product, $description);
-        if ($description === '') {
-            $description = '<p>'.e($title).'</p>';
-        }
-
-        $images = $this->publicImages($details['images'] ?? $hydrated['images'] ?? [], $product, $primarySku);
-        if ($mode === 'variation') {
-            // eBay shows one gallery for the whole variation listing: the parent photos uploaded in Variation Master lead it.
-            $parentImages = \App\Support\Marketplace\VariationListingContent::parentImagesFor($product);
-            if ($parentImages !== []) {
-                $images = array_slice(array_values(array_unique(array_merge($parentImages, $images))), 0, 12);
+        $fromVariationMaster = $mode === 'variation' && $this->isEbayTwoOrThree($channel);
+        if ($fromVariationMaster) {
+            $parentContent = \App\Support\Marketplace\VariationListingContent::forParent(
+                \App\Support\Marketplace\VariationListingContent::parentKeyFor($product)
+            );
+            $title = $this->clipTitle((string) $parentContent['title']);
+            if ($title === '') {
+                return ['success' => false, 'message' => $primarySku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
             }
-        }
-        if ($images === []) {
-            return [
-                'success' => false,
-                'message' => 'No public image URL for '.$primarySku.'. Add an https image on CP Master (or Image Master).',
-            ];
+            $description = $this->ebayVariationDescription($parentContent);
+            if ($description === '') {
+                return ['success' => false, 'message' => $primarySku.': '.\App\Support\Marketplace\VariationListingContent::descriptionGapMessage()];
+            }
+            $images = array_slice(array_values($parentContent['images']), 0, 12);
+            if ($images === []) {
+                return [
+                    'success' => false,
+                    'message' => 'No parent image in Variation Master for '.$this->groupKey($product).'. Upload the parent photo there, then publish again.',
+                ];
+            }
+        } else {
+            $title = $this->resolveTitle($product, $primarySku, $hydrated);
+            if ($title === '') {
+                return ['success' => false, 'message' => $primarySku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
+            }
+            $title = $this->clipTitle($title);
+
+            $description = $this->aplusDescription($product);
+            if ($description === '') {
+                $description = trim((string) ($details['description'] ?? $hydrated['description'] ?? ''));
+            }
+            $description = \App\Support\Marketplace\VariationListingContent::preferDescription($product, $description);
+            if ($description === '') {
+                $description = '<p>'.e($title).'</p>';
+            }
+
+            $images = $this->publicImages($details['images'] ?? $hydrated['images'] ?? [], $product, $primarySku);
+            if ($mode === 'variation') {
+                // eBay shows one gallery for the whole variation listing: the parent photos uploaded in Variation Master lead it.
+                $parentImages = \App\Support\Marketplace\VariationListingContent::parentImagesFor($product);
+                if ($parentImages !== []) {
+                    $images = array_slice(array_values(array_unique(array_merge($parentImages, $images))), 0, 12);
+                }
+            }
+            if ($images === []) {
+                return [
+                    'success' => false,
+                    'message' => 'No public image URL for '.$primarySku.'. Add an https image on CP Master (or Image Master).',
+                ];
+            }
         }
 
         $category = $this->resolveCategory($publishSkus, $channel, $categoryId, $categoryName);
@@ -140,7 +162,7 @@ class EbayListingPublishService
         $quantity = $this->resolveQuantity($primarySku, $hydrated);
         $variations = [];
         if ($mode === 'variation' && count($publishSkus) > 1) {
-            $variations = $this->variationRows($publishSkus, $parentHint !== '' ? $parentHint : $this->groupKey($product));
+            $variations = $this->variationRows($publishSkus, $parentHint !== '' ? $parentHint : $this->groupKey($product), $fromVariationMaster);
             if ($variations === []) {
                 return [
                     'success' => false,
@@ -190,6 +212,7 @@ class EbayListingPublishService
             'mode' => $mode,
             'category_id' => $category['id'],
             'image_count' => count($images),
+            'description_chars' => strlen($description),
             'variation_count' => count($variations),
         ]);
 
@@ -792,7 +815,7 @@ class EbayListingPublishService
      * @param  list<string>  $skus
      * @return list<array{sku: string, price: float, quantity: int, variation_label: string, upc: string}>
      */
-    private function variationRows(array $skus, string $parent): array
+    private function variationRows(array $skus, string $parent, bool $imagesFromImageMaster = false): array
     {
         ListingManagerFamily::warmAttributes($skus);
         $rows = [];
@@ -808,12 +831,53 @@ class EbayListingPublishService
                 'quantity' => $this->resolveQuantity($sku, $hydrated),
                 'variation_label' => ListingManagerFamily::variationLabel($sku, $parent),
                 'variation_type' => ListingManagerFamily::variationType($sku),
-                'images' => ListingManagerAmazonHydrator::publishImageUrls($sku, $parent, 12),
+                'images' => $imagesFromImageMaster
+                    ? ListingManagerAmazonHydrator::variationSkuImageUrls($sku, 12)
+                    : ListingManagerAmazonHydrator::publishImageUrls($sku, $parent, 12),
                 'upc' => '',
             ];
         }
 
         return count($rows) > 1 ? $rows : [];
+    }
+
+    private function isEbayTwoOrThree(string $channel): bool
+    {
+        return in_array($this->registryKey($channel), ['ebaytwo', 'ebaythree'], true);
+    }
+
+    /**
+     * eBay description for a variation listing.
+     * A+ is the page with images and text. eBay rejects a description over 500,000 characters,
+     * so a page that long is replaced by the Variation Master Description column.
+     *
+     * @param  array{aplus?: string, description?: string}  $parentContent
+     */
+    private function ebayVariationDescription(array $parentContent): string
+    {
+        $aplus = ListingManagerEbayTradingPublisher::sanitizeDescription(trim((string) ($parentContent['aplus'] ?? '')));
+        if ($aplus !== '' && strlen($aplus) <= ListingManagerEbayTradingPublisher::DESCRIPTION_MAX) {
+            return $aplus;
+        }
+
+        $text = trim((string) ($parentContent['description'] ?? ''));
+        if ($text === '') {
+            return '';
+        }
+        if ($text !== strip_tags($text)) {
+            return ListingManagerEbayTradingPublisher::sanitizeDescription($text);
+        }
+
+        $html = '';
+        foreach (preg_split("/\n{2,}/", $text) ?: [] as $block) {
+            $block = trim($block);
+            if ($block === '') {
+                continue;
+            }
+            $html .= '<p>'.nl2br(e($block), false).'</p>';
+        }
+
+        return $html;
     }
 
     /**
