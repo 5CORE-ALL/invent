@@ -110,6 +110,53 @@
     }
     .status-box { width: 16px; height: 16px; cursor: pointer; }
     .status-meta { font-size: 10px; color: #4b5563; line-height: 1.2; margin-top: 2px; }
+    .ratio-player {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 28px;
+        background: rgba(0, 0, 0, 0.82);
+    }
+    .ratio-player.is-open { display: flex; }
+    .ratio-player-frame {
+        position: relative;
+        background: #000;
+        max-width: 92vw;
+        max-height: 86vh;
+    }
+    .ratio-player-frame.is-wide {
+        width: min(960px, 92vw, calc(86vh * 16 / 9));
+        aspect-ratio: 16 / 9;
+    }
+    .ratio-player-frame.is-tall {
+        width: min(420px, 86vw, calc(82vh * 9 / 16));
+        aspect-ratio: 9 / 16;
+    }
+    .ratio-player-frame video {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: contain;
+        background: #000;
+    }
+    .ratio-player-close {
+        position: absolute;
+        top: -14px;
+        right: -14px;
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 50%;
+        background: #fff;
+        color: #111;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+    }
 </style>
 @endsection
 
@@ -220,6 +267,13 @@
                 <div id="nine-ration-video"></div>
             </div>
         </div>
+    </div>
+</div>
+
+<div id="ratio-player" class="ratio-player" hidden>
+    <div id="ratio-player-frame" class="ratio-player-frame is-wide">
+        <button type="button" id="ratio-player-close" class="ratio-player-close" aria-label="Close">×</button>
+        <video id="ratio-player-video" controls playsinline></video>
     </div>
 </div>
 
@@ -443,7 +497,7 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value && value.trim() !== "") {
-                            return `<a href="${value}" target="_blank" style="text-decoration:none;">
+                            return `<a href="${esc(value)}" class="open-ratio-video" data-ratio="9:16" style="text-decoration:none;">
                                         <i class="fa fa-link"></i> Open
                                     </a>`;
                         }
@@ -467,7 +521,7 @@
                     formatter: function (cell) {
                         const value = String(cell.getValue() || '').trim();
                         if (!value) return '';
-                        return `<a href="${esc(value)}" target="_blank" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>
+                        return `<a href="${esc(value)}" class="open-ratio-video" data-ratio="16:9" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>
                             <button type="button" class="delete-video-link" title="Delete link">Delete</button>`;
                     },
                     cellClick: function (e, cell) {
@@ -898,6 +952,42 @@
         function parentKeys() {
             return Object.keys(groupedSkuData);
         }
+
+        const ratioPlayer = document.getElementById('ratio-player');
+        const ratioFrame = document.getElementById('ratio-player-frame');
+        const ratioVideo = document.getElementById('ratio-player-video');
+
+        function openRatioPlayer(url, ratio) {
+            ratioFrame.classList.toggle('is-wide', ratio === '16:9');
+            ratioFrame.classList.toggle('is-tall', ratio !== '16:9');
+            ratioVideo.src = url;
+            ratioPlayer.hidden = false;
+            ratioPlayer.classList.add('is-open');
+            ratioVideo.play().catch(function () {});
+        }
+
+        function closeRatioPlayer() {
+            ratioVideo.pause();
+            ratioVideo.removeAttribute('src');
+            ratioVideo.load();
+            ratioPlayer.classList.remove('is-open');
+            ratioPlayer.hidden = true;
+        }
+
+        document.getElementById('nine-ration-video').addEventListener('click', function (e) {
+            const link = e.target.closest('a.open-ratio-video');
+            if (!link) return;
+            e.preventDefault();
+            openRatioPlayer(link.getAttribute('href'), link.dataset.ratio || '16:9');
+        }, true);
+
+        document.getElementById('ratio-player-close').addEventListener('click', closeRatioPlayer);
+        ratioPlayer.addEventListener('click', function (e) {
+            if (e.target === ratioPlayer) closeRatioPlayer();
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && ratioPlayer.classList.contains('is-open')) closeRatioPlayer();
+        });
 
         function togglePlayPauseUI(isPlaying) {
             document.getElementById('play-pause').style.display = isPlaying ? 'inline-block' : 'none';
