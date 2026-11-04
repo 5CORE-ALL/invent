@@ -114,10 +114,12 @@ class GeminiNineRatioService
         }
 
         $status = $this->downloadToFile($url, $path);
+        $this->normalizeDownloadedFile($path);
         if ($this->isHtmlFile($path)) {
             $media = $this->videoUrlInsidePage($path, $url);
             if ($media !== null) {
                 $status = $this->downloadToFile($media, $path);
+                $this->normalizeDownloadedFile($path);
             }
         }
         if ($status < 200 || $status >= 300 || ! is_file($path) || filesize($path) < 1024) {
@@ -128,10 +130,12 @@ class GeminiNineRatioService
             @unlink($path);
             throw new RuntimeException('Video is larger than 500 MB.');
         }
+        $this->extractZipVideo($path);
+        $this->alignVideoStart($path);
 
-        if ($this->isHtmlFile($path)) {
+        if ($this->isHtmlFile($path) || ! $this->looksLikeVideo($path)) {
             @unlink($path);
-            throw new RuntimeException('That link opened a web page, not a video file. Paste the direct file address.');
+            throw new RuntimeException('That link did not return a video file. Open the link and copy the address of the mp4 itself.');
         }
 
         return ['path' => $path, 'mime' => 'video/mp4'];
@@ -197,9 +201,117 @@ class GeminiNineRatioService
         if (! is_file($path)) {
             return false;
         }
-        $head = strtolower(ltrim((string) file_get_contents($path, false, null, 0, 64)));
+        $head = strtolower(ltrim((string) file_get_contents($path, false, null, 0, 512)));
 
-        return str_starts_with($head, '<!doctype') || str_starts_with($head, '<html') || str_starts_with($head, '<?xml');
+        return str_starts_with($head, '<!doctype')
+            || str_starts_with($head, '<html')
+            || str_starts_with($head, '<head')
+            || str_starts_with($head, '<?xml')
+            || str_starts_with($head, '{');
+    }
+
+    private function normalizeDownloadedFile(string $path): void
+    {
+        if (! is_file($path) || filesize($path) < 2) {
+            return;
+        }
+        $magic = (string) file_get_contents($path, false, null, 0, 3);
+        if (str_starts_with($magic, "\x1f\x8b")) {
+            $raw = $path.'.raw';
+            $in = gzopen($path, 'rb');
+            $out = fopen($raw, 'wb');
+            if ($in !== false && $out !== false) {
+                while (! gzeof($in)) {
+                    $chunk = gzread($in, 1024 * 1024);
+                    if ($chunk === false) {
+                        break;
+                    }
+                    fwrite($out, $chunk);
+                }
+                gzclose($in);
+                fclose($out);
+                rename($raw, $path);
+            }
+        }
+        $start = (string) file_get_contents($path, false, null, 0, 3);
+        if ($start === "\xEF\xBB\xBF") {
+            $raw = $path.'.raw';
+            $in = fopen($path, 'rb');
+            $out = fopen($raw, 'wb');
+            if ($in !== false && $out !== false) {
+                fseek($in, 3);
+                stream_copy_to_stream($in, $out);
+                fclose($in);
+                fclose($out);
+                rename($raw, $path);
+            }
+        }
+    }
+
+    private function extractZipVideo(string $path): void
+    {
+        $magic = (string) file_get_contents($path, false, null, 0, 2);
+        if ($magic !== 'PK' || ! class_exists(\ZipArchive::class)) {
+            return;
+        }
+        $zip = new \ZipArchive();
+        if ($zip->open($path) !== true) {
+            return;
+        }
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = (string) $zip->getNameIndex($i);
+            if (! preg_match('/\.(mp4|mov|webm|m4v|mkv)$/i', $name)) {
+                continue;
+            }
+            $in = $zip->getStream($name);
+            if ($in === false) {
+                continue;
+            }
+            $raw = $path.'.raw';
+            $out = fopen($raw, 'wb');
+            if ($out !== false) {
+                stream_copy_to_stream($in, $out);
+                fclose($out);
+                fclose($in);
+                $zip->close();
+                rename($raw, $path);
+
+                return;
+            }
+            fclose($in);
+        }
+        $zip->close();
+    }
+
+    private function alignVideoStart(string $path): void
+    {
+        $chunk = (string) file_get_contents($path, false, null, 0, 262144);
+        $pos = strpos($chunk, 'ftyp');
+        $start = ($pos !== false && $pos >= 4) ? $pos - 4 : 0;
+        if ($start < 1) {
+            return;
+        }
+        $raw = $path.'.raw';
+        $in = fopen($path, 'rb');
+        $out = fopen($raw, 'wb');
+        if ($in === false || $out === false) {
+            return;
+        }
+        fseek($in, $start);
+        stream_copy_to_stream($in, $out);
+        fclose($in);
+        fclose($out);
+        rename($raw, $path);
+    }
+
+    private function looksLikeVideo(string $path): bool
+    {
+        $head = (string) file_get_contents($path, false, null, 0, 64);
+        if (str_contains($head, 'ftyp') || str_starts_with($head, "\x1A\x45\xDF\xA3") || str_starts_with($head, 'RIFF')) {
+            return true;
+        }
+
+        return false;
     }
 
     private function downloadToFile(string $url, string $path): int
@@ -215,9 +327,18 @@ class GeminiNineRatioService
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
             CURLOPT_USERAGENT => 'Mozilla/5.0',
+            CURLOPT_ENCODING => '',
             CURLOPT_TIMEOUT => 180,
             CURLOPT_CONNECTTIMEOUT => 20,
             CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_HEADERFUNCTION => function ($ch, $header) use ($handle) {
+                if (str_starts_with($header, 'HTTP/')) {
+                    ftruncate($handle, 0);
+                    rewind($handle);
+                }
+
+                return strlen($header);
+            },
         ]);
         curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -244,7 +365,12 @@ class GeminiNineRatioService
         ]);
         if (! $run->successful() || ! is_file($output) || filesize($output) < 1024) {
             $detail = trim($run->errorOutput());
-            throw new RuntimeException('Could not convert that video to 9:16. '.substr($detail, -400));
+            $errors = array_values(array_filter(
+                preg_split('/\R/', $detail) ?: [],
+                static fn ($line) => str_contains($line, 'Error') || str_contains($line, 'Invalid')
+            ));
+            $message = $errors !== [] ? implode(' ', array_slice($errors, -2)) : 'The file could not be read as a video.';
+            throw new RuntimeException('Could not convert that video to 9:16. '.$message);
         }
     }
 
