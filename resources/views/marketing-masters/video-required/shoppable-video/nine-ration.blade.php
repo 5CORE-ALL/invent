@@ -474,7 +474,6 @@
                         const data = row.getData();
                         const link = String(data.sixteen_ratio_link || '').trim();
                         if (!link) return;
-                        if (!confirm('Convert this 16:9 video to 9:16? It is saved in Converted 9:16.')) return;
                         btn.disabled = true;
                         btn.textContent = 'Changing...';
                         fetch('/nine-ration-video/change-ratio', {
