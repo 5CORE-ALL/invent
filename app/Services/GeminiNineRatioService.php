@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\VideoThumbnailUrl;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
@@ -69,16 +70,24 @@ class GeminiNineRatioService
             return null;
         }
 
+        $candidates = [];
         if (preg_match('#/video-ads-master/file/\d+/([A-Za-z0-9._-]+)$#', $path, $match)) {
-            $file = storage_path('app/video-ads/'.$match[1]);
-
-            return is_file($file) ? $file : null;
+            $candidates[] = storage_path('app/video-ads/'.$match[1]);
+        }
+        if (preg_match('#/storage/(.+)$#', $path, $match)) {
+            $relative = ltrim(str_replace('\\', '/', $match[1]), '/');
+            $candidates[] = Storage::disk('public')->path($relative);
+            $candidates[] = public_path('storage/'.$relative);
+        }
+        $relative = ltrim($path, '/');
+        if ($relative !== '' && ! str_contains($relative, '..')) {
+            $candidates[] = public_path($relative);
         }
 
-        if (preg_match('#/storage/(.+)$#', $path, $match)) {
-            $file = Storage::disk('public')->path($match[1]);
-
-            return is_file($file) ? $file : null;
+        foreach ($candidates as $file) {
+            if (is_string($file) && is_file($file)) {
+                return $file;
+            }
         }
 
         return null;
@@ -98,12 +107,10 @@ class GeminiNineRatioService
         if (str_contains($host, 'youtube.com') || str_contains($host, 'youtu.be')) {
             throw new RuntimeException('YouTube page links cannot be converted. Use a direct video file link.');
         }
-        if (str_contains($host, 'dropbox.com')) {
-            $url = str_replace('www.dropbox.com', 'dl.dropboxusercontent.com', $url);
-            $url = str_replace('dl=0', 'dl=1', $url);
-            if (! str_contains($url, 'dl=1')) {
-                $url .= (str_contains($url, '?') ? '&' : '?').'dl=1';
-            }
+        if (preg_match('#drive\.google\.com/file/d/([a-zA-Z0-9_-]+)#', $url, $drive)) {
+            $url = 'https://drive.google.com/uc?export=download&id='.$drive[1];
+        } else {
+            $url = VideoThumbnailUrl::normalize($url);
         }
 
         $path = tempnam(sys_get_temp_dir(), 'nine-ratio-');
@@ -111,13 +118,10 @@ class GeminiNineRatioService
             throw new RuntimeException('Could not create a temp file for the video.');
         }
 
-        $response = Http::timeout(180)
-            ->withOptions(['sink' => $path])
-            ->get($url);
-
-        if (! $response->successful() || ! is_file($path) || filesize($path) < 1024) {
+        $status = $this->downloadToFile($url, $path);
+        if ($status < 200 || $status >= 300 || ! is_file($path) || filesize($path) < 1024) {
             @unlink($path);
-            throw new RuntimeException('Could not download the video from that link.');
+            throw new RuntimeException('Could not download the video from that link (HTTP '.$status.'). The link has to open the video file itself.');
         }
         if (filesize($path) > 500 * 1024 * 1024) {
             @unlink($path);
@@ -127,6 +131,31 @@ class GeminiNineRatioService
         $this->assertDownloadedVideo($path);
 
         return ['path' => $path, 'mime' => 'video/mp4'];
+    }
+
+    private function downloadToFile(string $url, string $path): int
+    {
+        $handle = fopen($path, 'wb');
+        if ($handle === false) {
+            return 0;
+        }
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_FILE => $handle,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_USERAGENT => 'Mozilla/5.0',
+            CURLOPT_TIMEOUT => 180,
+            CURLOPT_CONNECTTIMEOUT => 20,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        fclose($handle);
+
+        return $status;
     }
 
     private function assertDownloadedVideo(string $path): void
