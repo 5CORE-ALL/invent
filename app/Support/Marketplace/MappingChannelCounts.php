@@ -3,6 +3,7 @@
 namespace App\Support\Marketplace;
 
 use App\Models\ChannelMaster;
+use App\Services\MarketplaceManager\AlibabaInventorySyncService;
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\MarketplaceManager\MarketplacePortalInactiveCount;
 use App\Services\ShopifyPlsTokenService;
@@ -66,6 +67,39 @@ class MappingChannelCounts
                 $rows[$i]['inventory_push_label'] = 'Inventory push failed';
                 $rows[$i]['inventory_push_detail'] = 'The TopDawg API rejects inventory updates (403 Forbidden), so Shopify quantity cannot be pushed. Its mismatch SKUs are not counted here.';
             }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * A channel whose inventory push is not updating the marketplace is not a mismatch.
+     * Applied when the page is read, so the stored count comes back once the push works again.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private static function withoutFailedInventorySync(array $rows): array
+    {
+        $alibabaFailed = false;
+        try {
+            $alibabaFailed = AlibabaInventorySyncService::inventorySyncFailed();
+        } catch (\Throwable $e) {
+            $alibabaFailed = false;
+        }
+        if (! $alibabaFailed) {
+            return $rows;
+        }
+
+        foreach ($rows as $i => $row) {
+            if (! is_array($row) || self::normalize((string) ($row['channel_slug'] ?? '')) !== 'alibaba') {
+                continue;
+            }
+            $rows[$i]['missing_mapping_titas'] = 0;
+            $rows[$i]['not_counted'] = true;
+            $rows[$i]['inventory_push'] = 'failed';
+            $rows[$i]['inventory_push_label'] = 'inventory sync failed';
+            $rows[$i]['inventory_push_detail'] = 'Alibaba is not accepting inventory updates, so these SKUs are not counted as a mismatch.';
         }
 
         return $rows;
@@ -229,11 +263,11 @@ class MappingChannelCounts
         foreach ([self::MASTER_ROWS_CACHE_KEY, self::MASTER_ROWS_LAST_GOOD_KEY] as $key) {
             $rows = Cache::get($key);
             if (is_array($rows) && $rows !== []) {
-                return self::withoutUncounted($rows);
+                return self::withoutFailedInventorySync(self::withoutUncounted($rows));
             }
         }
 
-        return self::withoutUncounted(self::storedMasterRows());
+        return self::withoutFailedInventorySync(self::withoutUncounted(self::storedMasterRows()));
     }
 
     /**
@@ -401,7 +435,7 @@ class MappingChannelCounts
             }
         }
 
-        $stored = self::storedMasterRows();
+        $stored = self::withoutFailedInventorySync(self::withoutUncounted(self::storedMasterRows()));
         if ($stored === []) {
             return 0;
         }
@@ -445,6 +479,16 @@ class MappingChannelCounts
      */
     public static function countForSlug(string $slug): int
     {
+        if (self::normalize($slug) === 'alibaba') {
+            try {
+                if (AlibabaInventorySyncService::inventorySyncFailed()) {
+                    return 0;
+                }
+            } catch (\Throwable $e) {
+                // count it until the sync state can be read
+            }
+        }
+
         $cached = self::cachedCountForSlug($slug);
         try {
             if (self::currentMasterRows() !== []) {
@@ -542,7 +586,7 @@ class MappingChannelCounts
                 try {
                     $cached = Cache::get($key);
                     if (is_array($cached) && $cached !== []) {
-                        return self::withoutUncounted($cached);
+                        return self::withoutFailedInventorySync(self::withoutUncounted($cached));
                     }
                 } catch (\Throwable $e) {
                     // try the next key
@@ -550,7 +594,7 @@ class MappingChannelCounts
             }
             $stored = self::storedMasterRows();
             if ($stored !== []) {
-                return self::withoutUncounted($stored);
+                return self::withoutFailedInventorySync(self::withoutUncounted($stored));
             }
 
             return self::skeletonMasterRows();
@@ -662,7 +706,7 @@ class MappingChannelCounts
         $rows = self::withoutUncounted($rows);
 
         if (! $store) {
-            return $rows;
+            return self::withoutFailedInventorySync($rows);
         }
 
         try {
@@ -684,7 +728,7 @@ class MappingChannelCounts
             // ignore
         }
 
-        return $rows;
+        return self::withoutFailedInventorySync($rows);
     }
 
     public static function cachedInactiveTotalOrZero(): int
