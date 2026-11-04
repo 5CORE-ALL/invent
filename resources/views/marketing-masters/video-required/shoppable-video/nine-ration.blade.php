@@ -113,6 +113,11 @@
                         Export
                     </a>
 
+                    <span class="badge bg-primary d-inline-flex align-items-center gap-2 px-3 py-2" style="font-size: 0.9rem;">
+                        <i class="fa fa-link"></i> 9:16 Video
+                        <span id="total-nine-link-count" class="badge bg-white text-primary">0</span>
+                    </span>
+
                 </div>
                 <div id="nine-ration-video"></div>
             </div>
@@ -287,8 +292,7 @@
                     },
                     titleFormatter: function () {
                         return `<div>
-                            9:16 Video <i class='fa fa-link'></i><br>
-                            <span id="total-nine-link-header" style="font-size:13px;color:white;font-weight:600;"></span>
+                            9:16 Video <i class='fa fa-link'></i>
                         </div>`;
                     },
                     hozAlign: "center",
@@ -476,8 +480,8 @@
 
             document.getElementById("total-inv-header").textContent = totalINV.toLocaleString();
             document.getElementById("total-l30-header").textContent = totalL30.toLocaleString();
-            const linkHeader = document.getElementById("total-nine-link-header");
-            if (linkHeader) linkHeader.textContent = totalLinks.toLocaleString();
+            const linkBadge = document.getElementById("total-nine-link-count");
+            if (linkBadge) linkBadge.textContent = totalLinks.toLocaleString();
         }
 
         // Play/Pause Controls
