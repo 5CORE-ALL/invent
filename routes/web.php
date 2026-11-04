@@ -4492,6 +4492,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Missing Listing — channel_master rows (image + channel) plus DAR submissions
     Route::get('/missing-listing',              [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'index'])->name('missing.listing');
     Route::get('/missing-listing/data',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'getData'])->name('missing.listing.data');
+    Route::get('/missing-listing-c2c',          [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'indexC2c'])->name('missing.listing.c2c');
+    Route::get('/missing-listing-c2c/data',     [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'getC2cData'])->name('missing.listing.c2c.data');
     Route::get('/missing-listing/chart-data',  [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'chartData'])->name('missing.listing.chart.data');
     Route::get('/listing-catalogue/chart-data', [\App\Http\Controllers\MarketPlace\ListingCatalogueController::class, 'chartData'])->name('listing.catalogue.chart.data');
     Route::post('/missing-listing/dar/submit',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'submitDar'])->name('missing.listing.dar.submit');
