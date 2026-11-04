@@ -91,6 +91,14 @@ class TemuListingPublishService extends Temu2ListingPublishService
      */
     protected function uploadImageMap(array $sourceImages): array
     {
+        // The browser/web server gives up on a request after about two minutes. Photos are uploaded one by one,
+        // so a big variation group can run past that. Every uploaded photo is remembered, and when the time
+        // budget is used up the publish stops with a clear "click Publish again" message instead of a 504.
+        // The next click skips the photos that are already on Temu and carries on.
+        $budgetSeconds = 70;
+        $startedAt = microtime(true);
+        $total = count(array_unique($sourceImages));
+
         $map = [];
         foreach ($sourceImages as $url) {
             if (isset($map[$url])) {
@@ -101,10 +109,38 @@ class TemuListingPublishService extends Temu2ListingPublishService
                 continue;
             }
 
+            $cacheKey = 'temu1:image_upload:'.sha1($url);
+            $cached = '';
+            try {
+                $cached = trim((string) \Illuminate\Support\Facades\Cache::get($cacheKey, ''));
+            } catch (\Throwable $e) {
+                $cached = '';
+            }
+            if ($cached !== '' && $this->isTemuGoodsImageUrl($cached)) {
+                $map[$url] = $cached;
+                continue;
+            }
+
+            if ((microtime(true) - $startedAt) > $budgetSeconds) {
+                $done = count($map);
+                Log::info('Temu publish: image upload paused, click Publish again to continue', ['uploaded' => $done, 'total' => $total]);
+
+                return [
+                    'map' => [],
+                    'error' => 'Temu photo upload is taking long: '.$done.' of '.$total.' photos are uploaded and saved. '
+                        .'Click Publish again - it continues from where it stopped and does not upload them twice.',
+                ];
+            }
+
             $res = $this->uploadImageToTemu2($url);
             $hosted = trim((string) ($res['url'] ?? ''));
             if (! empty($res['success']) && $hosted !== '' && $this->isTemuGoodsImageUrl($hosted) && ! $this->sameImageUrl($hosted, $url)) {
                 $map[$url] = $hosted;
+                try {
+                    \Illuminate\Support\Facades\Cache::put($cacheKey, $hosted, now()->addHours(12));
+                } catch (\Throwable $e) {
+                    // the cache only saves time
+                }
                 continue;
             }
 

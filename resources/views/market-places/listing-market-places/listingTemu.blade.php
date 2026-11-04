@@ -1928,7 +1928,10 @@
                 if (xhr.status === 419) {
                     return 'Session expired. Refresh the page and try Publish again.';
                 }
-                return 'Publish to Temu failed.';
+                if (xhr.status === 502 || xhr.status === 503 || xhr.status === 504) {
+                    return 'The server stopped waiting (HTTP ' + xhr.status + '). The publish may still be running on Temu. Check Seller Center, then click Refresh listings before publishing again.';
+                }
+                return 'Publish to Temu failed' + (xhr.status ? ' (HTTP ' + xhr.status + ').' : '.');
             }
 
             function publishGroup(skus, parent, category) {
