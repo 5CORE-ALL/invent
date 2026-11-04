@@ -38,6 +38,8 @@
             flex-wrap: wrap;
             align-items: center;
             gap: 6px;
+            position: relative;
+            z-index: 30;
         }
         #of-toolbar .of-summary-badge {
             font-size: 0.72rem !important;
@@ -51,31 +53,6 @@
             border: 0;
         }
         #of-channels-badge:hover { filter: brightness(1.12); }
-        .of-status-filter { position: relative; }
-        .of-status-menu {
-            position: absolute;
-            z-index: 30;
-            top: calc(100% + 4px);
-            left: 0;
-            min-width: 220px;
-            max-height: 280px;
-            overflow: auto;
-            background: #fff;
-            border: 1px solid #dee2e6;
-            border-radius: 0.375rem;
-            box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.12);
-            padding: 0.35rem 0.5rem;
-        }
-        .of-status-menu label {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-            margin: 0;
-            padding: 0.15rem 0;
-            font-size: 0.78rem;
-            cursor: pointer;
-            white-space: nowrap;
-        }
         #orderFulfillmentNav .of-nav-count {
             margin-left: 0.35rem;
             font-size: 0.65rem;
@@ -222,21 +199,17 @@
                                 @endif
                             @endforeach
                         </datalist>
-                        <div class="of-status-filter">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="of-status-btn">Status</button>
-                            <div class="of-status-menu" id="of-status-menu" hidden>
-                                <label><input type="checkbox" id="of-status-all" checked> All</label>
-                                <div id="of-status-options"></div>
-                            </div>
-                        </div>
+                        <select id="of-status-filter" class="form-select form-select-sm" style="width:220px;" title="Filter by status">
+                            <option value="">All statuses</option>
+                        </select>
                         <select id="of-paid-filter" class="form-select form-select-sm" style="width:130px;" title="Paid or unpaid">
                             <option value="">Paid / Unpaid</option>
                             <option value="Paid">Paid</option>
                             <option value="Unpaid">Unpaid</option>
                         </select>
-                        <input type="text" id="of-search" class="form-control form-control-sm" style="min-width:180px; flex:1;" placeholder="Search order id…" autocomplete="off" title="Filter by order id">
+                        <input type="text" id="of-search" class="form-control form-control-sm" style="min-width:180px; flex:1;" placeholder="Search…" autocomplete="off" title="Type any words from the row: channel, order id, SKU, status, date, carrier, or tracking">
                     </div>
-                    <p class="small text-muted mb-2">@if(!empty($ofCreateOrders))Orders entered by hand for marketplaces without an API. They also appear on the Orders page under the marketplace name. A new order shows <strong>Order Created</strong>; use <i class="fas fa-check-circle" aria-hidden="true"></i> Fulfill once the label is bought — the tracking number is fetched from Veeqo / 4Seller at that moment and the status becomes Fulfilled.@elseif(!empty($ofDeliveredOnly))Orders from 15 Sep 2026 whose marketplace status or carrier tracking status is Delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofTransitOnly))Orders from 15 Sep 2026 that are shipped or in transit and not yet delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofScanPendingOnly))Orders from 15 Sep 2026 that have a tracking number and no carrier scan yet. The date filter defaults to the last 30 days.@elseif(!empty($ofUnpaidOnly))Unpaid orders from 15 Sep 2026. The date filter defaults to the last 30 days.@elseif(!empty($ofPendingOnly))Orders from 15 Sep 2026 that are still waiting to ship. The date filter defaults to the last 30 days.@else Orders from 15 Sep 2026. The date filter defaults to the last 30 days. Search matches the order id. Carrier and tracking status come from the tracking number (USPS, GOFO, FedEx, UPS).@endif</p>
+                    <p class="small text-muted mb-2">@if(!empty($ofCreateOrders))Orders entered by hand for marketplaces without an API. They also appear on the Orders page under the marketplace name. A new order shows <strong>Order Created</strong>; use <i class="fas fa-check-circle" aria-hidden="true"></i> Fulfill once the label is bought — the tracking number is fetched from Veeqo / 4Seller at that moment and the status becomes Fulfilled.@elseif(!empty($ofDeliveredOnly))Orders from 15 Sep 2026 whose marketplace status or carrier tracking status is Delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofTransitOnly))Orders from 15 Sep 2026 that are shipped or in transit and not yet delivered. The date filter defaults to the last 30 days.@elseif(!empty($ofScanPendingOnly))Orders from 15 Sep 2026 that have a tracking number and no carrier scan yet. The date filter defaults to the last 30 days.@elseif(!empty($ofUnpaidOnly))Unpaid orders from 15 Sep 2026. The date filter defaults to the last 30 days.@elseif(!empty($ofPendingOnly))Orders from 15 Sep 2026 that are still waiting to ship. Search matches channel, order id, SKU, status, carrier, and tracking. Use Status to show one marketplace status. The date filter defaults to the last 30 days.@else Orders from 15 Sep 2026. The date filter defaults to the last 30 days. Search matches channel, order id, SKU, status, carrier, and tracking. Carrier and tracking status come from the tracking number (USPS, GOFO, FedEx, UPS).@endif</p>
                     <div id="order-fulfillment-table" style="height: calc(100vh - 280px);"></div>
                 </div>
             </div>
@@ -668,41 +641,65 @@
     }
 
     function selectedStatuses() {
-        const boxes = document.querySelectorAll('#of-status-options input[type="checkbox"]');
-        const all = document.getElementById('of-status-all');
-        if (!boxes.length || (all && all.checked)) return null;
-        const picked = [];
-        boxes.forEach(function (box) {
-            if (box.checked) picked.push(box.value);
-        });
-        return picked;
-    }
-
-    function refreshStatusButton() {
-        const btn = document.getElementById('of-status-btn');
-        const picked = selectedStatuses();
-        if (!btn) return;
-        btn.textContent = picked === null ? 'Status' : ('Status (' + picked.length + ')');
+        const el = document.getElementById('of-status-filter');
+        const value = String(el?.value || '').trim();
+        return value === '' ? null : [value];
     }
 
     function renderStatusOptions(rows) {
-        const host = document.getElementById('of-status-options');
-        const all = document.getElementById('of-status-all');
-        if (!host) return;
-        const seen = {};
+        const el = document.getElementById('of-status-filter');
+        if (!el) return;
+        const counts = {};
         (rows || []).forEach(function (row) {
-            seen[statusLabel(row)] = true;
+            const label = statusLabel(row);
+            counts[label] = (counts[label] || 0) + 1;
         });
-        const labels = Object.keys(seen).sort(function (a, b) {
+        const labels = Object.keys(counts).sort(function (a, b) {
             return a.localeCompare(b);
         });
         const saved = readSavedStatuses();
-        host.innerHTML = labels.map(function (label) {
-            const checked = saved === null || saved.indexOf(label) !== -1;
-            return '<label><input type="checkbox" value="' + escapeHtml(label) + '"' + (checked ? ' checked' : '') + '> ' + escapeHtml(label) + '</label>';
+        const current = String(el.value || '').trim();
+        const preferred = current || (saved && saved.length === 1 ? saved[0] : '');
+        el.innerHTML = '<option value="">All statuses</option>' + labels.map(function (label) {
+            return '<option value="' + escapeHtml(label) + '">' + escapeHtml(label) + ' (' + counts[label].toLocaleString() + ')</option>';
         }).join('');
-        if (all) all.checked = saved === null || labels.every(function (label) { return saved.indexOf(label) !== -1; });
-        refreshStatusButton();
+        if (preferred && labels.indexOf(preferred) !== -1) {
+            el.value = preferred;
+        } else {
+            el.value = '';
+        }
+    }
+
+    function rowSearchText(data) {
+        const parts = [
+            data && data.channel,
+            data && data.order_id,
+            data && data.sku,
+            data && data.status,
+            data && data.tracking,
+            data && data.carrier,
+            data && data.tracking_status,
+            data && data.paid_label,
+            data && data.customer_name,
+            data && data.customer_email,
+            data && data.city,
+            data && data.state,
+            data && data.zip,
+            data && data.address1,
+            data && data.reference,
+        ];
+        const shown = formatDateTime(data && data.order_date);
+        if (shown) {
+            parts.push(shown.date, shown.time);
+        }
+        if (data && Array.isArray(data.lines)) {
+            data.lines.forEach(function (line) {
+                parts.push(line && line.sku);
+            });
+        }
+        return parts.map(function (value) {
+            return String(value || '').toLowerCase();
+        }).join(' ');
     }
 
     function applyFilters(table) {
@@ -715,12 +712,14 @@
             countsFromRows(table.getData());
             return;
         }
+        const words = q.split(/\s+/).filter(Boolean);
         table.setFilter(function (data) {
             if (statuses && statuses.indexOf(statusLabel(data)) === -1) return false;
             if (paid && String(data.paid_label || '') !== paid) return false;
             if (channel && !String(data.channel || '').toLowerCase().includes(channel)) return false;
-            if (!q) return true;
-            return String(data.order_id || '').toLowerCase().includes(q);
+            if (!words.length) return true;
+            const hay = rowSearchText(data);
+            return words.every(function (word) { return hay.indexOf(word) !== -1; });
         });
         countsFromRows(table.getData('active'));
     }
@@ -991,34 +990,11 @@
         ],
     });
 
-    document.getElementById('of-status-btn')?.addEventListener('click', function (ev) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const menu = document.getElementById('of-status-menu');
-        if (!menu) return;
-        menu.hidden = !menu.hidden;
-    });
-    document.getElementById('of-status-menu')?.addEventListener('change', function (ev) {
-        const target = ev.target;
-        if (!target || target.type !== 'checkbox') return;
-        const boxes = document.querySelectorAll('#of-status-options input[type="checkbox"]');
-        const all = document.getElementById('of-status-all');
-        if (target.id === 'of-status-all') {
-            boxes.forEach(function (box) { box.checked = target.checked; });
-        } else if (all) {
-            all.checked = Array.from(boxes).every(function (box) { return box.checked; });
-        }
-        const picked = [];
-        boxes.forEach(function (box) { if (box.checked) picked.push(box.value); });
-        writeSavedStatuses(!!(all && all.checked), picked);
-        refreshStatusButton();
+    document.getElementById('of-status-filter')?.addEventListener('change', function () {
+        const value = String(this.value || '').trim();
+        writeSavedStatuses(value === '', value === '' ? [] : [value]);
         applyFilters(table);
-    });
-    document.addEventListener('click', function (ev) {
-        const menu = document.getElementById('of-status-menu');
-        const wrap = document.querySelector('.of-status-filter');
-        if (!menu || menu.hidden || !wrap || wrap.contains(ev.target)) return;
-        menu.hidden = true;
+        refreshSavedNavCounts();
     });
 
     ['of-search', 'of-channel-filter', 'of-paid-filter'].forEach(function (id) {
