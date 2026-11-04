@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Support\VideoThumbnailUrl;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
@@ -107,11 +106,7 @@ class GeminiNineRatioService
         if (str_contains($host, 'youtube.com') || str_contains($host, 'youtu.be')) {
             throw new RuntimeException('YouTube page links cannot be converted. Use a direct video file link.');
         }
-        if (preg_match('#drive\.google\.com/file/d/([a-zA-Z0-9_-]+)#', $url, $drive)) {
-            $url = 'https://drive.google.com/uc?export=download&id='.$drive[1];
-        } else {
-            $url = VideoThumbnailUrl::normalize($url);
-        }
+        $url = $this->directVideoUrl($url);
 
         $path = tempnam(sys_get_temp_dir(), 'nine-ratio-');
         if ($path === false) {
@@ -119,6 +114,12 @@ class GeminiNineRatioService
         }
 
         $status = $this->downloadToFile($url, $path);
+        if ($this->isHtmlFile($path)) {
+            $media = $this->videoUrlInsidePage($path, $url);
+            if ($media !== null) {
+                $status = $this->downloadToFile($media, $path);
+            }
+        }
         if ($status < 200 || $status >= 300 || ! is_file($path) || filesize($path) < 1024) {
             @unlink($path);
             throw new RuntimeException('Could not download the video from that link (HTTP '.$status.'). The link has to open the video file itself.');
@@ -128,9 +129,77 @@ class GeminiNineRatioService
             throw new RuntimeException('Video is larger than 500 MB.');
         }
 
-        $this->assertDownloadedVideo($path);
+        if ($this->isHtmlFile($path)) {
+            @unlink($path);
+            throw new RuntimeException('That link opened a web page, not a video file. Paste the direct file address.');
+        }
 
         return ['path' => $path, 'mime' => 'video/mp4'];
+    }
+
+    private function directVideoUrl(string $url): string
+    {
+        if (preg_match('#drive\.google\.com/file/d/([a-zA-Z0-9_-]+)#', $url, $drive)) {
+            return 'https://drive.google.com/uc?export=download&confirm=t&id='.$drive[1];
+        }
+        if (stripos($url, 'dropbox.com') === false) {
+            return $url;
+        }
+
+        $url = preg_replace('/([?&])(?:dl|raw)=\d+/i', '$1dl=1', $url) ?? $url;
+        if (! preg_match('/[?&]dl=1(&|$)/i', $url)) {
+            $url .= (str_contains($url, '?') ? '&' : '?').'dl=1';
+        }
+
+        return $url;
+    }
+
+    private function videoUrlInsidePage(string $path, string $pageUrl): ?string
+    {
+        $html = (string) file_get_contents($path, false, null, 0, 1024 * 1024);
+        if (preg_match('#https://drive\.google\.com/uc\?[^\"\'\s<]+#i', $html, $drive)) {
+            $next = html_entity_decode($drive[0]);
+            if (! str_contains($next, 'confirm=')) {
+                $next .= '&confirm=t';
+            }
+
+            return $next;
+        }
+
+        if (preg_match('#https://[^\"\'\s<]*dropboxusercontent\.com/[^\"\'\s<]+#i', $html, $dropbox)) {
+            return html_entity_decode($dropbox[0]);
+        }
+
+        if (preg_match('#https?://[^\"\'\s<]+\.(?:mp4|webm|mov|m4v|mkv)(?:\?[^\"\'\s<]*)?#i', $html, $file)) {
+            return html_entity_decode($file[0]);
+        }
+
+        $parts = parse_url($pageUrl);
+        $origin = ($parts['scheme'] ?? 'https').'://'.($parts['host'] ?? '');
+        if (preg_match('#(?:src|href)=[\"\']([^\"\']+\.(?:mp4|webm|mov|m4v|mkv)(?:\?[^\"\']*)?)[\"\']#i', $html, $relative)) {
+            $found = html_entity_decode($relative[1]);
+            if (str_starts_with($found, '//')) {
+                return 'https:'.$found;
+            }
+            if (str_starts_with($found, '/')) {
+                return $origin.$found;
+            }
+            if (str_starts_with($found, 'http')) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    private function isHtmlFile(string $path): bool
+    {
+        if (! is_file($path)) {
+            return false;
+        }
+        $head = strtolower(ltrim((string) file_get_contents($path, false, null, 0, 64)));
+
+        return str_starts_with($head, '<!doctype') || str_starts_with($head, '<html') || str_starts_with($head, '<?xml');
     }
 
     private function downloadToFile(string $url, string $path): int
@@ -156,14 +225,6 @@ class GeminiNineRatioService
         fclose($handle);
 
         return $status;
-    }
-
-    private function assertDownloadedVideo(string $path): void
-    {
-        $head = strtolower(ltrim((string) file_get_contents($path, false, null, 0, 64)));
-        if (str_starts_with($head, '<!doctype') || str_starts_with($head, '<html') || str_starts_with($head, '<?xml')) {
-            throw new RuntimeException('That link opened a web page, not a video file. Paste the direct file address.');
-        }
     }
 
     private function convertWithFfmpeg(string $input, string $output): void
