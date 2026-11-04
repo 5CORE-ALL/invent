@@ -331,14 +331,6 @@ class GeminiNineRatioService
             CURLOPT_TIMEOUT => 180,
             CURLOPT_CONNECTTIMEOUT => 20,
             CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_HEADERFUNCTION => function ($ch, $header) use ($handle) {
-                if (str_starts_with($header, 'HTTP/')) {
-                    ftruncate($handle, 0);
-                    rewind($handle);
-                }
-
-                return strlen($header);
-            },
         ]);
         curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);

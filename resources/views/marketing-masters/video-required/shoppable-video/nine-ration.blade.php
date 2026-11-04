@@ -480,14 +480,24 @@
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
+                                'Accept': 'application/json',
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
                             },
                             body: JSON.stringify({ sku: data.Sku, url: link })
                         })
-                        .then(res => res.json().then(body => ({ ok: res.ok, body })))
-                        .then(({ ok, body }) => {
-                            if (!ok || !body.success) {
-                                alert(body.message || 'Could not change the ratio.');
+                        .then(async (res) => {
+                            const text = await res.text();
+                            let body = {};
+                            try { body = JSON.parse(text); } catch (e) { body = {}; }
+                            if (!res.ok || !body.success) {
+                                let message = body.message || '';
+                                if (!message && (res.status === 502 || res.status === 504)) {
+                                    message = 'The conversion took too long and the server closed it. Try a shorter video.';
+                                }
+                                if (!message) {
+                                    message = 'Could not change the ratio (HTTP ' + res.status + ').';
+                                }
+                                alert(message);
                                 btn.disabled = false;
                                 btn.textContent = 'Change Ratio';
                                 return;
@@ -497,7 +507,7 @@
                             btn.textContent = 'Change Ratio';
                         })
                         .catch(() => {
-                            alert('Could not change the ratio.');
+                            alert('Could not change the ratio. The server did not finish the request.');
                             btn.disabled = false;
                             btn.textContent = 'Change Ratio';
                         });
