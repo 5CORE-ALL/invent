@@ -30,7 +30,7 @@ class MasterListingController extends Controller
         return response()->json([
             'success' => true,
             'channel' => $slug,
-            'label' => SheetListingCatalog::label($slug),
+            'label' => MasterListingDetails::label($slug),
             'columns' => MasterListingDetails::columns(),
             'skus' => array_column($rows, 'sku'),
         ]);
@@ -63,8 +63,11 @@ class MasterListingController extends Controller
     private function slug(string $channel): ?string
     {
         $slug = ListingChannelCounts::normalize($channel);
+        if (! MasterListingDetails::supports($slug)) {
+            return null;
+        }
 
-        return SheetListingCatalog::has($slug) ? SheetListingCatalog::canonical($slug) : null;
+        return SheetListingCatalog::has($slug) ? SheetListingCatalog::canonical($slug) : $slug;
     }
 
     private function notSupported(): JsonResponse
