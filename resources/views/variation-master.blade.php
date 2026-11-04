@@ -325,7 +325,7 @@
                             <i class="bi bi-arrow-repeat me-1"></i>Update
                         </button>
                         <input type="file" id="vm-upload-file" class="d-none" accept=".xlsx,.xls,.csv">
-                        <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Title, Description, A+ Content, Bullet 1–5 and Parent Images are shared by every child of that parent and are used when a variation listing is published from Listing Manager or Missing L. Where the marketplace takes A+ (eBay) a saved A+ Content is sent instead of the Description; other marketplaces use the Description. Amazon keeps each child's own content and images.</span>
+                        <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Title, Description and Bullet 1–5 are shared by every child of that parent. A child row’s A+ Content comes from Description Master and its images come from Image Master, and both refresh from those pages whenever Variation Master loads. Where the marketplace takes A+ (eBay) a saved A+ Content is sent instead of the Description; other marketplaces use the Description.</span>
                         <span class="small ms-auto" id="vm-status"></span>
                     </div>
                 </div>
@@ -621,11 +621,13 @@
                         headerFilterPlaceholder: 'A+ HTML',
                         minWidth: 150,
                         formatter: function (cell) {
+                            const data = cell.getRow().getData();
                             const html = String(cell.getValue() || '').trim();
-                            if (!html) {
+                            const chars = html ? html.length : Number(data.aplus_chars || 0);
+                            if (!chars) {
                                 return '<button type="button" class="vm-pill-btn is-empty"><i class="bi bi-plus-lg"></i> Add A+</button>';
                             }
-                            return '<button type="button" class="vm-pill-btn" title="Edit the A+ content"><i class="bi bi-file-richtext"></i> A+ · ' + html.length.toLocaleString() + ' chars</button>';
+                            return '<button type="button" class="vm-pill-btn" title="Edit the A+ content"><i class="bi bi-file-richtext"></i> A+ · ' + chars.toLocaleString() + ' chars</button>';
                         },
                         cellClick: function (_e, cell) {
                             openAplusModal(cell.getRow().getData());
@@ -854,6 +856,7 @@
             });
 
             // ---- A+ content and parent images (shared by every child of the parent) ----
+            const skuAplusUrl = @json(route('variation.master.sku.aplus'));
             const imagesUrl = @json(route('variation.master.parent.images.upload'));
             const imageDeleteUrl = @json(route('variation.master.parent.images.delete'));
             const imagesDownloadUrl = @json(route('variation.master.parent.images.download'));
@@ -864,8 +867,12 @@
             let panelRow = null;
 
             function applyParentPatch(rowData, patch) {
+                const keepChild = patch && (Object.prototype.hasOwnProperty.call(patch, 'aplus') || Object.prototype.hasOwnProperty.call(patch, 'parent_images'));
                 table.getRows().forEach(function (other) {
-                    if (sameParent(other.getData(), rowData)) other.update(patch);
+                    const data = other.getData();
+                    if (!sameParent(data, rowData)) return;
+                    if (keepChild && data.row_type === 'sku') return;
+                    other.update(patch);
                 });
                 Object.assign(rowData, patch);
             }
@@ -1084,7 +1091,24 @@
                 document.getElementById('vm-desc-sku').textContent = row.sku ? '· Fetch live / Fetch A+ read SKU ' + row.sku : '';
                 aplusStatus.textContent = '';
                 descLoading('');
-                bootstrap.Modal.getOrCreateInstance(aplusModalEl).show();
+                const show = function () {
+                    bootstrap.Modal.getOrCreateInstance(aplusModalEl).show();
+                };
+                if (row.row_type === 'sku' && !String(row.aplus || '').trim() && Number(row.aplus_chars || 0) > 0) {
+                    aplusStatus.className = 'small me-auto text-muted';
+                    aplusStatus.textContent = 'Loading A+ from Description Master…';
+                    fetch(skuAplusUrl + '?sku=' + encodeURIComponent(row.sku), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                        .then(function (res) { return res.json().catch(function () { return null; }); })
+                        .then(function (json) {
+                            row.aplus = (json && json.html) || '';
+                            row.aplus_chars = row.aplus ? row.aplus.length : Number(row.aplus_chars || 0);
+                            aplusStatus.textContent = '';
+                            show();
+                        })
+                        .catch(function () { show(); });
+                    return;
+                }
+                show();
             }
 
             document.getElementById('vm-aplus-save')?.addEventListener('click', function () {
@@ -1094,7 +1118,27 @@
                 aplusStatus.className = 'small me-auto text-muted';
                 aplusStatus.textContent = 'Saving…';
                 const row = panelRow;
-                postJson(saveUrl, { id: row.id, parent: row.parent || '', aplus: getDescContent() }).then(function (json) {
+                const html = getDescContent();
+                if (row.row_type === 'sku') {
+                    descApi('/product-description/shopify-aplus/save', { sku: row.sku, html: html }).then(function (json) {
+                        if (!json || json.success === false) {
+                            throw new Error((json && json.message) || 'Save failed.');
+                        }
+                        row.aplus = html;
+                        row.aplus_chars = html.length;
+                        const live = table.getRows().find(function (other) { return String(other.getData().id) === String(row.id); });
+                        if (live) live.update({ aplus: html, aplus_chars: html.length });
+                        bootstrap.Modal.getOrCreateInstance(aplusModalEl).hide();
+                        setStatus('Saved A+ content for ' + (row.sku || parentLabel(row)), true);
+                    }).catch(function (err) {
+                        aplusStatus.className = 'small me-auto text-danger';
+                        aplusStatus.textContent = err.message || 'Save failed.';
+                    }).finally(function () {
+                        btn.disabled = false;
+                    });
+                    return;
+                }
+                postJson(saveUrl, { id: row.id, parent: row.parent || '', aplus: html }).then(function (json) {
                     applyParentPatch(row, { aplus: json.aplus || '' });
                     bootstrap.Modal.getOrCreateInstance(aplusModalEl).hide();
                     setStatus('Saved A+ content for ' + parentLabel(row), true);

@@ -4696,6 +4696,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/variation-master', [VariationMasterController::class, 'index'])->name('variation.master');
     Route::get('/variation-master/data', [VariationMasterController::class, 'getData'])->name('variation.master.data');
+    Route::get('/variation-master/sku-aplus', [VariationMasterController::class, 'skuAplus'])->name('variation.master.sku.aplus');
     Route::post('/variation-master/save', [VariationMasterController::class, 'save'])->name('variation.master.save');
     Route::post('/variation-master/bulk-update', [VariationMasterController::class, 'bulkUpdate'])->name('variation.master.bulk.update');
     Route::post('/variation-master/parent-images', [VariationMasterController::class, 'uploadParentImages'])->name('variation.master.parent.images.upload');

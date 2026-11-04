@@ -63,8 +63,9 @@ class MissingListingController extends Controller
                 try {
                     $cached['data'] = $this->overlayListingModes($cached['data']);
                     $cached['data'] = $this->overlayListingUrls($cached['data']);
-                    $cached['data'] = $this->appendFbMarketplaceRow($cached['data']);
+                    $cached['data'] = $this->withoutHiddenChannels($cached['data']);
                     $cached['data'] = $this->overlayCsvListedCounts($cached['data']);
+                    $cached['count'] = count($cached['data']);
                     $cached['total_missing_l'] = $this->sumMissingL($cached['data']);
                     // The sidebar badge reads this same figure.
                     ListingChannelCounts::storeTotalMissingL((int) $cached['total_missing_l']);
@@ -266,17 +267,10 @@ class MissingListingController extends Controller
             ->where('channel', '!=', '')
             ->orderBy('channel')
             ->get($masterColumns)
-            ->filter(function ($master) {
-                $key = ListingChannelCounts::normalize((string) $master->channel);
-                if (in_array($key, ['fbmarketplace', 'facebookmarketplace'], true)) {
-                    return true;
-                }
-
-                return ListingChannelCounts::shouldShowOnMissingListing(
-                    (string) $master->channel,
-                    $master->status ?? ''
-                );
-            })
+            ->filter(fn ($master) => ListingChannelCounts::shouldShowOnMissingListing(
+                (string) $master->channel,
+                $master->status ?? ''
+            ))
             ->filter(fn ($master) => ListingChannelCounts::hasListingSource((string) $master->channel))
             ->values();
     }
@@ -323,14 +317,13 @@ class MissingListingController extends Controller
             ];
         })->values();
 
-        $totalMissingL = (int) $data
-            ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
-            ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
+        $rows = $this->withoutHiddenChannels($data->all());
+        $totalMissingL = $this->sumMissingL($rows);
 
         return [
             'success' => true,
-            'data' => $this->appendFbMarketplaceRow($data->all()),
-            'count' => $data->count(),
+            'data' => $rows,
+            'count' => count($rows),
             'total_missing_l' => $totalMissingL,
             'computed_at' => now()->toIso8601String(),
             'partial' => true,
@@ -459,15 +452,14 @@ class MissingListingController extends Controller
 
         $this->persistListingMissingHistory($data);
 
-        $totalMissingL = (int) $data
-            ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
-            ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
+        $rows = $this->withoutHiddenChannels($data->all());
+        $totalMissingL = $this->sumMissingL($rows);
         ListingChannelCounts::storeTotalMissingL($totalMissingL);
 
         return [
             'success' => true,
-            'data' => $this->appendFbMarketplaceRow($data->all()),
-            'count' => $data->count(),
+            'data' => $rows,
+            'count' => count($rows),
             'total_missing_l' => $totalMissingL,
             'computed_at' => now()->toIso8601String(),
             'partial' => false,
@@ -542,6 +534,7 @@ class MissingListingController extends Controller
     private function sumMissingL(array $rows): int
     {
         return (int) collect($rows)
+            ->filter(fn ($row) => ! ListingChannelCounts::isHiddenFromMissingListing((string) ($row['channel'] ?? '')))
             ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
             ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
     }
@@ -598,10 +591,12 @@ class MissingListingController extends Controller
             ];
         })->values();
 
+        $rows = $this->withoutHiddenChannels($data->all());
+
         return [
             'success' => true,
-            'data' => $this->appendFbMarketplaceRow($data->all()),
-            'count' => $data->count(),
+            'data' => $rows,
+            'count' => count($rows),
             'total_missing_l' => 0,
             'computed_at' => now()->toIso8601String(),
             'partial' => true,
@@ -679,80 +674,11 @@ class MissingListingController extends Controller
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
-    private function appendFbMarketplaceRow(array $rows): array
+    private function withoutHiddenChannels(array $rows): array
     {
-        foreach ($rows as $row) {
-            $key = ListingChannelCounts::normalize((string) ($row['channel'] ?? ''));
-            if (in_array($key, ['fbmarketplace', 'facebookmarketplace'], true)) {
-                return $rows;
-            }
-        }
-
-        $master = $this->fbMarketplaceMaster();
-        if ($master === null) {
-            return $rows;
-        }
-
-        $snap = $this->latestListingSnapshots()['fbmarketplace']
-            ?? $this->latestListingSnapshots()['facebookmarketplace']
-            ?? [];
-        $cp = $this->cachedCpMasterCounts();
-
-        $rows[] = [
-            'id' => $master->id,
-            'image' => $master->logo ?? null,
-            'channel' => (string) ($master->channel ?: 'FB Marketplace'),
-            'listing_url' => ListingChannelCounts::listingUrl('fbmarketplace'),
-            'data_source' => 'CSV',
-            'allows_csv_upload' => true,
-            'csv_import_url' => ListingChannelCounts::csvImportUrl('fbmarketplace'),
-            'sku' => (int) ($cp['SKU'] ?? 0),
-            'zero_inv' => (int) ($cp['ZeroInv'] ?? 0),
-            'req' => (int) ($snap['listing_req'] ?? 0),
-            'nrl' => (int) ($snap['listing_nrl'] ?? 0),
-            'listed' => (int) ($snap['listing_listed'] ?? 0),
-            'missing_listing' => (int) ($snap['listing_miss_count'] ?? 0),
-            'inactive_parent' => 0,
-            'inactive_child' => 0,
-            'inactive_listings_url' => null,
-            'listing_mode' => $this->listingModeFor($master),
-            'type' => $this->listingTypeFor($master) !== '' ? $this->listingTypeFor($master) : 'C2C',
-            'seller_portal' => $this->sellerPortalFor($master, Schema::hasColumn('channel_master', 'seller_link')),
-        ];
-
-        return $rows;
-    }
-
-    private function fbMarketplaceMaster(): ?ChannelMaster
-    {
-        if (! Schema::hasTable('channel_master')) {
-            return null;
-        }
-
-        $found = ChannelMaster::query()
-            ->whereNotNull('channel')
-            ->get()
-            ->first(function ($master) {
-                $key = ListingChannelCounts::normalize((string) $master->channel);
-
-                return in_array($key, ['fbmarketplace', 'facebookmarketplace'], true);
-            });
-        if ($found) {
-            return $found;
-        }
-
-        try {
-            return ChannelMaster::create([
-                'channel' => 'FB Marketplace',
-                'status' => 'active',
-                'type' => 'C2C',
-                'listing_mode' => 'CSV',
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('Missing Listing could not add FB Marketplace: '.$e->getMessage());
-
-            return null;
-        }
+        return array_values(array_filter($rows, function ($row) {
+            return ! ListingChannelCounts::isHiddenFromMissingListing((string) ($row['channel'] ?? ''));
+        }));
     }
 
     /**
