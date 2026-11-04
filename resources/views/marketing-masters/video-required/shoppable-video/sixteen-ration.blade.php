@@ -29,6 +29,45 @@
         background: #2563eb;
         color: white;
     }
+
+    .ration-filter {
+        height: 22px;
+        font-size: 11px;
+        padding: 0 18px 0 6px;
+        background-size: 10px 8px;
+    }
+    #row-data-type.ration-filter { width: 112px; }
+    #dil-color-filter.ration-filter { width: 78px; }
+
+    .video-link-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 22px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 4px;
+        background: #0d6efd;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1;
+        cursor: pointer;
+        user-select: none;
+    }
+    .video-link-badge span {
+        background: #fff;
+        color: #0d6efd;
+        border-radius: 3px;
+        padding: 0 4px;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 14px;
+    }
+    .video-link-badge:hover { opacity: 0.88; }
+    .video-link-badge.is-active {
+        box-shadow: 0 0 0 2px #fff, 0 0 0 3px #0d6efd;
+    }
 </style>
 @endsection
 
@@ -62,14 +101,14 @@
                     </div>
 
                     <!-- Row Type Filter -->
-                    <select id="row-data-type" class="form-select border border-primary" style="width: 150px;">
+                    <select id="row-data-type" class="form-select form-select-sm border border-primary ration-filter">
                         <option value="all">🔁 Show All</option>
                         <option value="sku">🔹 SKU (Child)</option>
                         <option value="parent">🔸 Parent</option>
                     </select>
 
                     <!-- Dil% Color Filter -->
-                    <select id="dil-color-filter" class="form-select border border-danger" style="width: 120px;">
+                    <select id="dil-color-filter" class="form-select form-select-sm border border-danger ration-filter">
                         <option value="">🎯 Dil%</option>
                         <option value="red">🔴 Red</option>
                         <option value="yellow">🟡 Yellow</option>
@@ -113,10 +152,10 @@
                         Export
                     </a>
 
-                    <span class="badge bg-primary d-inline-flex align-items-center gap-2 px-3 py-2" style="font-size: 0.9rem;">
+                    <button type="button" id="video-link-filter" class="video-link-badge" title="Show rows that have a 16:9 video">
                         <i class="fa fa-link"></i> 16:9 Video
-                        <span id="total-sixteen-link-count" class="badge bg-white text-primary">0</span>
-                    </span>
+                        <span id="total-sixteen-link-count">0</span>
+                    </button>
 
                 </div>
                 <div id="sixteen-ration-video"></div>
@@ -176,6 +215,7 @@
         let currentParentFilter = null;
         let currentRowTypeFilter = "all";
         let currentDilColorFilter = "";
+        let filterHasVideo = false;
         let currentIndex = 0;
         let isPlaying = false;
         let selectedColor = null;
@@ -481,6 +521,7 @@
                 let matchesParent = true;
                 let matchesRowType = true;
                 let matchesDilColor = true;
+                let matchesVideo = true;
 
                 // Parent filter
                 if (currentParentFilter) {
@@ -499,7 +540,11 @@
                     matchesDilColor = data.dilColor === currentDilColorFilter;
                 }
 
-                return matchesParent && matchesRowType && matchesDilColor;
+                if (filterHasVideo) {
+                    matchesVideo = String(data.sixteen_ratio_link || "").trim() !== "";
+                }
+
+                return matchesParent && matchesRowType && matchesDilColor && matchesVideo;
             });
         }
 
@@ -553,6 +598,15 @@
         // Dil Color Filter
         document.getElementById('dil-color-filter').addEventListener('change', function (e) {
             currentDilColorFilter = e.target.value;
+            setCombinedFilters();
+        });
+
+        document.getElementById('video-link-filter').addEventListener('click', function () {
+            filterHasVideo = !filterHasVideo;
+            this.classList.toggle('is-active', filterHasVideo);
+            this.title = filterHasVideo
+                ? 'Showing rows that have a 16:9 video. Click to show all.'
+                : 'Show rows that have a 16:9 video';
             setCombinedFilters();
         });
 
