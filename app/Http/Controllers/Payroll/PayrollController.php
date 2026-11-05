@@ -878,6 +878,7 @@ class PayrollController extends Controller
             'id' => $r->id,
             'user_id' => $r->user_id,
             'name' => $r->user?->name,
+            'avatar_url' => $this->incrementAvatarUrl($r->user),
             'email' => $r->user?->email,
             'is_active' => $r->user ? (bool) $r->user->is_active : null,
             'account_status' => UserAccountStatus::for($r->user),

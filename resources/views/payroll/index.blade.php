@@ -194,13 +194,44 @@
         color: #0d6efd; background: transparent; border-bottom-color: #0d6efd;
     }
     #payrollApp .payroll-country-select {
-        width: 100%; max-width: 118px; height: 28px; padding: 0 .35rem;
-        border: 1px solid #ced4da; border-radius: .35rem; font-size: .78rem;
-        background: #fff; cursor: pointer; text-align: center;
+        width: 46px; max-width: 46px; height: 28px; padding: 0 14px 0 2px;
+        border: 1px solid #ced4da; border-radius: .35rem; font-size: 1rem;
+        background-color: #fff; cursor: pointer; text-align: center; text-align-last: center;
+        line-height: 26px; appearance: none; -webkit-appearance: none;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+        background-repeat: no-repeat; background-position: right 3px center; background-size: 9px;
     }
     #payrollApp .payroll-country-select:disabled {
-        background: #f8f9fa; cursor: default; opacity: .85;
+        background-color: #f8f9fa; cursor: default; opacity: .85;
     }
+    #payrollApp .payroll-flag { font-size: 1rem; line-height: 1; }
+    #payrollApp .payroll-person {
+        display: inline-flex; align-items: center; gap: .4rem; max-width: 100%; vertical-align: middle;
+    }
+    #payrollApp .payroll-person .inc-avatar { width: 24px; height: 24px; font-size: .62rem; }
+    #payrollApp .payroll-person-name { white-space: nowrap; }
+    #payrollApp .payroll-deduction-reason {
+        font-size: 11px; line-height: 1.2; color: #6c757d; max-width: 92px;
+        margin: 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .payroll-col-toggles {
+        display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .4rem;
+    }
+    .payroll-col-toggles-label {
+        font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+        color: #6b7280; margin-right: .15rem;
+    }
+    .payroll-col-toggles label {
+        display: inline-flex; align-items: center; gap: .28rem; margin: 0;
+        height: auto !important; min-height: 0 !important;
+        font-size: .75rem; font-weight: 600; color: #374151; cursor: pointer;
+        background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 999px;
+        padding: .12rem .5rem .12rem .35rem; line-height: 1.2; user-select: none;
+    }
+    .payroll-col-toggles label.is-off { opacity: .5; }
+    .payroll-col-toggles input { margin: 0; cursor: pointer; height: auto !important; min-height: 0 !important; }
+    #payrollApp .tabulator .tabulator-cell { padding: 4px 6px !important; }
+    #payrollApp .tabulator .tabulator-header .tabulator-col-content { padding: 6px !important; }
     .payroll-region-tabs { overflow-x: auto; flex-wrap: nowrap; }
     #payrollApp .tabulator .tabulator-tableholder { overflow-x: auto; }
     @media (max-width: 1199.98px) {
@@ -304,6 +335,10 @@
             <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="btnSyncFinalHours" title="Copy Final Hour into Hours LM and recalculate salary"><i class="ri-arrow-left-right-line"></i> Sync Final Hour</button>
             @endif
         </div>
+    </div>
+
+    <div class="payroll-card px-2 py-2 mb-2" id="payrollColToggleBar">
+        <div class="payroll-col-toggles" id="payrollColToggles" aria-label="Show or hide columns"></div>
     </div>
 
     <div class="tab-content">
@@ -689,6 +724,11 @@
     function countryLabel(region) {
         const meta = REGION_META[normalizeRegion(region)] || REGION_META.india;
         return meta.flag + ' ' + meta.label;
+    }
+
+    function countryFlag(region) {
+        const meta = REGION_META[normalizeRegion(region)] || REGION_META.india;
+        return meta.flag;
     }
 
     let employeesTable = null;
