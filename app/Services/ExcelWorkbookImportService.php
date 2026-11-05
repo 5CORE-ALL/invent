@@ -200,6 +200,7 @@ class ExcelWorkbookImportService
         $buffer = [];
         $inserted = 0;
         $now = now()->toDateTimeString();
+        $headerRow = $this->detectHeaderRow($sheet, $name);
 
         foreach ($sheet->getRowIterator() as $row) {
             $rowIndex = $row->getRowIndex();
@@ -207,9 +208,13 @@ class ExcelWorkbookImportService
                 throw new ExcelImportException('Worksheet "'.$name.'" exceeds the '.number_format(self::MAX_ROWS).' row limit.');
             }
 
+            if ($rowIndex < $headerRow) {
+                continue;
+            }
+
             $cells = $this->readCells($row->getCellIterator(), $name);
 
-            if ($rowIndex === 1) {
+            if ($rowIndex === $headerRow) {
                 $headers = $this->headersFromRow($cells);
                 continue;
             }
@@ -250,6 +255,104 @@ class ExcelWorkbookImportService
         $worksheet->headers = array_values($headers);
         $worksheet->total_rows = $inserted;
         $worksheet->save();
+    }
+
+    /**
+     * The real table often starts below a chart, title, or summary block.
+     * Pick the earliest wide label row and ignore everything above it.
+     */
+    private function detectHeaderRow(Worksheet $sheet, string $name): int
+    {
+        $rows = [];
+        foreach ($sheet->getRowIterator() as $row) {
+            $rowIndex = $row->getRowIndex();
+            if ($rowIndex > 150) {
+                break;
+            }
+            $rows[$rowIndex] = $this->readCells($row->getCellIterator(), $name);
+        }
+
+        $bestIndex = null;
+        $bestScore = 0;
+        foreach ($rows as $rowIndex => $cells) {
+            $score = $this->headerScore($cells, $this->nextPopulatedRow($rows, $rowIndex));
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestIndex = $rowIndex;
+            }
+        }
+
+        if ($bestIndex !== null) {
+            return $bestIndex;
+        }
+
+        foreach ($rows as $rowIndex => $cells) {
+            if ($cells !== []) {
+                return $rowIndex;
+            }
+        }
+
+        return 1;
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $rows
+     * @return array<int, string>|null
+     */
+    private function nextPopulatedRow(array $rows, int $rowIndex): ?array
+    {
+        for ($offset = 1; $offset <= 3; $offset++) {
+            if (! empty($rows[$rowIndex + $offset])) {
+                return $rows[$rowIndex + $offset];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, string>  $cells
+     * @param  array<int, string>|null  $next
+     */
+    private function headerScore(array $cells, ?array $next): int
+    {
+        if (count($cells) < 2 || $next === null) {
+            return 0;
+        }
+
+        $labels = 0;
+        foreach ($cells as $value) {
+            if (! $this->looksLikeDataValue($value)) {
+                $labels++;
+            }
+        }
+
+        if ($labels < 2) {
+            return 0;
+        }
+
+        $overlap = 0;
+        foreach (array_keys($cells) as $column) {
+            if (isset($next[$column])) {
+                $overlap++;
+            }
+        }
+
+        if ($overlap < 1) {
+            return 0;
+        }
+
+        return ($labels * 100) + (count($cells) * 10) + $overlap;
+    }
+
+    private function looksLikeDataValue(string $value): bool
+    {
+        $value = trim($value);
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $value) === 1) {
+            return true;
+        }
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?$/', $value) === 1;
     }
 
     /**

@@ -130,6 +130,15 @@ class ExcelDataManagerWorkflowTest extends TestCase
         $emptyData->assertJsonPath('total_records', 0);
         $emptyData->assertJsonPath('records', []);
 
+        $stands = collect($payload['worksheets'])->firstWhere('worksheet_name', 'Stands, Mounts & Holders');
+        $standsData = $this->actingAs($user)->getJson('/excel/worksheets/'.$stands['id'].'/data');
+        $standsData->assertOk();
+        $standsData->assertJsonPath('worksheet.headers', ['Item', 'Material', 'SKU', 'Price']);
+        $standsData->assertJsonPath('total_records', 1);
+        $standsData->assertJsonPath('records.0.values.Item', 'Floor stand');
+        $this->assertNotContains('Month', $standsData->json('worksheet.headers'));
+        $this->assertNotContains('Units sold', $standsData->json('records.0.values'));
+
         $meta = $this->actingAs($user)->getJson('/excel/worksheets/'.$speakers['id']);
         $meta->assertOk();
         $meta->assertJsonPath('worksheet.worksheet_name', 'Speakers');
@@ -269,8 +278,12 @@ class ExcelDataManagerWorkflowTest extends TestCase
 
         $stands = $spreadsheet->createSheet();
         $stands->setTitle('Stands, Mounts & Holders');
-        $stands->fromArray(['Item', 'Material'], null, 'A1', true);
-        $stands->fromArray(['Floor stand', 'Steel & alloy'], null, 'A2', true);
+        $stands->setCellValue('A1', 'Units sold');
+        $stands->fromArray(['Month', 'Units'], null, 'A3', true);
+        $stands->fromArray(['Jan', 12], null, 'A4', true);
+        $stands->fromArray(['Feb', 18], null, 'A5', true);
+        $stands->fromArray(['Item', 'Material', 'SKU', 'Price'], null, 'A8', true);
+        $stands->fromArray(['Floor stand', 'Steel & alloy', 'ST-1', 49], null, 'A9', true);
 
         $mics = $spreadsheet->createSheet();
         $mics->setTitle('Microphones & Wireless Systems');
