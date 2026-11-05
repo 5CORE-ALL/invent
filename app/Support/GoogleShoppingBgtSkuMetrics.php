@@ -25,6 +25,8 @@ final class GoogleShoppingBgtSkuMetrics
             'inv' => 0.0,
             'ovl30' => 0.0,
             'dil' => 0.0,
+            // false = the campaign name matched no SKU / parent family, so the zeros above are not real data.
+            'matched' => false,
         ];
     }
 
@@ -148,20 +150,24 @@ final class GoogleShoppingBgtSkuMetrics
             if (str_starts_with($norm, 'PARENT ')) {
                 $fam = $payload['parentSkuToFamily'][$norm]
                     ?? preg_replace('/\s+/', ' ', trim(substr($norm, strlen('PARENT '))));
-                $out = $payload['byFamily'][$fam] ?? GoogleShoppingBgtSkuMetrics::empty();
+                $out = isset($payload['byFamily'][$fam])
+                    ? $payload['byFamily'][$fam] + ['matched' => true]
+                    : GoogleShoppingBgtSkuMetrics::empty();
                 $memo[$norm] = $out;
 
                 return $out;
             }
 
             if (isset($payload['bySku'][$norm])) {
-                $memo[$norm] = $payload['bySku'][$norm];
+                $memo[$norm] = $payload['bySku'][$norm] + ['matched' => true];
 
                 return $memo[$norm];
             }
             if (isset($payload['skuToParentKey'][$norm])) {
                 $fam = $payload['skuToParentKey'][$norm];
-                $out = $payload['byFamily'][$fam] ?? GoogleShoppingBgtSkuMetrics::empty();
+                $out = isset($payload['byFamily'][$fam])
+                    ? $payload['byFamily'][$fam] + ['matched' => true]
+                    : GoogleShoppingBgtSkuMetrics::empty();
                 $memo[$norm] = $out;
 
                 return $out;
