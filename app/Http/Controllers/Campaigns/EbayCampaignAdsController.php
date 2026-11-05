@@ -77,6 +77,72 @@ class EbayCampaignAdsController extends Controller
     }
 
     /**
+     * Ads Rule PMT — highest / lowest suggested bid (%) per product category.
+     * Stored in ebay_sbid_rules under key 'ebay1_pmt_category_bids' as
+     * {"Category": {"highest": 9.5, "lowest": 2}, ...}. (Older data stored a plain number = highest.)
+     */
+    public function getPmtCategoryBids()
+    {
+        $row = DB::table('ebay_sbid_rules')->where('key', 'ebay1_pmt_category_bids')->first();
+        $stored = $row ? (json_decode($row->rule, true) ?: []) : [];
+
+        $bids = [];
+        foreach ($stored as $category => $value) {
+            $bids[$category] = is_array($value)
+                ? ['highest' => $value['highest'] ?? null, 'lowest' => $value['lowest'] ?? null]
+                : ['highest' => $value, 'lowest' => null];
+        }
+
+        return response()->json(['bids' => (object) $bids]);
+    }
+
+    public function savePmtCategoryBids(Request $request)
+    {
+        $input = $request->input('bids', []);
+        if (! is_array($input)) {
+            return response()->json(['error' => 'Invalid data'], 422);
+        }
+
+        $bids = [];
+        foreach ($input as $category => $pair) {
+            $category = trim((string) $category);
+            if ($category === '' || ! is_array($pair)) {
+                continue;
+            }
+
+            $values = [];
+            foreach (['highest', 'lowest'] as $field) {
+                $v = $pair[$field] ?? null;
+                if ($v === null || $v === '') {
+                    $values[$field] = null;
+
+                    continue;
+                }
+                if (! is_numeric($v) || $v < 0 || $v > 100) {
+                    return response()->json(['error' => ucfirst($field).' for "'.$category.'" must be a number between 0 and 100'], 422);
+                }
+                $values[$field] = round((float) $v, 2);
+            }
+
+            if ($values['highest'] !== null && $values['lowest'] !== null && $values['lowest'] > $values['highest']) {
+                return response()->json(['error' => 'Lowest cannot be greater than Highest for "'.$category.'"'], 422);
+            }
+            if ($values['highest'] === null && $values['lowest'] === null) {
+                continue; // nothing set for this category
+            }
+
+            $bids[$category] = $values;
+        }
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => 'ebay1_pmt_category_bids'],
+            ['rule' => json_encode($bids, JSON_UNESCAPED_UNICODE), 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'bids' => (object) $bids]);
+    }
+
+    /**
      * Dilution rule — configurable DIL% color bands.
      * Stored in ebay_sbid_rules under key 'ebay1_dil' (no extra table needed).
      * DIL = (L30 sold / inventory) * 100. Bands evaluated ascending by dil_max,

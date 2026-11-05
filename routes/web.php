@@ -7240,6 +7240,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/listing-report-history', 'listingReportHistory')->name('ebay.listing.report.history');
         Route::get('/ebay/campaign-ads/rule', 'getRule')->name('ebay.campaign.ads.rule');
         Route::post('/ebay/campaign-ads/rule', 'saveRule')->name('ebay.campaign.ads.rule.save');
+        Route::get('/ebay/campaign-ads/pmt-category-bids', 'getPmtCategoryBids')->name('ebay.campaign.ads.pmt.category.bids');
+        Route::post('/ebay/campaign-ads/pmt-category-bids', 'savePmtCategoryBids')->name('ebay.campaign.ads.pmt.category.bids.save');
         Route::get('/ebay/campaign-ads/dil-rule', 'getDilRule')->name('ebay.campaign.ads.dil.rule');
         Route::post('/ebay/campaign-ads/dil-rule', 'saveDilRule')->name('ebay.campaign.ads.dil.rule.save');
         Route::get('/ebay/campaign-ads/dil-sbid-rule', 'getDilSbidRule')->name('ebay.campaign.ads.dil.sbid');

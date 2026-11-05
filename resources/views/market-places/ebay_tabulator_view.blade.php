@@ -896,6 +896,10 @@
                     </button>
                     @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 1'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay1'])
+                    <button type="button" class="btn btn-sm btn-primary pricing-filter-item" id="ads-rule-pmt-btn"
+                        title="Set the suggested PMT bid % for each category">
+                        <i class="fas fa-bullhorn"></i> Ads Rule PMT
+                    </button>
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block pricing-filter-item">
@@ -1034,6 +1038,9 @@
                                 data-metric="zero_sold_count" data-live-value="0"
                                 style="color: white; font-weight: bold; cursor: pointer;"
                                 title="Click badge to filter 0 sold (INV>0). Click dot for rolling history.">{!! $ebTrendDot('zero_sold_count') !!}0 Sold: 0</span>
+                            <span class="badge fs-6 p-2 bg-warning" id="no-category-count-badge"
+                                style="color: #1f2937; font-weight: bold; cursor: pointer;"
+                                title="SKUs with no Category (no Item ID match in /excel). Click badge to filter. Click again to clear.">No Category: 0</span>
                         </div>
                     </div>
                     <div class="amz-sum-block amz-sum-block--projected">
@@ -1379,6 +1386,47 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-success" id="confirm-export-btn">
                         <i class="fa fa-file-excel"></i> Export Selected Columns
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ads Rule PMT Modal: suggested bid % per category -->
+    <div class="modal fade" id="adsRulePmtModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-bullhorn"></i> Ads Rule PMT &mdash; Bid Range by Category</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <input type="text" class="form-control form-control-sm" id="ads-rule-pmt-search" placeholder="Search category..." style="max-width: 220px;">
+                        <div class="input-group input-group-sm" style="max-width: 360px;">
+                            <input type="number" class="form-control" id="ads-rule-pmt-all-high" min="0" max="100" step="0.01" placeholder="All Highest">
+                            <input type="number" class="form-control" id="ads-rule-pmt-all-low" min="0" max="100" step="0.01" placeholder="All Lowest">
+                            <button type="button" class="btn btn-outline-secondary" id="ads-rule-pmt-apply-all" title="Fill the visible categories (blank fields are left unchanged)">Apply</button>
+                        </div>
+                        <span class="ms-auto small text-muted" id="ads-rule-pmt-summary"></span>
+                    </div>
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Category</th>
+                                <th class="text-center" style="width: 80px;">SKUs</th>
+                                <th style="width: 130px;">Highest (%)</th>
+                                <th style="width: 130px;">Lowest (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ads-rule-pmt-body"></tbody>
+                    </table>
+                    <div class="small text-danger mt-2 d-none" id="ads-rule-pmt-error"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="ads-rule-pmt-save">
+                        <i class="fa fa-save"></i> Save
                     </button>
                 </div>
             </div>
@@ -2801,6 +2849,7 @@
 
         // Badge filter state variables
         let zeroSoldFilterActive = false;
+        let noCategoryFilterActive = false;
         let moreSoldFilterActive = false;
         let blueTriangleFilterActive = false;
         let redTriangleFilterActive = false;
@@ -3974,6 +4023,136 @@
                 moreSoldFilterActive = false;
                 applyFilters();
             });
+
+            $('#no-category-count-badge').on('click', function() {
+                noCategoryFilterActive = !noCategoryFilterActive;
+                applyFilters();
+            });
+
+            // ===== Ads Rule PMT: suggested bid (%) per category =====
+            (function() {
+                const PMT_BIDS_URL = '/ebay/campaign-ads/pmt-category-bids';
+                const modalEl = document.getElementById('adsRulePmtModal');
+                if (!modalEl) return;
+                let savedBids = {};
+
+                /** Distinct categories (+ SKU counts) from the live table data, merged with saved ones. */
+                function collectCategories() {
+                    const src = (Array.isArray(allTableData) && allTableData.length)
+                        ? allTableData
+                        : (table ? table.getData('all') : []);
+                    const counts = {};
+                    src.forEach(function(row) {
+                        if (ebayIsParentRowData(row)) return;
+                        const cat = String(row.excel_category || '').trim();
+                        if (cat) counts[cat] = (counts[cat] || 0) + 1;
+                    });
+                    Object.keys(savedBids).forEach(function(cat) {
+                        if (!(cat in counts)) counts[cat] = 0;
+                    });
+                    return Object.keys(counts).sort(function(a, b) { return a.localeCompare(b); })
+                        .map(function(cat) { return { category: cat, count: counts[cat] }; });
+                }
+
+                function renderRows() {
+                    const $body = $('#ads-rule-pmt-body').empty();
+                    const rows = collectCategories();
+                    rows.forEach(function(r) {
+                        const $tr = $('<tr>').attr('data-category', r.category);
+                        $tr.append($('<td>').text(r.category));
+                        $tr.append($('<td class="text-center">').text(r.count.toLocaleString()));
+                        const saved = savedBids[r.category] || {};
+                        const hi = saved.highest != null ? saved.highest : '';
+                        const lo = saved.lowest != null ? saved.lowest : '';
+                        $tr.append($('<td>').append(
+                            $('<input type="number" class="form-control form-control-sm ads-rule-pmt-input ads-rule-pmt-high" min="0" max="100" step="0.01" placeholder="e.g. 9">').val(hi)
+                        ));
+                        $tr.append($('<td>').append(
+                            $('<input type="number" class="form-control form-control-sm ads-rule-pmt-input ads-rule-pmt-low" min="0" max="100" step="0.01" placeholder="e.g. 2">').val(lo)
+                        ));
+                        $body.append($tr);
+                    });
+                    if (!rows.length) {
+                        $body.append('<tr><td colspan="4" class="text-center text-muted">No categories found. Category comes from the /excel upload (matched by Item ID).</td></tr>');
+                    }
+                    updateSummary();
+                    $('#ads-rule-pmt-search').val('');
+                }
+
+                function updateSummary() {
+                    const $inputs = $('#ads-rule-pmt-body .ads-rule-pmt-input');
+                    let filled = 0;
+                    let total = 0;
+                    $('#ads-rule-pmt-body tr[data-category]').each(function() {
+                        total++;
+                        const hi = $(this).find('.ads-rule-pmt-high').val();
+                        const lo = $(this).find('.ads-rule-pmt-low').val();
+                        const bad = hi !== '' && lo !== '' && parseFloat(lo) > parseFloat(hi);
+                        $(this).find('.ads-rule-pmt-low').toggleClass('is-invalid', bad);
+                        if (hi !== '' || lo !== '') filled++;
+                    });
+                    $('#ads-rule-pmt-summary').text(filled + ' of ' + total + ' categories have a bid range');
+                }
+
+                $('#ads-rule-pmt-btn').on('click', function() {
+                    $('#ads-rule-pmt-error').addClass('d-none').text('');
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    fetch(PMT_BIDS_URL, { headers: { 'Accept': 'application/json' } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) { savedBids = (d && d.bids) || {}; })
+                        .catch(function() { savedBids = {}; })
+                        .finally(renderRows);
+                });
+
+                $('#ads-rule-pmt-search').on('input', function() {
+                    const q = String($(this).val() || '').toLowerCase();
+                    $('#ads-rule-pmt-body tr[data-category]').each(function() {
+                        $(this).toggle(String($(this).attr('data-category')).toLowerCase().indexOf(q) !== -1);
+                    });
+                });
+
+                $('#ads-rule-pmt-body').on('input', '.ads-rule-pmt-input', updateSummary);
+
+                $('#ads-rule-pmt-apply-all').on('click', function() {
+                    const hi = $('#ads-rule-pmt-all-high').val();
+                    const lo = $('#ads-rule-pmt-all-low').val();
+                    if (hi !== '') $('#ads-rule-pmt-body tr[data-category]:visible .ads-rule-pmt-high').val(hi);
+                    if (lo !== '') $('#ads-rule-pmt-body tr[data-category]:visible .ads-rule-pmt-low').val(lo);
+                    updateSummary();
+                });
+
+                $('#ads-rule-pmt-save').on('click', function() {
+                    const bids = {};
+                    $('#ads-rule-pmt-body tr[data-category]').each(function() {
+                        bids[$(this).attr('data-category')] = {
+                            highest: $(this).find('.ads-rule-pmt-high').val(),
+                            lowest: $(this).find('.ads-rule-pmt-low').val()
+                        };
+                    });
+                    const $btn = $(this).prop('disabled', true);
+                    const $err = $('#ads-rule-pmt-error').addClass('d-none').text('');
+                    fetch(PMT_BIDS_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({ bids: bids })
+                    })
+                        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
+                        .then(function(res) {
+                            if (!res.ok) {
+                                $err.removeClass('d-none').text((res.d && (res.d.error || res.d.message)) || 'Could not save.');
+                                return;
+                            }
+                            savedBids = res.d.bids || {};
+                            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                        })
+                        .catch(function() { $err.removeClass('d-none').text('Could not save.'); })
+                        .finally(function() { $btn.prop('disabled', false); });
+                });
+            })();
 
             $('#more-sold-count-badge').on('click', function(e) {
                 if ($(e.target).closest('.summary-trend-dot').length) return;
@@ -6677,6 +6856,12 @@
                     });
                 }
 
+                if (noCategoryFilterActive) {
+                    table.addFilter(function(data) {
+                        return !ebayIsParentRowData(data) && !String(data.excel_category || '').trim();
+                    });
+                }
+
                 if (moreSoldFilterActive) {
                     table.addFilter(function(data) {
                         const ebayL30 = parseFloat(data['eBay L30']) || 0;
@@ -6940,6 +7125,20 @@
 
                 setSummaryBadge($('#zero-sold-count-badge'), '0 Sold: ' + zeroSoldCount.toLocaleString(), zeroSoldCount);
                 setSummaryBadge($('#more-sold-count-badge'), '> 0 Sold: ' + moreSoldCount.toLocaleString(), moreSoldCount);
+
+                // No Category = child rows (full dataset) whose Category column is blank
+                const noCatSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
+                    ? allTableData
+                    : allData;
+                const noCategoryCount = noCatSrc.filter(function(row) {
+                    return !ebayIsParentRowData(row) && !String(row.excel_category || '').trim();
+                }).length;
+                $('#no-category-count-badge')
+                    .text('No Category: ' + noCategoryCount.toLocaleString())
+                    .css({
+                        outline: noCategoryFilterActive ? '3px solid #0d6efd' : '',
+                        outlineOffset: noCategoryFilterActive ? '2px' : ''
+                    });
 
                 let blueTriangleCount = 0;
                 let redTriangleCount = 0;

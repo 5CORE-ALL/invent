@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ExcelCategoryLookupService
 {
-    public const CACHE_KEY = 'excel_category_by_item_id_v3';
+    public const CACHE_KEY = 'excel_category_by_item_id_v4';
 
     private const ITEM_ID_HEADERS = ['itemid', 'ebayitemid', 'itemnumber', 'listingid', 'ebayitemnumber'];
 
@@ -54,15 +54,26 @@ class ExcelCategoryLookupService
             return [];
         }
 
-        return Cache::remember(self::CACHE_KEY.':'.$latestId, 600, function () {
-            try {
-                return $this->build();
-            } catch (\Throwable $e) {
-                Log::warning('ExcelCategoryLookupService: '.$e->getMessage());
+        $key = self::CACHE_KEY.':'.$latestId;
+        $cached = Cache::get($key);
+        if (is_array($cached) && $cached !== []) {
+            return $cached;
+        }
 
-                return [];
-            }
-        });
+        try {
+            $map = $this->build();
+        } catch (\Throwable $e) {
+            Log::warning('ExcelCategoryLookupService: '.$e->getMessage());
+
+            return [];
+        }
+
+        // Never cache an empty result, so a failed/empty build is retried on the next request.
+        if ($map !== []) {
+            Cache::put($key, $map, 600);
+        }
+
+        return $map;
     }
 
     /**
