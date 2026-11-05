@@ -298,7 +298,7 @@
 
     <div class="payroll-card px-3 py-2 mb-2" id="salaryStatusSection">
         <div class="payroll-toolbar">
-            <h4 class="payroll-toolbar-title" id="payrollRegionTitle"><span class="me-1">🇮🇳</span>Salary</h4>
+            <h4 class="payroll-toolbar-title" id="payrollRegionTitle">🇮🇳</h4>
             <div class="d-flex align-items-center gap-2 flex-wrap" id="monthStats">
                 <span class="payroll-stat-inline payroll-stat-employees">Employees <span class="val" id="statEmployees">—</span></span>
                 <span class="payroll-stat-inline payroll-stat-net">Net <span class="val" id="statNet">—</span></span>
@@ -1069,7 +1069,7 @@
         const meta = REGION_META[region] || REGION_META.india;
         const title = document.getElementById('payrollRegionTitle');
         if (title) {
-            title.innerHTML = '<span class="me-1">' + meta.flag + '</span>' + meta.title;
+            title.textContent = meta.flag;
         }
         const id = currentMonthId();
         if (id) {
