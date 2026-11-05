@@ -264,6 +264,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('tiktok-sync-chargebacks')
             ->appendOutputTo($log);
+        // eBay LQS from the live eBay listing (Trading API GetItem). 300 listings/run, skips SKUs scored in the
+        // last 24h, so the whole catalog is covered over several days without burning the shared API quota.
+        $schedule->command('lqs:sync-ebay --limit=300 --stale-hours=24')
+            ->dailyAt('03:30')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->name('lqs-sync-ebay')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)

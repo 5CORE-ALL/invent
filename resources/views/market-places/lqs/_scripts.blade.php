@@ -930,6 +930,7 @@
                         if (res.success) {
                             bootstrap.Modal.getInstance(document.getElementById('amzSheetUploadModal')).hide();
                             amzNotify(res.message || 'Sheet imported.', 'success');
+                            if (window.lqsTouchLastUpdated) window.lqsTouchLastUpdated();
                             amzTable.setData('{{ $lqsPage['routes']['data'] }}');
                         } else {
                             $('#amzSheetUploadErr').removeClass('d-none').text(res.message || 'Upload failed.');
@@ -1104,6 +1105,50 @@
                     });
                 });
 
+                // Show a score/findings result in the modal, the table row and the summary badges.
+                function lqsApplyAuditResult(res) {
+                    $('#lqsAuditScoreBadge').text('LQS: ' + Math.round(res.lqs) + '%');
+                    $('#lqsAuditFindings').text(res.findings || '–');
+                    $('#lqsAuditSuggestions').text(res.suggestions || '–');
+                    $('#lqsAuditResult').show();
+                    const patch = { lqs: res.lqs, audit_findings: res.findings, audit_suggestions: res.suggestions };
+                    if (lqsAuditCurrentCell) lqsAuditCurrentCell.getRow().update(patch);
+                    amzAllRows = amzAllRows.map(function(row) {
+                        return String(row.sku || '').toUpperCase() === String(lqsAuditCurrentSku).toUpperCase()
+                            ? Object.assign({}, row, patch) : row;
+                    });
+                    amzUpdateSummary();
+                    if (window.lqsTouchLastUpdated) window.lqsTouchLastUpdated();
+                }
+
+                // Score straight from the live eBay listing (Trading API) – no AI, no sheet.
+                $('#lqsApiScoreBtn').on('click', function() {
+                    if (!lqsAuditCurrentSku) return;
+                    const $btn = $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Fetching…');
+                    $('#lqsAuditErr').addClass('d-none').text('');
+                    $.ajax({
+                        url: '{{ $lqsPage['routes']['api_score'] ?? '' }}',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { sku: lqsAuditCurrentSku },
+                        success: function(res) {
+                            if (!res.success) {
+                                $('#lqsAuditErr').removeClass('d-none').text(res.message || 'eBay API scoring failed.');
+                                return;
+                            }
+                            lqsApplyAuditResult(res);
+                            amzNotify('LQS scored from the eBay API.', 'success');
+                        },
+                        error: function(xhr) {
+                            const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'eBay API scoring failed.';
+                            $('#lqsAuditErr').removeClass('d-none').text(msg);
+                        },
+                        complete: function() {
+                            $btn.prop('disabled', false).html('<i class="fas fa-plug me-1"></i> Score from eBay API');
+                        }
+                    });
+                });
+
                 $('#lqsAuditRunBtn').on('click', function() {
                     const prompt = ($('#lqsAuditPrompt').val() || '').trim();
                     if (!lqsAuditCurrentSku) return;
@@ -1145,6 +1190,7 @@
                                 return row;
                             });
                             amzUpdateSummary();
+                            if (window.lqsTouchLastUpdated) window.lqsTouchLastUpdated();
                             amzNotify('Audit complete. LQS updated.', 'success');
                         },
                         error: function(xhr) {

@@ -209,6 +209,7 @@
                             <span class="badge bg-warning fs-6 p-2 lqs-badge-chart" id="lqs-total-ov-badge" data-metric="total_ov" style="font-weight:700;color:#111;cursor:pointer;" title="Click for trend">Total OV L30: 0</span>
                             <span class="badge bg-info fs-6 p-2 lqs-badge-chart" id="lqs-avg-dil-badge" data-metric="avg_dil" style="font-weight:700;color:#111;cursor:pointer;" title="Click for trend">Avg DIL: 0%</span>
                             <span class="badge bg-success fs-6 p-2 lqs-badge-chart" id="lqs-avg-lqs-badge" data-metric="avg_lqs" style="font-weight:700;cursor:pointer;" title="Click for trend">Avg LQS: –</span>
+                            @include('partials.lqs-last-updated-badge', ['lqsLastUpdated' => $lqsLastUpdated ?? null])
                         </div>
                     </div>
 

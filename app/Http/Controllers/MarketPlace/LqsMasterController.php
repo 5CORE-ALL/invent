@@ -363,7 +363,9 @@ class LqsMasterController extends Controller
      */
     public function lqsDataView()
     {
-        return view('market-places.lqs_master_tabulator_view');
+        return view('market-places.lqs_master_tabulator_view', [
+            'lqsLastUpdated' => \App\Support\Lqs\LqsLastUpdated::amazon(),
+        ]);
     }
 
     /**
@@ -668,7 +670,9 @@ class LqsMasterController extends Controller
      */
     public function lqsAmzView()
     {
-        return view('market-places.lqs_amz_view');
+        return view('market-places.lqs_amz_view', [
+            'lqsLastUpdated' => \App\Support\Lqs\LqsLastUpdated::amazon(),
+        ]);
     }
 
     /**

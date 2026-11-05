@@ -117,14 +117,14 @@
             white-space: nowrap;
         }
         .lqs-master-source-link {
-            color: #adb5bd;
+            color: #6c757d;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
             gap: 4px;
         }
         .lqs-master-source-link i {
-            font-size: 9px;
+            font-size: 12px;
         }
         .lqs-master-source-link:hover {
             color: #0d6efd;
@@ -179,7 +179,7 @@
                         </button>
                     </div>
                     <div class="mb-3">
-                        <span class="badge bg-success" id="lqs-master-avg-badge" title="Average of filled LQS scores">Avg Score: –</span>
+                        <span class="badge" id="lqs-master-avg-badge" title="Average of filled LQS scores">Avg Score: –</span>
                     </div>
                     <div id="lqs-master-table"></div>
                 </div>
@@ -296,20 +296,22 @@
                     }
                 });
                 const $badge = $('#lqs-master-avg-badge');
+                $badge.removeClass('bg-success bg-info bg-warning bg-danger bg-secondary');
                 if (!count) {
-                    $badge.text('Avg Score: –')
-                        .removeClass('bg-success bg-info bg-warning bg-danger bg-secondary')
-                        .addClass('bg-secondary');
+                    $badge.text('Avg Score: –').css({ 'background-color': '#6c757d', 'color': '#fff' });
                     return;
                 }
                 const avg = sum / count;
-                let tone = 'bg-danger';
-                if (avg >= 8) tone = 'bg-success';
-                else if (avg >= 6) tone = 'bg-info';
-                else if (avg >= 4) tone = 'bg-warning';
-                $badge.text('Avg Score: ' + avg.toFixed(1))
-                    .removeClass('bg-success bg-info bg-warning bg-danger bg-secondary')
-                    .addClass(tone);
+                // Avg badge scale: green 9+, blue 8–<9, yellow 7–<8 (dark text), red below 7.
+                // Uses the rounded value shown in the badge so the colour always matches the number.
+                const shown = parseFloat(avg.toFixed(1));
+                let bg = '#dc3545';
+                let fg = '#fff';
+                if (shown >= 9) bg = '#28a745';
+                else if (shown >= 8) bg = '#3591dc';
+                else if (shown >= 7) { bg = '#ffc107'; fg = '#212529'; }
+                $badge.text('Avg Score: ' + shown.toFixed(1))
+                    .css({ 'background-color': bg, 'color': fg });
             }
 
             table = new Tabulator('#lqs-master-table', {
@@ -382,27 +384,40 @@
                         }
                     },
                     {
+                        title: 'Link',
+                        field: 'source_url',
+                        frozen: true,
+                        hozAlign: 'center',
+                        width: 60,
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const sourceUrl = (row.source_url || '').trim();
+                            // Only when there is no LQS score yet: link to the page that produces it
+                            if (!sourceUrl || lqsMasterFormatScore(row.lqs)) {
+                                return '';
+                            }
+                            return `<a href="${lqsMasterEscape(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="lqs-master-source-link" title="No LQS data yet. Open the ${lqsMasterEscape(row.channel || '')} LQS page"><i class="fas fa-external-link-alt"></i></a>`;
+                        }
+                    },
+                    {
                         title: 'LQS',
                         field: 'lqs',
                         frozen: true,
                         hozAlign: 'center',
                         width: 90,
-                        sorter: 'number',
+                        sorter: function(a, b) {
+                            // No data is shown as 0, so sort it as 0
+                            return (parseFloat(a) || 0) - (parseFloat(b) || 0);
+                        },
                         headerSort: true,
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const formatted = lqsMasterFormatScore(cell.getValue());
                             const color = formatted ? lqsMasterScoreColor(cell.getValue()) : '#adb5bd';
-                            const sourceUrl = (row.source_url || '').trim();
-                            let scoreHtml;
-                            if (formatted) {
-                                scoreHtml = `<span style="color:${color};font-weight:700;">${formatted}</span>`;
-                            } else if (sourceUrl) {
-                                // No score yet: link to the page that produces this channel's LQS
-                                scoreHtml = `<a href="${lqsMasterEscape(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="lqs-master-source-link" title="No LQS data yet. Open the ${lqsMasterEscape(row.channel || '')} LQS page">–<i class="fas fa-external-link-alt"></i></a>`;
-                            } else {
-                                scoreHtml = '<span style="color:#adb5bd;">–</span>';
-                            }
+                            const scoreHtml = formatted
+                                ? `<span style="color:${color};font-weight:700;">${formatted}</span>`
+                                : '<span style="color:#adb5bd;font-weight:700;">0</span>';
                             return `<span class="lqs-master-cell">
                                 ${scoreHtml}
                                 <span class="lqs-master-chart-dot" data-channel="${lqsMasterEscape(row.channel_key || row.channel || '')}" data-label="${lqsMasterEscape(row.channel || '')}" style="background:${color};" title="LQS history graph"></span>

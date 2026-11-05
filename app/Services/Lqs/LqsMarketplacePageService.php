@@ -234,10 +234,17 @@ class LqsMarketplacePageService
                 continue;
             }
 
+            $lqs = $this->nullableNumber($row['lqs'] ?? null);
+            // eBay LQS is a 0-100 percentage. Sheets are often filled on a 0-10 scale (10 = perfect),
+            // which would otherwise show as "10%" in red. Same rule the AI audit uses.
+            if ($slug === 'ebay' && $lqs !== null && $lqs > 0 && $lqs <= 10) {
+                $lqs *= 10;
+            }
+
             LqsMarketplaceScore::updateOrCreate(
                 ['marketplace' => $slug, 'sku' => $sku],
                 [
-                    'lqs' => $this->nullableNumber($row['lqs'] ?? null),
+                    'lqs' => $lqs,
                     'rating' => $this->nullableNumber($row['rating'] ?? null),
                     'reviews' => $this->nullableInt($row['reviews'] ?? null),
                     'l30' => $this->nullableInt($row['l30'] ?? null),

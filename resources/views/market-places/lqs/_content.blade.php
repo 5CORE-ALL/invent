@@ -153,6 +153,7 @@
                                   title="SKUs with LQS score below 9 · Click for trend">&lt; 9: –</span>
                             <span class="badge fs-6 p-2" id="amz-cvr-badge"
                                   style="font-weight:700;background:#146eb4;color:#fff;cursor:pointer;" title="CVR = Total Sold ÷ Total Sessions × 100 · Click for trend">CVR: –</span>
+                            @include('partials.lqs-last-updated-badge', ['lqsLastUpdated' => $lqsLastUpdated ?? null])
                             <span class="badge fs-6 p-2" id="amz-sheet-upload-badge"
                                   style="font-weight:700;background:#198754;color:#fff;cursor:pointer;user-select:none;"
                                   title="Upload LQS sheet for this marketplace">
@@ -433,6 +434,10 @@
                     </button>
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Close</button>
+                        <button type="button" id="lqsApiScoreBtn" class="btn btn-sm btn-success"
+                                title="Fetch the live listing from the eBay API and score it (no AI)">
+                            <i class="fas fa-plug me-1"></i> Score from eBay API
+                        </button>
                         <button type="button" id="lqsAuditRunBtn" class="btn btn-sm btn-primary">
                             <i class="fas fa-magnifying-glass me-1"></i> Run Audit
                         </button>

@@ -25,6 +25,7 @@ abstract class LqsMarketplaceBaseController extends Controller
         $config = $this->service->config($this->slug());
 
         return view($this->viewName(), [
+            'lqsLastUpdated' => \App\Support\Lqs\LqsLastUpdated::marketplace($this->slug()),
             'lqsPage' => $config + [
                 'routes' => $this->pageRoutes(),
                 'has_sheet' => true,
@@ -208,6 +209,7 @@ abstract class LqsMarketplaceBaseController extends Controller
             'audit_prompt' => $slug === 'ebay' ? route('lqs.ebay.audit.prompt') : null,
             'audit_prompt_save' => $slug === 'ebay' ? route('lqs.ebay.audit.prompt.save') : null,
             'audit_run' => $slug === 'ebay' ? route('lqs.ebay.audit.run') : null,
+            'api_score' => $slug === 'ebay' ? route('lqs.ebay.api.score') : null,
             'seo_sync' => $slug === 'shopify' ? route('lqs.shopify.seo.sync') : null,
         ];
     }

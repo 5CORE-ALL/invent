@@ -247,6 +247,7 @@
                                   title="SKUs with LQS score below 9 · Click for trend">&lt; 9: –</span>
                             <span class="badge fs-6 p-2" id="amz-cvr-badge"
                                   style="font-weight:700;background:#146eb4;color:#fff;cursor:pointer;" title="CVR = Total Sold ÷ Total Sessions × 100 · Click for trend">CVR: –</span>
+                            @include('partials.lqs-last-updated-badge', ['lqsLastUpdated' => $lqsLastUpdated ?? null])
                             <span class="badge fs-6 p-2" id="amz-js-refresh-badge"
                                   style="font-weight:700;background:#198754;color:#fff;cursor:pointer;user-select:none;"
                                   title="Pull latest LQS data from Jungle Scout API">

@@ -94,7 +94,31 @@ PROMPT;
         $this->savePrompt($slug, $prompt);
 
         $listing = $this->listingContext($slug, $sku);
+
+        // eBay: ground the AI in the real live listing (photos, item specifics, description, shipping/returns)
+        // instead of only title + bullets, and compute the objective API score.
+        $assessment = null;
+        if ($slug === 'ebay' && ! empty($listing['listing_id'])) {
+            try {
+                $assessment = app(EbayLqsApiSyncService::class)->assess((string) $listing['listing_id']);
+                $listing['live_listing_facts'] = $assessment['facts'];
+                $listing['api_rule_score'] = $assessment['score'];
+                $listing['api_rule_gaps'] = array_values(array_filter(
+                    array_map(fn ($c) => $c['notes'] ? $c['name'].': '.implode(' ', $c['notes']) : null, $assessment['checks'])
+                ));
+            } catch (\Throwable $e) {
+                Log::warning('LQS audit: eBay live listing fetch failed, auditing with stored data only', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         $userMessage = $prompt."\n\nLISTING DATA:\n".json_encode($listing, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($assessment) {
+            $userMessage .= "\n\nNOTE: live_listing_facts come straight from the eBay API and api_rule_gaps are verified gaps. "
+                .'Do not contradict them; add the qualitative review (title wording, keyword fit, description clarity, image advice) on top.';
+        }
 
         [$text, $error] = $this->requestGemini($userMessage, $sku);
         if ($text === null) {
@@ -118,6 +142,13 @@ PROMPT;
         $percent = $this->normalizePercent($parsed['lqs_percent'] ?? $parsed['lqs'] ?? null);
         $findings = trim((string) ($parsed['findings'] ?? ''));
         $suggestions = trim((string) ($parsed['suggestions'] ?? ''));
+
+        if ($assessment) {
+            // The score is the objective, repeatable API score; the AI contributes the written review.
+            $percent = $assessment['score'];
+            $findings = trim($assessment['findings'].($findings !== '' ? "\n\nAI review: ".$findings : ''));
+            $suggestions = trim($assessment['suggestions'].($suggestions !== '' ? "\n\nAI suggestions:\n".$suggestions : ''));
+        }
 
         $score = LqsMarketplaceScore::updateOrCreate(
             ['marketplace' => $slug, 'sku' => strtoupper($sku)],

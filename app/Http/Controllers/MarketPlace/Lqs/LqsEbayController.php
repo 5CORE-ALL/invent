@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\MarketPlace\Lqs;
 
+use App\Services\Lqs\EbayLqsApiSyncService;
 use App\Services\Lqs\LqsListingAuditService;
 use Illuminate\Http\Request;
 
@@ -47,6 +48,29 @@ class LqsEbayController extends LqsMarketplaceBaseController
             ]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => 'Failed to save prompt.'], 500);
+        }
+    }
+
+    /** Score one SKU straight from live eBay API data (no AI, no sheet). */
+    public function apiScore(Request $request, EbayLqsApiSyncService $sync)
+    {
+        $request->validate(['sku' => 'required|string']);
+
+        try {
+            $result = $sync->syncSku($request->input('sku'));
+
+            return response()->json([
+                'success' => true,
+                'sku' => $result['sku'],
+                'lqs' => $result['lqs'],
+                'findings' => $result['findings'],
+                'suggestions' => $result['suggestions'],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'eBay API scoring failed.',
+            ], 500);
         }
     }
 
