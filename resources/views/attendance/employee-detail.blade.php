@@ -28,7 +28,7 @@
     .period-stat .value { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
     .period-stat.active .value { color: #16a34a; }
     .period-stat.idle .value { color: #dc2626; }
-    .period-stat.break .value { color: #64748b; }
+    .period-stat.break .value { color: #ca8a04; }
     .period-stat.total .value { color: #0f172a; }
     .period-stat.pct .value { color: #2563eb; }
     .day-focus-label { font-size: .78rem; color: #64748b; margin-bottom: .5rem; }
@@ -49,7 +49,7 @@
     .act-summary .item strong { font-weight: 700; }
     .act-summary .worked strong, .act-summary .worked span { color: #16a34a; }
     .act-summary .idle strong, .act-summary .idle span { color: #dc2626; }
-    .act-summary .break strong, .act-summary .break span { color: #64748b; }
+    .act-summary .break strong, .act-summary .break span { color: #ca8a04; }
     .act-summary .total strong, .act-summary .total span { color: #0f172a; }
     @media (max-width: 768px) {
         .act-row-head { flex-direction: column; align-items: flex-start; }
@@ -57,8 +57,10 @@
     .act-axis-times { display: flex; justify-content: space-between; font-size: .62rem; color: #94a3b8; margin-bottom: 1px; line-height: 1; }
     .act-track-row { display: flex; align-items: center; gap: .4rem; }
     .act-track-row .act-track { flex: 1; min-width: 0; }
-    .day-alert-slot { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
-    .day-alert-tri { display: inline-flex; line-height: 1; text-decoration: none; filter: drop-shadow(0 1px 1px rgba(127, 29, 29, .25)); }
+    .day-alert-slot { min-width: 40px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: flex-start; }
+    .day-alert-count { min-width: 16px; height: 16px; padding: 0 .25rem; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: .66rem; font-weight: 700; line-height: 1; color: #fff; background: #dc2626; }
+    .day-alert-count.yellow { background: #ca8a04; }
+    .day-alert-tri { display: inline-flex; align-items: center; gap: .2rem; line-height: 1; text-decoration: none; filter: drop-shadow(0 1px 1px rgba(127, 29, 29, .25)); }
     .day-alert-tri:hover { transform: scale(1.15); }
     .day-alert-tri.red { animation: fraudTriPulse 1.6s ease-in-out infinite; }
     .day-alert-tri svg { display: block; }
@@ -302,7 +304,7 @@
                     <div class="act-legend">
                         <span><i style="background:#22c55e"></i> Working</span>
                         <span><i style="background:#ef4444"></i> Idle</span>
-                        <span><i style="background:#94a3b8"></i> Break</span>
+                        <span><i style="background:#eab308"></i> Break</span>
                     </div>
                 </div>
 
@@ -357,6 +359,7 @@
                                     <rect x="11" y="8.6" width="2" height="6.4" rx="1" fill="#fff"/>
                                     <circle cx="12" cy="17.9" r="1.2" fill="#fff"/>
                                 </svg>
+                                <span class="day-alert-count {{ $dayAlert['tone'] }}">{{ (int) ($dayAlert['count'] ?? 1) }}</span>
                             </a>
                             @endif
                         </span>
@@ -365,7 +368,7 @@
                             <div class="act-track-grid" aria-hidden="true"></div>
                             @foreach($activityDay['segments'] as $seg)
                             @php
-                                $color = $seg['color'] ?? ($seg['state'] === 'idle' ? '#ef4444' : ($seg['state'] === 'break' ? '#94a3b8' : '#22c55e'));
+                                $color = $seg['color'] ?? ($seg['state'] === 'idle' ? '#ef4444' : ($seg['state'] === 'break' ? '#eab308' : '#22c55e'));
                             @endphp
                             <div class="act-seg {{ $seg['state'] }}"
                                  style="left:{{ $seg['start_pct'] }}%;width:{{ max($seg['width_pct'], 0.12) }}%;background-color:{{ $color }}"

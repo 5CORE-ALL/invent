@@ -49,7 +49,7 @@
     .tl-summary .item strong { font-weight: 700; font-variant-numeric: tabular-nums; }
     .tl-summary .item.worked strong, .tl-summary .item.worked span { color: #16a34a; }
     .tl-summary .item.idle strong, .tl-summary .item.idle span { color: #dc2626; }
-    .tl-summary .item.break strong, .tl-summary .item.break span { color: #64748b; }
+    .tl-summary .item.break strong, .tl-summary .item.break span { color: #ca8a04; }
     .tl-summary .item.total strong, .tl-summary .item.total span { color: #0f172a; }
     .tl-axis-times {
         display: flex;
@@ -80,7 +80,7 @@
     .tl-seg.idle, .tl-seg.break { z-index: 2; }
     .tl-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: .25rem; animation: tlPulse 2s infinite; vertical-align: middle; }
     .tl-live-dot.idle { background: #f97316; }
-    .tl-live-dot.break { background: #94a3b8; animation: none; }
+    .tl-live-dot.break { background: #eab308; animation: none; }
     @keyframes tlPulse { 0%,100%{opacity:1} 50%{opacity:.35} }
     .tl-empty { padding: 2.5rem; text-align: center; color: #94a3b8; }
     @media (max-width: 768px) {
@@ -149,7 +149,7 @@
                     <div class="tl-legend">
                         <span><i style="background:#22c55e"></i> Working</span>
                         <span><i style="background:#ef4444"></i> Idle</span>
-                        <span><i style="background:#94a3b8"></i> Break</span>
+                        <span><i style="background:#eab308"></i> Break</span>
                     </div>
                     <input type="search" class="form-control form-control-sm tl-search" id="tlSearch" placeholder="Search employee…">
                 </div>
@@ -190,7 +190,7 @@
                                 <div class="tl-track-grid" aria-hidden="true"></div>
                                 @foreach($row['segments'] as $seg)
                                 @php
-                                    $color = $seg['color'] ?? ($seg['state'] === 'idle' ? '#ef4444' : ($seg['state'] === 'break' ? '#94a3b8' : '#22c55e'));
+                                    $color = $seg['color'] ?? ($seg['state'] === 'idle' ? '#ef4444' : ($seg['state'] === 'break' ? '#eab308' : '#22c55e'));
                                 @endphp
                                 <div class="tl-seg {{ $seg['state'] }}"
                                      style="left:{{ $seg['start_pct'] }}%;width:{{ max($seg['width_pct'], 0.12) }}%;background-color:{{ $color }}"
@@ -212,7 +212,7 @@
 @section('script')
 <script>
 (function() {
-    const colors = { working: '#22c55e', idle: '#ef4444', break: '#94a3b8' };
+    const colors = { working: '#22c55e', idle: '#ef4444', break: '#eab308' };
 
     const search = document.getElementById('tlSearch');
     const rows = document.querySelectorAll('#tlRows .tl-row');

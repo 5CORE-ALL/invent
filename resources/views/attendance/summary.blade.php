@@ -639,7 +639,7 @@
                     <div class="tl-modal-legend">
                         <span><i style="background:#22c55e"></i> Working</span>
                         <span><i style="background:#ef4444"></i> Idle</span>
-                        <span><i style="background:#94a3b8"></i> Break</span>
+                        <span><i style="background:#eab308"></i> Break</span>
                     </div>
                 </div>
                 <div id="timelineModalBody"><div class="tl-modal-empty">Loading…</div></div>
@@ -969,11 +969,12 @@
     function fraudTriangle(row) {
         const a = row.fraud_alert;
         if (!a || !@json(\App\Support\AttendanceAccess::isPresident())) return '';
-        return '<a href="' + escapeAttr(row.detail_url || '#') + '" class="fraud-tri ' + escapeAttr(a.level) + '"'
+        return '<a href="' + escapeAttr(row.detail_url || '#') + '" target="_blank" rel="noopener noreferrer" class="fraud-tri ' + escapeAttr(a.level) + '"'
             + ' title="' + escapeAttr(a.tooltip) + '" aria-label="Fraud check: ' + escapeAttr(a.count) + ' open alert(s), ' + escapeAttr(a.level) + ' risk">'
             + '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">'
             + '<path d="M12 2.2 23.2 21.6H0.8z" fill="#dc2626" stroke="#991b1b" stroke-width="1.2" stroke-linejoin="round"/>'
-            + '<rect x="11" y="8.6" width="2" height="6.4" rx="1" fill="#fff"/><circle cx="12" cy="17.9" r="1.2" fill="#fff"/></svg></a>';
+            + '<rect x="11" y="8.6" width="2" height="6.4" rx="1" fill="#fff"/><circle cx="12" cy="17.9" r="1.2" fill="#fff"/></svg>'
+            + '<span class="fraud-tri-count">' + escapeAttr(Number(a.count) || 0) + '</span></a>';
     }
 
     function avatarCell(row) {
@@ -1158,7 +1159,7 @@
         body.innerHTML = days.map(day => {
             const stats = day.stats || {};
             const segs = (day.segments || []).map(seg => {
-                const color = seg.color || (seg.state === 'idle' ? '#ef4444' : (seg.state === 'break' ? '#94a3b8' : '#22c55e'));
+                const color = seg.color || (seg.state === 'idle' ? '#ef4444' : (seg.state === 'break' ? '#eab308' : '#22c55e'));
                 const width = Math.max(Number(seg.width_pct) || 0, 0.12);
                 return '<div class="tl-modal-seg" style="left:' + (seg.start_pct || 0) + '%;width:' + width + '%;background-color:' + color + '" title="' +
                     escapeAttr((day.date_label || '') + ' · ' + (seg.state || '') + ' · ' + (seg.start_label || '') + ' – ' + (seg.end_label || '')) + '"></div>';

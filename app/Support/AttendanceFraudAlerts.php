@@ -72,7 +72,7 @@ class AttendanceFraudAlerts
      * Open fraud flags for one employee, keyed by the day they belong to.
      * High is red; medium and low are yellow. Used beside each timeline row.
      *
-     * @return array<string, array{level: string, tone: string, tooltip: string}>
+     * @return array<string, array{level: string, tone: string, count: int, tooltip: string}>
      */
     public static function openFlagsByDate(int $userId, string $from, string $to): array
     {
@@ -108,6 +108,7 @@ class AttendanceFraudAlerts
             $byDate[$date] = [
                 'level' => $level,
                 'tone' => $level === 'high' ? 'red' : 'yellow',
+                'count' => $flags->count(),
                 'tooltip' => implode("\n", $lines),
             ];
         }

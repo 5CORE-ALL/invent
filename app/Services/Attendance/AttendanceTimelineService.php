@@ -390,7 +390,7 @@ class AttendanceTimelineService
   {
     return match ($state) {
       'idle' => '#ef4444',
-      'break' => '#94a3b8',
+      'break' => '#eab308',
       default => '#22c55e',
     };
   }
