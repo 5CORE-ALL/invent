@@ -63,6 +63,13 @@ class ProbeWayfairCatalog extends Command
             }
         }
 
+        foreach (['SkuProductDescriptions', 'DescriptionBullet', 'ChildProductDetails'] as $type) {
+            $this->info("== {$type}");
+            foreach ($this->fields($post, $type) as $name => $info) {
+                $this->line(sprintf('   - %s: %s (%s)', $name, $info['name'], $info['kind']));
+            }
+        }
+
         // 2) Read one real product with every scalar leaf (two levels deep).
         $sku = trim((string) $this->argument('sku'));
         if ($sku === '') {
@@ -77,18 +84,18 @@ class ProbeWayfairCatalog extends Command
             return self::SUCCESS;
         }
 
-        $selection = $this->selection($post, 'Product', 2);
+        $selection = $this->selection($post, 'Product', 4);
         $this->info("== sample '{$sku}'");
-        $this->line('selection: '.mb_substr($selection, 0, 800));
+        $this->line('selection: '.mb_substr($selection, 0, 1500));
         $json = $post(
             'query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) { supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) { products '.$selection.' } }',
             [
                 'supplierId' => (int) $supplierId,
                 'filter' => ['supplierPartNumber' => ['in' => [$sku]]],
-                'paginationOptions' => ['page' => 1, 'pageSize' => 1],
+                'paginationOptions' => ['page' => 1, 'pageSize' => 10], // API only accepts 10, 20 or 25
             ]
         );
-        $this->line(mb_substr((string) json_encode($json), 0, 8000));
+        $this->line(mb_substr((string) json_encode($json), 0, 9000));
 
         return self::SUCCESS;
     }
