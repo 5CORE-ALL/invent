@@ -50,6 +50,40 @@ class ExcelCategoryLookupService
     }
 
     /**
+     * Pick the SKU and Category headers (exact names first, then any header containing the word).
+     *
+     * @param  array<int, mixed>  $headers
+     * @return array{0: ?string, 1: ?string}
+     */
+    public function detectColumns(array $headers): array
+    {
+        $keyed = [];
+        foreach ($headers as $header) {
+            $keyed[(string) $header] = preg_replace('/[^a-z0-9]/', '', strtolower((string) $header));
+        }
+
+        $pick = function (array $exact, string $contains) use ($keyed): ?string {
+            foreach ($keyed as $header => $key) {
+                if (in_array($key, $exact, true)) {
+                    return (string) $header;
+                }
+            }
+            foreach ($keyed as $header => $key) {
+                if (str_contains($key, $contains)) {
+                    return (string) $header;
+                }
+            }
+
+            return null;
+        };
+
+        return [
+            $pick(self::SKU_HEADERS, 'sku'),
+            $pick(self::CATEGORY_HEADERS, 'category'),
+        ];
+    }
+
+    /**
      * @return array<string, string>
      */
     private function build(): array
@@ -57,18 +91,7 @@ class ExcelCategoryLookupService
         $worksheets = ExcelWorksheet::query()->orderByDesc('id')->get();
 
         foreach ($worksheets as $worksheet) {
-            $skuHeader = null;
-            $categoryHeader = null;
-
-            foreach ((array) ($worksheet->headers ?? []) as $header) {
-                $key = preg_replace('/[^a-z0-9]/', '', strtolower((string) $header));
-                if ($skuHeader === null && in_array($key, self::SKU_HEADERS, true)) {
-                    $skuHeader = $header;
-                }
-                if ($categoryHeader === null && in_array($key, self::CATEGORY_HEADERS, true)) {
-                    $categoryHeader = $header;
-                }
-            }
+            [$skuHeader, $categoryHeader] = $this->detectColumns((array) ($worksheet->headers ?? []));
 
             if ($skuHeader === null || $categoryHeader === null) {
                 continue;
