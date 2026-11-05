@@ -1130,6 +1130,7 @@ class EbayController extends Controller
         // 6. Build Result
         $result = [];
         $weightSlabs = app(\App\Services\ShippingSlabRateService::class);
+        $excelCategoryBySku = app(\App\Services\ExcelCategoryLookupService::class)->map();
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
@@ -1634,6 +1635,9 @@ class EbayController extends Controller
                 }
             }
             $row['nrp'] = $nrpOut;
+
+            // Category from /excel upload, matched by SKU (blank when no match)
+            $row['excel_category'] = $excelCategoryBySku[\App\Services\ExcelCategoryLookupService::normalizeSku($pm->sku)] ?? '';
 
             $result[] = (object) $row;
         }

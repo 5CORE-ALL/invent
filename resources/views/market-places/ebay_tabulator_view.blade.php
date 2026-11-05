@@ -4839,6 +4839,19 @@
                         }
                     },
                     {
+                        title: "Category",
+                        field: "excel_category",
+                        sorter: "string", sorterParams: { alignEmptyValues: "bottom" },
+                        headerFilter: "input",
+                        headerFilterPlaceholder: "Search Category...",
+                        tooltip: true,
+                        width: 140,
+                        visible: true,
+                        formatter: function(cell) {
+                            return cell.getValue() || '';
+                        }
+                    },
+                    {
                         title: "Ratings",
                         field: "rating",
                         sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
