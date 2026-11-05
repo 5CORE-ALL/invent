@@ -2503,7 +2503,8 @@ class Kernel extends ConsoleKernel
         $schedule->command('google:pause-low-price-shopping')
             ->cron('15 */4 * * *')
             ->name('google-pause-low-price-shopping')
-            ->withoutOverlapping()
+            // 30-minute mutex: a killed run must not block the next 4-hourly runs for Laravel's default 24 hours.
+            ->withoutOverlapping(30)
             ->runInBackground()
             ->appendOutputTo($log);
 
