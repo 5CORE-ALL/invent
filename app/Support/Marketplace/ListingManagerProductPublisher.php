@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class ListingManagerProductPublisher
 {
-    public const PARTS = ['title', 'bullets', 'description', 'price', 'images'];
+    public const PARTS = ['title', 'bullets', 'description', 'aplus', 'price', 'images', 'variation_type', 'variation_name'];
 
     public const MAX_IMAGES = 20;
 
@@ -431,6 +431,7 @@ class ListingManagerProductPublisher
             $partResults = [];
             $ok = true;
             $messages = [];
+            $unsupported = 0;
 
             if (in_array('title', $parts, true) && trim((string) ($fields['title'] ?? '')) !== '') {
                 $res = $this->pushTitle($key, $sku, trim((string) $fields['title']));
@@ -444,11 +445,54 @@ class ListingManagerProductPublisher
                 $ok = $ok && $res['success'];
                 $messages[] = 'Bullets: '.$res['message'];
             }
+            $aplusHtml = in_array('aplus', $parts, true) ? trim((string) ($fields['aplus'] ?? '')) : '';
+            $isEbayKey = str_starts_with($key, 'ebay');
             if (in_array('description', $parts, true) && trim((string) ($fields['description'] ?? '')) !== '') {
-                $res = $this->pushDescription($key, $sku, (string) $fields['description']);
-                $partResults['description'] = $res['message'];
-                $ok = $ok && $res['success'];
-                $messages[] = 'Description: '.$res['message'];
+                if ($aplusHtml !== '' && $isEbayKey) {
+                    // eBay has one description box: the A+ page replaces the text, so sending both would just
+                    // make the second call win.
+                    $partResults['description'] = 'Skipped: the A+ content is the eBay description.';
+                    $messages[] = 'Description: skipped, the A+ content is sent as the eBay description.';
+                } else {
+                    $res = $this->pushDescription($key, $sku, (string) $fields['description']);
+                    $partResults['description'] = $res['message'];
+                    $ok = $ok && $res['success'];
+                    $messages[] = 'Description: '.$res['message'];
+                }
+            }
+            if (in_array('aplus', $parts, true)) {
+                if ($aplusHtml === '') {
+                    $partResults['aplus'] = 'No A+ content to send.';
+                    $ok = false;
+                    $messages[] = 'A+: no A+ content to send. Fetch it first.';
+                } elseif (! $isEbayKey) {
+                    // Only eBay takes an HTML page as its description; the others keep the text description.
+                    $partResults['aplus'] = 'A+ is only sent to eBay.';
+                    $unsupported++;
+                    $messages[] = 'A+: not sent. This marketplace takes the text description, only eBay takes an A+ page.';
+                } else {
+                    $res = $this->pushDescription($key, $sku, $aplusHtml);
+                    $partResults['aplus'] = $res['message'];
+                    $ok = $ok && $res['success'];
+                    $messages[] = 'A+: '.$res['message'];
+                }
+            }
+            if (in_array('variation_type', $parts, true) || in_array('variation_name', $parts, true)) {
+                if (! in_array($key, ['ebay', 'ebay2', 'ebay3'], true)) {
+                    $partResults['variation'] = 'Variation type / name is only sent to eBay.';
+                    $unsupported++;
+                    $messages[] = 'Variation: not sent. Only eBay takes the variation type / name.';
+                } else {
+                    $res = $this->pushVariationAttribute(
+                        $key,
+                        $sku,
+                        trim((string) ($fields['variation_type'] ?? '')),
+                        trim((string) ($fields['variation_name'] ?? ''))
+                    );
+                    $partResults['variation'] = $res['message'];
+                    $ok = $ok && $res['success'];
+                    $messages[] = 'Variation: '.$res['message'];
+                }
             }
             if (in_array('price', $parts, true) && is_numeric($fields['price'] ?? null) && (float) $fields['price'] > 0) {
                 $res = $this->pushPrice($key, $sku, (float) $fields['price']);
@@ -466,6 +510,9 @@ class ListingManagerProductPublisher
             if ($messages === []) {
                 $ok = false;
                 $messages[] = 'Nothing to push for this marketplace.';
+            } elseif ($unsupported > 0 && count($messages) === $unsupported) {
+                // Every ticked field was one this marketplace cannot take: that is a failure, not a success.
+                $ok = false;
             }
 
             $results[$key] = [
@@ -794,6 +841,80 @@ class ListingManagerProductPublisher
 
             return $this->normalizeResult($service->updateTitle($itemId, $title, $sku), 'Title updated.');
         } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Variation Type / Variation Name from Variation Master, written to the SKU's variation on eBay
+     * (the type is the aspect name, e.g. Color, and the name its value, e.g. Black). eBay cannot rename an aspect on a
+     * live multi-variation listing, so a type that is not one of the listing's variation aspects is reported, not guessed.
+     *
+     * @return array{success: bool, message: string}
+     */
+    private function pushVariationAttribute(string $marketplace, string $sku, string $type, string $name): array
+    {
+        if (! in_array($marketplace, ['ebay', 'ebay2', 'ebay3'], true)) {
+            return ['success' => false, 'message' => 'Variation type / name can only be pushed to eBay for now.'];
+        }
+        if ($type === '' || $name === '') {
+            return ['success' => false, 'message' => 'Variation Type and Variation Name are both needed. Fill them for this SKU on /variation-master.'];
+        }
+
+        $table = ProductMasterMarketplaceMaps::metricsTableMap()[$marketplace] ?? null;
+        $class = $this->serviceClass($marketplace);
+        if (! $table || $class === null || ! Schema::hasTable($table)) {
+            return ['success' => false, 'message' => 'eBay metrics table is missing.'];
+        }
+
+        try {
+            $row = DB::table($table)->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])->first();
+            $itemId = trim((string) ($row->item_id ?? ''));
+            if ($itemId === '') {
+                return ['success' => false, 'message' => 'No eBay item ID found for this SKU.'];
+            }
+
+            $service = app($class);
+            $item = $service->getItem($itemId);
+            if (! is_array($item)) {
+                $why = trim((string) ($service->lastGetItemError ?? ''));
+
+                return ['success' => false, 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
+            }
+
+            $variation = \App\Services\Support\EbayTradingReviseItem::findVariationForSku($item, $sku);
+            if ($variation !== null) {
+                $aspects = array_keys(\App\Services\MarketplaceManager\EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null));
+                $want = strtolower((string) preg_replace('/[^a-z0-9]+/i', '', $type));
+                $match = false;
+                foreach ($aspects as $aspect) {
+                    if (strtolower((string) preg_replace('/[^a-z0-9]+/i', '', (string) $aspect)) === $want) {
+                        $match = true;
+                        break;
+                    }
+                }
+                if (! $match) {
+                    return ['success' => false, 'message' => 'This eBay listing varies by '.implode(', ', $aspects).', not "'.$type.'". eBay cannot rename a variation aspect on a live listing, so nothing was changed.'];
+                }
+            }
+
+            $ctx = $service->tradingReviseContext();
+
+            return \App\Services\Support\EbayTradingReviseItem::reviseTechnicalSpecifications(
+                $ctx['endpoint'],
+                $ctx['compatLevel'],
+                $ctx['devId'],
+                $ctx['appId'],
+                $ctx['certId'],
+                $ctx['siteId'],
+                $ctx['authToken'],
+                $item,
+                $sku,
+                [['name' => $type, 'value' => $name]]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager variation push failed', ['mp' => $marketplace, 'sku' => $sku, 'error' => $e->getMessage()]);
+
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }

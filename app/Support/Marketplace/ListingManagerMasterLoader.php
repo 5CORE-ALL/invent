@@ -56,6 +56,7 @@ class ListingManagerMasterLoader
             'description_aplus', 'aplus', 'aplus_description' => self::descriptionAplus($sku),
             'images', 'image_master' => self::images($sku),
             'variation_title', 'variation_description', 'variation_aplus', 'variation_images' => self::variationMaster($sku, $source),
+            'variation_attributes' => self::variationAttributes($sku),
             'videos', 'video_master' => self::videos($sku),
             'bullets', 'bullet_points' => self::bullets($sku),
             'content', 'title_bullet_description', 'masters' => self::contentPack($sku),
@@ -454,6 +455,28 @@ class ListingManagerMasterLoader
             'message' => 'Loaded '.count($images).' image(s) from Image Master.',
             'source' => 'images',
             'images' => $images,
+        ];
+    }
+
+    /**
+     * This SKU's own Variation Type and Variation Name (the two columns on /variation-master).
+     *
+     * @return array<string, mixed>
+     */
+    private static function variationAttributes(string $sku): array
+    {
+        $attr = ListingManagerFamily::attributesForSku($sku);
+        $type = trim((string) ($attr['type'] ?? ''));
+        $name = trim((string) ($attr['name'] ?? ''));
+
+        return [
+            'success' => $type !== '' || $name !== '',
+            'message' => $type !== '' || $name !== ''
+                ? 'Loaded Variation Type / Name from Variation Master.'
+                : 'No Variation Type / Name for this SKU in Variation Master. Fill them on /variation-master.',
+            'source' => 'variation_attributes',
+            'variation_type' => $type,
+            'variation_name' => $name,
         ];
     }
 
