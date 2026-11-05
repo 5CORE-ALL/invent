@@ -298,6 +298,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('lqs-sync-temu2')
             ->appendOutputTo($log);
+        // Best Buy LQS from the Mirakl offer feed (whole catalog in a few paged calls).
+        $schedule->command('lqs:sync-bestbuy')
+            ->dailyAt('05:00')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->name('lqs-sync-bestbuy')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)

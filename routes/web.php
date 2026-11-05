@@ -6447,6 +6447,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post("/lqs/{$temuSlug}/api-sync", [$temuLqsController, 'startApiSync'])->name("lqs.{$temuSlug}.api.sync");
         Route::get("/lqs/{$temuSlug}/api-sync/status", [$temuLqsController, 'apiSyncStatus'])->name("lqs.{$temuSlug}.api.sync.status");
     }
+    // Best Buy: live Mirakl offer-feed scoring (no AI audit modal)
+    Route::post('/lqs/bestbuy/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsBestbuyController::class, 'apiScore'])->name('lqs.bestbuy.api.score');
+    Route::post('/lqs/bestbuy/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsBestbuyController::class, 'startApiSync'])->name('lqs.bestbuy.api.sync');
+    Route::get('/lqs/bestbuy/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsBestbuyController::class, 'apiSyncStatus'])->name('lqs.bestbuy.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation

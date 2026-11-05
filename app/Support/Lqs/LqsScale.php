@@ -2,6 +2,7 @@
 
 namespace App\Support\Lqs;
 
+use App\Services\Lqs\BestBuyLqsApiSyncService;
 use App\Services\Lqs\EbayLqsApiSyncService;
 use App\Services\Lqs\TemuLqsApiSyncService;
 
@@ -13,7 +14,8 @@ class LqsScale
     /** Marketplaces scored 0-100 from the live listing API. */
     public static function isPercent(string $slug): bool
     {
-        return EbayLqsApiSyncService::supports($slug) || TemuLqsApiSyncService::supports($slug);
+        return EbayLqsApiSyncService::supports($slug) || TemuLqsApiSyncService::supports($slug)
+            || $slug === BestBuyLqsApiSyncService::MARKETPLACE;
     }
 
     /** Marketplaces with a bulk "Sync LQS from API" button. */
