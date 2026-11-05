@@ -761,15 +761,19 @@ class EbayListingPublishService
         }
 
         // Are the live listing's pictures on eBay's own servers (EPS)? Then ours must be too.
-        $livePictureUrls = array_map('strval', $asList($item['PictureDetails']['PictureURL'] ?? null));
+        // eBay 3 listings are hosted there, so a self-hosted photo is never sent to one.
+        $galleryUrls = array_values(array_filter(array_map('strval', $asList($item['PictureDetails']['PictureURL'] ?? null))));
+        $livePictureUrls = $galleryUrls;
         foreach ($pictureSets as $set) {
             $livePictureUrls = array_merge($livePictureUrls, $set['urls']);
         }
-        $epsHosted = false;
-        foreach ($livePictureUrls as $url) {
-            if (stripos($url, 'ebayimg.com') !== false || stripos($url, 'ebaystatic.com') !== false) {
-                $epsHosted = true;
-                break;
+        $epsHosted = $this->registryKey($channel) === 'ebaythree';
+        if (! $epsHosted) {
+            foreach ($livePictureUrls as $url) {
+                if (stripos($url, 'ebayimg.com') !== false || stripos($url, 'ebaystatic.com') !== false) {
+                    $epsHosted = true;
+                    break;
+                }
             }
         }
 
@@ -788,7 +792,8 @@ class EbayListingPublishService
             $rows,
             $pictureSets,
             $pictureAspect,
-            $epsHosted
+            $epsHosted,
+            $galleryUrls
         );
         if (empty($result['success'])) {
             return ['success' => false, 'message' => $label.': '.($result['message'] ?? 'eBay rejected the new variations.')];

@@ -16,7 +16,6 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\SixteenRationVideo;
 use App\Models\YoutubeShortsAd;
-use App\Models\YoutubeVideoAd;
 use App\Services\GeminiNineRatioService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -391,6 +390,33 @@ class ShoppableVideoController extends Controller
             'success' => true,
             'data' => $videoPosted
         ]);
+    }
+
+    /**
+     * youtube_video_ads is the per-SKU table (sku + value). The sheet import table has neither column,
+     * so a write there fails the whole save, including a video-link delete.
+     */
+    private function saveYoutubeSkuVideo(string $sku, array $mergedValue): void
+    {
+        if (! Schema::hasTable('youtube_video_ads') || ! Schema::hasColumn('youtube_video_ads', 'sku')) {
+            return;
+        }
+
+        $now = now();
+        $payload = [
+            'value' => json_encode($mergedValue),
+            'updated_at' => $now,
+        ];
+        $exists = DB::table('youtube_video_ads')->where('sku', $sku)->exists();
+        if ($exists) {
+            DB::table('youtube_video_ads')->where('sku', $sku)->update($payload);
+
+            return;
+        }
+
+        $payload['sku'] = $sku;
+        $payload['created_at'] = $now;
+        DB::table('youtube_video_ads')->insert($payload);
     }
 
     private function saveTiktokSkuVideo(string $sku, array $mergedValue): void
@@ -838,11 +864,8 @@ class ShoppableVideoController extends Controller
             ['value' => json_encode($mergedValue)]
         );
 
-        // == Save to Youtube Video Ad
-        YoutubeVideoAd::updateOrCreate(
-            ['sku' => $sku],
-            ['value' => json_encode($mergedValue)]
-        );
+        // The YouTube ads sheet has no sku column. The per-SKU copy lives in youtube_video_ads.
+        $this->saveYoutubeSkuVideo($sku, $mergedValue);
 
         return response()->json([
             'success' => true,
@@ -1017,13 +1040,8 @@ class ShoppableVideoController extends Controller
                     ['value' => json_encode($existingValue)]
                 );
 
-                // Also save to related models (same as saveSixteenRationVideo)
-                $mergedValue = $existingValue;
-                
-                YoutubeVideoAd::updateOrCreate(
-                    ['sku' => $sku],
-                    ['value' => json_encode($mergedValue)]
-                );
+                // Also save to the per-SKU YouTube table (same as saveSixteenRationVideo).
+                $this->saveYoutubeSkuVideo($sku, $existingValue);
 
                 $importedCount++;
             }
