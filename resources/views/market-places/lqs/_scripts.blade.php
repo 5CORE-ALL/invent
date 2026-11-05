@@ -7,6 +7,8 @@
         let amzAllRows = [];
         let amzApplyingFilters = false;
         const lqsHasAudit = @json(!empty($lqsPage['has_audit']));
+        const lqsPercent = @json(!empty($lqsPage['lqs_percent']));
+        const lqsHasApiSync = @json(!empty($lqsPage['has_api_sync']));
         const lqsHasYoast = @json(!empty($lqsPage['has_yoast_seo']));
         const lqsYoastSyncUrl = @json($lqsPage['routes']['seo_sync'] ?? null);
 
@@ -213,7 +215,7 @@
             $('#amz-total-l30-badge').text('Total L30: ' + Math.round(totalL30));
             $('#amz-total-sess-badge').text('Sessions L30: ' + totalSess.toLocaleString());
             $('#amz-avg-dil-badge').text('DIL: ' + Math.round(avgDil) + '%');
-            $('#amz-avg-lqs-badge').text('LQS: ' + (avgLqs > 0 ? (lqsHasAudit ? Math.round(avgLqs) + '%' : avgLqs.toFixed(1)) : '–'));
+            $('#amz-avg-lqs-badge').text('LQS: ' + (avgLqs > 0 ? (lqsPercent ? Math.round(avgLqs) + '%' : avgLqs.toFixed(1)) : '–'));
             $('#amz-avg-rating-badge').text('Rating: ' + (avgRating > 0 ? avgRating.toFixed(1) : '–'));
             $('#amz-cvr-badge').text('CVR: ' + (cvr !== null ? cvr.toFixed(1) + '%' : '–'));
             $('#amz-lqs-below9-badge').text('< 9: ' + lqsBelow9Count);
@@ -485,14 +487,14 @@
                         field: 'lqs',
                         sorter: 'number',
                         hozAlign: 'center',
-                        width: lqsHasAudit ? 70 : 55,
+                        width: lqsPercent ? 70 : 55,
                         formatter: function(cell) {
                             const d   = cell.getRow().getData();
                             if (d.is_parent) return '';
                             const lqs = parseFloat(cell.getValue());
                             if (!lqs || isNaN(lqs)) return '<span style="color:#adb5bd;">–</span>';
                             let color = '#6c757d';
-                            if (lqsHasAudit) {
+                            if (lqsPercent) {
                                 if (lqs >= 80)      color = '#28a745';
                                 else if (lqs >= 60) color = '#3591dc';
                                 else if (lqs >= 40) color = '#ffc107';
@@ -564,6 +566,31 @@
                             amzOpenActionModal(d.sku, cell);
                         }
                     },
+                    ...(lqsPercent && !lqsHasAudit ? [
+                    {
+                        title: 'Findings',
+                        field: 'audit_suggestions',
+                        headerSort: false,
+                        minWidth: 260,
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '';
+                            const findings = (d.audit_findings || '').toString().trim();
+                            const suggestions = (d.audit_suggestions || '').toString().trim();
+                            if (!findings && !suggestions) {
+                                return '<span style="color:#adb5bd;font-size:10px;">–</span>';
+                            }
+                            const esc = function(v) {
+                                return String(v || '')
+                                    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                            };
+                            return `<div class="lqs-findings-cell" title="${esc(findings + '\n\n' + suggestions)}">
+                                <span class="lqs-suggest-label">To fix</span>
+                                <span class="lqs-suggest-text">${esc(suggestions || '–')}</span>
+                            </div>`;
+                        }
+                    },
+                    ] : []),
                     ...(lqsHasAudit ? [
                     {
                         title: 'Audit',
@@ -1076,7 +1103,7 @@
                 });
             };
 
-            if (lqsHasAudit) {
+            if (lqsHasApiSync) {
                 // ── Bulk "Sync LQS from API": background run + live progress ──
                 let lqsSyncTimer = null;
                 let lqsSyncWasRunning = false;
@@ -1136,7 +1163,9 @@
                 });
 
                 lqsSyncPoll(); // show coverage on load, and resume progress if a sync is already running
+            }
 
+            if (lqsHasAudit) {
                 $('#lqsAuditSavePromptBtn').on('click', function() {
                     const prompt = ($('#lqsAuditPrompt').val() || '').trim();
                     if (prompt.length < 20) {

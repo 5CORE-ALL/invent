@@ -266,7 +266,7 @@ class LqsMasterController extends Controller
 
             $data = $rows->map(fn ($row) => [
                 'date' => $row->date->format('d M'),
-                'value' => (float) ($row->avg_lqs ?? 0),
+                'value' => \App\Support\Lqs\LqsScale::toTenScale((float) ($row->avg_lqs ?? 0)),
             ])->values();
 
             return response()->json(['success' => true, 'data' => $data]);
@@ -300,7 +300,8 @@ class LqsMasterController extends Controller
                 ->unique('marketplace')
                 ->each(function ($row) use (&$scores) {
                     if ($row->avg_lqs !== null && (float) $row->avg_lqs > 0) {
-                        $scores[$row->marketplace] = round((float) $row->avg_lqs, 1);
+                        // API-scored marketplaces (eBay, Temu) store 0-100; the badge scale here is 0-10.
+                        $scores[$row->marketplace] = \App\Support\Lqs\LqsScale::toTenScale(round((float) $row->avg_lqs, 1));
                     }
                 });
         }
@@ -314,7 +315,7 @@ class LqsMasterController extends Controller
                 ->get()
                 ->each(function ($row) use (&$scores) {
                     if (! isset($scores[$row->marketplace]) && $row->avg_lqs !== null) {
-                        $scores[$row->marketplace] = round((float) $row->avg_lqs, 1);
+                        $scores[$row->marketplace] = \App\Support\Lqs\LqsScale::toTenScale(round((float) $row->avg_lqs, 1));
                     }
                 });
         }

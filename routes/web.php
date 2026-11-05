@@ -6440,6 +6440,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post("/lqs/{$ebaySlug}/api-sync", [$ebayLqsController, 'startApiSync'])->name("lqs.{$ebaySlug}.api.sync");
         Route::get("/lqs/{$ebaySlug}/api-sync/status", [$ebayLqsController, 'apiSyncStatus'])->name("lqs.{$ebaySlug}.api.sync.status");
     }
+    // Temu: live Temu API scoring (no AI audit modal)
+    Route::post('/lqs/temu/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsTemuController::class, 'apiScore'])->name('lqs.temu.api.score');
+    Route::post('/lqs/temu/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsTemuController::class, 'startApiSync'])->name('lqs.temu.api.sync');
+    Route::get('/lqs/temu/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsTemuController::class, 'apiSyncStatus'])->name('lqs.temu.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation

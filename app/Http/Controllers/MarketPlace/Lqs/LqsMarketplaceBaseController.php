@@ -31,6 +31,8 @@ abstract class LqsMarketplaceBaseController extends Controller
                 'has_sheet' => true,
                 'has_api_metrics' => ! empty($config['metrics']),
                 'has_audit' => \App\Services\Lqs\EbayLqsApiSyncService::supports($this->slug()),
+                'lqs_percent' => \App\Support\Lqs\LqsScale::isPercent($this->slug()),
+                'has_api_sync' => \App\Support\Lqs\LqsScale::hasApiSync($this->slug()),
                 'has_yoast_seo' => $this->slug() === 'shopify',
             ],
         ]);
@@ -196,6 +198,7 @@ abstract class LqsMarketplaceBaseController extends Controller
     {
         $slug = $this->slug();
         $isEbay = \App\Services\Lqs\EbayLqsApiSyncService::supports($slug);
+        $hasApiSync = \App\Support\Lqs\LqsScale::hasApiSync($slug);
 
         return [
             'view' => route('lqs.'.$slug.'.view'),
@@ -210,9 +213,9 @@ abstract class LqsMarketplaceBaseController extends Controller
             'audit_prompt' => $isEbay ? route("lqs.{$slug}.audit.prompt") : null,
             'audit_prompt_save' => $isEbay ? route("lqs.{$slug}.audit.prompt.save") : null,
             'audit_run' => $isEbay ? route("lqs.{$slug}.audit.run") : null,
-            'api_score' => $isEbay ? route("lqs.{$slug}.api.score") : null,
-            'api_sync' => $isEbay ? route("lqs.{$slug}.api.sync") : null,
-            'api_sync_status' => $isEbay ? route("lqs.{$slug}.api.sync.status") : null,
+            'api_score' => $hasApiSync ? route("lqs.{$slug}.api.score") : null,
+            'api_sync' => $hasApiSync ? route("lqs.{$slug}.api.sync") : null,
+            'api_sync_status' => $hasApiSync ? route("lqs.{$slug}.api.sync.status") : null,
             'seo_sync' => $slug === 'shopify' ? route('lqs.shopify.seo.sync') : null,
         ];
     }

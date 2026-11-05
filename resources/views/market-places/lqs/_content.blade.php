@@ -28,7 +28,7 @@
                         {{-- LQS filter --}}
                         <select id="amz-score-filter" class="form-select form-select-sm" style="width:140px;">
                             <option value="all" selected>All LQS</option>
-                            @if(!empty($lqsPage['has_audit']))
+                            @if(!empty($lqsPage['lqs_percent']))
                                 <option value="80-100">High (80-100%)</option>
                                 <option value="60-79">Good (60-79%)</option>
                                 <option value="40-59">Medium (40-59%)</option>
@@ -80,9 +80,9 @@
                         <button type="button" id="amz-upload-btn" class="btn btn-sm btn-primary">
                             <i class="fas fa-upload"></i> Upload Sheet
                         </button>
-                        @if(!empty($lqsPage['has_audit']))
+                        @if(!empty($lqsPage['has_api_sync']))
                             <button type="button" id="lqs-api-sync-btn" class="btn btn-sm btn-success"
-                                    title="Score every eBay listing from the live eBay API (title, photos, item specifics, description, shipping/returns). Runs in the background.">
+                                    title="Score every {{ $lqsPage['label'] ?? '' }} listing from the live marketplace API (title, photos, attributes, description, shipping). Runs in the background.">
                                 <i class="fas fa-plug me-1"></i><span id="lqs-api-sync-label">Sync LQS from API</span>
                             </button>
                             <span id="lqs-api-sync-progress" class="small text-muted align-self-center"></span>
