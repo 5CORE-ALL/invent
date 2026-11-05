@@ -29,6 +29,7 @@ use App\Models\TeamMemberKpi;
 use App\Models\User;
 use App\Models\UserBadge;
 use App\Models\UserIncentive;
+use App\Models\UserIncentiveExtendRequest;
 use App\Models\UserGeneralChecklistProgress;
 use App\Models\UserMgrCheckpointProgress;
 use App\Models\UserRR;
@@ -11170,9 +11171,11 @@ class TaskController extends Controller
             'people' => $directory['people'],
             'alerts' => $directory['alerts'],
             'total' => $directory['total'],
+            'extendRequests' => $canEdit ? $this->pendingExtendRequestSummaries() : [],
             'canEdit' => $canEdit,
             'canViewAll' => $canViewAll,
             'editUserId' => $editUserId,
+            'viewerId' => (int) $viewer->id,
             'defaultCutoff' => TaskBusinessTime::incentiveToday()->addMonth()->toDateString(),
             'businessToday' => TaskBusinessTime::incentiveToday()->toDateString(),
         ]);
@@ -11221,20 +11224,22 @@ class TaskController extends Controller
             ->with('success', 'Incentives saved.');
     }
 
-    /** President-only: push one incentive's cutoff date forward. */
+    /** Open an extend request. President applies it immediately; everyone else waits for approval. */
     public function extendIncentiveDate(Request $request)
     {
         $viewer = Auth::user();
-        if (! $this->canEditIncentives($viewer)) {
-            abort(403, 'Only president@5core.com can edit incentives.');
+        if (! $viewer) {
+            abort(403);
         }
-        if (! Schema::hasColumn('user_incentives', 'additional_condition')) {
+        if (! Schema::hasTable('user_incentive_extend_requests')
+            || ! Schema::hasColumn('user_incentives', 'additional_condition')) {
             abort(404);
         }
 
         $validated = $request->validate([
             'id' => 'required|integer|exists:user_incentives,id',
             'additional_condition' => 'required|date_format:Y-m-d',
+            'reason' => 'nullable|string|max:1000',
         ]);
 
         $today = TaskBusinessTime::incentiveToday()->toDateString();
@@ -11246,26 +11251,112 @@ class TaskController extends Controller
         }
 
         $row = UserIncentive::query()->where('id', (int) $validated['id'])->firstOrFail();
-        $payload = [
-            'additional_condition' => $validated['additional_condition'],
-            'updated_by_user_id' => optional($viewer)->id,
-        ];
-        if (trim((string) $row->additional_condition) !== $validated['additional_condition']) {
-            if (Schema::hasColumn('user_incentives', 'closed_notified_at')) {
-                $payload['closed_notified_at'] = null;
-            }
-            if (Schema::hasColumn('user_incentives', 'alert_cleared_state')) {
-                $payload['alert_cleared_state'] = null;
-            }
+        $owner = User::query()->find($row->user_id);
+        if (! $owner || ! $this->canViewUserIncentives($viewer, $owner)) {
+            abort(403, 'You cannot request an extension for this incentive.');
         }
 
-        $row->update($payload);
-        $this->sendIncentiveChatNotices((int) $row->user_id);
+        $pending = UserIncentiveExtendRequest::query()
+            ->where('user_incentive_id', (int) $row->id)
+            ->where('status', UserIncentiveExtendRequest::STATUS_PENDING)
+            ->first();
+        if ($pending && ! $this->canEditIncentives($viewer)) {
+            return redirect()
+                ->back()
+                ->withFragment('inc-user-'.$row->user_id)
+                ->withErrors(['additional_condition' => 'An extend request is already waiting for president@5core.com.']);
+        }
+
+        $extend = $pending ?: new UserIncentiveExtendRequest;
+        $extend->fill([
+            'user_incentive_id' => (int) $row->id,
+            'user_id' => (int) $row->user_id,
+            'requested_by_user_id' => (int) $viewer->id,
+            'current_cutoff' => trim((string) $row->additional_condition) ?: null,
+            'requested_cutoff' => $validated['additional_condition'],
+            'reason' => trim((string) ($validated['reason'] ?? '')) ?: null,
+            'status' => UserIncentiveExtendRequest::STATUS_PENDING,
+        ]);
+
+        if ($this->canEditIncentives($viewer)) {
+            $this->applyIncentiveCutoffDate($row, $validated['additional_condition'], $viewer);
+            $extend->fill([
+                'status' => UserIncentiveExtendRequest::STATUS_APPROVED,
+                'reviewed_by_user_id' => (int) $viewer->id,
+                'reviewed_at' => now(),
+            ]);
+            $extend->save();
+
+            return redirect()
+                ->back()
+                ->withFragment('inc-user-'.$row->user_id)
+                ->with('success', 'Cutoff date extended.');
+        }
+
+        $extend->save();
 
         return redirect()
-            ->route('incentives.index')
+            ->back()
             ->withFragment('inc-user-'.$row->user_id)
-            ->with('success', 'Cutoff date extended.');
+            ->with('success', 'Extend request sent. president@5core.com will review it.');
+    }
+
+    /** President-only: approve or deny a pending cutoff extend request. */
+    public function reviewIncentiveExtend(Request $request)
+    {
+        $viewer = Auth::user();
+        if (! $this->canEditIncentives($viewer)) {
+            abort(403, 'Only president@5core.com can approve extend requests.');
+        }
+        if (! Schema::hasTable('user_incentive_extend_requests')) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'id' => 'required|integer|exists:user_incentive_extend_requests,id',
+            'decision' => 'required|in:approve,deny',
+            'review_note' => 'nullable|string|max:1000',
+        ]);
+
+        $extend = UserIncentiveExtendRequest::query()->where('id', (int) $validated['id'])->firstOrFail();
+        if (! $extend->isPending()) {
+            return redirect()
+                ->back()
+                ->withFragment('inc-user-'.$extend->user_id)
+                ->withErrors(['decision' => 'This extend request was already reviewed.']);
+        }
+
+        $extend->fill([
+            'reviewed_by_user_id' => (int) $viewer->id,
+            'reviewed_at' => now(),
+            'review_note' => trim((string) ($validated['review_note'] ?? '')) ?: null,
+        ]);
+
+        if ($validated['decision'] === 'approve') {
+            $row = UserIncentive::query()->where('id', (int) $extend->user_incentive_id)->first();
+            if (! $row) {
+                return redirect()
+                    ->back()
+                    ->withErrors(['decision' => 'That incentive is no longer available.']);
+            }
+            $cutoff = $extend->requested_cutoff?->toDateString() ?: (string) $extend->getRawOriginal('requested_cutoff');
+            $this->applyIncentiveCutoffDate($row, $cutoff, $viewer);
+            $extend->status = UserIncentiveExtendRequest::STATUS_APPROVED;
+            $extend->save();
+
+            return redirect()
+                ->back()
+                ->withFragment('inc-user-'.$row->user_id)
+                ->with('success', 'Extend request approved.');
+        }
+
+        $extend->status = UserIncentiveExtendRequest::STATUS_DENIED;
+        $extend->save();
+
+        return redirect()
+            ->back()
+            ->withFragment('inc-user-'.$extend->user_id)
+            ->with('success', 'Extend request denied.');
     }
 
     /**
@@ -11295,8 +11386,12 @@ class TaskController extends Controller
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get();
+            $pendingById = $this->pendingExtendRequestsKeyed($rows->pluck('id')->all());
             foreach ($rows as $row) {
-                $byUser[(int) $row->user_id][] = $this->formatIncentiveItem($row);
+                $byUser[(int) $row->user_id][] = $this->formatIncentiveItem(
+                    $row,
+                    $pendingById[(int) $row->id] ?? null
+                );
             }
         }
 
@@ -11474,6 +11569,7 @@ class TaskController extends Controller
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
+        $pendingById = $this->pendingExtendRequestsKeyed($items->pluck('id')->all());
 
         return response()->json([
             'success' => true,
@@ -11484,7 +11580,10 @@ class TaskController extends Controller
                 'designation' => $user->designation,
             ],
             'can_edit' => $canEdit,
-            'items' => $items->map(fn (UserIncentive $row) => $this->formatIncentiveItem($row))->values(),
+            'items' => $items->map(fn (UserIncentive $row) => $this->formatIncentiveItem(
+                $row,
+                $pendingById[(int) $row->id] ?? null
+            ))->values(),
             'users' => $canEdit ? $this->incentiveAssignableUsers((int) $user->id) : [],
         ]);
     }
@@ -11787,7 +11886,7 @@ class TaskController extends Controller
     /**
      * @return array<string, mixed>
      */
-    protected function formatIncentiveItem(UserIncentive $row): array
+    protected function formatIncentiveItem(UserIncentive $row, ?UserIncentiveExtendRequest $pending = null): array
     {
         return [
             'id' => $row->id,
@@ -11809,7 +11908,99 @@ class TaskController extends Controller
             'alert_cleared_state' => Schema::hasColumn('user_incentives', 'alert_cleared_state')
                 ? ($row->alert_cleared_state ?: null)
                 : null,
+            'pending_extend' => $this->formatPendingExtend($pending),
             'updated_at' => $row->updated_at?->toDateTimeString(),
+        ];
+    }
+
+    protected function applyIncentiveCutoffDate(UserIncentive $row, string $iso, ?User $viewer): void
+    {
+        $payload = [
+            'additional_condition' => $iso,
+            'updated_by_user_id' => optional($viewer)->id,
+        ];
+        if (trim((string) $row->additional_condition) !== $iso) {
+            if (Schema::hasColumn('user_incentives', 'closed_notified_at')) {
+                $payload['closed_notified_at'] = null;
+            }
+            if (Schema::hasColumn('user_incentives', 'alert_cleared_state')) {
+                $payload['alert_cleared_state'] = null;
+            }
+        }
+        $row->update($payload);
+        $this->sendIncentiveChatNotices((int) $row->user_id);
+    }
+
+    /**
+     * @param  list<int|string>  $incentiveIds
+     * @return array<int, UserIncentiveExtendRequest>
+     */
+    protected function pendingExtendRequestsKeyed(array $incentiveIds): array
+    {
+        if ($incentiveIds === [] || ! Schema::hasTable('user_incentive_extend_requests')) {
+            return [];
+        }
+
+        $out = [];
+        UserIncentiveExtendRequest::query()
+            ->whereIn('user_incentive_id', $incentiveIds)
+            ->where('status', UserIncentiveExtendRequest::STATUS_PENDING)
+            ->orderBy('id')
+            ->get()
+            ->each(function (UserIncentiveExtendRequest $row) use (&$out) {
+                $out[(int) $row->user_incentive_id] = $row;
+            });
+
+        return $out;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function pendingExtendRequestSummaries(): array
+    {
+        if (! Schema::hasTable('user_incentive_extend_requests')) {
+            return [];
+        }
+
+        return UserIncentiveExtendRequest::query()
+            ->where('status', UserIncentiveExtendRequest::STATUS_PENDING)
+            ->with(['incentive:id,title,amount,additional_condition', 'user:id,name', 'requestedBy:id,name'])
+            ->orderByDesc('id')
+            ->get()
+            ->map(function (UserIncentiveExtendRequest $row) {
+                $cutoff = $row->requested_cutoff?->toDateString() ?: (string) $row->getRawOriginal('requested_cutoff');
+
+                return [
+                    'id' => (int) $row->id,
+                    'user_id' => (int) $row->user_id,
+                    'user_name' => (string) ($row->user->name ?? ''),
+                    'requested_by' => (string) ($row->requestedBy->name ?? ''),
+                    'title' => (string) ($row->incentive->title ?? ''),
+                    'current_cutoff' => $row->current_cutoff,
+                    'requested_cutoff' => $cutoff,
+                    'reason' => $row->reason,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function formatPendingExtend(?UserIncentiveExtendRequest $pending): ?array
+    {
+        if (! $pending) {
+            return null;
+        }
+        $cutoff = $pending->requested_cutoff?->toDateString() ?: (string) $pending->getRawOriginal('requested_cutoff');
+
+        return [
+            'id' => (int) $pending->id,
+            'requested_cutoff' => $cutoff,
+            'reason' => $pending->reason,
+            'requested_by_user_id' => (int) $pending->requested_by_user_id,
         ];
     }
 

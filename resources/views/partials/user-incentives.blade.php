@@ -501,6 +501,33 @@
     </div>
 </div>
 
+<div class="modal fade" id="ts-inc-extend-modal" tabindex="-1" aria-labelledby="ts-inc-extend-title" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="post" action="{{ route('incentives.extend') }}" class="modal-content">
+            @csrf
+            <input type="hidden" name="id" id="ts-inc-extend-id">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ts-inc-extend-title">{{ strtolower((string) (auth()->user()->email ?? '')) === 'president@5core.com' ? 'Extend cutoff date' : 'Request to extend cutoff date' }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2" id="ts-inc-extend-summary"></p>
+                @if (strtolower((string) (auth()->user()->email ?? '')) !== 'president@5core.com')
+                    <p class="text-muted small">This sends a request. Only president@5core.com can approve it.</p>
+                @endif
+                <label for="ts-inc-extend-date" class="form-label fw-bold">New cutoff date</label>
+                <input type="date" class="form-control" name="additional_condition" id="ts-inc-extend-date" required>
+                <label for="ts-inc-extend-reason" class="form-label fw-bold mt-3">Reason</label>
+                <textarea class="form-control" name="reason" id="ts-inc-extend-reason" rows="3" maxlength="1000" placeholder="Why does this cutoff need more time?"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-warning">{{ strtolower((string) (auth()->user()->email ?? '')) === 'president@5core.com' ? 'Save date' : 'Send request' }}</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 @auth
 <script>
 (function () {
@@ -511,7 +538,9 @@
         businessToday: @json(\App\Support\TaskBusinessTime::incentiveToday()->toDateString()),
         routes: {
             get: @json(route('tasks.userIncentives.get')),
-            sync: @json(route('tasks.userIncentives.sync'))
+            sync: @json(route('tasks.userIncentives.sync')),
+            extend: @json(route('incentives.extend')),
+            review: @json(route('incentives.extend.review'))
         }
     };
 
@@ -662,6 +691,37 @@
             ? '<span class="ts-inc-countdown">' + escapeHtml(info.text) + '</span>'
             : escapeHtml(info.text);
         return '<td class="ts-inc-days' + (info.hot ? ' ts-inc-cutoff-alert' : '') + '">' + inner + '</td>';
+    }
+    function csrfField() {
+        return '<input type="hidden" name="_token" value="' + escapeHtml(csrfToken) + '">';
+    }
+    function canRequestExtend() {
+        return !!cfg.canEdit || (parseInt(state.userId, 10) === cfg.viewerId);
+    }
+    function extendActionCell(item) {
+        if (!item || !item.id || item.is_achieved) return '<td></td>';
+        var pending = item.pending_extend;
+        if (pending) {
+            var html = '<span class="ts-inc-countdown">Requested ' + escapeHtml(formatTargetDate(pending.requested_cutoff || '')) + '</span>';
+            if (cfg.canEdit && pending.id) {
+                html += '<div class="d-flex gap-1 justify-content-center mt-1">'
+                    + '<form method="post" action="' + cfg.routes.review + '">' + csrfField()
+                    + '<input type="hidden" name="id" value="' + escapeHtml(pending.id) + '">'
+                    + '<input type="hidden" name="decision" value="approve">'
+                    + '<button type="submit" class="btn btn-sm btn-success">Approve</button></form>'
+                    + '<form method="post" action="' + cfg.routes.review + '" class="ts-inc-deny-form">' + csrfField()
+                    + '<input type="hidden" name="id" value="' + escapeHtml(pending.id) + '">'
+                    + '<input type="hidden" name="decision" value="deny">'
+                    + '<button type="submit" class="btn btn-sm btn-outline-danger">Deny</button></form>'
+                    + '</div>';
+            }
+            return '<td>' + html + '</td>';
+        }
+        if (!canRequestExtend()) return '<td></td>';
+        var iso = toDateInputValue(itemCutoffValue(item));
+        return '<td><button type="button" class="btn btn-sm btn-outline-warning ts-inc-extend" data-id="'
+            + escapeHtml(item.id) + '" data-title="' + escapeHtml(item.target || item.title || '')
+            + '" data-cutoff="' + escapeHtml(iso) + '">Extend</button></td>';
     }
     function cutoffAlertText(item) {
         var days = daysUntilCutoff(itemCutoffValue(item));
@@ -947,7 +1007,7 @@
         if (empty) empty.classList.add('d-none');
         wrap.classList.remove('d-none');
         wrap.innerHTML = '<div class="table-responsive"><table class="ts-inc-table">'
-            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>CutOff Date</th><th>Days Left</th></tr></thead><tbody>'
+            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>CutOff Date</th><th>Days Left</th><th>Action</th></tr></thead><tbody>'
             + active.map(function (item) {
                 var alertOn = isCutoffAlert(itemCutoffValue(item));
                 return '<tr class="' + (alertOn ? 'is-cutoff-alert' : '') + '">'
@@ -956,9 +1016,10 @@
                     + '<td>' + escapeHtml(item.condition || item.body || '—').replace(/\n/g, '<br>') + '</td>'
                     + '<td class="' + (alertOn ? 'ts-inc-cutoff-alert' : '') + '">' + escapeHtml(formatTargetDate(itemCutoffValue(item))) + '</td>'
                     + daysLeftCell(itemCutoffValue(item))
+                    + extendActionCell(item)
                     + '</tr>';
             }).join('')
-            + '</tbody>' + incentiveTotalFooter(5) + '</table></div>';
+            + '</tbody>' + incentiveTotalFooter(6) + '</table></div>';
         renderIncentiveTotal();
     }
 
@@ -1347,6 +1408,28 @@
             return;
         }
 
+        var extendBtn = t.closest('.ts-inc-extend');
+        if (extendBtn) {
+            e.preventDefault();
+            var box = el('ts-inc-extend-modal');
+            var idInput = el('ts-inc-extend-id');
+            var dateInput = el('ts-inc-extend-date');
+            var reasonInput = el('ts-inc-extend-reason');
+            var summary = el('ts-inc-extend-summary');
+            if (idInput) idInput.value = extendBtn.getAttribute('data-id') || '';
+            if (dateInput) {
+                var cutoff = extendBtn.getAttribute('data-cutoff') || '';
+                dateInput.min = cfg.businessToday || '';
+                dateInput.value = cutoff && cutoff >= (cfg.businessToday || '') ? cutoff : (cfg.businessToday || '');
+            }
+            if (reasonInput) reasonInput.value = '';
+            if (summary) summary.textContent = extendBtn.getAttribute('data-title') || 'Extend this incentive cutoff date.';
+            if (box && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(box).show();
+            }
+            return;
+        }
+
         var rem = t.closest('.ts-inc-remove-row');
         if (rem) {
             e.preventDefault();
@@ -1407,6 +1490,10 @@
             state.userSearch = t.value || '';
             renderAlsoUsersPicker({ resetScroll: true });
         }
+    });
+    document.addEventListener('submit', function (e) {
+        var form = e.target && e.target.closest ? e.target.closest('.ts-inc-deny-form') : null;
+        if (form && !window.confirm('Deny this extend request?')) e.preventDefault();
     });
     document.addEventListener('change', function (e) {
         var t = e.target;

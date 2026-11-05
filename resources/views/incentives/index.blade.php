@@ -126,6 +126,57 @@
         color: #92400e;
         border-color: #fde68a;
     }
+    .inc-extend-btn {
+        white-space: nowrap;
+        font-weight: 800;
+    }
+    .inc-request-badge {
+        display: inline-block;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+        border-radius: 999px;
+        padding: 0.2em 0.6em;
+        font-size: 0.72rem;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+    .inc-review-btns {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    .inc-pending-card {
+        border: 1px solid #fde68a;
+        background: #fffbeb;
+        border-radius: 14px;
+        padding: 1rem 1.1rem;
+        margin-bottom: 1rem;
+    }
+    .inc-pending-card h5 {
+        margin: 0 0 0.65rem;
+        font-weight: 800;
+        color: #92400e;
+    }
+    .inc-pending-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+    }
+    .inc-pending-item {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        background: #fff;
+        border: 1px solid #fde68a;
+        border-radius: 10px;
+        padding: 0.7rem 0.8rem;
+    }
+    .inc-pending-item p { margin: 0; }
     #inc-search { max-width: 420px; }
 </style>
 @endsection
@@ -203,6 +254,8 @@
             return e($text);
         };
         $withIncentive = collect($people)->filter(fn ($person) => count($person['items'] ?? []) > 0)->count();
+        $viewerId = (int) ($viewerId ?? auth()->id());
+        $extendRequests = $extendRequests ?? [];
     @endphp
 
     @if (session('success'))
@@ -252,6 +305,43 @@
         </div>
     @endif
 
+    @if ($canEdit && count($extendRequests))
+        <div class="inc-pending-card">
+            <h5>Extend requests waiting for you</h5>
+            <div class="inc-pending-list">
+                @foreach ($extendRequests as $req)
+                    <div class="inc-pending-item">
+                        <div>
+                            <p class="fw-bold mb-1">{{ $req['user_name'] ?: 'Team member' }} · {{ $req['title'] ?: 'Incentive' }}</p>
+                            <p class="small mb-1">
+                                {{ $req['requested_by'] ?: 'Someone' }} asked to move the cutoff
+                                from {{ $cutoffLabel($req['current_cutoff'] ?? '') }}
+                                to {{ $cutoffLabel($req['requested_cutoff'] ?? '') }}.
+                            </p>
+                            @if (!empty($req['reason']))
+                                <p class="small text-muted mb-0">Reason: {{ $req['reason'] }}</p>
+                            @endif
+                        </div>
+                        <div class="inc-review-btns">
+                            <form method="post" action="{{ route('incentives.extend.review') }}">
+                                @csrf
+                                <input type="hidden" name="id" value="{{ $req['id'] }}">
+                                <input type="hidden" name="decision" value="approve">
+                                <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                            </form>
+                            <form method="post" action="{{ route('incentives.extend.review') }}" class="inc-deny-form">
+                                @csrf
+                                <input type="hidden" name="id" value="{{ $req['id'] }}">
+                                <input type="hidden" name="decision" value="deny">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Deny</button>
+                            </form>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    @endif
+
     <div id="inc-people">
         @forelse ($people as $person)
             @php
@@ -272,6 +362,8 @@
                     ]];
                 }
                 $shown = $editing ? $rows : $activeRows;
+                $canRequest = (int) $viewerId === (int) $person['id'];
+                $showActions = $canEdit || $canRequest;
                 $personTotal = 0;
                 foreach ($shown as $row) {
                     if (! $isActive($row['is_active'] ?? true)) {
@@ -383,7 +475,7 @@
                                     <th>Condition</th>
                                     <th>CutOff Date</th>
                                     <th>Days Left</th>
-                                    @if ($canEdit)
+                                    @if ($showActions)
                                         <th>Action</th>
                                     @endif
                                 </tr>
@@ -395,6 +487,7 @@
                                         $left = $daysLeft($iso);
                                         $achieved = ! empty($row['is_achieved']);
                                         $hot = ! $achieved && $left !== null && $left <= 1;
+                                        $pending = $row['pending_extend'] ?? null;
                                     @endphp
                                     <tr class="{{ $hot ? 'is-cutoff' : '' }}">
                                         <td>{{ $row['title'] ?: '—' }}@if ($achieved) <span class="badge bg-success ms-1">Achieved</span>@endif</td>
@@ -402,24 +495,45 @@
                                         <td>{!! nl2br(e($row['body'] ?: '—')) !!}</td>
                                         <td class="{{ $hot ? 'inc-cutoff-hot' : '' }}">{{ $cutoffLabel($row['additional_condition'] ?? '') }}</td>
                                         <td class="inc-days {{ $hot ? 'inc-cutoff-hot' : '' }}">{!! $daysLeftHtml($left) !!}</td>
-                                        @if ($canEdit)
+                                        @if ($showActions)
                                             <td class="inc-actions">
                                                 <div class="inc-action-btns">
-                                                    <a class="inc-action-btn" href="{{ route('incentives.index', ['user_id' => $person['id']]).'#inc-user-'.$person['id'] }}" title="Edit" aria-label="Edit incentive">
-                                                        <i class="ri-pencil-line" aria-hidden="true"></i>
-                                                    </a>
-                                                    @if (! empty($row['id']))
+                                                    @if ($canEdit)
+                                                        <a class="inc-action-btn" href="{{ route('incentives.index', ['user_id' => $person['id']]).'#inc-user-'.$person['id'] }}" title="Edit" aria-label="Edit incentive">
+                                                            <i class="ri-pencil-line" aria-hidden="true"></i>
+                                                        </a>
+                                                    @endif
+                                                    @if (! empty($pending))
+                                                        <span class="inc-request-badge" title="{{ !empty($pending['reason']) ? $pending['reason'] : 'Waiting for president@5core.com' }}">
+                                                            Requested {{ $cutoffLabel($pending['requested_cutoff'] ?? '') }}
+                                                        </span>
+                                                        @if ($canEdit)
+                                                            <div class="inc-review-btns">
+                                                                <form method="post" action="{{ route('incentives.extend.review') }}">
+                                                                    @csrf
+                                                                    <input type="hidden" name="id" value="{{ $pending['id'] }}">
+                                                                    <input type="hidden" name="decision" value="approve">
+                                                                    <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                                                                </form>
+                                                                <form method="post" action="{{ route('incentives.extend.review') }}" class="inc-deny-form">
+                                                                    @csrf
+                                                                    <input type="hidden" name="id" value="{{ $pending['id'] }}">
+                                                                    <input type="hidden" name="decision" value="deny">
+                                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Deny</button>
+                                                                </form>
+                                                            </div>
+                                                        @endif
+                                                    @elseif (! empty($row['id']) && ! $achieved && ($canRequest || $canEdit))
                                                         <button type="button"
-                                                            class="inc-action-btn is-extend inc-extend-date"
-                                                            title="Extend date"
-                                                            aria-label="Extend cutoff date"
+                                                            class="btn btn-sm btn-outline-warning inc-extend-btn inc-extend-date"
+                                                            title="{{ $canEdit ? 'Extend cutoff date' : 'Request a later cutoff date' }}"
                                                             data-id="{{ $row['id'] }}"
                                                             data-name="{{ $person['name'] }}"
                                                             data-title="{{ $row['title'] ?? '' }}"
                                                             data-cutoff="{{ $iso }}"
                                                             data-bs-toggle="modal"
                                                             data-bs-target="#inc-extend-modal">
-                                                            <i class="ri-calendar-event-line" aria-hidden="true"></i>
+                                                            Extend
                                                         </button>
                                                     @endif
                                                 </div>
@@ -432,7 +546,7 @@
                                 <tr>
                                     <td>Total</td>
                                     <td class="inc-amt">{{ $rupee($personTotal) }}</td>
-                                    <td colspan="{{ $canEdit ? 4 : 3 }}"></td>
+                                    <td colspan="{{ $showActions ? 4 : 3 }}"></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -446,29 +560,32 @@
     <p class="text-muted small d-none mt-3 mb-0" id="inc-search-empty">No matching people.</p>
     <p class="text-muted small mt-3 mb-0">Incentives are managed by president@5core.com. Days Left counts from today (California time, {{ \App\Support\TaskBusinessTime::incentiveToday()->format('j M Y') }}) to the cutoff date.</p>
 
-    @if ($canEdit)
-        <div class="modal fade" id="inc-extend-modal" tabindex="-1" aria-labelledby="inc-extend-title" aria-hidden="true">
-            <div class="modal-dialog">
-                <form method="post" action="{{ route('incentives.extend') }}" class="modal-content">
-                    @csrf
-                    <input type="hidden" name="id" id="inc-extend-id">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="inc-extend-title">Extend cutoff date</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p class="mb-2" id="inc-extend-summary"></p>
-                        <label for="inc-extend-date" class="form-label fw-bold">New cutoff date</label>
-                        <input type="date" class="form-control" name="additional_condition" id="inc-extend-date" min="{{ $businessToday }}" required>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-success">Save date</button>
-                    </div>
-                </form>
-            </div>
+    <div class="modal fade" id="inc-extend-modal" tabindex="-1" aria-labelledby="inc-extend-title" aria-hidden="true">
+        <div class="modal-dialog">
+            <form method="post" action="{{ route('incentives.extend') }}" class="modal-content">
+                @csrf
+                <input type="hidden" name="id" id="inc-extend-id">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="inc-extend-title">{{ $canEdit ? 'Extend cutoff date' : 'Request to extend cutoff date' }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2" id="inc-extend-summary"></p>
+                    @unless ($canEdit)
+                        <p class="text-muted small">This sends a request. Only president@5core.com can approve it.</p>
+                    @endunless
+                    <label for="inc-extend-date" class="form-label fw-bold">New cutoff date</label>
+                    <input type="date" class="form-control" name="additional_condition" id="inc-extend-date" min="{{ $businessToday }}" required>
+                    <label for="inc-extend-reason" class="form-label fw-bold mt-3">Reason</label>
+                    <textarea class="form-control" name="reason" id="inc-extend-reason" rows="3" maxlength="1000" placeholder="Why does this cutoff need more time?"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning" id="inc-extend-submit">{{ $canEdit ? 'Save date' : 'Send request' }}</button>
+                </div>
+            </form>
         </div>
-    @endif
+    </div>
 
     @if ($canEdit)
         <template id="inc-row-template">
@@ -572,17 +689,24 @@
             var cutoff = btn.getAttribute('data-cutoff') || '';
             var idInput = document.getElementById('inc-extend-id');
             var dateInput = document.getElementById('inc-extend-date');
+            var reasonInput = document.getElementById('inc-extend-reason');
             var summary = document.getElementById('inc-extend-summary');
             if (idInput) idInput.value = id;
             if (dateInput) {
                 dateInput.value = cutoff && cutoff >= businessToday ? cutoff : businessToday;
                 dateInput.min = businessToday;
             }
+            if (reasonInput) reasonInput.value = '';
             if (summary) {
                 summary.textContent = [name, title].filter(Boolean).join(' · ') || 'Extend this incentive cutoff date.';
             }
         });
     }
+    document.querySelectorAll('.inc-deny-form').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            if (!window.confirm('Deny this extend request?')) e.preventDefault();
+        });
+    });
 
     document.querySelectorAll('.inc-form').forEach(function (form) {
         var rows = form.querySelector('.inc-rows');
