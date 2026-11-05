@@ -346,15 +346,18 @@ class ListingInactiveParentChildCounts
             }
         }
 
-        $parent = 0;
+        // Marketplace status tables hold child SKUs only (PARENT rows are never stored there), so a
+        // parent is counted once for each parent SKU that has an in-stock inactive child. Explicit
+        // PARENT listings reported inactive by the marketplace are added on top.
+        $parents = $parentsWithChild;
         foreach ($parentCandidates as $parentKey => $hasInv) {
             if ($hasInv || isset($parentsWithChild[$parentKey])) {
-                $parent++;
+                $parents[$parentKey] = true;
             }
         }
 
         return [
-            'parent' => $parent,
+            'parent' => count($parents),
             'child' => $child,
         ];
     }
@@ -410,6 +413,7 @@ class ListingInactiveParentChildCounts
         }
 
         $out = [];
+        $haveParent = [];
         foreach ($candidates as [$row, $sku, $isParent]) {
             if ($isParent
                 && ! self::rowHasPositiveInv($row, $sku)
@@ -417,7 +421,29 @@ class ListingInactiveParentChildCounts
             ) {
                 continue;
             }
+            if ($isParent) {
+                $haveParent[strtoupper($sku)] = true;
+            }
             $out[] = $row;
+        }
+
+        // The marketplace status tables hold child SKUs only (PARENT rows are never stored there),
+        // so a parent with inactive in-stock children is listed here as its own row.
+        foreach (array_keys($parentsWithChild) as $parentKey) {
+            if (isset($haveParent[$parentKey])) {
+                continue;
+            }
+            $out[] = [
+                'sku' => $parentKey,
+                'parent' => $parentKey,
+                'kind' => 'parent',
+                'inv' => 0,
+                'channel_sku' => $parentKey,
+                'channel_inv' => 0,
+                'diff' => 0,
+                'status' => 'Inactive',
+                'state' => 'inactive',
+            ];
         }
 
         return $out;
@@ -459,8 +485,12 @@ class ListingInactiveParentChildCounts
             return $sku;
         }
         $map = self::parentByChild();
+        if (isset($map[$sku])) {
+            return $map[$sku];
+        }
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
 
-        return $map[$sku] ?? '';
+        return $norm !== '' ? ($map[$norm] ?? '') : '';
     }
 
     /**
@@ -636,6 +666,10 @@ class ListingInactiveParentChildCounts
                 }
                 self::$childrenByParent[$parent][] = $child;
                 self::$parentByChild[$child] = $parent;
+                $normChild = ShopifySku::normalizeSkuForShopifyLookup($child);
+                if ($normChild !== '' && ! isset(self::$parentByChild[$normChild])) {
+                    self::$parentByChild[$normChild] = $parent;
+                }
             }
         } catch (\Throwable $e) {
             Log::warning('ListingInactiveParentChildCounts: load parent map failed: '.$e->getMessage());

@@ -32,11 +32,11 @@ class MappingChannelCounts
 
     public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v23';
 
-    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v24';
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v25';
 
-    public const INACTIVE_MASTER_ROWS_META_KEY = 'inactive_listings_master_rows_meta_v24';
+    public const INACTIVE_MASTER_ROWS_META_KEY = 'inactive_listings_master_rows_meta_v25';
 
-    public const INACTIVE_CP_TOTAL_CACHE_KEY = 'inactive_listings_cp_total_v24';
+    public const INACTIVE_CP_TOTAL_CACHE_KEY = 'inactive_listings_cp_total_v25';
 
     private const INACTIVE_PAGE_CACHE_TTL_DAYS = 7;
 
