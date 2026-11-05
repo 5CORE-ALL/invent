@@ -6,6 +6,7 @@ use App\Models\EbayMetric;
 use App\Models\LqsMarketplaceScore;
 use App\Services\Lqs\EbayLqsApiSyncService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 class SyncEbayLqsFromApi extends Command
@@ -38,6 +39,23 @@ class SyncEbayLqsFromApi extends Command
             return $this->scoreOne($sync, $sku, $dry);
         }
 
+        // One bulk run at a time (page button + nightly schedule share this lock).
+        $lock = Cache::lock(EbayLqsApiSyncService::LOCK_KEY, 7200);
+        if (! $lock->get()) {
+            $this->warn('Another eBay LQS sync is already running. Skipping.');
+
+            return self::SUCCESS;
+        }
+
+        try {
+            return $this->runBulk($sync, $dry);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function runBulk(EbayLqsApiSyncService $sync, bool $dry): int
+    {
         $limit = max(1, (int) $this->option('limit'));
         $staleHours = max(0, (int) $this->option('stale-hours'));
         $sleepUs = max(0, (int) $this->option('sleep-ms')) * 1000;
@@ -61,12 +79,38 @@ class SyncEbayLqsFromApi extends Command
                 ->all();
         }
 
-        $todo = $rows->reject(fn ($r) => isset($recent[strtoupper(trim($r->sku))]))->take($limit);
-        $this->info('Scoring '.$todo->count().' of '.$rows->count().' eBay listing(s)'.($dry ? ' (dry run)' : '').'…');
+        // SKUs that have never been scored come first, so a capped run always makes visible progress.
+        $scored = LqsMarketplaceScore::query()
+            ->where('marketplace', EbayLqsApiSyncService::MARKETPLACE)
+            ->whereNotNull('lqs')->where('lqs', '>', 0)
+            ->pluck('sku')
+            ->mapWithKeys(fn ($s) => [strtoupper(trim($s)) => true])
+            ->all();
+
+        $todo = $rows
+            ->reject(fn ($r) => isset($recent[strtoupper(trim($r->sku))]))
+            ->sortBy(fn ($r) => isset($scored[strtoupper(trim($r->sku))]) ? 1 : 0)
+            ->values()
+            ->take($limit);
+
+        $total = $todo->count();
+        $this->info('Scoring '.$total.' of '.$rows->count().' eBay listing(s)'.($dry ? ' (dry run)' : '').'…');
+
+        $status = [
+            'running' => true,
+            'total' => $total,
+            'done' => 0,
+            'failed' => 0,
+            'started_at' => now()->toDateTimeString(),
+            'finished_at' => null,
+            'message' => null,
+        ];
+        $this->publish($status);
 
         $ok = 0;
         $failed = 0;
         $sum = 0.0;
+        $aborted = false;
         foreach ($todo as $row) {
             try {
                 if ($dry) {
@@ -84,16 +128,37 @@ class SyncEbayLqsFromApi extends Command
                 // Stop early if eBay is throttling / auth is broken, instead of burning the daily quota.
                 if ($failed >= 10 && $ok === 0) {
                     $this->error('10 failures in a row with no successes. Aborting.');
-
-                    return self::FAILURE;
+                    $status['message'] = 'Stopped: 10 failures in a row. Last error: '.$e->getMessage();
+                    $aborted = true;
                 }
+            }
+
+            $status['done'] = $ok;
+            $status['failed'] = $failed;
+            $this->publish($status);
+
+            if ($aborted) {
+                break;
             }
             usleep($sleepUs);
         }
 
-        $this->info("Done. Scored {$ok}, failed {$failed}".($ok ? sprintf(', average %.1f.', $sum / $ok) : '.'));
+        $status['running'] = false;
+        $status['finished_at'] = now()->toDateTimeString();
+        $status['message'] = $status['message']
+            ?: "Scored {$ok}, failed {$failed}".($ok ? sprintf(', average %.1f.', $sum / $ok) : '.');
+        $this->publish($status);
 
-        return $failed > 0 && $ok === 0 ? self::FAILURE : self::SUCCESS;
+        $this->info('Done. '.$status['message']);
+
+        return $aborted || ($failed > 0 && $ok === 0) ? self::FAILURE : self::SUCCESS;
+    }
+
+    /** Progress the page polls (see LqsEbayController::apiSyncStatus). */
+    private function publish(array $status): void
+    {
+        $status['updated_at'] = time();
+        Cache::put(EbayLqsApiSyncService::STATUS_KEY, $status, 86400);
     }
 
     private function scoreOne(EbayLqsApiSyncService $sync, string $sku, bool $dry): int

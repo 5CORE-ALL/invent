@@ -6434,6 +6434,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/ebay/audit/prompt', [App\Http\Controllers\MarketPlace\Lqs\LqsEbayController::class, 'saveAuditPrompt'])->name('lqs.ebay.audit.prompt.save');
     Route::post('/lqs/ebay/audit/run', [App\Http\Controllers\MarketPlace\Lqs\LqsEbayController::class, 'runAudit'])->name('lqs.ebay.audit.run');
     Route::post('/lqs/ebay/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsEbayController::class, 'apiScore'])->name('lqs.ebay.api.score');
+    Route::post('/lqs/ebay/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsEbayController::class, 'startApiSync'])->name('lqs.ebay.api.sync');
+    Route::get('/lqs/ebay/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsEbayController::class, 'apiSyncStatus'])->name('lqs.ebay.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation

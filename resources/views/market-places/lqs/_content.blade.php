@@ -80,6 +80,13 @@
                         <button type="button" id="amz-upload-btn" class="btn btn-sm btn-primary">
                             <i class="fas fa-upload"></i> Upload Sheet
                         </button>
+                        @if(!empty($lqsPage['has_audit']))
+                            <button type="button" id="lqs-api-sync-btn" class="btn btn-sm btn-success"
+                                    title="Score every eBay listing from the live eBay API (title, photos, item specifics, description, shipping/returns). Runs in the background.">
+                                <i class="fas fa-plug me-1"></i><span id="lqs-api-sync-label">Sync LQS from API</span>
+                            </button>
+                            <span id="lqs-api-sync-progress" class="small text-muted align-self-center"></span>
+                        @endif
                         @if(!empty($lqsPage['has_yoast_seo']))
                             <select id="amz-seo-filter" class="form-select form-select-sm" style="width:160px;">
                                 <option value="all" selected>All SEO</option>

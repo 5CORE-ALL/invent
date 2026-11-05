@@ -210,6 +210,8 @@ abstract class LqsMarketplaceBaseController extends Controller
             'audit_prompt_save' => $slug === 'ebay' ? route('lqs.ebay.audit.prompt.save') : null,
             'audit_run' => $slug === 'ebay' ? route('lqs.ebay.audit.run') : null,
             'api_score' => $slug === 'ebay' ? route('lqs.ebay.api.score') : null,
+            'api_sync' => $slug === 'ebay' ? route('lqs.ebay.api.sync') : null,
+            'api_sync_status' => $slug === 'ebay' ? route('lqs.ebay.api.sync.status') : null,
             'seo_sync' => $slug === 'shopify' ? route('lqs.shopify.seo.sync') : null,
         ];
     }

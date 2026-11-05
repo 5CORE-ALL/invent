@@ -15,6 +15,11 @@ class EbayLqsApiSyncService
 {
     public const MARKETPLACE = 'ebay';
 
+    /** Cache keys shared by the artisan command, the page button and the progress poller. */
+    public const LOCK_KEY = 'lqs-sync-ebay-lock';
+
+    public const STATUS_KEY = 'lqs-sync-ebay-status';
+
     public function __construct(
         private readonly EbayApiService $ebay,
         private readonly EbayListingQualityScorer $scorer,

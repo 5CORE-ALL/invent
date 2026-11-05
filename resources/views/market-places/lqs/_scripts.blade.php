@@ -1077,6 +1077,66 @@
             };
 
             if (lqsHasAudit) {
+                // ── Bulk "Sync LQS from API": background run + live progress ──
+                let lqsSyncTimer = null;
+                let lqsSyncWasRunning = false;
+                const lqsSyncLabel = 'Sync LQS from API';
+
+                function lqsSyncPoll() {
+                    clearTimeout(lqsSyncTimer);
+                    $.getJSON('{{ $lqsPage['routes']['api_sync_status'] ?? '' }}').done(function(st) {
+                        const $btn = $('#lqs-api-sync-btn');
+                        if (st.running) {
+                            lqsSyncWasRunning = true;
+                            $btn.prop('disabled', true);
+                            $('#lqs-api-sync-label').text('Syncing ' + (st.done || 0) + '/' + (st.total || '…') + '…');
+                            $('#lqs-api-sync-progress').text('Scored ' + st.scored + ' of ' + st.skus_with_item_id + ' listings');
+                            lqsSyncTimer = setTimeout(lqsSyncPoll, 4000);
+                            return;
+                        }
+                        $btn.prop('disabled', false);
+                        $('#lqs-api-sync-label').text(lqsSyncLabel);
+                        $('#lqs-api-sync-progress').text('Scored ' + st.scored + ' of ' + st.skus_with_item_id + ' listings');
+                        if (lqsSyncWasRunning) {
+                            lqsSyncWasRunning = false;
+                            amzTable.setData('{{ $lqsPage['routes']['data'] }}');
+                            if (window.lqsTouchLastUpdated) window.lqsTouchLastUpdated();
+                            amzNotify(st.message || 'eBay LQS sync finished.', st.failed && !st.done ? 'warning' : 'success');
+                        }
+                    }).fail(function() {
+                        lqsSyncTimer = setTimeout(lqsSyncPoll, 8000);
+                    });
+                }
+
+                $('#lqs-api-sync-btn').on('click', function() {
+                    const $btn = $(this).prop('disabled', true);
+                    $('#lqs-api-sync-label').text('Starting…');
+                    $.ajax({
+                        url: '{{ $lqsPage['routes']['api_sync'] ?? '' }}',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        success: function(res) {
+                            if (!res.success) {
+                                amzNotify(res.message || 'Could not start the sync.', 'error');
+                                $btn.prop('disabled', false);
+                                $('#lqs-api-sync-label').text(lqsSyncLabel);
+                                return;
+                            }
+                            lqsSyncWasRunning = true;
+                            amzNotify(res.already_running ? 'A sync is already running.' : 'eBay LQS sync started. Scores appear as it finishes.', 'success');
+                            lqsSyncTimer = setTimeout(lqsSyncPoll, 1500);
+                        },
+                        error: function(xhr) {
+                            const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Could not start the sync.';
+                            amzNotify(msg, 'error');
+                            $btn.prop('disabled', false);
+                            $('#lqs-api-sync-label').text(lqsSyncLabel);
+                        }
+                    });
+                });
+
+                lqsSyncPoll(); // show coverage on load, and resume progress if a sync is already running
+
                 $('#lqsAuditSavePromptBtn').on('click', function() {
                     const prompt = ($('#lqsAuditPrompt').val() || '').trim();
                     if (prompt.length < 20) {
