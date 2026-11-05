@@ -260,6 +260,29 @@ class ListingManagerEbayTradingPublisher
         }
         $variations = self::normalizeVariations($payload['variations'] ?? []);
 
+        // eBay 3 keeps photos on its own servers. A later variation add is rejected if this listing
+        // was created with self-hosted links, so every photo goes to eBay Picture Services first.
+        if (($ctx['channel'] ?? '') === 'ebaythree') {
+            $hosted = self::hostPictureList($ctx, $images);
+            if ($hosted['urls'] === []) {
+                return ['success' => false, 'message' => 'Could not copy the photos onto eBay, so the listing was not created.'
+                    .($hosted['error'] !== '' ? ' '.$hosted['error'] : '')];
+            }
+            $images = $hosted['urls'];
+            foreach ($variations as $i => $row) {
+                $wanted = is_array($row['images'] ?? null) ? $row['images'] : [];
+                if ($wanted === []) {
+                    continue;
+                }
+                $hosted = self::hostPictureList($ctx, $wanted);
+                if ($hosted['urls'] === []) {
+                    return ['success' => false, 'message' => 'Could not copy the photos of '.$row['sku'].' onto eBay, so the listing was not created.'
+                        .($hosted['error'] !== '' ? ' '.$hosted['error'] : '')];
+                }
+                $variations[$i]['images'] = $hosted['urls'];
+            }
+        }
+
         if ($title === '' || $description === '' || $categoryId === '' || $images === []) {
             return ['success' => false, 'message' => 'Missing required fields for AddFixedPriceItem.'];
         }
@@ -391,8 +414,7 @@ class ListingManagerEbayTradingPublisher
                 if ($height > 0) {
                     $package->addChild('PackageDepth', (string) $height);
                 }
-                $weightMajor = (int) floor($lb);
-                $weightMinor = (int) round($oz + (($lb - $weightMajor) * 16));
+                [$weightMajor, $weightMinor] = self::ebayPackageWeight($lb, $oz);
                 if ($weightMajor > 0 || $weightMinor > 0) {
                     $package->addChild('WeightMajor', (string) $weightMajor);
                     $package->addChild('WeightMinor', (string) $weightMinor);
@@ -738,7 +760,8 @@ class ListingManagerEbayTradingPublisher
         array $newVariations,
         array $existingPictureSets = [],
         string $pictureAspect = '',
-        bool $epsHosted = false
+        bool $epsHosted = false,
+        array $galleryUrls = []
     ): array {
         $itemId = trim($itemId);
         if ($itemId === '' || $aspect === '' || $newVariations === []) {
@@ -750,29 +773,31 @@ class ListingManagerEbayTradingPublisher
         }
         $esc = static fn (string $v): string => htmlspecialchars($v, ENT_XML1 | ENT_COMPAT, 'UTF-8');
 
-        // eBay refuses a listing that mixes eBay-hosted (EPS) and self-hosted pictures. When the live
-        // listing uses EPS pictures, copy our new images onto eBay's servers first and use those URLs.
+        // eBay refuses one listing that mixes eBay-hosted (EPS) and self-hosted pictures. eBay 3 listings
+        // are hosted on EPS, and so is any live listing that already has an EPS photo. Every picture in
+        // this revise (the gallery, the existing variation photos, and the new ones) is copied first.
         $photoNotes = [];
-        if ($epsHosted) {
+        $hostedGallery = [];
+        $mustHost = $epsHosted || (($ctx['channel'] ?? '') === 'ebaythree');
+        if ($mustHost) {
             foreach ($newVariations as $i => $row) {
-                $hosted = [];
-                $lastError = '';
                 $wanted = array_slice(array_values(array_unique($row['images'] ?? [])), 0, 12);
-                foreach ($wanted as $url) {
-                    $eps = self::uploadPictureToEps($ctx, (string) $url, $lastError);
-                    if ($eps !== null) {
-                        $hosted[] = $eps;
-                    }
-                }
-                $photoNotes[] = $row['sku'].': '.count($hosted).' of '.count($wanted).' photo(s) copied to eBay'
-                    .(count($hosted) < count($wanted) && $lastError !== '' ? ' ('.$lastError.')' : '');
-                if ($hosted === []) {
+                $hosted = self::hostPictureList($ctx, $wanted);
+                $photoNotes[] = $row['sku'].': '.count($hosted['urls']).' of '.count($wanted).' photo(s) copied to eBay'
+                    .(count($hosted['urls']) < count($wanted) && $hosted['error'] !== '' ? ' ('.$hosted['error'].')' : '');
+                if ($wanted !== [] && $hosted['urls'] === []) {
                     return ['success' => false, 'message' => 'Could not copy the Image Master photos of '.$row['sku'].' to eBay'
-                        .($lastError !== '' ? ': '.$lastError : '.')
+                        .($hosted['error'] !== '' ? ': '.$hosted['error'] : '.')
                         .' Nothing was added.'];
                 }
-                $newVariations[$i]['images'] = $hosted;
+                $newVariations[$i]['images'] = $hosted['urls'];
             }
+            foreach ($existingPictureSets as $i => $set) {
+                $hosted = self::hostPictureList($ctx, $set['urls'] ?? []);
+                $existingPictureSets[$i]['urls'] = $hosted['urls'];
+            }
+            $existingPictureSets = array_values(array_filter($existingPictureSets, static fn ($set) => ($set['urls'] ?? []) !== []));
+            $hostedGallery = self::hostPictureList($ctx, $galleryUrls)['urls'];
         }
 
         try {
@@ -782,6 +807,12 @@ class ListingManagerEbayTradingPublisher
             $xml->addChild('WarningLevel', 'High');
             $item = $xml->addChild('Item');
             $item->addChild('ItemID', $itemId);
+            if ($hostedGallery !== []) {
+                $gallery = $item->addChild('PictureDetails');
+                foreach (array_slice($hostedGallery, 0, 12) as $url) {
+                    $gallery->addChild('PictureURL', $esc((string) $url));
+                }
+            }
             $block = $item->addChild('Variations');
 
             $values = array_values($existingValues);
@@ -919,6 +950,49 @@ class ListingManagerEbayTradingPublisher
         ]);
 
         return null;
+    }
+
+    /**
+     * eBay's ounces field only accepts 0 to 15. Extra ounces are carried into the pounds.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private static function ebayPackageWeight(float $pounds, float $ounces): array
+    {
+        $total = (int) round(max(0, $pounds) * 16 + max(0, $ounces));
+        if ($total < 1) {
+            return [0, 0];
+        }
+
+        return [intdiv($total, 16), $total % 16];
+    }
+
+    /**
+     * Copy each photo onto eBay Picture Services. Photos already hosted there are kept as they are.
+     * A photo that cannot be copied is left out, so the request never mixes the two kinds.
+     *
+     * @param  array<string, mixed>  $ctx
+     * @param  list<string>  $urls
+     * @return array{urls: list<string>, error: string}
+     */
+    private static function hostPictureList(array $ctx, array $urls): array
+    {
+        $hosted = [];
+        $error = '';
+        $seen = [];
+        foreach (array_slice(array_values($urls), 0, 12) as $url) {
+            $url = trim((string) $url);
+            if ($url === '' || isset($seen[$url])) {
+                continue;
+            }
+            $seen[$url] = true;
+            $eps = self::uploadPictureToEps($ctx, $url, $error);
+            if ($eps !== null && ! in_array($eps, $hosted, true)) {
+                $hosted[] = $eps;
+            }
+        }
+
+        return ['urls' => $hosted, 'error' => $error];
     }
 
     /**
