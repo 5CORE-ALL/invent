@@ -312,15 +312,19 @@ class ListingInactiveParentChildCounts
 
         $cpKeys = self::cpMasterSkuKeys();
         $activeKeys = $mm !== null ? MarketplacePortalInactiveCount::activeSkuKeys($mm) : [];
-        $parent = 0;
         $child = 0;
         $seen = [];
+        $parentCandidates = [];
+        $parentsWithChild = [];
         foreach ($skus as $sku) {
             $sku = trim((string) $sku);
             if ($sku === '' || ! self::skuMatchesCpKeys($sku, $cpKeys)) {
                 continue;
             }
-            if (! self::skuHasPositiveInv($sku)) {
+            $isParent = MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku);
+            // PARENT placeholder SKUs usually carry no stock of their own, so they are counted
+            // when they have stock OR one of their children is an in-stock inactive listing.
+            if (! $isParent && ! self::skuHasPositiveInv($sku)) {
                 continue;
             }
             if (MarketplacePortalInactiveCount::skuIsActive($sku, $activeKeys)) {
@@ -331,10 +335,21 @@ class ListingInactiveParentChildCounts
                 continue;
             }
             $seen[$key] = true;
-            if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
-                $parent++;
+            if ($isParent) {
+                $parentCandidates[$key] = self::skuHasPositiveInv($sku);
             } else {
                 $child++;
+                $parentKey = strtoupper(self::parentSkuFor($sku));
+                if ($parentKey !== '') {
+                    $parentsWithChild[$parentKey] = true;
+                }
+            }
+        }
+
+        $parent = 0;
+        foreach ($parentCandidates as $parentKey => $hasInv) {
+            if ($hasInv || isset($parentsWithChild[$parentKey])) {
+                $parent++;
             }
         }
 
@@ -354,14 +369,18 @@ class ListingInactiveParentChildCounts
      */
     public static function keepCpMasterInStockInactiveRows(array $rows, array $cpKeys, array $activeKeys = []): array
     {
-        $out = [];
+        $candidates = [];
         $seen = [];
+        $parentsWithChild = [];
         foreach ($rows as $row) {
             $sku = trim((string) ($row['sku'] ?? ''));
             if ($sku === '' || ! self::skuMatchesCpKeys($sku, $cpKeys)) {
                 continue;
             }
-            if (! self::rowHasPositiveInv($row, $sku)) {
+            // PARENT placeholder SKUs usually carry no stock of their own; they are kept below
+            // when one of their children is an in-stock inactive listing.
+            $isParent = MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku);
+            if (! $isParent && ! self::rowHasPositiveInv($row, $sku)) {
                 continue;
             }
             if (MarketplacePortalInactiveCount::skuIsActive($sku, $activeKeys)) {
@@ -378,6 +397,26 @@ class ListingInactiveParentChildCounts
                 continue;
             }
             $seen[$key] = true;
+            $candidates[] = [$row, $sku, $isParent];
+            if (! $isParent) {
+                $parent = strtoupper(trim((string) ($row['parent'] ?? '')));
+                if ($parent === '') {
+                    $parent = strtoupper(self::parentSkuFor($sku));
+                }
+                if ($parent !== '') {
+                    $parentsWithChild[$parent] = true;
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($candidates as [$row, $sku, $isParent]) {
+            if ($isParent
+                && ! self::rowHasPositiveInv($row, $sku)
+                && ! isset($parentsWithChild[strtoupper($sku)])
+            ) {
+                continue;
+            }
             $out[] = $row;
         }
 

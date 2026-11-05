@@ -119,7 +119,7 @@
             padding: 0;
         }
         .il-hist-dot:hover { transform: scale(1.4); }
-        #stat-cp-inactive-listings .il-hist-dot { background: #212529; border-color: #fff; }
+        #stat-cp-inactive-listings .il-hist-dot { background: #fff; border-color: rgba(15, 23, 42, 0.35); }
 
         /* History modal: full width, same as the Active Channel metric chart */
         #ilHistoryModal.modal {
@@ -159,8 +159,9 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-warning text-dark badge-il-stat" id="stat-cp-inactive-listings" title="In-stock CP Master SKUs that exist on the marketplace with inactive status. Missing Listing and 0 Inv SKUs are excluded.">
-                        Inactive Child SKUs: <span id="total-cp-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedCpInactiveTotalOrZero()) }}</span>
+                    @php $ilInitialTotal = \App\Support\Marketplace\MappingChannelCounts::cachedCpInactiveTotalOrZero(); @endphp
+                    <span class="badge text-white badge-il-stat {{ $ilInitialTotal > 0 ? 'bg-danger' : 'bg-success' }}" id="stat-cp-inactive-listings" title="In-stock CP Master SKUs that exist on the marketplace with inactive status. Missing Listing and 0 Inv SKUs are excluded.">
+                        Inactive Child SKUs: <span id="total-cp-inactive-listings">{{ number_format($ilInitialTotal) }}</span>
                         <button type="button" class="il-hist-dot" data-channel="all" data-name="All Channels" title="Inactive Child SKUs history" aria-label="Inactive Child SKUs history"></button>
                     </span>
                     <button type="button" id="il-sync-btn" class="btn btn-sm btn-primary" title="Pull current marketplace listing statuses and rebuild this page">
@@ -340,6 +341,10 @@
             ? Number(totals.cp)
             : data.reduce((sum, r) => sum + Number(r.cp_inactive_child || 0), 0);
         $('#total-cp-inactive-listings').text(cpTotal.toLocaleString('en-US'));
+        // Red when there are inactive child SKUs, green when none.
+        $('#stat-cp-inactive-listings')
+            .toggleClass('bg-danger', cpTotal > 0)
+            .toggleClass('bg-success', cpTotal <= 0);
         updateSidebarInactiveCount(cpTotal);
     }
 
