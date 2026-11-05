@@ -6447,10 +6447,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post("/lqs/{$temuSlug}/api-sync", [$temuLqsController, 'startApiSync'])->name("lqs.{$temuSlug}.api.sync");
         Route::get("/lqs/{$temuSlug}/api-sync/status", [$temuLqsController, 'apiSyncStatus'])->name("lqs.{$temuSlug}.api.sync.status");
     }
-    // Best Buy: live Mirakl offer-feed scoring (no AI audit modal)
-    Route::post('/lqs/bestbuy/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsBestbuyController::class, 'apiScore'])->name('lqs.bestbuy.api.score');
-    Route::post('/lqs/bestbuy/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsBestbuyController::class, 'startApiSync'])->name('lqs.bestbuy.api.sync');
-    Route::get('/lqs/bestbuy/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsBestbuyController::class, 'apiSyncStatus'])->name('lqs.bestbuy.api.sync.status');
+    // Best Buy + Purchasing Power: live Mirakl offer-feed scoring (no AI audit modal)
+    foreach (App\Services\Lqs\MiraklLqsApiSyncService::slugs() as $miraklSlug) {
+        $miraklController = 'App\\Http\\Controllers\\MarketPlace\\Lqs\\Lqs'.ucfirst($miraklSlug).'Controller';
+        Route::post("/lqs/{$miraklSlug}/api-score", [$miraklController, 'apiScore'])->name("lqs.{$miraklSlug}.api.score");
+        Route::post("/lqs/{$miraklSlug}/api-sync", [$miraklController, 'startApiSync'])->name("lqs.{$miraklSlug}.api.sync");
+        Route::get("/lqs/{$miraklSlug}/api-sync/status", [$miraklController, 'apiSyncStatus'])->name("lqs.{$miraklSlug}.api.sync.status");
+    }
     // Doba: live goods/detail scoring (no AI audit modal)
     Route::post('/lqs/doba/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsDobaController::class, 'apiScore'])->name('lqs.doba.api.score');
     Route::post('/lqs/doba/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsDobaController::class, 'startApiSync'])->name('lqs.doba.api.sync');

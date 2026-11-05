@@ -3,22 +3,22 @@
 namespace App\Http\Controllers\MarketPlace\Lqs\Concerns;
 
 use App\Models\LqsMarketplaceScore;
-use App\Services\Lqs\BestBuyLqsApiSyncService;
+use App\Services\Lqs\MiraklLqsApiSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\PhpExecutableFinder;
 
-/** Live Best Buy (Mirakl OF21) LQS actions for the /lqs-bestbuy page. */
-trait HandlesBestBuyLqsApi
+/** Live Mirakl (OF21) LQS actions for the Best Buy / Purchasing Power LQS pages. */
+trait HandlesMiraklLqsApi
 {
-    /** Score one SKU's Best Buy offer straight from the live Mirakl offer feed (no AI, no sheet). */
-    public function apiScore(Request $request, BestBuyLqsApiSyncService $sync)
+    /** Score one SKU's offer straight from the live Mirakl offer feed (no AI, no sheet). */
+    public function apiScore(Request $request, MiraklLqsApiSyncService $sync)
     {
         $request->validate(['sku' => 'required|string']);
 
         try {
-            $result = $sync->syncSku($request->input('sku'));
+            $result = $sync->syncSku($request->input('sku'), $this->slug());
 
             return response()->json([
                 'success' => true,
@@ -30,7 +30,7 @@ trait HandlesBestBuyLqsApi
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage() ?: 'Best Buy API scoring failed.',
+                'message' => $e->getMessage() ?: MiraklLqsApiSyncService::label($this->slug()).' API scoring failed.',
             ], 500);
         }
     }
@@ -38,7 +38,7 @@ trait HandlesBestBuyLqsApi
     /** A run counts as active only while it keeps updating (a crashed run must not block the button forever). */
     private function activeSyncStatus(): ?array
     {
-        $status = Cache::get(BestBuyLqsApiSyncService::STATUS_KEY);
+        $status = Cache::get(MiraklLqsApiSyncService::statusKey($this->slug()));
         if (! is_array($status) || empty($status['running'])) {
             return null;
         }
@@ -46,11 +46,11 @@ trait HandlesBestBuyLqsApi
         return (time() - (int) ($status['updated_at'] ?? 0)) <= 300 ? $status : null;
     }
 
-    /** Page button: score every Best Buy offer from the live API in a background process. */
-    public function startApiSync(BestBuyLqsApiSyncService $sync)
+    /** Page button: score every offer from the live API in a background process. */
+    public function startApiSync(MiraklLqsApiSyncService $sync)
     {
-        if (! $sync->isConfigured()) {
-            return response()->json(['success' => false, 'message' => 'Best Buy MCM API is not configured.'], 422);
+        if (! $sync->isConfigured($this->slug())) {
+            return response()->json(['success' => false, 'message' => MiraklLqsApiSyncService::label($this->slug()).' MCM API is not configured.'], 422);
         }
         if ($this->activeSyncStatus()) {
             return response()->json(['success' => true, 'already_running' => true]);
@@ -60,9 +60,9 @@ trait HandlesBestBuyLqsApi
             // Not PHP_BINARY: under php-fpm/Apache that is the web binary, not the CLI.
             $php = (new PhpExecutableFinder())->find(false) ?: 'php';
             $cmd = escapeshellarg($php).' '.escapeshellarg(base_path('artisan'))
-                .' lqs:sync-bestbuy';
+                .' lqs:sync-mirakl --channel='.escapeshellarg($this->slug());
 
-            Cache::put(BestBuyLqsApiSyncService::STATUS_KEY, [
+            Cache::put(MiraklLqsApiSyncService::statusKey($this->slug()), [
                 'running' => true, 'total' => null, 'done' => 0, 'failed' => 0,
                 'started_at' => now()->toDateTimeString(), 'finished_at' => null,
                 'message' => 'Starting…', 'updated_at' => time(),
@@ -76,27 +76,27 @@ trait HandlesBestBuyLqsApi
 
             return response()->json(['success' => true, 'already_running' => false]);
         } catch (\Throwable $e) {
-            Cache::forget(BestBuyLqsApiSyncService::STATUS_KEY);
-            Log::error('Best Buy LQS API sync failed to start: '.$e->getMessage());
+            Cache::forget(MiraklLqsApiSyncService::statusKey($this->slug()));
+            Log::error($this->slug().' LQS API sync failed to start: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => 'Could not start the sync: '.$e->getMessage()], 500);
         }
     }
 
     /** Progress for the page button (polled while a sync runs). */
-    public function apiSyncStatus(BestBuyLqsApiSyncService $sync)
+    public function apiSyncStatus(MiraklLqsApiSyncService $sync)
     {
-        $status = Cache::get(BestBuyLqsApiSyncService::STATUS_KEY);
+        $status = Cache::get(MiraklLqsApiSyncService::statusKey($this->slug()));
         $active = $this->activeSyncStatus();
 
-        $catalog = collect($sync->catalogSkus());
+        $catalog = collect($sync->catalogSkus($this->slug()));
         $skus = $catalog->count();
-        // Only count scores for SKUs this app lists on Best Buy (the feed can hold extra offers).
+        // Only count scores for SKUs this app lists (the feed can hold extra offers).
         $scored = LqsMarketplaceScore::query()
-            ->where('marketplace', BestBuyLqsApiSyncService::MARKETPLACE)
+            ->where('marketplace', $this->slug())
             ->whereNotNull('lqs')->where('lqs', '>', 0)
             ->pluck('sku')
-            ->map(fn ($s) => BestBuyLqsApiSyncService::normalizeSku((string) $s))
+            ->map(fn ($s) => MiraklLqsApiSyncService::normalizeSku((string) $s))
             ->unique()
             ->intersect($catalog)
             ->count();

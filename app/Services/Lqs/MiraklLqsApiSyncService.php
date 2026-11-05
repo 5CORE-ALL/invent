@@ -3,33 +3,60 @@
 namespace App\Services\Lqs;
 
 use App\Models\BestbuyUsaProduct;
+use App\Models\PurchasingPowerProduct;
 use App\Models\LqsMarketplaceScore;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Scores Best Buy listings from the live Mirakl MCM offer feed (OF21) and stores the LQS (0-100) in
- * lqs_marketplace_scores (marketplace = 'bestbuy').
+ * Scores Mirakl-based marketplaces (Best Buy, Purchasing Power) from the live seller offer feed (OF21) and stores
+ * the LQS (0-100) in lqs_marketplace_scores.
  *
- * OF21 returns up to 100 offers per call, so the whole catalog is a handful of requests (no per-SKU calls).
+ * OF21 returns up to 100 offers per call, so a whole catalog is a handful of requests (no per-SKU calls).
  */
-class BestBuyLqsApiSyncService
+class MiraklLqsApiSyncService
 {
-    public const MARKETPLACE = 'bestbuy';
+    /** slug => [services.php config key, metrics table (bullets/images this app pushed), catalog model, label] */
+    private const CHANNELS = [
+        'bestbuy' => ['bestbuy', 'bestbuy_metrics', BestbuyUsaProduct::class, 'Best Buy'],
+        'purchasingpower' => ['purchasingpower', 'purchasing_power_metrics', PurchasingPowerProduct::class, 'Purchasing Power'],
+    ];
 
-    public const LOCK_KEY = 'lqs-sync-bestbuy-lock';
+    /** @return list<string> */
+    public static function slugs(): array
+    {
+        return array_keys(self::CHANNELS);
+    }
 
-    public const STATUS_KEY = 'lqs-sync-bestbuy-status';
+    public static function supports(string $slug): bool
+    {
+        return isset(self::CHANNELS[$slug]);
+    }
+
+    public static function label(string $slug): string
+    {
+        return self::CHANNELS[$slug][3] ?? $slug;
+    }
+
+    public static function lockKey(string $slug): string
+    {
+        return 'lqs-sync-'.$slug.'-lock';
+    }
+
+    public static function statusKey(string $slug): string
+    {
+        return 'lqs-sync-'.$slug.'-status';
+    }
 
     public function __construct(
-        private readonly BestBuyListingQualityScorer $scorer,
+        private readonly MiraklListingQualityScorer $scorer,
     ) {
     }
 
-    public function isConfigured(): bool
+    public function isConfigured(string $slug): bool
     {
-        return $this->apiKey() !== '' && $this->baseUrl() !== '';
+        return $this->apiKey($slug) !== '' && $this->baseUrl($slug) !== '';
     }
 
     public static function normalizeSku(string $sku): string
@@ -42,7 +69,7 @@ class BestBuyLqsApiSyncService
      *
      * @return array<string, array<string, mixed>>
      */
-    public function fetchAllOffers(?callable $onPage = null): array
+    public function fetchAllOffers(string $slug, ?callable $onPage = null): array
     {
         $offers = [];
         $offset = 0;
@@ -50,7 +77,7 @@ class BestBuyLqsApiSyncService
         $total = null;
 
         do {
-            $body = $this->getOffers(['max' => $max, 'offset' => $offset]);
+            $body = $this->getOffers($slug, ['max' => $max, 'offset' => $offset]);
             $page = (array) ($body['offers'] ?? []);
             $total ??= (int) ($body['total_count'] ?? 0);
 
@@ -78,10 +105,10 @@ class BestBuyLqsApiSyncService
     }
 
     /** @return array<string, mixed>|null */
-    public function fetchOffer(string $sku): ?array
+    public function fetchOffer(string $sku, string $slug): ?array
     {
         $want = self::normalizeSku($sku);
-        $body = $this->getOffers(['sku' => trim($sku), 'max' => 10]);
+        $body = $this->getOffers($slug, ['sku' => trim($sku), 'max' => 10]);
         foreach ((array) ($body['offers'] ?? []) as $offer) {
             if (is_array($offer) && self::normalizeSku((string) ($offer['shop_sku'] ?? '')) === $want) {
                 return $offer;
@@ -95,9 +122,9 @@ class BestBuyLqsApiSyncService
      * @param  array<string, mixed>  $offer
      * @return array{score: float, facts: array<string, mixed>, checks: list<array<string, mixed>>, findings: string, suggestions: string}
      */
-    public function assess(array $offer): array
+    public function assess(array $offer, string $slug): array
     {
-        return $this->scorer->score($offer, $this->localContent((string) ($offer['shop_sku'] ?? '')));
+        return $this->scorer->score($offer, $this->localContent((string) ($offer['shop_sku'] ?? ''), $slug), self::label($slug));
     }
 
     /**
@@ -106,9 +133,9 @@ class BestBuyLqsApiSyncService
      * @param  array<string, mixed>  $offer
      * @return array{lqs: float, findings: string, suggestions: string, checks: list<array<string, mixed>>}
      */
-    public function saveOffer(array $offer): array
+    public function saveOffer(array $offer, string $slug): array
     {
-        $result = $this->assess($offer);
+        $result = $this->assess($offer, $slug);
 
         $row = [
             'lqs' => $result['score'],
@@ -123,7 +150,7 @@ class BestBuyLqsApiSyncService
         }
 
         LqsMarketplaceScore::updateOrCreate(
-            ['marketplace' => self::MARKETPLACE, 'sku' => self::normalizeSku((string) $offer['shop_sku'])],
+            ['marketplace' => $slug, 'sku' => self::normalizeSku((string) $offer['shop_sku'])],
             $row
         );
 
@@ -136,29 +163,30 @@ class BestBuyLqsApiSyncService
     }
 
     /** @return array{sku: string, lqs: float, findings: string, suggestions: string, checks: list<array<string, mixed>>} */
-    public function syncSku(string $sku): array
+    public function syncSku(string $sku, string $slug): array
     {
-        $offer = $this->fetchOffer($sku);
+        $offer = $this->fetchOffer($sku, $slug);
         if ($offer === null) {
-            throw new \RuntimeException('SKU '.$sku.' has no offer on Best Buy (OF21).');
+            throw new \RuntimeException('SKU '.$sku.' has no offer on '.self::label($slug).' (OF21).');
         }
 
-        return ['sku' => $sku] + $this->saveOffer($offer);
+        return ['sku' => $sku] + $this->saveOffer($offer, $slug);
     }
 
     /**
-     * Bullets and images this app last pushed to Best Buy (OF21 does not return them).
+     * Bullets and images this app last pushed to the marketplace (OF21 does not return them).
      *
      * @return array{bullets: list<string>, images: list<string>}
      */
-    public function localContent(string $sku): array
+    public function localContent(string $sku, string $slug): array
     {
         $out = ['bullets' => [], 'images' => []];
-        if (trim($sku) === '' || ! Schema::hasTable('bestbuy_metrics')) {
+        $table = self::CHANNELS[$slug][1] ?? null;
+        if (! $table || trim($sku) === '' || ! Schema::hasTable($table)) {
             return $out;
         }
 
-        $row = DB::table('bestbuy_metrics')
+        $row = DB::table($table)
             ->whereRaw('UPPER(TRIM(REPLACE(sku, ?, " "))) = ?', ["\u{00a0}", self::normalizeSku($sku)])
             ->orderByDesc('id')
             ->first();
@@ -182,14 +210,15 @@ class BestBuyLqsApiSyncService
         return $out;
     }
 
-    /** SKUs this app lists on Best Buy (the page's "of N" denominator). */
-    public function catalogSkus(): array
+    /** SKUs this app lists on the marketplace (the page's "of N" denominator). */
+    public function catalogSkus(string $slug): array
     {
-        if (! Schema::hasTable((new BestbuyUsaProduct)->getTable())) {
+        $model = self::CHANNELS[$slug][2] ?? null;
+        if (! $model || ! Schema::hasTable((new $model)->getTable())) {
             return [];
         }
 
-        return BestbuyUsaProduct::query()
+        return $model::query()
             ->whereNotNull('sku')->where('sku', '!=', '')
             ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
             ->pluck('sku')
@@ -200,9 +229,9 @@ class BestBuyLqsApiSyncService
     }
 
     /** @return array<string, mixed> */
-    private function getOffers(array $params): array
+    private function getOffers(string $slug, array $params): array
     {
-        $shopId = config('services.bestbuy.shop_id');
+        $shopId = $this->config($slug, 'shop_id');
         if ($shopId !== null && $shopId !== '') {
             $params['shop_id'] = (int) $shopId;
         }
@@ -210,9 +239,9 @@ class BestBuyLqsApiSyncService
         $last = null;
         for ($attempt = 1; $attempt <= 4; $attempt++) {
             $response = Http::withoutVerifying()
-                ->withHeaders(['Authorization' => $this->apiKey(), 'Accept' => 'application/json'])
+                ->withHeaders(['Authorization' => $this->apiKey($slug), 'Accept' => 'application/json'])
                 ->timeout(60)
-                ->get($this->baseUrl().'/api/offers', $params);
+                ->get($this->baseUrl($slug).'/api/offers', $params);
             $last = $response;
             if ($response->successful()) {
                 return (array) ($response->json() ?? []);
@@ -223,18 +252,23 @@ class BestBuyLqsApiSyncService
             sleep(2 * $attempt);
         }
 
-        throw new \RuntimeException('Best Buy offers (OF21) failed: HTTP '.($last?->status() ?? '?').' '.mb_substr((string) $last?->body(), 0, 200));
+        throw new \RuntimeException(self::label($slug).' offers (OF21) failed: HTTP '.($last?->status() ?? '?').' '.mb_substr((string) $last?->body(), 0, 200));
     }
 
-    private function apiKey(): string
+    private function config(string $slug, string $key): mixed
     {
-        $key = trim((string) config('services.bestbuy.mcm_api_key', ''));
+        return config('services.'.(self::CHANNELS[$slug][0] ?? $slug).'.'.$key);
+    }
+
+    private function apiKey(string $slug): string
+    {
+        $key = trim((string) $this->config($slug, 'mcm_api_key'));
 
         return trim(preg_replace('/^(authorization:\s*|bearer\s+)/i', '', $key) ?? $key);
     }
 
-    private function baseUrl(): string
+    private function baseUrl(string $slug): string
     {
-        return rtrim((string) config('services.bestbuy.mcm_base_url', ''), '/');
+        return rtrim((string) $this->config($slug, 'mcm_base_url'), '/');
     }
 }

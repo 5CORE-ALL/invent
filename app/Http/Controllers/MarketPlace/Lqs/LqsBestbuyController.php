@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\MarketPlace\Lqs;
 
-use App\Http\Controllers\MarketPlace\Lqs\Concerns\HandlesBestBuyLqsApi;
+use App\Http\Controllers\MarketPlace\Lqs\Concerns\HandlesMiraklLqsApi;
 
 class LqsBestbuyController extends LqsMarketplaceBaseController
 {
-    use HandlesBestBuyLqsApi;
+    use HandlesMiraklLqsApi;
 
     protected function slug(): string
     {

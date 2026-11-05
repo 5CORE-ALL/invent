@@ -2,7 +2,7 @@
 
 namespace App\Support\Lqs;
 
-use App\Services\Lqs\BestBuyLqsApiSyncService;
+use App\Services\Lqs\MiraklLqsApiSyncService;
 use App\Services\Lqs\DobaLqsApiSyncService;
 use App\Services\Lqs\EbayLqsApiSyncService;
 use App\Services\Lqs\TemuLqsApiSyncService;
@@ -16,7 +16,7 @@ class LqsScale
     public static function isPercent(string $slug): bool
     {
         return EbayLqsApiSyncService::supports($slug) || TemuLqsApiSyncService::supports($slug)
-            || $slug === BestBuyLqsApiSyncService::MARKETPLACE
+            || MiraklLqsApiSyncService::supports($slug)
             || $slug === DobaLqsApiSyncService::MARKETPLACE;
     }
 

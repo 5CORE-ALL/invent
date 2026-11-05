@@ -3,16 +3,16 @@
 namespace App\Services\Lqs;
 
 /**
- * Rule-based Best Buy Listing Quality Score (0-100).
+ * Rule-based Listing Quality Score (0-100) for Mirakl marketplaces (Best Buy, Purchasing Power).
  *
- * Best Buy runs on Mirakl and has no quality-score API. The live offer feed (OF21) exposes the catalog title,
+ * Mirakl has no quality-score API. The live offer feed (OF21) exposes the catalog title,
  * description, brand, category, price/MSRP, stock, status and lead time, but NOT bullets or images, so those two
- * checks use what this app last pushed (bestbuy_metrics) and are labelled "app records" in the findings.
+ * checks use what this app last pushed (<marketplace>_metrics) and are labelled "app records" in the findings.
  *
  * Weights (total 100):
  *   Title 25 · Description 20 · Bullets 15 · Images 15 · Product identity 10 · Offer health 15
  */
-class BestBuyListingQualityScorer
+class MiraklListingQualityScorer
 {
     private const PROMO_WORDS = [
         'free shipping', 'best price', 'best seller', 'bestseller', 'hot sale', 'on sale', 'wow', 'must see',
@@ -21,10 +21,10 @@ class BestBuyListingQualityScorer
 
     /**
      * @param  array<string, mixed>  $offer  one OF21 offer
-     * @param  array{bullets?: list<string>, images?: list<string>}  $local  content stored by this app (bestbuy_metrics)
+     * @param  array{bullets?: list<string>, images?: list<string>}  $local  content stored by this app (<marketplace>_metrics)
      * @return array{score: float, facts: array<string, mixed>, checks: list<array<string, mixed>>, findings: string, suggestions: string}
      */
-    public function score(array $offer, array $local = []): array
+    public function score(array $offer, array $local = [], string $label = 'the marketplace'): array
     {
         $facts = $this->facts($offer, $local);
         $checks = [];
@@ -48,7 +48,7 @@ class BestBuyListingQualityScorer
                 $notes[] = "Title is only {$len} characters. Aim for 80-150: brand, product type, model, key spec (size, power, color) and what shoppers search for.";
             }
             if ($facts['brand'] !== '' && ! str_contains(mb_strtolower($title), mb_strtolower($facts['brand']))) {
-                $notes[] = 'Title does not start with the brand ('.$facts['brand'].'). Best Buy titles lead with the brand.';
+                $notes[] = 'Title does not start with the brand ('.$facts['brand'].'). '.$label.' titles lead with the brand.';
             } else {
                 $pts += 3;
             }
@@ -93,7 +93,7 @@ class BestBuyListingQualityScorer
         };
         if ($chars < 600) {
             $notes[] = $chars === 0
-                ? 'Product description is empty on Best Buy.'
+                ? 'Product description is empty on '.$label.'.'
                 : "Description is only {$chars} characters. Add specs, dimensions, compatibility and what is in the box (600+).";
         }
         $checks[] = $this->check('Description', $pts, 20, $notes);
@@ -141,7 +141,7 @@ class BestBuyListingQualityScorer
         $pts = 0;
         foreach ([
             ['brand', 'Brand is missing.', 3],
-            ['category', 'No Best Buy category on the offer.', 3],
+            ['category', 'No '.$label.' category on the offer.', 3],
         ] as [$key, $msg, $points]) {
             if ($facts[$key] !== '') {
                 $pts += $points;
@@ -168,7 +168,7 @@ class BestBuyListingQualityScorer
             $pts += 6;
         } else {
             $why = $facts['inactivity_reasons'] !== [] ? ' ('.implode(', ', $facts['inactivity_reasons']).')' : '';
-            $notes[] = 'Offer is inactive on Best Buy'.$why.'. It cannot sell until fixed.';
+            $notes[] = 'Offer is inactive on '.$label.$why.'. It cannot sell until fixed.';
         }
         if ($facts['quantity'] > 0) {
             $pts += 3;
