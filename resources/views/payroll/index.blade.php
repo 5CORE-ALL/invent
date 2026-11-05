@@ -193,18 +193,42 @@
     .payroll-region-tabs .nav-link.active {
         color: #0d6efd; background: transparent; border-bottom-color: #0d6efd;
     }
-    #payrollApp .payroll-country-select {
-        width: 46px; max-width: 46px; height: 28px; padding: 0 14px 0 2px;
-        border: 1px solid #ced4da; border-radius: .35rem; font-size: 1rem;
-        background-color: #fff; cursor: pointer; text-align: center; text-align-last: center;
-        line-height: 26px; appearance: none; -webkit-appearance: none;
-        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
-        background-repeat: no-repeat; background-position: right 3px center; background-size: 9px;
+    #payrollApp .payroll-flag-btn,
+    #payrollApp .payroll-flag {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 28px; height: 26px; padding: 0; border-radius: .35rem;
+        font-size: 16px; line-height: 1; background: #fff;
     }
-    #payrollApp .payroll-country-select:disabled {
-        background-color: #f8f9fa; cursor: default; opacity: .85;
+    #payrollApp .payroll-flag-btn {
+        border: 1px solid #ced4da; cursor: pointer;
     }
-    #payrollApp .payroll-flag { font-size: 1rem; line-height: 1; }
+    #payrollApp .payroll-flag-btn:hover { background: #f8fafc; }
+    .payroll-flag-menu {
+        position: fixed; z-index: 4000; display: flex; gap: .2rem;
+        padding: .25rem; background: #fff; border: 1px solid rgba(0,0,0,.12);
+        border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.12);
+    }
+    .payroll-flag-menu[hidden] { display: none; }
+    .payroll-flag-option {
+        width: 32px; height: 32px; border: 0; border-radius: 6px;
+        background: transparent; font-size: 18px; line-height: 1; cursor: pointer;
+    }
+    .payroll-flag-option:hover, .payroll-flag-option.is-current { background: #eef2ff; }
+    #payrollColMenu { min-width: 180px; max-height: 360px; overflow-y: auto; }
+    #payrollColMenu label {
+        display: flex; align-items: center; gap: .5rem; margin: 0; cursor: pointer;
+        height: auto !important; min-height: 0 !important; font-size: .82rem;
+    }
+    #payrollColMenu input { margin: 0; cursor: pointer; height: auto !important; min-height: 0 !important; }
+    #payrollApp .payroll-top-scroll {
+        overflow-x: auto; overflow-y: hidden; height: 14px;
+    }
+    #payrollApp .payroll-top-scroll:not(.is-overflow) { height: 0; overflow: hidden; }
+    #payrollApp .payroll-top-scroll > div { height: 1px; }
+    #payrollApp .tabulator .tabulator-tableholder {
+        overflow-x: auto; scrollbar-width: none;
+    }
+    #payrollApp .tabulator .tabulator-tableholder::-webkit-scrollbar { height: 0; width: 8px; }
     #payrollApp .payroll-person {
         display: inline-flex; align-items: center; gap: .4rem; max-width: 100%; vertical-align: middle;
     }
@@ -214,26 +238,10 @@
         font-size: 11px; line-height: 1.2; color: #6c757d; max-width: 92px;
         margin: 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .payroll-col-toggles {
-        display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .4rem;
-    }
-    .payroll-col-toggles-label {
-        font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-        color: #6b7280; margin-right: .15rem;
-    }
-    .payroll-col-toggles label {
-        display: inline-flex; align-items: center; gap: .28rem; margin: 0;
-        height: auto !important; min-height: 0 !important;
-        font-size: .75rem; font-weight: 600; color: #374151; cursor: pointer;
-        background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 999px;
-        padding: .12rem .5rem .12rem .35rem; line-height: 1.2; user-select: none;
-    }
-    .payroll-col-toggles label.is-off { opacity: .5; }
-    .payroll-col-toggles input { margin: 0; cursor: pointer; height: auto !important; min-height: 0 !important; }
-    #payrollApp .tabulator .tabulator-cell { padding: 4px 6px !important; }
-    #payrollApp .tabulator .tabulator-header .tabulator-col-content { padding: 6px !important; }
+    #payrollApp .tabulator .tabulator-cell { padding: 3px 4px !important; }
+    #payrollApp .tabulator .tabulator-header .tabulator-col-content { padding: 4px !important; }
+    #payrollApp .tabulator .tabulator-col-title { padding: 0 !important; }
     .payroll-region-tabs { overflow-x: auto; flex-wrap: nowrap; }
-    #payrollApp .tabulator .tabulator-tableholder { overflow-x: auto; }
     @media (max-width: 1199.98px) {
         .payroll-toolbar .input-group { max-width: none; }
         .payroll-month-select,
@@ -303,6 +311,14 @@
                 <span class="input-group-text bg-light border-0 py-0"><i class="ri-search-line"></i></span>
                 <input type="text" id="payrollSearch" class="form-control border-0 bg-light form-control-sm" placeholder="Name">
             </div>
+            <div class="dropdown" id="payrollColDropdown">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                    id="payrollColDropdownBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                    aria-expanded="false" title="Columns" aria-label="Columns">
+                    <i class="ri-eye-line"></i>
+                </button>
+                <ul class="dropdown-menu" id="payrollColMenu" aria-labelledby="payrollColDropdownBtn"></ul>
+            </div>
             <div class="payroll-status-multi" id="payrollStatusMulti" title="Filter by one or more statuses">
                 <button type="button" id="payrollStatusMultiBtn">2 selected</button>
                 <div class="payroll-status-menu" id="payrollStatusMenu">
@@ -335,10 +351,6 @@
             <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="btnSyncFinalHours" title="Copy Final Hour into Hours LM and recalculate salary"><i class="ri-arrow-left-right-line"></i> Sync Final Hour</button>
             @endif
         </div>
-    </div>
-
-    <div class="payroll-card px-2 py-2 mb-2" id="payrollColToggleBar">
-        <div class="payroll-col-toggles" id="payrollColToggles" aria-label="Show or hide columns"></div>
     </div>
 
     <div class="tab-content">
@@ -770,7 +782,7 @@
                 return '<span class="payroll-person">' + avatarHtml(d) + '<span class="payroll-person-name">' + esc(d.name || '—') + '</span></span>';
             } },
             {
-                title: 'Country', field: 'salary_region', hozAlign: 'center', minWidth: 72, headerSort: false,
+                title: 'Country', field: 'salary_region', hozAlign: 'center', minWidth: 64, headerSort: false,
                 formatter: (c) => {
                     const region = normalizeRegion(c.getValue());
                     const label = countryLabel(region);
@@ -778,11 +790,7 @@
                     if (locked) {
                         return '<span class="payroll-flag" title="' + esc(label) + '">' + countryFlag(region) + '</span>';
                     }
-                    return '<select class="payroll-country-select" data-row-id="' + esc(String(c.getRow().getData().id)) + '" title="' + esc(label) + '">'
-                        + '<option value="india"' + (region === 'india' ? ' selected' : '') + '>🇮🇳</option>'
-                        + '<option value="china"' + (region === 'china' ? ' selected' : '') + '>🇨🇳</option>'
-                        + '<option value="usa"' + (region === 'usa' ? ' selected' : '') + '>🇺🇸</option>'
-                        + '</select>';
+                    return '<button type="button" class="payroll-flag-btn" data-row-id="' + esc(String(c.getRow().getData().id)) + '" title="' + esc(label) + '">' + countryFlag(region) + '</button>';
                 }
             },
             { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', minWidth: 78,
@@ -921,9 +929,11 @@
         table.on('tableBuilt', () => {
             state.setBuilt(true);
             applyPayrollColumnVisibility(table);
+            attachPayrollHeaderScroll(table);
             table.setData(state.pending);
             applyPayrollFilters();
         });
+        table.on('renderComplete', () => attachPayrollHeaderScroll(table));
         state.setTable(table);
         return table;
     }
@@ -940,17 +950,19 @@
     }
 
     function renderPayrollColumnToggles() {
-        const box = document.getElementById('payrollColToggles');
-        if (!box) return;
+        const menu = document.getElementById('payrollColMenu');
+        if (!menu) return;
         const hidden = new Set(hiddenPayrollColumns());
-        box.innerHTML = '<span class="payroll-col-toggles-label">Columns</span>'
-            + buildEmployeeColumns().map((c) => {
-                const on = !hidden.has(c.field);
-                return '<label class="' + (on ? '' : 'is-off') + '">'
-                    + '<input type="checkbox" data-field="' + esc(c.field) + '"' + (on ? ' checked' : '') + '>'
-                    + esc(c.title)
-                    + '</label>';
-            }).join('');
+        const items = buildEmployeeColumns().map((c) => {
+            const on = !hidden.has(c.field);
+            return '<li><label class="dropdown-item">'
+                + '<input type="checkbox" data-field="' + esc(c.field) + '"' + (on ? ' checked' : '') + '>'
+                + esc(c.title)
+                + '</label></li>';
+        }).join('');
+        menu.innerHTML = '<li><button type="button" class="dropdown-item" id="payrollColShowAll">Show all</button></li>'
+            + '<li><hr class="dropdown-divider"></li>'
+            + items;
     }
 
     function applyPayrollColumnVisibility(table) {
@@ -962,22 +974,67 @@
                 else table.showColumn(c.field);
             } catch (e) {}
         });
+        attachPayrollHeaderScroll(table);
     }
 
-    document.getElementById('payrollColToggles')?.addEventListener('change', (e) => {
+    function refreshPayrollColumnLayout() {
+        Object.keys(regionTableState).forEach((kind) => {
+            const table = regionTableState[kind].getTable();
+            applyPayrollColumnVisibility(table);
+            if (table) table.redraw(true);
+        });
+    }
+
+    document.getElementById('payrollColMenu')?.addEventListener('change', (e) => {
         const input = e.target.closest('input[data-field]');
         if (!input) return;
         const hidden = new Set(hiddenPayrollColumns());
         if (input.checked) hidden.delete(input.dataset.field);
         else hidden.add(input.dataset.field);
         localStorage.setItem(PAYROLL_COL_STORE, JSON.stringify([...hidden]));
-        input.closest('label')?.classList.toggle('is-off', !input.checked);
-        Object.keys(regionTableState).forEach((kind) => {
-            const table = regionTableState[kind].getTable();
-            applyPayrollColumnVisibility(table);
-            if (table) table.redraw(true);
-        });
+        refreshPayrollColumnLayout();
     });
+    document.getElementById('payrollColMenu')?.addEventListener('click', (e) => {
+        if (!e.target.closest('#payrollColShowAll')) return;
+        e.preventDefault();
+        localStorage.setItem(PAYROLL_COL_STORE, '[]');
+        renderPayrollColumnToggles();
+        refreshPayrollColumnLayout();
+    });
+
+    function attachPayrollHeaderScroll(table) {
+        if (!table || !table.element) return;
+        const root = table.element;
+        const holder = root.querySelector('.tabulator-tableholder');
+        const header = root.querySelector('.tabulator-header');
+        if (!holder || !header) return;
+        let bar = root.querySelector('.payroll-top-scroll');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'payroll-top-scroll';
+            const inner = document.createElement('div');
+            bar.appendChild(inner);
+            header.before(bar);
+            let lock = false;
+            bar.addEventListener('scroll', () => {
+                if (lock) return;
+                lock = true;
+                holder.scrollLeft = bar.scrollLeft;
+                lock = false;
+            });
+            holder.addEventListener('scroll', () => {
+                if (lock) return;
+                lock = true;
+                bar.scrollLeft = holder.scrollLeft;
+                lock = false;
+            });
+        }
+        const inner = bar.firstElementChild;
+        inner.style.width = holder.scrollWidth + 'px';
+        const overflow = holder.scrollWidth > holder.clientWidth + 2;
+        bar.classList.toggle('is-overflow', overflow);
+        if (!overflow) bar.scrollLeft = 0;
+    }
 
     renderPayrollColumnToggles();
 
@@ -1394,26 +1451,61 @@
         placeHistoryPop(tip);
     });
 
-    // Country flag dropdown — save to DB and move row to the matching tab.
-    document.getElementById('payrollApp')?.addEventListener('change', async (e) => {
-        const select = e.target.closest('.payroll-country-select');
-        if (!select) return;
-        const rowId = select.dataset.rowId;
+    // Country flag — click shows flags only, then save and move the row.
+    const flagMenu = document.createElement('div');
+    flagMenu.className = 'payroll-flag-menu';
+    flagMenu.hidden = true;
+    flagMenu.innerHTML = ['india', 'china', 'usa'].map((region) =>
+        '<button type="button" class="payroll-flag-option" data-region="' + region + '" title="' + esc(countryLabel(region)) + '">' + countryFlag(region) + '</button>'
+    ).join('');
+    document.body.appendChild(flagMenu);
+    let flagMenuRowId = null;
+
+    function closeFlagMenu() {
+        flagMenu.hidden = true;
+        flagMenuRowId = null;
+    }
+
+    function openFlagMenu(btn) {
+        flagMenuRowId = btn.dataset.rowId;
+        const region = normalizeRegion(employeeRowsById[flagMenuRowId]?.salary_region);
+        flagMenu.querySelectorAll('.payroll-flag-option').forEach((option) => {
+            option.classList.toggle('is-current', option.dataset.region === region);
+        });
+        flagMenu.hidden = false;
+        const rect = btn.getBoundingClientRect();
+        flagMenu.style.top = (rect.bottom + 4) + 'px';
+        flagMenu.style.left = Math.max(8, rect.left) + 'px';
+    }
+
+    document.getElementById('payrollApp')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.payroll-flag-btn');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (flagMenuRowId === btn.dataset.rowId && !flagMenu.hidden) {
+            closeFlagMenu();
+            return;
+        }
+        openFlagMenu(btn);
+    });
+    flagMenu.addEventListener('click', async (e) => {
+        const option = e.target.closest('.payroll-flag-option');
+        if (!option || !flagMenuRowId) return;
+        const rowId = flagMenuRowId;
         const row = employeeRowsById[rowId];
-        if (!row) return;
-        const previous = normalizeRegion(row.salary_region);
-        const value = normalizeRegion(select.value);
-        if (value === previous) return;
-        select.disabled = true;
+        const value = normalizeRegion(option.dataset.region);
+        closeFlagMenu();
+        if (!row || value === normalizeRegion(row.salary_region)) return;
         try {
             const res = await api(`${base}/employee-salary/${rowId}`, 'PUT', { salary_region: value });
             applyEmployeeRowUpdate(Object.assign({}, row, res.row || {}, { salary_region: value }));
         } catch (err) {
-            select.value = previous;
             alert((err && err.message) ? err.message : 'Failed to save country.');
-        } finally {
-            select.disabled = false;
         }
+    });
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.payroll-flag-btn') && !e.target.closest('.payroll-flag-menu')) closeFlagMenu();
     });
 
     // ---------- Increment tab ----------
@@ -2085,9 +2177,7 @@
         btn.addEventListener('shown.bs.tab', () => {
             const isIncrement = btn.dataset.tabKind === 'increment';
             const toolbar = document.getElementById('salaryStatusSection');
-            const colBar = document.getElementById('payrollColToggleBar');
             if (toolbar) toolbar.style.display = isIncrement ? 'none' : '';
-            if (colBar) colBar.style.display = isIncrement ? 'none' : '';
             if (isIncrement) {
                 loadIncrements();
                 return;
