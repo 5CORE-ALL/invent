@@ -6440,10 +6440,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post("/lqs/{$ebaySlug}/api-sync", [$ebayLqsController, 'startApiSync'])->name("lqs.{$ebaySlug}.api.sync");
         Route::get("/lqs/{$ebaySlug}/api-sync/status", [$ebayLqsController, 'apiSyncStatus'])->name("lqs.{$ebaySlug}.api.sync.status");
     }
-    // Temu: live Temu API scoring (no AI audit modal)
-    Route::post('/lqs/temu/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsTemuController::class, 'apiScore'])->name('lqs.temu.api.score');
-    Route::post('/lqs/temu/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsTemuController::class, 'startApiSync'])->name('lqs.temu.api.sync');
-    Route::get('/lqs/temu/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsTemuController::class, 'apiSyncStatus'])->name('lqs.temu.api.sync.status');
+    // Temu / Temu 2: live Temu API scoring (no AI audit modal; each account uses its own API credentials)
+    foreach (\App\Services\Lqs\TemuLqsApiSyncService::slugs() as $temuSlug) {
+        $temuLqsController = \App\Support\Lqs\LqsMarketplaceCatalog::controllerFqn($temuSlug);
+        Route::post("/lqs/{$temuSlug}/api-score", [$temuLqsController, 'apiScore'])->name("lqs.{$temuSlug}.api.score");
+        Route::post("/lqs/{$temuSlug}/api-sync", [$temuLqsController, 'startApiSync'])->name("lqs.{$temuSlug}.api.sync");
+        Route::get("/lqs/{$temuSlug}/api-sync/status", [$temuLqsController, 'apiSyncStatus'])->name("lqs.{$temuSlug}.api.sync.status");
+    }
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation

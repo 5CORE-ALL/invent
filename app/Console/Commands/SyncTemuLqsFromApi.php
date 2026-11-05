@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Models\LqsMarketplaceScore;
-use App\Models\TemuMetric;
 use App\Services\Lqs\TemuLqsApiSyncService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -12,22 +11,31 @@ use Illuminate\Support\Facades\Schema;
 class SyncTemuLqsFromApi extends Command
 {
     protected $signature = 'lqs:sync-temu
+        {--channel=temu : Temu account to score: temu or temu2}
         {--sku= : Score only the listing behind this SKU}
         {--limit=300 : Max SKUs per run}
         {--stale-hours=24 : Skip SKUs scored within this many hours (0 = rescore all)}
         {--sleep-ms=300 : Pause between Temu calls}
         {--dry-run : Fetch and score but do not save}';
 
-    protected $description = 'Score Temu listings (LQS 0-100) from live Temu API data (title, photos, bullets, description, attributes, shipping).';
+    protected $description = 'Score Temu / Temu 2 listings (LQS 0-100) from live Temu API data (title, photos, bullets, description, attributes, shipping).';
 
     public function handle(TemuLqsApiSyncService $sync): int
     {
-        if (! $sync->isConfigured()) {
-            $this->error('Temu API is not configured.');
+        $slug = strtolower(trim((string) $this->option('channel')));
+        if (! TemuLqsApiSyncService::supports($slug)) {
+            $this->error('Unknown --channel "'.$slug.'". Use: '.implode(', ', TemuLqsApiSyncService::slugs()).'.');
 
             return self::FAILURE;
         }
-        if (! Schema::hasTable('temu_metrics') || ! Schema::hasTable('lqs_marketplace_scores')) {
+        $label = TemuLqsApiSyncService::label($slug);
+
+        if (! $sync->isConfigured($slug)) {
+            $this->error($label.' API is not configured.');
+
+            return self::FAILURE;
+        }
+        if (! Schema::hasTable(TemuLqsApiSyncService::metricsTable($slug)) || ! Schema::hasTable('lqs_marketplace_scores')) {
             $this->error('Required tables are missing.');
 
             return self::FAILURE;
@@ -36,32 +44,33 @@ class SyncTemuLqsFromApi extends Command
         $dry = (bool) $this->option('dry-run');
 
         if ($sku = trim((string) $this->option('sku'))) {
-            return $this->scoreOne($sync, $sku, $dry);
+            return $this->scoreOne($sync, $slug, $sku, $dry);
         }
 
         // One bulk run at a time (page button + nightly schedule share this lock).
-        $lock = Cache::lock(TemuLqsApiSyncService::LOCK_KEY, 7200);
+        $lock = Cache::lock(TemuLqsApiSyncService::lockKey($slug), 7200);
         if (! $lock->get()) {
-            $this->warn('Another Temu LQS sync is already running. Skipping.');
+            $this->warn('Another '.$label.' LQS sync is already running. Skipping.');
 
             return self::SUCCESS;
         }
 
         try {
-            return $this->runBulk($sync, $dry);
+            return $this->runBulk($sync, $slug, $dry);
         } finally {
             $lock->release();
         }
     }
 
-    private function runBulk(TemuLqsApiSyncService $sync, bool $dry): int
+    private function runBulk(TemuLqsApiSyncService $sync, string $slug, bool $dry): int
     {
+        $metricModel = TemuLqsApiSyncService::metricsModel($slug);
         $limit = max(1, (int) $this->option('limit'));
         $staleHours = max(0, (int) $this->option('stale-hours'));
         $sleepUs = max(0, (int) $this->option('sleep-ms')) * 1000;
 
         // Latest temu_metrics row per SKU that has a goods id.
-        $rows = TemuMetric::query()
+        $rows = $metricModel::query()
             ->whereNotNull('goods_id')->where('goods_id', '!=', '')
             ->whereNotNull('sku')->where('sku', '!=', '')
             ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
@@ -72,14 +81,14 @@ class SyncTemuLqsFromApi extends Command
         $recent = [];
         if ($staleHours > 0) {
             $recent = LqsMarketplaceScore::query()
-                ->where('marketplace', TemuLqsApiSyncService::MARKETPLACE)
+                ->where('marketplace', $slug)
                 ->where('updated_at', '>=', now()->subHours($staleHours))
                 ->pluck('sku')
                 ->mapWithKeys(fn ($s) => [strtoupper(trim($s)) => true])
                 ->all();
         }
         $scored = LqsMarketplaceScore::query()
-            ->where('marketplace', TemuLqsApiSyncService::MARKETPLACE)
+            ->where('marketplace', $slug)
             ->whereNotNull('lqs')->where('lqs', '>', 0)
             ->pluck('sku')
             ->mapWithKeys(fn ($s) => [strtoupper(trim($s)) => true])
@@ -96,13 +105,13 @@ class SyncTemuLqsFromApi extends Command
         $byGoods = $todo->groupBy(fn ($r) => (string) $r->goods_id);
 
         $total = $todo->count();
-        $this->info('Scoring '.$total.' of '.$rows->count().' Temu SKU(s) across '.$byGoods->count().' listing(s)'.($dry ? ' (dry run)' : '').'…');
+        $this->info('Scoring '.$total.' of '.$rows->count().' '.TemuLqsApiSyncService::label($slug).' SKU(s) across '.$byGoods->count().' listing(s)'.($dry ? ' (dry run)' : '').'…');
 
         $status = [
             'running' => true, 'total' => $total, 'done' => 0, 'failed' => 0,
             'started_at' => now()->toDateTimeString(), 'finished_at' => null, 'message' => null,
         ];
-        $this->publish($status);
+        $this->publish($slug, $status);
 
         $ok = 0;       // SKUs scored
         $okGoods = 0;
@@ -114,9 +123,9 @@ class SyncTemuLqsFromApi extends Command
             $skus = $group->pluck('sku')->all();
             try {
                 if ($dry) {
-                    $score = $sync->assess((string) $goodsId)['score'];
+                    $score = $sync->assess((string) $goodsId, $slug)['score'];
                 } else {
-                    $score = $sync->syncGoods((string) $goodsId, $skus)['lqs'];
+                    $score = $sync->syncGoods((string) $goodsId, $skus, $slug)['lqs'];
                 }
                 $okGoods++;
                 $ok += count($skus);
@@ -136,7 +145,7 @@ class SyncTemuLqsFromApi extends Command
 
             $status['done'] = $ok;
             $status['failed'] = $failed;
-            $this->publish($status);
+            $this->publish($slug, $status);
 
             if ($aborted) {
                 break;
@@ -148,7 +157,7 @@ class SyncTemuLqsFromApi extends Command
         $status['finished_at'] = now()->toDateTimeString();
         $status['message'] = $status['message']
             ?: "Scored {$ok} SKUs ({$okGoods} listings), failed {$failed}".($okGoods ? sprintf(', average %.1f.', $sum / $okGoods) : '.');
-        $this->publish($status);
+        $this->publish($slug, $status);
 
         $this->info('Done. '.$status['message']);
 
@@ -156,21 +165,21 @@ class SyncTemuLqsFromApi extends Command
     }
 
     /** Progress the page polls (see HandlesTemuLqsApi::apiSyncStatus). */
-    private function publish(array $status): void
+    private function publish(string $slug, array $status): void
     {
         $status['updated_at'] = time();
-        Cache::put(TemuLqsApiSyncService::STATUS_KEY, $status, 86400);
+        Cache::put(TemuLqsApiSyncService::statusKey($slug), $status, 86400);
     }
 
-    private function scoreOne(TemuLqsApiSyncService $sync, string $sku, bool $dry): int
+    private function scoreOne(TemuLqsApiSyncService $sync, string $slug, string $sku, bool $dry): int
     {
         try {
             if ($dry) {
-                $metric = $sync->metricForSku($sku);
-                $res = $sync->assess((string) ($metric->goods_id ?? ''));
+                $metric = $sync->metricForSku($sku, $slug);
+                $res = $sync->assess((string) ($metric->goods_id ?? ''), $slug);
                 $score = $res['score'];
             } else {
-                $res = $sync->syncSku($sku);
+                $res = $sync->syncSku($sku, $slug);
                 $score = $res['lqs'];
             }
             $this->info("{$sku}: {$score}/100");

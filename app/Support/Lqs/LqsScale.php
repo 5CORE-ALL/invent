@@ -3,6 +3,7 @@
 namespace App\Support\Lqs;
 
 use App\Services\Lqs\EbayLqsApiSyncService;
+use App\Services\Lqs\TemuLqsApiSyncService;
 
 /**
  * Which LQS pages store the score as a 0-100 percentage (API-scored) instead of the 0-10 sheet scale.
@@ -12,7 +13,7 @@ class LqsScale
     /** Marketplaces scored 0-100 from the live listing API. */
     public static function isPercent(string $slug): bool
     {
-        return EbayLqsApiSyncService::supports($slug) || $slug === 'temu';
+        return EbayLqsApiSyncService::supports($slug) || TemuLqsApiSyncService::supports($slug);
     }
 
     /** Marketplaces with a bulk "Sync LQS from API" button. */

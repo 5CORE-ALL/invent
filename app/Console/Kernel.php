@@ -286,11 +286,17 @@ class Kernel extends ConsoleKernel
             ->name('lqs-sync-ebay3')
             ->appendOutputTo($log);
         // Temu LQS from the live Temu listing (one call per goods_id, shared by its variations).
-        $schedule->command('lqs:sync-temu --limit=300 --stale-hours=24')
+        $schedule->command('lqs:sync-temu --channel=temu --limit=300 --stale-hours=24')
             ->dailyAt('04:30')
             ->withoutOverlapping(180)
             ->runInBackground()
             ->name('lqs-sync-temu')
+            ->appendOutputTo($log);
+        $schedule->command('lqs:sync-temu --channel=temu2 --limit=300 --stale-hours=24')
+            ->dailyAt('04:45')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->name('lqs-sync-temu2')
             ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
