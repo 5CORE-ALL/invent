@@ -441,6 +441,17 @@ class EbayPortalListingStatusSync
                 ['item_id' => $newId, 'sku' => $sku],
                 $payload
             );
+
+            // The old listing ended and the SKU is live under a new item_id:
+            // drop the stale ended row(s) so only the new listing remains.
+            $staleIds = $group
+                ->filter(fn ($m) => EbayListingEnded::isEnded($m->listing_status ?? null)
+                    && trim((string) $m->item_id) !== $newId)
+                ->pluck('id')
+                ->all();
+            if ($staleIds !== []) {
+                $model::query()->whereIn('id', $staleIds)->delete();
+            }
             $pulled++;
         }
 
