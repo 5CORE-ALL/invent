@@ -83,19 +83,25 @@
         position: sticky;
         top: 0;
         z-index: 2;
-        background: #f8f9fa;
+        background: #727cf5;
+        color: #fff;
         font-weight: 650;
         cursor: pointer;
         user-select: none;
-        box-shadow: inset 0 -1px 0 #dadce0;
+        border-right-color: rgba(255, 255, 255, .25);
+        border-bottom-color: #5f6ae0;
+        box-shadow: inset 0 -1px 0 #5f6ae0;
     }
-    .excel-grid th:hover,
+    .excel-grid th:hover {
+        background: #6570e8;
+        color: #fff;
+    }
     .excel-grid tbody tr:hover td {
         background: #f1f3f4;
     }
     .excel-grid th.is-sorted {
-        background: #e8f0fe;
-        color: #174ea6;
+        background: #4e5bd6;
+        color: #fff;
     }
     .excel-grid td.is-blank {
         color: transparent;
@@ -103,7 +109,7 @@
     .excel-sort-mark {
         display: inline-block;
         width: 1em;
-        color: #80868b;
+        color: rgba(255, 255, 255, .9);
         font-size: 11px;
     }
     .excel-pagebar {
