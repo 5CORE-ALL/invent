@@ -1649,6 +1649,9 @@
                             <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lm-title-fetch-btn">
                                 <i class="fas fa-sync-alt me-1"></i>Fetch from Title Master
                             </button>
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lm-title-fetch-variation-btn" title="Load this parent's title from Variation Master">
+                                <i class="fas fa-layer-group me-1"></i>Fetch from Variation Master
+                            </button>
                             <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-apply-btn" data-apply="title">
                                 <i class="fas fa-file-import me-1"></i>Apply Selected to Product Info
                             </button>
@@ -1702,6 +1705,12 @@
                             <button type="button" class="btn-lc btn-lc-primary btn-sm lm-desc-fetch-btn" data-kind="aplus">
                                 <i class="fas fa-layer-group me-1"></i>Fetch A+
                             </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-var-desc-fetch-btn" data-kind="text" title="Load this parent's text description from Variation Master">
+                                <i class="fas fa-align-left me-1"></i>Fetch Description from Variation Master
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-var-desc-fetch-btn" data-kind="aplus" title="Load this parent's A+ content from Variation Master">
+                                <i class="fas fa-layer-group me-1"></i>Fetch A+ from Variation Master
+                            </button>
                             <a class="btn-lc btn-lc-ghost btn-sm" href="{{ route('product.description') }}" target="_blank" rel="noopener">Open Description Master</a>
                             <span class="text-muted small lm-master-status" data-for="description"></span>
                         </div>
@@ -1717,7 +1726,7 @@
                         </div>
                         <section class="lm-masters-block mb-3">
                             <div class="lm-masters-head">
-                                <span>Text Description <span class="lm-desc-kind-tag">Description Master</span></span>
+                                <span>Text Description <span class="lm-desc-kind-tag" id="lm-desc-text-source">Description Master</span></span>
                                 <div class="lm-masters-head-actions">
                                     <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-apply-btn" data-apply="description_text" title="Use this as the Product Info description (what gets pushed)">
                                         <i class="fas fa-file-import me-1"></i>Apply to Product Info
@@ -1730,7 +1739,7 @@
                         </section>
                         <section class="lm-masters-block">
                             <div class="lm-masters-head">
-                                <span>A+ Content <span class="lm-desc-kind-tag">stored from Main Store</span></span>
+                                <span>A+ Content <span class="lm-desc-kind-tag" id="lm-desc-aplus-source">stored from Main Store</span></span>
                                 <div class="lm-masters-head-actions">
                                     <span class="text-muted small" id="lm-aplus-meta"></span>
                                     <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-apply-btn" data-apply="description_aplus" title="Use the A+ content as the Product Info description (what gets pushed)">
@@ -1746,6 +1755,9 @@
                         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
                             <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lm-img-fetch-btn">
                                 <i class="fas fa-sync-alt me-1"></i>Fetch from Image Master
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lm-img-fetch-variation-btn" title="Load this parent's photos from Variation Master">
+                                <i class="fas fa-layer-group me-1"></i>Fetch from Variation Master
                             </button>
                             <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lm-img-edit-btn">
                                 <i class="fas fa-pen me-1"></i>Edit Images
@@ -2207,9 +2219,14 @@
 
     function masterTitleRows() {
         const pack = (currentProduct && currentProduct.master_content) || {};
-        return (Array.isArray(pack.titles) ? pack.titles : []).map(function (t) {
+        const rows = (Array.isArray(pack.titles) ? pack.titles : []).map(function (t) {
             return { key: String(t.key || ''), label: String(t.label || t.key || ''), value: String(t.value || '').trim() };
         });
+        // Title fetched from Variation Master (shared by the whole parent). Listed last so it never becomes the
+        // default pick; "Fetch from Variation Master" selects it on purpose.
+        const variationTitle = String(pack.variation_title || '').trim();
+        if (variationTitle) rows.push({ key: 'variation_title', label: 'Variation Master', value: variationTitle });
+        return rows;
     }
 
     function resolveSelectedTitleKey(rows) {
@@ -2268,13 +2285,17 @@
         $('.lm-master-status[data-for="title"]').text(data.has_title === false ? (data.message || '') : '');
         $('.lm-master-status[data-for="bullets"]').text(data.has_bullets === false && data.source === 'bullets' ? (data.message || '') : '');
         $('.lm-master-status[data-for="description"]').text('');
-        const titleRows = titles.length ? titles : [
+        const titleRows = (titles.length ? titles : [
             { key: 'title150', label: 'Title 170', value: '', chars: 0 },
             { key: 'title100', label: 'Title 100', value: '', chars: 0 },
             { key: 'title80', label: 'Title 80', value: '', chars: 0 },
             { key: 'title75', label: 'Title 75', value: '', chars: 0 },
             { key: 'title60', label: 'Title 60', value: '', chars: 0 }
-        ];
+        ]).slice();
+        const variationTitle = String(data.variation_title || '').trim();
+        if (variationTitle) {
+            titleRows.push({ key: 'variation_title', label: 'Variation Master', value: variationTitle, chars: variationTitle.length });
+        }
         const pickedKey = resolveSelectedTitleKey(titleRows.map(function (t) {
             return { key: String(t.key || ''), value: String(t.value || '').trim() };
         }));
@@ -2288,7 +2309,7 @@
                 <div class="pick"><input type="radio" name="lm-title-pick" class="lm-title-pick" value="${escapeHtml(key)}" ${on ? 'checked' : ''} ${value ? '' : 'disabled'} title="${value ? 'Send this title to marketplaces' : 'Empty — add a title first'}"></div>
                 <div class="k">${escapeHtml(t.label || key)}</div>
                 <div class="v">${value ? escapeHtml(value) : '<span class="text-muted">—</span>'}</div>
-                ${masterRowEditBtn(key)}
+                ${key === 'variation_title' ? '<span class="lm-desc-kind-tag" title="Edit this title on Variation Master">read-only</span>' : masterRowEditBtn(key)}
                 ${charCountHtml(chars)}
             </div>`;
         }).join(''));
@@ -2310,6 +2331,8 @@
         }).join('')}</tbody></table>`);
         const $descHeadBtn = $('.lm-prod-pane[data-pane="description"] .lm-row-edit-btn[data-field="description_html"]');
         $descHeadBtn.removeClass('d-none').prop('disabled', false);
+        $('#lm-desc-text-source').text(data.text_source === 'variation' ? 'Variation Master' : 'Description Master');
+        $('#lm-desc-aplus-source').text(data.aplus_source === 'variation' ? 'Variation Master' : 'stored from Main Store');
         setCharCount($('#lm-desc-char-count'), description.length);
         $('#lm-masters-description').removeClass('lm-desc-edit-wrap').html(description
             ? '<div style="white-space:pre-wrap;word-break:break-word">' + escapeHtml(description) + '</div>'
@@ -4864,8 +4887,8 @@
             $.getJSON("{{ url('/listing-manager/product/from-master') }}", params)
                 .done(function (res) {
                     const patch = kind === 'aplus'
-                        ? { description_aplus: String(res.description || ''), aplus_images: res.images || [], aplus_fetched_at: res.fetched_at || null, aplus_error: res.error || null, has_aplus: !!res.description }
-                        : { description_text: String(res.description || ''), has_description_text: !!res.description };
+                        ? { description_aplus: String(res.description || ''), aplus_images: res.images || [], aplus_fetched_at: res.fetched_at || null, aplus_error: res.error || null, has_aplus: !!res.description, aplus_source: 'master' }
+                        : { description_text: String(res.description || ''), has_description_text: !!res.description, text_source: 'master' };
                     mergeMasterContent(patch);
                     toast(res.message || 'Fetched.', res.success ? 'success' : 'error');
                 })
@@ -4877,6 +4900,54 @@
                 .always(function () {
                     $btn.data('loading', false).prop('disabled', false).html(idleHtml);
                 });
+        });
+        // Fetch from Variation Master: the parent's shared title / description / A+ / photos. Nothing is saved
+        // here; it fills the tab so it can be applied to Product Info (or saved with Save Images).
+        function fetchFromVariationMaster($btn, source, onDone) {
+            const sku = currentProductSku;
+            if (!sku) { toast('Open a product first.', 'error'); return; }
+            if ($btn.data('loading')) return;
+            const idleHtml = $btn.html();
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Fetching…');
+            $.getJSON("{{ url('/listing-manager/product/from-master') }}", { sku, source })
+                .done(function (res) { onDone(res || {}); })
+                .fail(function (xhr) {
+                    toast((xhr.responseJSON && xhr.responseJSON.message) || 'Nothing found in Variation Master.', 'error');
+                })
+                .always(function () {
+                    $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                });
+        }
+        $(document).on('click', '#lm-title-fetch-variation-btn', function () {
+            fetchFromVariationMaster($(this), 'variation_title', function (res) {
+                const title = String(res.title || '').trim();
+                if (!title) { toast(res.message || 'No title in Variation Master.', 'error'); return; }
+                mergeMasterContent({ variation_title: title });
+                setSelectedTitleKey('variation_title');
+                toast('Loaded the Variation Master title (' + title.length + ' chars) and selected it. Click Apply Selected to Product Info to use it.', 'success');
+            });
+        });
+        $(document).on('click', '.lm-var-desc-fetch-btn', function () {
+            const isAplus = String($(this).attr('data-kind') || 'text') === 'aplus';
+            fetchFromVariationMaster($(this), isAplus ? 'variation_aplus' : 'variation_description', function (res) {
+                const body = String(res.description || '').trim();
+                if (!body) { toast(res.message || 'Nothing found in Variation Master.', 'error'); return; }
+                mergeMasterContent(isAplus
+                    ? { description_aplus: body, aplus_images: [], aplus_fetched_at: null, aplus_error: null, has_aplus: true, aplus_source: 'variation' }
+                    : { description_text: body, has_description_text: true, text_source: 'variation' });
+                toast((isAplus ? 'A+ content' : 'Description') + ' loaded from Variation Master. Click Apply to Product Info to use it.', 'success');
+            });
+        });
+        $('#lm-img-fetch-variation-btn').on('click', function () {
+            if (!currentProduct) { toast('Open a product first.', 'error'); return; }
+            fetchFromVariationMaster($(this), 'variation_images', function (res) {
+                const images = (Array.isArray(res.images) ? res.images : []).map(u => String(u || '').trim()).filter(Boolean).slice(0, 20);
+                if (!images.length) { toast(res.message || 'No images in Variation Master.', 'error'); return; }
+                if (!imagesEditMode) setImagesEditMode(true);
+                currentImages = images;
+                drawProductImages();
+                toast('Fetched ' + images.length + ' image(s) from Variation Master. Review, then click Save Images to store (Cancel keeps the previous gallery).', 'success');
+            });
         });
         $('#lm-prod-update-btn').on('click', function () {
             if (!currentProductSku) return;

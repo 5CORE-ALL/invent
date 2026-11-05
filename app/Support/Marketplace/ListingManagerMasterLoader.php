@@ -55,6 +55,7 @@ class ListingManagerMasterLoader
             'description_text', 'text_description' => self::descriptionText($sku),
             'description_aplus', 'aplus', 'aplus_description' => self::descriptionAplus($sku),
             'images', 'image_master' => self::images($sku),
+            'variation_title', 'variation_description', 'variation_aplus', 'variation_images' => self::variationMaster($sku, $source),
             'videos', 'video_master' => self::videos($sku),
             'bullets', 'bullet_points' => self::bullets($sku),
             'content', 'title_bullet_description', 'masters' => self::contentPack($sku),
@@ -454,6 +455,52 @@ class ListingManagerMasterLoader
             'source' => 'images',
             'images' => $images,
         ];
+    }
+
+    /**
+     * One piece of the parent's Variation Master content (title, text description, A+ HTML or photos).
+     * A parent's content is shared by every child, so the child SKU is mapped to its parent first.
+     *
+     * @return array<string, mixed>
+     */
+    private static function variationMaster(string $sku, string $source): array
+    {
+        $product = \App\Models\ProductMaster::query()->where('sku', $sku)->first()
+            ?: \App\Models\ProductMaster::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+        $parent = $product
+            ? VariationListingContent::parentKeyFor($product)
+            : ListingManagerFamily::normalizeParentKey(ListingManagerFamily::parentKey($sku));
+        $pack = VariationListingContent::forParent($parent);
+        $base = ['source' => $source, 'parent' => $parent];
+        $where = $parent !== '' ? ' for parent '.$parent : '';
+
+        if ($source === 'variation_title') {
+            $title = trim((string) $pack['title']);
+
+            return $base + ($title !== ''
+                ? ['success' => true, 'message' => 'Loaded the title from Variation Master'.$where.'.', 'title' => $title]
+                : ['success' => false, 'message' => 'No title in Variation Master'.$where.'. Add it on /variation-master.', 'title' => '']);
+        }
+        if ($source === 'variation_description') {
+            $text = trim((string) $pack['description']);
+
+            return $base + ($text !== ''
+                ? ['success' => true, 'message' => 'Loaded the description from Variation Master'.$where.'.', 'description' => $text]
+                : ['success' => false, 'message' => 'No description in Variation Master'.$where.'. Add it on /variation-master.', 'description' => '']);
+        }
+        if ($source === 'variation_aplus') {
+            $html = trim((string) $pack['aplus']);
+
+            return $base + ($html !== ''
+                ? ['success' => true, 'message' => 'Loaded the A+ content from Variation Master'.$where.'.', 'description' => $html]
+                : ['success' => false, 'message' => 'No A+ content in Variation Master'.$where.'. Add it on /variation-master.', 'description' => '']);
+        }
+
+        $images = array_values($pack['images']);
+
+        return $base + ($images !== []
+            ? ['success' => true, 'message' => 'Loaded '.count($images).' image(s) from Variation Master'.$where.'.', 'images' => $images]
+            : ['success' => false, 'message' => 'No images in Variation Master'.$where.'. Upload parent images on /variation-master.', 'images' => []]);
     }
 
     /**
