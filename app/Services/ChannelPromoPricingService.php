@@ -172,12 +172,14 @@ class ChannelPromoPricingService
         $rows = $query->get();
 
         $out = [];
+        $liveCoupons = false; // false = not loaded yet, null = eBay unreadable, array = live promotion ids
         foreach ($rows as $row) {
             $key = strtoupper(trim((string) $row->sku));
             if ($key === '' || ! isset($norm[$key])) {
                 continue;
             }
             $val = $this->decodeValue($row->value);
+            $val = $this->withoutEndedZeroSoldCoupon($channel, $val, $liveCoupons);
             $mapped = $this->mapFromValue($val);
             if ($mapped !== null) {
                 $out[$key] = $mapped;
@@ -185,6 +187,45 @@ class ChannelPromoPricingService
         }
 
         return $out;
+    }
+
+    /**
+     * A SKU's saved EL30 Dil % coupon only counts as applied while its eBay promotion is live.
+     * eBay coupons end (30-day run, or ended by hand). Without this check the grid keeps the saved
+     * code, sees "already applied", and never pushes the SKU onto a new coupon.
+     * When eBay cannot be read the saved value is kept.
+     *
+     * @param  array<string, mixed>  $val
+     * @param  array<string, true>|false|null  $live  loaded on first use, shared across rows
+     * @return array<string, mixed>
+     */
+    private function withoutEndedZeroSoldCoupon(string $channel, array $val, array|false|null &$live): array
+    {
+        if (! in_array($channel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true)) {
+            return $val;
+        }
+        $promoId = trim((string) ($val['PEF_ZERO_SOLD_COUPON_PROMO_ID'] ?? ''));
+        if ($promoId === '') {
+            return $val;
+        }
+        if ($live === false) {
+            $service = \App\Services\Ebay1CouponService::for($channel === 'ebay2op' ? 'ebay2' : $channel);
+            $live = $service->liveCouponPromotionIds();
+        }
+        if ($live === null) {
+            return $val;
+        }
+        $id = strtok($promoId, '@');
+        if ($id !== false && isset($live[$id])) {
+            return $val;
+        }
+        unset(
+            $val['PEF_ZERO_SOLD_COUPON_CODE'],
+            $val['PEF_ZERO_SOLD_COUPON_PCT'],
+            $val['PEF_ZERO_SOLD_COUPON_PROMO_ID']
+        );
+
+        return $val;
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Models\EbayThreeDataView;
 use App\Models\EbayTwoDataView;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -290,6 +291,8 @@ class Ebay1CouponService
             }
         }
 
+        $this->forgetLiveCouponCache();
+
         return [
             'success' => $failed === 0,
             'ended' => $ended,
@@ -522,6 +525,7 @@ class Ebay1CouponService
         }
 
         $failed = count(array_filter($results, static fn ($r) => empty($r['success'])));
+        $this->forgetLiveCouponCache();
 
         return [
             'success' => $failed === 0,
@@ -1483,6 +1487,87 @@ class Ebay1CouponService
         return $ids;
     }
 
+    /**
+     * Promotion ids of coded coupons that are still live on this eBay account
+     * (RUNNING / SCHEDULED / PAUSED). Ended and expired coupons are left out.
+     * Returns null when eBay could not be read, so callers never treat a failed call as "no coupons".
+     * Cached for 5 minutes; the cache is cleared whenever this service changes a coupon.
+     *
+     * @return array<string, true>|null keyed by the numeric promotion id
+     */
+    public function liveCouponPromotionIds(): ?array
+    {
+        $key = $this->liveCouponCacheKey();
+        $cached = Cache::get($key);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        try {
+            $token = $this->ebay->generateBearerToken();
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if (! is_string($token) || $token === '') {
+            return null;
+        }
+
+        $ids = [];
+        $offset = 0;
+        $limit = 50;
+        for ($page = 0; $page < 40; $page++) {
+            try {
+                $resp = $this->http($token)->get('https://api.ebay.com/sell/marketing/v1/promotion', [
+                    'marketplace_id' => self::MARKETPLACE,
+                    'promotion_type' => 'CODED_COUPON',
+                    'limit' => $limit,
+                    'offset' => $offset,
+                ]);
+            } catch (\Throwable $e) {
+                return null;
+            }
+            if (! $resp->successful()) {
+                return null;
+            }
+            $json = $resp->json();
+            $promos = is_array($json) ? ($json['promotions'] ?? []) : [];
+            if (! is_array($promos) || $promos === []) {
+                break;
+            }
+            foreach ($promos as $p) {
+                if (! is_array($p)) {
+                    continue;
+                }
+                $status = strtoupper((string) ($p['promotionStatus'] ?? ''));
+                if (! in_array($status, ['RUNNING', 'SCHEDULED', 'PAUSED'], true)) {
+                    continue;
+                }
+                $id = strtok(trim((string) ($p['promotionId'] ?? '')), '@');
+                if ($id !== false && $id !== '') {
+                    $ids[$id] = true;
+                }
+            }
+            $offset += $limit;
+            if ($offset >= (int) ($json['total'] ?? 0)) {
+                break;
+            }
+        }
+
+        Cache::put($key, $ids, 300);
+
+        return $ids;
+    }
+
+    public function forgetLiveCouponCache(): void
+    {
+        Cache::forget($this->liveCouponCacheKey());
+    }
+
+    private function liveCouponCacheKey(): string
+    {
+        return 'ebay_live_coupon_ids:'.($this->isEbay3() ? 'ebay3' : ($this->isEbay2() ? 'ebay2' : 'ebay1'));
+    }
+
     private function couponApiId(string $promoId): string
     {
         $id = trim($promoId);
@@ -1831,6 +1916,11 @@ class Ebay1CouponService
         foreach ($ids as $promoId) {
             $detail = $this->getItemPromotion($token, $promoId);
             if ($detail === null || ! $this->isZeroSoldCouponCode($this->promotionCouponCode($detail))) {
+                continue;
+            }
+            // An ended coupon cannot be edited ("You cannot update a promotion that has ended"),
+            // and the SKU is no longer discounted by it. Treat it as already removed.
+            if (in_array(strtoupper((string) ($detail['promotionStatus'] ?? '')), ['ENDED', 'EXPIRED'], true)) {
                 continue;
             }
             if (! $this->couponContainsSku($detail, $sku, $itemId)) {
