@@ -5,6 +5,7 @@
         const MAX_BYTES = 500 * 1024 * 1024;
         const EXT = ['mp4', 'mov', 'webm', 'm4v', 'mkv'];
         const FIELD = { nine: 'nine_ratio_link', sixteen: 'sixteen_ratio_link' };
+        const SAVE = { nine: '/nine-ration-video/save', sixteen: '/sixteen-ration-video/save' };
         const LABEL = { nine: '9:16', sixteen: '16:9' };
         let busy = false;
         let toastTimer = null;
@@ -139,7 +140,32 @@
             const skuAttr = esc(sku);
             const up = '<button type="button" class="ration-act ration-up-btn" data-ratio="' + ratio + '" data-sku="' + skuAttr + '" title="Upload a ' + LABEL[ratio] + ' video file"><i class="fas fa-upload"></i> Upload</button>';
             if (!hasValue) return up;
-            return up + '<button type="button" class="ration-act ration-dl-btn" data-ratio="' + ratio + '" data-sku="' + skuAttr + '" title="Download this video"><i class="fas fa-download"></i> Download</button>';
+            return up
+                + '<button type="button" class="ration-act ration-dl-btn" data-ratio="' + ratio + '" data-sku="' + skuAttr + '" title="Download this video"><i class="fas fa-download"></i> Download</button>'
+                + '<button type="button" class="delete-video-link" data-ratio="' + ratio + '" data-sku="' + skuAttr + '" title="Delete link">Delete</button>';
+        }
+
+        function deleteLink(ratio, sku, table, onChanged) {
+            if (!confirm('Delete the ' + LABEL[ratio] + ' video link for ' + sku + '?')) return;
+            const row = rowFor(table, sku);
+            const field = FIELD[ratio];
+            if (row && field) {
+                const patch = {};
+                patch[field] = '';
+                row.update(patch).then(function () {
+                    row.reformat();
+                    if (onChanged) onChanged();
+                });
+            }
+            fetch(SAVE[ratio], {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': token() },
+                body: JSON.stringify({ sku: sku, value: (function () { const v = {}; v[field] = ''; return v; })() }),
+            }).then(readJson).then(function (body) {
+                if (!body.success) toast(body.message || 'Could not delete that video link.', 'err');
+            }).catch(function () {
+                toast('Could not delete that video link.', 'err');
+            });
         }
 
         function downloadCurrent(ratio, sku) {
@@ -169,6 +195,10 @@
                 downloadCurrent(ratio, sku);
                 return;
             }
+            if (btn.classList.contains('delete-video-link')) {
+                deleteLink(ratio, sku, table, onChanged);
+                return;
+            }
             pickAndUpload(ratio, sku, function (res) {
                 const row = rowFor(table, sku);
                 if (!row) return;
@@ -187,7 +217,7 @@
             el.dataset.rationBound = '1';
             // Capture phase, and it stops the click, so the table cannot turn the cell into an editor first.
             el.addEventListener('click', function (e) {
-                const btn = e.target.closest('.ration-up-btn, .ration-dl-btn');
+                const btn = e.target.closest('.ration-up-btn, .ration-dl-btn, .delete-video-link');
                 if (!btn) return;
                 e.preventDefault();
                 e.stopPropagation();
