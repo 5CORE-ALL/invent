@@ -789,18 +789,18 @@
                     if (parent) parentSet.add(parent);
                     if (!item.sku || isParentSku(item.sku)) return;
                     skuCount++;
-                    if ((parseFloat(item.INV) || 0) === 0) inv0Total++;
-                    if (item.listed === 'Listed') {
-                        listedTotal++;
-                    } else {
-                        if ((parseFloat(item.INV) || 0) === 0) {
-                            pendingInv0Total++;
-                        } else {
-                            pendingTotal++;
-                        }
+                    const inv = parseFloat(item.INV) || 0;
+                    const isNr = item.nr_req === 'NR' || item.nr_req === 'NRL';
+                    const parked = item.listed === 'Created' || item.listed === 'Incomplete' || !!item.page_created;
+                    if (inv === 0) inv0Total++;
+                    if (inv > 0 && !isNr && !parked) {
+                        if (item.listed === 'Listed') listedTotal++;
+                        else pendingTotal++;
+                    } else if (inv === 0 && !isNr && !parked && item.listed !== 'Listed') {
+                        pendingInv0Total++;
                     }
                     const hasLink = !!String(item.buyer_link || item.eBay_item_id || '').trim();
-                    if (!hasLink) withoutLinkTotal++;
+                    if (inv > 0 && !isNr && !hasLink) withoutLinkTotal++;
                 });
                 $('#parent-total').text(parentSet.size.toLocaleString());
                 $('#sku-total').text(skuCount.toLocaleString());

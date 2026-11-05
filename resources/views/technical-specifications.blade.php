@@ -1165,7 +1165,7 @@
             }
 
             // Fixed values for every row. MPN always equals the row's own SKU (parent rows are not listed, so they keep what is saved).
-            const AUTOFILL_FIXED = { brand: '5 Core', condition: 'New', countryoforigin: 'China' };
+            const AUTOFILL_FIXED = { brand: '5 Core', manufacturer: '5 Core', condition: 'New', countryoforigin: 'China' };
 
             function specNameKey(name) {
                 return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');

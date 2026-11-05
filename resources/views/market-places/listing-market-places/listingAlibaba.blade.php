@@ -696,7 +696,8 @@
                 const source = (allListingData && allListingData.length)
                     ? allListingData
                     : (alibabaListingTable.getData() || []);
-                const rows = alibabaListingTable.getData('active') || [];
+                const rows = (allListingData && allListingData.length) ? allListingData : (alibabaListingTable.getData() || []);
+                const visibleRows = alibabaListingTable.getData('active') || [];
                 const metrics = {
                     invTotal: 0,
                     reqTotal: 0,
@@ -707,7 +708,8 @@
                 };
 
                 source.forEach(item => {
-                    if ((($('#inv-filter').val() !== 'inv-only') || parseFloat(item.INV) > 0) && !isParentSku(item.sku)) {
+                    if (!(item.is_parent || isParentSku(item.sku)) && parseFloat(item.INV) > 0) {
+                        const parked = item.listed === 'Created' || item.listed === 'Incomplete' || !!item.page_created;
                         metrics.invTotal += parseFloat(item.INV) || 0;
 
                         if (item.nr_req === 'REQ') {
@@ -720,11 +722,10 @@
                         if (item.nr_req === 'NR') {
                             metrics.nrlTotal++;
                         }
-                        if (item.nr_req !== 'NR') {
+                        if (!parked && item.nr_req !== 'NR') {
                             if (item.listed === 'Listed') {
                                 metrics.listedTotal++;
-                            }
-                            if (item.listed === 'Pending' || !item.listed) {
+                            } else if (item.listed === 'Pending' || !item.listed) {
                                 metrics.pendingTotal++;
                             }
                         }
@@ -736,7 +737,7 @@
                 $('#without-link-total').text(metrics.withoutLinkTotal);
                 $('#listed-total').text(metrics.listedTotal);
                 $('#pending-total').text(metrics.pendingTotal);
-                $('#rows-total').text(rows.length.toLocaleString());
+                $('#rows-total').text(visibleRows.length.toLocaleString());
             } catch (error) {
                 console.error('Error in calculateTotals:', error);
                 resetMetricsToZero();
@@ -775,7 +776,11 @@
                 if (linkFilter === 'with-link' && !hasItemLink) return false;
                 if (linkFilter === 'without-link' && hasItemLink) return false;
 
-                if (listedFilter !== 'all' && data.listed !== listedFilter) return false;
+                if (listedFilter === 'Pending') {
+                    if (data.is_parent || isParentSku(data.sku) || !(parseFloat(data.INV) > 0)) return false;
+                    if (data.nr_req === 'NR' || data.listed === 'Created' || data.listed === 'Incomplete' || data.page_created) return false;
+                    if (data.listed && data.listed !== 'Pending') return false;
+                } else if (listedFilter !== 'all' && data.listed !== listedFilter) return false;
 
                 return true;
             });
