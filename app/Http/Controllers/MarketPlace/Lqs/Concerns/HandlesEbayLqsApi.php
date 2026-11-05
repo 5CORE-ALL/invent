@@ -127,14 +127,18 @@ trait HandlesEbayLqsApi
         $active = $this->activeSyncStatus();
 
         $metricModel = EbayLqsApiSyncService::metricsModel($this->slug());
-        $skus = $metricModel::query()
+        $norm = fn ($s) => strtoupper(trim(str_replace("\u{00a0}", ' ', (string) $s)));
+        $metricSkus = $metricModel::query()
             ->whereNotNull('item_id')->where('item_id', '!=', '')
             ->whereNotNull('sku')->where('sku', '!=', '')
-            ->distinct()->count('sku');
+            ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
+            ->pluck('sku')->map($norm)->unique()->values();
+        $skus = $metricSkus->count();
+        // Only count scores for SKUs that are in the metrics table (sheet uploads can hold extra SKUs).
         $scored = LqsMarketplaceScore::query()
             ->where('marketplace', $this->slug())
             ->whereNotNull('lqs')->where('lqs', '>', 0)
-            ->count();
+            ->pluck('sku')->map($norm)->unique()->intersect($metricSkus)->count();
 
         return response()->json([
             'success' => true,

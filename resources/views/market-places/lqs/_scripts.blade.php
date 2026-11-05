@@ -1108,6 +1108,7 @@
                 let lqsSyncTimer = null;
                 let lqsSyncWasRunning = false;
                 const lqsSyncLabel = 'Sync LQS from API';
+                const lqsChannelLabel = @json($lqsPage['label'] ?? 'Marketplace');
 
                 function lqsSyncPoll() {
                     clearTimeout(lqsSyncTimer);
@@ -1117,18 +1118,18 @@
                             lqsSyncWasRunning = true;
                             $btn.prop('disabled', true);
                             $('#lqs-api-sync-label').text('Syncing ' + (st.done || 0) + '/' + (st.total || '…') + '…');
-                            $('#lqs-api-sync-progress').text('Scored ' + st.scored + ' of ' + st.skus_with_item_id + ' listings');
+                            $('#lqs-api-sync-progress').text('Scored ' + st.scored + ' of ' + st.skus_with_item_id + ' SKUs');
                             lqsSyncTimer = setTimeout(lqsSyncPoll, 4000);
                             return;
                         }
                         $btn.prop('disabled', false);
                         $('#lqs-api-sync-label').text(lqsSyncLabel);
-                        $('#lqs-api-sync-progress').text('Scored ' + st.scored + ' of ' + st.skus_with_item_id + ' listings');
+                        $('#lqs-api-sync-progress').text('Scored ' + st.scored + ' of ' + st.skus_with_item_id + ' SKUs');
                         if (lqsSyncWasRunning) {
                             lqsSyncWasRunning = false;
                             amzTable.setData('{{ $lqsPage['routes']['data'] }}');
                             if (window.lqsTouchLastUpdated) window.lqsTouchLastUpdated();
-                            amzNotify(st.message || 'eBay LQS sync finished.', st.failed && !st.done ? 'warning' : 'success');
+                            amzNotify(st.message || (lqsChannelLabel + ' LQS sync finished.'), st.failed && !st.done ? 'warning' : 'success');
                         }
                     }).fail(function() {
                         lqsSyncTimer = setTimeout(lqsSyncPoll, 8000);
@@ -1150,7 +1151,7 @@
                                 return;
                             }
                             lqsSyncWasRunning = true;
-                            amzNotify(res.already_running ? 'A sync is already running.' : 'eBay LQS sync started. Scores appear as it finishes.', 'success');
+                            amzNotify(res.already_running ? 'A sync is already running.' : (lqsChannelLabel + ' LQS sync started. Scores appear as it finishes.'), 'success');
                             lqsSyncTimer = setTimeout(lqsSyncPoll, 1500);
                         },
                         error: function(xhr) {
