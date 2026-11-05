@@ -22,23 +22,11 @@ class ProbeWayfairCatalog extends Command
         $this->line('catalog scope configured: '.(trim((string) config('services.wayfair.catalog_scope', '')) !== '' ? 'yes' : 'no').'; supplier id: '.config('services.wayfair.supplier_id'));
 
         $types = [];
-        foreach (['CatalogEntityAttribute', 'CatalogInsights', 'CatalogItemStatus', 'SupplierCatalogItemsInput', 'SupplierCatalogItemsFilter', 'MarketContext'] as $name) {
+        foreach (['CatalogEntityAttribute', 'AttributeInterface', 'AttributeValue', 'Permission', 'SupplierCatalogItemsFilterInput', 'Classification'] as $name) {
             $this->info("== {$name}");
             $types[$name] = $this->describe($api, $name);
             foreach ($types[$name] as $field => $type) {
                 $this->line("   - {$field}: {$type}");
-            }
-            // One level deeper for object-typed fields of the insights type (quality hints live there).
-            if ($name === 'CatalogInsights') {
-                foreach ($types[$name] as $field => $type) {
-                    $inner = trim(str_replace(['[', ']', '!'], '', $type));
-                    if (! in_array($inner, self::SCALARS, true)) {
-                        $this->line("   >> {$inner}");
-                        foreach ($this->describe($api, $inner) as $f => $t) {
-                            $this->line("      - {$f}: {$t}");
-                        }
-                    }
-                }
             }
         }
 
@@ -53,12 +41,14 @@ class ProbeWayfairCatalog extends Command
             return self::SUCCESS;
         }
 
-        // Scalar selections only (we do not know nested shapes yet).
-        $attrSel = $this->scalarSelection($types['CatalogEntityAttribute'] ?? []);
-        $insightSel = $this->scalarSelection($types['CatalogInsights'] ?? []);
-        $selection = 'supplierPartNumber url catalogItemStatus { __typename } listings { listingId isLive }'
-            .($attrSel !== '' ? " attributes { {$attrSel} }" : '')
-            .($insightSel !== '' ? " insights { {$insightSel} }" : '');
+        // Wayfair's own quality signals (insights) + the item's attributes. Scalar fields only: the nested
+        // shapes of AttributeInterface / AttributeValue were just described above.
+        $ifaceSel = $this->scalarSelection($types['AttributeInterface'] ?? []);
+        $valueSel = $this->scalarSelection($types['AttributeValue'] ?? []);
+        $attr = 'attributes { attribute { __typename'.($ifaceSel !== '' ? " {$ifaceSel}" : '').' } chosenAttributeValues { __typename'.($valueSel !== '' ? " {$valueSel}" : '').' } }';
+        $insight = 'insightId title explanation insightTypeId monthsInViolation';
+        $selection = 'supplierPartNumber url catalogItemStatus listings { listingId isLive } '
+            ."insights { problems { {$insight} } opportunities { {$insight} } warnings { {$insight} } } {$attr}";
         $query = 'query ($input: SupplierCatalogItemsInput!) { supplierCatalogItems(input: $input) { ... on SupplierCatalogItems { catalogItems { '.$selection.' } } ... on SupplierCatalogItemsError { httpError { code message } internalError { code message } } } }';
 
         $supplier = (int) config('services.wayfair.supplier_id', 2603);
@@ -71,10 +61,10 @@ class ProbeWayfairCatalog extends Command
             $this->info("== sample '{$sku}' with {$label}");
             $json = $api->catalogQueryRaw($query, ['input' => $extra + [
                 'filter' => ['supplierPartNumbers' => [$sku]],
-                'paginationOptions' => ['page' => 1, 'pageSize' => 3],
+                'paginationOptions' => ['page' => 1, 'pageSize' => 1],
             ]]);
             $text = json_encode($json);
-            $this->line(mb_substr((string) $text, 0, 3500));
+            $this->line(mb_substr((string) $text, 0, 7000));
             if (empty($json['errors']) && isset($json['data']['supplierCatalogItems']['catalogItems'])) {
                 break;
             }
