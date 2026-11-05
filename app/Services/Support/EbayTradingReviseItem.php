@@ -884,6 +884,165 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * The aspect(s) a live multi-variation listing varies by, with their values, e.g. ['Color' => ['Black', 'Red']].
+     *
+     * @param  array<string, mixed>  $itemOrGetItem
+     * @return array<string, list<string>>
+     */
+    public static function variationAspects(array $itemOrGetItem): array
+    {
+        $item = self::itemFromGetItem($itemOrGetItem);
+        $list = $item['Variations']['VariationSpecificsSet']['NameValueList'] ?? null;
+        if (! is_array($list) || $list === []) {
+            return [];
+        }
+        if (isset($list['Name'])) {
+            $list = [$list];
+        }
+        $out = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $name = trim(self::xmlText($row['Name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $values = $row['Value'] ?? [];
+            $values = is_array($values) ? $values : [$values];
+            $out[$name] = array_values(array_filter(array_map(static fn ($v) => trim(self::xmlText($v)), $values), static fn ($v) => $v !== ''));
+        }
+
+        return $out;
+    }
+
+    /**
+     * Rename the variation aspect of a live listing (for example Color to Quantity). eBay needs the new name on
+     * every variation, in the variation set and on the variation pictures in the same call, so all of them are
+     * re-sent with their current values. Only a listing that varies by one aspect is renamed.
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     * @return array{success: bool, message: string}
+     */
+    public static function renameVariationAspect(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        array $getItemResponse,
+        string $newName,
+    ): array {
+        $newName = trim($newName);
+        $item = self::itemFromGetItem($getItemResponse);
+        $itemId = trim(self::xmlText($item['ItemID'] ?? ''));
+        $aspects = self::variationAspects($item);
+        if ($itemId === '' || $newName === '') {
+            return ['success' => false, 'message' => 'Missing eBay item or the new variation type.'];
+        }
+        if (count($aspects) !== 1) {
+            return ['success' => false, 'message' => $aspects === []
+                ? 'This eBay listing has no variations to rename.'
+                : 'This eBay listing varies by '.implode(' and ', array_keys($aspects)).'. Only a listing with one variation aspect can be renamed from here.'];
+        }
+        $oldName = (string) array_key_first($aspects);
+        if (self::aspectKey($oldName) === self::aspectKey($newName)) {
+            return ['success' => true, 'message' => 'Variation type is already "'.$oldName.'" on eBay.'];
+        }
+
+        $vars = $item['Variations']['Variation'] ?? [];
+        if (isset($vars['SKU']) || isset($vars['VariationSpecifics'])) {
+            $vars = [$vars];
+        }
+        $esc = static fn (string $v): string => self::escapeXmlElementText($v);
+
+        $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+        $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', $esc($authToken));
+        $xml->addChild('ErrorLanguage', 'en_US');
+        $xml->addChild('WarningLevel', 'High');
+        $itemNode = $xml->addChild('Item');
+        $itemNode->addChild('ItemID', $esc($itemId));
+        // eBay refuses an aspect that is both a variation aspect and an item specific. A plain item specific with
+        // the new name (an earlier push may have added one) is dropped in the same call, other specifics are kept.
+        $itemRows = self::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null);
+        $keptRows = array_values(array_filter($itemRows, static fn ($r) => self::aspectKey((string) ($r['name'] ?? '')) !== self::aspectKey($newName)));
+        if (count($keptRows) !== count($itemRows) && $keptRows !== []) {
+            $spec = $itemNode->addChild('ItemSpecifics');
+            foreach ($keptRows as $r) {
+                $nvl = $spec->addChild('NameValueList');
+                $nvl->addChild('Name', $esc((string) $r['name']));
+                foreach ((array) ($r['values'] ?? []) as $v) {
+                    if (trim((string) $v) !== '') {
+                        $nvl->addChild('Value', $esc(trim((string) $v)));
+                    }
+                }
+            }
+        }
+        $block = $itemNode->addChild('Variations');
+        $sent = 0;
+        foreach ((array) $vars as $variation) {
+            if (! is_array($variation)) {
+                continue;
+            }
+            $vSku = trim(self::xmlText($variation['SKU'] ?? ''));
+            $map = EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null);
+            $value = '';
+            foreach ($map as $name => $v) {
+                if (self::aspectKey((string) $name) === self::aspectKey($oldName)) {
+                    $value = trim((string) $v);
+                    break;
+                }
+            }
+            if ($vSku === '' || $value === '') {
+                return ['success' => false, 'message' => 'A variation on this eBay listing has no SKU or no '.$oldName.' value, so the aspect was not renamed.'];
+            }
+            $node = $block->addChild('Variation');
+            $node->addChild('SKU', $esc($vSku));
+            $nvl = $node->addChild('VariationSpecifics')->addChild('NameValueList');
+            $nvl->addChild('Name', $esc($newName));
+            $nvl->addChild('Value', $esc($value));
+            $sent++;
+        }
+        if ($sent === 0) {
+            return ['success' => false, 'message' => 'This eBay listing has no variations to rename.'];
+        }
+
+        $pics = self::extractVariationPictureState($item);
+        if ($pics['sets'] !== []) {
+            $pictures = $block->addChild('Pictures');
+            $pictures->addChild('VariationSpecificName', $esc($newName));
+            foreach ($pics['sets'] as $set) {
+                $setNode = $pictures->addChild('VariationSpecificPictureSet');
+                $setNode->addChild('VariationSpecificValue', $esc((string) $set['value']));
+                foreach (array_slice((array) $set['urls'], 0, 12) as $url) {
+                    $setNode->addChild('PictureURL', $esc((string) $url));
+                }
+            }
+        }
+
+        $setList = $block->addChild('VariationSpecificsSet')->addChild('NameValueList');
+        $setList->addChild('Name', $esc($newName));
+        foreach ($aspects[$oldName] as $value) {
+            $setList->addChild('Value', $esc($value));
+        }
+
+        $xmlBody = $xml->asXML();
+        if ($xmlBody === false) {
+            return ['success' => false, 'message' => 'Failed to build the variation rename request.'];
+        }
+        $res = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'variation type', 'ReviseFixedPriceItem');
+        if ($res['success']) {
+            $res['message'] = 'Variation type renamed from "'.$oldName.'" to "'.$newName.'" on '.$sent.' variation(s). '.$res['message'];
+        } else {
+            $res['message'] = 'eBay would not rename the variation type "'.$oldName.'" to "'.$newName.'": '.$res['message'];
+        }
+
+        return $res;
+    }
+
+    /**
      * @param  array<string, mixed>  $getItemResponse
      * @return array<string, mixed>
      */

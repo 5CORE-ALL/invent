@@ -487,7 +487,9 @@ class ListingManagerProductPublisher
                         $key,
                         $sku,
                         trim((string) ($fields['variation_type'] ?? '')),
-                        trim((string) ($fields['variation_name'] ?? ''))
+                        trim((string) ($fields['variation_name'] ?? '')),
+                        in_array('variation_type', $parts, true),
+                        in_array('variation_name', $parts, true)
                     );
                     $partResults['variation'] = $res['message'];
                     $ok = $ok && $res['success'];
@@ -847,18 +849,21 @@ class ListingManagerProductPublisher
 
     /**
      * Variation Type / Variation Name from Variation Master, written to the SKU's variation on eBay
-     * (the type is the aspect name, e.g. Color, and the name its value, e.g. Black). eBay cannot rename an aspect on a
-     * live multi-variation listing, so a type that is not one of the listing's variation aspects is reported, not guessed.
+     * The type is the aspect the listing varies by (e.g. Color, renamed listing-wide to Quantity) and the name is this
+     * child SKU's value of it (e.g. Omnidirectional Mic 1Pc). The name is per child, so a parent row has none to send.
      *
      * @return array{success: bool, message: string}
      */
-    private function pushVariationAttribute(string $marketplace, string $sku, string $type, string $name): array
+    private function pushVariationAttribute(string $marketplace, string $sku, string $type, string $name, bool $doType, bool $doName): array
     {
         if (! in_array($marketplace, ['ebay', 'ebay2', 'ebay3'], true)) {
             return ['success' => false, 'message' => 'Variation type / name can only be pushed to eBay for now.'];
         }
-        if ($type === '' || $name === '') {
-            return ['success' => false, 'message' => 'Variation Type and Variation Name are both needed. Fill them for this SKU on /variation-master.'];
+        if ($doType && $type === '') {
+            return ['success' => false, 'message' => 'No Variation Type for this SKU in Variation Master. Fill it on /variation-master.'];
+        }
+        if ($doName && $name === '' && stripos($sku, 'PARENT') !== 0) {
+            return ['success' => false, 'message' => 'No Variation Name for this SKU in Variation Master. Fill it on /variation-master.'];
         }
 
         $table = ProductMasterMarketplaceMaps::metricsTableMap()[$marketplace] ?? null;
@@ -882,36 +887,56 @@ class ListingManagerProductPublisher
                 return ['success' => false, 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
             }
 
-            $variation = \App\Services\Support\EbayTradingReviseItem::findVariationForSku($item, $sku);
-            if ($variation !== null) {
-                $aspects = array_keys(\App\Services\MarketplaceManager\EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null));
-                $want = strtolower((string) preg_replace('/[^a-z0-9]+/i', '', $type));
-                $match = false;
-                foreach ($aspects as $aspect) {
-                    if (strtolower((string) preg_replace('/[^a-z0-9]+/i', '', (string) $aspect)) === $want) {
-                        $match = true;
-                        break;
-                    }
+            $reviser = \App\Services\Support\EbayTradingReviseItem::class;
+            $ctx = $service->tradingReviseContext();
+            $creds = [$ctx['endpoint'], $ctx['compatLevel'], $ctx['devId'], $ctx['appId'], $ctx['certId'], $ctx['siteId'], $ctx['authToken']];
+            $aspects = $reviser::variationAspects($item);
+            $messages = [];
+
+            // Not a multi-variation listing: type and name are plain item specifics (e.g. Color = Black).
+            if ($aspects === []) {
+                if ($type === '' || $name === '') {
+                    return ['success' => false, 'message' => 'This eBay listing has no variations. Variation Type and Name are both needed to set them as item specifics.'];
                 }
-                if (! $match) {
-                    return ['success' => false, 'message' => 'This eBay listing varies by '.implode(', ', $aspects).', not "'.$type.'". eBay cannot rename a variation aspect on a live listing, so nothing was changed.'];
+
+                return $reviser::reviseTechnicalSpecifications(...$creds, getItemResponse: $item, sku: $sku, overrides: [['name' => $type, 'value' => $name]]);
+            }
+
+            $currentAspect = (string) array_key_first($aspects);
+            if ($doType) {
+                $rename = $reviser::renameVariationAspect(...$creds, getItemResponse: $item, newName: $type);
+                if (! $rename['success']) {
+                    return $rename;
+                }
+                $messages[] = $rename['message'];
+                $currentAspect = $type;
+            }
+
+            if ($doName) {
+                $variation = $reviser::findVariationForSku($item, $sku);
+                if ($variation === null) {
+                    $messages[] = 'Variation Name was not sent: "'.$sku.'" is the parent, and the name belongs to each child SKU. Push it from the child row.';
+                    if (! $doType) {
+                        return ['success' => false, 'message' => implode(' ', $messages)];
+                    }
+                } else {
+                    if (! $doType && count($aspects) > 1) {
+                        return ['success' => false, 'message' => 'This eBay listing varies by '.implode(' and ', array_keys($aspects)).'. Tick Variation Type as well so the aspect is clear.'];
+                    }
+                    // Re-read the listing so the value is set on the aspect as it is named now.
+                    $fresh = $doType ? $service->getItem($itemId) : $item;
+                    if (! is_array($fresh)) {
+                        return ['success' => false, 'message' => trim(implode(' ', $messages).' Could not re-read the listing to set the variation name.')];
+                    }
+                    $valueRes = $reviser::reviseTechnicalSpecifications(...$creds, getItemResponse: $fresh, sku: $sku, overrides: [['name' => $currentAspect, 'value' => $name]]);
+                    $messages[] = $valueRes['message'];
+                    if (! $valueRes['success']) {
+                        return ['success' => false, 'message' => implode(' ', $messages)];
+                    }
                 }
             }
 
-            $ctx = $service->tradingReviseContext();
-
-            return \App\Services\Support\EbayTradingReviseItem::reviseTechnicalSpecifications(
-                $ctx['endpoint'],
-                $ctx['compatLevel'],
-                $ctx['devId'],
-                $ctx['appId'],
-                $ctx['certId'],
-                $ctx['siteId'],
-                $ctx['authToken'],
-                $item,
-                $sku,
-                [['name' => $type, 'value' => $name]]
-            );
+            return ['success' => true, 'message' => implode(' ', $messages)];
         } catch (\Throwable $e) {
             Log::warning('ListingManager variation push failed', ['mp' => $marketplace, 'sku' => $sku, 'error' => $e->getMessage()]);
 
