@@ -501,7 +501,7 @@
                     minWidth: 150,
                     formatter: function(cell) {
                         const value = String(cell.getValue() || '').trim();
-                        const actions = RationUpload.cellButtons('nine', value !== '');
+                        const actions = RationUpload.cellButtons('nine', value !== '', cell.getData().Sku);
                         if (value !== '') {
                             return `<a href="${esc(value)}" class="open-ratio-video" data-ratio="9:16" style="text-decoration:none;">
                                         <i class="fa fa-link"></i> Open
@@ -531,7 +531,7 @@
                     minWidth: 210,
                     formatter: function (cell) {
                         const value = String(cell.getValue() || '').trim();
-                        const actions = RationUpload.cellButtons('sixteen', value !== '');
+                        const actions = RationUpload.cellButtons('sixteen', value !== '', cell.getData().Sku);
                         if (!value) return actions;
                         return `<a href="${esc(value)}" class="open-ratio-video" data-ratio="16:9" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>
                             ${actions}
@@ -723,7 +723,7 @@
 
         table.on("tableBuilt", function () {
             buildColumnDropdown();
-            RationUpload.bind('nine-ration-video', function () { updateTotalInvAndL30(table); });
+            RationUpload.bind('nine-ration-video', table, function () { updateTotalInvAndL30(table); });
         });
 
         table.on("cellEdited", function(cell) {

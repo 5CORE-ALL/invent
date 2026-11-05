@@ -120,21 +120,26 @@
         }
 
         function pickAndUpload(ratio, sku, onDone) {
+            // The input has to be in the page. A detached input's click is ignored, so the file window never opens.
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.m4v,.mkv';
+            input.style.cssText = 'position:fixed;left:-9999px;top:0;';
             input.addEventListener('change', function () {
                 const file = input.files && input.files[0];
+                input.remove();
                 if (file) runUpload(ratio, sku, file, onDone);
             });
+            document.body.appendChild(input);
             input.click();
         }
 
-        // Upload and Download buttons for a table cell.
-        function cellButtons(ratio, hasValue) {
-            const up = '<button type="button" class="ration-act ration-up-btn" data-ratio="' + ratio + '" title="Upload a ' + LABEL[ratio] + ' video file"><i class="fas fa-upload"></i></button>';
+        // Upload and Download buttons for a table cell. The SKU is on the button: the table does not keep it on the cell.
+        function cellButtons(ratio, hasValue, sku) {
+            const skuAttr = esc(sku);
+            const up = '<button type="button" class="ration-act ration-up-btn" data-ratio="' + ratio + '" data-sku="' + skuAttr + '" title="Upload a ' + LABEL[ratio] + ' video file"><i class="fas fa-upload"></i> Upload</button>';
             if (!hasValue) return up;
-            return up + '<button type="button" class="ration-act ration-dl-btn" data-ratio="' + ratio + '" title="Download this video"><i class="fas fa-download"></i></button>';
+            return up + '<button type="button" class="ration-act ration-dl-btn" data-ratio="' + ratio + '" data-sku="' + skuAttr + '" title="Download this video"><i class="fas fa-download"></i> Download</button>';
         }
 
         function downloadCurrent(ratio, sku) {
@@ -143,18 +148,29 @@
 
         // The click can land inside a Tabulator cell that is not the video column, so this works from the
         // button's data attributes alone and does not need the cell it was called with.
-        function actOn(btn, onChanged) {
+        function rowFor(table, sku) {
+            if (!table || !sku) return null;
+            try {
+                const row = table.getRow(sku);
+                return row && row.getData ? row : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function actOn(btn, table, onChanged) {
             const ratio = btn.dataset.ratio;
-            const cellEl = btn.closest('.tabulator-cell');
-            const rowEl = btn.closest('.tabulator-row');
-            const row = cellEl && cellEl._cell ? cellEl._cell.getRow() : (rowEl && rowEl._row ? rowEl._row.getComponent() : null);
-            const sku = row ? String(row.getData().Sku || '') : '';
-            if (!ratio || !sku) return;
+            const sku = String(btn.dataset.sku || '').trim();
+            if (!ratio || !sku) {
+                toast('Could not read the SKU for that button. Reload the page and try again.', 'err');
+                return;
+            }
             if (btn.classList.contains('ration-dl-btn')) {
                 downloadCurrent(ratio, sku);
                 return;
             }
             pickAndUpload(ratio, sku, function (res) {
+                const row = rowFor(table, sku);
                 if (!row) return;
                 const patch = {};
                 patch[res.field || FIELD[ratio]] = res.url;
@@ -165,16 +181,17 @@
             });
         }
 
-        function bind(container, onChanged) {
+        function bind(container, table, onChanged) {
             const el = typeof container === 'string' ? document.getElementById(container) : container;
             if (!el || el.dataset.rationBound) return;
             el.dataset.rationBound = '1';
+            // Capture phase, and it stops the click, so the table cannot turn the cell into an editor first.
             el.addEventListener('click', function (e) {
                 const btn = e.target.closest('.ration-up-btn, .ration-dl-btn');
                 if (!btn) return;
                 e.preventDefault();
                 e.stopPropagation();
-                actOn(btn, onChanged);
+                actOn(btn, table, onChanged);
             }, true);
         }
 

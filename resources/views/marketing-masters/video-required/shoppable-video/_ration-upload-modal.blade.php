@@ -1,16 +1,23 @@
 <style>
     .ration-act {
-        border: 0;
-        background: transparent;
-        color: #2563eb;
-        padding: 0 4px;
+        pointer-events: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
         margin-left: 4px;
-        font-size: 12px;
-        line-height: 1;
+        padding: 1px 8px;
+        border-radius: 4px;
+        border: 1px solid #2563eb;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1.6;
         cursor: pointer;
     }
-    .ration-act:hover { opacity: 0.7; }
-    .ration-act.ration-dl-btn { color: #16a34a; }
+    .ration-act:hover { background: #dbeafe; }
+    .ration-act.ration-dl-btn { border-color: #16a34a; background: #f0fdf4; color: #15803d; }
+    .ration-act.ration-dl-btn:hover { background: #dcfce7; }
     .ration-act-empty { color: #6b7280; font-weight: 600; font-size: 12px; }
     #ration-upload-toast {
         position: fixed;
