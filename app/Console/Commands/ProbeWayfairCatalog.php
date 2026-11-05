@@ -6,122 +6,131 @@ use App\Services\WayfairApiService;
 use Illuminate\Console\Command;
 
 /**
- * TEMPORARY, read-only: shows which listing fields Wayfair's Product Catalog API exposes (title, bullets,
- * description, images, ...) so the Wayfair LQS scorer can be built on real field names. Writes nothing.
+ * TEMPORARY, read-only: reads one product through the Wayfair *Supplier Catalog* API (the same endpoint, token and
+ * headers wayfair:catalog-price uses for prices) and prints which content fields it exposes, so the Wayfair LQS
+ * scorer can be built on real field names. Writes nothing.
  */
 class ProbeWayfairCatalog extends Command
 {
-    protected $signature = 'wayfair:probe-catalog {sku? : supplier part number (default: first Wayfair SKU in wayfair_products)}';
+    protected $signature = 'wayfair:probe-catalog {sku? : supplier part number (default: first SKU with a stored Wayfair price)}';
 
-    protected $description = 'Read-only GraphQL introspection of the Wayfair catalog read types (for LQS scorer design).';
+    protected $description = 'Read-only probe of the Wayfair Supplier Catalog API product/SKU fields (for LQS scorer design).';
 
-    private const SCALARS = ['String', 'Int', 'Float', 'Boolean', 'ID'];
+    private const URL = 'https://api.wayfair.io/v1/supplier-catalog-api/graphql';
 
-    public function handle(WayfairApiService $api): int
+    /** @var array<string, array<string, array{name: string, kind: string}>> */
+    private array $cache = [];
+
+    public function handle(WayfairApiService $wayfair): int
     {
-        $this->line('catalog scope configured: '.(trim((string) config('services.wayfair.catalog_scope', '')) !== '' ? 'yes' : 'no').'; supplier id: '.config('services.wayfair.supplier_id'));
+        if (! $wayfair->isConfigured()) {
+            $this->error('WAYFAIR_CLIENT_ID and WAYFAIR_CLIENT_SECRET must be set in .env');
 
-        $types = [];
-        foreach (['CatalogEntityAttribute', 'AttributeInterface', 'AttributeValue', 'Permission', 'SupplierCatalogItemsFilterInput', 'Classification'] as $name) {
-            $this->info("== {$name}");
-            $types[$name] = $this->describe($api, $name);
-            foreach ($types[$name] as $field => $type) {
-                $this->line("   - {$field}: {$type}");
+            return self::FAILURE;
+        }
+        try {
+            $token = $wayfair->getAccessTokenWithScope('');
+        } catch (\Throwable $e) {
+            $this->error('Token failed: '.$e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $supplierId = (string) config('services.wayfair.supplier_id', '');
+        $headers = ['Content-Type' => 'application/json', 'Accept' => 'application/json', 'X-SELECTED-SUPPLIER-ID' => $supplierId];
+        $post = function (string $query, array $variables = []) use ($wayfair, $token, $headers): array {
+            $payload = ['query' => $query];
+            if ($variables !== []) {
+                $payload['variables'] = $variables;
+            }
+            $json = $wayfair->apiHttpClient()->withToken($token)->withHeaders($headers)->post(self::URL, $payload)->json();
+
+            return is_array($json) ? $json : [];
+        };
+
+        $this->line('supplier id: '.$supplierId);
+
+        // 1) Field list of the product and its SKUs, one level of nested objects.
+        foreach (['Product', 'Sku'] as $type) {
+            $this->info("== {$type}");
+            foreach ($this->fields($post, $type) as $name => $info) {
+                $this->line(sprintf('   - %s: %s (%s)', $name, $info['name'], $info['kind']));
+                if ($info['kind'] === 'OBJECT' && ! in_array($info['name'], ['Product', 'Sku'], true)) {
+                    foreach ($this->fields($post, $info['name']) as $n2 => $i2) {
+                        $this->line(sprintf('       . %s: %s (%s)', $n2, $i2['name'], $i2['kind']));
+                    }
+                }
             }
         }
 
+        // 2) Read one real product with every scalar leaf (two levels deep).
         $sku = trim((string) $this->argument('sku'));
         if ($sku === '') {
             try {
-                $sku = (string) (\App\Models\WayfairProduct::query()->whereNotNull('sku')->value('sku') ?? '');
+                $sku = (string) (\Illuminate\Support\Facades\DB::table('wayfair_pricing_prices')->where('price', '>', 0)->orderBy('id')->value('sku') ?? '');
             } catch (\Throwable) {
             }
         }
         if ($sku === '') {
+            $this->warn('No SKU to read.');
+
             return self::SUCCESS;
         }
 
-        // Wayfair's own quality signals (insights) + the item's attributes. Scalar fields only: the nested
-        // shapes of AttributeInterface / AttributeValue were just described above.
-        $ifaceSel = $this->scalarSelection($types['AttributeInterface'] ?? []);
-        $valueSel = $this->scalarSelection($types['AttributeValue'] ?? []);
-        $attr = 'attributes { attribute { __typename'.($ifaceSel !== '' ? " {$ifaceSel}" : '').' } chosenAttributeValues { __typename'.($valueSel !== '' ? " {$valueSel}" : '').' } }';
-        $insight = 'insightId title explanation insightTypeId monthsInViolation';
-        $selection = 'supplierPartNumber url catalogItemStatus listings { listingId isLive } '
-            ."insights { problems { {$insight} } opportunities { {$insight} } warnings { {$insight} } } {$attr}";
-        $query = 'query ($input: SupplierCatalogItemsInput!) { supplierCatalogItems(input: $input) { ... on SupplierCatalogItems { catalogItems { '.$selection.' } } ... on SupplierCatalogItemsError { httpError { code message } internalError { code message } } } }';
-
-        $supplier = (int) config('services.wayfair.supplier_id', 2603);
-        $variants = [
-            'no supplierId' => [],
-            'supplierId (string)' => ['supplierId' => (string) $supplier],
-            'supplierId (int)' => ['supplierId' => $supplier],
-        ];
-        foreach ($variants as $label => $extra) {
-            $this->info("== sample '{$sku}' with {$label}");
-            $json = $api->catalogQueryRaw($query, ['input' => $extra + [
-                'filter' => ['supplierPartNumbers' => [$sku]],
+        $selection = $this->selection($post, 'Product', 2);
+        $this->info("== sample '{$sku}'");
+        $this->line('selection: '.mb_substr($selection, 0, 800));
+        $json = $post(
+            'query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) { supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) { products '.$selection.' } }',
+            [
+                'supplierId' => (int) $supplierId,
+                'filter' => ['supplierPartNumber' => ['in' => [$sku]]],
                 'paginationOptions' => ['page' => 1, 'pageSize' => 1],
-            ]]);
-            $text = json_encode($json);
-            $this->line(mb_substr((string) $text, 0, 7000));
-            if (empty($json['errors']) && isset($json['data']['supplierCatalogItems']['catalogItems'])) {
-                break;
-            }
-        }
+            ]
+        );
+        $this->line(mb_substr((string) json_encode($json), 0, 8000));
 
         return self::SUCCESS;
     }
 
-    /** @return array<string, string> field => type text (fields or input fields) */
-    private function describe(WayfairApiService $api, string $type): array
+    /** @return array<string, array{name: string, kind: string}> */
+    private function fields(callable $post, string $type): array
     {
-        $typeRef = 'name kind ofType { name kind ofType { name kind ofType { name kind } } }';
-        $json = $api->catalogQueryRaw(
-            'query ($n: String!) { __type(name: $n) { name kind fields { name type { '.$typeRef.' } } inputFields { name type { '.$typeRef.' } } enumValues { name } } }',
-            ['n' => $type]
-        );
-        $node = $json['data']['__type'] ?? null;
-        if (! is_array($node)) {
-            $this->warn("   introspection of {$type} returned nothing: ".mb_substr(json_encode($json['errors'] ?? $json), 0, 200));
-
-            return [];
+        if (isset($this->cache[$type])) {
+            return $this->cache[$type];
         }
+        $ref = 'name kind ofType { name kind ofType { name kind ofType { name kind } } }';
+        $res = $post('query($n: String!) { __type(name: $n) { fields { name type { '.$ref.' } } } }', ['n' => $type]);
         $out = [];
-        foreach (array_merge((array) ($node['fields'] ?? []), (array) ($node['inputFields'] ?? [])) as $f) {
-            $out[$f['name']] = $this->typeText($f['type'] ?? []);
+        foreach ((array) ($res['data']['__type']['fields'] ?? []) as $f) {
+            $leaf = $f['type'];
+            while (! empty($leaf['ofType'])) {
+                $leaf = $leaf['ofType'];
+            }
+            $out[(string) $f['name']] = ['name' => (string) ($leaf['name'] ?? ''), 'kind' => (string) ($leaf['kind'] ?? '')];
         }
-        foreach ((array) ($node['enumValues'] ?? []) as $e) {
-            $out['(enum) '.$e['name']] = '';
+        if ($out === []) {
+            $this->warn("   (no fields returned for {$type}: ".mb_substr(json_encode($res['errors'] ?? $res), 0, 160).')');
         }
 
-        return $out;
+        return $this->cache[$type] = $out;
     }
 
-    /** @param  array<string, string>  $fields */
-    private function scalarSelection(array $fields): string
+    /** "{ a b c { d e } }" of scalar/enum leaves, descending into objects up to $depth levels. */
+    private function selection(callable $post, string $type, int $depth): string
     {
-        $names = [];
-        foreach ($fields as $name => $type) {
-            if (str_starts_with($name, '(enum)')) {
-                continue;
-            }
-            if (in_array(trim(str_replace(['[', ']', '!'], '', $type)), self::SCALARS, true)) {
-                $names[] = $name;
+        $parts = [];
+        foreach ($this->fields($post, $type) as $name => $info) {
+            if (in_array($info['kind'], ['SCALAR', 'ENUM'], true)) {
+                $parts[] = $name;
+            } elseif ($info['kind'] === 'OBJECT' && $depth > 1 && $info['name'] !== $type) {
+                $inner = $this->selection($post, $info['name'], $depth - 1);
+                if (! preg_match('/\{\s*\}/', $inner)) {
+                    $parts[] = $name.' '.$inner;
+                }
             }
         }
 
-        return implode(' ', $names);
-    }
-
-    private function typeText(array $t): string
-    {
-        $name = $t['name'] ?? null;
-        if ($name) {
-            return $name;
-        }
-        $inner = $this->typeText($t['ofType'] ?? []);
-
-        return ($t['kind'] ?? '') === 'LIST' ? '['.$inner.']' : $inner.(($t['kind'] ?? '') === 'NON_NULL' ? '!' : '');
+        return '{ '.implode(' ', $parts).' }';
     }
 }
