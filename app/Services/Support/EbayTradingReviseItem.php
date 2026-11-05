@@ -1036,6 +1036,17 @@ final class EbayTradingReviseItem
         if ($res['success']) {
             $res['message'] = 'Variation type renamed from "'.$oldName.'" to "'.$newName.'" on '.$sent.' variation(s). '.$res['message'];
         } else {
+            // The exact request is logged (token removed) so a refusal can be compared with what eBay holds.
+            Log::warning('eBay variation aspect rename refused', [
+                'itemId' => $itemId,
+                'from' => $oldName,
+                'to' => $newName,
+                'error' => $res['message'],
+                'variationCount' => $sent,
+                'pictureSets' => count($pics['sets']),
+                'pictureAspect' => $pics['name'],
+                'request' => preg_replace('#<eBayAuthToken>.*?</eBayAuthToken>#s', '<eBayAuthToken>x</eBayAuthToken>', $xmlBody),
+            ]);
             $res['message'] = 'eBay would not rename the variation type "'.$oldName.'" to "'.$newName.'": '.$res['message'];
         }
 
