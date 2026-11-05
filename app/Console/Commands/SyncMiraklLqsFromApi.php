@@ -10,11 +10,11 @@ use Illuminate\Support\Facades\Schema;
 class SyncMiraklLqsFromApi extends Command
 {
     protected $signature = 'lqs:sync-mirakl
-        {--channel=bestbuy : bestbuy | purchasingpower}
+        {--channel=bestbuy : bestbuy | macy | purchasingpower}
         {--sku= : Score only this SKU}
         {--dry-run : Fetch and score but do not save}';
 
-    protected $description = 'Score Mirakl marketplace listings (Best Buy, Purchasing Power; LQS 0-100) from the live offer feed (title, description, brand, category, price/MSRP, stock, lead time) plus bullets/images on record.';
+    protected $description = 'Score Mirakl marketplace listings (Best Buy, Macy, Purchasing Power; LQS 0-100) from the live offer feed (title, description, brand, category, price/MSRP, stock, lead time) plus bullets/images on record.';
 
     public function handle(MiraklLqsApiSyncService $sync): int
     {

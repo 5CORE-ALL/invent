@@ -6447,7 +6447,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post("/lqs/{$temuSlug}/api-sync", [$temuLqsController, 'startApiSync'])->name("lqs.{$temuSlug}.api.sync");
         Route::get("/lqs/{$temuSlug}/api-sync/status", [$temuLqsController, 'apiSyncStatus'])->name("lqs.{$temuSlug}.api.sync.status");
     }
-    // Best Buy + Purchasing Power: live Mirakl offer-feed scoring (no AI audit modal)
+    // Best Buy, Macy's + Purchasing Power: live Mirakl offer-feed scoring (no AI audit modal)
     foreach (App\Services\Lqs\MiraklLqsApiSyncService::slugs() as $miraklSlug) {
         $miraklController = 'App\\Http\\Controllers\\MarketPlace\\Lqs\\Lqs'.ucfirst($miraklSlug).'Controller';
         Route::post("/lqs/{$miraklSlug}/api-score", [$miraklController, 'apiScore'])->name("lqs.{$miraklSlug}.api.score");

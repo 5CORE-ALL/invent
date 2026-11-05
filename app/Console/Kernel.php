@@ -298,7 +298,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('lqs-sync-temu2')
             ->appendOutputTo($log);
-        // Best Buy + Purchasing Power LQS from the Mirakl offer feed (whole catalog in a few paged calls).
+        // Best Buy, Macy's + Purchasing Power LQS from the Mirakl offer feed (whole catalog in a few paged calls).
         $schedule->command('lqs:sync-mirakl --channel=bestbuy')
             ->dailyAt('05:00')
             ->withoutOverlapping(60)
@@ -310,6 +310,12 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(60)
             ->runInBackground()
             ->name('lqs-sync-purchasingpower')
+            ->appendOutputTo($log);
+        $schedule->command('lqs:sync-mirakl --channel=macy')
+            ->dailyAt('05:20')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->name('lqs-sync-macy')
             ->appendOutputTo($log);
         // Doba LQS from the live goods/detail catalog (100 products per call).
         $schedule->command('lqs:sync-doba')

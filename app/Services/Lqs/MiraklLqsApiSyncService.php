@@ -3,6 +3,7 @@
 namespace App\Services\Lqs;
 
 use App\Models\BestbuyUsaProduct;
+use App\Models\MacyProduct;
 use App\Models\PurchasingPowerProduct;
 use App\Models\LqsMarketplaceScore;
 use Illuminate\Support\Facades\DB;
@@ -10,7 +11,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Scores Mirakl-based marketplaces (Best Buy, Purchasing Power) from the live seller offer feed (OF21) and stores
+ * Scores Mirakl-based marketplaces (Best Buy, Macy's, Purchasing Power) from the live seller offer feed (OF21) and stores
  * the LQS (0-100) in lqs_marketplace_scores.
  *
  * OF21 returns up to 100 offers per call, so a whole catalog is a handful of requests (no per-SKU calls).
@@ -20,6 +21,7 @@ class MiraklLqsApiSyncService
     /** slug => [services.php config key, metrics table (bullets/images this app pushed), catalog model, label] */
     private const CHANNELS = [
         'bestbuy' => ['bestbuy', 'bestbuy_metrics', BestbuyUsaProduct::class, 'Best Buy'],
+        'macy' => ['macy', 'macy_metrics', MacyProduct::class, "Macy's"],
         'purchasingpower' => ['purchasingpower', 'purchasing_power_metrics', PurchasingPowerProduct::class, 'Purchasing Power'],
     ];
 
