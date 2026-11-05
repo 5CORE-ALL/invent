@@ -68,6 +68,53 @@ class AttendanceFraudAlerts
             ->get();
     }
 
+    /**
+     * Open fraud flags for one employee, keyed by the day they belong to.
+     * High is red; medium and low are yellow. Used beside each timeline row.
+     *
+     * @return array<string, array{level: string, tone: string, tooltip: string}>
+     */
+    public static function openFlagsByDate(int $userId, string $from, string $to): array
+    {
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+
+        $grouped = AttendanceAiFlag::query()
+            ->where('user_id', $userId)
+            ->where('status', 'open')
+            ->whereIn('flag_type', AttendanceAiFlag::FRAUD_TYPES)
+            ->whereDate('flag_date', '>=', $from)
+            ->whereDate('flag_date', '<=', $to)
+            ->orderBy('flag_date')
+            ->get()
+            ->groupBy(fn (AttendanceAiFlag $flag) => $flag->flag_date?->toDateString());
+
+        $byDate = [];
+        foreach ($grouped as $date => $flags) {
+            if ($date === '' || $date === null) {
+                continue;
+            }
+
+            $level = 'low';
+            $lines = [];
+            foreach ($flags as $flag) {
+                if ((self::RANK[$flag->severity] ?? 1) > (self::RANK[$level] ?? 1)) {
+                    $level = (string) $flag->severity;
+                }
+                $lines[] = $flag->typeLabel().': '.$flag->description;
+            }
+
+            $byDate[$date] = [
+                'level' => $level,
+                'tone' => $level === 'high' ? 'red' : 'yellow',
+                'tooltip' => implode("\n", $lines),
+            ];
+        }
+
+        return $byDate;
+    }
+
     public static function meetsThreshold(string $level): bool
     {
         $min = (string) config('attendance.checkup.alert_min_severity', 'medium');

@@ -55,6 +55,13 @@
         .act-row-head { flex-direction: column; align-items: flex-start; }
     }
     .act-axis-times { display: flex; justify-content: space-between; font-size: .62rem; color: #94a3b8; margin-bottom: 1px; line-height: 1; }
+    .act-track-row { display: flex; align-items: center; gap: .4rem; }
+    .act-track-row .act-track { flex: 1; min-width: 0; }
+    .day-alert-slot { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+    .day-alert-tri { display: inline-flex; line-height: 1; text-decoration: none; filter: drop-shadow(0 1px 1px rgba(127, 29, 29, .25)); }
+    .day-alert-tri:hover { transform: scale(1.15); }
+    .day-alert-tri.red { animation: fraudTriPulse 1.6s ease-in-out infinite; }
+    .day-alert-tri svg { display: block; }
     .act-track { position: relative; height: 22px; background: #fff; border: 1px solid #e2e8f0; border-radius: 2px; overflow: hidden; }
     .act-track-grid {
         position: absolute; inset: 0; z-index: 0; pointer-events: none;
@@ -333,16 +340,38 @@
                             <span class="item total"><strong>{{ $dayStats['total_label'] }}</strong> <span>Total</span></span>
                         </div>
                     </div>
-                    <div class="act-track">
-                        <div class="act-track-grid" aria-hidden="true"></div>
-                        @foreach($activityDay['segments'] as $seg)
-                        @php
-                            $color = $seg['color'] ?? ($seg['state'] === 'idle' ? '#ef4444' : ($seg['state'] === 'break' ? '#94a3b8' : '#22c55e'));
-                        @endphp
-                        <div class="act-seg {{ $seg['state'] }}"
-                             style="left:{{ $seg['start_pct'] }}%;width:{{ max($seg['width_pct'], 0.12) }}%;background-color:{{ $color }}"
-                             title="{{ $activityDay['date_label'] }} · {{ ucfirst($seg['state']) }} · {{ $seg['start_label'] }} – {{ $seg['end_label'] }}"></div>
-                        @endforeach
+                    @php
+                        $dayAlert = (\App\Support\AttendanceAccess::isPresident() ? ($day_alerts[$activityDay['date']] ?? null) : null);
+                        $triFill = ($dayAlert['tone'] ?? '') === 'red' ? '#dc2626' : '#eab308';
+                        $triStroke = ($dayAlert['tone'] ?? '') === 'red' ? '#991b1b' : '#a16207';
+                    @endphp
+                    <div class="act-track-row">
+                        @if(\App\Support\AttendanceAccess::isPresident())
+                        <span class="day-alert-slot">
+                            @if($dayAlert)
+                            <a href="#fraudPanel" class="day-alert-tri {{ $dayAlert['tone'] }}"
+                               title="{{ $dayAlert['tooltip'] }}"
+                               aria-label="{{ $dayAlert['tooltip'] }}">
+                                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M12 2.2 23.2 21.6H0.8z" fill="{{ $triFill }}" stroke="{{ $triStroke }}" stroke-width="1.2" stroke-linejoin="round"/>
+                                    <rect x="11" y="8.6" width="2" height="6.4" rx="1" fill="#fff"/>
+                                    <circle cx="12" cy="17.9" r="1.2" fill="#fff"/>
+                                </svg>
+                            </a>
+                            @endif
+                        </span>
+                        @endif
+                        <div class="act-track">
+                            <div class="act-track-grid" aria-hidden="true"></div>
+                            @foreach($activityDay['segments'] as $seg)
+                            @php
+                                $color = $seg['color'] ?? ($seg['state'] === 'idle' ? '#ef4444' : ($seg['state'] === 'break' ? '#94a3b8' : '#22c55e'));
+                            @endphp
+                            <div class="act-seg {{ $seg['state'] }}"
+                                 style="left:{{ $seg['start_pct'] }}%;width:{{ max($seg['width_pct'], 0.12) }}%;background-color:{{ $color }}"
+                                 title="{{ $activityDay['date_label'] }} · {{ ucfirst($seg['state']) }} · {{ $seg['start_label'] }} – {{ $seg['end_label'] }}"></div>
+                            @endforeach
+                        </div>
                     </div>
                 </div>
                 @empty

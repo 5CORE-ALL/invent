@@ -101,6 +101,9 @@ class AttendanceMonitorController extends Controller
             'employee' => $user,
             'day' => $day,
             'activity_days' => $activityDays,
+            'day_alerts' => AttendanceAccess::isPresident()
+                ? AttendanceFraudAlerts::openFlagsByDate((int) $user->id, $from, $to)
+                : [],
             'period' => $period,
             'desktop_apps' => $desktopApps,
             'date' => $date,
