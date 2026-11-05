@@ -6936,6 +6936,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/sixteen-ration-video/export', 'exportSixteenRationVideo');
     });
 
+    Route::controller(\App\Http\Controllers\MarketingMaster\RationVideoUploadController::class)->prefix('ration-video')->group(function () {
+        Route::post('/upload-chunk', 'chunk');
+        Route::post('/{ratio}/upload', 'finish')->whereIn('ratio', ['nine', 'sixteen']);
+        Route::get('/uploads', 'index');
+        Route::get('/uploads/{id}/download', 'download')->whereNumber('id');
+        Route::delete('/uploads/{id}', 'destroy')->whereNumber('id');
+        Route::get('/download', 'downloadCurrent');
+    });
+
     Route::controller(CampaignImportController::class)->group(function () {
         Route::get('campaign', 'index')->name('campaign');
         Route::get('/campaign/under-utilised/', 'budgetUnderUtilised')->name('campaign.under');

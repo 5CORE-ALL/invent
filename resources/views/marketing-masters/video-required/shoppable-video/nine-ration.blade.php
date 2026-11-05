@@ -234,6 +234,12 @@
                         Export
                     </a>
 
+                    <!-- Upload video files / view uploads -->
+                    <button type="button" id="uploads-btn" class="btn btn-sm btn-outline-info" title="Upload a 9:16 or 16:9 video file and see everything uploaded">
+                        <i class="fas fa-photo-video"></i>
+                        Uploads
+                    </button>
+
                     <button type="button" id="video-link-filter" class="video-link-badge" title="Show rows that have a 9:16 video">
                         <i class="fa fa-link"></i> 9:16 Video: <span id="total-nine-link-count">0</span>
                     </button>
@@ -310,9 +316,12 @@
     </div>
 </div>
 
+@include('marketing-masters.video-required.shoppable-video._ration-upload-modal')
+
 @endsection
 @section('script')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+@include('marketing-masters.video-required.shoppable-video._ration-upload-script')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         // document.documentElement.setAttribute("data-sidenav-size", "condensed");
@@ -487,17 +496,25 @@
                     title: "9:16 Video",
                     field: "nine_ratio_link",
                     editor: "input",
+                    // Not click-to-edit: the Upload / Download buttons live in this cell. Double-click edits.
+                    editable: false,
+                    minWidth: 150,
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value && value.trim() !== "") {
+                        const value = String(cell.getValue() || '').trim();
+                        const actions = RationUpload.cellButtons('nine', value !== '');
+                        if (value !== '') {
                             return `<a href="${esc(value)}" class="open-ratio-video" data-ratio="9:16" style="text-decoration:none;">
                                         <i class="fa fa-link"></i> Open
-                                    </a>`;
+                                    </a>${actions}`;
                         }
-                        return "";
+                        return actions;
+                    },
+                    cellClick: function (e, cell) {
+                        RationUpload.handleCellClick(e, cell, 'nine', function () { updateTotalInvAndL30(table); });
                     },
                     cellDblClick: function(e, cell) {
-                        cell.edit();        
+                        if (e.target.closest('.ration-act')) return;
+                        cell.edit(true);        
                     },
                     titleFormatter: function () {
                         return `<div>
@@ -511,13 +528,17 @@
                     field: "sixteen_ratio_link",
                     hozAlign: "center",
                     headerSort: false,
+                    minWidth: 210,
                     formatter: function (cell) {
                         const value = String(cell.getValue() || '').trim();
-                        if (!value) return '';
+                        const actions = RationUpload.cellButtons('sixteen', value !== '');
+                        if (!value) return actions;
                         return `<a href="${esc(value)}" class="open-ratio-video" data-ratio="16:9" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>
+                            ${actions}
                             <button type="button" class="delete-video-link" title="Delete link">Delete</button>`;
                     },
                     cellClick: function (e, cell) {
+                        if (RationUpload.handleCellClick(e, cell, 'sixteen', function () { updateTotalInvAndL30(table); })) return;
                         if (!e.target.closest('.delete-video-link')) return;
                         const row = cell.getRow();
                         const data = row.getData();
@@ -1028,6 +1049,31 @@
                 statusFilters[key] = !statusFilters[key];
                 this.classList.toggle('is-active', statusFilters[key]);
                 setCombinedFilters();
+            });
+        });
+
+        // Uploaded Videos modal: upload a file for any SKU, see / play / download / delete uploads.
+        const NINE_FIELDS = { nine: 'nine_ratio_link', sixteen: 'sixteen_ratio_link' };
+        document.getElementById('uploads-btn').addEventListener('click', function () {
+            RationUpload.openModal({
+                ratios: ['nine', 'sixteen'],
+                skus: function () { return table.getData().map(function (r) { return r.Sku; }); },
+                onUploaded: function (res, sku, ratio) {
+                    const row = table.getRow(sku);
+                    if (row) {
+                        const patch = {};
+                        patch[res.field || NINE_FIELDS[ratio]] = res.url;
+                        row.update(patch).then(function () { row.reformat(); updateTotalInvAndL30(table); });
+                    }
+                },
+                onCleared: function (field, sku) {
+                    const row = table.getRow(sku);
+                    if (row) {
+                        const patch = {};
+                        patch[field] = '';
+                        row.update(patch).then(function () { row.reformat(); updateTotalInvAndL30(table); });
+                    }
+                },
             });
         });
 
