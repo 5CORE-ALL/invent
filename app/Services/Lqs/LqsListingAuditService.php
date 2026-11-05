@@ -176,12 +176,15 @@ PROMPT;
         $normalize = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
         $key = $normalize($sku);
 
+        // Bound U+00A0 string (not CHAR(160)): CHAR(160) is an invalid byte on a utf8mb4 connection.
+        $nbsp = "\u{00a0}";
+
         $product = ProductMaster::query()
-            ->whereRaw('UPPER(TRIM(REPLACE(sku, CHAR(160), " "))) = ?', [$key])
+            ->whereRaw('UPPER(TRIM(REPLACE(sku, ?, " "))) = ?', [$nbsp, $key])
             ->first();
 
         $shopify = ShopifySku::query()
-            ->whereRaw('UPPER(TRIM(REPLACE(sku, CHAR(160), " "))) = ?', [$key])
+            ->whereRaw('UPPER(TRIM(REPLACE(sku, ?, " "))) = ?', [$nbsp, $key])
             ->first();
 
         $context = [
@@ -204,7 +207,7 @@ PROMPT;
 
         if ($slug === 'ebay' && Schema::hasTable('ebay_metrics')) {
             $metric = EbayMetric::query()
-                ->whereRaw('UPPER(TRIM(REPLACE(sku, CHAR(160), " "))) = ?', [$key])
+                ->whereRaw('UPPER(TRIM(REPLACE(sku, ?, " "))) = ?', [$nbsp, $key])
                 ->orderByDesc('id')
                 ->first();
             if ($metric) {

@@ -108,7 +108,8 @@ class EbayLqsApiSyncService
         }
 
         return EbayMetric::query()
-            ->whereRaw('UPPER(TRIM(REPLACE(sku, CHAR(160), " "))) = ?', [$key])
+            // Bound U+00A0 string (not CHAR(160)): CHAR(160) is an invalid byte on a utf8mb4 connection.
+            ->whereRaw('UPPER(TRIM(REPLACE(sku, ?, " "))) = ?', ["\u{00a0}", $key])
             ->whereNotNull('item_id')
             ->orderByDesc('id')
             ->first();
