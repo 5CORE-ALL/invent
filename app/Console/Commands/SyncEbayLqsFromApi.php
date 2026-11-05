@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\EbayMetric;
 use App\Models\LqsMarketplaceScore;
 use App\Services\Lqs\EbayLqsApiSyncService;
 use Illuminate\Console\Command;
@@ -12,22 +11,31 @@ use Illuminate\Support\Facades\Schema;
 class SyncEbayLqsFromApi extends Command
 {
     protected $signature = 'lqs:sync-ebay
+        {--channel=ebay : eBay account to score: ebay, ebay2 or ebay3}
         {--sku= : Score only this SKU}
         {--limit=300 : Max listings per run (eBay Trading API calls are rate limited)}
         {--stale-hours=24 : Skip SKUs scored within this many hours (0 = rescore all)}
         {--sleep-ms=300 : Pause between eBay calls}
         {--dry-run : Fetch and score but do not save}';
 
-    protected $description = 'Score eBay listings (LQS 0-100) from live eBay API data (title, photos, item specifics, description, shipping/returns).';
+    protected $description = 'Score eBay / eBay 2 / eBay 3 listings (LQS 0-100) from live eBay API data (title, photos, item specifics, description, shipping/returns).';
 
     public function handle(EbayLqsApiSyncService $sync): int
     {
-        if (! $sync->isConfigured()) {
-            $this->error('eBay API is not configured.');
+        $slug = strtolower(trim((string) $this->option('channel')));
+        if (! EbayLqsApiSyncService::supports($slug)) {
+            $this->error('Unknown --channel "'.$slug.'". Use: '.implode(', ', EbayLqsApiSyncService::slugs()).'.');
 
             return self::FAILURE;
         }
-        if (! Schema::hasTable('ebay_metrics') || ! Schema::hasTable('lqs_marketplace_scores')) {
+        $label = EbayLqsApiSyncService::label($slug);
+
+        if (! $sync->isConfigured($slug)) {
+            $this->error($label.' API is not configured.');
+
+            return self::FAILURE;
+        }
+        if (! Schema::hasTable(EbayLqsApiSyncService::metricsTable($slug)) || ! Schema::hasTable('lqs_marketplace_scores')) {
             $this->error('Required tables are missing.');
 
             return self::FAILURE;
@@ -36,32 +44,33 @@ class SyncEbayLqsFromApi extends Command
         $dry = (bool) $this->option('dry-run');
 
         if ($sku = trim((string) $this->option('sku'))) {
-            return $this->scoreOne($sync, $sku, $dry);
+            return $this->scoreOne($sync, $slug, $sku, $dry);
         }
 
         // One bulk run at a time (page button + nightly schedule share this lock).
-        $lock = Cache::lock(EbayLqsApiSyncService::LOCK_KEY, 7200);
+        $lock = Cache::lock(EbayLqsApiSyncService::lockKey($slug), 7200);
         if (! $lock->get()) {
-            $this->warn('Another eBay LQS sync is already running. Skipping.');
+            $this->warn('Another '.$label.' LQS sync is already running. Skipping.');
 
             return self::SUCCESS;
         }
 
         try {
-            return $this->runBulk($sync, $dry);
+            return $this->runBulk($sync, $slug, $dry);
         } finally {
             $lock->release();
         }
     }
 
-    private function runBulk(EbayLqsApiSyncService $sync, bool $dry): int
+    private function runBulk(EbayLqsApiSyncService $sync, string $slug, bool $dry): int
     {
+        $metricModel = EbayLqsApiSyncService::metricsModel($slug);
         $limit = max(1, (int) $this->option('limit'));
         $staleHours = max(0, (int) $this->option('stale-hours'));
         $sleepUs = max(0, (int) $this->option('sleep-ms')) * 1000;
 
         // Latest ebay_metrics row per SKU that has an item id.
-        $rows = EbayMetric::query()
+        $rows = $metricModel::query()
             ->whereNotNull('item_id')->where('item_id', '!=', '')
             ->whereNotNull('sku')->where('sku', '!=', '')
             ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
@@ -72,7 +81,7 @@ class SyncEbayLqsFromApi extends Command
         $recent = [];
         if ($staleHours > 0) {
             $recent = LqsMarketplaceScore::query()
-                ->where('marketplace', EbayLqsApiSyncService::MARKETPLACE)
+                ->where('marketplace', $slug)
                 ->where('updated_at', '>=', now()->subHours($staleHours))
                 ->pluck('sku')
                 ->mapWithKeys(fn ($s) => [strtoupper(trim($s)) => true])
@@ -81,7 +90,7 @@ class SyncEbayLqsFromApi extends Command
 
         // SKUs that have never been scored come first, so a capped run always makes visible progress.
         $scored = LqsMarketplaceScore::query()
-            ->where('marketplace', EbayLqsApiSyncService::MARKETPLACE)
+            ->where('marketplace', $slug)
             ->whereNotNull('lqs')->where('lqs', '>', 0)
             ->pluck('sku')
             ->mapWithKeys(fn ($s) => [strtoupper(trim($s)) => true])
@@ -94,7 +103,7 @@ class SyncEbayLqsFromApi extends Command
             ->take($limit);
 
         $total = $todo->count();
-        $this->info('Scoring '.$total.' of '.$rows->count().' eBay listing(s)'.($dry ? ' (dry run)' : '').'…');
+        $this->info('Scoring '.$total.' of '.$rows->count().' '.EbayLqsApiSyncService::label($slug).' listing(s)'.($dry ? ' (dry run)' : '').'…');
 
         $status = [
             'running' => true,
@@ -105,7 +114,7 @@ class SyncEbayLqsFromApi extends Command
             'finished_at' => null,
             'message' => null,
         ];
-        $this->publish($status);
+        $this->publish($slug, $status);
 
         $ok = 0;
         $failed = 0;
@@ -114,10 +123,10 @@ class SyncEbayLqsFromApi extends Command
         foreach ($todo as $row) {
             try {
                 if ($dry) {
-                    $res = $sync->assess((string) $row->item_id);
+                    $res = $sync->assess((string) $row->item_id, $slug);
                     $score = $res['score'];
                 } else {
-                    $score = $sync->syncSku($row->sku)['lqs'];
+                    $score = $sync->syncSku($row->sku, $slug)['lqs'];
                 }
                 $ok++;
                 $sum += $score;
@@ -135,7 +144,7 @@ class SyncEbayLqsFromApi extends Command
 
             $status['done'] = $ok;
             $status['failed'] = $failed;
-            $this->publish($status);
+            $this->publish($slug, $status);
 
             if ($aborted) {
                 break;
@@ -147,30 +156,30 @@ class SyncEbayLqsFromApi extends Command
         $status['finished_at'] = now()->toDateTimeString();
         $status['message'] = $status['message']
             ?: "Scored {$ok}, failed {$failed}".($ok ? sprintf(', average %.1f.', $sum / $ok) : '.');
-        $this->publish($status);
+        $this->publish($slug, $status);
 
         $this->info('Done. '.$status['message']);
 
         return $aborted || ($failed > 0 && $ok === 0) ? self::FAILURE : self::SUCCESS;
     }
 
-    /** Progress the page polls (see LqsEbayController::apiSyncStatus). */
-    private function publish(array $status): void
+    /** Progress the page polls (see HandlesEbayLqsApi::apiSyncStatus). */
+    private function publish(string $slug, array $status): void
     {
         $status['updated_at'] = time();
-        Cache::put(EbayLqsApiSyncService::STATUS_KEY, $status, 86400);
+        Cache::put(EbayLqsApiSyncService::statusKey($slug), $status, 86400);
     }
 
-    private function scoreOne(EbayLqsApiSyncService $sync, string $sku, bool $dry): int
+    private function scoreOne(EbayLqsApiSyncService $sync, string $slug, string $sku, bool $dry): int
     {
         try {
             if ($dry) {
-                $metric = $sync->metricForSku($sku);
-                $res = $sync->assess((string) ($metric->item_id ?? ''));
+                $metric = $sync->metricForSku($sku, $slug);
+                $res = $sync->assess((string) ($metric->item_id ?? ''), $slug);
                 $score = $res['score'];
                 $text = $res['findings']."\n\n".$res['suggestions'];
             } else {
-                $res = $sync->syncSku($sku);
+                $res = $sync->syncSku($sku, $slug);
                 $score = $res['lqs'];
                 $text = $res['findings']."\n\n".$res['suggestions'];
             }

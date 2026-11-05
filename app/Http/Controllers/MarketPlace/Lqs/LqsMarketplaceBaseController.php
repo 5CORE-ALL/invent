@@ -30,7 +30,7 @@ abstract class LqsMarketplaceBaseController extends Controller
                 'routes' => $this->pageRoutes(),
                 'has_sheet' => true,
                 'has_api_metrics' => ! empty($config['metrics']),
-                'has_audit' => $this->slug() === 'ebay',
+                'has_audit' => \App\Services\Lqs\EbayLqsApiSyncService::supports($this->slug()),
                 'has_yoast_seo' => $this->slug() === 'shopify',
             ],
         ]);
@@ -195,6 +195,7 @@ abstract class LqsMarketplaceBaseController extends Controller
     protected function pageRoutes(): array
     {
         $slug = $this->slug();
+        $isEbay = \App\Services\Lqs\EbayLqsApiSyncService::supports($slug);
 
         return [
             'view' => route('lqs.'.$slug.'.view'),
@@ -206,12 +207,12 @@ abstract class LqsMarketplaceBaseController extends Controller
             'sample' => route('lqs.'.$slug.'.sample'),
             'download' => route('lqs.'.$slug.'.download'),
             'upload' => route('lqs.'.$slug.'.upload'),
-            'audit_prompt' => $slug === 'ebay' ? route('lqs.ebay.audit.prompt') : null,
-            'audit_prompt_save' => $slug === 'ebay' ? route('lqs.ebay.audit.prompt.save') : null,
-            'audit_run' => $slug === 'ebay' ? route('lqs.ebay.audit.run') : null,
-            'api_score' => $slug === 'ebay' ? route('lqs.ebay.api.score') : null,
-            'api_sync' => $slug === 'ebay' ? route('lqs.ebay.api.sync') : null,
-            'api_sync_status' => $slug === 'ebay' ? route('lqs.ebay.api.sync.status') : null,
+            'audit_prompt' => $isEbay ? route("lqs.{$slug}.audit.prompt") : null,
+            'audit_prompt_save' => $isEbay ? route("lqs.{$slug}.audit.prompt.save") : null,
+            'audit_run' => $isEbay ? route("lqs.{$slug}.audit.run") : null,
+            'api_score' => $isEbay ? route("lqs.{$slug}.api.score") : null,
+            'api_sync' => $isEbay ? route("lqs.{$slug}.api.sync") : null,
+            'api_sync_status' => $isEbay ? route("lqs.{$slug}.api.sync.status") : null,
             'seo_sync' => $slug === 'shopify' ? route('lqs.shopify.seo.sync') : null,
         ];
     }

@@ -2,7 +2,6 @@
 
 namespace App\Services\Lqs;
 
-use App\Models\EbayMetric;
 use App\Models\LqsMarketplaceAuditPrompt;
 use App\Models\LqsMarketplaceScore;
 use App\Models\ProductMaster;
@@ -19,7 +18,7 @@ class LqsListingAuditService
     {
         $label = LqsMarketplaceCatalog::find($slug)['label'] ?? strtoupper($slug);
 
-        if ($slug === 'ebay') {
+        if (EbayLqsApiSyncService::supports($slug)) {
             return <<<'PROMPT'
 You are an eBay listing quality auditor for a US marketplace seller. Score this listing from 0 to 100 and tell a content editor exactly what to fix.
 
@@ -98,16 +97,17 @@ PROMPT;
         // eBay: ground the AI in the real live listing (photos, item specifics, description, shipping/returns)
         // instead of only title + bullets, and compute the objective API score.
         $assessment = null;
-        if ($slug === 'ebay' && ! empty($listing['listing_id'])) {
+        if (EbayLqsApiSyncService::supports($slug) && ! empty($listing['listing_id'])) {
             try {
-                $assessment = app(EbayLqsApiSyncService::class)->assess((string) $listing['listing_id']);
+                $assessment = app(EbayLqsApiSyncService::class)->assess((string) $listing['listing_id'], $slug);
                 $listing['live_listing_facts'] = $assessment['facts'];
                 $listing['api_rule_score'] = $assessment['score'];
                 $listing['api_rule_gaps'] = array_values(array_filter(
                     array_map(fn ($c) => $c['notes'] ? $c['name'].': '.implode(' ', $c['notes']) : null, $assessment['checks'])
                 ));
             } catch (\Throwable $e) {
-                Log::warning('LQS audit: eBay live listing fetch failed, auditing with stored data only', [
+                Log::warning('LQS audit: live eBay listing fetch failed, auditing with stored data only', [
+                    'channel' => $slug,
                     'sku' => $sku,
                     'error' => $e->getMessage(),
                 ]);
@@ -205,8 +205,9 @@ PROMPT;
             'listing_status' => null,
         ];
 
-        if ($slug === 'ebay' && Schema::hasTable('ebay_metrics')) {
-            $metric = EbayMetric::query()
+        if (EbayLqsApiSyncService::supports($slug) && Schema::hasTable(EbayLqsApiSyncService::metricsTable($slug))) {
+            $metricModel = EbayLqsApiSyncService::metricsModel($slug);
+            $metric = $metricModel::query()
                 ->whereRaw('UPPER(TRIM(REPLACE(sku, ?, " "))) = ?', [$nbsp, $key])
                 ->orderByDesc('id')
                 ->first();

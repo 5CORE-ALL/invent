@@ -266,11 +266,24 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
         // eBay LQS from the live eBay listing (Trading API GetItem). 300 listings/run, skips SKUs scored in the
         // last 24h, so the whole catalog is covered over several days without burning the shared API quota.
-        $schedule->command('lqs:sync-ebay --limit=300 --stale-hours=24')
+        $schedule->command('lqs:sync-ebay --channel=ebay --limit=300 --stale-hours=24')
             ->dailyAt('03:30')
             ->withoutOverlapping(180)
             ->runInBackground()
             ->name('lqs-sync-ebay')
+            ->appendOutputTo($log);
+        // eBay 2 and eBay 3 use their own API credentials/quota; staggered so the runs never overlap.
+        $schedule->command('lqs:sync-ebay --channel=ebay2 --limit=300 --stale-hours=24')
+            ->dailyAt('03:50')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->name('lqs-sync-ebay2')
+            ->appendOutputTo($log);
+        $schedule->command('lqs:sync-ebay --channel=ebay3 --limit=300 --stale-hours=24')
+            ->dailyAt('04:10')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->name('lqs-sync-ebay3')
             ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
