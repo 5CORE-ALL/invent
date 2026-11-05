@@ -998,8 +998,17 @@ final class EbayTradingReviseItem
             if ($vSku === '' || $value === '') {
                 return ['success' => false, 'message' => 'A variation on this eBay listing has no SKU or no '.$oldName.' value, so the aspect was not renamed.'];
             }
+            // eBay treats a renamed variation like a new one, so it also needs its price and quantity. They are
+            // sent back exactly as the live listing holds them (Quantity is the listed total, sales included).
+            $price = trim(self::xmlText($variation['StartPrice'] ?? ''));
+            $qty = trim(self::xmlText($variation['Quantity'] ?? ''));
+            if (! is_numeric($price) || (float) $price <= 0 || ! is_numeric($qty)) {
+                return ['success' => false, 'message' => 'Could not read the live price or quantity of variation '.$vSku.' from eBay, so the aspect was not renamed.'];
+            }
             $node = $block->addChild('Variation');
             $node->addChild('SKU', $esc($vSku));
+            $node->addChild('StartPrice', number_format((float) $price, 2, '.', ''));
+            $node->addChild('Quantity', (string) max(0, (int) $qty));
             $nvl = $node->addChild('VariationSpecifics')->addChild('NameValueList');
             $nvl->addChild('Name', $esc($newName));
             $nvl->addChild('Value', $esc($value));
