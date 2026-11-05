@@ -4935,7 +4935,14 @@
                 mergeMasterContent(isAplus
                     ? { description_aplus: body, aplus_images: [], aplus_fetched_at: null, aplus_error: null, has_aplus: true, aplus_source: 'variation' }
                     : { description_text: body, has_description_text: true, text_source: 'variation' });
-                toast((isAplus ? 'A+ content' : 'Description') + ' loaded from Variation Master. Click Apply to Product Info to use it.', 'success');
+                // Push to Marketplaces sends the Product Info description, so the fetched content becomes it right
+                // away (otherwise the old description would be sent and the listing would look unchanged).
+                if (currentProduct) {
+                    currentProduct.description = body;
+                    if (productEditMode) fillProductEditForm(currentProduct);
+                    else renderProductInfo(currentProduct);
+                }
+                toast((isAplus ? 'A+ content' : 'Description') + ' loaded from Variation Master and set as the description to push. Push to Marketplaces sends it.', 'success');
             });
         });
         $('#lm-img-fetch-variation-btn').on('click', function () {
