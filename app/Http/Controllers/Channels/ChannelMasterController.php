@@ -9034,8 +9034,8 @@ class ChannelMasterController extends Controller
             // Grid metrics come only from channel_master_calculated_data.
             // Do not live-compute or save the table on this web request.
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
-            $formattedData = $this->overlayLiveEbayTodaySalesOnChannelRows($formattedData);
-            $formattedData = $this->applyFastPathLiveSalesOverlays($formattedData);
+            // Saved rows are served as-is (channel:calculate-data already computed and stored them);
+            // no per-request live overlay queries.
             $formattedData = $this->scaleReverbViewsForAllMarketplaceMaster($formattedData);
 
             if (! $section && ! $paginate) {
