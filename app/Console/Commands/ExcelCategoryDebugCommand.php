@@ -23,7 +23,9 @@ class ExcelCategoryDebugCommand extends Command
         }
 
         Cache::forget(ExcelCategoryLookupService::CACHE_KEY.':'.(int) ExcelWorksheet::max('id'));
-        $map = $service->map();
+        $map = $service->build(function ($category, $header, $rows, $added, $keys) {
+            $this->line("  [{$category}] header='{$header}' rows_read={$rows} ids_added={$added} data_keys=".json_encode($keys));
+        });
         $this->info('Mapped item ids: '.count($map));
         $this->line('Sample: '.json_encode(array_slice($map, 0, 5)));
 

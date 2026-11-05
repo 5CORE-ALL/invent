@@ -99,9 +99,12 @@ class ExcelCategoryLookupService
     }
 
     /**
+     * Build the map without caching or swallowing errors (used by excel:category-debug).
+     *
+     * @param  (callable(string, string, int, int, array<int, string>): void)|null  $onSheet
      * @return array<string, string>
      */
-    private function build(): array
+    public function build(?callable $onSheet = null): array
     {
         // Only the most recently uploaded workbook is used.
         $importId = ExcelWorksheet::query()->orderByDesc('id')->value('excel_import_id');
@@ -126,19 +129,29 @@ class ExcelCategoryLookupService
                 continue;
             }
 
+            $before = count($map);
+            $rowCount = 0;
+            $sampleKeys = [];
             ExcelWorksheetRow::query()
                 ->where('excel_worksheet_id', $worksheet->id)
                 ->select(['id', 'data'])
-                ->orderBy('row_index')
-                ->chunkById(2000, function ($rows) use (&$map, $itemIdHeader, $category) {
+                ->chunkById(2000, function ($rows) use (&$map, &$rowCount, &$sampleKeys, $itemIdHeader, $category) {
                     foreach ($rows as $row) {
+                        $rowCount++;
                         $data = is_array($row->data) ? $row->data : (json_decode((string) $row->data, true) ?: []);
-                        $itemId = self::normalizeSku((string) ($data[$itemIdHeader] ?? ''));
+                        if ($sampleKeys === []) {
+                            $sampleKeys = array_slice(array_map('strval', array_keys($data)), 0, 12);
+                        }
+                        $itemId = self::normalizeItemId($data[$itemIdHeader] ?? '');
                         if ($itemId !== '' && ! isset($map[$itemId])) {
                             $map[$itemId] = $category;
                         }
                     }
                 });
+
+            if ($onSheet) {
+                $onSheet($category, $itemIdHeader, $rowCount, count($map) - $before, $sampleKeys);
+            }
         }
 
         return $map;
