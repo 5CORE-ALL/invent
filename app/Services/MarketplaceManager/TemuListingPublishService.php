@@ -327,6 +327,25 @@ class TemuListingPublishService extends Temu2ListingPublishService
      */
     private function t1ExistingGoodsSpecContext(string $goodsId): array
     {
+        // Read once per request: a group of new SKUs asks for this for every SKU, and each read is several Temu calls.
+        if (isset($this->t1SpecContextMemo[$goodsId])) {
+            return $this->t1SpecContextMemo[$goodsId];
+        }
+
+        return $this->t1SpecContextMemo[$goodsId] = $this->t1ReadGoodsSpecContext($goodsId);
+    }
+
+    /** @var array<string, array{parentSpecIds: list<int>, parentSpecNames: list<string>, catId: int}> */
+    private array $t1SpecContextMemo = [];
+
+    /** @var array<int, array<string, mixed>> */
+    private array $t1TemplateMemo = [];
+
+    /**
+     * @return array{parentSpecIds: list<int>, parentSpecNames: list<string>, catId: int}
+     */
+    private function t1ReadGoodsSpecContext(string $goodsId): array
+    {
         $parents = [];
         $names = [];
         // The goods record carries the category its variation specs belong to (SKU rows do not).
@@ -755,13 +774,64 @@ class TemuListingPublishService extends Temu2ListingPublishService
             $parentExtra = $parentFields['extra'];
             $parentProps = $parentFields['properties'];
             $lastMsg = '';
-            foreach ($this->specIdsToTry($goodsId, $firstSn, $currentSpecIds) as $specId) {
-                $send = function (array $rows, bool $withLivePhotos, array $extra = []) use ($tryAdd, $kept, $keptPlain, $specId): ?array {
+            // One spec value per new SKU. Temu rejects a goods whose SKUs share a spec value (150011028
+            // "Specification information repeated"), so a group of new SKUs must never all get the same spec id.
+            $specPlans = [];
+            if (count($freshUpdate) <= 1) {
+                foreach ($this->specIdsToTry($goodsId, $firstSn, $currentSpecIds) as $planSpecId) {
+                    $specPlans[] = [0 => $planSpecId];
+                }
+            } else {
+                $liveSpecIds = [];
+                foreach ($existing as $row) {
+                    foreach ((array) ($row['specIdList'] ?? []) as $liveSpecId) {
+                        $liveSpecIds[(int) $liveSpecId] = true;
+                    }
+                }
+                $rowCandidates = [];
+                foreach ($freshUpdate as $i => $row) {
+                    $rowCandidates[$i] = $this->specIdsToTry(
+                        $goodsId,
+                        (string) ($row['outSkuSn'] ?? ''),
+                        array_map('intval', (array) ($row['specIdList'] ?? []))
+                    );
+                }
+                $seenPlans = [];
+                for ($round = 0; $round < 4; $round++) {
+                    $used = $liveSpecIds;
+                    $plan = [];
+                    foreach ($rowCandidates as $i => $candidates) {
+                        $pick = null;
+                        $count = count($candidates);
+                        // Round 0 takes each SKU's best spec that is still free; later rounds start further down the list.
+                        for ($offset = 0; $offset < $count; $offset++) {
+                            $candidate = (int) $candidates[($round + $offset) % $count];
+                            if ($candidate > 0 && ! isset($used[$candidate])) {
+                                $pick = $candidate;
+                                break;
+                            }
+                        }
+                        if ($pick === null) {
+                            continue 2;
+                        }
+                        $used[$pick] = true;
+                        $plan[$i] = $pick;
+                    }
+                    $signature = json_encode($plan);
+                    if (! isset($seenPlans[$signature])) {
+                        $seenPlans[$signature] = true;
+                        $specPlans[] = $plan;
+                    }
+                }
+            }
+            foreach ($specPlans as $specMap) {
+                $specId = (int) (reset($specMap) ?: 0);
+                $send = function (array $rows, bool $withLivePhotos, array $extra = []) use ($tryAdd, $kept, $keptPlain, $specMap): ?array {
                     $freshForSpec = [];
                     $imageCount = 0;
                     $firstImage = '';
-                    foreach ($rows as $row) {
-                        $row['specIdList'] = [$specId];
+                    foreach ($rows as $rowIndex => $row) {
+                        $row['specIdList'] = [(int) ($specMap[$rowIndex] ?? reset($specMap))];
                         $row['images'] = $this->padTemuUpdateImages((array) ($row['images'] ?? []));
                         $imageCount = max($imageCount, count($row['images']));
                         if ($firstImage === '' && isset($row['images'][0])) {
@@ -774,7 +844,7 @@ class TemuListingPublishService extends Temu2ListingPublishService
                     return $tryAdd(
                         'bg.local.goods.update',
                         array_merge($withLivePhotos ? $kept : $keptPlain, $freshForSpec),
-                        'bg.local.goods.update (spec '.$specId.', '.$imageCount.' images'
+                        'bg.local.goods.update (spec '.implode('/', array_values($specMap)).', '.$imageCount.' images'
                             .($withLivePhotos ? ', live photos' : ', no live photos').', '.$tail.')',
                         $extra,
                         40
@@ -1030,11 +1100,14 @@ class TemuListingPublishService extends Temu2ListingPublishService
         if ($catId <= 0) {
             return null;
         }
-        $template = $this->temuCallBody([
-            'type' => 'bg.local.goods.template.get',
-            'catId' => $catId,
-            'language' => 'en',
-        ], 45);
+        if (! isset($this->t1TemplateMemo[$catId])) {
+            $this->t1TemplateMemo[$catId] = $this->temuCallBody([
+                'type' => 'bg.local.goods.template.get',
+                'catId' => $catId,
+                'language' => 'en',
+            ], 45);
+        }
+        $template = $this->t1TemplateMemo[$catId];
         $info = $template['result']['templateInfo'] ?? $template['result'] ?? [];
         if (! is_array($info)) {
             return null;
