@@ -2744,6 +2744,7 @@
             var lastDotColorByKey = {};
             var lastDotPairByKey = {};
             var chartSyncedAllMetrics = {};
+            var chartSyncedChannelMetrics = {};
             var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 't_ads', 't_ads_pct', 'p_ads_pct', 'tat'];
             // These Y / Today dots start from a "vs L30 average" pair, but as soon as the badge's
             // graph series is known (prefetched on load or opened by click) the dot is re-synced
@@ -2794,6 +2795,7 @@
                         var v2 = pair && pair[1] != null ? parseFloat(pair[1]) : null;
                         // Keep the pair taken from the graph's own series (see syncAllBadgeDotWithChart).
                         if (norm === 'all' && chartSyncedAllMetrics[metric]) return;
+                        if (chartSyncedChannelMetrics[norm + '_' + metric]) return;
                         lastDotPairByKey[norm + '_' + metric] = [v1, v2];
                         lastDotColorByKey[norm + '_' + metric] = colorFromDotPair(v1, v2, metric);
                         delete dotFallbackKeys[norm + '_' + metric];
@@ -7943,6 +7945,25 @@
                 colorSummaryBadgeDots(channelKeysFromTableData());
             }
 
+            // Channel-row dots use the same last two points as that row's graph.
+            // TikTok's saved pair can be flat (gray) while the graph's last point,
+            // pinned to the live cell, is green.
+            function syncChannelDotWithChart(channel, metric, values) {
+                if (!channel || channel === 'all' || !metric || !Array.isArray(values) || values.length < 2) return;
+                if (['t_npft_pct', 't_groi_pct', 't_nroi_pct', 't_ads_pct', 't_cvr'].indexOf(metric) >= 0) return;
+                var dotMetricByChart = { t_npft_pct: 't_npft', t_groi_pct: 't_groi', t_nroi_pct: 't_nroi', t_ads_pct: 't_ads' };
+                var dotMetric = dotMetricByChart[metric] || metric;
+                var v1 = Number(values[values.length - 2]);
+                var v2 = Number(values[values.length - 1]);
+                if (!isFinite(v1) || !isFinite(v2)) return;
+                var key = snapshotChannelKey(channel) + '_' + dotMetric;
+                lastDotPairByKey[key] = [v1, v2];
+                lastDotColorByKey[key] = colorFromDotPair(v1, v2, dotMetric);
+                delete dotFallbackKeys[key];
+                chartSyncedChannelMetrics[key] = true;
+                paintMetricDots([snapshotChannelKey(channel)]);
+            }
+
             // Colour a badge dot on page load exactly like the graph does after a click:
             // fetch the same series (history + live badge value) and sync the dot from it.
             // Used by badges whose history lives in badges_data_histories (no snapshot pair).
@@ -8786,6 +8807,8 @@
                 const dotColors = metricChartDotColors(values, isInverted, currentChartMetric);
                 if (currentChartMode === 'metric' && currentChartChannel === 'all') {
                     syncAllBadgeDotWithChart(currentChartMetric, values);
+                } else if (currentChartMode === 'metric' && currentChartChannel) {
+                    syncChannelDotWithChart(currentChartChannel, currentChartMetric, values);
                 }
 
                 // Labels + High/Low use the same day-over-day color as the dots.

@@ -62,4 +62,20 @@ class ChannelMetricDotPairTest extends TestCase
             ChannelMetricDotPair::pinLatest(9179.5, 9179.5, 8585.0)
         );
     }
+
+    public function test_flat_pair_takes_the_live_cell_so_the_dot_matches_the_graph(): void
+    {
+        $this->assertSame(
+            [1258.0, 1871.0],
+            ChannelMetricDotPair::pinFlatLatest(1258.0, 1258.0, 1871.0)
+        );
+    }
+
+    public function test_flat_pin_leaves_a_pair_that_already_moved(): void
+    {
+        $this->assertSame(
+            [1258.0, 1871.0],
+            ChannelMetricDotPair::pinFlatLatest(1258.0, 1871.0, 1900.0)
+        );
+    }
 }

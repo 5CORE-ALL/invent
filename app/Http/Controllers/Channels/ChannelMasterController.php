@@ -20056,6 +20056,7 @@ class ChannelMasterController extends Controller
             $all = $this->rememberChannelMetricDotTrends($requestedWindow, false);
             if ($requestedWindow === 0) {
                 $this->overlayBusiness5CoreB2bLiveSalesDot($all);
+                $this->overlayLiveTiktokDotTrends($all);
             }
             $filtered = $this->filterCachedDotTrends($all, $channelKeys);
             $this->overlayProjectedBadgeHistoryDots($filtered);
@@ -20476,6 +20477,7 @@ class ChannelMasterController extends Controller
                 $this->pinAllDotTrendsFromChannelPairs($out);
                 $this->alignYesterdayProfitDotsWithYSales($out);
                 $this->overlayBusiness5CoreB2bLiveSalesDot($out);
+                $this->overlayLiveTiktokDotTrends($out);
             }
 
             return $out;
@@ -23965,6 +23967,98 @@ class ChannelMasterController extends Controller
         }
 
         $out[$key]['l30_sales'] = [$c1, $c2];
+    }
+
+    /**
+     * TikTok and TikTok 2 cells are live order totals, and the graph's last
+     * point is that cell. Saved snapshots stay flat, so the cell dot was gray
+     * while the graph's last dot was green. Only a flat pair is rewritten.
+     *
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $out
+     */
+    private function overlayLiveTiktokDotTrends(array &$out): void
+    {
+        try {
+            $live = TikTokSalesController::dailySalesBadgeTotals('l30');
+            $l60 = TikTokSalesController::dailySalesBadgeTotals('l60');
+            $gpft = (float) ($live['gpft'] ?? 0);
+            $groi = (float) ($live['groi'] ?? 0);
+            $metrics = [
+                'l30_sales' => (float) ($live['l30'] ?? 0),
+                'l60_sales' => (float) ($l60['l30'] ?? 0),
+                'l30_orders' => (float) ($live['orders'] ?? 0),
+                'qty' => (float) ($live['qty'] ?? 0),
+                'gprofit' => $gpft,
+                'groi' => $groi,
+                'npft' => $gpft,
+                'nroi' => $groi,
+            ];
+            $ySales = $this->computeTiktokShopYSalesFromOrders();
+            if ($ySales !== null && $ySales > 0) {
+                $metrics['y_sales'] = (float) $ySales;
+            }
+            $l7Sales = $this->computeTiktokShopL7SalesFromOrders();
+            if ($l7Sales !== null) {
+                $metrics['l7_sales'] = (float) $l7Sales;
+                $metrics['p_sales'] = $this->projectedSalesFromL7($l7Sales);
+            }
+            $this->pinFlatChannelDots($out, 'tiktokshop', $metrics);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok live dot overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $live = TikTokSalesController::computeLiveMetricsTwo();
+            if (empty($live['ok'])) {
+                return;
+            }
+            $gpft = (float) ($live['gpft_percent'] ?? 0);
+            $groi = (float) ($live['roi_percent'] ?? 0);
+            $metrics = [
+                'l30_sales' => (float) ($live['l30_sales'] ?? 0),
+                'l60_sales' => (float) ($live['l60_sales'] ?? 0),
+                'l30_orders' => (float) ($live['l30_orders'] ?? 0),
+                'qty' => (float) ($live['qty'] ?? 0),
+                'gprofit' => $gpft,
+                'groi' => $groi,
+                'npft' => $gpft,
+                'nroi' => $groi,
+            ];
+            $ySales = $this->computeTiktokTwoYSalesLikeAmazon();
+            if ($ySales !== null) {
+                $metrics['y_sales'] = (float) $ySales;
+            }
+            $l7Sales = $this->computeTiktokTwoL7SalesLikeAmazon();
+            if ($l7Sales !== null) {
+                $metrics['l7_sales'] = (float) $l7Sales;
+                $metrics['p_sales'] = $this->projectedSalesFromL7($l7Sales);
+            }
+            $this->pinFlatChannelDots($out, 'tiktokshop2', $metrics);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok 2 live dot overlay failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $out
+     * @param  array<string, float>  $metrics
+     */
+    private function pinFlatChannelDots(array &$out, string $channel, array $metrics): void
+    {
+        if (! isset($out[$channel]) || ! is_array($out[$channel])) {
+            $out[$channel] = [];
+        }
+        foreach ($metrics as $metric => $live) {
+            $pair = $out[$channel][$metric] ?? [null, null];
+            $v1 = isset($pair[0]) && is_numeric($pair[0]) ? (float) $pair[0] : null;
+            $v2 = isset($pair[1]) && is_numeric($pair[1]) ? (float) $pair[1] : null;
+            $out[$channel][$metric] = ChannelMetricDotPair::pinFlatLatest(
+                $v1,
+                $v2,
+                $live,
+                $this->metricDotEpsilon($metric)
+            );
+        }
     }
 
     private function buildTemu2LiveRollingSalesChart(int $days, int $windowDays): array

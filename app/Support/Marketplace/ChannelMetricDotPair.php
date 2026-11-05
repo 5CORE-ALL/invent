@@ -80,4 +80,22 @@ class ChannelMetricDotPair
 
         return [$v1, $live];
     }
+
+    /**
+     * Replace a flat (gray) pair with the live cell value. A pair that already
+     * moved is left alone so a real red/green day is not repainted.
+     *
+     * @return array{0: float|null, 1: float|null}
+     */
+    public static function pinFlatLatest(?float $v1, ?float $v2, ?float $live, float $epsilon = 0.01): array
+    {
+        if ($live === null) {
+            return [$v1, $v2];
+        }
+        if ($v1 !== null && $v2 !== null && abs($v2 - $v1) > $epsilon) {
+            return [$v1, $v2];
+        }
+
+        return self::pinLatest($v1, $v2, $live, $epsilon);
+    }
 }
