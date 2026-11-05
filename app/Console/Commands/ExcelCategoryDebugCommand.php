@@ -11,20 +11,20 @@ class ExcelCategoryDebugCommand extends Command
 {
     protected $signature = 'excel:category-debug';
 
-    protected $description = 'Show which /excel worksheets feed the eBay Category column (category = worksheet name, matched by MPN)';
+    protected $description = 'Show which /excel worksheets feed the eBay Category column (category = worksheet name, matched by Item ID)';
 
     public function handle(ExcelCategoryLookupService $service): int
     {
         $importId = ExcelWorksheet::query()->orderByDesc('id')->value('excel_import_id');
         $sheets = ExcelWorksheet::query()->where('excel_import_id', $importId)->orderBy('worksheet_index')->get();
         foreach ($sheets as $w) {
-            $used = $service->isCategorySheet($w->worksheet_name) ? ($service->detectMpnHeader((array) $w->headers) ?? 'NO MPN COLUMN') : 'ignored';
-            $this->line("#{$w->id} {$w->worksheet_name} rows={$w->total_rows} mpn=".$used);
+            $used = $service->isCategorySheet($w->worksheet_name) ? ($service->detectItemIdHeader((array) $w->headers) ?? 'NO ITEM ID COLUMN') : 'ignored';
+            $this->line("#{$w->id} {$w->worksheet_name} rows={$w->total_rows} item_id_col=".$used);
         }
 
         Cache::forget(ExcelCategoryLookupService::CACHE_KEY.':'.(int) ExcelWorksheet::max('id'));
         $map = $service->map();
-        $this->info('Mapped MPNs: '.count($map));
+        $this->info('Mapped item ids: '.count($map));
         $this->line('Sample: '.json_encode(array_slice($map, 0, 5)));
 
         return self::SUCCESS;

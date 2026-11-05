@@ -1636,8 +1636,9 @@ class EbayController extends Controller
             }
             $row['nrp'] = $nrpOut;
 
-            // Category from /excel upload, matched by SKU (blank when no match)
-            $row['excel_category'] = $excelCategoryBySku[\App\Services\ExcelCategoryLookupService::normalizeSku($pm->sku)] ?? '';
+            // Category from /excel upload (worksheet name), matched by eBay Item ID (blank when no match)
+            $excelItemKey = \App\Services\ExcelCategoryLookupService::normalizeItemId($ebayMetric?->item_id ?? '');
+            $row['excel_category'] = $excelItemKey !== '' ? ($excelCategoryBySku[$excelItemKey] ?? '') : '';
 
             $result[] = (object) $row;
         }

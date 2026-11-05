@@ -8,31 +8,44 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Builds an MPN => Category map from the workbook uploaded in /excel.
+ * Builds an Item ID => Category map from the workbook uploaded in /excel.
  *
  * In that workbook every worksheet tab is a category (e.g. "Stands & Hangers",
- * "Stools & Benches"), and each row carries an MPN. The category of a SKU is the
- * name of the worksheet whose MPN column contains that SKU. Non-category tabs
+ * "Stools & Benches"), and each row carries an eBay Item ID. The category of a listing is the
+ * name of the worksheet whose Item ID column contains that item id. Non-category tabs
  * (Summary, Guide, Google Shopping Rejections) are ignored. No match => blank.
  */
 class ExcelCategoryLookupService
 {
-    public const CACHE_KEY = 'excel_category_by_mpn_v2';
+    public const CACHE_KEY = 'excel_category_by_item_id_v3';
 
-    private const MPN_HEADERS = ['mpn', 'mpnnumber', 'manufacturerpartnumber', 'partnumber'];
+    private const ITEM_ID_HEADERS = ['itemid', 'ebayitemid', 'itemnumber', 'listingid', 'ebayitemnumber'];
 
     /** Worksheet tabs that are not categories. */
     private const IGNORED_SHEETS = ['summary', 'guide', 'googleshoppingrejections'];
 
-    public static function normalizeSku(?string $sku): string
+    /**
+     * Normalize an eBay item id so "123456789012", "123456789012.0" and " 123456789012 "
+     * (Excel often stores ids as numbers) compare equal.
+     */
+    public static function normalizeItemId($value): string
     {
-        $sku = str_replace("\u{00a0}", ' ', (string) $sku);
+        $value = trim(str_replace("\u{00a0}", ' ', (string) $value));
+        if ($value === '') {
+            return '';
+        }
+        if (preg_match('/^(\d+)\.0+$/', $value, $m)) {
+            return $m[1];
+        }
+        if (is_numeric($value) && stripos($value, 'e') !== false) {
+            return number_format((float) $value, 0, '', '');
+        }
 
-        return strtoupper(trim(preg_replace('/\s+/u', ' ', $sku) ?? ''));
+        return strtoupper($value);
     }
 
     /**
-     * @return array<string, string> normalized MPN/SKU => category
+     * @return array<string, string> normalized item id => category
      */
     public function map(): array
     {
@@ -53,11 +66,11 @@ class ExcelCategoryLookupService
     }
 
     /**
-     * Detect the MPN header of a worksheet.
+     * Detect the Item ID header of a worksheet.
      *
      * @param  array<int, mixed>  $headers
      */
-    public function detectMpnHeader(array $headers): ?string
+    public function detectItemIdHeader(array $headers): ?string
     {
         $keyed = [];
         foreach ($headers as $header) {
@@ -65,12 +78,12 @@ class ExcelCategoryLookupService
         }
 
         foreach ($keyed as $header => $key) {
-            if (in_array($key, self::MPN_HEADERS, true)) {
+            if (in_array($key, self::ITEM_ID_HEADERS, true)) {
                 return (string) $header;
             }
         }
         foreach ($keyed as $header => $key) {
-            if (str_contains($key, 'mpn')) {
+            if (str_contains($key, 'itemid')) {
                 return (string) $header;
             }
         }
@@ -108,8 +121,8 @@ class ExcelCategoryLookupService
                 continue;
             }
 
-            $mpnHeader = $this->detectMpnHeader((array) ($worksheet->headers ?? []));
-            if ($mpnHeader === null) {
+            $itemIdHeader = $this->detectItemIdHeader((array) ($worksheet->headers ?? []));
+            if ($itemIdHeader === null) {
                 continue;
             }
 
@@ -117,12 +130,12 @@ class ExcelCategoryLookupService
                 ->where('excel_worksheet_id', $worksheet->id)
                 ->select(['id', 'data'])
                 ->orderBy('row_index')
-                ->chunkById(2000, function ($rows) use (&$map, $mpnHeader, $category) {
+                ->chunkById(2000, function ($rows) use (&$map, $itemIdHeader, $category) {
                     foreach ($rows as $row) {
                         $data = is_array($row->data) ? $row->data : (json_decode((string) $row->data, true) ?: []);
-                        $mpn = self::normalizeSku((string) ($data[$mpnHeader] ?? ''));
-                        if ($mpn !== '' && ! isset($map[$mpn])) {
-                            $map[$mpn] = $category;
+                        $itemId = self::normalizeSku((string) ($data[$itemIdHeader] ?? ''));
+                        if ($itemId !== '' && ! isset($map[$itemId])) {
+                            $map[$itemId] = $category;
                         }
                     }
                 });
