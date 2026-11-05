@@ -8,18 +8,21 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Builds a SKU => Category map from the data uploaded in /excel (Excel Data Manager).
+ * Builds an MPN => Category map from the workbook uploaded in /excel.
  *
- * The most recently imported worksheet that has both a SKU column and a Category
- * column is used. SKUs with no match are simply absent from the map (blank category).
+ * In that workbook every worksheet tab is a category (e.g. "Stands & Hangers",
+ * "Stools & Benches"), and each row carries an MPN. The category of a SKU is the
+ * name of the worksheet whose MPN column contains that SKU. Non-category tabs
+ * (Summary, Guide, Google Shopping Rejections) are ignored. No match => blank.
  */
 class ExcelCategoryLookupService
 {
-    public const CACHE_KEY = 'excel_category_by_sku_v1';
+    public const CACHE_KEY = 'excel_category_by_mpn_v2';
 
-    private const SKU_HEADERS = ['sku', 'childsku', 'itemsku', 'sellersku', 'productsku'];
+    private const MPN_HEADERS = ['mpn', 'mpnnumber', 'manufacturerpartnumber', 'partnumber'];
 
-    private const CATEGORY_HEADERS = ['category'];
+    /** Worksheet tabs that are not categories. */
+    private const IGNORED_SHEETS = ['summary', 'guide', 'googleshoppingrejections'];
 
     public static function normalizeSku(?string $sku): string
     {
@@ -29,7 +32,7 @@ class ExcelCategoryLookupService
     }
 
     /**
-     * @return array<string, string> normalized SKU => category
+     * @return array<string, string> normalized MPN/SKU => category
      */
     public function map(): array
     {
@@ -50,37 +53,36 @@ class ExcelCategoryLookupService
     }
 
     /**
-     * Pick the SKU and Category headers (exact names first, then any header containing the word).
+     * Detect the MPN header of a worksheet.
      *
      * @param  array<int, mixed>  $headers
-     * @return array{0: ?string, 1: ?string}
      */
-    public function detectColumns(array $headers): array
+    public function detectMpnHeader(array $headers): ?string
     {
         $keyed = [];
         foreach ($headers as $header) {
             $keyed[(string) $header] = preg_replace('/[^a-z0-9]/', '', strtolower((string) $header));
         }
 
-        $pick = function (array $exact, string $contains) use ($keyed): ?string {
-            foreach ($keyed as $header => $key) {
-                if (in_array($key, $exact, true)) {
-                    return (string) $header;
-                }
+        foreach ($keyed as $header => $key) {
+            if (in_array($key, self::MPN_HEADERS, true)) {
+                return (string) $header;
             }
-            foreach ($keyed as $header => $key) {
-                if (str_contains($key, $contains)) {
-                    return (string) $header;
-                }
+        }
+        foreach ($keyed as $header => $key) {
+            if (str_contains($key, 'mpn')) {
+                return (string) $header;
             }
+        }
 
-            return null;
-        };
+        return null;
+    }
 
-        return [
-            $pick(self::SKU_HEADERS, 'sku'),
-            $pick(self::CATEGORY_HEADERS, 'category'),
-        ];
+    public function isCategorySheet(string $name): bool
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', strtolower($name));
+
+        return $key !== '' && ! in_array($key, self::IGNORED_SHEETS, true);
     }
 
     /**
@@ -88,34 +90,44 @@ class ExcelCategoryLookupService
      */
     private function build(): array
     {
-        $worksheets = ExcelWorksheet::query()->orderByDesc('id')->get();
+        // Only the most recently uploaded workbook is used.
+        $importId = ExcelWorksheet::query()->orderByDesc('id')->value('excel_import_id');
+        if (! $importId) {
+            return [];
+        }
 
+        $worksheets = ExcelWorksheet::query()
+            ->where('excel_import_id', $importId)
+            ->orderBy('worksheet_index')
+            ->get();
+
+        $map = [];
         foreach ($worksheets as $worksheet) {
-            [$skuHeader, $categoryHeader] = $this->detectColumns((array) ($worksheet->headers ?? []));
-
-            if ($skuHeader === null || $categoryHeader === null) {
+            $category = trim((string) $worksheet->worksheet_name);
+            if (! $this->isCategorySheet($category)) {
                 continue;
             }
 
-            $map = [];
+            $mpnHeader = $this->detectMpnHeader((array) ($worksheet->headers ?? []));
+            if ($mpnHeader === null) {
+                continue;
+            }
+
             ExcelWorksheetRow::query()
                 ->where('excel_worksheet_id', $worksheet->id)
                 ->select(['id', 'data'])
                 ->orderBy('row_index')
-                ->chunkById(2000, function ($rows) use (&$map, $skuHeader, $categoryHeader) {
+                ->chunkById(2000, function ($rows) use (&$map, $mpnHeader, $category) {
                     foreach ($rows as $row) {
                         $data = is_array($row->data) ? $row->data : (json_decode((string) $row->data, true) ?: []);
-                        $sku = self::normalizeSku((string) ($data[$skuHeader] ?? ''));
-                        $category = trim((string) ($data[$categoryHeader] ?? ''));
-                        if ($sku !== '' && $category !== '' && ! isset($map[$sku])) {
-                            $map[$sku] = $category;
+                        $mpn = self::normalizeSku((string) ($data[$mpnHeader] ?? ''));
+                        if ($mpn !== '' && ! isset($map[$mpn])) {
+                            $map[$mpn] = $category;
                         }
                     }
                 });
-
-            return $map;
         }
 
-        return [];
+        return $map;
     }
 }
