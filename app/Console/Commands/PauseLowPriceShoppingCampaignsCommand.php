@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * BGT Rules "Pause ads if INV = 0" / "price below $X" / "Dil above X%": pauses every ENABLED Shopping campaign whose price
- * (same Shopify price as the grid's Price column) is below the saved threshold. Runs hourly so a
+ * (same Shopify price as the grid's Price column) is below the saved threshold. Runs every 4 hours so a
  * low price pauses the ad without waiting for the daily SBGT push.
  */
 class PauseLowPriceShoppingCampaignsCommand extends Command

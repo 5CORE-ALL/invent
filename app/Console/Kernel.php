@@ -2499,9 +2499,9 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // BGT Rules "Pause ads if price below $X" — hourly, so low-priced ads are paused without waiting for the daily budget push.
+        // BGT Rules "Pause ads if INV = 0 / price below $X / Dil above X%" — every 4 hours, so these ads are paused without waiting for the daily budget push.
         $schedule->command('google:pause-low-price-shopping')
-            ->hourlyAt(15)
+            ->cron('15 */4 * * *')
             ->name('google-pause-low-price-shopping')
             ->withoutOverlapping()
             ->runInBackground()
