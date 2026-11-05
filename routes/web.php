@@ -7924,6 +7924,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/incentives', [\App\Http\Controllers\TaskController::class, 'incentivesPage'])->name('incentives.index');
     Route::post('/incentives', [\App\Http\Controllers\TaskController::class, 'updateIncentives'])->name('incentives.update');
     Route::post('/incentives/extend', [\App\Http\Controllers\TaskController::class, 'extendIncentiveDate'])->name('incentives.extend');
+    Route::post('/incentives/claim', [\App\Http\Controllers\TaskController::class, 'claimIncentive'])->name('incentives.claim');
     Route::post('/incentives/extend-requests/review', [\App\Http\Controllers\TaskController::class, 'reviewIncentiveExtend'])->name('incentives.extend.review');
     Route::post('/incentives/alerts/clear', [\App\Http\Controllers\TaskController::class, 'clearIncentiveAlerts'])->name('incentives.alerts.clear');
     // Legacy recognition badges (pool + awards)

@@ -28,8 +28,10 @@ use App\Models\Task;
 use App\Models\TeamMemberKpi;
 use App\Models\User;
 use App\Models\UserBadge;
+use App\Models\PayrollMonth;
 use App\Models\UserIncentive;
 use App\Models\UserIncentiveExtendRequest;
+use App\Services\PayrollService;
 use App\Models\UserGeneralChecklistProgress;
 use App\Models\UserMgrCheckpointProgress;
 use App\Models\UserRR;
@@ -11080,6 +11082,12 @@ class TaskController extends Controller
         );
     }
 
+    protected function canApproveIncentiveClaims(?User $viewer): bool
+    {
+        return $viewer
+            && strtolower((string) ($viewer->email ?? '')) === self::INCENTIVE_EDITOR_EMAIL;
+    }
+
     protected function canViewAllIncentives(?User $viewer): bool
     {
         if (! $viewer) {
@@ -11187,6 +11195,7 @@ class TaskController extends Controller
             'total' => $directory['total'],
             'extendRequests' => $canEdit ? $this->pendingExtendRequestSummaries() : [],
             'canEdit' => $canEdit,
+            'canApproveClaims' => $this->canApproveIncentiveClaims($viewer),
             'canViewAll' => $canViewAll,
             'editUserId' => $editUserId,
             'viewerId' => (int) $viewer->id,
@@ -11350,6 +11359,68 @@ class TaskController extends Controller
             ->with('success', $message);
     }
 
+    /** The incentive owner asks president@5core.com to pay this incentive on the salary sheet. */
+    public function claimIncentive(Request $request)
+    {
+        $viewer = Auth::user();
+        if (! $viewer) {
+            abort(403);
+        }
+        if (! Schema::hasTable('user_incentive_extend_requests') || ! Schema::hasColumn('user_incentive_extend_requests', 'request_type')) {
+            return redirect()
+                ->back()
+                ->withErrors(['id' => 'Claim requests need a database update. Run php artisan migrate.']);
+        }
+
+        $validated = $request->validate([
+            'id' => 'required|integer|exists:user_incentives,id',
+        ]);
+
+        $row = UserIncentive::query()->where('id', (int) $validated['id'])->firstOrFail();
+        if ((int) $row->user_id !== (int) $viewer->id) {
+            abort(403, 'You can only claim your own incentive.');
+        }
+        if (! $row->is_active || (float) $row->amount <= 0) {
+            return redirect()
+                ->back()
+                ->withFragment('inc-user-'.$row->user_id)
+                ->withErrors(['id' => 'This incentive cannot be claimed.']);
+        }
+        if ($this->incentiveClaimExists((int) $row->id, UserIncentiveExtendRequest::STATUS_APPROVED)) {
+            return redirect()
+                ->back()
+                ->withFragment('inc-user-'.$row->user_id)
+                ->withErrors(['id' => 'This incentive is already claimed.']);
+        }
+        if ($this->incentiveClaimExists((int) $row->id, UserIncentiveExtendRequest::STATUS_PENDING)) {
+            return redirect()
+                ->back()
+                ->withFragment('inc-user-'.$row->user_id)
+                ->withErrors(['id' => 'A claim is already waiting for president@5core.com.']);
+        }
+
+        $claim = new UserIncentiveExtendRequest;
+        $payload = [
+            'user_incentive_id' => (int) $row->id,
+            'user_id' => (int) $row->user_id,
+            'requested_by_user_id' => (int) $viewer->id,
+            'current_cutoff' => trim((string) $row->additional_condition) ?: null,
+            'requested_cutoff' => null,
+            'reason' => 'Claim incentive',
+            'status' => UserIncentiveExtendRequest::STATUS_PENDING,
+        ];
+        if (Schema::hasColumn('user_incentive_extend_requests', 'request_type')) {
+            $payload['request_type'] = UserIncentiveExtendRequest::TYPE_CLAIM;
+        }
+        $claim->fill($payload);
+        $claim->save();
+
+        return redirect()
+            ->back()
+            ->withFragment('inc-user-'.$row->user_id)
+            ->with('success', 'Claim sent to president@5core.com.');
+    }
+
     /** President-only: approve or deny a pending cutoff extend request. */
     public function reviewIncentiveExtend(Request $request)
     {
@@ -11368,6 +11439,10 @@ class TaskController extends Controller
         ]);
 
         $extend = UserIncentiveExtendRequest::query()->where('id', (int) $validated['id'])->firstOrFail();
+        $type = (string) ($extend->request_type ?: UserIncentiveExtendRequest::TYPE_EXTEND);
+        if ($type === UserIncentiveExtendRequest::TYPE_CLAIM && ! $this->canApproveIncentiveClaims($viewer)) {
+            abort(403, 'Only president@5core.com can approve claim requests.');
+        }
         if (! $extend->isPending()) {
             return redirect()
                 ->back()
@@ -11388,8 +11463,10 @@ class TaskController extends Controller
                     ->back()
                     ->withErrors(['decision' => 'That incentive is no longer available.']);
             }
-            $type = (string) ($extend->request_type ?: UserIncentiveExtendRequest::TYPE_EXTEND);
-            if ($type === UserIncentiveExtendRequest::TYPE_END) {
+            if ($type === UserIncentiveExtendRequest::TYPE_CLAIM) {
+                $monthLabel = $this->addClaimedIncentiveToSalary($row, $viewer);
+                $success = 'Claim approved. ₹'.number_format((float) $row->amount, 0).' added to the '.$monthLabel.' salary incentive.';
+            } elseif ($type === UserIncentiveExtendRequest::TYPE_END) {
                 $this->endIncentive($row, $viewer);
                 $success = 'Request to end approved.';
             } elseif ($type === UserIncentiveExtendRequest::TYPE_HELP) {
@@ -11411,10 +11488,84 @@ class TaskController extends Controller
         $extend->status = UserIncentiveExtendRequest::STATUS_DENIED;
         $extend->save();
 
+        $denied = match ($type) {
+            UserIncentiveExtendRequest::TYPE_CLAIM => 'Claim request denied.',
+            UserIncentiveExtendRequest::TYPE_END => 'Request to end denied.',
+            UserIncentiveExtendRequest::TYPE_HELP => 'Need help request denied.',
+            default => 'Extend request denied.',
+        };
+
         return redirect()
             ->back()
             ->withFragment('inc-user-'.$extend->user_id)
-            ->with('success', 'Extend request denied.');
+            ->with('success', $denied);
+    }
+
+    protected function addClaimedIncentiveToSalary(UserIncentive $incentive, User $viewer): string
+    {
+        $amount = round((float) $incentive->amount, 2);
+        if ($amount <= 0) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'decision' => 'This incentive has no amount to add to salary.',
+            ]);
+        }
+        if (! Schema::hasTable('payroll_months') || ! Schema::hasTable('payroll_employee_salaries')) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'decision' => 'The salary sheet is not available yet.',
+            ]);
+        }
+
+        $payroll = app(PayrollService::class);
+        $label = $payroll->defaultMonthLabel();
+        $month = PayrollMonth::query()->where('month_label', $label)->first();
+        if (! $month) {
+            $month = PayrollMonth::query()->orderByDesc('period_end')->orderByDesc('id')->first();
+        }
+        if (! $month) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'decision' => 'No salary month exists yet. Open the salary page and create the sheet first.',
+            ]);
+        }
+        if ($month->is_locked) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'decision' => 'The '.$month->month_label.' salary sheet is locked. Unlock it, then approve the claim.',
+            ]);
+        }
+
+        $employee = User::query()->find((int) $incentive->user_id);
+        if (! $employee) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'decision' => 'That team member is no longer available.',
+            ]);
+        }
+
+        $salary = $payroll->createZeroHourRow($month, $employee);
+        if (! $salary) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'decision' => 'Could not add this person to the salary sheet.',
+            ]);
+        }
+
+        $salary->incentive = round((float) $salary->incentive + $amount, 2);
+        $salary->edited_by = $viewer->name;
+        $salary->edited_at = now();
+        $salary->save();
+        $payroll->recalculateMonth($month);
+
+        return (string) $month->month_label;
+    }
+
+    protected function incentiveClaimExists(int $incentiveId, string $status): bool
+    {
+        if (! Schema::hasTable('user_incentive_extend_requests') || ! Schema::hasColumn('user_incentive_extend_requests', 'request_type')) {
+            return false;
+        }
+
+        return UserIncentiveExtendRequest::query()
+            ->where('user_incentive_id', $incentiveId)
+            ->where('request_type', UserIncentiveExtendRequest::TYPE_CLAIM)
+            ->where('status', $status)
+            ->exists();
     }
 
     /**
@@ -11444,11 +11595,15 @@ class TaskController extends Controller
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get();
-            $pendingById = $this->pendingExtendRequestsKeyed($rows->pluck('id')->all());
+            $incentiveIds = $rows->pluck('id')->all();
+            $pendingById = $this->pendingExtendRequestsKeyed($incentiveIds);
+            $claims = $this->incentiveClaimState($incentiveIds);
             foreach ($rows as $row) {
                 $byUser[(int) $row->user_id][] = $this->formatIncentiveItem(
                     $row,
-                    $pendingById[(int) $row->id] ?? null
+                    $pendingById[(int) $row->id] ?? null,
+                    $claims['pending'][(int) $row->id] ?? null,
+                    isset($claims['approved'][(int) $row->id])
                 );
             }
         }
@@ -11944,7 +12099,7 @@ class TaskController extends Controller
     /**
      * @return array<string, mixed>
      */
-    protected function formatIncentiveItem(UserIncentive $row, ?UserIncentiveExtendRequest $pending = null): array
+    protected function formatIncentiveItem(UserIncentive $row, ?UserIncentiveExtendRequest $pending = null, ?UserIncentiveExtendRequest $claim = null, bool $claimed = false): array
     {
         return [
             'id' => $row->id,
@@ -11967,6 +12122,8 @@ class TaskController extends Controller
                 ? ($row->alert_cleared_state ?: null)
                 : null,
             'pending_extend' => $this->formatPendingExtend($pending),
+            'pending_claim' => $this->formatPendingExtend($claim),
+            'is_claimed' => $claimed,
             'updated_at' => $row->updated_at?->toDateTimeString(),
         ];
     }
@@ -12014,10 +12171,42 @@ class TaskController extends Controller
             ->orderBy('id')
             ->get()
             ->each(function (UserIncentiveExtendRequest $row) use (&$out) {
+                if ((string) ($row->request_type ?: UserIncentiveExtendRequest::TYPE_EXTEND) === UserIncentiveExtendRequest::TYPE_CLAIM) {
+                    return;
+                }
                 $out[(int) $row->user_incentive_id] = $row;
             });
 
         return $out;
+    }
+
+    /**
+     * @param  list<int|string>  $incentiveIds
+     * @return array{pending: array<int, UserIncentiveExtendRequest>, approved: array<int, true>}
+     */
+    protected function incentiveClaimState(array $incentiveIds): array
+    {
+        $state = ['pending' => [], 'approved' => []];
+        if ($incentiveIds === [] || ! Schema::hasTable('user_incentive_extend_requests') || ! Schema::hasColumn('user_incentive_extend_requests', 'request_type')) {
+            return $state;
+        }
+
+        UserIncentiveExtendRequest::query()
+            ->whereIn('user_incentive_id', $incentiveIds)
+            ->where('request_type', UserIncentiveExtendRequest::TYPE_CLAIM)
+            ->whereIn('status', [UserIncentiveExtendRequest::STATUS_PENDING, UserIncentiveExtendRequest::STATUS_APPROVED])
+            ->orderBy('id')
+            ->get()
+            ->each(function (UserIncentiveExtendRequest $row) use (&$state) {
+                $id = (int) $row->user_incentive_id;
+                if ($row->status === UserIncentiveExtendRequest::STATUS_APPROVED) {
+                    $state['approved'][$id] = true;
+                } else {
+                    $state['pending'][$id] = $row;
+                }
+            });
+
+        return $state;
     }
 
     /**
@@ -12044,6 +12233,7 @@ class TaskController extends Controller
                     'requested_by' => (string) ($row->requestedBy->name ?? ''),
                     'title' => (string) ($row->incentive->title ?? ''),
                     'request_type' => (string) ($row->request_type ?: UserIncentiveExtendRequest::TYPE_EXTEND),
+                    'amount' => $row->incentive?->amount !== null ? (float) $row->incentive->amount : null,
                     'current_cutoff' => $row->current_cutoff,
                     'requested_cutoff' => $cutoff,
                     'reason' => $row->reason,

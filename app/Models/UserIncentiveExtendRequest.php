@@ -19,6 +19,8 @@ class UserIncentiveExtendRequest extends Model
 
     public const TYPE_HELP = 'help';
 
+    public const TYPE_CLAIM = 'claim';
+
     protected $fillable = [
         'user_incentive_id',
         'user_id',

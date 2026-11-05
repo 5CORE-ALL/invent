@@ -675,9 +675,9 @@ class PayrollService
                 continue;
             }
 
-            // An increment was recorded ahead of any logged hours: keep the row so the
-            // increment counts in salary as soon as hours start coming in.
-            if ((float) $row->increment !== 0.0) {
+            // An increment or claimed incentive was recorded ahead of any logged hours:
+            // keep the row so it still shows on the salary sheet.
+            if ((float) $row->increment !== 0.0 || (float) $row->incentive !== 0.0) {
                 continue;
             }
 

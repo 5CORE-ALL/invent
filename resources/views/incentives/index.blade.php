@@ -141,6 +141,11 @@
         font-weight: 800;
         white-space: nowrap;
     }
+    .inc-request-badge.is-claimed {
+        background: #ecfdf5;
+        color: #166534;
+        border-color: #86efac;
+    }
     .inc-review-btns {
         display: inline-flex;
         align-items: center;
@@ -155,32 +160,146 @@
         padding: 1rem 1.1rem;
         margin-bottom: 1rem;
     }
-    .inc-request-options {
+    .inc-nx .modal-dialog { max-width: 560px; }
+    .inc-nx-sheet {
+        border: 0;
+        border-radius: 22px;
+        overflow: hidden;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+    }
+    .inc-nx-head {
         display: flex;
-        flex-wrap: wrap;
-        gap: 0.45rem;
-        margin-bottom: 0.9rem;
-    }
-    .inc-request-option {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.35rem;
-        margin: 0;
-        padding: 0.4rem 0.7rem;
-        border: 1px solid #fde68a;
-        border-radius: 999px;
-        background: #fffbeb;
-        color: #92400e;
-        font-weight: 800;
-        font-size: 0.86rem;
-        cursor: pointer;
-    }
-    .inc-request-option:has(input:checked) {
-        background: #f59e0b;
-        border-color: #d97706;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1.15rem 1.25rem 0.9rem;
+        background: linear-gradient(135deg, #0f172a, #1e293b);
         color: #fff;
     }
-    .inc-request-option input { margin: 0; }
+    .inc-nx-kicker {
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #fcd34d;
+    }
+    .inc-nx-head h5 { margin: 0.15rem 0 0; font-weight: 800; color: #fff; }
+    .inc-nx-close {
+        width: 34px;
+        height: 34px;
+        border: 0;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.12);
+        color: #fff;
+        font-size: 1.25rem;
+        line-height: 1;
+    }
+    .inc-nx-body { padding: 1.1rem 1.25rem 0.4rem; background: #f8fafc; }
+    .inc-nx-who {
+        margin: 0 0 0.85rem;
+        padding: 0.7rem 0.85rem;
+        border-radius: 14px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        color: #0f172a;
+        font-weight: 800;
+    }
+    .inc-nx-choices {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.55rem;
+        margin-bottom: 0.75rem;
+    }
+    .inc-nx-choice {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+        min-height: 108px;
+        margin: 0;
+        padding: 0.75rem 0.7rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        background: #fff;
+        cursor: pointer;
+        color: #0f172a;
+    }
+    .inc-nx-choice input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .inc-nx-choice strong { display: block; font-size: 0.86rem; }
+    .inc-nx-choice small { display: block; color: #64748b; font-weight: 600; line-height: 1.25; }
+    .inc-nx-ico {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        background: #f1f5f9;
+        color: #334155;
+        font-size: 1.05rem;
+    }
+    .inc-nx-choice.is-extend:has(input:checked) { border-color: #f59e0b; background: #fffbeb; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18); }
+    .inc-nx-choice.is-extend:has(input:checked) .inc-nx-ico { background: #f59e0b; color: #fff; }
+    .inc-nx-choice.is-help:has(input:checked) { border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16); }
+    .inc-nx-choice.is-help:has(input:checked) .inc-nx-ico { background: #2563eb; color: #fff; }
+    .inc-nx-choice.is-end:has(input:checked) { border-color: #e11d48; background: #fff1f2; box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.14); }
+    .inc-nx-choice.is-end:has(input:checked) .inc-nx-ico { background: #e11d48; color: #fff; }
+    .inc-nx-note { min-height: 2.4em; margin: 0 0 0.85rem; color: #64748b; font-size: 0.84rem; }
+    .inc-nx-field { margin-bottom: 0.85rem; }
+    .inc-nx-field label {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #475569;
+    }
+    .inc-nx-field input,
+    .inc-nx-field textarea,
+    .inc-nx-field select {
+        width: 100%;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #fff;
+        padding: 0.7rem 0.8rem;
+        color: #0f172a;
+    }
+    .inc-nx-field textarea { min-height: 110px; resize: vertical; }
+    .inc-nx-field input:focus,
+    .inc-nx-field textarea:focus,
+    .inc-nx-field select:focus {
+        outline: none;
+        border-color: #f59e0b;
+        box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+    }
+    .inc-nx-foot {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.55rem;
+        padding: 0.85rem 1.25rem 1.15rem;
+        background: #fff;
+        border-top: 1px solid #e2e8f0;
+    }
+    .inc-nx-cancel,
+    .inc-nx-submit {
+        border: 0;
+        border-radius: 12px;
+        padding: 0.7rem 1rem;
+        font-weight: 800;
+    }
+    .inc-nx-cancel { background: #f1f5f9; color: #334155; }
+    .inc-nx-submit { background: #d97706; color: #fff; }
+    .inc-nx-sheet[data-kind="help"] .inc-nx-submit { background: #2563eb; }
+    .inc-nx-sheet[data-kind="end"] .inc-nx-submit { background: #e11d48; }
+    @media (max-width: 575.98px) {
+        .inc-nx-choices { grid-template-columns: 1fr; }
+        .inc-nx-choice { min-height: 0; flex-direction: row; align-items: center; }
+    }
     .inc-pending-card h5 {
         margin: 0 0 0.65rem;
         font-weight: 800;
@@ -282,6 +401,10 @@
         $withIncentive = collect($people)->filter(fn ($person) => count($person['items'] ?? []) > 0)->count();
         $viewerId = (int) ($viewerId ?? auth()->id());
         $extendRequests = $extendRequests ?? [];
+        $canApproveClaims = ! empty($canApproveClaims);
+        $visibleRequests = array_values(array_filter($extendRequests, function ($req) use ($canApproveClaims) {
+            return ($req['request_type'] ?? '') !== 'claim' || $canApproveClaims;
+        }));
     @endphp
 
     @if (session('success'))
@@ -331,16 +454,18 @@
         </div>
     @endif
 
-    @if ($canEdit && count($extendRequests))
+    @if (count($visibleRequests))
         <div class="inc-pending-card">
             <h5>Requests waiting for you</h5>
             <div class="inc-pending-list">
-                @foreach ($extendRequests as $req)
+                @foreach ($visibleRequests as $req)
                     <div class="inc-pending-item">
                         <div>
                             <p class="fw-bold mb-1">{{ $req['user_name'] ?: 'Team member' }} · {{ $req['title'] ?: 'Incentive' }}</p>
                             <p class="small mb-1">
-                                @if (($req['request_type'] ?? '') === 'help')
+                                @if (($req['request_type'] ?? '') === 'claim')
+                                    {{ $req['requested_by'] ?: 'Someone' }} asked to claim {{ isset($req['amount']) && $req['amount'] !== null ? $rupee($req['amount']) : 'this incentive' }} onto the salary sheet.
+                                @elseif (($req['request_type'] ?? '') === 'help')
                                     {{ $req['requested_by'] ?: 'Someone' }} needs help to achieve this incentive.
                                 @elseif (($req['request_type'] ?? '') === 'end')
                                     {{ $req['requested_by'] ?: 'Someone' }} asked to end this incentive.
@@ -413,28 +538,6 @@
                         @endif
                     </div>
                     <div class="d-flex align-items-center gap-2">
-                        @php
-                            $headerExtend = null;
-                            if (! $editing && ($canRequest || $canEdit)) {
-                                foreach ($shown as $headerRow) {
-                                    if (! empty($headerRow['id']) && empty($headerRow['is_achieved']) && empty($headerRow['pending_extend'])) {
-                                        $headerExtend = $headerRow;
-                                        break;
-                                    }
-                                }
-                            }
-                        @endphp
-                        @if ($headerExtend)
-                            <button type="button"
-                                class="btn btn-sm btn-warning fw-bold inc-extend-date"
-                                title="{{ $canEdit ? 'Extend cutoff date' : 'Request a later cutoff date' }}"
-                                data-id="{{ $headerExtend['id'] }}"
-                                data-name="{{ $person['name'] }}"
-                                data-title="{{ $headerExtend['title'] ?? '' }}"
-                                data-cutoff="{{ $cutoffInput($headerExtend['additional_condition'] ?? '') }}"
-                                data-bs-toggle="modal"
-                                data-bs-target="#inc-extend-modal">Extend</button>
-                        @endif
                         <span class="inc-total-pill">₹<span class="inc-person-total">{{ $rupee($personTotal) }}</span></span>
                         @if ($canEdit && ! $editing)
                             <a class="btn btn-sm btn-outline-success" href="{{ route('incentives.index', ['user_id' => $person['id']]).'#inc-user-'.$person['id'] }}">Edit</a>
@@ -542,6 +645,9 @@
                                         $achieved = ! empty($row['is_achieved']);
                                         $hot = ! $achieved && $left !== null && $left <= 1;
                                         $pending = $row['pending_extend'] ?? null;
+                                        $claim = $row['pending_claim'] ?? null;
+                                        $claimed = ! empty($row['is_claimed']);
+                                        $claimAmount = is_numeric($row['amount'] ?? null) ? (float) $row['amount'] : 0;
                                     @endphp
                                     <tr class="{{ $hot ? 'is-cutoff' : '' }}">
                                         <td>{{ $row['title'] ?: '—' }}@if ($achieved) <span class="badge bg-success ms-1">Achieved</span>@endif</td>
@@ -596,6 +702,33 @@
                                                             Extend
                                                         </button>
                                                     @endif
+                                                    @if ($claimed)
+                                                        <span class="inc-request-badge is-claimed">Claimed</span>
+                                                    @elseif (! empty($claim))
+                                                        <span class="inc-request-badge" title="Waiting for president@5core.com">Claim sent</span>
+                                                        @if ($canApproveClaims)
+                                                            <div class="inc-review-btns">
+                                                                <form method="post" action="{{ route('incentives.extend.review') }}">
+                                                                    @csrf
+                                                                    <input type="hidden" name="id" value="{{ $claim['id'] }}">
+                                                                    <input type="hidden" name="decision" value="approve">
+                                                                    <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                                                                </form>
+                                                                <form method="post" action="{{ route('incentives.extend.review') }}" class="inc-deny-form">
+                                                                    @csrf
+                                                                    <input type="hidden" name="id" value="{{ $claim['id'] }}">
+                                                                    <input type="hidden" name="decision" value="deny">
+                                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Deny</button>
+                                                                </form>
+                                                            </div>
+                                                        @endif
+                                                    @elseif ($canRequest && ! empty($row['id']) && $claimAmount > 0)
+                                                        <form method="post" action="{{ route('incentives.claim') }}">
+                                                            @csrf
+                                                            <input type="hidden" name="id" value="{{ $row['id'] }}">
+                                                            <button type="submit" class="btn btn-sm btn-success inc-extend-btn" title="Send a claim to president@5core.com">Claim</button>
+                                                        </form>
+                                                    @endif
                                                 </div>
                                             </td>
                                         @endif
@@ -620,33 +753,50 @@
     <p class="text-muted small d-none mt-3 mb-0" id="inc-search-empty">No matching people.</p>
     <p class="text-muted small mt-3 mb-0">Incentives are managed by president@5core.com and software5@5core.com. Days Left counts from today (California time, {{ \App\Support\TaskBusinessTime::incentiveToday()->format('j M Y') }}) to the cutoff date.</p>
 
-    <div class="modal fade" id="inc-extend-modal" tabindex="-1" aria-labelledby="inc-extend-title" aria-hidden="true">
-        <div class="modal-dialog">
-            <form method="post" action="{{ route('incentives.extend') }}" class="modal-content">
+    <div class="modal fade inc-nx" id="inc-extend-modal" tabindex="-1" aria-labelledby="inc-extend-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form method="post" action="{{ route('incentives.extend') }}" class="modal-content inc-nx-sheet" data-kind="extend">
                 @csrf
                 <input type="hidden" name="id" id="inc-extend-id">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="inc-extend-title">Incentive request</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="mb-2" id="inc-extend-summary"></p>
-                    <div class="inc-request-options" role="radiogroup" aria-label="Request type">
-                        <label class="inc-request-option"><input type="radio" name="request_type" value="extend" checked> Extend date</label>
-                        <label class="inc-request-option"><input type="radio" name="request_type" value="help"> Need Help</label>
-                        <label class="inc-request-option"><input type="radio" name="request_type" value="end"> Request to End</label>
+                <div class="inc-nx-head">
+                    <div>
+                        <div class="inc-nx-kicker">Incentive</div>
+                        <h5 id="inc-extend-title">Make a request</h5>
                     </div>
-                    <p class="text-muted small" id="inc-option-note">Choose Need Help to ask for help achieving this incentive.</p>
-                    <div id="inc-extend-date-wrap">
-                        <label for="inc-extend-date" class="form-label fw-bold">New cutoff date</label>
-                        <input type="date" class="form-control" name="additional_condition" id="inc-extend-date" min="{{ $businessToday }}">
-                    </div>
-                    <label for="inc-extend-reason" class="form-label fw-bold mt-3">Reason</label>
-                    <textarea class="form-control" name="reason" id="inc-extend-reason" rows="3" maxlength="1000" placeholder="What help do you need to achieve this incentive?"></textarea>
+                    <button type="button" class="inc-nx-close" data-bs-dismiss="modal" aria-label="Close">&times;</button>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-warning" id="inc-extend-submit">Send request</button>
+                <div class="inc-nx-body">
+                    <p class="inc-nx-who" id="inc-extend-summary"></p>
+                    <div class="inc-nx-choices" role="radiogroup" aria-label="Request type">
+                        <label class="inc-nx-choice is-extend">
+                            <input type="radio" name="request_type" value="extend" checked>
+                            <span class="inc-nx-ico"><i class="ri-calendar-event-line"></i></span>
+                            <span><strong>Extend date</strong><small>Ask for a later cutoff</small></span>
+                        </label>
+                        <label class="inc-nx-choice is-help">
+                            <input type="radio" name="request_type" value="help">
+                            <span class="inc-nx-ico"><i class="ri-lifebuoy-line"></i></span>
+                            <span><strong>Need Help</strong><small>Help to achieve it</small></span>
+                        </label>
+                        <label class="inc-nx-choice is-end">
+                            <input type="radio" name="request_type" value="end">
+                            <span class="inc-nx-ico"><i class="ri-close-circle-line"></i></span>
+                            <span><strong>Request to End</strong><small>Ask to close it</small></span>
+                        </label>
+                    </div>
+                    <p class="inc-nx-note" id="inc-option-note">Extend date asks for a later cutoff. Add a reason if you want.</p>
+                    <div class="inc-nx-field" id="inc-extend-date-wrap">
+                        <label for="inc-extend-date">New cutoff date</label>
+                        <input type="date" name="additional_condition" id="inc-extend-date" min="{{ $businessToday }}">
+                    </div>
+                    <div class="inc-nx-field">
+                        <label for="inc-extend-reason">Reason</label>
+                        <textarea name="reason" id="inc-extend-reason" maxlength="1000" placeholder="Why does this cutoff need more time?"></textarea>
+                    </div>
+                </div>
+                <div class="inc-nx-foot">
+                    <button type="button" class="inc-nx-cancel" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="inc-nx-submit" id="inc-extend-submit">Save date</button>
                 </div>
             </form>
         </div>
@@ -796,10 +946,10 @@
                     ? 'Request to End asks them to close this incentive.'
                     : 'Extend date asks for a later cutoff. Add a reason if you want.');
         }
+        var sheet = modal.querySelector('.inc-nx-sheet');
+        if (sheet) sheet.setAttribute('data-kind', type);
         if (submit) {
-            submit.textContent = type === 'help' ? 'Need Help' : (type === 'end' ? 'Request to End' : (canEditIncentive ? 'Save date' : 'Send request'));
-            submit.classList.toggle('btn-warning', type !== 'end');
-            submit.classList.toggle('btn-outline-danger', type === 'end');
+            submit.textContent = type === 'help' ? 'Send help request' : (type === 'end' ? 'Request to End' : (canEditIncentive ? 'Save date' : 'Send extend request'));
         }
     }
     if (extendModal) {
