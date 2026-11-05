@@ -6458,6 +6458,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/doba/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsDobaController::class, 'apiScore'])->name('lqs.doba.api.score');
     Route::post('/lqs/doba/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsDobaController::class, 'startApiSync'])->name('lqs.doba.api.sync');
     Route::get('/lqs/doba/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsDobaController::class, 'apiSyncStatus'])->name('lqs.doba.api.sync.status');
+    // Reverb: live /my/listings scoring (no AI audit modal)
+    Route::post('/lqs/reverb/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsReverbController::class, 'apiScore'])->name('lqs.reverb.api.score');
+    Route::post('/lqs/reverb/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsReverbController::class, 'startApiSync'])->name('lqs.reverb.api.sync');
+    Route::get('/lqs/reverb/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsReverbController::class, 'apiSyncStatus'])->name('lqs.reverb.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation

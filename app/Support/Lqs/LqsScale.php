@@ -3,6 +3,7 @@
 namespace App\Support\Lqs;
 
 use App\Services\Lqs\MiraklLqsApiSyncService;
+use App\Services\Lqs\ReverbLqsApiSyncService;
 use App\Services\Lqs\DobaLqsApiSyncService;
 use App\Services\Lqs\EbayLqsApiSyncService;
 use App\Services\Lqs\TemuLqsApiSyncService;
@@ -17,7 +18,8 @@ class LqsScale
     {
         return EbayLqsApiSyncService::supports($slug) || TemuLqsApiSyncService::supports($slug)
             || MiraklLqsApiSyncService::supports($slug)
-            || $slug === DobaLqsApiSyncService::MARKETPLACE;
+            || $slug === DobaLqsApiSyncService::MARKETPLACE
+            || $slug === ReverbLqsApiSyncService::MARKETPLACE;
     }
 
     /** Marketplaces with a bulk "Sync LQS from API" button. */

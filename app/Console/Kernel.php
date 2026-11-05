@@ -324,6 +324,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('lqs-sync-doba')
             ->appendOutputTo($log);
+        // Reverb LQS from the live /my/listings feed (100 listings per call).
+        $schedule->command('lqs:sync-reverb')
+            ->dailyAt('05:25')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->name('lqs-sync-reverb')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)
