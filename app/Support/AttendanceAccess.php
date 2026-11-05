@@ -133,7 +133,8 @@ class AttendanceAccess
     }
 
     /**
-     * Team Monitor Video sidebar link and the red fraud-alert triangle: President and Software 5 only.
+     * Team Monitor Video sidebar link: President and Software 5 only.
+     * The red fraud-alert triangle is president-only (see isPresident()).
      */
     public static function canSeeMonitorExtras(?User $user = null): bool
     {

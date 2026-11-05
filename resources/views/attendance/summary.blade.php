@@ -316,6 +316,9 @@
         padding-right: 1.4rem;
         background-position: right .35rem center;
     }
+    .es-status-filter.has-alerts {
+        max-width: 132px;
+    }
     /* Single line, left to right. Every item is only as wide as its content; badges share one size. */
     .es-topbar {
         display: flex; flex-wrap: nowrap; align-items: flex-end; gap: .5rem;
@@ -447,10 +450,13 @@
                 </form>
 
                 <input type="search" class="form-control form-control-sm es-search" id="employeeSearch" placeholder="Search employees...">
-                <select class="form-select form-select-sm es-status-filter" id="statusFilter" aria-label="Status filter">
+                <select class="form-select form-select-sm es-status-filter{{ \App\Support\AttendanceAccess::isPresident() ? ' has-alerts' : '' }}" id="statusFilter" aria-label="Status filter">
                     <option value="all">Status: All</option>
                     <option value="logged">Status: Logged</option>
                     <option value="not_logged">Status: Not logged</option>
+                    @if(\App\Support\AttendanceAccess::isPresident())
+                    <option value="alerts">Status: Alerts</option>
+                    @endif
                 </select>
                 </div>
 
@@ -499,7 +505,8 @@
                                 data-including="{{ (int) ($row['work_time_seconds'] ?? $row['including_idle_seconds'] ?? 0) }}"
                                 data-live="{{ (int) ($row['live_sort'] ?? 3) }}"
                                 data-live-status="{{ $row['live_status'] ?? 'absent' }}"
-                                data-last-image="{{ (int) ($row['last_image_sort'] ?? 0) }}">
+                                data-last-image="{{ (int) ($row['last_image_sort'] ?? 0) }}"
+                                data-has-alert="{{ !empty($row['fraud_alert']) ? '1' : '0' }}">
                                 <td class="es-avatar-col">
                                     <img src="{{ $row['avatar_url'] }}" alt="" class="es-avatar" loading="lazy"
                                          onerror="this.onerror=null;this.src='{{ asset('images/users/avatar-2.jpg') }}';">
@@ -796,7 +803,8 @@
             const matchesSearch = !q || name.includes(q) || email.includes(q);
             const matchesStatus = status === 'all'
                 || (status === 'logged' && hasWorked)
-                || (status === 'not_logged' && !hasWorked);
+                || (status === 'not_logged' && !hasWorked)
+                || (status === 'alerts' && tr.dataset.hasAlert === '1');
             const matchesLive = liveFilter === 'all' || liveStatus === liveFilter;
             tr.style.display = (matchesSearch && matchesStatus && matchesLive) ? '' : 'none';
         });
@@ -960,7 +968,7 @@
     // server-rendered partial attendance/partials/fraud-alert.blade.php).
     function fraudTriangle(row) {
         const a = row.fraud_alert;
-        if (!a || !@json(\App\Support\AttendanceAccess::canSeeMonitorExtras())) return '';
+        if (!a || !@json(\App\Support\AttendanceAccess::isPresident())) return '';
         return '<a href="' + escapeAttr(row.detail_url || '#') + '" class="fraud-tri ' + escapeAttr(a.level) + '"'
             + ' title="' + escapeAttr(a.tooltip) + '" aria-label="Fraud check: ' + escapeAttr(a.count) + ' open alert(s), ' + escapeAttr(a.level) + ' risk">'
             + '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">'
@@ -1054,7 +1062,7 @@
             return;
         }
         body.innerHTML = rows.map(row => `
-            <tr class="es-selectable${selectedId !== '0' && String(row.user_id) === selectedId ? ' es-selected' : ''}" data-user-id="${row.user_id || ''}" data-name="${(row.name || '').toLowerCase()}" data-display-name="${escapeAttr(row.name || '')}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}" data-span="${row.activity_start_minutes ?? -1}" data-worked="${row.worked_seconds || 0}" data-meeting="${row.meeting_seconds || 0}" data-manual="${row.manual_seconds || 0}" data-input-pct="${row.input_tracked ? (row.input_pct || 0) : (row.input_has_activity ? 0 : -1)}" data-clicks="${row.input_tracked ? (row.click_count || 0) : (row.input_has_activity ? 0 : -1)}" data-keys="${row.input_tracked ? (row.key_count || 0) : (row.input_has_activity ? 0 : -1)}" data-idle="${row.idle_seconds || 0}" data-idle-count="${row.idle_count || 0}" data-wt-current="${row.wt_current_seconds || 0}" data-including="${row.work_time_seconds ?? row.including_idle_seconds ?? 0}" data-live="${row.live_sort ?? 3}" data-live-status="${escapeAttr(row.live_status || 'absent')}" data-last-image="${row.last_image_sort || 0}">
+            <tr class="es-selectable${selectedId !== '0' && String(row.user_id) === selectedId ? ' es-selected' : ''}" data-user-id="${row.user_id || ''}" data-name="${(row.name || '').toLowerCase()}" data-display-name="${escapeAttr(row.name || '')}" data-email="${(row.email || '').toLowerCase()}" data-has-worked="${row.has_worked ? '1' : '0'}" data-span="${row.activity_start_minutes ?? -1}" data-worked="${row.worked_seconds || 0}" data-meeting="${row.meeting_seconds || 0}" data-manual="${row.manual_seconds || 0}" data-input-pct="${row.input_tracked ? (row.input_pct || 0) : (row.input_has_activity ? 0 : -1)}" data-clicks="${row.input_tracked ? (row.click_count || 0) : (row.input_has_activity ? 0 : -1)}" data-keys="${row.input_tracked ? (row.key_count || 0) : (row.input_has_activity ? 0 : -1)}" data-idle="${row.idle_seconds || 0}" data-idle-count="${row.idle_count || 0}" data-wt-current="${row.wt_current_seconds || 0}" data-including="${row.work_time_seconds ?? row.including_idle_seconds ?? 0}" data-live="${row.live_sort ?? 3}" data-live-status="${escapeAttr(row.live_status || 'absent')}" data-last-image="${row.last_image_sort || 0}" data-has-alert="${row.fraud_alert ? '1' : '0'}">
                 <td class="es-avatar-col">${avatarCell(row)}</td>
                 <td>
                     <div class="es-name">${row.name}${fraudTriangle(row)}</div>

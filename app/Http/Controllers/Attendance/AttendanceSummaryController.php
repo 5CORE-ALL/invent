@@ -84,6 +84,14 @@ class AttendanceSummaryController extends Controller
             ? ['rows' => [], 'totals' => null, 'not_logged' => 0, 'total_employees' => $tableEmployees->count()]
             : $this->summaryService->teamSummary($tableEmployees, $from, $to, $timezone);
 
+        if (! AttendanceAccess::isPresident()) {
+            $summary['rows'] = array_map(function (array $row) {
+                $row['fraud_alert'] = null;
+
+                return $row;
+            }, $summary['rows']);
+        }
+
         if (! $kpiOnly && $from === $l30From && $to === $l30To) {
             $l30Totals = $summary['totals'];
         } else {
