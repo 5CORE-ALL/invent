@@ -8394,6 +8394,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/worksheets/{worksheet}/export', [$excel, 'export'])->name('worksheets.export')->whereNumber('worksheet');
     });
 
+    // Benchmarks: "More benchmarks" block of every category tab of the /excel eBay LQS workbook
+    Route::get('/benchmarks', [\App\Http\Controllers\BenchmarksController::class, 'index'])->name('benchmarks.index');
+    Route::get('/benchmarks/data', [\App\Http\Controllers\BenchmarksController::class, 'data'])->name('benchmarks.data');
+
     Route::get('', [RoutingController::class, 'index'])->name('root');
     Route::get('{first}/{second}', [RoutingController::class, 'secondLevel'])->name('second')->where('first', '^(?!\.well-known$).+');
     Route::get('{first}/{second}/{third}', [RoutingController::class, 'thirdLevel'])->name('third');

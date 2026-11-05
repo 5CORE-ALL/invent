@@ -36,6 +36,13 @@
                 </a>
             </li>
 
+            <li class="side-nav-item">
+                <a href="{{ route('benchmarks.index') }}" class="side-nav-link {{ request()->routeIs('benchmarks.*') ? 'active' : '' }}">
+                    <i class="ri-bar-chart-grouped-line"></i>
+                    <span>Benchmarks</span>
+                </a>
+            </li>
+
             {{-- Tasks --}}
             @php $tasksMenuOpen = request()->routeIs('incentives.*') || request()->routeIs('meetings.*'); @endphp
             <li class="side-nav-item">

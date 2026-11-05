@@ -1394,7 +1394,7 @@
 
     <!-- Ads Rule PMT Modal: suggested bid % per category -->
     <div class="modal fade" id="adsRulePmtModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-bullhorn"></i> Ads Rule PMT &mdash; Bid Range by Category</h5>
@@ -1410,6 +1410,17 @@
                         </div>
                         <span class="ms-auto small text-muted" id="ads-rule-pmt-summary"></span>
                     </div>
+                    <table class="table table-sm table-bordered align-middle mb-3">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 40px;" class="text-center">#</th>
+                                <th>Rule</th>
+                                <th>Bid</th>
+                                <th class="text-center" style="width: 80px;">Count</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ads-rule-pmt-rules-body"></tbody>
+                    </table>
                     <table class="table table-sm table-bordered align-middle mb-0">
                         <thead class="table-light">
                             <tr>
@@ -4036,6 +4047,130 @@
                 if (!modalEl) return;
                 let savedBids = {};
 
+                // ---- Rules (first match wins; a higher Dil rule overrides a lower one) ----
+                //  1. INV = 0                         -> bid 0, ads paused
+                //  2. eBay sold (L30) = 0             -> Highest + 1
+                //  3. Dil > 25%  and eBay sold > 0    -> Lowest
+                //  4. Dil > 50%  and eBay sold > 0    -> Lowest - 1
+                //  5. Dil > 100% and eBay sold > 0    -> 2
+                //  (sold > 0 and Dil <= 25%)          -> Highest (no rule; base bid)
+                const RULE_DEFS = [
+                    { key: '1', label: 'INV = 0', bid: '0 &mdash; ads paused' },
+                    { key: '2', label: 'eBay sold (L30) = 0', bid: 'Highest + 1' },
+                    { key: '3', label: 'Dil &gt; 25% and eBay sold &gt; 0', bid: 'Lowest' },
+                    { key: '4', label: 'Dil &gt; 50% and eBay sold &gt; 0', bid: 'Lowest &minus; 1' },
+                    { key: '5', label: 'Dil &gt; 100% and eBay sold &gt; 0', bid: '2' },
+                    { key: 'base', label: 'eBay sold &gt; 0 and Dil &le; 25% (no rule)', bid: 'Highest' }
+                ];
+
+                function rowInv(row) {
+                    return Number(String(row.INV == null ? '' : row.INV).replace(/[,\s\u00A0]/g, '')) || 0;
+                }
+                function rowDil(row) {
+                    if (typeof chPromoDil === 'function') return Number(chPromoDil(row)) || 0;
+                    const inv = rowInv(row);
+                    return inv > 0 ? ((parseFloat(row.L30) || 0) / inv) * 100 : 0;
+                }
+                /** Which rule key ('1'..'5' / 'base') applies to this SKU row. */
+                function classifyRow(row) {
+                    if (rowInv(row) <= 0) return '1';
+                    const sold = parseFloat(row['eBay L30']) || 0;
+                    if (sold <= 0) return '2';
+                    const dil = rowDil(row);
+                    if (dil > 100) return '5';
+                    if (dil > 50) return '4';
+                    if (dil > 25) return '3';
+                    return 'base';
+                }
+                function num(v) {
+                    const n = parseFloat(v);
+                    return isFinite(n) ? n : null;
+                }
+                /**
+                 * Suggested PMT bid for a row: { rule, bid, pause, missing, title } (null for PARENT rows).
+                 * bid is null when the rule needs a category Highest / Lowest that is not set.
+                 */
+                window.ebayPmtRuleBid = function(row) {
+                    if (!row || ebayIsParentRowData(row)) return null;
+                    const rule = classifyRow(row);
+                    const cat = String(row.excel_category || '').trim();
+                    const saved = savedBids[cat] || {};
+                    const hi = num(saved.highest);
+                    const lo = num(saved.lowest);
+                    const out = { rule: rule, bid: null, pause: false, missing: false, title: '' };
+                    if (rule === '1') {
+                        out.bid = 0; out.pause = true; out.title = 'Rule 1: INV = 0 — bid 0, ads paused';
+                        return out;
+                    }
+                    if (rule === '5') {
+                        out.bid = 2; out.title = 'Rule 5: Dil > 100% and eBay sold > 0 — bid 2';
+                        return out;
+                    }
+                    let need = null;
+                    let calc = null;
+                    if (rule === '2') { need = 'Highest'; if (hi !== null) calc = hi + 1; out.title = 'Rule 2: eBay sold = 0 — Highest + 1'; }
+                    else if (rule === '3') { need = 'Lowest'; if (lo !== null) calc = lo; out.title = 'Rule 3: Dil > 25% and eBay sold > 0 — Lowest'; }
+                    else if (rule === '4') { need = 'Lowest'; if (lo !== null) calc = Math.max(0, lo - 1); out.title = 'Rule 4: Dil > 50% and eBay sold > 0 — Lowest − 1'; }
+                    else { need = 'Highest'; if (hi !== null) calc = hi; out.title = 'Dil ≤ 25% and eBay sold > 0 — Highest'; }
+                    if (calc === null) {
+                        out.missing = true;
+                        out.title += ' (' + (cat ? 'set ' + need + ' for "' + cat + '"' : 'no category for this SKU') + ')';
+                        return out;
+                    }
+                    out.bid = Math.round(calc * 100) / 100;
+                    return out;
+                };
+
+                /** Re-render the PMT BID column (after bids load / save). */
+                function refreshPmtColumn() {
+                    try {
+                        const t = window.table;
+                        const col = t && t.getColumn ? t.getColumn('pmt_rule_bid') : null;
+                        if (col) col.getCells().forEach(function(c) { c.reformat(); });
+                    } catch (e) { /* table not built yet — formatter reads savedBids when it renders */ }
+                }
+
+                function loadSavedBids() {
+                    return fetch(PMT_BIDS_URL, { headers: { 'Accept': 'application/json' } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) { savedBids = (d && d.bids) || {}; })
+                        .catch(function() { savedBids = {}; });
+                }
+
+                function currentRows() {
+                    return (Array.isArray(allTableData) && allTableData.length)
+                        ? allTableData
+                        : (window.table ? window.table.getData('all') : []);
+                }
+
+                function renderRuleCounts() {
+                    const counts = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, 'base': 0 };
+                    let total = 0;
+                    currentRows().forEach(function(row) {
+                        if (ebayIsParentRowData(row)) return;
+                        counts[classifyRow(row)]++;
+                        total++;
+                    });
+                    const $b = $('#ads-rule-pmt-rules-body').empty();
+                    RULE_DEFS.forEach(function(r) {
+                        const $tr = $('<tr>');
+                        $tr.append($('<td class="text-center">').text(r.key === 'base' ? '–' : r.key));
+                        $tr.append($('<td>').html(r.label));
+                        $tr.append($('<td>').html(r.bid));
+                        $tr.append($('<td class="text-center fw-semibold">').text(counts[r.key].toLocaleString()));
+                        $b.append($tr);
+                    });
+                    $b.append(
+                        $('<tr class="table-light">')
+                            .append('<td></td>')
+                            .append('<td class="fw-semibold">Total SKUs</td>')
+                            .append('<td></td>')
+                            .append($('<td class="text-center fw-bold">').text(total.toLocaleString()))
+                    );
+                }
+
+                loadSavedBids().then(refreshPmtColumn);
+
                 /** Distinct categories (+ SKU counts) from the live table data, merged with saved ones. */
                 function collectCategories() {
                     const src = (Array.isArray(allTableData) && allTableData.length)
@@ -4076,6 +4211,7 @@
                         $body.append('<tr><td colspan="4" class="text-center text-muted">No categories found. Category comes from the /excel upload (matched by Item ID).</td></tr>');
                     }
                     updateSummary();
+                    renderRuleCounts();
                     $('#ads-rule-pmt-search').val('');
                 }
 
@@ -4097,11 +4233,7 @@
                 $('#ads-rule-pmt-btn').on('click', function() {
                     $('#ads-rule-pmt-error').addClass('d-none').text('');
                     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-                    fetch(PMT_BIDS_URL, { headers: { 'Accept': 'application/json' } })
-                        .then(function(r) { return r.json(); })
-                        .then(function(d) { savedBids = (d && d.bids) || {}; })
-                        .catch(function() { savedBids = {}; })
-                        .finally(renderRows);
+                    loadSavedBids().finally(renderRows);
                 });
 
                 $('#ads-rule-pmt-search').on('input', function() {
@@ -4147,6 +4279,7 @@
                                 return;
                             }
                             savedBids = res.d.bids || {};
+                            refreshPmtColumn();
                             bootstrap.Modal.getOrCreateInstance(modalEl).hide();
                         })
                         .catch(function() { $err.removeClass('d-none').text('Could not save.'); })
@@ -6233,6 +6366,32 @@
                             const color = res.bid > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
                             const title = res.title || 'Dil vs SBid';
                             return `<span title="${title}" style="color:${color}; font-weight:700;">${Number(res.bid).toFixed(1)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "PMT BID",
+                        field: "pmt_rule_bid",
+                        hozAlign: "center",
+                        width: 90,
+                        headerTooltip: "Suggested PMT bid from Ads Rule PMT: INV 0 = 0 and ads paused; eBay sold 0 = Highest + 1; Dil > 25% = Lowest; Dil > 50% = Lowest − 1; Dil > 100% = 2. Uses the category Highest / Lowest. Display only.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const f = function(row) {
+                                const r = typeof window.ebayPmtRuleBid === 'function' ? window.ebayPmtRuleBid(row.getData()) : null;
+                                return r && r.bid !== null ? r.bid : -1;
+                            };
+                            return f(aRow) - f(bRow);
+                        },
+                        formatter: function(cell) {
+                            const r = typeof window.ebayPmtRuleBid === 'function' ? window.ebayPmtRuleBid(cell.getRow().getData()) : null;
+                            if (!r) return '';
+                            const tip = String(r.title || '').replace(/"/g, '&quot;');
+                            if (r.pause) {
+                                return '<span title="' + tip + '" style="color:#842029; font-weight:700;">0 · PAUSE</span>';
+                            }
+                            if (r.bid === null) {
+                                return '<span title="' + tip + '" class="text-muted" style="cursor:help;">—</span>';
+                            }
+                            return '<span title="' + tip + '" style="color:#0d6efd; font-weight:700;">' + Number(r.bid).toFixed(1) + '%</span>';
                         }
                     },
                     {
