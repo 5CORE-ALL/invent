@@ -533,26 +533,10 @@
                         const value = String(cell.getValue() || '').trim();
                         const actions = RationUpload.cellButtons('sixteen', value !== '', cell.getData().Sku);
                         if (!value) return actions;
-                        return `<a href="${esc(value)}" class="open-ratio-video" data-ratio="16:9" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>
-                            ${actions}
-                            <button type="button" class="delete-video-link" title="Delete link">Delete</button>`;
+                        return `<a href="${esc(value)}" class="open-ratio-video" data-ratio="16:9" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a> ${actions}`;
                     },
                     cellClick: function (e, cell) {
-                        if (RationUpload.handleCellClick(e, cell, 'sixteen', function () { updateTotalInvAndL30(table); })) return;
-                        if (!e.target.closest('.delete-video-link')) return;
-                        const row = cell.getRow();
-                        const data = row.getData();
-                        row.update({ sixteen_ratio_link: '' }).then(() => updateTotalInvAndL30(table));
-                        fetch('/sixteen-ration-video/save', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                            },
-                            body: JSON.stringify({ sku: data.Sku, value: { sixteen_ratio_link: '' } })
-                        }).then(res => res.json()).then(res => {
-                            if (!res.success) alert('Could not delete that video link.');
-                        });
+                        RationUpload.handleCellClick(e, cell, 'sixteen', function () { updateTotalInvAndL30(table); });
                     },
                 },
                 {
