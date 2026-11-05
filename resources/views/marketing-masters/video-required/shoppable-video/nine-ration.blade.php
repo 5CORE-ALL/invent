@@ -723,6 +723,7 @@
 
         table.on("tableBuilt", function () {
             buildColumnDropdown();
+            RationUpload.bind('nine-ration-video', function () { updateTotalInvAndL30(table); });
         });
 
         table.on("cellEdited", function(cell) {

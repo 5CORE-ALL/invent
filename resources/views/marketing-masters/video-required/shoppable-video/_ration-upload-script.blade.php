@@ -141,6 +141,43 @@
             window.location.href = '/ration-video/download?ratio=' + encodeURIComponent(ratio) + '&sku=' + encodeURIComponent(sku);
         }
 
+        // The click can land inside a Tabulator cell that is not the video column, so this works from the
+        // button's data attributes alone and does not need the cell it was called with.
+        function actOn(btn, onChanged) {
+            const ratio = btn.dataset.ratio;
+            const cellEl = btn.closest('.tabulator-cell');
+            const rowEl = btn.closest('.tabulator-row');
+            const row = cellEl && cellEl._cell ? cellEl._cell.getRow() : (rowEl && rowEl._row ? rowEl._row.getComponent() : null);
+            const sku = row ? String(row.getData().Sku || '') : '';
+            if (!ratio || !sku) return;
+            if (btn.classList.contains('ration-dl-btn')) {
+                downloadCurrent(ratio, sku);
+                return;
+            }
+            pickAndUpload(ratio, sku, function (res) {
+                if (!row) return;
+                const patch = {};
+                patch[res.field || FIELD[ratio]] = res.url;
+                row.update(patch).then(function () {
+                    row.reformat();
+                    if (onChanged) onChanged();
+                });
+            });
+        }
+
+        function bind(container, onChanged) {
+            const el = typeof container === 'string' ? document.getElementById(container) : container;
+            if (!el || el.dataset.rationBound) return;
+            el.dataset.rationBound = '1';
+            el.addEventListener('click', function (e) {
+                const btn = e.target.closest('.ration-up-btn, .ration-dl-btn');
+                if (!btn) return;
+                e.preventDefault();
+                e.stopPropagation();
+                actOn(btn, onChanged);
+            }, true);
+        }
+
         // Returns true when the click was one of the upload / download buttons.
         function handleCellClick(e, cell, ratio, onChanged) {
             const up = e.target.closest('.ration-up-btn');
@@ -310,6 +347,6 @@
             loadList();
         }
 
-        return { cellButtons: cellButtons, handleCellClick: handleCellClick, openModal: openModal, downloadCurrent: downloadCurrent };
+        return { cellButtons: cellButtons, bind: bind, handleCellClick: handleCellClick, openModal: openModal, downloadCurrent: downloadCurrent };
     })();
 </script>
