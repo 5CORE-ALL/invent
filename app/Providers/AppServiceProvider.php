@@ -190,7 +190,7 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Logged-in user's own incentive total for the topbar ₹ badge.
      *
-     * @var array{topbarIncentiveTotal: float, topbarIncentiveCount: int, topbarIncentiveAlert: bool}|null
+     * @var array{topbarIncentiveTotal: float, topbarIncentiveCount: int, topbarIncentiveAlert: bool, topbarIncentiveDaysLeft: int|null, topbarIncentiveCountdown: bool}|null
      */
     private ?array $userIncentiveBadge = null;
 
@@ -200,6 +200,7 @@ class AppServiceProvider extends ServiceProvider
             $total = 0.0;
             $count = 0;
             $alert = false;
+            $daysLeft = null;
             $user = Auth::user();
             if ($user) {
                 try {
@@ -208,38 +209,49 @@ class AppServiceProvider extends ServiceProvider
                         if (\Illuminate\Support\Facades\Schema::hasColumn('user_incentives', 'additional_condition')) {
                             $cols[] = 'additional_condition';
                         }
+                        if (\Illuminate\Support\Facades\Schema::hasColumn('user_incentives', 'achieved_at')) {
+                            $cols[] = 'achieved_at';
+                        }
                         $rows = UserIncentive::query()
                             ->where('user_id', $user->id)
                             ->where('is_active', true)
                             ->get($cols);
                         $count = $rows->count();
                         $total = (float) $rows->sum('amount');
-                        $alertFrom = TaskBusinessTime::today()->startOfDay()->addDay();
+                        $today = TaskBusinessTime::incentiveToday()->startOfDay();
                         foreach ($rows as $row) {
+                            if (! empty($row->achieved_at)) {
+                                continue;
+                            }
                             $raw = trim((string) ($row->additional_condition ?? ''));
                             if ($raw === '') {
                                 continue;
                             }
                             try {
-                                if (\Carbon\Carbon::parse($raw)->startOfDay()->lte($alertFrom)) {
-                                    $alert = true;
-                                    break;
-                                }
+                                $cutoff = \Carbon\Carbon::parse($raw)->startOfDay();
                             } catch (\Throwable $e) {
-                                // ignore malformed dates
+                                continue;
+                            }
+                            $days = (int) round(($cutoff->getTimestamp() - $today->getTimestamp()) / 86400);
+                            if ($daysLeft === null || $days < $daysLeft) {
+                                $daysLeft = $days;
                             }
                         }
+                        $alert = $daysLeft !== null && $daysLeft <= 1;
                     }
                 } catch (\Throwable $e) {
                     $total = 0.0;
                     $count = 0;
                     $alert = false;
+                    $daysLeft = null;
                 }
             }
             $this->userIncentiveBadge = [
                 'topbarIncentiveTotal' => $total,
                 'topbarIncentiveCount' => $count,
                 'topbarIncentiveAlert' => $alert,
+                'topbarIncentiveDaysLeft' => $daysLeft,
+                'topbarIncentiveCountdown' => $daysLeft !== null && $daysLeft > 1,
             ];
         }
 

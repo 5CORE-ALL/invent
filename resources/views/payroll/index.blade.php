@@ -6,12 +6,12 @@
 <style>
     .payroll-card { border: 1px solid rgba(0,0,0,.08); border-radius: 10px; background: #fff; }
     #employeesTable { font-size: .85rem; }
-    .payroll-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .5rem; }
-    #salaryStatusSection.payroll-card { overflow: visible; }
-    .payroll-toolbar-title { margin: 0; font-size: 1.05rem; font-weight: 600; white-space: nowrap; line-height: 31px; height: 31px; }
-    .payroll-month-select { width: auto; min-width: 150px; max-width: 200px; flex: 0 1 180px; }
-    .payroll-toolbar .input-group { flex: 1 1 140px; min-width: 120px; max-width: 180px; }
-    #monthStats { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+    .payroll-toolbar { display: flex; flex-wrap: nowrap; align-items: center; gap: .3rem; overflow-x: auto; }
+    #salaryStatusSection.payroll-card { overflow: visible; padding-left: .75rem !important; padding-right: .75rem !important; }
+    .payroll-toolbar-title { margin: 0; font-size: 1.05rem; font-weight: 600; white-space: nowrap; line-height: 31px; height: 31px; flex: 0 0 auto; }
+    .payroll-month-select { width: auto; min-width: 118px; max-width: 140px; flex: 0 0 auto; }
+    .payroll-toolbar .input-group { flex: 0 1 130px; min-width: 92px; max-width: 140px; }
+    #monthStats { display: flex; flex-wrap: nowrap; align-items: center; gap: .3rem; flex: 0 0 auto; }
     .payroll-toolbar .btn,
     .payroll-toolbar .form-select,
     .payroll-toolbar .form-control,
@@ -23,9 +23,10 @@
         box-sizing: border-box;
     }
     .payroll-toolbar .btn {
-        display: inline-flex; align-items: center; padding-top: 0; padding-bottom: 0;
-        line-height: 1; font-size: .8rem;
+        display: inline-flex; align-items: center; padding: 0 .45rem;
+        line-height: 1; font-size: .75rem; flex: 0 0 auto;
     }
+    .payroll-toolbar .btn i { margin-right: .2rem !important; }
     .payroll-toolbar .form-select,
     .payroll-toolbar .form-control {
         padding-top: 0; padding-bottom: 0; font-size: .8rem; line-height: 31px;
@@ -34,9 +35,9 @@
         display: inline-flex; align-items: center; padding-top: 0; padding-bottom: 0;
     }
     .payroll-stat-inline {
-        display: inline-flex; align-items: center; gap: .35rem;
-        padding: 0 .65rem; border-radius: 6px;
-        font-size: .78rem; white-space: nowrap;
+        display: inline-flex; align-items: center; gap: .25rem;
+        padding: 0 .45rem; border-radius: 6px;
+        font-size: .72rem; white-space: nowrap;
     }
     .payroll-stat-inline .val { font-size: .88rem; font-weight: 700; }
     .payroll-stat-employees { background: rgba(13, 110, 253, .12); color: #0a58ca; }
@@ -162,7 +163,7 @@
     #payrollApp .tbl-dot--yellow { background: #eab308; }
     #payrollApp .tbl-dot--red { background: #ef4444; }
     #payrollApp .tbl-dot--gray { background: #9ca3af; }
-    .payroll-status-multi { position: relative; flex-shrink: 0; width: 140px; z-index: 30; }
+    .payroll-status-multi { position: relative; flex-shrink: 0; width: 110px; z-index: 30; }
     .payroll-status-multi > button {
         width: 100%; height: 31px; text-align: left; padding: 0 .75rem; padding-right: 1.75rem;
         border: 1px solid #ced4da; border-radius: .375rem; background: #fff; font-size: .8rem;
@@ -243,9 +244,8 @@
     #payrollApp .tabulator .tabulator-col-title { padding: 0 !important; }
     .payroll-region-tabs { overflow-x: auto; flex-wrap: nowrap; }
     @media (max-width: 1199.98px) {
-        .payroll-toolbar .input-group { max-width: none; }
-        .payroll-month-select,
-        .payroll-status-multi { flex: 1 1 140px; width: auto; max-width: none; }
+        .payroll-toolbar .btn span { display: none; }
+        .payroll-toolbar .btn i { margin-right: 0 !important; }
     }
     @media (max-width: 767.98px) {
         #payrollApp.container-fluid { padding-left: .5rem; padding-right: .5rem; }
@@ -343,12 +343,12 @@
             </select>
             @if($canManage)
             <button type="button" class="btn btn-sm btn-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#createMonthModal" title="Create Payroll Month">
-                <i class="ri-calendar-line me-1"></i>Create Month
+                <i class="ri-calendar-line"></i><span>Create</span>
             </button>
-            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" id="btnToggleLock"><i class="ri-lock-line"></i> Lock</button>
-            <a href="#" id="btnDownloadPayoutSheet" class="btn btn-sm btn-success text-nowrap"><i class="ri-file-excel-2-line me-1"></i>Download</a>
-            <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync Hours</button>
-            <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="btnSyncFinalHours" title="Copy Final Hour into Hours LM and recalculate salary"><i class="ri-arrow-left-right-line"></i> Sync Final Hour</button>
+            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" id="btnToggleLock" title="Lock"><i class="ri-lock-line"></i><span>Lock</span></button>
+            <a href="#" id="btnDownloadPayoutSheet" class="btn btn-sm btn-success text-nowrap" title="Download"><i class="ri-file-excel-2-line"></i><span>Download</span></a>
+            <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" id="btnSyncEmployees" title="Sync Hours"><i class="ri-refresh-line"></i><span>Hours</span></button>
+            <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="btnSyncFinalHours" title="Copy Final Hour into Hours LM and recalculate salary"><i class="ri-arrow-left-right-line"></i><span>Final</span></button>
             @endif
         </div>
     </div>
@@ -1123,8 +1123,9 @@
         const btnLock = document.getElementById('btnToggleLock');
         if (btnLock) {
             btnLock.innerHTML = locked
-                ? '<i class="ri-lock-unlock-line"></i> Unlock'
-                : '<i class="ri-lock-line"></i> Lock';
+                ? '<i class="ri-lock-unlock-line"></i><span>Unlock</span>'
+                : '<i class="ri-lock-line"></i><span>Lock</span>';
+            btnLock.title = locked ? 'Unlock' : 'Lock';
             btnLock.className = 'btn btn-sm text-nowrap ' + (locked ? 'btn-danger' : 'btn-outline-danger');
         }
     }

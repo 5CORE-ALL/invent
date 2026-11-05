@@ -80,6 +80,37 @@
         background: #166534;
         color: #fff;
     }
+    .topbar-incentive-dollar-btn.is-countdown {
+        background: #d97706;
+        box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.28);
+    }
+    .topbar-incentive-dollar-btn.is-countdown:hover {
+        background: #b45309;
+        color: #fff;
+    }
+    .topbar-incentive-countdown {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.12em 0.45em;
+        border-radius: 999px;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+        font-size: 0.68rem;
+        font-weight: 800;
+        line-height: 1.15;
+        white-space: nowrap;
+    }
+    .ts-inc-countdown {
+        display: inline-block;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+        border-radius: 999px;
+        padding: 0.12em 0.55em;
+        font-weight: 800;
+        white-space: nowrap;
+    }
     .topbar-incentive-dollar-btn.is-cutoff-alert {
         background: #dc2626;
         box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.28);
@@ -616,18 +647,21 @@
     }
     function daysLeftInfo(value) {
         var days = daysUntilCutoff(value);
-        if (days === null) return { text: '—', hot: false };
+        if (days === null) return { days: null, text: '—', hot: false, countdown: false };
         if (days < 0) {
             var n = Math.abs(days);
-            return { text: n + (n === 1 ? ' day over' : ' days over'), hot: true };
+            return { days: days, text: n + (n === 1 ? ' day over' : ' days over'), hot: true, countdown: false };
         }
-        if (days === 0) return { text: 'Today', hot: true };
-        if (days === 1) return { text: '1 day', hot: true };
-        return { text: days + ' days', hot: false };
+        if (days === 0) return { days: 0, text: 'Today', hot: true, countdown: false };
+        if (days === 1) return { days: 1, text: '1 day', hot: true, countdown: false };
+        return { days: days, text: days + ' days', hot: false, countdown: true };
     }
     function daysLeftCell(value) {
         var info = daysLeftInfo(value);
-        return '<td class="ts-inc-days' + (info.hot ? ' ts-inc-cutoff-alert' : '') + '">' + escapeHtml(info.text) + '</td>';
+        var inner = info.countdown
+            ? '<span class="ts-inc-countdown">' + escapeHtml(info.text) + '</span>'
+            : escapeHtml(info.text);
+        return '<td class="ts-inc-days' + (info.hot ? ' ts-inc-cutoff-alert' : '') + '">' + inner + '</td>';
     }
     function cutoffAlertText(item) {
         var days = daysUntilCutoff(itemCutoffValue(item));
@@ -638,24 +672,59 @@
         if (days === 1) return name + 'CutOff Date is tomorrow.';
         return name + 'CutOff Date in ' + days + ' day' + (days === 1 ? '' : 's') + '.';
     }
-    function urgentCutoffItems(items) {
+    function openIncentiveItems(items) {
         return (items || []).filter(function (i) {
-            return i && i.is_active !== false && isCutoffAlert(itemCutoffValue(i));
+            return i && i.is_active !== false && !i.is_achieved;
         });
+    }
+    function urgentCutoffItems(items) {
+        return openIncentiveItems(items).filter(function (i) {
+            return isCutoffAlert(itemCutoffValue(i));
+        });
+    }
+    function nearestDaysLeft(items) {
+        var nearest = null;
+        openIncentiveItems(items).forEach(function (i) {
+            var days = daysUntilCutoff(itemCutoffValue(i));
+            if (days === null) return;
+            if (nearest === null || days < nearest) nearest = days;
+        });
+        return nearest;
     }
     function setCutoffAlertClass(node, on, title) {
         if (!node) return;
         node.classList.toggle('is-cutoff-alert', !!on);
         node.setAttribute('data-cutoff-alert', on ? '1' : '0');
-        if (on && title) node.setAttribute('title', title);
+        if (title) node.setAttribute('title', title);
+    }
+    function setCountdownBadge(days) {
+        var badge = el('ts-incentive-header-days');
+        var header = document.getElementById('ts-incentive-header-btn');
+        var countdown = days !== null && days > 1;
+        var label = countdown ? (days + ' days') : '';
+        if (badge) {
+            badge.textContent = label;
+            badge.classList.toggle('d-none', !countdown);
+        }
+        if (header) {
+            header.classList.toggle('is-countdown', countdown);
+            header.setAttribute('data-days-left', days === null ? '' : String(days));
+        }
+        var floatBtn = el('ts-incentive-float-btn');
+        if (floatBtn) floatBtn.classList.toggle('is-countdown', countdown);
     }
     function applyOwnCutoffAlert(items) {
         var urgent = urgentCutoffItems(items);
         var on = urgent.length > 0;
+        var days = nearestDaysLeft(items);
         var amountTitle = 'My incentives · ' + formatRupee(sumIncentiveAmounts(items));
         var title = on ? cutoffAlertText(urgent[0]) : amountTitle;
+        if (!on && days !== null && days > 1) {
+            title = amountTitle + ' · ' + days + ' days left';
+        }
         setCutoffAlertClass(document.getElementById('ts-incentive-header-btn'), on, title);
         setCutoffAlertClass(el('ts-incentive-float-btn'), on, title);
+        setCountdownBadge(on ? null : days);
     }
     function renderCutoffBanner(items) {
         var box = el('ts-inc-cutoff-alert');
@@ -1328,7 +1397,9 @@
             var daysCell = t.closest('tr') && t.closest('tr').querySelector('.ts-inc-days');
             if (daysCell) {
                 var info = daysLeftInfo(t.value);
-                daysCell.textContent = info.text;
+                daysCell.innerHTML = info.countdown
+                    ? '<span class="ts-inc-countdown">' + escapeHtml(info.text) + '</span>'
+                    : escapeHtml(info.text);
                 daysCell.classList.toggle('ts-inc-cutoff-alert', info.hot);
             }
         }

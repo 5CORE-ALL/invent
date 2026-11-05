@@ -249,6 +249,27 @@
                 background: #166534;
                 color: #fff;
             }
+            .topbar-incentive-dollar-btn.is-countdown {
+                background: #d97706;
+                box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.28);
+            }
+            .topbar-incentive-dollar-btn.is-countdown:hover {
+                background: #b45309;
+                color: #fff;
+            }
+            .topbar-incentive-countdown {
+                display: inline-flex;
+                align-items: center;
+                padding: 0.12em 0.45em;
+                border-radius: 999px;
+                background: #fef3c7;
+                color: #92400e;
+                border: 1px solid #fcd34d;
+                font-size: 0.68rem;
+                font-weight: 800;
+                line-height: 1.15;
+                white-space: nowrap;
+            }
             .topbar-incentive-dollar-btn.is-cutoff-alert {
                 background: #dc2626;
                 box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.28);
@@ -656,16 +677,26 @@
                 $topbarIncTotal = (float) ($topbarIncentiveTotal ?? 0);
                 $topbarIncCount = (int) ($topbarIncentiveCount ?? 0);
                 $topbarIncAlert = !empty($topbarIncentiveAlert);
+                $topbarIncDays = $topbarIncentiveDaysLeft ?? null;
+                $topbarIncCountdown = !empty($topbarIncentiveCountdown);
                 $topbarIncShow = $topbarIncTotal > 0 || $topbarIncCount > 0;
                 $topbarIncLabel = '₹'.number_format($topbarIncTotal, 0);
+                $topbarIncDaysLabel = is_int($topbarIncDays) && $topbarIncDays > 1
+                    ? ($topbarIncDays.' days')
+                    : '';
+                $topbarIncTitle = $topbarIncShow ? 'My incentives · '.$topbarIncLabel : 'My incentives';
+                if ($topbarIncCountdown) {
+                    $topbarIncTitle .= ' · '.$topbarIncDaysLabel.' left';
+                }
             @endphp
             <li class="d-flex align-items-center">
                 <a href="{{ route('incentives.index') }}"
                         id="ts-incentive-header-btn"
-                        class="topbar-incentive-dollar-btn{{ $topbarIncShow ? ' has-amount' : '' }}{{ $topbarIncAlert ? ' is-cutoff-alert' : '' }}"
+                        class="topbar-incentive-dollar-btn{{ $topbarIncShow ? ' has-amount' : '' }}{{ $topbarIncAlert ? ' is-cutoff-alert' : ($topbarIncCountdown ? ' is-countdown' : '') }}"
                         data-incentive-amount="{{ $topbarIncTotal }}"
-                        title="{{ $topbarIncShow ? 'My incentives · '.$topbarIncLabel : 'My incentives' }}"
-                        aria-label="Open my incentives">₹<span id="ts-incentive-header-amount" class="topbar-incentive-amount-badge{{ $topbarIncShow ? '' : ' d-none' }}">{{ $topbarIncLabel }}</span></a>
+                        data-days-left="{{ $topbarIncDays ?? '' }}"
+                        title="{{ $topbarIncTitle }}"
+                        aria-label="Open my incentives">₹<span id="ts-incentive-header-amount" class="topbar-incentive-amount-badge{{ $topbarIncShow ? '' : ' d-none' }}">{{ $topbarIncLabel }}</span><span id="ts-incentive-header-days" class="topbar-incentive-countdown{{ $topbarIncCountdown ? '' : ' d-none' }}">{{ $topbarIncDaysLabel }}</span></a>
             </li>
             @endauth
             <li class="dropdown">

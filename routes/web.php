@@ -7923,6 +7923,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/user-incentives/sync', [\App\Http\Controllers\TaskController::class, 'syncUserIncentives'])->name('tasks.userIncentives.sync');
     Route::get('/incentives', [\App\Http\Controllers\TaskController::class, 'incentivesPage'])->name('incentives.index');
     Route::post('/incentives', [\App\Http\Controllers\TaskController::class, 'updateIncentives'])->name('incentives.update');
+    Route::post('/incentives/extend', [\App\Http\Controllers\TaskController::class, 'extendIncentiveDate'])->name('incentives.extend');
     Route::post('/incentives/alerts/clear', [\App\Http\Controllers\TaskController::class, 'clearIncentiveAlerts'])->name('incentives.alerts.clear');
     // Legacy recognition badges (pool + awards)
     Route::get('/tasks/user-badges', [\App\Http\Controllers\TaskController::class, 'getUserBadges'])->name('tasks.userBadges.get');

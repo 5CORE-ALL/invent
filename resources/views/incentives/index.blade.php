@@ -84,6 +84,48 @@
     .inc-table tr.is-cutoff td { background: #fef2f2; }
     .inc-table tr.is-inactive { opacity: 0.55; }
     .inc-cutoff-hot { color: #dc2626; font-weight: 800; }
+    .inc-countdown {
+        display: inline-block;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+        border-radius: 999px;
+        padding: 0.12em 0.55em;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+    .inc-actions { white-space: nowrap; text-align: center; width: 1%; }
+    .inc-action-btns {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+    }
+    .inc-action-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fff;
+        color: #0f172a;
+        text-decoration: none;
+        line-height: 1;
+        font-size: 1rem;
+    }
+    .inc-action-btn:hover {
+        background: #ecfdf5;
+        color: #15803d;
+        border-color: #86efac;
+    }
+    .inc-action-btn.is-extend:hover {
+        background: #fffbeb;
+        color: #92400e;
+        border-color: #fde68a;
+    }
     #inc-search { max-width: 420px; }
 </style>
 @endsection
@@ -152,6 +194,13 @@
                 return '1 day';
             }
             return $days.' days';
+        };
+        $daysLeftHtml = function ($days) use ($daysLeftText) {
+            $text = $daysLeftText($days);
+            if ($days !== null && $days > 1) {
+                return '<span class="inc-countdown">'.e($text).'</span>';
+            }
+            return e($text);
         };
         $withIncentive = collect($people)->filter(fn ($person) => count($person['items'] ?? []) > 0)->count();
     @endphp
@@ -300,7 +349,7 @@
                                                     <label class="form-check-label small" for="inc-achieved-{{ $person['id'] }}-{{ $idx }}">Achieved</label>
                                                 </div>
                                             </td>
-                                            <td class="inc-days {{ $left !== null && $left <= 1 ? 'inc-cutoff-hot' : '' }}">{{ $daysLeftText($left) }}</td>
+                                            <td class="inc-days {{ $left !== null && $left <= 1 ? 'inc-cutoff-hot' : '' }}">{!! $daysLeftHtml($left) !!}</td>
                                             <td class="text-end">
                                                 <button type="button" class="btn btn-sm btn-outline-danger inc-remove" aria-label="Remove row">&times;</button>
                                             </td>
@@ -334,6 +383,9 @@
                                     <th>Condition</th>
                                     <th>CutOff Date</th>
                                     <th>Days Left</th>
+                                    @if ($canEdit)
+                                        <th>Action</th>
+                                    @endif
                                 </tr>
                             </thead>
                             <tbody>
@@ -349,7 +401,30 @@
                                         <td class="inc-amt">{{ $row['amount'] !== null && $row['amount'] !== '' ? $rupee($row['amount']) : '—' }}</td>
                                         <td>{!! nl2br(e($row['body'] ?: '—')) !!}</td>
                                         <td class="{{ $hot ? 'inc-cutoff-hot' : '' }}">{{ $cutoffLabel($row['additional_condition'] ?? '') }}</td>
-                                        <td class="inc-days {{ $hot ? 'inc-cutoff-hot' : '' }}">{{ $daysLeftText($left) }}</td>
+                                        <td class="inc-days {{ $hot ? 'inc-cutoff-hot' : '' }}">{!! $daysLeftHtml($left) !!}</td>
+                                        @if ($canEdit)
+                                            <td class="inc-actions">
+                                                <div class="inc-action-btns">
+                                                    <a class="inc-action-btn" href="{{ route('incentives.index', ['user_id' => $person['id']]).'#inc-user-'.$person['id'] }}" title="Edit" aria-label="Edit incentive">
+                                                        <i class="ri-pencil-line" aria-hidden="true"></i>
+                                                    </a>
+                                                    @if (! empty($row['id']))
+                                                        <button type="button"
+                                                            class="inc-action-btn is-extend inc-extend-date"
+                                                            title="Extend date"
+                                                            aria-label="Extend cutoff date"
+                                                            data-id="{{ $row['id'] }}"
+                                                            data-name="{{ $person['name'] }}"
+                                                            data-title="{{ $row['title'] ?? '' }}"
+                                                            data-cutoff="{{ $iso }}"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#inc-extend-modal">
+                                                            <i class="ri-calendar-event-line" aria-hidden="true"></i>
+                                                        </button>
+                                                    @endif
+                                                </div>
+                                            </td>
+                                        @endif
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -357,7 +432,7 @@
                                 <tr>
                                     <td>Total</td>
                                     <td class="inc-amt">{{ $rupee($personTotal) }}</td>
-                                    <td colspan="3"></td>
+                                    <td colspan="{{ $canEdit ? 4 : 3 }}"></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -370,6 +445,30 @@
     </div>
     <p class="text-muted small d-none mt-3 mb-0" id="inc-search-empty">No matching people.</p>
     <p class="text-muted small mt-3 mb-0">Incentives are managed by president@5core.com. Days Left counts from today (California time, {{ \App\Support\TaskBusinessTime::incentiveToday()->format('j M Y') }}) to the cutoff date.</p>
+
+    @if ($canEdit)
+        <div class="modal fade" id="inc-extend-modal" tabindex="-1" aria-labelledby="inc-extend-title" aria-hidden="true">
+            <div class="modal-dialog">
+                <form method="post" action="{{ route('incentives.extend') }}" class="modal-content">
+                    @csrf
+                    <input type="hidden" name="id" id="inc-extend-id">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="inc-extend-title">Extend cutoff date</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-2" id="inc-extend-summary"></p>
+                        <label for="inc-extend-date" class="form-label fw-bold">New cutoff date</label>
+                        <input type="date" class="form-control" name="additional_condition" id="inc-extend-date" min="{{ $businessToday }}" required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-success">Save date</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endif
 
     @if ($canEdit)
         <template id="inc-row-template">
@@ -430,7 +529,13 @@
     function paintDays(cell, iso) {
         if (!cell) return;
         var days = daysLeft(iso);
-        cell.textContent = daysLeftText(days);
+        var text = daysLeftText(days);
+        if (days !== null && days > 1) {
+            cell.innerHTML = '<span class="inc-countdown"></span>';
+            cell.querySelector('.inc-countdown').textContent = text;
+        } else {
+            cell.textContent = text;
+        }
         cell.classList.toggle('inc-cutoff-hot', days !== null && days <= 1);
     }
     function rupee(n) {
@@ -455,6 +560,29 @@
         if (empty) empty.classList.toggle('d-none', shown !== 0);
     }
     if (search) search.addEventListener('input', applySearch);
+
+    var extendModal = document.getElementById('inc-extend-modal');
+    if (extendModal) {
+        extendModal.addEventListener('show.bs.modal', function (e) {
+            var btn = e.relatedTarget;
+            if (!btn) return;
+            var id = btn.getAttribute('data-id') || '';
+            var name = btn.getAttribute('data-name') || '';
+            var title = btn.getAttribute('data-title') || '';
+            var cutoff = btn.getAttribute('data-cutoff') || '';
+            var idInput = document.getElementById('inc-extend-id');
+            var dateInput = document.getElementById('inc-extend-date');
+            var summary = document.getElementById('inc-extend-summary');
+            if (idInput) idInput.value = id;
+            if (dateInput) {
+                dateInput.value = cutoff && cutoff >= businessToday ? cutoff : businessToday;
+                dateInput.min = businessToday;
+            }
+            if (summary) {
+                summary.textContent = [name, title].filter(Boolean).join(' · ') || 'Extend this incentive cutoff date.';
+            }
+        });
+    }
 
     document.querySelectorAll('.inc-form').forEach(function (form) {
         var rows = form.querySelector('.inc-rows');

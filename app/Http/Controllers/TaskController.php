@@ -11221,6 +11221,53 @@ class TaskController extends Controller
             ->with('success', 'Incentives saved.');
     }
 
+    /** President-only: push one incentive's cutoff date forward. */
+    public function extendIncentiveDate(Request $request)
+    {
+        $viewer = Auth::user();
+        if (! $this->canEditIncentives($viewer)) {
+            abort(403, 'Only president@5core.com can edit incentives.');
+        }
+        if (! Schema::hasColumn('user_incentives', 'additional_condition')) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'id' => 'required|integer|exists:user_incentives,id',
+            'additional_condition' => 'required|date_format:Y-m-d',
+        ]);
+
+        $today = TaskBusinessTime::incentiveToday()->toDateString();
+        if ($validated['additional_condition'] < $today) {
+            return redirect()
+                ->back()
+                ->withErrors(['additional_condition' => 'Cutoff date cannot be before today.'])
+                ->withInput();
+        }
+
+        $row = UserIncentive::query()->where('id', (int) $validated['id'])->firstOrFail();
+        $payload = [
+            'additional_condition' => $validated['additional_condition'],
+            'updated_by_user_id' => optional($viewer)->id,
+        ];
+        if (trim((string) $row->additional_condition) !== $validated['additional_condition']) {
+            if (Schema::hasColumn('user_incentives', 'closed_notified_at')) {
+                $payload['closed_notified_at'] = null;
+            }
+            if (Schema::hasColumn('user_incentives', 'alert_cleared_state')) {
+                $payload['alert_cleared_state'] = null;
+            }
+        }
+
+        $row->update($payload);
+        $this->sendIncentiveChatNotices((int) $row->user_id);
+
+        return redirect()
+            ->route('incentives.index')
+            ->withFragment('inc-user-'.$row->user_id)
+            ->with('success', 'Cutoff date extended.');
+    }
+
     /**
      * Active team members and their incentive rows for the incentives page.
      *
