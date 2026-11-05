@@ -758,30 +758,34 @@
 
         const columns = [
             {
-                title: 'Active', field: 'account_status', width: 80, hozAlign: 'center', headerSort: false,
+                title: 'Active', field: 'account_status', minWidth: 58, hozAlign: 'center', headerSort: false,
                 formatter: (c) => {
                     const status = rowAccountStatus(c.getRow().getData());
                     const meta = statusMeta[status] || statusMeta.na;
                     return '<span class="tbl-dot ' + meta.cls + '" title="' + meta.label + '"></span>';
                 }
             },
-            { title: 'Name', field: 'name', minWidth: 160, formatter: (c) => esc(c.getRow().getData().name || '—') },
+            { title: 'Name', field: 'name', minWidth: 120, formatter: (c) => {
+                const d = c.getRow().getData();
+                return '<span class="payroll-person">' + avatarHtml(d) + '<span class="payroll-person-name">' + esc(d.name || '—') + '</span></span>';
+            } },
             {
-                title: 'Country', field: 'salary_region', hozAlign: 'center', width: 130, headerSort: false,
+                title: 'Country', field: 'salary_region', hozAlign: 'center', minWidth: 72, headerSort: false,
                 formatter: (c) => {
                     const region = normalizeRegion(c.getValue());
+                    const label = countryLabel(region);
                     const locked = !!c.getRow().getData()._locked || !canManage;
                     if (locked) {
-                        return '<span title="Country">' + countryLabel(region) + '</span>';
+                        return '<span class="payroll-flag" title="' + esc(label) + '">' + countryFlag(region) + '</span>';
                     }
-                    return '<select class="payroll-country-select" data-row-id="' + esc(String(c.getRow().getData().id)) + '" title="Country">'
-                        + '<option value="india"' + (region === 'india' ? ' selected' : '') + '>🇮🇳 India</option>'
-                        + '<option value="china"' + (region === 'china' ? ' selected' : '') + '>🇨🇳 China</option>'
-                        + '<option value="usa"' + (region === 'usa' ? ' selected' : '') + '>🇺🇸 USA</option>'
+                    return '<select class="payroll-country-select" data-row-id="' + esc(String(c.getRow().getData().id)) + '" title="' + esc(label) + '">'
+                        + '<option value="india"' + (region === 'india' ? ' selected' : '') + '>🇮🇳</option>'
+                        + '<option value="china"' + (region === 'china' ? ' selected' : '') + '>🇨🇳</option>'
+                        + '<option value="usa"' + (region === 'usa' ? ' selected' : '') + '>🇺🇸</option>'
                         + '</select>';
                 }
             },
-            { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', width: 110,
+            { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', minWidth: 78,
                 editor: canManage ? 'number' : false,
                 editorParams: { min: 0, step: 1, selectContents: true },
                 editable: (cell) => canManage && !cell.getRow().getData()._locked,
@@ -796,7 +800,7 @@
                     }
                     return txt;
                 } },
-            { title: 'Logger', field: 'final_hours', hozAlign: 'center', width: 110,
+            { title: 'Logger', field: 'final_hours', hozAlign: 'center', minWidth: 68,
                 headerTooltip: 'The larger of Team Logger and New Logger',
                 formatter: (c) => {
                     const d = c.getRow().getData();
@@ -826,14 +830,14 @@
                     }
                     return '<span title="' + esc(tip) + '">' + Math.round(v) + 'h</span>';
                 } },
-            { title: 'Salary PP', field: 'salary_pp', minWidth: 110, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
-            { title: 'Incr', field: 'increment', minWidth: 90, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
-            { title: 'Other', field: 'other', minWidth: 90, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
-            { title: 'Incentive', field: 'incentive', minWidth: 100, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
-            { title: 'Docs', field: 'documents', hozAlign: 'center', headerSort: false, width: 70, minWidth: 70,
+            { title: 'Salary PP', field: 'salary_pp', minWidth: 78, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Incr', field: 'increment', minWidth: 64, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Other', field: 'other', minWidth: 64, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Incentive', field: 'incentive', minWidth: 78, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Docs', field: 'documents', hozAlign: 'center', headerSort: false, minWidth: 56,
                 formatter: (c) => formatDocumentsCell(c.getRow().getData(), !!c.getRow().getData()._locked) },
-            { title: 'Advance', field: 'adv_inc_other', minWidth: 100, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
-            { title: 'Deduction', field: 'deduction', minWidth: 130, hozAlign: 'right', headerSort: false,
+            { title: 'Advance', field: 'adv_inc_other', minWidth: 74, hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Deduction', field: 'deduction', minWidth: 84, hozAlign: 'right', headerSort: false,
                 headerTooltip: 'Amount deducted from the final salary, with the reason',
                 formatter: (c) => {
                     const d = c.getRow().getData();
@@ -841,19 +845,19 @@
                     if (isNaN(amt) || amt <= 0) return '—';
                     const reason = d.deduction_reason ? String(d.deduction_reason) : '';
                     return '<span class="text-danger" title="' + esc(reason).replace(/"/g, '&quot;') + '">&minus;' + fmt(amt, d.salary_region) + '</span>'
-                        + (reason ? '<div class="text-muted" style="font-size:11px;line-height:1.2;white-space:normal;">' + esc(reason) + '</div>' : '');
+                        + (reason ? '<div class="payroll-deduction-reason" title="' + esc(reason).replace(/"/g, '&quot;') + '">' + esc(reason) + '</div>' : '');
                 } },
-            { title: 'Amount', field: 'gross_amount', minWidth: 110, hozAlign: 'right', formatter: (c) => {
+            { title: 'Amount', field: 'gross_amount', minWidth: 74, hozAlign: 'right', formatter: (c) => {
                 const d = c.getRow().getData();
                 return fmt(d.gross_amount ?? d.amount_lm, d.salary_region);
             } },
-            { title: 'Payable', field: 'net_amount', minWidth: 110, hozAlign: 'right', formatter: (c) => {
+            { title: 'Payable', field: 'net_amount', minWidth: 74, hozAlign: 'right', formatter: (c) => {
                 const d = c.getRow().getData();
                 return '<strong>' + fmt(d.net_amount ?? d.amount_p, d.salary_region) + '</strong>';
             } },
         ];
         columns.push({
-            title: 'History', field: 'edited_at', hozAlign: 'center', headerSort: false, width: 80,
+            title: 'History', field: 'edited_at', hozAlign: 'center', headerSort: false, minWidth: 68,
             formatter: (c) => {
                 const d = c.getRow().getData();
                 if (!d.edited_at && !d.edited_by) return '—';
@@ -874,7 +878,7 @@
         });
         if (canManage) {
             columns.push({
-                title: 'Edit', field: 'id', hozAlign: 'center', headerSort: false, width: 70,
+                title: 'Edit', field: 'id', hozAlign: 'center', headerSort: false, minWidth: 52,
                 formatter: (c) => {
                     const d = c.getRow().getData();
                     if (d._locked) return '—';
@@ -883,7 +887,7 @@
             });
         }
         columns.push({
-            title: 'Payslip', field: 'user_id', hozAlign: 'center', headerSort: false, width: 120,
+            title: 'Payslip', field: 'user_id', hozAlign: 'center', headerSort: false, minWidth: 78,
             formatter: (c) => {
                 const d = c.getRow().getData();
                 const url = `${base}/month/${currentMonthId()}/salary-slip/${d.user_id}`;
@@ -906,7 +910,7 @@
         if (state.getTable()) return state.getTable();
 
         const table = new Tabulator(state.el, {
-            layout: 'fitColumns',
+            layout: 'fitData',
             placeholder: state.placeholder,
             pagination: true,
             paginationSize: 100,
@@ -916,12 +920,66 @@
         });
         table.on('tableBuilt', () => {
             state.setBuilt(true);
-            state.getTable().setData(state.pending);
+            applyPayrollColumnVisibility(table);
+            table.setData(state.pending);
             applyPayrollFilters();
         });
         state.setTable(table);
         return table;
     }
+
+    const PAYROLL_COL_STORE = 'payroll-hidden-columns';
+
+    function hiddenPayrollColumns() {
+        try {
+            const raw = JSON.parse(localStorage.getItem(PAYROLL_COL_STORE) || '[]');
+            return Array.isArray(raw) ? raw.filter((v) => typeof v === 'string') : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function renderPayrollColumnToggles() {
+        const box = document.getElementById('payrollColToggles');
+        if (!box) return;
+        const hidden = new Set(hiddenPayrollColumns());
+        box.innerHTML = '<span class="payroll-col-toggles-label">Columns</span>'
+            + buildEmployeeColumns().map((c) => {
+                const on = !hidden.has(c.field);
+                return '<label class="' + (on ? '' : 'is-off') + '">'
+                    + '<input type="checkbox" data-field="' + esc(c.field) + '"' + (on ? ' checked' : '') + '>'
+                    + esc(c.title)
+                    + '</label>';
+            }).join('');
+    }
+
+    function applyPayrollColumnVisibility(table) {
+        if (!table) return;
+        const hidden = new Set(hiddenPayrollColumns());
+        buildEmployeeColumns().forEach((c) => {
+            try {
+                if (hidden.has(c.field)) table.hideColumn(c.field);
+                else table.showColumn(c.field);
+            } catch (e) {}
+        });
+    }
+
+    document.getElementById('payrollColToggles')?.addEventListener('change', (e) => {
+        const input = e.target.closest('input[data-field]');
+        if (!input) return;
+        const hidden = new Set(hiddenPayrollColumns());
+        if (input.checked) hidden.delete(input.dataset.field);
+        else hidden.add(input.dataset.field);
+        localStorage.setItem(PAYROLL_COL_STORE, JSON.stringify([...hidden]));
+        input.closest('label')?.classList.toggle('is-off', !input.checked);
+        Object.keys(regionTableState).forEach((kind) => {
+            const table = regionTableState[kind].getTable();
+            applyPayrollColumnVisibility(table);
+            if (table) table.redraw(true);
+        });
+    });
+
+    renderPayrollColumnToggles();
 
     function redistributeEmployeeRows() {
         const data = Object.values(employeeRowsById);
@@ -2027,7 +2085,9 @@
         btn.addEventListener('shown.bs.tab', () => {
             const isIncrement = btn.dataset.tabKind === 'increment';
             const toolbar = document.getElementById('salaryStatusSection');
+            const colBar = document.getElementById('payrollColToggleBar');
             if (toolbar) toolbar.style.display = isIncrement ? 'none' : '';
+            if (colBar) colBar.style.display = isIncrement ? 'none' : '';
             if (isIncrement) {
                 loadIncrements();
                 return;
