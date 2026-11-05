@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Excel Data Manager'])
+@extends('layouts.vertical', ['title' => 'eBay LQS'])
 
 @section('css')
 <style>
@@ -139,7 +139,7 @@
 <div class="excel-manager py-2" id="excel-manager">
     <div class="excel-manager-head">
         <div>
-            <h3>Excel Data Manager</h3>
+            <h3>eBay LQS</h3>
             <p>Upload a workbook, switch worksheets, then search, sort, page, and export.</p>
         </div>
         <div class="d-flex gap-2">

@@ -212,7 +212,7 @@ class ExcelDataManagerWorkflowTest extends TestCase
 
         $this->assertTrue(\Illuminate\Support\Facades\Route::has('excel.index'));
         if (\Illuminate\Support\Facades\Schema::hasTable('product_master')) {
-            $this->actingAs($user)->get(route('excel.index'))->assertOk()->assertSee('Excel Data Manager', false);
+            $this->actingAs($user)->get(route('excel.index'))->assertOk()->assertSee('eBay LQS', false);
         }
     }
 

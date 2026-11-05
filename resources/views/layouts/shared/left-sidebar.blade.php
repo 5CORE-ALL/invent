@@ -32,7 +32,7 @@
             <li class="side-nav-item">
                 <a href="{{ route('excel.index') }}" class="side-nav-link {{ request()->routeIs('excel.*') ? 'active' : '' }}">
                     <i class="ri-file-excel-2-line"></i>
-                    <span>Excel Data Manager</span>
+                    <span>eBay LQS</span>
                 </a>
             </li>
 
