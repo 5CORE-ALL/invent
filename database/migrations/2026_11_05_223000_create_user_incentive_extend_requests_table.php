@@ -18,7 +18,8 @@ return new class extends Migration
             $table->unsignedBigInteger('user_id')->index();
             $table->unsignedBigInteger('requested_by_user_id')->index();
             $table->string('current_cutoff', 32)->nullable();
-            $table->date('requested_cutoff');
+            $table->string('request_type', 20)->default('extend');
+            $table->date('requested_cutoff')->nullable();
             $table->string('reason', 1000)->nullable();
             $table->string('status', 20)->default('pending')->index();
             $table->unsignedBigInteger('reviewed_by_user_id')->nullable();

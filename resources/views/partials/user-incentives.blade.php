@@ -111,6 +111,32 @@
         font-weight: 800;
         white-space: nowrap;
     }
+    .inc-request-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-bottom: 0.9rem;
+    }
+    .inc-request-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin: 0;
+        padding: 0.4rem 0.7rem;
+        border: 1px solid #fde68a;
+        border-radius: 999px;
+        background: #fffbeb;
+        color: #92400e;
+        font-weight: 800;
+        font-size: 0.86rem;
+        cursor: pointer;
+    }
+    .inc-request-option:has(input:checked) {
+        background: #f59e0b;
+        border-color: #d97706;
+        color: #fff;
+    }
+    .inc-request-option input { margin: 0; }
     .topbar-incentive-dollar-btn.is-cutoff-alert {
         background: #dc2626;
         box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.28);
@@ -510,22 +536,31 @@
             @csrf
             <input type="hidden" name="id" id="ts-inc-extend-id">
             <div class="modal-header">
-                <h5 class="modal-title" id="ts-inc-extend-title">{{ $incCanEdit ? 'Extend cutoff date' : 'Request to extend cutoff date' }}</h5>
+                <h5 class="modal-title" id="ts-inc-extend-title">Incentive request</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p class="mb-2" id="ts-inc-extend-summary"></p>
-                @unless ($incCanEdit)
-                    <p class="text-muted small">This sends a request. Only president@5core.com or software5@5core.com can approve it.</p>
-                @endunless
-                <label for="ts-inc-extend-date" class="form-label fw-bold">New cutoff date</label>
-                <input type="date" class="form-control" name="additional_condition" id="ts-inc-extend-date" required>
+                <div id="ts-inc-extend-pick-wrap" class="d-none mb-3">
+                    <label for="ts-inc-extend-pick" class="form-label fw-bold">Incentive</label>
+                    <select id="ts-inc-extend-pick" class="form-select"></select>
+                </div>
+                <div class="inc-request-options" role="radiogroup" aria-label="Request type">
+                    <label class="inc-request-option"><input type="radio" name="request_type" value="extend" checked> Extend date</label>
+                    <label class="inc-request-option"><input type="radio" name="request_type" value="help"> Need Help</label>
+                    <label class="inc-request-option"><input type="radio" name="request_type" value="end"> Request to End</label>
+                </div>
+                <p class="text-muted small" id="ts-inc-option-note">Choose Need Help to ask for help achieving this incentive.</p>
+                <div id="ts-inc-extend-date-wrap">
+                    <label for="ts-inc-extend-date" class="form-label fw-bold">New cutoff date</label>
+                    <input type="date" class="form-control" name="additional_condition" id="ts-inc-extend-date">
+                </div>
                 <label for="ts-inc-extend-reason" class="form-label fw-bold mt-3">Reason</label>
-                <textarea class="form-control" name="reason" id="ts-inc-extend-reason" rows="3" maxlength="1000" placeholder="Why does this cutoff need more time?"></textarea>
+                <textarea class="form-control" name="reason" id="ts-inc-extend-reason" rows="3" maxlength="1000" placeholder="What help do you need to achieve this incentive?"></textarea>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-warning">{{ $incCanEdit ? 'Save date' : 'Send request' }}</button>
+                <button type="submit" class="btn btn-warning" id="ts-inc-extend-submit">Send request</button>
             </div>
         </form>
     </div>
@@ -705,7 +740,12 @@
         if (!item || !item.id || item.is_achieved) return '<td></td>';
         var pending = item.pending_extend;
         if (pending) {
-            var html = '<span class="ts-inc-countdown">Requested ' + escapeHtml(formatTargetDate(pending.requested_cutoff || '')) + '</span>';
+            var pendingLabel = pending.request_type === 'help'
+                ? 'Need help'
+                : (pending.request_type === 'end'
+                    ? 'Request to end'
+                    : ('Requested ' + formatTargetDate(pending.requested_cutoff || '')));
+            var html = '<span class="ts-inc-countdown">' + escapeHtml(pendingLabel) + '</span>';
             if (cfg.canEdit && pending.id) {
                 html += '<div class="d-flex gap-1 justify-content-center mt-1">'
                     + '<form method="post" action="' + cfg.routes.review + '">' + csrfField()
@@ -1374,6 +1414,78 @@
         });
     }
 
+    function fillExtendRequest(item) {
+        var idInput = el('ts-inc-extend-id');
+        var dateInput = el('ts-inc-extend-date');
+        var reasonInput = el('ts-inc-extend-reason');
+        var summary = el('ts-inc-extend-summary');
+        var cutoff = item && item.cutoff ? String(item.cutoff) : '';
+        if (idInput) idInput.value = item && item.id ? String(item.id) : '';
+        if (dateInput) {
+            dateInput.min = cfg.businessToday || '';
+            dateInput.value = cutoff && cutoff >= (cfg.businessToday || '') ? cutoff : (cfg.businessToday || '');
+        }
+        if (reasonInput) reasonInput.value = '';
+        if (summary) summary.textContent = (item && item.title) ? item.title : 'Incentive request';
+        var modal = el('ts-inc-extend-modal');
+        var extendChoice = modal && modal.querySelector('input[name="request_type"][value="extend"]');
+        if (extendChoice) extendChoice.checked = true;
+        syncTsRequestOption();
+    }
+    function syncTsRequestOption() {
+        var modal = el('ts-inc-extend-modal');
+        if (!modal) return;
+        var picked = modal.querySelector('input[name="request_type"]:checked');
+        var type = picked ? picked.value : 'extend';
+        var dateWrap = el('ts-inc-extend-date-wrap');
+        var dateInput = el('ts-inc-extend-date');
+        var reason = el('ts-inc-extend-reason');
+        var note = el('ts-inc-option-note');
+        var submit = el('ts-inc-extend-submit');
+        var showDate = type === 'extend';
+        if (dateWrap) dateWrap.classList.toggle('d-none', !showDate);
+        if (dateInput) dateInput.required = showDate;
+        if (reason) {
+            reason.required = type !== 'extend';
+            reason.placeholder = type === 'help'
+                ? 'What help do you need to achieve this incentive?'
+                : (type === 'end' ? 'Why should this incentive end?' : 'Why does this cutoff need more time?');
+        }
+        if (note) {
+            note.textContent = type === 'help'
+                ? 'Need Help asks president@5core.com or software5@5core.com for help to achieve this incentive.'
+                : (type === 'end'
+                    ? 'Request to End asks them to close this incentive.'
+                    : 'Extend date asks for a later cutoff. Add a reason if you want.');
+        }
+        if (submit) {
+            submit.textContent = type === 'help' ? 'Need Help' : (type === 'end' ? 'Request to End' : (cfg.canEdit ? 'Save date' : 'Send request'));
+            submit.classList.toggle('btn-warning', type !== 'end');
+            submit.classList.toggle('btn-outline-danger', type === 'end');
+        }
+    }
+    function openExtendRequest(items) {
+        items = (items || []).filter(function (item) { return item && item.id; });
+        if (!items.length) return;
+        var box = el('ts-inc-extend-modal');
+        var pickWrap = el('ts-inc-extend-pick-wrap');
+        var pick = el('ts-inc-extend-pick');
+        if (pick && pickWrap && items.length > 1) {
+            pick.innerHTML = items.map(function (item, index) {
+                return '<option value="' + index + '">' + escapeHtml(item.title || 'Incentive') + '</option>';
+            }).join('');
+            pick.onchange = function () {
+                fillExtendRequest(items[parseInt(pick.value, 10)] || items[0]);
+            };
+            pickWrap.classList.remove('d-none');
+        } else if (pickWrap) {
+            pickWrap.classList.add('d-none');
+        }
+        fillExtendRequest(items[0]);
+        if (box && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(box).show();
+        }
+    }
     document.addEventListener('click', function (e) {
         var t = e.target;
         if (!t || !t.closest) return;
@@ -1414,22 +1526,19 @@
         var extendBtn = t.closest('.ts-inc-extend');
         if (extendBtn) {
             e.preventDefault();
-            var box = el('ts-inc-extend-modal');
-            var idInput = el('ts-inc-extend-id');
-            var dateInput = el('ts-inc-extend-date');
-            var reasonInput = el('ts-inc-extend-reason');
-            var summary = el('ts-inc-extend-summary');
-            if (idInput) idInput.value = extendBtn.getAttribute('data-id') || '';
-            if (dateInput) {
-                var cutoff = extendBtn.getAttribute('data-cutoff') || '';
-                dateInput.min = cfg.businessToday || '';
-                dateInput.value = cutoff && cutoff >= (cfg.businessToday || '') ? cutoff : (cfg.businessToday || '');
-            }
-            if (reasonInput) reasonInput.value = '';
-            if (summary) summary.textContent = extendBtn.getAttribute('data-title') || 'Extend this incentive cutoff date.';
-            if (box && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                bootstrap.Modal.getOrCreateInstance(box).show();
-            }
+            openExtendRequest([{
+                id: extendBtn.getAttribute('data-id') || '',
+                title: extendBtn.getAttribute('data-title') || '',
+                cutoff: extendBtn.getAttribute('data-cutoff') || ''
+            }]);
+            return;
+        }
+        if (t.closest('#topbar-inc-extend')) {
+            e.preventDefault();
+            var raw = t.closest('#topbar-inc-extend').getAttribute('data-items') || '[]';
+            var items = [];
+            try { items = JSON.parse(raw); } catch (err) { items = []; }
+            openExtendRequest(items);
             return;
         }
 
@@ -1498,6 +1607,12 @@
         var form = e.target && e.target.closest ? e.target.closest('.ts-inc-deny-form') : null;
         if (form && !window.confirm('Deny this extend request?')) e.preventDefault();
     });
+    var tsExtendModal = el('ts-inc-extend-modal');
+    if (tsExtendModal) {
+        tsExtendModal.addEventListener('change', function (e) {
+            if (e.target && e.target.name === 'request_type') syncTsRequestOption();
+        });
+    }
     document.addEventListener('change', function (e) {
         var t = e.target;
         if (!t || !t.closest) return;

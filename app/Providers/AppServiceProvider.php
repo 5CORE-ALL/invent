@@ -190,7 +190,7 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Logged-in user's own incentive total for the topbar ₹ badge.
      *
-     * @var array{topbarIncentiveTotal: float, topbarIncentiveCount: int, topbarIncentiveAlert: bool, topbarIncentiveDaysLeft: int|null, topbarIncentiveCountdown: bool}|null
+     * @var array{topbarIncentiveTotal: float, topbarIncentiveCount: int, topbarIncentiveAlert: bool, topbarIncentiveDaysLeft: int|null, topbarIncentiveCountdown: bool, topbarIncentiveExtendItems: list<array{id: int, title: string, cutoff: string}>}|null
      */
     private ?array $userIncentiveBadge = null;
 
@@ -201,11 +201,12 @@ class AppServiceProvider extends ServiceProvider
             $count = 0;
             $alert = false;
             $daysLeft = null;
+            $extendItems = [];
             $user = Auth::user();
             if ($user) {
                 try {
                     if (\Illuminate\Support\Facades\Schema::hasTable('user_incentives')) {
-                        $cols = ['amount'];
+                        $cols = ['id', 'title', 'amount'];
                         if (\Illuminate\Support\Facades\Schema::hasColumn('user_incentives', 'additional_condition')) {
                             $cols[] = 'additional_condition';
                         }
@@ -215,6 +216,8 @@ class AppServiceProvider extends ServiceProvider
                         $rows = UserIncentive::query()
                             ->where('user_id', $user->id)
                             ->where('is_active', true)
+                            ->orderBy('sort_order')
+                            ->orderBy('id')
                             ->get($cols);
                         $count = $rows->count();
                         $total = (float) $rows->sum('amount');
@@ -224,6 +227,15 @@ class AppServiceProvider extends ServiceProvider
                                 continue;
                             }
                             $raw = trim((string) ($row->additional_condition ?? ''));
+                            $iso = '';
+                            if (preg_match('/^(\d{4}-\d{2}-\d{2})/', $raw, $match)) {
+                                $iso = $match[1];
+                            }
+                            $extendItems[] = [
+                                'id' => (int) $row->id,
+                                'title' => (string) ($row->title ?? ''),
+                                'cutoff' => $iso,
+                            ];
                             if ($raw === '') {
                                 continue;
                             }
@@ -244,6 +256,7 @@ class AppServiceProvider extends ServiceProvider
                     $count = 0;
                     $alert = false;
                     $daysLeft = null;
+                    $extendItems = [];
                 }
             }
             $this->userIncentiveBadge = [
@@ -252,6 +265,7 @@ class AppServiceProvider extends ServiceProvider
                 'topbarIncentiveAlert' => $alert,
                 'topbarIncentiveDaysLeft' => $daysLeft,
                 'topbarIncentiveCountdown' => $daysLeft !== null && $daysLeft > 1,
+                'topbarIncentiveExtendItems' => $extendItems,
             ];
         }
 

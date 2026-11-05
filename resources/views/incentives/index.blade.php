@@ -155,6 +155,32 @@
         padding: 1rem 1.1rem;
         margin-bottom: 1rem;
     }
+    .inc-request-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-bottom: 0.9rem;
+    }
+    .inc-request-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin: 0;
+        padding: 0.4rem 0.7rem;
+        border: 1px solid #fde68a;
+        border-radius: 999px;
+        background: #fffbeb;
+        color: #92400e;
+        font-weight: 800;
+        font-size: 0.86rem;
+        cursor: pointer;
+    }
+    .inc-request-option:has(input:checked) {
+        background: #f59e0b;
+        border-color: #d97706;
+        color: #fff;
+    }
+    .inc-request-option input { margin: 0; }
     .inc-pending-card h5 {
         margin: 0 0 0.65rem;
         font-weight: 800;
@@ -307,16 +333,22 @@
 
     @if ($canEdit && count($extendRequests))
         <div class="inc-pending-card">
-            <h5>Extend requests waiting for you</h5>
+            <h5>Requests waiting for you</h5>
             <div class="inc-pending-list">
                 @foreach ($extendRequests as $req)
                     <div class="inc-pending-item">
                         <div>
                             <p class="fw-bold mb-1">{{ $req['user_name'] ?: 'Team member' }} · {{ $req['title'] ?: 'Incentive' }}</p>
                             <p class="small mb-1">
-                                {{ $req['requested_by'] ?: 'Someone' }} asked to move the cutoff
-                                from {{ $cutoffLabel($req['current_cutoff'] ?? '') }}
-                                to {{ $cutoffLabel($req['requested_cutoff'] ?? '') }}.
+                                @if (($req['request_type'] ?? '') === 'help')
+                                    {{ $req['requested_by'] ?: 'Someone' }} needs help to achieve this incentive.
+                                @elseif (($req['request_type'] ?? '') === 'end')
+                                    {{ $req['requested_by'] ?: 'Someone' }} asked to end this incentive.
+                                @else
+                                    {{ $req['requested_by'] ?: 'Someone' }} asked to move the cutoff
+                                    from {{ $cutoffLabel($req['current_cutoff'] ?? '') }}
+                                    to {{ $cutoffLabel($req['requested_cutoff'] ?? '') }}.
+                                @endif
                             </p>
                             @if (!empty($req['reason']))
                                 <p class="small text-muted mb-0">Reason: {{ $req['reason'] }}</p>
@@ -363,7 +395,7 @@
                 }
                 $shown = $editing ? $rows : $activeRows;
                 $canRequest = (int) $viewerId === (int) $person['id'];
-                $showActions = $canEdit || $canRequest;
+                $showActions = true;
                 $personTotal = 0;
                 foreach ($shown as $row) {
                     if (! $isActive($row['is_active'] ?? true)) {
@@ -381,6 +413,28 @@
                         @endif
                     </div>
                     <div class="d-flex align-items-center gap-2">
+                        @php
+                            $headerExtend = null;
+                            if (! $editing && ($canRequest || $canEdit)) {
+                                foreach ($shown as $headerRow) {
+                                    if (! empty($headerRow['id']) && empty($headerRow['is_achieved']) && empty($headerRow['pending_extend'])) {
+                                        $headerExtend = $headerRow;
+                                        break;
+                                    }
+                                }
+                            }
+                        @endphp
+                        @if ($headerExtend)
+                            <button type="button"
+                                class="btn btn-sm btn-warning fw-bold inc-extend-date"
+                                title="{{ $canEdit ? 'Extend cutoff date' : 'Request a later cutoff date' }}"
+                                data-id="{{ $headerExtend['id'] }}"
+                                data-name="{{ $person['name'] }}"
+                                data-title="{{ $headerExtend['title'] ?? '' }}"
+                                data-cutoff="{{ $cutoffInput($headerExtend['additional_condition'] ?? '') }}"
+                                data-bs-toggle="modal"
+                                data-bs-target="#inc-extend-modal">Extend</button>
+                        @endif
                         <span class="inc-total-pill">₹<span class="inc-person-total">{{ $rupee($personTotal) }}</span></span>
                         @if ($canEdit && ! $editing)
                             <a class="btn btn-sm btn-outline-success" href="{{ route('incentives.index', ['user_id' => $person['id']]).'#inc-user-'.$person['id'] }}">Edit</a>
@@ -505,7 +559,13 @@
                                                     @endif
                                                     @if (! empty($pending))
                                                         <span class="inc-request-badge" title="{{ !empty($pending['reason']) ? $pending['reason'] : 'Waiting for approval' }}">
-                                                            Requested {{ $cutoffLabel($pending['requested_cutoff'] ?? '') }}
+                                                            @if (($pending['request_type'] ?? '') === 'help')
+                                                                Need help
+                                                            @elseif (($pending['request_type'] ?? '') === 'end')
+                                                                Request to end
+                                                            @else
+                                                                Requested {{ $cutoffLabel($pending['requested_cutoff'] ?? '') }}
+                                                            @endif
                                                         </span>
                                                         @if ($canEdit)
                                                             <div class="inc-review-btns">
@@ -566,22 +626,27 @@
                 @csrf
                 <input type="hidden" name="id" id="inc-extend-id">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="inc-extend-title">{{ $canEdit ? 'Extend cutoff date' : 'Request to extend cutoff date' }}</h5>
+                    <h5 class="modal-title" id="inc-extend-title">Incentive request</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p class="mb-2" id="inc-extend-summary"></p>
-                    @unless ($canEdit)
-                        <p class="text-muted small">This sends a request. Only president@5core.com or software5@5core.com can approve it.</p>
-                    @endunless
-                    <label for="inc-extend-date" class="form-label fw-bold">New cutoff date</label>
-                    <input type="date" class="form-control" name="additional_condition" id="inc-extend-date" min="{{ $businessToday }}" required>
+                    <div class="inc-request-options" role="radiogroup" aria-label="Request type">
+                        <label class="inc-request-option"><input type="radio" name="request_type" value="extend" checked> Extend date</label>
+                        <label class="inc-request-option"><input type="radio" name="request_type" value="help"> Need Help</label>
+                        <label class="inc-request-option"><input type="radio" name="request_type" value="end"> Request to End</label>
+                    </div>
+                    <p class="text-muted small" id="inc-option-note">Choose Need Help to ask for help achieving this incentive.</p>
+                    <div id="inc-extend-date-wrap">
+                        <label for="inc-extend-date" class="form-label fw-bold">New cutoff date</label>
+                        <input type="date" class="form-control" name="additional_condition" id="inc-extend-date" min="{{ $businessToday }}">
+                    </div>
                     <label for="inc-extend-reason" class="form-label fw-bold mt-3">Reason</label>
-                    <textarea class="form-control" name="reason" id="inc-extend-reason" rows="3" maxlength="1000" placeholder="Why does this cutoff need more time?"></textarea>
+                    <textarea class="form-control" name="reason" id="inc-extend-reason" rows="3" maxlength="1000" placeholder="What help do you need to achieve this incentive?"></textarea>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-warning" id="inc-extend-submit">{{ $canEdit ? 'Save date' : 'Send request' }}</button>
+                    <button type="submit" class="btn btn-warning" id="inc-extend-submit">Send request</button>
                 </div>
             </form>
         </div>
@@ -698,8 +763,48 @@
             }
             if (reasonInput) reasonInput.value = '';
             if (summary) {
-                summary.textContent = [name, title].filter(Boolean).join(' · ') || 'Extend this incentive cutoff date.';
+                summary.textContent = [name, title].filter(Boolean).join(' · ') || 'Incentive request';
             }
+            var extendChoice = extendModal.querySelector('input[name="request_type"][value="extend"]');
+            if (extendChoice) extendChoice.checked = true;
+            syncRequestOption(extendModal);
+        });
+    }
+    var canEditIncentive = @json((bool) $canEdit);
+    function syncRequestOption(modal) {
+        if (!modal) return;
+        var picked = modal.querySelector('input[name="request_type"]:checked');
+        var type = picked ? picked.value : 'extend';
+        var dateWrap = modal.querySelector('[id$="extend-date-wrap"], #inc-extend-date-wrap');
+        var dateInput = modal.querySelector('#inc-extend-date');
+        var reason = modal.querySelector('#inc-extend-reason');
+        var note = modal.querySelector('#inc-option-note');
+        var submit = modal.querySelector('#inc-extend-submit');
+        var showDate = type === 'extend';
+        if (dateWrap) dateWrap.classList.toggle('d-none', !showDate);
+        if (dateInput) dateInput.required = showDate;
+        if (reason) {
+            reason.required = type !== 'extend';
+            reason.placeholder = type === 'help'
+                ? 'What help do you need to achieve this incentive?'
+                : (type === 'end' ? 'Why should this incentive end?' : 'Why does this cutoff need more time?');
+        }
+        if (note) {
+            note.textContent = type === 'help'
+                ? 'Need Help asks president@5core.com or software5@5core.com for help to achieve this incentive.'
+                : (type === 'end'
+                    ? 'Request to End asks them to close this incentive.'
+                    : 'Extend date asks for a later cutoff. Add a reason if you want.');
+        }
+        if (submit) {
+            submit.textContent = type === 'help' ? 'Need Help' : (type === 'end' ? 'Request to End' : (canEditIncentive ? 'Save date' : 'Send request'));
+            submit.classList.toggle('btn-warning', type !== 'end');
+            submit.classList.toggle('btn-outline-danger', type === 'end');
+        }
+    }
+    if (extendModal) {
+        extendModal.addEventListener('change', function (e) {
+            if (e.target && e.target.name === 'request_type') syncRequestOption(extendModal);
         });
     }
     document.querySelectorAll('.inc-deny-form').forEach(function (form) {

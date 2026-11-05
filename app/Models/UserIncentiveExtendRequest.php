@@ -13,11 +13,18 @@ class UserIncentiveExtendRequest extends Model
 
     public const STATUS_DENIED = 'denied';
 
+    public const TYPE_EXTEND = 'extend';
+
+    public const TYPE_END = 'end';
+
+    public const TYPE_HELP = 'help';
+
     protected $fillable = [
         'user_incentive_id',
         'user_id',
         'requested_by_user_id',
         'current_cutoff',
+        'request_type',
         'requested_cutoff',
         'reason',
         'status',

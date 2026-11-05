@@ -279,6 +279,27 @@
                 background: #b91c1c;
                 color: #fff;
             }
+            .topbar-inc-extend-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                height: 32px;
+                margin-right: 0.35rem;
+                padding: 0 0.8rem;
+                border: 1px solid #f59e0b;
+                border-radius: 999px;
+                background: #fef3c7;
+                color: #92400e;
+                font-weight: 800;
+                font-size: 0.82rem;
+                line-height: 1;
+                cursor: pointer;
+                white-space: nowrap;
+            }
+            .topbar-inc-extend-btn:hover {
+                background: #fde68a;
+                color: #78350f;
+            }
             @keyframes ts-inc-alert-pulse {
                 0%, 100% { transform: scale(1); box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.28); }
                 50% { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.18); }
@@ -688,8 +709,16 @@
                 if ($topbarIncCountdown) {
                     $topbarIncTitle .= ' · '.$topbarIncDaysLabel.' left';
                 }
+                $topbarIncExtendItems = array_values($topbarIncentiveExtendItems ?? []);
             @endphp
             <li class="d-flex align-items-center">
+                @if (count($topbarIncExtendItems))
+                    <button type="button"
+                        class="topbar-inc-extend-btn"
+                        id="topbar-inc-extend"
+                        data-items="{{ e(json_encode($topbarIncExtendItems)) }}"
+                        title="Request a later cutoff date">Extend</button>
+                @endif
                 <a href="{{ route('incentives.index') }}"
                         id="ts-incentive-header-btn"
                         class="topbar-incentive-dollar-btn{{ $topbarIncShow ? ' has-amount' : '' }}{{ $topbarIncAlert ? ' is-cutoff-alert' : ($topbarIncCountdown ? ' is-countdown' : '') }}"
