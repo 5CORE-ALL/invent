@@ -81,52 +81,173 @@
     html[data-bs-theme="dark"] .topbar-world-clocks .wc-flag-img {
         box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
     }
+    /* Clickable single clock in the topbar */
+    .topbar-world-clocks .wc-zone-btn {
+        cursor: pointer;
+        border: 0;
+        background: transparent;
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
+        transition: background-color 0.15s ease;
+    }
+    .topbar-world-clocks .wc-zone-btn:hover,
+    .topbar-world-clocks .wc-zone-btn:focus-visible {
+        background-color: rgba(0, 0, 0, 0.05);
+        outline: none;
+    }
+    html[data-bs-theme="dark"] .topbar-world-clocks .wc-zone-btn:hover,
+    html[data-bs-theme="dark"] .topbar-world-clocks .wc-zone-btn:focus-visible {
+        background-color: rgba(255, 255, 255, 0.08);
+    }
+    /* Modal with all clocks */
+    #worldClocksModal .wc-modal-card {
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 10px;
+        padding: 0.9rem 1rem;
+        height: 100%;
+    }
+    #worldClocksModal .wc-modal-card.wc-current {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 1px #0d6efd inset;
+    }
+    #worldClocksModal .wc-modal-name {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #5c6b7a;
+    }
+    #worldClocksModal .wc-modal-name img {
+        width: 1.4rem;
+        height: 1.05rem;
+        object-fit: cover;
+        border-radius: 2px;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+    }
+    #worldClocksModal .wc-modal-time {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #0b2545;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.2;
+    }
+    #worldClocksModal .wc-modal-meta {
+        font-size: 0.8rem;
+        color: #5c6b7a;
+    }
+    html[data-bs-theme="dark"] #worldClocksModal .wc-modal-card {
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+    html[data-bs-theme="dark"] #worldClocksModal .wc-modal-time {
+        color: rgba(255, 255, 255, 0.95);
+    }
+    html[data-bs-theme="dark"] #worldClocksModal .wc-modal-name,
+    html[data-bs-theme="dark"] #worldClocksModal .wc-modal-meta {
+        color: rgba(255, 255, 255, 0.6);
+    }
 </style>
+@php
+    $worldClockZones = [
+        ['prefix' => 'wc-ca', 'name' => 'California', 'tz' => 'America/Los_Angeles', 'flag' => 'us'],
+        ['prefix' => 'wc-in', 'name' => 'India',      'tz' => 'Asia/Kolkata',        'flag' => 'in'],
+        ['prefix' => 'wc-oh', 'name' => 'Ohio',       'tz' => 'America/New_York',    'flag' => 'us'],
+        ['prefix' => 'wc-cn', 'name' => 'China',      'tz' => 'Asia/Shanghai',       'flag' => 'cn'],
+    ];
+@endphp
+{{-- Single, relevant clock (defaults to India; JS switches to the viewer's own zone if it is one of ours) --}}
 <div class="topbar-world-clocks d-none d-lg-flex" aria-label="Office time zones">
-    <div class="wc-zone">
-        <div class="wc-flag-row" role="img" aria-label="California, United States (Pacific)">
-            <span class="wc-code wc-place-name">California</span>
-            <img class="wc-flag-img" src="https://flagcdn.com/w40/us.png" width="18" height="14" alt="" decoding="async" loading="eager">
+    <button type="button" class="wc-zone wc-zone-btn" id="wc-top-btn"
+            data-bs-toggle="modal" data-bs-target="#worldClocksModal"
+            title="Click to view all country clocks" aria-label="Open all country clocks">
+        <div class="wc-flag-row">
+            <span class="wc-code wc-place-name" id="wc-top-name">India</span>
+            <img class="wc-flag-img" id="wc-top-flag" src="https://flagcdn.com/w40/in.png" width="18" height="14" alt="" decoding="async" loading="eager">
         </div>
-        <div class="wc-time" id="wc-ca-time">—</div>
-        <div class="wc-meta" id="wc-ca-meta"></div>
-    </div>
-    <div class="wc-divider" aria-hidden="true"></div>
-    <div class="wc-zone">
-        <div class="wc-flag-row" role="img" aria-label="India">
-            <span class="wc-code wc-place-name">India</span>
-            <img class="wc-flag-img" src="https://flagcdn.com/w40/in.png" width="18" height="14" alt="" decoding="async" loading="eager">
+        <div class="wc-time" id="wc-top-time">—</div>
+        <div class="wc-meta" id="wc-top-meta"></div>
+    </button>
+</div>
+
+{{-- Modal with all clocks (moved to <body> by JS so the topbar's stacking context can't clip it) --}}
+<div class="modal fade" id="worldClocksModal" tabindex="-1" aria-labelledby="worldClocksModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="worldClocksModalLabel">World Clocks</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    @foreach ($worldClockZones as $z)
+                        <div class="col-12 col-sm-6">
+                            <div class="wc-modal-card" data-wc-tz="{{ $z['tz'] }}">
+                                <div class="wc-modal-name">
+                                    <span>{{ $z['name'] }}</span>
+                                    <img src="https://flagcdn.com/w40/{{ $z['flag'] }}.png" alt="" loading="lazy">
+                                </div>
+                                <div class="wc-modal-time" id="{{ $z['prefix'] }}-time">—</div>
+                                <div class="wc-modal-meta" id="{{ $z['prefix'] }}-meta"></div>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
         </div>
-        <div class="wc-time" id="wc-in-time">—</div>
-        <div class="wc-meta" id="wc-in-meta"></div>
-    </div>
-    <div class="wc-divider" aria-hidden="true"></div>
-    <div class="wc-zone">
-        <div class="wc-flag-row" role="img" aria-label="Ohio, United States (Eastern)">
-            <span class="wc-code wc-place-name">Ohio</span>
-            <img class="wc-flag-img" src="https://flagcdn.com/w40/us.png" width="18" height="14" alt="" decoding="async" loading="eager">
-        </div>
-        <div class="wc-time" id="wc-oh-time">—</div>
-        <div class="wc-meta" id="wc-oh-meta"></div>
-    </div>
-    <div class="wc-divider" aria-hidden="true"></div>
-    <div class="wc-zone">
-        <div class="wc-flag-row" role="img" aria-label="CN, China">
-            <span class="wc-code">CN</span>
-            <img class="wc-flag-img" src="https://flagcdn.com/w40/cn.png" width="18" height="14" alt="" decoding="async" loading="eager">
-        </div>
-        <div class="wc-time" id="wc-cn-time">—</div>
-        <div class="wc-meta" id="wc-cn-meta"></div>
     </div>
 </div>
 <script>
 (function () {
     var zones = [
-        { prefix: 'wc-ca', tz: 'America/Los_Angeles' },
-        { prefix: 'wc-in', tz: 'Asia/Kolkata' },
-        { prefix: 'wc-oh', tz: 'America/New_York' },
-        { prefix: 'wc-cn', tz: 'Asia/Shanghai' }
+        @foreach ($worldClockZones as $z)
+        { prefix: '{{ $z['prefix'] }}', name: '{{ $z['name'] }}', tz: '{{ $z['tz'] }}', flag: '{{ $z['flag'] }}' },
+        @endforeach
     ];
+
+    // Browser timezone aliases -> one of our zones
+    var tzAliases = {
+        'Asia/Calcutta': 'Asia/Kolkata',
+        'America/Detroit': 'America/New_York',
+        'America/Kentucky/Louisville': 'America/New_York',
+        'Asia/Chongqing': 'Asia/Shanghai',
+        'Asia/Harbin': 'Asia/Shanghai'
+    };
+    var defaultTz = 'Asia/Kolkata';
+
+    // Move modal to <body> so it is not clipped by the topbar
+    var modalEl = document.getElementById('worldClocksModal');
+    if (modalEl && modalEl.parentNode !== document.body) {
+        document.body.appendChild(modalEl);
+    }
+
+    function detectRelevantZone() {
+        var local = '';
+        try { local = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { /* ignore */ }
+        local = tzAliases[local] || local;
+        for (var i = 0; i < zones.length; i++) {
+            if (zones[i].tz === local) { return zones[i]; }
+        }
+        for (var j = 0; j < zones.length; j++) {
+            if (zones[j].tz === defaultTz) { return zones[j]; }
+        }
+        return zones[0];
+    }
+    var relevant = detectRelevantZone();
+
+    var topName = document.getElementById('wc-top-name');
+    var topFlag = document.getElementById('wc-top-flag');
+    if (topName) { topName.textContent = relevant.name; }
+    if (topFlag) { topFlag.src = 'https://flagcdn.com/w40/' + relevant.flag + '.png'; }
+
+    // Highlight the viewer's own zone inside the modal
+    if (modalEl) {
+        var cards = modalEl.querySelectorAll('.wc-modal-card');
+        for (var c = 0; c < cards.length; c++) {
+            if (cards[c].getAttribute('data-wc-tz') === relevant.tz) {
+                cards[c].classList.add('wc-current');
+            }
+        }
+    }
     function tzAbbrev(now, timeZone) {
         // Asia/Kolkata: browsers often emit GMT+05:30 (IST is ambiguous with Israel/Ireland).
         // Keep the short office label consistent with PDT / EDT / CST.
@@ -148,9 +269,14 @@
     }
     function tick() {
         var now = new Date();
-        zones.forEach(function (z) {
-            var timeEl = document.getElementById(z.prefix + '-time');
-            var metaEl = document.getElementById(z.prefix + '-meta');
+        var targets = zones.map(function (z) {
+            return { tz: z.tz, timeId: z.prefix + '-time', metaId: z.prefix + '-meta' };
+        });
+        // Topbar clock shows only the relevant zone
+        targets.push({ tz: relevant.tz, timeId: 'wc-top-time', metaId: 'wc-top-meta' });
+        targets.forEach(function (z) {
+            var timeEl = document.getElementById(z.timeId);
+            var metaEl = document.getElementById(z.metaId);
             if (!timeEl || !metaEl) {
                 return;
             }

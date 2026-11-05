@@ -65,6 +65,9 @@
     {{-- Floating "Request a meeting" icon (every page; opt out with 'hideMeetingFab' => true) --}}
     @include('layouts.shared.meeting-request-fab')
 
+    {{-- Floating "KPI" icon (every page; opt out with 'hideKpiFab' => true) --}}
+    @include('layouts.shared.kpi-fab')
+
     @yield('script-after-vite')
 
     @include('components.ai-chat-widget')

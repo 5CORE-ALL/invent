@@ -198,9 +198,14 @@ class LqsMasterController extends Controller
                 $channel = $nameByKey[$snapshotKey] ?? $snapshotKey;
                 $source = LqsMarketplaceCatalog::sourceForSnapshotKey($snapshotKey);
                 $lqs = ($source && isset($badgeBySource[$source])) ? $badgeBySource[$source] : null;
+                // Page that produces this channel's LQS (/lqs-amz, /lqs-temu2, ...). Shown when the score is missing.
+                $sourceUrl = ($source && \Illuminate\Support\Facades\Route::has("lqs.{$source}.view"))
+                    ? route("lqs.{$source}.view", [], false)
+                    : null;
                 $data[] = [
                     'channel_key' => $snapshotKey,
                     'lqs_source' => $source,
+                    'source_url' => $sourceUrl,
                     'logo' => $logoMap[$snapshotKey] ?? null,
                     'channel' => $channel,
                     'Channel ' => $channel,

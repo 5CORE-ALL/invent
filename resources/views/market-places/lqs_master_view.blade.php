@@ -116,6 +116,19 @@
             gap: 6px;
             white-space: nowrap;
         }
+        .lqs-master-source-link {
+            color: #adb5bd;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .lqs-master-source-link i {
+            font-size: 9px;
+        }
+        .lqs-master-source-link:hover {
+            color: #0d6efd;
+        }
         .lqs-master-chart-dot {
             display: inline-block;
             width: 8px;
@@ -380,9 +393,16 @@
                             const row = cell.getRow().getData();
                             const formatted = lqsMasterFormatScore(cell.getValue());
                             const color = formatted ? lqsMasterScoreColor(cell.getValue()) : '#adb5bd';
-                            const scoreHtml = formatted
-                                ? `<span style="color:${color};font-weight:700;">${formatted}</span>`
-                                : '<span style="color:#adb5bd;">–</span>';
+                            const sourceUrl = (row.source_url || '').trim();
+                            let scoreHtml;
+                            if (formatted) {
+                                scoreHtml = `<span style="color:${color};font-weight:700;">${formatted}</span>`;
+                            } else if (sourceUrl) {
+                                // No score yet: link to the page that produces this channel's LQS
+                                scoreHtml = `<a href="${lqsMasterEscape(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="lqs-master-source-link" title="No LQS data yet. Open the ${lqsMasterEscape(row.channel || '')} LQS page">–<i class="fas fa-external-link-alt"></i></a>`;
+                            } else {
+                                scoreHtml = '<span style="color:#adb5bd;">–</span>';
+                            }
                             return `<span class="lqs-master-cell">
                                 ${scoreHtml}
                                 <span class="lqs-master-chart-dot" data-channel="${lqsMasterEscape(row.channel_key || row.channel || '')}" data-label="${lqsMasterEscape(row.channel || '')}" style="background:${color};" title="LQS history graph"></span>

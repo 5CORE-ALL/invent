@@ -168,6 +168,7 @@
                         <i class="fas fa-sync-alt me-1"></i> Sync
                     </button>
                     <span class="text-muted small" id="il-sync-meta"></span>
+                    @include('partials.page-doc-links', ['pageKey' => 'inactive-listings'])
                     <span class="text-muted small">Inactive Listing = in-stock CP Master SKUs that are present on the marketplace with inactive status. Missing / never-listed SKUs stay on Missing Listing. Zero-inventory SKUs are excluded.</span>
                 </div>
             </div>
