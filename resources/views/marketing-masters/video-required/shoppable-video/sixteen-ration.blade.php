@@ -557,6 +557,7 @@
 
         table.on("tableBuilt", function () {
             buildColumnDropdown();
+            RationUpload.bind('sixteen-ration-video', function () { updateTotalInvAndL30(table); });
         });
 
         table.on("cellEdited", function(cell) {
