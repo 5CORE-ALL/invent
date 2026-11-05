@@ -2419,6 +2419,20 @@ final class EbayTradingReviseItem
         }
 
         if ($fixed['success']) {
+            // eBay can answer Success and leave the listing title as it was (for example a listing that already
+            // has sales). Read the listing back so "updated" is only reported when the title really changed.
+            $live = self::fetchLiveTitle($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId);
+            $norm = static fn (string $t): string => mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', html_entity_decode($t, ENT_QUOTES | ENT_HTML5, 'UTF-8'))));
+            if ($live !== null && $live !== '' && $norm($live) !== $norm($title)) {
+                Log::warning('eBay title revise acked but listing title unchanged', ['item_id' => $itemId, 'sent' => $title, 'live' => $live]);
+
+                return [
+                    'success' => false,
+                    'message' => 'eBay accepted the title for item '.$itemId.' but the listing still shows "'.$live.'". '
+                        .'eBay does not always allow a title change on a listing that already has sales; change it in Seller Hub if so.',
+                ];
+            }
+
             return $fixed;
         }
 
@@ -2453,6 +2467,58 @@ final class EbayTradingReviseItem
         }
 
         return $reviseItem['message'] !== '' ? $reviseItem : $fixed;
+    }
+
+    /**
+     * The title eBay currently shows for an item (GetItem), or null when it cannot be read.
+     */
+    private static function fetchLiveTitle(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        string $itemId,
+    ): ?string {
+        try {
+            $xmlBody = '<?xml version="1.0" encoding="utf-8"?>'
+                .'<GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+                .'<RequesterCredentials><eBayAuthToken>'.self::escapeXmlElementText($authToken).'</eBayAuthToken></RequesterCredentials>'
+                .'<ItemID>'.self::escapeXmlElementText($itemId).'</ItemID>'
+                .'<OutputSelector>Title</OutputSelector>'
+                .'</GetItemRequest>';
+            $response = Http::withoutVerifying()
+                ->connectTimeout(10)
+                ->timeout(30)
+                ->withHeaders([
+                    'X-EBAY-API-COMPATIBILITY-LEVEL' => $compatLevel,
+                    'X-EBAY-API-DEV-NAME' => $devId,
+                    'X-EBAY-API-APP-NAME' => $appId,
+                    'X-EBAY-API-CERT-NAME' => $certId,
+                    'X-EBAY-API-CALL-NAME' => 'GetItem',
+                    'X-EBAY-API-SITEID' => $siteId,
+                    'Content-Type' => 'text/xml',
+                ])
+                ->withBody($xmlBody, 'text/xml')
+                ->post($endpoint);
+            if (! $response->successful()) {
+                return null;
+            }
+            libxml_use_internal_errors(true);
+            $xml = simplexml_load_string($response->body());
+            if ($xml === false) {
+                return null;
+            }
+            $data = json_decode(json_encode($xml), true);
+            $ack = (string) ($data['Ack'] ?? '');
+            $title = $data['Item']['Title'] ?? null;
+
+            return ($ack === 'Success' || $ack === 'Warning') && is_string($title) ? trim($title) : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
