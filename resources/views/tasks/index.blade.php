@@ -5430,7 +5430,33 @@
                 return true;
             }
 
-            if (!String(taskManagerSessionUserFocus || '').trim() && !urlHasUserTaskScope()) {
+            // ?search=... (e.g. the TM button on /inactive-listings): all tasks matching the text, any assignee.
+            function urlSearchPreset() {
+                return (new URLSearchParams(window.location.search).get('search') || '').trim();
+            }
+
+            function applyUrlSearchPreset() {
+                var text = urlSearchPreset();
+                if (!text) {
+                    return false;
+                }
+                $('#filter-ca').val('');
+                $('#filter-overdue').val('');
+                $('#filter-group').val('');
+                $('#filter-task').val('');
+                $('#filter-status').val('');
+                $('#filter-priority').val('');
+                $('#filter-task-type').val('');
+                taskManagerSessionUserFocus = '';
+                suppressAssignFilterApply = true;
+                $('#filter-assignor').val('').trigger('change');
+                $('#filter-assignee').val('').trigger('change');
+                suppressAssignFilterApply = false;
+                $('#filter-search').val(text);
+                return true;
+            }
+
+            if (!String(taskManagerSessionUserFocus || '').trim() && !urlHasUserTaskScope() && !urlSearchPreset()) {
                 taskManagerSessionUserFocus = String(currentUserName || '').trim();
             }
 
@@ -5439,7 +5465,7 @@
                 if (taskIndexFiltersRestored) return;
                 taskIndexFiltersRestored = true;
                 restoreTaskIndexFilters();
-                if (!applyUrlAssigneePreset() && taskManagerSessionUserFocus) {
+                if (!applyUrlAssigneePreset() && !applyUrlSearchPreset() && taskManagerSessionUserFocus) {
                     suppressAssignFilterApply = true;
                     $('#filter-assignor').val('').trigger('change');
                     $('#filter-assignee').val(taskManagerSessionUserFocus).trigger('change');

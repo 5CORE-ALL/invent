@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
 use App\Jobs\RebuildInactiveListingsPageJob;
 use App\Jobs\RefreshInactiveListingsJob;
+use App\Support\Marketplace\InactiveListingsHistory;
 use App\Support\Marketplace\ListingInactiveParentChildCounts;
 use App\Support\Marketplace\MappingChannelCounts;
 use App\Services\MarketplaceManager\InactiveListingsSyncService;
@@ -78,6 +79,32 @@ class InactiveListingsController extends Controller
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Daily history of the inactive counts (channel = "all" for the page total, or a channel slug).
+     */
+    public function history(Request $request)
+    {
+        $channel = strtolower(trim((string) $request->query('channel', 'all')));
+        if ($channel === '' || ! preg_match('/^[a-z0-9_\-]{1,100}$/', $channel)) {
+            $channel = 'all';
+        }
+        $metric = (string) $request->query('metric', 'child') === 'parent' ? 'parent' : 'child';
+        $days = (int) $request->query('days', 30);
+        $days = $days <= 0 ? 0 : min($days, 3650);
+
+        try {
+            // Make sure today's point exists even if nobody rebuilt the page yet today.
+            $meta = MappingChannelCounts::inactiveMasterMeta();
+            if (! empty($meta['complete'])) {
+                InactiveListingsHistory::record(MappingChannelCounts::cachedInactiveMasterRows());
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Inactive Listings history snapshot skipped: '.$e->getMessage());
+        }
+
+        return response()->json(['success' => true] + InactiveListingsHistory::series($channel, $metric, $days));
     }
 
     private function dispatchPageRebuild(): void

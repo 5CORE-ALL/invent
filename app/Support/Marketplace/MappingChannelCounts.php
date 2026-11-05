@@ -1022,6 +1022,9 @@ class MappingChannelCounts
                 'computed_slugs' => array_values(array_unique($computedSlugs)),
             ], now()->addDays(self::INACTIVE_PAGE_CACHE_TTL_DAYS));
             self::storeCpInactiveTotal((int) collect($rows)->sum('cp_inactive_child'));
+            if ($complete) {
+                InactiveListingsHistory::record($rows);
+            }
         } catch (\Throwable $e) {
             // ignore
         }

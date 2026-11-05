@@ -70,6 +70,74 @@
             border-radius: 0.35rem !important;
             font-weight: 700;
         }
+        /* TM button: same badge as the Task Summary page */
+        .task-summary-tm-badge {
+            flex-shrink: 0;
+            width: 1.4rem;
+            height: 1.4rem;
+            padding: 0;
+            margin: 0;
+            border: none;
+            border-radius: 7px;
+            background: linear-gradient(135deg, #b45309, #f59e0b);
+            color: #fff;
+            text-decoration: none;
+            font-size: 0.6rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            line-height: 1;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            box-shadow: 0 1px 3px rgba(245, 158, 11, 0.45), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+        }
+        .task-summary-tm-badge:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(245, 158, 11, 0.5), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+            background: linear-gradient(135deg, #92400e, #b45309);
+            color: #fff;
+            text-decoration: none;
+        }
+        .task-summary-tm-badge:focus-visible {
+            outline: 2px solid #b45309;
+            outline-offset: 2px;
+        }
+        .il-hist-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            margin-left: 6px;
+            border-radius: 50%;
+            background: #6c757d;
+            border: 1px solid #fff;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2);
+            cursor: pointer;
+            vertical-align: middle;
+            padding: 0;
+        }
+        .il-hist-dot:hover { transform: scale(1.4); }
+        #stat-cp-inactive-listings .il-hist-dot { background: #212529; border-color: #fff; }
+
+        /* History modal: full width, same as the Active Channel metric chart */
+        #ilHistoryModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #ilHistoryModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #ilHistoryModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
         .tabulator .tabulator-header .tabulator-col.tabulator-col-group {
             background: #eef4fb;
             text-align: center;
@@ -93,6 +161,7 @@
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <span class="badge bg-warning text-dark badge-il-stat" id="stat-cp-inactive-listings" title="In-stock CP Master SKUs that exist on the marketplace with inactive status. Missing Listing and 0 Inv SKUs are excluded.">
                         Inactive Child SKUs: <span id="total-cp-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedCpInactiveTotalOrZero()) }}</span>
+                        <button type="button" class="il-hist-dot" data-channel="all" data-name="All Channels" title="Inactive Child SKUs history" aria-label="Inactive Child SKUs history"></button>
                     </span>
                     <button type="button" id="il-sync-btn" class="btn btn-sm btn-primary" title="Pull current marketplace listing statuses and rebuild this page">
                         <i class="fas fa-sync-alt me-1"></i> Sync
@@ -109,11 +178,68 @@
             </div>
         </div>
     </div>
+
+    <!-- Inactive Child SKUs history modal (same layout as the Active Channel metric chart) -->
+    <div class="modal fade p-0" id="ilHistoryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="ilHistoryTitle">Inactive Child SKUs - Rolling 30 Days</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="ilHistoryRange" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="31">31 Days</option>
+                            <option value="32">32 Days</option>
+                            <option value="35">35 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="ilHistoryContainer" style="height: 34vh; min-height: 220px; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="ilHistoryChart"></canvas>
+                        </div>
+                        <div style="width: 118px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0; overflow: auto;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="ilHistoryHighest" style="font-size: 13px; font-weight: 700; color: #dc3545; white-space: nowrap;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="ilHistoryMedian" style="font-size: 13px; font-weight: 700; color: #6c757d; white-space: nowrap;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="ilHistoryLowest" style="font-size: 13px; font-weight: 700; color: #198754; white-space: nowrap;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="ilHistoryLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="ilHistoryNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No history yet. A point is saved each day the page is refreshed, so the chart fills in from today.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
     let table = null;
     let ilSyncPolling = false;
@@ -244,14 +370,222 @@
         const url = skuDetailUrl(row, field);
         const color = v === 0 ? '#198754' : '#b45309';
         const label = v.toLocaleString('en-US');
+        const slug = String(row.channel_slug || '').trim();
+        const dot = (field === 'cp_inactive_child' && slug)
+            ? `<button type="button" class="il-hist-dot" data-channel="${escapeHtml(slug)}" data-name="${escapeHtml(row.channel || slug)}" title="${escapeHtml(row.channel || slug)} - Inactive Child SKUs history" aria-label="History"></button>`
+            : '';
         if (!url) {
-            return `<span class="il-inactive-count" style="color:${color};">${label}</span>`;
+            return `<span class="il-inactive-count" style="color:${color};">${label}</span>${dot}`;
         }
         const title = field === 'cp_inactive_parent'
             ? 'Open inactive parent listings'
             : 'Open inactive child SKUs';
-        return `<a href="${escapeHtml(url)}" class="il-inactive-count" style="color:${color};" title="${title}">${label}</a>`;
+        return `<a href="${escapeHtml(url)}" class="il-inactive-count" style="color:${color};" title="${title}">${label}</a>${dot}`;
     }
+
+    // ---- Inactive Child SKUs history (Active Channel chart standard: lower is better) ----
+    const ilTasksIndexUrl = @json(route('tasks.index'));
+    const ilHistoryUrl = @json(route('inactive.listings.history'));
+    let ilHistChart = null;
+    let ilHistChannel = 'all';
+    let ilHistName = 'All Channels';
+    let ilHistReq = 0;
+
+    function ilFmt(v) { return Math.round(Number(v) || 0).toLocaleString('en-US'); }
+
+    function ilDotColors(values) {
+        const gray = '#6c757d', green = '#28a745', red = '#dc3545';
+        return values.map(function(v, i) {
+            if (i === 0 || v === values[i - 1]) return gray;
+            return v < values[i - 1] ? green : red; // fewer inactive SKUs = better
+        });
+    }
+
+    function ilRangeLabel() {
+        const sel = document.getElementById('ilHistoryRange');
+        return sel.options[sel.selectedIndex].text.replace(/\s*Days$/i, 'D');
+    }
+
+    function ilSetTitle() {
+        const range = document.getElementById('ilHistoryRange').value === '0' ? 'Lifetime' : ilRangeLabel();
+        document.getElementById('ilHistoryTitle').textContent =
+            ilHistName + ' - Inactive Child SKUs (Rolling ' + range + ')';
+    }
+
+    function openIlHistory(channel, name) {
+        ilHistChannel = channel || 'all';
+        ilHistName = name || 'All Channels';
+        ilSetTitle();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('ilHistoryModal')).show();
+        loadIlHistory();
+    }
+
+    function loadIlHistory() {
+        const days = document.getElementById('ilHistoryRange').value;
+        const req = ++ilHistReq;
+        const box = document.getElementById('ilHistoryContainer');
+        const noData = document.getElementById('ilHistoryNoData');
+        const loading = document.getElementById('ilHistoryLoading');
+        ilSetTitle();
+        box.style.display = 'none';
+        noData.style.display = 'none';
+        loading.style.display = 'block';
+        $.getJSON(ilHistoryUrl, { channel: ilHistChannel, metric: 'child', days: days }).done(function(res) {
+            if (req !== ilHistReq) return;
+            loading.style.display = 'none';
+            const data = (res && res.data) ? res.data : [];
+            if (!data.length) {
+                noData.style.display = 'block';
+                return;
+            }
+            box.style.display = 'flex';
+            renderIlHistory(data);
+        }).fail(function() {
+            if (req !== ilHistReq) return;
+            loading.style.display = 'none';
+            noData.style.display = 'block';
+        });
+    }
+
+    function renderIlHistory(data) {
+        const canvas = document.getElementById('ilHistoryChart');
+        const ctx = canvas.getContext('2d');
+        if (ilHistChart) ilHistChart.destroy();
+
+        const labels = data.map(d => d.date);
+        const values = data.map(d => Number(d.value) || 0);
+        const dataMin = Math.min(...values);
+        const dataMax = Math.max(...values);
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        const range = dataMax - dataMin || 1;
+        const yPad = Math.max(range * 0.28, Math.abs(dataMax) * 0.08, range * 0.1);
+        const yMin = Math.max(0, dataMin - range * 0.12);
+        const yMax = dataMax + yPad;
+
+        const dotColors = ilDotColors(values);
+        const refGray = '#6c757d';
+        let maxIdx = 0, minIdx = 0;
+        values.forEach((v, i) => {
+            if (v >= values[maxIdx]) maxIdx = i;
+            if (v <= values[minIdx]) minIdx = i;
+        });
+        [['ilHistoryHighest', dataMax, dotColors[maxIdx]], ['ilHistoryMedian', median, refGray], ['ilHistoryLowest', dataMin, dotColors[minIdx]]].forEach(function(x) {
+            const el = document.getElementById(x[0]);
+            el.textContent = ilFmt(x[1]);
+            el.style.color = x[2] || refGray;
+            if (el.previousElementSibling) el.previousElementSibling.style.color = el.style.color;
+        });
+
+        const medianLinePlugin = {
+            id: 'ilMedianLine',
+            afterDraw(chart) {
+                const y = chart.scales.y.getPixelForValue(median);
+                const c = chart.ctx;
+                c.save();
+                c.setLineDash([6, 4]);
+                c.strokeStyle = '#6c757d';
+                c.lineWidth = 1.2;
+                c.beginPath();
+                c.moveTo(chart.scales.x.left, y);
+                c.lineTo(chart.scales.x.right, y);
+                c.stroke();
+                c.restore();
+            }
+        };
+
+        const valueLabelsPlugin = {
+            id: 'ilValueLabels',
+            afterDraw(chart) {
+                const meta = chart.getDatasetMeta(0);
+                const c = chart.ctx;
+                c.save();
+                c.font = 'bold 10px Inter, system-ui, sans-serif';
+                c.textAlign = 'left';
+                c.textBaseline = 'middle';
+                meta.data.forEach(function(point, i) {
+                    c.save();
+                    c.fillStyle = dotColors[i];
+                    c.translate(point.x, point.y + (i % 2 === 0 ? -12 : -26));
+                    c.rotate(-Math.PI / 5);
+                    c.fillText(ilFmt(values[i]), 2, 0);
+                    c.restore();
+                });
+                c.restore();
+            }
+        };
+
+        ctx.save();
+        ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+        const tailW = Math.max.apply(null, values.slice(-2).map(v => ctx.measureText(ilFmt(v)).width));
+        ctx.restore();
+        const rightPad = Math.max(22, Math.ceil(tailW * Math.cos(Math.PI / 5)) + 12);
+
+        ilHistChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Inactive Child SKUs',
+                    data: values,
+                    backgroundColor: 'rgba(108,117,125,0.08)',
+                    borderColor: '#adb5bd',
+                    borderWidth: 1.5,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: dotColors,
+                    pointBorderColor: dotColors,
+                    pointHoverBackgroundColor: dotColors,
+                    pointHoverBorderColor: dotColors,
+                    pointBorderWidth: 1.5,
+                    pointHoverBorderWidth: 1.5
+                }]
+            },
+            plugins: [medianLinePlugin, valueLabelsPlugin],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                clip: false,
+                layout: { padding: { top: 44, left: 4, right: rightPad, bottom: 8 } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        titleFont: { size: 10 },
+                        bodyFont: { size: 10 },
+                        padding: 6,
+                        callbacks: {
+                            label: function(context) {
+                                const idx = context.dataIndex;
+                                const parts = ['Value: ' + ilFmt(context.raw)];
+                                if (idx > 0) {
+                                    const diff = context.raw - values[idx - 1];
+                                    parts.push('vs Yesterday: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + ilFmt(Math.abs(diff)));
+                                }
+                                return parts;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: { min: yMin, max: yMax, ticks: { font: { size: 9 }, callback: v => ilFmt(v) } },
+                    x: { ticks: { maxRotation: 60, minRotation: 60, autoSkip: false, maxTicksLimit: Math.max(labels.length, 31), font: { size: 8 } } }
+                }
+            }
+        });
+    }
+
+    $(document).on('click', '.il-hist-dot', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openIlHistory(this.getAttribute('data-channel'), this.getAttribute('data-name'));
+    });
+    $(document).on('change', '#ilHistoryRange', loadIlHistory);
+    document.getElementById('ilHistoryModal').addEventListener('hidden.bs.modal', function() {
+        if (ilHistChart) { ilHistChart.destroy(); ilHistChart = null; }
+    });
 
     $(document).ready(function() {
         table = new Tabulator("#inactive-listings-table", {
@@ -425,6 +759,22 @@
                             return '<span class="il-listings-arrow il-listings-arrow-off" title="Listings link not available"><i class="fas fa-arrow-up-right-from-square"></i></span>';
                         }
                         return `<a href="${escapeHtml(url)}" class="il-listings-arrow il-listings-arrow-on" title="Open ${escapeHtml(name)} inactive listings" target="_self"><i class="fas fa-arrow-up-right-from-square"></i></a>`;
+                    },
+                },
+                {
+                    title: "TM",
+                    field: "tm",
+                    headerSort: false,
+                    width: 70,
+                    hozAlign: "center",
+                    headerHozAlign: "center",
+                    headerTooltip: "TM — open Task Manager for this channel (new tab)",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const name = String(row.channel || '').trim();
+                        if (!name) return '';
+                        const href = ilTasksIndexUrl + '?search=' + encodeURIComponent(name);
+                        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="task-summary-tm-badge task-summary-tm-badge-exec" title="Open Task Manager for ${escapeHtml(name)}" aria-label="Open Task Manager for ${escapeHtml(name)}">TM</a>`;
                     },
                 },
             ],
