@@ -100,7 +100,7 @@ class MiraklLqsApiSyncService
                 $onPage(count($offers), $total);
             }
             $offset += $max;
-            usleep(250_000);
+            sleep(1); // Mirakl shops (Macy's especially) answer 429 when paged quickly
         } while (count($page) === $max && ($total === 0 || $offset < $total));
 
         return $offers;
@@ -239,7 +239,7 @@ class MiraklLqsApiSyncService
         }
 
         $last = null;
-        for ($attempt = 1; $attempt <= 4; $attempt++) {
+        for ($attempt = 1; $attempt <= 7; $attempt++) {
             $response = Http::withoutVerifying()
                 ->withHeaders(['Authorization' => $this->apiKey($slug), 'Accept' => 'application/json'])
                 ->timeout(60)
@@ -251,7 +251,9 @@ class MiraklLqsApiSyncService
             if ($response->status() !== 429 && $response->status() < 500) {
                 break;
             }
-            sleep(2 * $attempt);
+            // 429/5xx: honour Retry-After when sent, otherwise back off 5, 10, 20, 40, 60s.
+            $retryAfter = (int) $response->header('Retry-After');
+            sleep(max($retryAfter, min(60, 5 * (2 ** ($attempt - 1)))));
         }
 
         throw new \RuntimeException(self::label($slug).' offers (OF21) failed: HTTP '.($last?->status() ?? '?').' '.mb_substr((string) $last?->body(), 0, 200));

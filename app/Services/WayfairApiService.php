@@ -2081,6 +2081,19 @@ XML;
     /**
      * @return array{ok: bool, json: array, body: string, status: int}
      */
+    /**
+     * Read-only raw GraphQL call against the Product Catalog API (used by wayfair:probe-catalog).
+     *
+     * @param  array<string, mixed>  $variables
+     * @return array<string, mixed>
+     */
+    public function catalogQueryRaw(string $query, array $variables = []): array
+    {
+        $url = (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+
+        return $this->catalogGraphqlRequest($url, $query, $variables);
+    }
+
     protected function graphqlPost(string $url, string $token, string $query, array $variables = []): array
     {
         $response = $this->apiHttpClient()
