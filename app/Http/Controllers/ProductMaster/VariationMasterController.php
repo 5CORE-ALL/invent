@@ -290,7 +290,8 @@ class VariationMasterController extends Controller
     {
         $extra = [];
         if ($request->exists('aplus')) {
-            $extra['aplus'] = trim(str_replace(["\r\n", "\r"], "\n", (string) $request->input('aplus', '')));
+            // Pictures pasted or chosen in the editor arrive as base64 text; store them as files so the A+ stays small.
+            $extra['aplus'] = trim(str_replace(["\r\n", "\r"], "\n", \App\Support\Marketplace\AplusInlineImages::externalize((string) $request->input('aplus', ''))));
         }
 
         return $extra;
