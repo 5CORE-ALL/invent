@@ -645,7 +645,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channel-metric-dot-trends', [ChannelMasterController::class, 'getChannelMetricDotTrends']);
     Route::post('/channel-archive', [ChannelMasterController::class, 'archiveChannel'])->name('channel.archive');
     Route::get('/all-marketplace-master', [ChannelMasterController::class, 'allMarketplaceMaster'])->name('all.marketplace.master');
-    Route::get('/channels-master-today', [ChannelMasterController::class, 'getTodayBlockData'])->name('all.marketplace.master.today');
     Route::get('/channels-master-inv-pies', [ChannelMasterController::class, 'getInventoryPies'])->name('all.marketplace.master.inv.pies');
 
     // API Vs Sheet (Active Channel Master channels + download/upload source)

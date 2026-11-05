@@ -1942,7 +1942,6 @@
         let table = null;
         var channelMetricDotTrendsUrl = "{{ url('channel-metric-dot-trends') }}";
         var ammInvPiesUrl = "{{ route('all.marketplace.master.inv.pies') }}";
-        var ammTodayBlockUrl = "{{ route('all.marketplace.master.today') }}";
         var dotTrendsLoadedOnce = false;
         var DEFAULT_DOT_GRAY = '#6c757d';
         var lastInventoryPies = null;
@@ -2971,8 +2970,7 @@
 
             table = new Tabulator("#marketplace-table", {
                 ajaxURL: "/channels-master-data",
-                // daily_cache=1: grid is built once per Pacific day; only the Today block auto-refreshes.
-                ajaxParams: { size: 10000, page: 1, daily_cache: 1 },
+                ajaxParams: { size: 10000, page: 1 },
                 ajaxSorting: false,
                 layout: "fitData",
                 height: false,
@@ -7448,48 +7446,6 @@
                     buildColumnDropdown();
                 });
             });
-
-            // Today block only: the grid is cached once per Pacific day, so refresh just the
-            // Today Sales column (and the badges derived from it) every 30 minutes.
-            (function setupTodayBlockAutoRefresh() {
-                var TODAY_REFRESH_MS = 30 * 60 * 1000;
-                var inFlight = false;
-                var lastRefreshAt = Date.now();
-
-                function refreshTodayBlock() {
-                    if (inFlight || !table || typeof table.getRows !== 'function') return;
-                    inFlight = true;
-                    lastRefreshAt = Date.now();
-                    $.getJSON(ammTodayBlockUrl).done(function(res) {
-                        if (!res || Number(res.status) !== 200 || !res.data) return;
-                        var changed = false;
-                        table.getRows().forEach(function(r) {
-                            var d = r.getData();
-                            var name = String(d['Channel '] || '');
-                            if (!Object.prototype.hasOwnProperty.call(res.data, name)) return;
-                            var next = parseFloat(res.data[name]) || 0;
-                            if (Math.abs((parseNumber(d['Today Sales'] || 0)) - next) > 0.004) {
-                                r.update({ 'Today Sales': next });
-                                changed = true;
-                            }
-                        });
-                        if (changed) {
-                            updateSummaryStats(table.getData());
-                            if (typeof table.recalc === 'function') table.recalc();
-                        }
-                    }).always(function() {
-                        inFlight = false;
-                    });
-                }
-
-                setInterval(refreshTodayBlock, TODAY_REFRESH_MS);
-                // A tab left in the background gets throttled timers; catch up when it is shown again.
-                document.addEventListener('visibilitychange', function() {
-                    if (document.visibilityState === 'visible' && Date.now() - lastRefreshAt >= TODAY_REFRESH_MS) {
-                        refreshTodayBlock();
-                    }
-                });
-            })();
 
             // Table data loaded: rebuild dropdown; dot colors are loaded from ajaxResponse on first data load.
             table.on('dataLoaded', function() {
