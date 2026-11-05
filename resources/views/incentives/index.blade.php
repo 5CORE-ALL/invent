@@ -504,7 +504,7 @@
                                                         </a>
                                                     @endif
                                                     @if (! empty($pending))
-                                                        <span class="inc-request-badge" title="{{ !empty($pending['reason']) ? $pending['reason'] : 'Waiting for president@5core.com' }}">
+                                                        <span class="inc-request-badge" title="{{ !empty($pending['reason']) ? $pending['reason'] : 'Waiting for approval' }}">
                                                             Requested {{ $cutoffLabel($pending['requested_cutoff'] ?? '') }}
                                                         </span>
                                                         @if ($canEdit)
@@ -558,7 +558,7 @@
         @endforelse
     </div>
     <p class="text-muted small d-none mt-3 mb-0" id="inc-search-empty">No matching people.</p>
-    <p class="text-muted small mt-3 mb-0">Incentives are managed by president@5core.com. Days Left counts from today (California time, {{ \App\Support\TaskBusinessTime::incentiveToday()->format('j M Y') }}) to the cutoff date.</p>
+    <p class="text-muted small mt-3 mb-0">Incentives are managed by president@5core.com and software5@5core.com. Days Left counts from today (California time, {{ \App\Support\TaskBusinessTime::incentiveToday()->format('j M Y') }}) to the cutoff date.</p>
 
     <div class="modal fade" id="inc-extend-modal" tabindex="-1" aria-labelledby="inc-extend-title" aria-hidden="true">
         <div class="modal-dialog">
@@ -572,7 +572,7 @@
                 <div class="modal-body">
                     <p class="mb-2" id="inc-extend-summary"></p>
                     @unless ($canEdit)
-                        <p class="text-muted small">This sends a request. Only president@5core.com can approve it.</p>
+                        <p class="text-muted small">This sends a request. Only president@5core.com or software5@5core.com can approve it.</p>
                     @endunless
                     <label for="inc-extend-date" class="form-label fw-bold">New cutoff date</label>
                     <input type="date" class="form-control" name="additional_condition" id="inc-extend-date" min="{{ $businessToday }}" required>

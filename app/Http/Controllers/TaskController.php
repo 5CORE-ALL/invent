@@ -314,6 +314,12 @@ class TaskController extends Controller
 
     private const INCENTIVE_EDITOR_EMAIL = 'president@5core.com';
 
+    /** Emails allowed to edit incentives and approve extend requests. */
+    private const INCENTIVE_EDITOR_EMAILS = [
+        'president@5core.com',
+        'software5@5core.com',
+    ];
+
     /** Emails allowed to view every team member's incentives (read-only). */
     private const INCENTIVE_VIEWER_EMAILS = [
         'software5@5core.com',
@@ -11063,7 +11069,15 @@ class TaskController extends Controller
 
     protected function canEditIncentives(?User $viewer): bool
     {
-        return strtolower((string) ($viewer->email ?? '')) === self::INCENTIVE_EDITOR_EMAIL;
+        if (! $viewer) {
+            return false;
+        }
+
+        return in_array(
+            strtolower((string) ($viewer->email ?? '')),
+            self::INCENTIVE_EDITOR_EMAILS,
+            true
+        );
     }
 
     protected function canViewAllIncentives(?User $viewer): bool
@@ -11186,7 +11200,7 @@ class TaskController extends Controller
     {
         $viewer = Auth::user();
         if (! $this->canEditIncentives($viewer)) {
-            abort(403, 'Only president@5core.com can edit incentives.');
+            abort(403, 'Only president@5core.com or software5@5core.com can edit incentives.');
         }
 
         $validated = $request->validate([
@@ -11264,7 +11278,7 @@ class TaskController extends Controller
             return redirect()
                 ->back()
                 ->withFragment('inc-user-'.$row->user_id)
-                ->withErrors(['additional_condition' => 'An extend request is already waiting for president@5core.com.']);
+                ->withErrors(['additional_condition' => 'An extend request is already waiting for approval.']);
         }
 
         $extend = $pending ?: new UserIncentiveExtendRequest;
@@ -11298,7 +11312,7 @@ class TaskController extends Controller
         return redirect()
             ->back()
             ->withFragment('inc-user-'.$row->user_id)
-            ->with('success', 'Extend request sent. president@5core.com will review it.');
+            ->with('success', 'Extend request sent. president@5core.com or software5@5core.com will review it.');
     }
 
     /** President-only: approve or deny a pending cutoff extend request. */
@@ -11306,7 +11320,7 @@ class TaskController extends Controller
     {
         $viewer = Auth::user();
         if (! $this->canEditIncentives($viewer)) {
-            abort(403, 'Only president@5core.com can approve extend requests.');
+            abort(403, 'Only president@5core.com or software5@5core.com can approve extend requests.');
         }
         if (! Schema::hasTable('user_incentive_extend_requests')) {
             abort(404);
@@ -11497,7 +11511,7 @@ class TaskController extends Controller
     {
         $viewer = Auth::user();
         if (! $this->canEditIncentives($viewer)) {
-            abort(403, 'Only president@5core.com can clear incentive alerts.');
+            abort(403, 'Only president@5core.com or software5@5core.com can clear incentive alerts.');
         }
 
         if (Schema::hasTable('user_incentives') && Schema::hasColumn('user_incentives', 'alert_cleared_state')) {
@@ -11598,7 +11612,7 @@ class TaskController extends Controller
         if (! $this->canEditIncentives($viewer)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Only president@5core.com can edit incentives.',
+                'message' => 'Only president@5core.com or software5@5core.com can edit incentives.',
             ], 403);
         }
 

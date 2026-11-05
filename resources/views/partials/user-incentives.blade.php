@@ -1,7 +1,7 @@
 {{--
     User incentives — Task Summary INC column + ₹ icon beside the login name.
     Table columns: Target, Incentive, Condition, CutOff Date, Days Left.
-    Editable by president@5core.com only. software5@5core.com can view every row.
+    Editable by president@5core.com and software5@5core.com. Everyone else can view their own row.
     Everyone else can view their own row.
 
     GET  /tasks/user-incentives
@@ -493,7 +493,7 @@
             </div>
             <div class="modal-footer">
                 <small class="text-muted me-auto" id="ts-inc-footer-note">
-                    <i class="ri-information-line me-1"></i> Incentives are managed by president@5core.com.
+                    <i class="ri-information-line me-1"></i> Incentives are managed by president@5core.com and software5@5core.com.
                 </small>
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
             </div>
@@ -501,20 +501,23 @@
     </div>
 </div>
 
+@php
+    $incCanEdit = in_array(strtolower((string) (auth()->user()->email ?? '')), ['president@5core.com', 'software5@5core.com'], true);
+@endphp
 <div class="modal fade" id="ts-inc-extend-modal" tabindex="-1" aria-labelledby="ts-inc-extend-title" aria-hidden="true">
     <div class="modal-dialog">
         <form method="post" action="{{ route('incentives.extend') }}" class="modal-content">
             @csrf
             <input type="hidden" name="id" id="ts-inc-extend-id">
             <div class="modal-header">
-                <h5 class="modal-title" id="ts-inc-extend-title">{{ strtolower((string) (auth()->user()->email ?? '')) === 'president@5core.com' ? 'Extend cutoff date' : 'Request to extend cutoff date' }}</h5>
+                <h5 class="modal-title" id="ts-inc-extend-title">{{ $incCanEdit ? 'Extend cutoff date' : 'Request to extend cutoff date' }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p class="mb-2" id="ts-inc-extend-summary"></p>
-                @if (strtolower((string) (auth()->user()->email ?? '')) !== 'president@5core.com')
-                    <p class="text-muted small">This sends a request. Only president@5core.com can approve it.</p>
-                @endif
+                @unless ($incCanEdit)
+                    <p class="text-muted small">This sends a request. Only president@5core.com or software5@5core.com can approve it.</p>
+                @endunless
                 <label for="ts-inc-extend-date" class="form-label fw-bold">New cutoff date</label>
                 <input type="date" class="form-control" name="additional_condition" id="ts-inc-extend-date" required>
                 <label for="ts-inc-extend-reason" class="form-label fw-bold mt-3">Reason</label>
@@ -522,7 +525,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-warning">{{ strtolower((string) (auth()->user()->email ?? '')) === 'president@5core.com' ? 'Save date' : 'Send request' }}</button>
+                <button type="submit" class="btn btn-warning">{{ $incCanEdit ? 'Save date' : 'Send request' }}</button>
             </div>
         </form>
     </div>
@@ -534,7 +537,7 @@
     var cfg = {
         viewerId: @json((int) auth()->id()),
         viewerName: @json(auth()->user()->name ?? ''),
-        canEdit: @json(strtolower((string) (auth()->user()->email ?? '')) === 'president@5core.com'),
+        canEdit: @json($incCanEdit),
         businessToday: @json(\App\Support\TaskBusinessTime::incentiveToday()->toDateString()),
         routes: {
             get: @json(route('tasks.userIncentives.get')),
