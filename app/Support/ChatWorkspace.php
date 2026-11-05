@@ -814,36 +814,41 @@ class ChatWorkspace
 
     /**
      * Number of live (not archived) chats with at least one unread message.
-     * Drives the red count on the topbar chat icon.
+     * Drives the red count on the topbar chat icon and Task Summary.
      */
     public static function unreadChatCount(?User $user): int
     {
-        if (! $user || ! self::tablesReady()) {
-            return 0;
-        }
-
-        $cacheKey = 'chat_unread_chats_'.$user->id;
-
-        return (int) Cache::remember($cacheKey, now()->addSeconds(3), function () use ($user) {
-            $ids = array_keys(array_filter(self::unreadByChannel($user), fn ($n) => $n > 0));
-            if ($ids === []) {
-                return 0;
-            }
-
-            return (int) ChatChannel::query()
-                ->whereIn('id', $ids)
-                ->where('is_archived', false)
-                ->count();
-        });
+        return self::cachedDotCounts($user)['red'];
     }
 
     /**
      * Yellow-dot chats: live (not archived) chats that still have visible messages
-     * and nothing unread. Drives the yellow count on the topbar chat icon.
+     * and nothing unread. Drives the yellow count on the topbar chat icon and Task Summary.
      */
     public static function yellowChatCount(?User $user): int
     {
-        return max(0, self::activeChatCount($user) - self::unreadChatCount($user));
+        return self::cachedDotCounts($user)['yellow'];
+    }
+
+    /**
+     * @return array{red: int, yellow: int}
+     */
+    private static function cachedDotCounts(?User $user): array
+    {
+        if (! $user || ! self::tablesReady()) {
+            return ['red' => 0, 'yellow' => 0];
+        }
+
+        $cacheKey = 'chat_dot_counts_'.$user->id;
+
+        return Cache::remember($cacheKey, now()->addSeconds(3), function () use ($user) {
+            $row = self::dotCountsByUser([(int) $user->id])[(int) $user->id] ?? ['red' => 0, 'yellow' => 0];
+
+            return [
+                'red' => (int) ($row['red'] ?? 0),
+                'yellow' => (int) ($row['yellow'] ?? 0),
+            ];
+        });
     }
 
     /**
@@ -875,16 +880,16 @@ class ChatWorkspace
     }
 
     /**
-     * Direct-message dots from the chat sidebar, counted per user.
+     * Red and yellow chat dots, counted per user.
      *
-     * Red is a DM with unread messages (red dot). Yellow is a DM that still
-     * has visible messages and nothing unread (yellow dot). Same rules as
-     * unreadByChannel() and visibleCountsByChannel(), limited to live DMs.
+     * Same rules as the topbar chat icon: red is a live chat with unread
+     * messages, yellow is a live chat that still has visible messages and
+     * nothing unread. Includes every chat type (bot, channels, groups, tasks, DMs).
      *
      * @param  list<int>  $userIds
      * @return array<int, array{red: int, yellow: int}>
      */
-    public static function dmDotCountsByUser(array $userIds): array
+    public static function dotCountsByUser(array $userIds): array
     {
         $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
         $out = [];
@@ -900,7 +905,6 @@ class ChatWorkspace
         $unreadQuery = DB::table('chat_channel_members as m')
             ->join('chat_channels as c', function ($join) {
                 $join->on('c.id', '=', 'm.channel_id')
-                    ->where('c.type', '=', ChatChannel::TYPE_DM)
                     ->where('c.is_archived', '=', 0);
             })
             ->join('chat_messages as msg', 'msg.channel_id', '=', 'm.channel_id')
@@ -937,7 +941,6 @@ class ChatWorkspace
         $visibleQuery = DB::table('chat_channel_members as m')
             ->join('chat_channels as c', function ($join) {
                 $join->on('c.id', '=', 'm.channel_id')
-                    ->where('c.type', '=', ChatChannel::TYPE_DM)
                     ->where('c.is_archived', '=', 0);
             })
             ->join('chat_messages as msg', 'msg.channel_id', '=', 'm.channel_id')
@@ -977,6 +980,7 @@ class ChatWorkspace
         Cache::forget('chat_unread_total_'.$userId);
         Cache::forget('chat_active_total_'.$userId);
         Cache::forget('chat_unread_chats_'.$userId);
+        Cache::forget('chat_dot_counts_'.$userId);
         Cache::forget('chat_inbox_'.$userId);
     }
 

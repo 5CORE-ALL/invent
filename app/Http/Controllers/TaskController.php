@@ -657,7 +657,7 @@ class TaskController extends Controller
         }
 
         $attHoursByUser = $this->getTaskSummaryAttendanceHours($members->pluck('id')->all());
-        $chatDotsByUser = ChatWorkspace::dmDotCountsByUser($members->pluck('id')->all());
+        $chatDotsByUser = ChatWorkspace::dotCountsByUser($members->pluck('id')->all());
         $annUnseenByUser = Announcement::unseenCountsByUser($members->pluck('id')->all());
         $yTimeByUser = $this->yesterdayActiveSecondsByUser(
             $members->pluck('id')->all(),
@@ -11436,6 +11436,8 @@ class TaskController extends Controller
             'id' => 'required|integer|exists:user_incentive_extend_requests,id',
             'decision' => 'required|in:approve,deny',
             'review_note' => 'nullable|string|max:1000',
+            'retry_cutoff' => 'nullable|boolean',
+            'retry_cutoff_date' => 'nullable|date',
         ]);
 
         $extend = UserIncentiveExtendRequest::query()->where('id', (int) $validated['id'])->firstOrFail();
@@ -11450,10 +11452,27 @@ class TaskController extends Controller
                 ->withErrors(['decision' => 'This extend request was already reviewed.']);
         }
 
+        $note = trim((string) ($validated['review_note'] ?? ''));
+        $retry = $request->boolean('retry_cutoff');
+        $retryDate = trim((string) ($validated['retry_cutoff_date'] ?? ''));
+        if ($type === UserIncentiveExtendRequest::TYPE_CLAIM && $validated['decision'] === 'deny' && $note === '') {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'review_note' => 'Add a reason for the denial.',
+            ]);
+        }
+        if ($retry) {
+            $today = TaskBusinessTime::incentiveToday()->toDateString();
+            if ($retryDate === '' || $retryDate < $today) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'retry_cutoff_date' => 'Choose a new cutoff date from today onward.',
+                ]);
+            }
+        }
+
         $extend->fill([
             'reviewed_by_user_id' => (int) $viewer->id,
             'reviewed_at' => now(),
-            'review_note' => trim((string) ($validated['review_note'] ?? '')) ?: null,
+            'review_note' => $note !== '' ? $note : null,
         ]);
 
         if ($validated['decision'] === 'approve') {
@@ -11466,6 +11485,10 @@ class TaskController extends Controller
             if ($type === UserIncentiveExtendRequest::TYPE_CLAIM) {
                 $monthLabel = $this->addClaimedIncentiveToSalary($row, $viewer);
                 $success = 'Claim approved. ₹'.number_format((float) $row->amount, 0).' added to the '.$monthLabel.' salary incentive.';
+                if ($retry) {
+                    $this->applyIncentiveCutoffDate($row, $retryDate, $viewer);
+                    $success .= ' Cutoff moved to '.\Carbon\Carbon::parse($retryDate)->format('j M Y').'.';
+                }
             } elseif ($type === UserIncentiveExtendRequest::TYPE_END) {
                 $this->endIncentive($row, $viewer);
                 $success = 'Request to end approved.';
@@ -11489,11 +11512,18 @@ class TaskController extends Controller
         $extend->save();
 
         $denied = match ($type) {
-            UserIncentiveExtendRequest::TYPE_CLAIM => 'Claim request denied.',
+            UserIncentiveExtendRequest::TYPE_CLAIM => 'Claim denied.'.($note !== '' ? ' Reason: '.$note : ''),
             UserIncentiveExtendRequest::TYPE_END => 'Request to end denied.',
             UserIncentiveExtendRequest::TYPE_HELP => 'Need help request denied.',
             default => 'Extend request denied.',
         };
+        if ($retry) {
+            $row = UserIncentive::query()->where('id', (int) $extend->user_incentive_id)->first();
+            if ($row) {
+                $this->applyIncentiveCutoffDate($row, $retryDate, $viewer);
+                $denied .= ' New cutoff is '.\Carbon\Carbon::parse($retryDate)->format('j M Y').'.';
+            }
+        }
 
         return redirect()
             ->back()
@@ -11524,11 +11554,6 @@ class TaskController extends Controller
         if (! $month) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'decision' => 'No salary month exists yet. Open the salary page and create the sheet first.',
-            ]);
-        }
-        if ($month->is_locked) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'decision' => 'The '.$month->month_label.' salary sheet is locked. Unlock it, then approve the claim.',
             ]);
         }
 
@@ -11603,7 +11628,8 @@ class TaskController extends Controller
                     $row,
                     $pendingById[(int) $row->id] ?? null,
                     $claims['pending'][(int) $row->id] ?? null,
-                    isset($claims['approved'][(int) $row->id])
+                    isset($claims['approved'][(int) $row->id]),
+                    $claims['denied'][(int) $row->id] ?? null
                 );
             }
         }
@@ -12099,7 +12125,7 @@ class TaskController extends Controller
     /**
      * @return array<string, mixed>
      */
-    protected function formatIncentiveItem(UserIncentive $row, ?UserIncentiveExtendRequest $pending = null, ?UserIncentiveExtendRequest $claim = null, bool $claimed = false): array
+    protected function formatIncentiveItem(UserIncentive $row, ?UserIncentiveExtendRequest $pending = null, ?UserIncentiveExtendRequest $claim = null, bool $claimed = false, ?string $claimDenial = null): array
     {
         return [
             'id' => $row->id,
@@ -12124,6 +12150,7 @@ class TaskController extends Controller
             'pending_extend' => $this->formatPendingExtend($pending),
             'pending_claim' => $this->formatPendingExtend($claim),
             'is_claimed' => $claimed,
+            'claim_denial_reason' => $claimed || $claim ? null : ($claimDenial !== null && trim($claimDenial) !== '' ? trim($claimDenial) : null),
             'updated_at' => $row->updated_at?->toDateTimeString(),
         ];
     }
@@ -12182,11 +12209,11 @@ class TaskController extends Controller
 
     /**
      * @param  list<int|string>  $incentiveIds
-     * @return array{pending: array<int, UserIncentiveExtendRequest>, approved: array<int, true>}
+     * @return array{pending: array<int, UserIncentiveExtendRequest>, approved: array<int, true>, denied: array<int, string>}
      */
     protected function incentiveClaimState(array $incentiveIds): array
     {
-        $state = ['pending' => [], 'approved' => []];
+        $state = ['pending' => [], 'approved' => [], 'denied' => []];
         if ($incentiveIds === [] || ! Schema::hasTable('user_incentive_extend_requests') || ! Schema::hasColumn('user_incentive_extend_requests', 'request_type')) {
             return $state;
         }
@@ -12194,15 +12221,23 @@ class TaskController extends Controller
         UserIncentiveExtendRequest::query()
             ->whereIn('user_incentive_id', $incentiveIds)
             ->where('request_type', UserIncentiveExtendRequest::TYPE_CLAIM)
-            ->whereIn('status', [UserIncentiveExtendRequest::STATUS_PENDING, UserIncentiveExtendRequest::STATUS_APPROVED])
+            ->whereIn('status', [
+                UserIncentiveExtendRequest::STATUS_PENDING,
+                UserIncentiveExtendRequest::STATUS_APPROVED,
+                UserIncentiveExtendRequest::STATUS_DENIED,
+            ])
             ->orderBy('id')
             ->get()
             ->each(function (UserIncentiveExtendRequest $row) use (&$state) {
                 $id = (int) $row->user_incentive_id;
                 if ($row->status === UserIncentiveExtendRequest::STATUS_APPROVED) {
                     $state['approved'][$id] = true;
-                } else {
+                    unset($state['pending'][$id], $state['denied'][$id]);
+                } elseif ($row->status === UserIncentiveExtendRequest::STATUS_PENDING && ! isset($state['approved'][$id])) {
                     $state['pending'][$id] = $row;
+                    unset($state['denied'][$id]);
+                } elseif (! isset($state['approved'][$id]) && ! isset($state['pending'][$id])) {
+                    $state['denied'][$id] = trim((string) $row->review_note);
                 }
             });
 

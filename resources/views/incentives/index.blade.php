@@ -146,6 +146,15 @@
         color: #166534;
         border-color: #86efac;
     }
+    .inc-retry-check {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        margin: 0.85rem 0 0;
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .inc-retry-check input { width: 1.05rem; height: 1.05rem; }
     .inc-review-btns {
         display: inline-flex;
         align-items: center;
@@ -295,6 +304,7 @@
     .inc-nx-cancel { background: #f1f5f9; color: #334155; }
     .inc-nx-submit { background: #d97706; color: #fff; }
     .inc-nx-sheet[data-kind="help"] .inc-nx-submit { background: #2563eb; }
+    .inc-nx-sheet[data-kind="approve"] .inc-nx-submit { background: #16a34a; }
     .inc-nx-sheet[data-kind="end"] .inc-nx-submit { background: #e11d48; }
     @media (max-width: 575.98px) {
         .inc-nx-choices { grid-template-columns: 1fr; }
@@ -412,7 +422,7 @@
     @endif
     @if ($errors->any())
         <div class="alert alert-danger">
-            <div class="fw-bold mb-1">Could not save incentives.</div>
+            <div class="fw-bold mb-1">{{ ($errors->has('decision') || $errors->has('review_note') || $errors->has('retry_cutoff_date')) ? 'Could not review this request.' : 'Could not save incentives.' }}</div>
             <ul class="mb-0">
                 @foreach ($errors->all() as $error)
                     <li>{{ $error }}</li>
@@ -479,6 +489,19 @@
                                 <p class="small text-muted mb-0">Reason: {{ $req['reason'] }}</p>
                             @endif
                         </div>
+                        @if (($req['request_type'] ?? '') === 'claim')
+                            <button type="button"
+                                class="btn btn-sm btn-primary inc-claim-review"
+                                data-bs-toggle="modal"
+                                data-bs-target="#inc-claim-review-modal"
+                                data-id="{{ $req['id'] }}"
+                                data-name="{{ $req['user_name'] ?? '' }}"
+                                data-title="{{ $req['title'] ?? '' }}"
+                                data-amount="{{ isset($req['amount']) ? $rupee($req['amount']) : '' }}"
+                                data-cutoff="">
+                                Review
+                            </button>
+                        @else
                         <div class="inc-review-btns">
                             <form method="post" action="{{ route('incentives.extend.review') }}">
                                 @csrf
@@ -493,6 +516,7 @@
                                 <button type="submit" class="btn btn-sm btn-outline-danger">Deny</button>
                             </form>
                         </div>
+                        @endif
                     </div>
                 @endforeach
             </div>
@@ -707,22 +731,22 @@
                                                     @elseif (! empty($claim))
                                                         <span class="inc-request-badge" title="Waiting for president@5core.com">Claim sent</span>
                                                         @if ($canApproveClaims)
-                                                            <div class="inc-review-btns">
-                                                                <form method="post" action="{{ route('incentives.extend.review') }}">
-                                                                    @csrf
-                                                                    <input type="hidden" name="id" value="{{ $claim['id'] }}">
-                                                                    <input type="hidden" name="decision" value="approve">
-                                                                    <button type="submit" class="btn btn-sm btn-success">Approve</button>
-                                                                </form>
-                                                                <form method="post" action="{{ route('incentives.extend.review') }}" class="inc-deny-form">
-                                                                    @csrf
-                                                                    <input type="hidden" name="id" value="{{ $claim['id'] }}">
-                                                                    <input type="hidden" name="decision" value="deny">
-                                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Deny</button>
-                                                                </form>
-                                                            </div>
+                                                            <button type="button"
+                                                                class="btn btn-sm btn-primary inc-claim-review"
+                                                                data-bs-toggle="modal"
+                                                                data-bs-target="#inc-claim-review-modal"
+                                                                data-id="{{ $claim['id'] }}"
+                                                                data-name="{{ $person['name'] }}"
+                                                                data-title="{{ $row['title'] ?? '' }}"
+                                                                data-amount="{{ $rupee($claimAmount) }}"
+                                                                data-cutoff="{{ $iso }}">
+                                                                Review
+                                                            </button>
                                                         @endif
                                                     @elseif ($canRequest && ! empty($row['id']) && $claimAmount > 0)
+                                                        @if (! empty($row['claim_denial_reason']))
+                                                            <span class="inc-request-badge" title="{{ $row['claim_denial_reason'] }}">Denied</span>
+                                                        @endif
                                                         <form method="post" action="{{ route('incentives.claim') }}">
                                                             @csrf
                                                             <input type="hidden" name="id" value="{{ $row['id'] }}">
@@ -801,6 +825,56 @@
             </form>
         </div>
     </div>
+
+    @if ($canApproveClaims)
+        <div class="modal fade inc-nx" id="inc-claim-review-modal" tabindex="-1" aria-labelledby="inc-claim-review-title" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <form method="post" action="{{ route('incentives.extend.review') }}" class="modal-content inc-nx-sheet" id="inc-claim-review-form" data-kind="approve">
+                    @csrf
+                    <input type="hidden" name="id" id="inc-claim-review-id">
+                    <div class="inc-nx-head">
+                        <div>
+                            <div class="inc-nx-kicker">Claim</div>
+                            <h5 id="inc-claim-review-title">Review claim</h5>
+                        </div>
+                        <button type="button" class="inc-nx-close" data-bs-dismiss="modal" aria-label="Close">&times;</button>
+                    </div>
+                    <div class="inc-nx-body">
+                        <p class="inc-nx-who" id="inc-claim-review-summary"></p>
+                        <div class="inc-nx-choices" role="radiogroup" aria-label="Decision">
+                            <label class="inc-nx-choice is-extend">
+                                <input type="radio" name="decision" value="approve" checked>
+                                <span class="inc-nx-ico"><i class="ri-check-line"></i></span>
+                                <span><strong>Approve</strong><small>Add it to salary incentive</small></span>
+                            </label>
+                            <label class="inc-nx-choice is-end">
+                                <input type="radio" name="decision" value="deny">
+                                <span class="inc-nx-ico"><i class="ri-close-line"></i></span>
+                                <span><strong>Deny</strong><small>Send a reason back</small></span>
+                            </label>
+                        </div>
+                        <p class="inc-nx-note" id="inc-claim-review-note">Approve adds this amount to the Incentive column on the salary page.</p>
+                        <div class="inc-nx-field d-none" id="inc-claim-deny-wrap">
+                            <label for="inc-claim-review-note-input">Reason for denial</label>
+                            <textarea name="review_note" id="inc-claim-review-note-input" maxlength="1000" placeholder="Why is this claim denied?"></textarea>
+                        </div>
+                        <label class="inc-retry-check d-none" id="inc-claim-retry-wrap">
+                            <input type="checkbox" name="retry_cutoff" id="inc-claim-retry" value="1">
+                            <span>Retry with a new cutoff date</span>
+                        </label>
+                        <div class="inc-nx-field d-none" id="inc-claim-retry-date-wrap">
+                            <label for="inc-claim-retry-date">New cutoff date</label>
+                            <input type="date" name="retry_cutoff_date" id="inc-claim-retry-date" min="{{ $businessToday }}">
+                        </div>
+                    </div>
+                    <div class="inc-nx-foot">
+                        <button type="button" class="inc-nx-cancel" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="inc-nx-submit" id="inc-claim-review-submit">Approve and add to incentive</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endif
 
     @if ($canEdit)
         <template id="inc-row-template">
@@ -957,6 +1031,67 @@
             if (e.target && e.target.name === 'request_type') syncRequestOption(extendModal);
         });
     }
+    var claimReview = document.getElementById('inc-claim-review-modal');
+    function syncClaimReview() {
+        if (!claimReview) return;
+        var decision = claimReview.querySelector('input[name="decision"]:checked');
+        var deny = decision && decision.value === 'deny';
+        var denyWrap = document.getElementById('inc-claim-deny-wrap');
+        var note = document.getElementById('inc-claim-review-note-input');
+        var retryWrap = document.getElementById('inc-claim-retry-wrap');
+        var retry = document.getElementById('inc-claim-retry');
+        var dateWrap = document.getElementById('inc-claim-retry-date-wrap');
+        var dateInput = document.getElementById('inc-claim-retry-date');
+        var help = document.getElementById('inc-claim-review-note');
+        var submit = document.getElementById('inc-claim-review-submit');
+        var sheet = document.getElementById('inc-claim-review-form');
+        if (denyWrap) denyWrap.classList.toggle('d-none', !deny);
+        if (retryWrap) retryWrap.classList.toggle('d-none', !deny);
+        if (note) note.required = !!deny;
+        if (!deny && retry) retry.checked = false;
+        var showDate = !!deny && !!(retry && retry.checked);
+        if (dateWrap) dateWrap.classList.toggle('d-none', !showDate);
+        if (dateInput) dateInput.required = showDate;
+        if (help) {
+            help.textContent = deny
+                ? 'Deny sends your reason back. Tick retry to give a new cutoff date.'
+                : 'Approve adds this amount to the Incentive column on the salary page.';
+        }
+        if (sheet) sheet.setAttribute('data-kind', deny ? 'end' : 'approve');
+        if (submit) submit.textContent = deny ? 'Deny claim' : 'Approve and add to incentive';
+    }
+    if (claimReview) {
+        claimReview.addEventListener('show.bs.modal', function (e) {
+            var btn = e.relatedTarget;
+            if (!btn) return;
+            var idInput = document.getElementById('inc-claim-review-id');
+            var summary = document.getElementById('inc-claim-review-summary');
+            var note = document.getElementById('inc-claim-review-note-input');
+            var retry = document.getElementById('inc-claim-retry');
+            var dateInput = document.getElementById('inc-claim-retry-date');
+            var approve = claimReview.querySelector('input[name="decision"][value="approve"]');
+            if (idInput) idInput.value = btn.getAttribute('data-id') || '';
+            if (summary) {
+                var who = [btn.getAttribute('data-name') || '', btn.getAttribute('data-title') || ''].filter(Boolean).join(' · ');
+                var amount = btn.getAttribute('data-amount') || '';
+                summary.textContent = (who || 'Incentive claim') + (amount ? ' · ' + amount : '');
+            }
+            if (note) note.value = '';
+            if (retry) retry.checked = false;
+            if (dateInput) {
+                var cutoff = btn.getAttribute('data-cutoff') || '';
+                dateInput.value = cutoff && cutoff >= businessToday ? cutoff : businessToday;
+                dateInput.min = businessToday;
+            }
+            if (approve) approve.checked = true;
+            syncClaimReview();
+        });
+        claimReview.addEventListener('change', function (e) {
+            if (!e.target) return;
+            if (e.target.name === 'decision' || e.target.id === 'inc-claim-retry') syncClaimReview();
+        });
+    }
+
     document.querySelectorAll('.inc-deny-form').forEach(function (form) {
         form.addEventListener('submit', function (e) {
             if (!window.confirm('Deny this extend request?')) e.preventDefault();

@@ -1683,10 +1683,10 @@
                                         <i class="ri-robot-2-line" aria-hidden="true"></i>
                                     </th>
                                     @endif
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="chat_red" data-sort-type="number" title="Red dot — direct chats with unread messages" role="button" tabindex="0" aria-label="Red dot">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="chat_red" data-sort-type="number" title="Red dot — chats with unread messages (same count as the header)" role="button" tabindex="0" aria-label="Red dot">
                                         <span class="task-summary-chat-dot is-red" aria-hidden="true"></span>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="chat_yellow" data-sort-type="number" title="Yellow dot — direct chats that have messages and are fully read" role="button" tabindex="0" aria-label="Yellow dot">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="chat_yellow" data-sort-type="number" title="Yellow dot — chats that have messages and nothing unread (same count as the header)" role="button" tabindex="0" aria-label="Yellow dot">
                                         <span class="task-summary-chat-dot is-yellow" aria-hidden="true"></span>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="ann_unseen" data-sort-type="number" title="Ann — posted announcements this person has not seen" role="button" tabindex="0">
@@ -2062,11 +2062,11 @@
                                             $chatYellow = (int) ($row['chat_yellow'] ?? 0);
                                         @endphp
                                         <td class="task-summary-num task-summary-col-chat-red {{ $chatRed === 0 ? 'is-zero' : '' }}"
-                                            title="{{ $chatRed }} direct chat{{ $chatRed === 1 ? '' : 's' }} with unread messages">
+                                            title="{{ $chatRed }} chat{{ $chatRed === 1 ? '' : 's' }} with unread messages">
                                             {{ $chatRed }}
                                         </td>
                                         <td class="task-summary-num task-summary-col-chat-yellow {{ $chatYellow === 0 ? 'is-zero' : '' }}"
-                                            title="{{ $chatYellow }} direct chat{{ $chatYellow === 1 ? '' : 's' }} with the yellow dot (messages already read)">
+                                            title="{{ $chatYellow }} chat{{ $chatYellow === 1 ? '' : 's' }} with the yellow dot (messages already read)">
                                             {{ $chatYellow }}
                                         </td>
                                         @php $annUnseen = (int) ($row['ann_unseen'] ?? 0); @endphp
