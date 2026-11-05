@@ -998,8 +998,17 @@ final class EbayTradingReviseItem
             if ($vSku === '' || $value === '') {
                 return ['success' => false, 'message' => 'A variation on this eBay listing has no SKU or no '.$oldName.' value, so the aspect was not renamed.'];
             }
+            // eBay treats a renamed variation like a new one, so it also needs its price and quantity. They are
+            // sent back exactly as the live listing holds them (Quantity is the listed total, sales included).
+            $price = trim(self::xmlText($variation['StartPrice'] ?? ''));
+            $qty = trim(self::xmlText($variation['Quantity'] ?? ''));
+            if (! is_numeric($price) || (float) $price <= 0 || ! is_numeric($qty)) {
+                return ['success' => false, 'message' => 'Could not read the live price or quantity of variation '.$vSku.' from eBay, so the aspect was not renamed.'];
+            }
             $node = $block->addChild('Variation');
             $node->addChild('SKU', $esc($vSku));
+            $node->addChild('StartPrice', number_format((float) $price, 2, '.', ''));
+            $node->addChild('Quantity', (string) max(0, (int) $qty));
             $nvl = $node->addChild('VariationSpecifics')->addChild('NameValueList');
             $nvl->addChild('Name', $esc($newName));
             $nvl->addChild('Value', $esc($value));
@@ -1036,6 +1045,17 @@ final class EbayTradingReviseItem
         if ($res['success']) {
             $res['message'] = 'Variation type renamed from "'.$oldName.'" to "'.$newName.'" on '.$sent.' variation(s). '.$res['message'];
         } else {
+            // The exact request is logged (token removed) so a refusal can be compared with what eBay holds.
+            Log::warning('eBay variation aspect rename refused', [
+                'itemId' => $itemId,
+                'from' => $oldName,
+                'to' => $newName,
+                'error' => $res['message'],
+                'variationCount' => $sent,
+                'pictureSets' => count($pics['sets']),
+                'pictureAspect' => $pics['name'],
+                'request' => preg_replace('#<eBayAuthToken>.*?</eBayAuthToken>#s', '<eBayAuthToken>x</eBayAuthToken>', $xmlBody),
+            ]);
             $res['message'] = 'eBay would not rename the variation type "'.$oldName.'" to "'.$newName.'": '.$res['message'];
         }
 
