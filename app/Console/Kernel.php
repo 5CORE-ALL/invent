@@ -305,6 +305,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('lqs-sync-bestbuy')
             ->appendOutputTo($log);
+        // Doba LQS from the live goods/detail catalog (100 products per call).
+        $schedule->command('lqs:sync-doba')
+            ->dailyAt('05:05')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->name('lqs-sync-doba')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)

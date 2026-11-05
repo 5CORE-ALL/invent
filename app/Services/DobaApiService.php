@@ -930,6 +930,20 @@ class DobaApiService
     }
 
     /**
+     * Raw signed goods/detail response (read-only), so callers can tell an API error from "no more pages".
+     *
+     * @param  array<string, mixed>  $extra  e.g. ['spuId' => ..] or ['itemNo' => ..]
+     * @return array<string, mixed>
+     */
+    public function goodsDetailRaw(int $page = 1, int $pageSize = 100, array $extra = []): array
+    {
+        return $this->dobaSignedGet('/goods/detail', array_merge([
+            'pageNumber' => $page,
+            'pageSize' => $pageSize,
+        ], $extra));
+    }
+
+    /**
      * One page from the working catalog endpoint (same as FetchDobaMetrics).
      *
      * @param  array<string, mixed>  $extra
