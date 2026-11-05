@@ -1828,7 +1828,7 @@
                 <p class="lc-help mb-2">Ticked fields update listings that already exist. Select a marketplace that is not listed to create a draft in Channel Listings.</p>
                 <div class="d-flex flex-wrap gap-3 mb-3" id="lm-push-parts">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="lm-push-part-title" checked>
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-title">
                         <label class="form-check-label" for="lm-push-part-title">Title</label>
                     </div>
                     <div class="form-check">
@@ -1836,16 +1836,28 @@
                         <label class="form-check-label" for="lm-push-part-bullets">Bullet Points</label>
                     </div>
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="lm-push-part-description" checked>
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-description">
                         <label class="form-check-label" for="lm-push-part-description">Description</label>
                     </div>
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="lm-push-part-price" checked>
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-aplus">
+                        <label class="form-check-label" for="lm-push-part-aplus" title="Sends the A+ content as the description. eBay only.">A+</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-price">
                         <label class="form-check-label" for="lm-push-part-price">Price</label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="lm-push-part-images">
                         <label class="form-check-label" for="lm-push-part-images">Images</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-variation-type">
+                        <label class="form-check-label" for="lm-push-part-variation-type" title="Fetched from Variation Master. eBay only; sent together with Variation Name.">Variation Type</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-variation-name">
+                        <label class="form-check-label" for="lm-push-part-variation-name" title="Fetched from Variation Master. eBay only; sent together with Variation Type.">Variation Name</label>
                     </div>
                 </div>
                 <div class="lm-push-preview mb-3" id="lm-push-preview"></div>
@@ -4935,6 +4947,11 @@
                 mergeMasterContent(isAplus
                     ? { description_aplus: body, aplus_images: [], aplus_fetched_at: null, aplus_error: null, has_aplus: true, aplus_source: 'variation' }
                     : { description_text: body, has_description_text: true, text_source: 'variation' });
+                if (isAplus) {
+                    // A+ has its own "A+" tick in Push to Marketplaces; it is not written over the plain description.
+                    toast('A+ content loaded from Variation Master. Tick "A+" in Push to Marketplaces to send it to eBay.', 'success');
+                    return;
+                }
                 // Push to Marketplaces sends the Product Info description, so the fetched content becomes it right
                 // away (otherwise the old description would be sent and the listing would look unchanged).
                 if (currentProduct) {
@@ -4942,7 +4959,7 @@
                     if (productEditMode) fillProductEditForm(currentProduct);
                     else renderProductInfo(currentProduct);
                 }
-                toast((isAplus ? 'A+ content' : 'Description') + ' loaded from Variation Master and set as the description to push. Push to Marketplaces sends it.', 'success');
+                toast('Description loaded from Variation Master and set as the description to push. Push to Marketplaces sends it.', 'success');
             });
         });
         $('#lm-img-fetch-variation-btn').on('click', function () {
@@ -5126,9 +5143,55 @@
             if ($('#lm-push-part-title').is(':checked')) parts.push('title');
             if ($('#lm-push-part-bullets').is(':checked')) parts.push('bullets');
             if ($('#lm-push-part-description').is(':checked')) parts.push('description');
+            if ($('#lm-push-part-aplus').is(':checked')) parts.push('aplus');
             if ($('#lm-push-part-price').is(':checked')) parts.push('price');
             if ($('#lm-push-part-images').is(':checked')) parts.push('images');
+            if ($('#lm-push-part-variation-type').is(':checked')) parts.push('variation_type');
+            if ($('#lm-push-part-variation-name').is(':checked')) parts.push('variation_name');
             return parts;
+        }
+
+        // Values fetched from Variation Master for the Push modal (A+ when the A+ card is empty, and this SKU's
+        // Variation Type / Name). Reset every time the modal opens.
+        let pushVM = { sku: '', aplus: '', type: '', name: '', attrsState: 'idle', aplusState: 'idle', attrsMsg: '', aplusMsg: '' };
+
+        function loadPushVariationAttrs() {
+            const sku = currentProductSku;
+            if (!sku || pushVM.attrsState === 'loading' || pushVM.attrsState === 'done') return;
+            pushVM.attrsState = 'loading';
+            $.getJSON("{{ url('/listing-manager/product/from-master') }}", { sku, source: 'variation_attributes' })
+                .done(function (res) {
+                    if (pushVM.sku !== sku) return;
+                    pushVM.type = String((res && res.variation_type) || '').trim();
+                    pushVM.name = String((res && res.variation_name) || '').trim();
+                    pushVM.attrsMsg = String((res && res.message) || '');
+                    pushVM.attrsState = 'done';
+                })
+                .fail(function (xhr) {
+                    if (pushVM.sku !== sku) return;
+                    pushVM.attrsMsg = (xhr.responseJSON && xhr.responseJSON.message) || 'Could not load Variation Type / Name from Variation Master.';
+                    pushVM.attrsState = 'done';
+                })
+                .always(function () { if (pushVM.sku === sku) refreshPushPreview(); });
+        }
+
+        function loadPushVariationAplus() {
+            const sku = currentProductSku;
+            if (!sku || pushVM.aplusState === 'loading' || pushVM.aplusState === 'done') return;
+            pushVM.aplusState = 'loading';
+            $.getJSON("{{ url('/listing-manager/product/from-master') }}", { sku, source: 'variation_aplus' })
+                .done(function (res) {
+                    if (pushVM.sku !== sku) return;
+                    pushVM.aplus = String((res && res.description) || '').trim();
+                    pushVM.aplusMsg = String((res && res.message) || '');
+                    pushVM.aplusState = 'done';
+                })
+                .fail(function (xhr) {
+                    if (pushVM.sku !== sku) return;
+                    pushVM.aplusMsg = (xhr.responseJSON && xhr.responseJSON.message) || 'Could not load the A+ content from Variation Master.';
+                    pushVM.aplusState = 'done';
+                })
+                .always(function () { if (pushVM.sku === sku) refreshPushPreview(); });
         }
 
         // What the modal currently shows (edit form when editing, otherwise the loaded product),
@@ -5160,6 +5223,10 @@
                 title: pickedTitle && pickedTitle.value ? pickedTitle.value : String(base.title || ''),
                 title_source: pickedTitle && pickedTitle.value ? pickedTitle.label : (String(base.title || '').trim() ? 'Product Info' : ''),
                 description: desc,
+                // A+ already fetched into the A+ card wins; otherwise the Variation Master A+ loaded for this push.
+                aplus: String(pack.description_aplus || '').trim() || String(pushVM.aplus || '').trim(),
+                variation_type: pushVM.type,
+                variation_name: pushVM.name,
                 bullets: bullets,
                 images: currentImages.slice(),
             });
@@ -5167,14 +5234,20 @@
 
         function renderPushPreview(fields, parts) {
             const cells = [];
-            const add = (key, label, text) => {
+            const add = (key, label, text, emptyText) => {
                 if (!parts.includes(key)) return;
                 const v = String(text == null ? '' : text).trim();
-                cells.push(`<div class="cell ${v ? '' : 'is-empty'}"><div class="k">${label}</div><div class="v" title="${escapeHtml(v)}">${v ? escapeHtml(v) : 'Nothing to send — will be skipped'}</div></div>`);
+                const none = String(emptyText || '').trim() || 'Nothing to send — will be skipped';
+                cells.push(`<div class="cell ${v ? '' : 'is-empty'}"><div class="k">${label}</div><div class="v" title="${escapeHtml(v || none)}">${v ? escapeHtml(v) : escapeHtml(none)}</div></div>`);
             };
             add('title', fields.title_source ? ('Title (' + fields.title_source + ')') : 'Title', fields.title);
             add('bullets', 'Bullet points', fields.bullets.length ? (fields.bullets.length + ' bullet(s): ' + fields.bullets[0]) : '');
             add('description', 'Description', fields.description ? (String(fields.description).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)) : '');
+            const aplusEmpty = pushVM.aplusState === 'loading' ? 'Loading A+ from Variation Master…' : (pushVM.aplusMsg || '');
+            add('aplus', 'A+ (eBay description)', fields.aplus ? (fields.aplus.length.toLocaleString() + ' chars: ' + String(fields.aplus).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140)) : '', aplusEmpty);
+            const varEmpty = pushVM.attrsState === 'loading' ? 'Loading from Variation Master…' : (pushVM.attrsMsg || '');
+            add('variation_type', 'Variation Type (Variation Master)', fields.variation_type, varEmpty);
+            add('variation_name', 'Variation Name (Variation Master)', fields.variation_name, varEmpty);
             add('price', 'Price', fields.price !== '' && fields.price != null && Number(fields.price) > 0 ? money(fields.price) : '');
             add('images', 'Images', fields.images.length ? (fields.images.length + ' image(s), main: ' + fields.images[0]) : '');
             $('#lm-push-preview').html(cells.join('') || '<div class="text-muted small">Tick at least one field above.</div>');
@@ -5300,8 +5373,9 @@
             $openBtn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Loading…');
             $('#lm-push-results').addClass('d-none').empty();
             $('#lm-push-modal-sub').text((currentProduct && currentProduct.title ? currentProduct.title + ' · ' : '') + currentProductSku);
-            $('#lm-push-part-title, #lm-push-part-description, #lm-push-part-price').prop('checked', true);
-            $('#lm-push-part-bullets, #lm-push-part-images').prop('checked', false);
+            // Nothing is ticked by default: the user chooses exactly what goes to the live listings.
+            $('#lm-push-parts input[type="checkbox"]').prop('checked', false);
+            pushVM = { sku: currentProductSku, aplus: '', type: '', name: '', attrsState: 'idle', aplusState: 'idle', attrsMsg: '', aplusMsg: '' };
             $('#lm-push-now-btn').prop('disabled', false).html('<i class="fas fa-cloud-upload-alt me-1"></i>Push Updates');
             refreshPushPreview();
             $('#lm-prod-push-channels').html('<div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i>Loading marketplaces…</div>');
@@ -5328,7 +5402,17 @@
         $('#lm-prod-push-btn').on('click', function () {
             openProductPushModal();
         });
-        $('#lm-push-parts').on('change', 'input', refreshPushPreview);
+        $('#lm-push-parts').on('change', 'input', function () {
+            // Ticking these fetches the value from Variation Master (once per modal opening).
+            if (this.checked && (this.id === 'lm-push-part-variation-type' || this.id === 'lm-push-part-variation-name')) {
+                loadPushVariationAttrs();
+            }
+            if (this.checked && this.id === 'lm-push-part-aplus') {
+                const pack = (currentProduct && currentProduct.master_content) || {};
+                if (!String(pack.description_aplus || '').trim()) loadPushVariationAplus();
+            }
+            refreshPushPreview();
+        });
         $('#lm-push-select-all').on('change', function () {
             const on = this.checked;
             $('#lm-prod-push-channels .lm-channel-cb[data-mode="update"]:not(:disabled)').prop('checked', on).each(function () {
@@ -5453,6 +5537,10 @@
             if (!channelIds.length && !draftIds.length) { toast('Select at least one marketplace.', 'error'); return; }
             const parts = selectedPushParts();
             if (channelIds.length && !parts.length) { toast('Tick at least one field to update.', 'error'); return; }
+            if (channelIds.length && (pushVM.attrsState === 'loading' || pushVM.aplusState === 'loading')) {
+                toast('Still loading from Variation Master. Try again in a moment.', 'error');
+                return;
+            }
             const $btn = $(this);
             if ($btn.data('loading') || pushInFlight) return;
             const idleHtml = $btn.html();
@@ -5498,6 +5586,11 @@
                     if (fields.price !== '' && fields.price != null) pushFields.price = fields.price;
                     if (fields.sale_price !== '' && fields.sale_price != null) pushFields.sale_price = fields.sale_price;
                 }
+                if (parts.includes('aplus')) pushFields.aplus = String(fields.aplus || '');
+                if (parts.includes('variation_type') || parts.includes('variation_name')) {
+                    pushFields.variation_type = String(fields.variation_type || '');
+                    pushFields.variation_name = String(fields.variation_name || '');
+                }
                 if (parts.includes('bullets') && fields.bullets.length) pushFields.bullets = fields.bullets;
                 if (parts.includes('images') && fields.images.length) pushFields.images = fields.images;
 
@@ -5507,6 +5600,10 @@
                 const saveData = Object.assign({}, pushFields);
                 delete saveData.price;
                 delete saveData.sale_price;
+                // A+ and the variation type / name come from Variation Master and are not Product Info fields.
+                delete saveData.aplus;
+                delete saveData.variation_type;
+                delete saveData.variation_name;
                 const titleFromMaster = !!(fields.title_source && fields.title_source !== 'Product Info');
                 if (titleFromMaster) delete saveData.title;
                 if (Object.keys(saveData).length > 1) {
@@ -5540,6 +5637,9 @@
                 toast(summary, out.fail === 0 && !draftNote.startsWith('Drafts were not created') ? 'success' : 'error');
                 if (currentProduct) {
                     const patch = Object.assign({}, pushFields);
+                    delete patch.aplus;
+                    delete patch.variation_type;
+                    delete patch.variation_name;
                     delete patch.bullets;
                     delete patch.images;
                     currentProduct = Object.assign({}, currentProduct, patch, { images: currentImages.slice() });
