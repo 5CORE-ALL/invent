@@ -194,6 +194,12 @@
                         Export
                     </a>
 
+                    <!-- Upload video files / view uploads -->
+                    <button type="button" id="uploads-btn" class="btn btn-sm btn-outline-info" title="Upload a 16:9 video file and see everything uploaded">
+                        <i class="fas fa-photo-video"></i>
+                        Uploads
+                    </button>
+
                     <button type="button" id="video-link-filter" class="video-link-badge" title="Show rows that have a 16:9 video">
                         <i class="fa fa-link"></i> 16:9 Video: <span id="total-sixteen-link-count">0</span>
                     </button>
@@ -260,9 +266,12 @@
     </div>
 </div>
 
+@include('marketing-masters.video-required.shoppable-video._ration-upload-modal')
+
 @endsection
 @section('script')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+@include('marketing-masters.video-required.shoppable-video._ration-upload-script')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         // document.documentElement.setAttribute("data-sidenav-size", "condensed");
@@ -431,13 +440,19 @@
                     title: "16:9 Video",
                     field: "sixteen_ratio_link",
                     editor: "input",
+                    // Not click-to-edit: the Upload / Download / Delete buttons live in this cell. Double-click edits.
+                    editable: false,
+                    minWidth: 210,
                     formatter: function(cell) {
                         const value = String(cell.getValue() || '').trim();
-                        if (!value) return '';
+                        const actions = RationUpload.cellButtons('sixteen', value !== '');
+                        if (!value) return actions;
                         return `<a href="${esc(value)}" target="_blank" style="text-decoration:none;"><i class="fa fa-link"></i> Open</a>
+                            ${actions}
                             <button type="button" class="delete-video-link" title="Delete link">Delete</button>`;
                     },
                     cellClick: function (e, cell) {
+                        if (RationUpload.handleCellClick(e, cell, 'sixteen', function () { updateTotalInvAndL30(table); })) return;
                         if (!e.target.closest('.delete-video-link')) return;
                         const row = cell.getRow();
                         const data = row.getData();
@@ -454,8 +469,8 @@
                         });
                     },
                     cellDblClick: function(e, cell) {
-                        if (e.target.closest('.delete-video-link')) return;
-                        cell.edit();
+                        if (e.target.closest('.delete-video-link, .ration-act')) return;
+                        cell.edit(true);
                     },
                 },
                 {
@@ -818,6 +833,30 @@
                 statusFilters[key] = !statusFilters[key];
                 this.classList.toggle('is-active', statusFilters[key]);
                 setCombinedFilters();
+            });
+        });
+
+        // Uploaded Videos modal: upload a file for any SKU, see / play / download / delete uploads.
+        document.getElementById('uploads-btn').addEventListener('click', function () {
+            RationUpload.openModal({
+                ratios: ['sixteen'],
+                skus: function () { return table.getData().map(function (r) { return r.Sku; }); },
+                onUploaded: function (res, sku) {
+                    const row = table.getRow(sku);
+                    if (row) {
+                        const patch = {};
+                        patch[res.field || LINK_FIELD] = res.url;
+                        row.update(patch).then(function () { row.reformat(); updateTotalInvAndL30(table); });
+                    }
+                },
+                onCleared: function (field, sku) {
+                    const row = table.getRow(sku);
+                    if (row) {
+                        const patch = {};
+                        patch[field] = '';
+                        row.update(patch).then(function () { row.reformat(); updateTotalInvAndL30(table); });
+                    }
+                },
             });
         });
 
