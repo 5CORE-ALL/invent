@@ -584,6 +584,11 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function registerAcePageComposer(): void
     {
+        // These pages embed the ATE buttons in their own toolbar, so the top bar must not add a second set.
+        View::composer(['pages.add-user', 'market-places.promotions'], function (ViewInstance $view) {
+            $view->with('aceBuiltIn', true);
+        });
+
         $pages = (array) config('ace.pages', []);
         if ($pages === []) {
             return;

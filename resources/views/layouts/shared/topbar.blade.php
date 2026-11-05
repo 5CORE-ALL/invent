@@ -49,9 +49,20 @@
                 <span class="topbar-team-btn__label">Team</span>
             </a>
             {{-- ATE (Auto Task Event) "+ ATE" / "ATE" pills on analytics + active-channels pages (config/ace.php) --}}
-            @if(! empty($aceEnabled ?? null) && ! empty($acePage ?? null))
+            {{-- Every other page gets the buttons too (page key derived from the URL), even with no task/rule yet. --}}
+            @php
+                $__aceTopPage = null;
+                $__aceTopSource = null;
+                if (! empty($aceEnabled ?? null) && ! empty($acePage ?? null)) {
+                    $__aceTopPage = $acePage;
+                    $__aceTopSource = $aceSource ?? null;
+                } elseif (! ($aceBuiltIn ?? false) && ! request()->ajax() && request()->isMethod('GET')) {
+                    $__aceTopPage = \App\Support\Ace\AcePages::pageKey(request()->path());
+                }
+            @endphp
+            @if(! empty($__aceTopPage))
                 <div class="topbar-ace d-inline-flex align-items-center">
-                    @include('partials.ace-buttons', ['acePage' => $acePage, 'aceSource' => $aceSource ?? null])
+                    @include('partials.ace-buttons', ['acePage' => $__aceTopPage, 'aceSource' => $__aceTopSource])
                 </div>
                 <style>
                     .topbar-ace { margin: 0 .5rem 0 .35rem; }

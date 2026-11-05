@@ -208,6 +208,30 @@ class PurchasingPowerController extends Controller
             ->value('revenue'), 2);
     }
 
+    /**
+     * Distinct orders and units in the same window / filter as sumSalesBetween().
+     *
+     * @return array{orders: int, qty: int}
+     */
+    public static function orderCountsBetween(Carbon $start, Carbon $end): array
+    {
+        if (! Schema::hasTable('purchasing_power_sales')) {
+            return ['orders' => 0, 'qty' => 0];
+        }
+
+        [$fromUtc, $toUtc] = self::purchasingPowerUtcRange($start, $end);
+
+        $row = DB::table('purchasing_power_sales')
+            ->where(fn ($q) => self::applyPurchasingPowerSaleFilter($q))
+            ->where('date_created', '>=', $fromUtc)
+            ->where('date_created', '<=', $toUtc)
+            ->selectRaw("COUNT(DISTINCT COALESCE(NULLIF(TRIM(order_number), ''), NULLIF(TRIM(order_id), ''), CONCAT('PP-', id))) as orders")
+            ->selectRaw('COALESCE(SUM(GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as qty')
+            ->first();
+
+        return ['orders' => (int) ($row->orders ?? 0), 'qty' => (int) ($row->qty ?? 0)];
+    }
+
     public function pricingView(Request $request)
     {
         $mode = $request->query('mode');

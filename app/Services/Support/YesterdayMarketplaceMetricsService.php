@@ -287,16 +287,16 @@ class YesterdayMarketplaceMetricsService
             'tiktok', 'tiktokshop' => $this->tiktok($start, $end),
             'tiktok2', 'tiktokshop2' => $this->tiktok2($start, $end),
             'wayfair' => $this->wayfair($date),
-            'shein' => $this->salesOnly($this->sheinSales($start, $end)),
-            'aliexpress' => $this->salesOnly($this->aliexpressSales($start, $end)),
-            'mercariwship' => $this->salesOnly($this->mercariSales($start, $end, true)),
-            'mercariwoship' => $this->salesOnly($this->mercariSales($start, $end, false)),
-            'topdawg' => $this->salesOnly($this->topdawgSales($date)),
-            'depop' => $this->salesOnly($this->depopSales($date)),
-            'vinted' => $this->salesOnly($this->vintedSales($date)),
+            'shein' => $this->salesOnly(...$this->sheinSales($start, $end)),
+            'aliexpress' => $this->salesOnly(...$this->aliexpressSales($start, $end)),
+            'mercariwship' => $this->salesOnly(...$this->mercariSales($start, $end, true)),
+            'mercariwoship' => $this->salesOnly(...$this->mercariSales($start, $end, false)),
+            'topdawg' => $this->salesOnly(...$this->topdawgSales($date)),
+            'depop' => $this->salesOnly(...$this->depopSales($date)),
+            'vinted' => $this->salesOnly(...$this->vintedSales($date)),
             'faire' => $this->faire($start, $end),
             'newegg' => $this->newegg($start, $end),
-            'purchasingpower' => $this->salesOnly($this->purchasingPowerSales($start, $end)),
+            'purchasingpower' => $this->salesOnly(...$this->purchasingPowerSales($start, $end)),
             'reverb' => $this->reverb($date),
             default => $this->fallback($name),
         };
@@ -929,16 +929,20 @@ class YesterdayMarketplaceMetricsService
     /**
      * @return array<string, mixed>
      */
-    private function salesOnly(float $sales): array
+    private function salesOnly(float $sales, int $orders = 0, int $qty = 0): array
     {
         // Sales only — keep gpft_sales at 0 so GPFT/GROI render as "—" not 0%.
-        return $this->pack($sales, 0.0, 0.0, 0.0, 0.0, 0, 0, 0.0);
+        // Orders / qty are still reported so Y Orders is not blanked for these channels.
+        return $this->pack($sales, 0.0, 0.0, 0.0, 0.0, $orders, $qty, 0.0);
     }
 
-    private function sheinSales(Carbon $start, Carbon $end): float
+    /**
+     * @return array{0: float, 1: int, 2: int} sales, orders, qty
+     */
+    private function sheinSales(Carbon $start, Carbon $end): array
     {
         if (! Schema::hasTable('shein_daily_data')) {
-            return 0.0;
+            return [0.0, 0, 0];
         }
         $latest = DB::table('shein_daily_data')->whereNotNull('order_processed_on')->max('order_processed_on');
         $window = $this->latestCompleteDay($latest, 'to_pacific');
@@ -947,6 +951,8 @@ class YesterdayMarketplaceMetricsService
         }
         [$from, $to] = \App\Services\SheinApiService::shanghaiSqlBounds($start, $end);
         $sum = 0.0;
+        $qty = 0;
+        $orderKeys = [];
         foreach (
             DB::table('shein_daily_data')
                 ->where('order_processed_on', '>=', $from)
@@ -961,15 +967,21 @@ class YesterdayMarketplaceMetricsService
             }
             $quantity = max(1, (int) ($row->quantity ?? 0));
             $sum += (float) ($row->product_price ?? 0) * $quantity;
+            $qty += $quantity;
+            $orderKey = trim((string) ($row->order_number ?? ''));
+            $orderKeys[$orderKey !== '' ? $orderKey : 'row-'.$row->id] = true;
         }
 
-        return $sum;
+        return [$sum, count($orderKeys), $qty];
     }
 
-    private function aliexpressSales(Carbon $start, Carbon $end): float
+    /**
+     * @return array{0: float, 1: int, 2: int} sales, orders, qty
+     */
+    private function aliexpressSales(Carbon $start, Carbon $end): array
     {
         if (! Schema::hasTable('aliexpress_daily_data')) {
-            return 0.0;
+            return [0.0, 0, 0];
         }
         $latest = DB::table('aliexpress_daily_data')->whereNotNull('order_date')->max('order_date');
         $window = $this->latestCompleteDay($latest, 'to_pacific');
@@ -977,6 +989,8 @@ class YesterdayMarketplaceMetricsService
             [$start, $end] = $window;
         }
         $sum = 0.0;
+        $qty = 0;
+        $orderKeys = [];
         foreach (
             DB::table('aliexpress_daily_data')
                 ->where('order_date', '>=', $start)
@@ -999,15 +1013,20 @@ class YesterdayMarketplaceMetricsService
                 $line = (float) ($row->order_amount ?? 0);
             }
             $sum += $line;
+            $qty += max(1, (int) ($row->quantity ?? 0));
+            $orderKeys[(string) $row->order_id] = true;
         }
 
-        return $sum;
+        return [$sum, count($orderKeys), $qty];
     }
 
-    private function mercariSales(Carbon $start, Carbon $end, bool $withShip): float
+    /**
+     * @return array{0: float, 1: int, 2: int} sales, orders, qty
+     */
+    private function mercariSales(Carbon $start, Carbon $end, bool $withShip): array
     {
         if (! Schema::hasTable('mercari_daily_data')) {
-            return 0.0;
+            return [0.0, 0, 0];
         }
         $q = DB::table('mercari_daily_data')
             ->whereNotNull('sold_date')
@@ -1034,16 +1053,23 @@ class YesterdayMarketplaceMetricsService
             [$start, $end] = $window;
         }
 
-        return (float) $q->where('sold_date', '>=', $start)
+        // Each Mercari row is one sold item = one order of quantity 1.
+        $row = $q->where('sold_date', '>=', $start)
             ->where('sold_date', '<=', $end)
             ->selectRaw('COALESCE(SUM(item_price), 0) as revenue')
-            ->value('revenue');
+            ->selectRaw('COUNT(*) as orders')
+            ->first();
+
+        return [(float) ($row->revenue ?? 0), (int) ($row->orders ?? 0), (int) ($row->orders ?? 0)];
     }
 
-    private function topdawgSales(string $date): float
+    /**
+     * @return array{0: float, 1: int, 2: int} sales, orders, qty
+     */
+    private function topdawgSales(string $date): array
     {
         if (! Schema::hasTable('topdawg_order_metrics')) {
-            return 0.0;
+            return [0.0, 0, 0];
         }
 
         $latest = DB::table('topdawg_order_metrics')->whereNotNull('order_date')->max('order_date');
@@ -1054,17 +1080,24 @@ class YesterdayMarketplaceMetricsService
 
         [$from, $to] = $this->windowYmdBounds($date);
 
-        return (float) DB::table('topdawg_order_metrics')
+        $row = DB::table('topdawg_order_metrics')
             ->whereDate('order_date', '>=', $from)
             ->whereDate('order_date', '<=', $to)
             ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
-            ->value('revenue');
+            ->selectRaw('COUNT(*) as orders')
+            ->selectRaw('COALESCE(SUM(GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as qty')
+            ->first();
+
+        return [(float) ($row->revenue ?? 0), (int) ($row->orders ?? 0), (int) ($row->qty ?? 0)];
     }
 
-    private function depopSales(string $date): float
+    /**
+     * @return array{0: float, 1: int, 2: int} sales, orders, qty
+     */
+    private function depopSales(string $date): array
     {
         if (! Schema::hasTable('depop_sales_data')) {
-            return 0.0;
+            return [0.0, 0, 0];
         }
 
         $latest = DB::table('depop_sales_data')->whereNotNull('sale_date')->max('sale_date');
@@ -1075,17 +1108,24 @@ class YesterdayMarketplaceMetricsService
 
         [$from, $to] = $this->windowYmdBounds($date);
 
-        return (float) DB::table('depop_sales_data')
+        $row = DB::table('depop_sales_data')
             ->whereDate('sale_date', '>=', $from)
             ->whereDate('sale_date', '<=', $to)
             ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
-            ->value('revenue');
+            ->selectRaw('COUNT(*) as orders')
+            ->selectRaw('COALESCE(SUM(GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as qty')
+            ->first();
+
+        return [(float) ($row->revenue ?? 0), (int) ($row->orders ?? 0), (int) ($row->qty ?? 0)];
     }
 
-    private function vintedSales(string $date): float
+    /**
+     * @return array{0: float, 1: int, 2: int} sales, orders, qty
+     */
+    private function vintedSales(string $date): array
     {
         if (! Schema::hasTable('vinted_sales_data')) {
-            return 0.0;
+            return [0.0, 0, 0];
         }
 
         $latest = DB::table('vinted_sales_data')->whereNotNull('sale_date')->max('sale_date');
@@ -1096,11 +1136,15 @@ class YesterdayMarketplaceMetricsService
 
         [$from, $to] = $this->windowYmdBounds($date);
 
-        return (float) DB::table('vinted_sales_data')
+        $row = DB::table('vinted_sales_data')
             ->whereDate('sale_date', '>=', $from)
             ->whereDate('sale_date', '<=', $to)
             ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
-            ->value('revenue');
+            ->selectRaw('COUNT(*) as orders')
+            ->selectRaw('COALESCE(SUM(GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as qty')
+            ->first();
+
+        return [(float) ($row->revenue ?? 0), (int) ($row->orders ?? 0), (int) ($row->qty ?? 0)];
     }
 
     /**
@@ -1162,16 +1206,25 @@ class YesterdayMarketplaceMetricsService
         return $m;
     }
 
-    private function purchasingPowerSales(Carbon $start, Carbon $end): float
+    /**
+     * @return array{0: float, 1: int, 2: int} sales, orders, qty
+     */
+    private function purchasingPowerSales(Carbon $start, Carbon $end): array
     {
         if (! Schema::hasTable('purchasing_power_sales')) {
-            return 0.0;
+            return [0.0, 0, 0];
         }
 
         try {
-            return PurchasingPowerController::sumSalesBetween($start, $end);
+            $counts = PurchasingPowerController::orderCountsBetween($start, $end);
+
+            return [
+                PurchasingPowerController::sumSalesBetween($start, $end),
+                $counts['orders'],
+                $counts['qty'],
+            ];
         } catch (\Throwable $e) {
-            return 0.0;
+            return [0.0, 0, 0];
         }
     }
 
