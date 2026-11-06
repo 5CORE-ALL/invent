@@ -5002,11 +5002,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/technical-specifications-data', [TechnicalSpecificationsController::class, 'getData'])->name('technical.specifications.data');
     Route::get('/technical-specifications-descriptions', [TechnicalSpecificationsController::class, 'descriptions'])->name('technical.specifications.descriptions');
     Route::post('/technical-specifications/save', [TechnicalSpecificationsController::class, 'save'])->name('technical.specifications.save');
-    Route::post('/technical-specifications/pull-ebay', [TechnicalSpecificationsController::class, 'pullEbay'])->name('technical.specifications.pull.ebay');
     Route::post('/technical-specifications/push-ebay', [TechnicalSpecificationsController::class, 'pushEbay'])->name('technical.specifications.push.ebay');
     Route::post('/technical-specifications/hidden-fields', [TechnicalSpecificationsController::class, 'hideField'])->name('technical.specifications.hidden.fields');
     Route::post('/technical-specifications/hidden-fields/restore', [TechnicalSpecificationsController::class, 'restoreHiddenFields'])->name('technical.specifications.hidden.fields.restore');
     Route::post('/technical-specifications/sync-ebay-categories', [TechnicalSpecificationsController::class, 'syncEbayCategories'])->name('technical.specifications.sync.ebay.categories');
+    Route::get('/ebay1-data', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'index'])->name('ebay1.data');
+    Route::get('/ebay1-data/rows', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'rows'])->name('ebay1.data.rows');
+    Route::post('/ebay1-data/pull-specifics', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'pullSpecifics'])->name('ebay1.data.pull.specifics');
     Route::get('/description-for-html', [DescriptionForHtmlController::class, 'index'])->name('description.for.html');
     Route::get('/description-for-html-data', [DescriptionForHtmlController::class, 'getData'])->name('description.for.html.data');
     Route::post('/description-for-html/save', [DescriptionForHtmlController::class, 'save'])->name('description.for.html.save');

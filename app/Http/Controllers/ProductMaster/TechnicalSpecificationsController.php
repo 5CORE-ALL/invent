@@ -10,6 +10,7 @@ use App\Services\CategoryMasters\CategoryChannelSyncService;
 use App\Services\ProductMaster\BackstageSpecificationStore;
 use App\Services\ProductMaster\EbayTechnicalSpecificationSync;
 use App\Support\Marketplace\EbayCategoryAspects;
+use App\Support\Marketplace\ProductUpc;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -77,6 +78,13 @@ class TechnicalSpecificationsController extends Controller
             }
 
             $this->fillEbayCategoryFromParent($result);
+            $upcBySku = ProductUpc::forSkus(array_map(static fn ($row) => (string) ($row['SKU'] ?? ''), $result));
+            foreach ($result as &$row) {
+                $found = $upcBySku[trim((string) ($row['SKU'] ?? ''))] ?? ['upc' => '', 'source' => ''];
+                $row['upc'] = $found['upc'];
+                $row['upc_source'] = $found['source'];
+            }
+            unset($row);
             $aspectsByCategory = $this->ebayRequiredAspects($result);
             $savedByCategory = [];
             foreach ($result as $row) {
@@ -99,6 +107,10 @@ class TechnicalSpecificationsController extends Controller
                     : array_map(static fn ($spec) => (string) ($spec['key'] ?? ''), $row['description_v2_specifications']);
                 $requiredOnly = array_values($aspectsByCategory[$categoryId] ?? []);
                 $names = $this->mergeAspectNames($requiredOnly, $saved);
+                // Every listed SKU carries a UPC column (CP Master, else Amazon). It goes to all eBay accounts on Push.
+                if (! $this->isParentSku((string) ($row['SKU'] ?? ''))) {
+                    $names = $this->mergeAspectNames($names, ['UPC']);
+                }
                 $values = [];
                 foreach ($names as $name) {
                     $values[$name] = $this->specValue($row['description_v2_specifications'], $name);
@@ -202,6 +214,7 @@ class TechnicalSpecificationsController extends Controller
                 $specs = $this->textToSpecs($text);
             }
 
+            $upcForSave = null;
             foreach ($specs as &$spec) {
                 $name = $this->specKey((string) ($spec['key'] ?? ''));
                 $fixed = ['brand' => '5 Core', 'manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China'];
@@ -209,6 +222,12 @@ class TechnicalSpecificationsController extends Controller
                     $spec['value'] = $fixed[$name];
                 } elseif ($name === 'mpn' && ! $this->isParentSku($sku)) {
                     $spec['value'] = $sku;
+                } elseif ($name === 'upc' && ! $this->isParentSku($sku)) {
+                    // CP Master first, Amazon when CP Master is blank. Nothing found keeps what was typed.
+                    $found = $upcForSave ??= ProductUpc::forSku($sku);
+                    if ($found['upc'] !== '') {
+                        $spec['value'] = $found['upc'];
+                    }
                 }
             }
             unset($spec);
@@ -581,42 +600,6 @@ class TechnicalSpecificationsController extends Controller
     }
 
     /**
-     * POST /technical-specifications/pull-ebay
-     * Live eBay item specifics replace the specifications saved for each selected SKU.
-     */
-    public function pullEbay(Request $request, EbayTechnicalSpecificationSync $sync)
-    {
-        $skus = $this->selectedSkus($request);
-        @set_time_limit(300);
-
-        $results = [];
-        foreach ($skus as $sku) {
-            $product = ProductMaster::query()->where('sku', $sku)->first();
-            if (! $product) {
-                $results[] = $this->syncResult($sku, false, 'SKU not found.');
-
-                continue;
-            }
-            $pulled = $sync->pull($sku);
-            if ($pulled['success'] && Schema::hasColumn('product_master', 'description_v2_specifications')) {
-                $product->description_v2_specifications = $pulled['specs'] === [] ? null : $pulled['specs'];
-                $product->save();
-            }
-            // The live category comes with the listing, so Pull keeps it current too.
-            $category = $this->saveEbayCategory($product, (string) ($pulled['category_id'] ?? ''), (string) ($pulled['category_path'] ?? ''), $request->user()?->id);
-            $message = $pulled['message'];
-            if ($category['changed']) {
-                $message .= ' Category updated to '.$category['path'].'.';
-            }
-            $results[] = $this->syncResult($sku, $pulled['success'], $message, $pulled['specs']) + [
-                'category_changed' => $category['changed'],
-            ];
-        }
-
-        return response()->json(['success' => true, 'results' => $results]);
-    }
-
-    /**
      * POST /technical-specifications/sync-ebay-categories
      * Reads the live eBay 1 category of each SKU and saves it in Category Masters. eBay 2 and 3 are
      * not called. Specifications are not touched. Parent rows and SKUs that are not listed on
@@ -741,7 +724,12 @@ class TechnicalSpecificationsController extends Controller
                 continue;
             }
             $specs = $this->normalizeSpecs($product->description_v2_specifications ?? null);
-            $pushed = $sync->push($sku, $specs);
+            // UPC: CP Master, then Amazon, then a valid UPC typed into the specification.
+            $upc = ProductUpc::forSku($sku)['upc'];
+            if ($upc === '') {
+                $upc = ProductUpc::normalize($this->specValue($specs, 'UPC'));
+            }
+            $pushed = $sync->push($sku, $specs, $upc);
             if ($pushed['success']) {
                 app(BackstageSpecificationStore::class)->recordPush($sku, 'ebay1', $specs);
             }

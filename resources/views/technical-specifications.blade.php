@@ -121,7 +121,7 @@
         #technical-specs-table .tabulator-col,
         #technical-specs-table .tabulator-col-content,
         #technical-specs-table .tabulator-col-title-holder {
-            height: 200px !important;
+            height: 236px !important;
         }
         #technical-specs-table .tabulator-col-content {
             display: flex !important;
@@ -150,6 +150,35 @@
         }
         #technical-specs-table .tabulator-cell {
             text-align: center;
+        }
+        /* Two-row header: the eBay category on top (flat text), its aspect columns underneath (vertical text). */
+        #technical-specs-table .tabulator-header .tabulator-col-group {
+            height: 236px !important;
+        }
+        #technical-specs-table .tabulator-header .tabulator-col-group > .tabulator-col-content {
+            height: 36px !important;
+            padding: 4px 6px !important;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,.35);
+        }
+        #technical-specs-table .tabulator-header .tabulator-col-group > .tabulator-col-content .tabulator-col-title-holder {
+            height: 28px !important;
+            width: 100%;
+            justify-content: center;
+        }
+        #technical-specs-table .tabulator-header .tabulator-col-group > .tabulator-col-content .tabulator-col-title {
+            writing-mode: horizontal-tb;
+            transform: none;
+            max-height: none;
+            max-width: 100%;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        #technical-specs-table .tabulator-header .tabulator-col-group-cols,
+        #technical-specs-table .tabulator-header .tabulator-col-group-cols .tabulator-col,
+        #technical-specs-table .tabulator-header .tabulator-col-group-cols .tabulator-col-content,
+        #technical-specs-table .tabulator-header .tabulator-col-group-cols .tabulator-col-title-holder {
+            height: 200px !important;
         }
         #technical-specs-table .tabulator-col-title .ts-col-icon {
             display: inline-block;
@@ -291,6 +320,41 @@
             display: flex;
             flex-direction: column;
             z-index: 1080;
+        }
+        #ts-column-dropdown .ts-picker-max-btn {
+            position: absolute;
+            top: 8px;
+            right: 14px;
+            z-index: 5;
+            width: 28px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            background: #fff;
+            color: #475569;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        #ts-column-dropdown .ts-picker-max-btn:hover { background: #eff6ff; color: #1d4ed8; border-color: #93c5fd; }
+        #ts-column-dropdown.show.ts-picker-max {
+            height: 100vh;
+            max-height: 100vh;
+            border-radius: 0;
+            padding-top: 40px;
+        }
+        #ts-column-dropdown.ts-picker-max .col-vis-cats {
+            flex-wrap: wrap;
+            overflow-x: hidden;
+            overflow-y: auto;
+            align-content: flex-start;
+        }
+        #ts-column-dropdown.ts-picker-max .col-vis-cat {
+            flex: 0 0 230px;
+            max-width: 230px;
+            max-height: 360px;
         }
         #ts-column-dropdown .col-vis-groups {
             display: grid;
@@ -608,14 +672,8 @@
                             </button>
                             <div class="dropdown-menu" id="ts-column-dropdown" data-bs-popper="static" aria-labelledby="tsColumnVisibility"></div>
                         </div>
-                        <button type="button" id="pullEbayBtn" class="btn btn-sm btn-outline-primary" title="Pull item specifics from eBay for the selected rows">
-                            <i class="fas fa-cloud-download-alt"></i> Pull from eBay 1
-                        </button>
                         <button type="button" id="syncCategoriesBtn" class="btn btn-sm btn-outline-success" title="Fetch the live eBay 1 category of the selected rows (or of every SKU when none are selected) and update it here">
                             <i class="fas fa-sync-alt"></i> Sync categories
-                        </button>
-                        <button type="button" id="pushEbayBtn" class="btn btn-sm btn-outline-danger" title="Push technical specifications to eBay 1 for the selected rows">
-                            <i class="fas fa-cloud-upload-alt"></i> Push to eBay 1
                         </button>
                         <button type="button" id="clearSpecsBtn" class="btn btn-sm btn-outline-secondary" title="Clear the saved specifications of the selected rows in this app. eBay is not changed.">
                             <i class="fas fa-eraser"></i> Clear
@@ -780,11 +838,13 @@
             let parentPlayback = null;
             let ebayAspectNames = [];
             const aspectFields = {};
+            // The table header is grouped by eBay category: [{ key, title, idx, names }]. Each category owns its columns.
+            let catGroups = [];
+            let catIndexByKey = {};
+            let tableSignature = '';
             const TS_COL_VIS_KEY = 'technical_specs_col_vis_v1';
             const TS_COL_GROUPS = [
                 { key: 'ebay', label: 'eBay', icon: 'ebay', mark: '<i class="fab fa-ebay"></i>' },
-                { key: 'amz', label: 'Amz', icon: 'amazon', mark: '<i class="fab fa-amazon"></i>' },
-                { key: 'temu', label: 'Temu', icon: 'temu', mark: 'T' },
             ];
 
             function toast(message, type) {
@@ -1139,6 +1199,63 @@
                 return key;
             }
 
+            function rowCatKey(row) {
+                return String(row.category_ebay || '').trim() || 'No category';
+            }
+
+            // One group per eBay category (rows without one share "No category"), with the aspects its rows use.
+            function computeCatGroups(rows) {
+                const map = new Map();
+                rows.forEach(function (row) {
+                    const key = rowCatKey(row);
+                    if (!map.has(key)) map.set(key, []);
+                    const list = map.get(key);
+                    (row.ebay_required || []).forEach(function (name) {
+                        if (!isRealAspect(name)) return;
+                        if (list.indexOf(name) === -1) list.push(name);
+                    });
+                });
+                const keys = Array.from(map.keys()).filter(function (key) { return map.get(key).length > 0; });
+                keys.sort(function (a, b) {
+                    if (a === 'No category') return 1;
+                    if (b === 'No category') return -1;
+                    return a.localeCompare(b);
+                });
+                return keys.map(function (key, idx) {
+                    return { key: key, title: key, idx: idx, names: map.get(key).slice().sort(function (a, b) { return a.localeCompare(b); }) };
+                });
+            }
+
+            function applyCatGroups(groups) {
+                catGroups = groups;
+                catIndexByKey = {};
+                groups.forEach(function (group) { catIndexByKey[group.key] = group.idx; });
+            }
+
+            function catSignature(groups) {
+                return groups.map(function (group) { return group.key + '\u0001' + group.names.join('\u0002'); }).join('\u0003');
+            }
+
+            // Column field of an aspect inside its category group. The same aspect name has a column in every category that uses it.
+            function catField(idx, name) {
+                return aspectKey(name) + '__c' + idx;
+            }
+
+            function catGroupOf(row) {
+                const idx = catIndexByKey[rowCatKey(row)];
+                return idx === undefined ? null : catGroups[idx];
+            }
+
+            // Copy a row's aspect values into the columns of its own category group.
+            function mirrorCatFields(target, source) {
+                const group = catGroupOf(source);
+                if (!group) return;
+                group.names.forEach(function (name) {
+                    const value = source[aspectKey(name)];
+                    target[catField(group.idx, name)] = value == null ? '' : value;
+                });
+            }
+
             // Called for every aspect column of every row, so the lower-cased names of a row are kept in a Set.
             const requiredSetCache = new WeakMap();
 
@@ -1179,6 +1296,13 @@
                     if (!sku || /^parent\s/i.test(sku)) return null;
                     return sku;
                 }
+                // UPC comes from CP Master, or from Amazon when CP Master is blank. Blank here means nothing was found, so it can be typed.
+                if (key === 'upc') {
+                    const sku = String(row.SKU || '').trim();
+                    if (!sku || /^parent\s/i.test(sku)) return null;
+                    const upc = String(row.upc || '').trim();
+                    return upc !== '' ? upc : null;
+                }
                 return null;
             }
 
@@ -1207,25 +1331,39 @@
                     }
                     row[aspectKey(name)] = required ? (values[name] || '') : '';
                 });
+                mirrorCatFields(row, row);
             }
 
+            // One header group per eBay category, with that category's aspect columns underneath.
             function ebayAspectColumns() {
-                return ebayAspectNames.map(function (name) {
+                return catGroups.map(function (group) {
+                    return {
+                        title: group.title,
+                        headerTooltip: group.title,
+                        headerHozAlign: 'center',
+                        columns: group.names.map(function (name) { return aspectColumn(group, name); }),
+                    };
+                });
+            }
+
+            function aspectColumn(group, name) {
+                {
+                    const inGroup = function (d) { return catIndexByKey[rowCatKey(d)] === group.idx; };
                     return {
                         title: name,
-                        field: aspectKey(name),
+                        field: catField(group.idx, name),
                         minWidth: 52,
                         hozAlign: 'center',
                         headerHozAlign: 'center',
-                        headerTooltip: name,
+                        headerTooltip: group.title + ' > ' + name,
                         editor: 'input',
                         editable: function (cell) {
                             const d = cell.getRow().getData();
-                            return rowRequiresAspect(d, name) && autofillValue(d, name) === null;
+                            return inGroup(d) && rowRequiresAspect(d, name) && autofillValue(d, name) === null;
                         },
                         formatter: function (cell) {
                             const d = cell.getRow().getData();
-                            if (!rowRequiresAspect(d, name)) return '<span class="text-muted">—</span>';
+                            if (!inGroup(d) || !rowRequiresAspect(d, name)) return '<span class="text-muted">—</span>';
                             const v = String(cell.getValue() || '').trim();
                             if (!v) return '<i class="fas fa-exclamation-triangle text-danger" title="Blank"></i>';
                             return esc(v);
@@ -1256,7 +1394,7 @@
                             }
                         },
                     };
-                });
+                }
             }
 
             async function saveSpecs(sku, text, specs) {
@@ -1307,6 +1445,7 @@
                         patch[aspectKey(name)] = value;
                         if (rowRequiresAspect(data, name)) patch.ebay_values[name] = value;
                     });
+                    mirrorCatFields(patch, Object.assign({}, data, patch));
                     tRow.update(patch);
                 }
             }
@@ -1703,8 +1842,6 @@
 
             function tsColumnGroup(field) {
                 if (field === 'category_ebay' || String(field).indexOf('ebay_aspect_') === 0) return 'ebay';
-                if (field === 'category_amz') return 'amz';
-                if (field === 'category_temu') return 'temu';
                 return '';
             }
 
@@ -1736,15 +1873,13 @@
                     // The same fields the edit form shows for this category: fields crossed out there and
                     // fields beyond the top 25 are not columns here either.
                     const formNames = categoryFormFieldNames(categoryRows);
-                    const columnByIdentity = {};
-                    ebayAspectNames.forEach(function (name) {
-                        const id = specIdentity(name);
-                        if (columnByIdentity[id] === undefined || specNameKey(name) === id) columnByIdentity[id] = name;
-                    });
-                    formNames.forEach(function (name) {
-                        const column = columnByIdentity[specIdentity(name)];
-                        if (column !== undefined) keep[aspectKey(column)] = true;
-                    });
+                    const formIds = new Set(formNames.map(specIdentity));
+                    const group = catGroups.find(function (g) { return normCat(g.key) === want; });
+                    if (group) {
+                        group.names.forEach(function (name) {
+                            if (formIds.has(specIdentity(name))) keep[catField(group.idx, name)] = true;
+                        });
+                    }
                 }
                 return keep;
             }
@@ -1828,34 +1963,19 @@
             }
 
             function ebayCategoryColumns() {
-                const map = new Map();
-                allRows.forEach(function (row) {
-                    const cat = String(row.category_ebay || '').trim() || 'No category';
-                    if (!map.has(cat)) map.set(cat, []);
-                    const list = map.get(cat);
-                    (row.ebay_required || []).forEach(function (name) {
-                        if (!isRealAspect(name)) return;
-                        if (list.indexOf(name) === -1) list.push(name);
-                    });
-                });
-                const seen = {};
-                map.forEach(function (names) { names.forEach(function (name) { seen[name] = true; }); });
-                const other = ebayAspectNames.filter(function (name) { return isRealAspect(name) && !seen[name]; });
-                if (other.length) map.set('Other', (map.get('Other') || []).concat(other.filter(function (name) { return (map.get('Other') || []).indexOf(name) === -1; })));
+                // The same categories as the table header groups, so a tick here shows or hides exactly those columns.
                 const cats = [{ title: 'Category', fields: [{ field: 'category_ebay', title: 'Category eBay' }] }];
-                Array.from(map.keys()).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (title) {
-                    const fields = map.get(title).filter(isRealAspect).sort(function (a, b) { return a.localeCompare(b); }).map(function (name) {
-                        return { field: aspectKey(name), title: name };
+                catGroups.forEach(function (group) {
+                    cats.push({
+                        title: group.title,
+                        fields: group.names.map(function (name) { return { field: catField(group.idx, name), title: name }; }),
                     });
-                    if (fields.length) cats.push({ title: title, fields: fields });
                 });
                 return cats;
             }
 
             function channelCategories(key) {
-                if (key === 'ebay') return ebayCategoryColumns();
-                if (key === 'amz') return [{ title: 'Category', fields: [{ field: 'category_amz', title: 'Category Amz' }] }];
-                return [{ title: 'Category', fields: [{ field: 'category_temu', title: 'Category Temu' }] }];
+                return ebayCategoryColumns();
             }
 
             function appendFieldToggle(list, field, titleText, groupEl) {
@@ -1885,6 +2005,15 @@
                 const menu = document.getElementById('ts-column-dropdown');
                 const bar = document.querySelector('.ts-master-toolbar');
                 if (!menu || !bar) return;
+                menu.classList.toggle('ts-picker-max', tsPickerMax);
+                if (tsPickerMax) {
+                    menu.style.top = '0px';
+                    menu.style.left = '0px';
+                    menu.style.width = '100vw';
+                    menu.style.right = 'auto';
+                    menu.style.transform = 'none';
+                    return;
+                }
                 const card = document.querySelector('.ts-master-card') || bar;
                 const rect = card.getBoundingClientRect();
                 menu.style.top = Math.max(0, bar.getBoundingClientRect().bottom) + 'px';
@@ -1896,6 +2025,21 @@
 
             // The column list is only drawn when the Columns menu is open; until then it is just marked as outdated.
             let tsPickerDirty = true;
+            // The Columns panel can fill the whole screen.
+            let tsPickerMax = false;
+
+            function setTsPickerMax(on) {
+                tsPickerMax = !!on;
+                const menu = document.getElementById('ts-column-dropdown');
+                if (!menu) return;
+                placeTsColumnPanel();
+                const btn = menu.querySelector('.ts-picker-max-btn');
+                if (btn) {
+                    btn.title = tsPickerMax ? 'Restore size' : 'Maximize';
+                    btn.setAttribute('aria-label', btn.title);
+                    btn.innerHTML = '<i class="fas ' + (tsPickerMax ? 'fa-compress' : 'fa-expand') + '"></i>';
+                }
+            }
 
             function buildTsColumnPicker() {
                 const menu = document.getElementById('ts-column-dropdown');
@@ -1978,7 +2122,16 @@
                     wrap.appendChild(group);
                 });
                 menu.appendChild(wrap);
-                placeTsColumnPanel();
+                const maxBtn = document.createElement('button');
+                maxBtn.type = 'button';
+                maxBtn.className = 'ts-picker-max-btn';
+                maxBtn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setTsPickerMax(!tsPickerMax);
+                });
+                menu.appendChild(maxBtn);
+                setTsPickerMax(tsPickerMax);
             }
 
             function bindTopHScroll() {
@@ -2052,13 +2205,18 @@
             }
 
             function initTable(rows, aspectNames) {
-                const nextNames = Array.isArray(aspectNames) ? aspectNames : ebayAspectNames;
-                if (table && nextNames.join('\n') !== ebayAspectNames.join('\n')) {
+                const nextNames = (Array.isArray(aspectNames) ? aspectNames : ebayAspectNames).filter(isRealAspect);
+                // The header is built from the eBay categories and the aspects of each, so a change in either rebuilds it.
+                const nextGroups = computeCatGroups(rows);
+                const nextSignature = nextNames.join('\n') + '\u0004' + catSignature(nextGroups);
+                if (table && nextSignature !== tableSignature) {
                     table.destroy();
                     tableReady = false;
                     table = null;
                 }
-                ebayAspectNames = nextNames.filter(isRealAspect);
+                tableSignature = nextSignature;
+                ebayAspectNames = nextNames;
+                applyCatGroups(nextGroups);
                 rows.forEach(stampAspectFields);
                 allRows = rows;
                 if (table) {
@@ -2173,8 +2331,6 @@
                             },
                         },
                         categoryColumn('Category eBay', 'category_ebay'),
-                        categoryColumn('Category Amz', 'category_amz'),
-                        categoryColumn('Category Temu', 'category_temu'),
                         ...ebayAspectColumns(),
                         {
                             title: 'Action',
@@ -2251,8 +2407,6 @@
                     const row = {
                     SKU: r.SKU || '',
                         'Category eBay': r.category_ebay || '',
-                        'Category Amz': r.category_amz || '',
-                        'Category Temu': r.category_temu || '',
                     Parent: r.Parent || '',
                     title150: r.title150 || '',
                     technical_specifications: specsText(r),
@@ -2409,7 +2563,7 @@
                     body: failedNote + 'Saved. Pushing changed specifications to eBay 1. Blank values are not sent.',
                     rows: rows,
                 });
-                runEbaySync('push', skus);
+                runEbayPush(skus);
             }
 
             function promptClearSpecs() {
@@ -2475,37 +2629,6 @@
                 cancelBtn.disabled = false;
                 cancelBtn.textContent = 'Close';
                 ebaySyncAction = null;
-            }
-
-            function promptEbaySync(mode) {
-                const rows = selectedRows();
-                const verb = mode === 'pull' ? 'pull from eBay 1' : 'push to eBay 1';
-                if (!rows.length) {
-                    openEbayPrompt({
-                        title: 'Select rows',
-                        body: 'Select the rows to ' + verb + ' before continuing. Use the checkboxes in the first column.',
-                        rows: [],
-                    });
-                    return;
-                }
-                if (rows.length > 100) {
-                    openEbayPrompt({
-                        title: 'Too many rows',
-                        body: 'Select 100 rows or fewer at a time, then ' + verb + ' again.',
-                        rows: rows,
-                    });
-                    return;
-                }
-                openEbayPrompt({
-                    title: mode === 'pull' ? 'Pull from eBay 1' : 'Push to eBay 1',
-                    body: mode === 'pull'
-                        ? 'Pull eBay 1 specifications for these ' + rows.length + ' rows? Matching columns are filled, and any specification that does not have a column yet is added for that category. A blank cell is one eBay 1 did not have.'
-                        : 'Push changed specifications for these ' + rows.length + ' rows to eBay 1? Only values that differ from the live listing are sent. Blank values are never sent.',
-                    rows: rows,
-                    confirmText: mode === 'pull' ? 'Pull from eBay 1' : 'Push to eBay 1',
-                    confirmClass: 'btn-primary',
-                    onConfirm: function () { runEbaySync(mode, rows.map(function (row) { return row.SKU; })); },
-                });
             }
 
             function isParentRow(row) {
@@ -2641,7 +2764,7 @@
                 return spec ? String(spec.value || '').trim() : '';
             }
 
-            async function runEbaySync(mode, skus) {
+            async function runEbayPush(skus) {
                 const confirmBtn = document.getElementById('ebaySyncConfirm');
                 const cancelBtn = document.getElementById('ebaySyncCancel');
                 const status = document.getElementById('ebaySyncStatus');
@@ -2650,17 +2773,15 @@
                 cancelBtn.disabled = true;
                 hideSyncOutcome();
                 list.innerHTML = '';
-                const url = mode === 'pull' ? '/technical-specifications/pull-ebay' : '/technical-specifications/push-ebay';
+                const url = '/technical-specifications/push-ebay';
                 let done = 0;
                 let failed = 0;
                 try {
-                    if (mode === 'push') {
-                        status.textContent = 'Filling Brand and MPN…';
-                        await ensureAutofillSaved(skus);
-                    }
+                    status.textContent = 'Filling Brand, Manufacturer, MPN and UPC…';
+                    await ensureAutofillSaved(skus);
                     for (let i = 0; i < skus.length; i += 8) {
                         const chunk = skus.slice(i, i + 8);
-                        status.textContent = (mode === 'pull' ? 'Pulling ' : 'Pushing ') + (done + 1) + '–' + (done + chunk.length) + ' of ' + skus.length + '…';
+                        status.textContent = 'Pushing ' + (done + 1) + '–' + (done + chunk.length) + ' of ' + skus.length + '…';
                         const res = await fetch(url, {
                             method: 'POST',
                             headers: {
@@ -2683,27 +2804,19 @@
                             li.appendChild(text);
                             list.appendChild(li);
                             if (!result.success) failed++;
-                            if (mode === 'pull' && result.success) {
-                                applySaveToRow(result.sku, result, result.technical_specifications || '');
-                            }
                         });
                         done += chunk.length;
                     }
-                    if (mode === 'pull' && done > failed) {
-                        status.textContent = 'Refreshing columns…';
-                        await loadData();
-                    }
-                    const verb = mode === 'pull' ? 'Pulled from eBay 1' : 'Pushed to eBay 1';
                     const summary = 'Finished ' + done + ' row' + (done === 1 ? '' : 's') + (failed ? ', ' + failed + ' failed' : '') + '.';
                     status.textContent = summary;
                     document.getElementById('ebaySyncBody').textContent = '';
-                    showSyncOutcome(failed === 0, failed === 0 ? verb : (mode === 'pull' ? 'Pull failed' : 'Push failed'), summary);
+                    showSyncOutcome(failed === 0, failed === 0 ? 'Pushed to eBay 1' : 'Push failed', summary);
                     applyStatusFilter();
                 } catch (e) {
                     const message = e.message || 'eBay request failed';
                     status.textContent = message;
                     document.getElementById('ebaySyncBody').textContent = '';
-                    showSyncOutcome(false, mode === 'pull' ? 'Pull failed' : 'Push failed', message);
+                    showSyncOutcome(false, 'Push failed', message);
                 }
                 confirmBtn.classList.add('d-none');
                 cancelBtn.disabled = false;
@@ -2748,11 +2861,11 @@
                 editModal = new bootstrap.Modal(document.getElementById('editSpecsModal'));
                 viewModal = new bootstrap.Modal(document.getElementById('viewSpecsModal'));
                 ebaySyncModal = new bootstrap.Modal(document.getElementById('ebaySyncModal'));
-                document.getElementById('pullEbayBtn').addEventListener('click', function () { promptEbaySync('pull'); });
                 const colMenuParent = document.getElementById('tsColumnVisibility').closest('.dropdown');
                 if (colMenuParent) colMenuParent.addEventListener('shown.bs.dropdown', placeTsColumnPanel);
+                // The panel opens at its normal size each time.
+                if (colMenuParent) colMenuParent.addEventListener('hidden.bs.dropdown', function () { tsPickerMax = false; });
                 window.addEventListener('resize', placeTsColumnPanel);
-                document.getElementById('pushEbayBtn').addEventListener('click', function () { promptEbaySync('push'); });
                 document.getElementById('syncCategoriesBtn').addEventListener('click', promptCategorySync);
                 document.getElementById('specHiddenChip').addEventListener('click', toggleShowAllSpecFields);
                 document.getElementById('clearSpecsBtn').addEventListener('click', promptClearSpecs);

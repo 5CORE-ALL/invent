@@ -1744,6 +1744,10 @@
                                     </li>
 
                                     <li>
+                                        <a href="{{ route('ebay1.data') }}">Ebay1 Data</a>
+                                    </li>
+
+                                    <li>
                                         <a href="{{ route('ebay.listing.variation.verify') }}">Ebay Listing Variation Verify</a>
                                     </li>
 
