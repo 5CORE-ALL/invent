@@ -1716,12 +1716,12 @@
         function chPromoPushPrcHasSaleCoupon() {
             return CHANNEL_PROMO_CHANNEL === 'ebay1';
         }
-        /** eBay1 Prmt% / Push Prc must not create markdown sale events. */
+        /** eBay1 PRMT% → markdown sale event (item_price_markdown) is enabled. */
         function chPromoEbay1CreateSaleEvents() {
-            return false;
+            return true;
         }
 
-        /** eBay1: create/add markdown sale event from PRMT%. Disabled — column-only. */
+        /** eBay1: create/add markdown sale event from PRMT%. 0 removes SKU. */
         function syncEbay1Promotion(sku, percent) {
             if (!chPromoEbay1CreateSaleEvents()) {
                 return Promise.resolve({
@@ -3425,7 +3425,7 @@
         const CH_PROMO_PUSH_QUEUE_URL = '/channel-push-prc/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
         @include('partials.channel-push-sprice-queue', ['channelPushSpriceChannel' => $channelPromoChannel])
         @include('partials.temu-listing-autopush', ['channelPromoChannel' => $channelPromoChannel])
-        const CH_PROMO_PUSH_PRMT_QUEUE_CHANNELS = [];
+        const CH_PROMO_PUSH_PRMT_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3'];
         const chPromoPushPrmtQueueEnabled = CH_PROMO_PUSH_PRMT_QUEUE_CHANNELS.indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
         const CH_PROMO_PUSH_PRMT_QUEUE_URL = '/channel-push-prmt/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
         const CH_PROMO_PUSH_PRMT_CHUNK = 25;
@@ -11223,7 +11223,7 @@
                             + sign + pct + '%</span>';
                     },
                 }] : []),
-                ...(false
+                ...(CHANNEL_PROMO_CHANNEL === 'ebay2op'
                     ? [channelPromoPushPrmtColumn()]
                     : []),
                 ...(CHANNEL_PROMO_HIDE_CVR_CPN ? [] : [{

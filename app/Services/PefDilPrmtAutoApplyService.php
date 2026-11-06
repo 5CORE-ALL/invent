@@ -4,13 +4,19 @@ namespace App\Services;
 
 use App\Http\Controllers\MarketPlace\ChannelPromoPricingController;
 use App\Models\ChannelTabulatorColumnSetting;
+use Illuminate\Support\Facades\Log;
 
 /**
- * eBay1 Dil vs PRMT sale-event auto-apply is disabled.
- * run() is a no-op so leftover artisan calls cannot create PEF SALE events.
+ * Midnight Dil vs PRMT auto-apply for PEF eBay1.
+ * Always runs once per day (even if Dil/INV/rules unchanged):
+ * INV = 0 → PRMT% = 0 (pause); else map Dil% slab → PRMT% and sync Promotion API.
  */
 class PefDilPrmtAutoApplyService
 {
+    public function __construct(
+        private readonly PricingErrorsFixCvrCacheBuilder $pefBuilder,
+        private readonly Ebay1PromotionService $promotion
+    ) {}
 
     /**
      * @return list<array{key:string,label:string,prmt:float}>
@@ -91,15 +97,82 @@ class PefDilPrmtAutoApplyService
     public function run(bool $dryRun = false, ?int $limit = null, int $sleepMs = 250, ?callable $logger = null): array
     {
         $log = $logger ?? static function (string $msg): void {};
-        $log('eBay1 sale-event auto-apply is disabled — no Promotion API calls');
+        $rules = $this->loadRules();
+        $log('Loaded '.count($rules).' Dil vs PRMT rules');
 
-        return [
-            'candidates' => 0,
+        $built = $this->pefBuilder->build(['ebay'], null, true);
+        $rows = array_values(array_filter(
+            $built['rows'] ?? [],
+            static fn ($r) => is_array($r) && strtolower((string) ($r['marketplace'] ?? '')) === 'ebay1'
+        ));
+
+        if ($limit !== null) {
+            $rows = array_slice($rows, 0, max(1, $limit));
+        }
+
+        $stats = [
+            'candidates' => count($rows),
             'ok' => 0,
             'failed' => 0,
             'paused' => 0,
             'skipped' => 0,
             'errors' => [],
         ];
+        $log('eBay1 candidates: '.$stats['candidates']
+            .($dryRun ? ' [DRY RUN — no API calls]' : ''));
+
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                $stats['skipped']++;
+                continue;
+            }
+
+            $inv = (float) ($row['inv'] ?? 0);
+            $dil = (float) ($row['dil'] ?? 0);
+            // Match PEF UI: INV = 0 → PRMT% = 0 (pause promotion)
+            $prmt = ! ($inv > 0) ? 0.0 : $this->prmtForDil($dil, $rules);
+
+            if ($dryRun) {
+                $log(sprintf(
+                    '  DRY %s inv=%s dil=%s → prmt=%s',
+                    $sku,
+                    rtrim(rtrim(number_format($inv, 2, '.', ''), '0'), '.') ?: '0',
+                    rtrim(rtrim(number_format($dil, 2, '.', ''), '0'), '.') ?: '0',
+                    rtrim(rtrim(number_format($prmt, 2, '.', ''), '0'), '.') ?: '0'
+                ));
+                $stats['ok']++;
+                if ($prmt <= 0) {
+                    $stats['paused']++;
+                }
+                continue;
+            }
+
+            try {
+                $result = $this->promotion->syncSkuPromotionPercent($sku, $prmt);
+                if (! empty($result['success'])) {
+                    $stats['ok']++;
+                    if ($prmt <= 0 || ! empty($result['paused'])) {
+                        $stats['paused']++;
+                    }
+                } else {
+                    $stats['failed']++;
+                    $msg = $sku.': '.((string) ($result['message'] ?? 'promotion sync failed'));
+                    $stats['errors'][] = $msg;
+                    Log::warning('pef:dil-prmt-auto-apply failed', ['sku' => $sku, 'prmt' => $prmt, 'result' => $result]);
+                }
+            } catch (\Throwable $e) {
+                $stats['failed']++;
+                $msg = $sku.': '.$e->getMessage();
+                $stats['errors'][] = $msg;
+                Log::error('pef:dil-prmt-auto-apply exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+            }
+
+            if ($sleepMs > 0) {
+                usleep($sleepMs * 1000);
+            }
+        }
+
+        return $stats;
     }
 }

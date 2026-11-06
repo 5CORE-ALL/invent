@@ -1921,7 +1921,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // PEF Dil vs PRMT → eBay1 sale-event create is disabled (do not schedule).
+        // PEF Dil vs PRMT → eBay1 Promotion API (always once/day, even if Dil/INV/rules unchanged).
+        // INV=0 forces PRMT%=0 (pause). Uses saved pef_dil_vs_prmt rules or first-time defaults.
+        $schedule->command('pef:dil-prmt-auto-apply')
+            ->dailyAt('00:00')
+            ->timezone('Asia/Kolkata')
+            ->name('pef-dil-prmt-auto-apply-midnight-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         // Pull business5core.com price / sold / views into store_listing_prices.
         $schedule->command('store:sync-prices')

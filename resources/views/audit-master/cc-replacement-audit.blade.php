@@ -40,7 +40,7 @@
             color: #0f5132;
             border-radius: 12px;
             font-size: 12px;
-            font-weight: 600;
+            font-weight: 600;   
         }
     </style>
 @endsection

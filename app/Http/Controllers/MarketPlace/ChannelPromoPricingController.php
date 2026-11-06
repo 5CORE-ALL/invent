@@ -58,8 +58,8 @@ class ChannelPromoPricingController extends Controller
         'ebay1', 'ebay2', 'ebay3',
     ];
 
-    /** Push PRMT % sale-event queue retired — no channel creates markdown sales. */
-    private const PUSH_PRMT_QUEUE_CHANNELS = [];
+    /** Channels that support background Push PRMT % sale-event queue (chunked). */
+    private const PUSH_PRMT_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3'];
 
     /** Channels that support background Push CPN % coded-coupon queue (chunked). */
     private const PUSH_CPN_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3', 'temu'];
