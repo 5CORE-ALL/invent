@@ -516,16 +516,23 @@ class DilVsSbidApplyService
         }
 
         // 3. Family key per ad listing (a listing with no parent is its own family).
+        // A real parent family always wins over the standalone fallback, whatever the metric row order is
+        // (a PARENT ... row or an unmapped SKU can come first and must not hide the child SKUs' family).
         $familyByListing = [];
         foreach ($adMetrics as $m) {
-            $lid = (string) $m->item_id;
-            $sku = $normSku($m->sku);
-            $key = $familyKeyBySku[$sku] ?? null;
-            if ($key === null) {
-                $key = 'L:'.$lid;
-                $familySkus[$key][$sku] = trim((string) $m->sku);
+            $key = $familyKeyBySku[$normSku($m->sku)] ?? null;
+            if ($key !== null) {
+                $familyByListing[(string) $m->item_id] ??= $key;
             }
-            $familyByListing[$lid] ??= $key;
+        }
+        foreach ($adMetrics as $m) {
+            $lid = (string) $m->item_id;
+            if (isset($familyByListing[$lid]) && $familyByListing[$lid] !== 'L:'.$lid) {
+                continue;
+            }
+            $key = 'L:'.$lid;
+            $familySkus[$key][$normSku($m->sku)] = trim((string) $m->sku);
+            $familyByListing[$lid] = $key;
         }
 
         // 4. Inventory / sold for every child SKU of every family.
