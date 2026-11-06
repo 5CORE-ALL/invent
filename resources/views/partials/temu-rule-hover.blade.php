@@ -351,16 +351,10 @@
             } else {
                 pct = (typeof window.amzStdLmpReducePct === 'function') ? (Number(window.amzStdLmpReducePct(d)) || 0) : 0;
             }
-            // Amazon LMP CVR Rule: a $ amount (Dil band + Up / Down CVR arrow) replaces the %.
-            const lmpAmt = (dilOn && lmp > 0 && typeof window.amzLmpReduceAmountForRow === 'function') ? window.amzLmpReduceAmountForRow(d) : null;
-            const useAmt = lmpAmt != null && isFinite(Number(lmpAmt));
-            if (useAmt) pct = (Number(lmpAmt) / lmp) * 100;
             temuRuleLmpStep(steps, {
                 n: String(n), base: base, lmp: lmp, sgroiAtLmp: sg, pct: pct,
-                src: useAmt ? ('LMP CVR Rule, LMP − ' + temuRuleMoney(Number(lmpAmt))) : (dilOn ? 'Dil band, LMP cap table' : 'LMP Reduce block'),
-                after: shouldCap
-                    ? (useAmt ? +Math.max(0.01, lmp - Number(lmpAmt)).toFixed(2) : +(lmp * (1 - Math.min(99, Math.max(0, pct)) / 100)).toFixed(2))
-                    : null
+                src: dilOn ? 'Dil band, LMP cap table' : 'LMP Reduce block',
+                after: shouldCap ? +(lmp * (1 - Math.min(99, Math.max(0, pct)) / 100)).toFixed(2) : null
             });
             const afterLmp = (base > 0 && typeof amazonCapSpriceToLmp === 'function') ? amazonCapSpriceToLmp(d, base) : base;
             const capped = (std > 0 && afterLmp > 0) && Math.abs(afterLmp - final) < 0.0001 && Math.abs(final - std) < 0.0001;

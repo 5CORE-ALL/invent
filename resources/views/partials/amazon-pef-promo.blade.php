@@ -427,17 +427,6 @@
             text-align: right;
             font-weight: 600;
         }
-        #amz-lmp-cvr-table .amz-lmp-cvr-input {
-            max-width: 104px;
-            display: inline-block;
-            text-align: right;
-            font-weight: 600;
-        }
-        #amz-lmp-cvr-table .amz-dg-count {
-            font-weight: 700;
-            text-align: center;
-            white-space: nowrap;
-        }
         @media (min-width: 992px) {
             #amzDilGroiModal .modal-dialog { height: calc(100vh - 1.5rem); margin: .75rem auto; }
             #amzDilGroiModal .modal-content { height: 100%; }
@@ -1079,93 +1068,6 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="amz-dg-rules-title mt-3"
-                        title="Same as the LMP Rule, but in dollars and split by the CVR arrow. If LMP is available and the calculated S PRC is at or above LMP: S PRC = LMP − $x. x is the CVR Up $ when the SKU's CVR arrow is Up, the CVR Down $ when it is Down. A blank $ or a flat arrow uses the LMP Rule %.">
-                        LMP CVR Rule
-                    </div>
-                    <div class="small text-muted mb-1">
-                        <strong>If</strong> LMP is available and the calculated S PRC is at or above LMP,
-                        <strong>S PRC = LMP − $x</strong>, where x is the dollar amount for the SKU's Dil band and its CVR arrow
-                        (<span class="text-success fw-semibold">▲ Up</span> / <span class="text-danger fw-semibold">▼ Down</span>).
-                        A blank $ or a flat CVR arrow keeps the LMP Rule % above. Std Prc is still the maximum.
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-0" id="amz-lmp-cvr-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Dil band</th>
-                                    <th class="text-center" title="Dil limits come from the LMP Rule table above">Dil %</th>
-                                    <th class="text-end" title="Dollars off LMP when the CVR arrow is Up. Blank = LMP Rule %.">
-                                        <span class="text-success">▲</span> CVR Up $
-                                    </th>
-                                    <th class="text-end" title="Dollars off LMP when the CVR arrow is Down. Blank = LMP Rule %.">
-                                        <span class="text-danger">▼</span> CVR Down $
-                                    </th>
-                                    <th class="text-center" style="width:120px;" title="S PRC at the LMP cap for an Up / Down CVR SKU, e.g. LMP $100 with $6 → $94.00. A blank box shows the LMP Rule % price.">S PRC</th>
-                                    <th class="text-center" style="width:110px;" title="SKUs (INV &gt; 0) in this Dil band, with an Up / Down CVR arrow, whose calculated S PRC is at or above LMP">Count</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr data-row="low">
-                                    <td>Below</td>
-                                    <td class="text-center">&lt; <span class="amz-lmp-cvr-low-range">25</span></td>
-                                    <td class="text-end">
-                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-low-up" value="">
-                                    </td>
-                                    <td class="text-end">
-                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-low-down" value="">
-                                    </td>
-                                    <td class="text-center text-muted small">
-                                        <div><span class="text-success">▲</span> <span class="amz-lmp-cvr-eg-low-up">LMP × 0.98</span></div>
-                                        <div><span class="text-danger">▼</span> <span class="amz-lmp-cvr-eg-low-down">LMP × 0.98</span></div>
-                                    </td>
-                                    <td class="amz-dg-count">
-                                        <span class="text-success">▲</span> <span class="amz-lmp-cvr-low-up-count">0</span>
-                                        <span class="text-muted">·</span>
-                                        <span class="text-danger">▼</span> <span class="amz-lmp-cvr-low-down-count">0</span>
-                                    </td>
-                                </tr>
-                                <tr data-row="mid">
-                                    <td>Between</td>
-                                    <td class="text-center"><span class="amz-lmp-cvr-mid-range">25 – 50</span></td>
-                                    <td class="text-end">
-                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-mid-up" value="">
-                                    </td>
-                                    <td class="text-end">
-                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-mid-down" value="">
-                                    </td>
-                                    <td class="text-center text-muted small">
-                                        <div><span class="text-success">▲</span> <span class="amz-lmp-cvr-eg-mid-up">LMP × 0.98</span></div>
-                                        <div><span class="text-danger">▼</span> <span class="amz-lmp-cvr-eg-mid-down">LMP × 0.98</span></div>
-                                    </td>
-                                    <td class="amz-dg-count">
-                                        <span class="text-success">▲</span> <span class="amz-lmp-cvr-mid-up-count">0</span>
-                                        <span class="text-muted">·</span>
-                                        <span class="text-danger">▼</span> <span class="amz-lmp-cvr-mid-down-count">0</span>
-                                    </td>
-                                </tr>
-                                <tr data-row="high">
-                                    <td>Above</td>
-                                    <td class="text-center">&gt; <span class="amz-lmp-cvr-high-range">50</span></td>
-                                    <td class="text-end">
-                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-high-up" value="">
-                                    </td>
-                                    <td class="text-end">
-                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-high-down" value="">
-                                    </td>
-                                    <td class="text-center text-muted small">
-                                        <div><span class="text-success">▲</span> <span class="amz-lmp-cvr-eg-high-up">LMP × 0.98</span></div>
-                                        <div><span class="text-danger">▼</span> <span class="amz-lmp-cvr-eg-high-down">LMP × 0.98</span></div>
-                                    </td>
-                                    <td class="amz-dg-count">
-                                        <span class="text-success">▲</span> <span class="amz-lmp-cvr-high-up-count">0</span>
-                                        <span class="text-muted">·</span>
-                                        <span class="text-danger">▼</span> <span class="amz-lmp-cvr-high-down-count">0</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
                     <div class="small text-muted mt-1" id="amz-dil-groi-status"></div>
                     </div>
                     </div>
@@ -1333,7 +1235,6 @@
             $tbl.find('.amz-lmp-cap-eg-low').text(f(cfg.low_pct));
             $tbl.find('.amz-lmp-cap-eg-mid').text(f(cfg.mid_pct));
             $tbl.find('.amz-lmp-cap-eg-high').text(f(cfg.high_pct));
-            amzPaintLmpCvrExamples(cfg);
         }
         function amzPaintLmpCapTable(cfg) {
             cfg = amzNormalizeLmpCap(cfg);
@@ -1347,70 +1248,7 @@
             $tbl.find('.amz-lmp-cap-high-pct').val(cfg.high_pct);
             amzPaintLmpCapExamples(cfg);
         }
-        /**
-         * LMP CVR Rule (Sprc Dil, Amazon): dollars off LMP, split by the CVR arrow. Same Dil bands as the LMP Rule.
-         * For a SKU whose CVR arrow is Up (or Down), S PRC at LMP = LMP − that band's Up (or Down) $.
-         * A blank $ (null) or a flat arrow keeps the LMP Rule %. Same as the server (AmazonDilGroiRule::lmpCvrReduceAmount).
-         */
-        const AMZ_LMP_CVR_KEYS = ['low_up', 'low_down', 'mid_up', 'mid_down', 'high_up', 'high_down'];
-        function amzLmpCvrBlank() {
-            const o = {};
-            AMZ_LMP_CVR_KEYS.forEach(function(k) { o[k] = null; });
-            return o;
-        }
-        let amzLmpCvr = amzLmpCvrBlank();
-        function amzNormalizeLmpCvr(raw) {
-            const out = amzLmpCvrBlank();
-            if (!raw) return out;
-            AMZ_LMP_CVR_KEYS.forEach(function(k) {
-                if (raw[k] === '' || raw[k] === null || raw[k] === undefined) return;
-                const n = Number(raw[k]);
-                if (!isFinite(n) || n < 0) return;
-                out[k] = Math.round(n * 100) / 100;
-            });
-            return out;
-        }
-        function amzLmpCvrNow() {
-            const $tbl = $('#amz-lmp-cvr-table');
-            if ($tbl.length) {
-                const raw = {};
-                AMZ_LMP_CVR_KEYS.forEach(function(k) {
-                    const v = $tbl.find('.amz-lmp-cvr-' + k.replace('_', '-')).val();
-                    raw[k] = (v === '' || v == null) ? null : parseFloat(v);
-                });
-                return amzNormalizeLmpCvr(raw);
-            }
-            return amzNormalizeLmpCvr(amzLmpCvr);
-        }
-        /** Mirror the LMP Rule's Dil limits and show what each Up / Down $ lands on (blank box shows the LMP Rule % price). */
-        function amzPaintLmpCvrExamples(capCfg) {
-            const $tbl = $('#amz-lmp-cvr-table');
-            if (!$tbl.length) return;
-            const cap = amzNormalizeLmpCap(capCfg || amzLmpCap);
-            const cvr = amzLmpCvrNow();
-            const f = function(p) { return 'LMP × ' + (1 - p / 100).toFixed(3).replace(/0+$/, '').replace(/\.$/, ''); };
-            const money = function(v) { return 'LMP − $' + Number(v).toFixed(2); };
-            $tbl.find('.amz-lmp-cvr-low-range').text(cap.low_lt);
-            $tbl.find('.amz-lmp-cvr-mid-range').text(cap.low_lt + ' – ' + cap.high_gt);
-            $tbl.find('.amz-lmp-cvr-high-range').text(cap.high_gt);
-            ['low', 'mid', 'high'].forEach(function(band) {
-                ['up', 'down'].forEach(function(arrow) {
-                    const v = cvr[band + '_' + arrow];
-                    $tbl.find('.amz-lmp-cvr-eg-' + band + '-' + arrow).text(v != null ? money(v) : f(cap[band + '_pct']));
-                });
-            });
-        }
-        function amzPaintLmpCvrTable(cfg) {
-            cfg = amzNormalizeLmpCvr(cfg);
-            amzLmpCvr = cfg;
-            const $tbl = $('#amz-lmp-cvr-table');
-            if (!$tbl.length) return;
-            AMZ_LMP_CVR_KEYS.forEach(function(k) {
-                $tbl.find('.amz-lmp-cvr-' + k.replace('_', '-')).val(cfg[k] == null ? '' : cfg[k]);
-            });
-            amzPaintLmpCvrExamples();
-        }
-        /** LMP reduce % for one grid row, from its Dil (OV L30 ÷ INV): the LMP Rule %. */
+        /** LMP reduce % for one grid row, from its Dil (OV L30 ÷ INV). */
         function amzLmpReducePctForRow(d) {
             const cfg = amzNormalizeLmpCap(amzLmpCap);
             const dil = Number(amzPefDil(d)) || 0;
@@ -1418,20 +1256,6 @@
             if (dil > cfg.high_gt) return cfg.high_pct;
             return cfg.mid_pct;
         }
-        /**
-         * LMP CVR Rule: dollars off LMP for one grid row (its Dil band and CVR arrow), or null when there is none
-         * (blank box, flat arrow) so the LMP Rule % applies.
-         */
-        function amzLmpReduceAmountForRow(d) {
-            const trend = amzPefCvrTrend(d);
-            if (trend !== 'up' && trend !== 'down') return null;
-            const cfg = amzNormalizeLmpCap(amzLmpCap);
-            const dil = Number(amzPefDil(d)) || 0;
-            const band = dil < cfg.low_lt ? 'low' : (dil > cfg.high_gt ? 'high' : 'mid');
-            const v = amzNormalizeLmpCvr(amzLmpCvr)[band + '_' + trend];
-            return v != null ? v : null;
-        }
-        window.amzLmpReduceAmountForRow = amzLmpReduceAmountForRow;
         window.amzLmpReducePctForRow = amzLmpReducePctForRow;
         /**
          * LMP Rule counts per Dil band: SKUs (INV > 0, not clearance-priced) with an LMP whose calculated Sprc Dil price
@@ -1456,44 +1280,11 @@
         }
         function amzPaintLmpCapCounts() {
             const $tbl = $('#amz-lmp-cap-table');
-            if ($tbl.length) {
-                const counts = amzLmpCapCollectCounts();
-                $tbl.find('.amz-lmp-cap-low-count').text(counts.low);
-                $tbl.find('.amz-lmp-cap-mid-count').text(counts.mid);
-                $tbl.find('.amz-lmp-cap-high-count').text(counts.high);
-            }
-            amzPaintLmpCvrCounts();
-        }
-        /**
-         * LMP CVR Rule counts per Dil band and CVR arrow: same SKUs as the LMP Rule count (INV > 0, not clearance-priced, LMP
-         * available, calculated Sprc Dil price at or above LMP), split by the Up / Down CVR arrow. Flat arrows are in no column.
-         */
-        function amzLmpCvrCollectCounts() {
-            const counts = {};
-            AMZ_LMP_CVR_KEYS.forEach(function(k) { counts[k] = 0; });
-            const cfg = amzNormalizeLmpCap(amzLmpCap);
-            amzDgEachInvChild(function(d) {
-                if (typeof amzClearanceDilActive === 'function' && amzClearanceDilActive(d)) return;
-                const lmp = amzPefLmp(d);
-                if (!(lmp > 0)) return;
-                const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
-                const calc = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
-                if (!(calc > 0) || calc + 0.0001 < lmp) return;
-                const trend = amzPefCvrTrend(d);
-                if (trend !== 'up' && trend !== 'down') return;
-                const dil = Number(amzPefDil(d)) || 0;
-                const band = dil < cfg.low_lt ? 'low' : (dil > cfg.high_gt ? 'high' : 'mid');
-                counts[band + '_' + trend]++;
-            });
-            return counts;
-        }
-        function amzPaintLmpCvrCounts() {
-            const $tbl = $('#amz-lmp-cvr-table');
             if (!$tbl.length) return;
-            const counts = amzLmpCvrCollectCounts();
-            AMZ_LMP_CVR_KEYS.forEach(function(k) {
-                $tbl.find('.amz-lmp-cvr-' + k.replace('_', '-') + '-count').text(counts[k]);
-            });
+            const counts = amzLmpCapCollectCounts();
+            $tbl.find('.amz-lmp-cap-low-count').text(counts.low);
+            $tbl.find('.amz-lmp-cap-mid-count').text(counts.mid);
+            $tbl.find('.amz-lmp-cap-high-count').text(counts.high);
         }
         /**
          * Ageing Rule (Sprc Dil): the SKU's age in days picks a band; the band's points are added to the Target NROI after the
@@ -2951,7 +2742,6 @@
                 }
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
                 if (res && res.lmp_cap) amzPaintLmpCapTable(res.lmp_cap);
-                if (res && res.lmp_cvr) amzPaintLmpCvrTable(res.lmp_cvr);
                 if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
                 else amzRenderAgeAdjTable();
@@ -2980,8 +2770,6 @@
             amzCvrGroiAdj = cvrAdj;
             const lmpCap = amzLmpCapNow();
             amzLmpCap = lmpCap;
-            const lmpCvr = amzLmpCvrNow();
-            amzLmpCvr = lmpCvr;
             const diffAdj = amzDiffAdjNow();
             amzDiffAdj = diffAdj;
             const ageAdj = amzAgeAdjPayload();
@@ -2993,7 +2781,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, lmp_cvr: lmpCvr, diff_adj: diffAdj, age_adj: ageAdj, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, age_adj: ageAdj, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
             }).then(function(res) {
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
@@ -3007,7 +2795,6 @@
                 }
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
                 if (res && res.lmp_cap) amzPaintLmpCapTable(res.lmp_cap);
-                if (res && res.lmp_cvr) amzPaintLmpCvrTable(res.lmp_cvr);
                 if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
                 amzAfterDilGroiRulesChanged();
@@ -5732,13 +5519,6 @@
                     amzLmpCap = amzLmpCapNow();
                     amzPaintLmpCapExamples(amzLmpCap);
                     amzPaintLmpCapCounts();
-                    amzAfterDilGroiRulesChanged();
-                });
-            $(document).off('input.amzLmpCvr change.amzLmpCvr', '#amz-lmp-cvr-table .amz-lmp-cvr-input')
-                .on('input.amzLmpCvr change.amzLmpCvr', '#amz-lmp-cvr-table .amz-lmp-cvr-input', function() {
-                    amzLmpCvr = amzLmpCvrNow();
-                    amzPaintLmpCvrExamples();
-                    amzPaintLmpCvrCounts();
                     amzAfterDilGroiRulesChanged();
                 });
             $(document).off('input.amzAgeAdj change.amzAgeAdj', '#amz-age-adj-table .amz-age-adj-input')

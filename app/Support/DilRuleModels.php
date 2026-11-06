@@ -102,8 +102,6 @@ final class DilRuleModels
             'lmp_cap' => in_array('lmp_cap', $owned, true) && array_key_exists('lmp_cap', $source) ? $source['lmp_cap'] : $existing['lmp_cap'],
             'diff_adj' => in_array('diff_adj', $owned, true) && array_key_exists('diff_adj', $source) ? $source['diff_adj'] : $existing['diff_adj'],
             'age_adj' => in_array('age_adj', $owned, true) && array_key_exists('age_adj', $source) ? $source['age_adj'] : $existing['age_adj'],
-            // LMP CVR Rule is Amazon-only: never copied to another page, but a page that has one keeps it.
-            'lmp_cvr' => $existing['lmp_cvr'],
         ];
         if (array_key_exists('clearance_nroi', $existing) && $existing['clearance_nroi'] !== null) {
             $out['clearance_nroi'] = $existing['clearance_nroi'];

@@ -1919,7 +1919,6 @@ class ChannelPromoPricingController extends Controller
                 'cvr_adj' => $unpacked['cvr_adj'],
                 'clearance_nroi' => $unpacked['clearance_nroi'],
                 'lmp_cap' => $unpacked['lmp_cap'],
-                'lmp_cvr' => $unpacked['lmp_cvr'],
                 'diff_adj' => $unpacked['diff_adj'],
                 'age_adj' => $unpacked['age_adj'],
             ]);
@@ -1935,7 +1934,6 @@ class ChannelPromoPricingController extends Controller
             'cvr_adj' => $unpacked['cvr_adj'],
             'clearance_nroi' => $unpacked['clearance_nroi'],
             'lmp_cap' => $unpacked['lmp_cap'],
-            'lmp_cvr' => $unpacked['lmp_cvr'],
             'diff_adj' => $unpacked['diff_adj'],
             'age_adj' => $unpacked['age_adj'],
         ]);
@@ -1967,7 +1965,6 @@ class ChannelPromoPricingController extends Controller
             'rules' => $config['rules'],
             'cvr_adj' => $config['cvr_adj'],
             'lmp_cap' => $config['lmp_cap'],
-            'lmp_cvr' => $config['lmp_cvr'],
             'diff_adj' => $config['diff_adj'],
             'age_adj' => $config['age_adj'],
             'clearance_nroi' => $config['visibility']['clearance_nroi'] ?? null,
@@ -2027,7 +2024,6 @@ class ChannelPromoPricingController extends Controller
             'rules' => $config['rules'],
             'cvr_adj' => $config['cvr_adj'],
             'lmp_cap' => $config['lmp_cap'],
-            'lmp_cvr' => $config['lmp_cvr'],
             'diff_adj' => $config['diff_adj'],
             'age_adj' => $config['age_adj'],
             'clearance_nroi' => $config['visibility']['clearance_nroi'] ?? null,
@@ -2080,16 +2076,6 @@ class ChannelPromoPricingController extends Controller
             ? AmazonDilGroiRule::normalizeLmpCap($lmpCapIncoming)
             : $existing['lmp_cap'];
 
-        // LMP CVR Rule (Amazon): LMP reduce % by Dil band and CVR arrow. A page that does not send it keeps what is saved.
-        $lmpCvrIncoming = $request->input('lmp_cvr');
-        if (is_string($lmpCvrIncoming)) {
-            $decodedLmpCvr = json_decode($lmpCvrIncoming, true);
-            $lmpCvrIncoming = is_array($decodedLmpCvr) ? $decodedLmpCvr : null;
-        }
-        $lmpCvr = is_array($lmpCvrIncoming)
-            ? AmazonDilGroiRule::normalizeLmpCvr($lmpCvrIncoming)
-            : $existing['lmp_cvr'];
-
         $diffAdjIncoming = $request->input('diff_adj');
         if (is_string($diffAdjIncoming)) {
             $decodedDiffAdj = json_decode($diffAdjIncoming, true);
@@ -2110,7 +2096,7 @@ class ChannelPromoPricingController extends Controller
             ? AmazonDilGroiRule::normalizeAgeAdj($ageAdjIncoming)
             : $existing['age_adj'];
 
-        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap, 'lmp_cvr' => $lmpCvr, 'diff_adj' => $diffAdj, 'age_adj' => $ageAdj];
+        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap, 'diff_adj' => $diffAdj, 'age_adj' => $ageAdj];
         if ($request->exists('clearance_nroi')) {
             $rawNroi = $request->input('clearance_nroi');
             $visibility['clearance_nroi'] = is_numeric($rawNroi)
@@ -2125,7 +2111,6 @@ class ChannelPromoPricingController extends Controller
             'rules' => $rules,
             'cvr_adj' => $cvrAdj,
             'lmp_cap' => $lmpCap,
-            'lmp_cvr' => $lmpCvr,
             'diff_adj' => $diffAdj,
             'age_adj' => $ageAdj,
         ], null];

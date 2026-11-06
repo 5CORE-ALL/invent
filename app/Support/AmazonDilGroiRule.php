@@ -370,7 +370,6 @@ class AmazonDilGroiRule
      *
      * $requireSnroiAtLmp = false (Amazon Sprc Dil): the 20% condition is dropped. When LMP is available and the
      * calculated price is at or above LMP, the LMP rule always applies (S PRC = LMP − x% by Dil band).
-     * $lmpReduceAmount (Amazon LMP CVR Rule, dollars) replaces the % when it is not null: S PRC = LMP − $amount.
      */
     public static function capSpriceToLmp(
         float $sprice,
@@ -380,8 +379,7 @@ class AmazonDilGroiRule
         float $margin = self::TAKE_HOME,
         float $std = 0.0,
         float $lmpReducePct = 0.0,
-        bool $requireSnroiAtLmp = true,
-        ?float $lmpReduceAmount = null
+        bool $requireSnroiAtLmp = true
     ): float {
         $s = round($sprice, 2);
         if (! ($s > 0)) {
@@ -390,10 +388,7 @@ class AmazonDilGroiRule
         if ($lmp > 0 && ($s + 0.0001) >= $lmp) {
             $sgroiAtLmp = $requireSnroiAtLmp ? self::sgroiAtPrice($lmp, $lp, $ship, $margin) : null;
             if ($sgroiAtLmp === null || $sgroiAtLmp >= self::LMP_SGROI_MIN) {
-                // LMP CVR Rule: a $ amount for the SKU's Dil band and CVR arrow replaces the LMP Rule %.
-                $s = $lmpReduceAmount !== null && is_finite($lmpReduceAmount)
-                    ? round(max(0.01, $lmp - max(0.0, $lmpReduceAmount)), 2)
-                    : self::lmpTargetPrice($lmp, $lmpReducePct);
+                $s = self::lmpTargetPrice($lmp, $lmpReducePct);
             }
         }
 
@@ -1012,68 +1007,6 @@ class AmazonDilGroiRule
     }
 
     /**
-     * Sprc Dil "LMP CVR Rule" (Amazon): the LMP Rule split by the CVR arrow, in dollars. Same Dil bands as the LMP Rule
-     * (low_lt / high_gt come from lmp_cap). For a SKU whose CVR arrow is Up (or Down), S PRC at LMP = LMP − the band's Up (or Down) $.
-     * A blank amount (null), or a flat CVR arrow, falls back to the LMP Rule % of the Dil band, so nothing changes until a $ is entered.
-     *
-     * @return array{low_up:?float,low_down:?float,mid_up:?float,mid_down:?float,high_up:?float,high_down:?float}
-     */
-    public static function defaultLmpCvr(): array
-    {
-        return [
-            'low_up' => null,
-            'low_down' => null,
-            'mid_up' => null,
-            'mid_down' => null,
-            'high_up' => null,
-            'high_down' => null,
-        ];
-    }
-
-    /**
-     * @param  array<string, mixed>|null  $raw
-     * @return array{low_up:?float,low_down:?float,mid_up:?float,mid_down:?float,high_up:?float,high_down:?float}
-     */
-    public static function normalizeLmpCvr(?array $raw): array
-    {
-        $out = self::defaultLmpCvr();
-        if (! is_array($raw)) {
-            return $out;
-        }
-        foreach (array_keys($out) as $key) {
-            if (! array_key_exists($key, $raw) || $raw[$key] === '' || $raw[$key] === null || ! is_numeric($raw[$key])) {
-                continue;
-            }
-            $n = round((float) $raw[$key], 2);
-            if (! is_finite($n) || $n < 0) {
-                continue;
-            }
-            $out[$key] = $n;
-        }
-
-        return $out;
-    }
-
-    /**
-     * Dollars the LMP CVR Rule takes off LMP for a SKU: its Dil band and CVR arrow pick the amount.
-     * null = no amount for this SKU (blank box or flat arrow), so the LMP Rule % applies.
-     *
-     * @param  'down'|'up'|'flat'  $trend
-     * @param  array<string, mixed>|null  $lmpCvr
-     * @param  array<string, mixed>|null  $lmpCap
-     */
-    public static function lmpCvrReduceAmount(float $dil, string $trend, ?array $lmpCvr = null, ?array $lmpCap = null): ?float
-    {
-        if ($trend !== 'up' && $trend !== 'down') {
-            return null;
-        }
-        $cap = self::normalizeLmpCap($lmpCap);
-        $band = $dil < $cap['low_lt'] ? 'low' : ($dil > $cap['high_gt'] ? 'high' : 'mid');
-
-        return self::normalizeLmpCvr($lmpCvr)[$band.'_'.$trend];
-    }
-
-    /**
      * Sprc Dil Diff rule: when Diff = (Std Prc − Price) / Price is above gt_pct, add `points` to the Target NROI.
      *
      * @return array{gt_pct:float,points:float}
@@ -1125,14 +1058,13 @@ class AmazonDilGroiRule
 
     /**
      * @param  array<string, mixed>|null  $saved
-     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},lmp_cvr:array<string,?float>,diff_adj:array{gt_pct:float,points:float},age_adj:list<array{min:float,max:float,points:float}>}
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},diff_adj:array{gt_pct:float,points:float},age_adj:list<array{min:float,max:float,points:float}>}
      */
     public static function unpackStored(?array $saved): array
     {
         $rulesRaw = $saved;
         $cvrRaw = null;
         $lmpCapRaw = null;
-        $lmpCvrRaw = null;
         $diffAdjRaw = null;
         $ageAdjRaw = null;
         $clearanceNroi = null;
@@ -1140,7 +1072,6 @@ class AmazonDilGroiRule
             $rulesRaw = $saved['rules'];
             $cvrRaw = is_array($saved['cvr_adj'] ?? null) ? $saved['cvr_adj'] : null;
             $lmpCapRaw = is_array($saved['lmp_cap'] ?? null) ? $saved['lmp_cap'] : null;
-            $lmpCvrRaw = is_array($saved['lmp_cvr'] ?? null) ? $saved['lmp_cvr'] : null;
             $diffAdjRaw = is_array($saved['diff_adj'] ?? null) ? $saved['diff_adj'] : null;
             // Not saved yet → null → defaults. A saved empty list stays empty (block off).
             $ageAdjRaw = array_key_exists('age_adj', $saved) && is_array($saved['age_adj']) ? $saved['age_adj'] : null;
@@ -1155,7 +1086,6 @@ class AmazonDilGroiRule
             'cvr_adj' => self::normalizeCvrAdj($cvrRaw),
             'clearance_nroi' => $clearanceNroi,
             'lmp_cap' => self::normalizeLmpCap($lmpCapRaw),
-            'lmp_cvr' => self::normalizeLmpCvr($lmpCvrRaw),
             'diff_adj' => self::normalizeDiffAdj($diffAdjRaw),
             'age_adj' => self::normalizeAgeAdj($ageAdjRaw),
         ];

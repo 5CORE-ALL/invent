@@ -502,63 +502,6 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertEqualsWithDelta(50.0, AmazonDilGroiRule::capSpriceToLmp(50, 12, 10, 0, 0.80, 0, 10.0), 0.001);
     }
 
-    public function test_lmp_cvr_rule_picks_the_dollar_amount_by_dil_band_and_cvr_arrow(): void
-    {
-        $cap = ['low_lt' => 25, 'high_gt' => 50, 'low_pct' => 12, 'mid_pct' => 6, 'high_pct' => 0];
-        $cvr = ['low_up' => 8, 'low_down' => 14.5, 'mid_up' => 4, 'mid_down' => 9, 'high_up' => 0, 'high_down' => 3];
-
-        // Up / Down arrow: the band's $ amount.
-        $this->assertSame(8.0, AmazonDilGroiRule::lmpCvrReduceAmount(10, 'up', $cvr, $cap));
-        $this->assertSame(14.5, AmazonDilGroiRule::lmpCvrReduceAmount(10, 'down', $cvr, $cap));
-        $this->assertSame(4.0, AmazonDilGroiRule::lmpCvrReduceAmount(25, 'up', $cvr, $cap));
-        $this->assertSame(9.0, AmazonDilGroiRule::lmpCvrReduceAmount(50, 'down', $cvr, $cap));
-        $this->assertSame(0.0, AmazonDilGroiRule::lmpCvrReduceAmount(80, 'up', $cvr, $cap));
-        $this->assertSame(3.0, AmazonDilGroiRule::lmpCvrReduceAmount(80, 'down', $cvr, $cap));
-
-        // Flat arrow: no amount, so the LMP Rule % applies.
-        $this->assertNull(AmazonDilGroiRule::lmpCvrReduceAmount(10, 'flat', $cvr, $cap));
-    }
-
-    public function test_lmp_cvr_rule_blank_amount_falls_back_to_the_lmp_rule(): void
-    {
-        $cap = ['low_lt' => 25, 'high_gt' => 50, 'low_pct' => 12, 'mid_pct' => 6, 'high_pct' => 0];
-
-        // Nothing saved, or blank / bad values: no amount for any SKU.
-        $this->assertSame(AmazonDilGroiRule::defaultLmpCvr(), AmazonDilGroiRule::unpackStored(['rules' => []])['lmp_cvr']);
-        $blank = ['low_up' => '', 'low_down' => null, 'mid_up' => 'x', 'mid_down' => -3];
-        $this->assertSame(AmazonDilGroiRule::defaultLmpCvr(), AmazonDilGroiRule::normalizeLmpCvr($blank));
-        $this->assertNull(AmazonDilGroiRule::lmpCvrReduceAmount(10, 'up', $blank, $cap));
-        $this->assertNull(AmazonDilGroiRule::lmpCvrReduceAmount(30, 'down', null, $cap));
-
-        // One side set: the other side still has no amount. Dollars are not capped at 99.
-        $half = ['low_up' => 5];
-        $this->assertSame(5.0, AmazonDilGroiRule::lmpCvrReduceAmount(10, 'up', $half, $cap));
-        $this->assertNull(AmazonDilGroiRule::lmpCvrReduceAmount(10, 'down', $half, $cap));
-        $this->assertSame(150.0, AmazonDilGroiRule::normalizeLmpCvr(['mid_up' => 150])['mid_up']);
-
-        // A saved block survives unpackStored.
-        $saved = AmazonDilGroiRule::unpackStored(['rules' => [], 'lmp_cvr' => ['high_down' => 7.5]]);
-        $this->assertSame(7.5, $saved['lmp_cvr']['high_down']);
-        $this->assertNull($saved['lmp_cvr']['high_up']);
-    }
-
-    public function test_lmp_cvr_rule_lands_the_price_on_lmp_less_the_dollar_amount(): void
-    {
-        // LMP $40, calculated Dil price $50 ≥ LMP → S PRC = LMP − $amount (the LMP Rule % of 6 is ignored).
-        $this->assertEqualsWithDelta(38.0, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, 6.0, false, 2.0), 0.001);
-        $this->assertEqualsWithDelta(35.5, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, 6.0, false, 4.5), 0.001);
-        // $0 is a valid amount: S PRC = LMP.
-        $this->assertEqualsWithDelta(40.0, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, 6.0, false, 0.0), 0.001);
-        // No amount: the LMP Rule % applies.
-        $this->assertEqualsWithDelta(37.6, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, 6.0, false, null), 0.001);
-        // An amount bigger than LMP never goes below 1 cent.
-        $this->assertEqualsWithDelta(0.01, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, 6.0, false, 99.0), 0.001);
-        // Below LMP: nothing changes.
-        $this->assertEqualsWithDelta(30.0, AmazonDilGroiRule::capSpriceToLmp(30, 40, 10, 0, 0.80, 0, 6.0, false, 2.0), 0.001);
-        // Std Prc is still the maximum.
-        $this->assertEqualsWithDelta(36.0, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 36.0, 6.0, false, 2.0), 0.001);
-    }
-
     public function test_amazon_sprc_dil_lmp_rule_has_no_snroi_condition(): void
     {
         // LMP 12, LP 10, take-home 0.80: SNROI at LMP is −4% (< 20). The default cap keeps the high price.
