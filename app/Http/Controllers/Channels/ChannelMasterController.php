@@ -18816,6 +18816,23 @@ class ChannelMasterController extends Controller
 
             $metricKey = $metricMap[$metric] ?? $metric;
 
+            // TikTok 2 Y Sales: live per-Pacific-day order totals (same rows as the cell),
+            // not frozen snapshot days that left zeros / wrong days on the graph.
+            if ($metric === 'y_sales' && ! $isAll && ! $useL7Window && $channel === 'tiktokshop2') {
+                $live = $this->buildTiktokTwoLiveDailyYSalesChart($days);
+                if ($live !== []) {
+                    $live = $this->pinChartSeriesLastToTable(
+                        $live,
+                        $channel,
+                        $metric,
+                        $request->input('badge_value'),
+                        false
+                    );
+
+                    return response()->json(['success' => true, 'data' => $live]);
+                }
+            }
+
             // Yesterday-page charts: one point per Pacific day from saved snapshots.
             // never L30 rolling snapshots (those mixed ~43k L30 with a 1.5k last day).
             $dailyChartMetrics = ['y_sales', 'l30_orders', 'qty', 'total_views', 'cvr', 'gprofit', 'groi', 'ad_spend', 'ads_pct', 'npft', 'nroi'];
@@ -22784,6 +22801,74 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * TikTok 2 line sales (sale_price × qty) per Pacific calendar day, from tiktok2_orders.
+     * order_created_at is UTC wall-clock, so each line is shifted to Pacific before bucketing.
+     *
+     * @return array<string, float>  Y-m-d => dollars
+     */
+    private function tiktokTwoDailySalesByPacificDate(Carbon $start, Carbon $end): array
+    {
+        $tz = 'America/Los_Angeles';
+        $out = [];
+        if (! Tiktok2Order::tableReady()) {
+            return $out;
+        }
+
+        [$startUtc, $endUtc] = Tiktok2Order::toUtcRange(
+            $start->copy()->timezone($tz)->startOfDay(),
+            $end->copy()->timezone($tz)->endOfDay()
+        );
+
+        $rows = Tiktok2Order::activeQuery()
+            ->whereBetween('order_created_at', [$startUtc, $endUtc])
+            ->selectRaw('order_created_at as created_raw, COALESCE(sale_price, 0) * quantity as line_total')
+            ->get();
+
+        foreach ($rows as $row) {
+            $raw = $row->created_raw ?? null;
+            if ($raw === null || $raw === '') {
+                continue;
+            }
+            try {
+                $ymd = Carbon::parse((string) $raw, 'UTC')->timezone($tz)->toDateString();
+            } catch (\Throwable $e) {
+                continue;
+            }
+            $out[$ymd] = ($out[$ymd] ?? 0.0) + (float) ($row->line_total ?? 0);
+        }
+
+        return $out;
+    }
+
+    /**
+     * TikTok 2 Y Sales chart: one point per Pacific day through yesterday, summed
+     * from tiktok2_orders. Saved snapshots froze partial/zero days, so the graph
+     * and dot disagreed with the Y Sales cell. Gap days stay $0.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildTiktokTwoLiveDailyYSalesChart(int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->subDay()->startOfDay();
+        $span = $days > 0 ? $days : 30;
+        $start = $end->copy()->subDays($span - 1);
+        $byDate = $this->tiktokTwoDailySalesByPacificDate($start, $end);
+
+        $out = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round((float) ($byDate[$cursor->toDateString()] ?? 0), 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
      * Shein Y Sales chart: one Pacific calendar day each. Gap days are $0.
      *
      * @return list<array{date: string, value: float}>
@@ -23795,16 +23880,22 @@ class ChannelMasterController extends Controller
                 'npft' => $gpft,
                 'nroi' => $groi,
             ];
-            $ySales = $this->computeTiktokTwoYSalesLikeAmazon();
-            if ($ySales !== null) {
-                $metrics['y_sales'] = (float) $ySales;
-            }
             $l7Sales = $this->computeTiktokTwoL7SalesLikeAmazon();
             if ($l7Sales !== null) {
                 $metrics['l7_sales'] = (float) $l7Sales;
                 $metrics['p_sales'] = $this->projectedSalesFromL7($l7Sales);
             }
             $this->pinFlatChannelDots($out, 'tiktokshop2', $metrics);
+
+            // Y Sales dot = the graph's last two points (yesterday vs the day before),
+            // both summed live from tiktok2_orders.
+            $yChart = $this->buildTiktokTwoLiveDailyYSalesChart(2);
+            if (count($yChart) >= 2) {
+                $out['tiktokshop2']['y_sales'] = [
+                    (float) $yChart[count($yChart) - 2]['value'],
+                    (float) $yChart[count($yChart) - 1]['value'],
+                ];
+            }
         } catch (\Throwable $e) {
             Log::warning('TikTok 2 live dot overlay failed: '.$e->getMessage());
         }
