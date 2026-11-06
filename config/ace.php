@@ -28,6 +28,7 @@ return [
         'market-places.bestbuy_tabulator_view' => [],
         'market-places.depop_pricing' => [],
         'market-places.dhgate_analytics' => ['route' => 'dhgate.analytics.data'],
+        'market-places.cjdropshipping_analytics' => ['route' => 'cjdropshipping.analytics.data'],
         'market-places.doba-analytics' => ['url' => '/doba-data-view'],
         'market-places.doba_tabulator_view' => [],
         'market-places.doba_withoutship_tabulator_view' => [],

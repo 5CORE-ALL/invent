@@ -2718,6 +2718,20 @@
                 </div>
             </li>
 
+            <!-- CJ Dropshipping -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarCjDropshipping" aria-expanded="false"
+                    aria-controls="sidebarCjDropshipping">
+                    <span>CJ Dropshipping</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarCjDropshipping">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ route('cjdropshipping.analytics') }}">CJ Dropshipping Analytics</a></li>
+                    </ul>
+                </div>
+            </li>
+
             <!-- Bestbuy USA -->
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarBestbuyUSA" aria-expanded="false"

@@ -130,6 +130,7 @@ use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Http\Controllers\MarketPlace\ACOSControl\EbayACOSController;
 use App\Http\Controllers\MarketPlace\AlibabaAnalyticsController;
 use App\Http\Controllers\MarketPlace\OfferUpAnalyticsController;
+use App\Http\Controllers\MarketPlace\CjDropshippingAnalyticsController;
 use App\Http\Controllers\MarketPlace\DHGateAnalyticsController;
 use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Http\Controllers\MarketPlace\AmazonFbaInvController;
@@ -6790,6 +6791,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // DH Gate
     Route::get('/dhgate/analytics', [DHGateAnalyticsController::class, 'index'])->name('dhgate.analytics');
     Route::get('/dhgate/analytics/data', [DHGateAnalyticsController::class, 'data'])->name('dhgate.analytics.data');
+
+    // CJ Dropshipping
+    Route::get('/cjdropshipping/analytics', [CjDropshippingAnalyticsController::class, 'index'])->name('cjdropshipping.analytics');
+    Route::get('/cjdropshipping/analytics/data', [CjDropshippingAnalyticsController::class, 'data'])->name('cjdropshipping.analytics.data');
 
     // listing DHGate
     // listing Walmart Canada

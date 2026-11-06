@@ -18898,7 +18898,10 @@ class ChannelMasterController extends Controller
             })->map(function ($rows) {
                 $canonical = $this->allMarketplaceSnapshotKey((string) $rows->first()->channel);
 
+                // Prefer the canonical row over a legacy alias ("shopify" vs "shopifyb2c").
                 return $rows->first(function ($row) use ($canonical) {
+                    return strtolower(trim((string) $row->channel)) === $canonical;
+                }) ?? $rows->first(function ($row) use ($canonical) {
                     return $this->allMarketplaceSnapshotKey((string) $row->channel) === $canonical;
                 }) ?? $rows->first();
             })->values();
@@ -20198,7 +20201,12 @@ class ChannelMasterController extends Controller
                         return $this->snapshotDateYmd($row);
                     })
                     ->map(function ($rows) use ($channel) {
+                        // A day can hold the canonical row and a legacy alias row ("shopifyb2c" and
+                        // "shopify"). Row order between them is undefined, and the legacy copy is a
+                        // seeded one that gets skipped, which left the dot with no history (gray).
                         return $rows->first(function ($row) use ($channel) {
+                            return strtolower(trim((string) $row->channel)) === $channel;
+                        }) ?? $rows->first(function ($row) use ($channel) {
                             return $this->allMarketplaceSnapshotKey((string) $row->channel) === $channel;
                         }) ?? $rows->first();
                     })
