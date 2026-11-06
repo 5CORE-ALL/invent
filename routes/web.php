@@ -6491,6 +6491,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/alibaba/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsAlibabaController::class, 'apiScore'])->name('lqs.alibaba.api.score');
     Route::post('/lqs/alibaba/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsAlibabaController::class, 'startApiSync'])->name('lqs.alibaba.api.sync');
     Route::get('/lqs/alibaba/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsAlibabaController::class, 'apiSyncStatus'])->name('lqs.alibaba.api.sync.status');
+    // Newegg / PLS / Business 5 Core B2B: scored from synced catalog data (no API calls)
+    Route::post('/lqs/newegg/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsNeweggController::class, 'apiScore'])->name('lqs.newegg.api.score');
+    Route::post('/lqs/newegg/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsNeweggController::class, 'startApiSync'])->name('lqs.newegg.api.sync');
+    Route::get('/lqs/newegg/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsNeweggController::class, 'apiSyncStatus'])->name('lqs.newegg.api.sync.status');
+    Route::post('/lqs/pls/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsPlsController::class, 'apiScore'])->name('lqs.pls.api.score');
+    Route::post('/lqs/pls/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsPlsController::class, 'startApiSync'])->name('lqs.pls.api.sync');
+    Route::get('/lqs/pls/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsPlsController::class, 'apiSyncStatus'])->name('lqs.pls.api.sync.status');
+    Route::post('/lqs/b5cb2b/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsB5cb2bController::class, 'apiScore'])->name('lqs.b5cb2b.api.score');
+    Route::post('/lqs/b5cb2b/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsB5cb2bController::class, 'startApiSync'])->name('lqs.b5cb2b.api.sync');
+    Route::get('/lqs/b5cb2b/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsB5cb2bController::class, 'apiSyncStatus'])->name('lqs.b5cb2b.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation

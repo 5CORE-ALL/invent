@@ -370,6 +370,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('lqs-sync-alibaba')
             ->appendOutputTo($log);
+        // Newegg / PLS / Business 5 Core B2B LQS from synced catalog data; no API calls.
+        foreach (['newegg' => '06:10', 'pls' => '06:15', 'b5cb2b' => '06:20'] as $lqsSlug => $lqsTime) {
+            $schedule->command('lqs:sync-'.$lqsSlug)
+                ->dailyAt($lqsTime)
+                ->withoutOverlapping(60)
+                ->runInBackground()
+                ->name('lqs-sync-'.$lqsSlug)
+                ->appendOutputTo($log);
+        }
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)

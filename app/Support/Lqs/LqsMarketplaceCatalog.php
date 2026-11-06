@@ -38,12 +38,12 @@ class LqsMarketplaceCatalog
             ['macy', "Macy's", 'Listing ID', 'sheet', null, null],
             ['doba', 'Doba', 'Item ID', 'sheet', 'doba', null],
             ['faire', 'Faire', 'Product ID', 'sheet', 'faire', null],
-            ['pls', 'PLS', 'Listing ID', 'sheet', null, null],
+            ['pls', 'PLS', 'Listing ID', 'sheet', 'pls', null],
             ['purchasingpower', 'Purchasing Power', 'Listing ID', 'sheet', null, null],
             ['walmart', 'Walmart', 'Item ID', 'sheet', 'walmart', 'https://www.walmart.com/ip/{id}'],
             ['fbmarketplace', 'FB Marketplace', 'Listing ID', 'sheet', null, null],
             ['topdawg', 'TopDawg', 'Listing ID', 'sheet', 'topdawg', null],
-            ['b5cb2b', 'Business 5 Core', 'Listing ID', 'sheet', null, null],
+            ['b5cb2b', 'Business 5 Core', 'Listing ID', 'sheet', 'b5cb2b', null],
         ];
 
         $map = [];

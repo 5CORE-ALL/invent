@@ -369,6 +369,19 @@ class LqsMarketplacePageService
         if ($source === 'wayfair') {
             return $this->mapWayfairMetrics($normalizeSku);
         }
+        if ($source === 'pls' && Schema::hasTable('pls_products')) {
+            return $this->mapGenericMetrics(DB::table('pls_products')->orderByDesc('id')->get(), $normalizeSku, [
+                'l30' => 'p_l30',
+                'sessions' => 'views',
+                'price' => 'price',
+            ]);
+        }
+        if ($source === 'b5cb2b' && Schema::hasTable('business_5core_products')) {
+            return $this->mapGenericMetrics(DB::table('business_5core_products')->orderByDesc('id')->get(), $normalizeSku, [
+                'l30' => 'b5c_l30',
+                'price' => 'price',
+            ]);
+        }
         if ($source === 'topdawg' && class_exists(TopDawgProduct::class) && Schema::hasTable('topdawg_products')) {
             return $this->mapGenericMetrics(TopDawgProduct::query()->orderByDesc('id')->get(), $normalizeSku, [
                 'l30' => 'r_l30',
