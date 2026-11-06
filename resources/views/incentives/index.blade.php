@@ -697,7 +697,7 @@
                                                                 Requested {{ $cutoffLabel($pending['requested_cutoff'] ?? '') }}
                                                             @endif
                                                         </span>
-                                                        @if ($canEdit)
+                                                        @if ($canEdit && (! $canRequest || $canApproveClaims))
                                                             <div class="inc-review-btns">
                                                                 <form method="post" action="{{ route('incentives.extend.review') }}">
                                                                     @csrf
@@ -721,6 +721,7 @@
                                                             data-name="{{ $person['name'] }}"
                                                             data-title="{{ $row['title'] ?? '' }}"
                                                             data-cutoff="{{ $iso }}"
+                                                            data-direct="{{ $canEdit && (! $canRequest || $canApproveClaims) ? '1' : '0' }}"
                                                             data-bs-toggle="modal"
                                                             data-bs-target="#inc-extend-modal">
                                                             Extend
@@ -976,6 +977,7 @@
             var name = btn.getAttribute('data-name') || '';
             var title = btn.getAttribute('data-title') || '';
             var cutoff = btn.getAttribute('data-cutoff') || '';
+            applyDirectly = btn.getAttribute('data-direct') === '1';
             var idInput = document.getElementById('inc-extend-id');
             var dateInput = document.getElementById('inc-extend-date');
             var reasonInput = document.getElementById('inc-extend-reason');
@@ -994,7 +996,8 @@
             syncRequestOption(extendModal);
         });
     }
-    var canEditIncentive = @json((bool) $canEdit);
+    // true only when the viewer can approve this incentive themselves (not their own request)
+    var applyDirectly = false;
     function syncRequestOption(modal) {
         if (!modal) return;
         var picked = modal.querySelector('input[name="request_type"]:checked');
@@ -1025,7 +1028,7 @@
         if (submit) {
             submit.textContent = 'Make request';
         }
-        if (note && canEditIncentive && type !== 'help') {
+        if (note && applyDirectly && type !== 'help') {
             note.textContent += ' You can approve incentives yourself, so this is applied right away.';
         }
     }

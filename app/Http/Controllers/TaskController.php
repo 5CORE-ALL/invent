@@ -11315,7 +11315,12 @@ class TaskController extends Controller
         }
         $extend->fill($payload);
 
-        if ($type === UserIncentiveExtendRequest::TYPE_EXTEND && $this->canEditIncentives($viewer)) {
+        // Editors apply changes to other people's incentives straight away. A request on the editor's
+        // OWN incentive always goes to president@5core.com (only the president can self-approve).
+        $applyDirectly = $this->canEditIncentives($viewer)
+            && ((int) $row->user_id !== (int) $viewer->id || $this->canApproveIncentiveClaims($viewer));
+
+        if ($type === UserIncentiveExtendRequest::TYPE_EXTEND && $applyDirectly) {
             $this->applyIncentiveCutoffDate($row, $validated['additional_condition'], $viewer);
             $extend->fill([
                 'status' => UserIncentiveExtendRequest::STATUS_APPROVED,
@@ -11330,7 +11335,7 @@ class TaskController extends Controller
                 ->with('success', 'Cutoff date extended.');
         }
 
-        if ($type === UserIncentiveExtendRequest::TYPE_END && $this->canEditIncentives($viewer)) {
+        if ($type === UserIncentiveExtendRequest::TYPE_END && $applyDirectly) {
             $this->endIncentive($row, $viewer);
             $extend->fill([
                 'status' => UserIncentiveExtendRequest::STATUS_APPROVED,
@@ -11347,10 +11352,13 @@ class TaskController extends Controller
 
         $extend->save();
 
+        $who = $this->canEditIncentives($viewer) && (int) $row->user_id === (int) $viewer->id
+            ? 'president@5core.com'
+            : 'president@5core.com or software5@5core.com';
         $message = match ($type) {
-            UserIncentiveExtendRequest::TYPE_END => 'Request to end sent. president@5core.com or software5@5core.com will review it.',
-            UserIncentiveExtendRequest::TYPE_HELP => 'Need help request sent. president@5core.com or software5@5core.com will see it.',
-            default => 'Extend request sent. president@5core.com or software5@5core.com will review it.',
+            UserIncentiveExtendRequest::TYPE_END => 'Request to end sent. '.$who.' will review it.',
+            UserIncentiveExtendRequest::TYPE_HELP => 'Need help request sent. '.$who.' will see it.',
+            default => 'Extend request sent. '.$who.' will review it.',
         };
 
         return redirect()
@@ -11450,6 +11458,12 @@ class TaskController extends Controller
                 ->back()
                 ->withFragment('inc-user-'.$extend->user_id)
                 ->withErrors(['decision' => 'This extend request was already reviewed.']);
+        }
+        if ((int) $extend->user_id === (int) $viewer->id && ! $this->canApproveIncentiveClaims($viewer)) {
+            return redirect()
+                ->back()
+                ->withFragment('inc-user-'.$extend->user_id)
+                ->withErrors(['decision' => 'You cannot approve your own request. president@5core.com will review it.']);
         }
 
         $note = trim((string) ($validated['review_note'] ?? ''));
