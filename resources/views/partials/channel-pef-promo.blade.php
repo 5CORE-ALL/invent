@@ -886,7 +886,7 @@
                         (Dil 0% gets no PRMT). Save on any page updates every page.
                         Changing any slab fills <strong>PRMT %</strong>.
                         <strong>PRMT% auto-applies when Dil slab changes</strong>.
-                        <strong>Save Rule</strong> stores the slabs.
+                        <strong>Save &amp; Apply</strong> stores the slabs and applies PRMT% to selected (or visible) SKUs.
                         If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.
                         @if($channelPromoChannel === 'shopify_b2c')
                         If discounted S PRC is <strong>below Amz price</strong>, S PRC is raised to A Price (Amz label).
@@ -907,8 +907,8 @@
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-dil-prmt-apply-btn"
-                        title="Save Dil→PRMT slabs. PRMT% also auto-applies when Dil slab changes.">
-                        <i class="fas fa-save me-1"></i>Save Rule
+                        title="Save Dil→PRMT slabs, then apply PRMT% — selected rows if checked, otherwise all visible. Only SKUs with E L30 &gt; 0.">
+                        <i class="fas fa-save me-1"></i>Save &amp; Apply
                     </button>
                 </div>
             </div>
@@ -5918,7 +5918,7 @@
                 }
                 renderChPromoDilPrmtModalTable();
                 renderChPromoZeroSoldPrmtModalTable();
-                const defaultMsg = 'Using first-time defaults (0.01–3 … 21–24, 24–25). Save Rule stores slabs. PRMT% auto-applies when Dil slab changes.';
+                const defaultMsg = 'Using first-time defaults (0.01–3 … 21–24, 24–25). Save & Apply stores slabs and applies PRMT%. PRMT% auto-applies when Dil slab changes.';
                 $('#ch-promo-dil-prmt-status').text(res && res.is_default
                     ? defaultMsg
                     : 'Loaded shared Dil vs PRMT rules (all marketplaces).');
@@ -6827,6 +6827,61 @@
                 }
             } catch (xhr) {
                 chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+            } finally {
+                $btn.prop('disabled', false).html(html);
+            }
+        }
+
+        async function saveAndApplyChPromoDilPrmt() {
+            const $btn = $('#ch-promo-dil-prmt-apply-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
+            try {
+                await saveChPromoDilPrmtRules();
+            } catch (xhr) {
+                $btn.prop('disabled', false).html(html);
+                chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                return;
+            }
+
+            let targets = collectChPromoSelectedRows();
+            let label = 'selected';
+            if (!targets.length) {
+                targets = collectChPromoVisibleRows();
+                label = 'all visible';
+            }
+            if (chPromoSaleGatedApply()) {
+                targets = targets.filter(function(t) {
+                    const d = (t.d || (t.row && t.row.getData())) || {};
+                    return chPromoHasSaleQty(d);
+                });
+            }
+            if (!targets.length) {
+                $btn.prop('disabled', false).html(html);
+                chPromoToast(
+                    'success',
+                    chPromoSaleGatedApply()
+                        ? ('Rules saved. No rows with ' + chPromoSaleGateLabel() + ' to apply.')
+                        : 'Rules saved. No SKUs to apply.'
+                );
+                chPromoSyncEbayPrmtColumnFromSlabs();
+                return;
+            }
+            if (label === 'all visible') {
+                if (!confirm(
+                    'No rows selected — apply Dil→PRMT % to '
+                    + targets.length + ' visible SKU(s)'
+                    + (chPromoSaleGatedApply() ? (' with ' + chPromoSaleGateLabel()) : '')
+                    + '?'
+                )) {
+                    $btn.prop('disabled', false).html(html);
+                    return;
+                }
+            }
+            try {
+                await applyChPromoDilPrmtToTargets(targets, label);
+            } catch (xhr) {
+                chPromoToast('error', 'Apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
             } finally {
                 $btn.prop('disabled', false).html(html);
             }
@@ -11633,7 +11688,7 @@
                             + 'immediately fills the <strong>PRMT %</strong> column. '
                             + '<strong>PRMT% auto-applies when Dil slab changes</strong> on SKUs with '
                             + '<strong>eBay sale (E L30) &gt; 0</strong>. '
-                            + '<strong>Save Rule</strong> stores the slabs. '
+                            + '<strong>Save &amp; Apply</strong> stores the slabs and applies PRMT% to selected (or visible) SKUs. '
                             + 'If the listing’s total INV is 0, SKU PRMT% is <strong>0</strong>.';
                     }
                 } else if (chPromoUsesAmazonDilPrmtSlabs()) {
@@ -11733,7 +11788,7 @@
                 });
             });
 
-            $('#ch-promo-dil-prmt-apply-btn').off('click.chpromo').on('click.chpromo', saveChPromoDilPrmtRulesOnly);
+            $('#ch-promo-dil-prmt-apply-btn').off('click.chpromo').on('click.chpromo', saveAndApplyChPromoDilPrmt);
             $(document).off('input.chPromoDilCascade change.chPromoDilCascade', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input')
                 .on('input.chPromoDilCascade change.chPromoDilCascade', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input', function() {
                     chPromoOnDilPrmtNumberChanged(this);
