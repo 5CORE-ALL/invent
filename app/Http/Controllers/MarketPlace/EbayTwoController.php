@@ -315,6 +315,7 @@ class EbayTwoController extends Controller
             }
             $rows = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->attachAgeDays($rows);
             $rows = app(\App\Services\ExcelCategoryLookupService::class)->attachToRows($rows, 'ebay2');
+            $rows = $this->fillParentExcelCategory($rows);
 
             array_walk_recursive($rows, static function (&$value) {
                 if (is_float($value) && ! is_finite($value)) {
@@ -1387,6 +1388,41 @@ class EbayTwoController extends Controller
             "data" => $result,
             "status" => 200,
         ]);
+    }
+
+    /**
+     * Ads Rule PMT runs per parent on eBay 2, so a PARENT row needs the category of its family. The
+     * parent copies one child's item id, which has no category when that listing is not in the
+     * uploaded report; fall back to the first child that has one.
+     *
+     * @param  array<int, mixed>  $rows  flat grid rows (PARENT rows + child rows)
+     * @return array<int, mixed>
+     */
+    private function fillParentExcelCategory(array $rows): array
+    {
+        $byParent = [];
+        foreach ($rows as $row) {
+            if (! is_array($row) || ! empty($row['is_parent_row']) || ! empty($row['is_parent_summary'])) {
+                continue;
+            }
+            $cat = trim((string) ($row['excel_category'] ?? ''));
+            $parent = strtoupper(trim((string) ($row['Parent'] ?? '')));
+            if ($cat !== '' && $parent !== '' && ! isset($byParent[$parent])) {
+                $byParent[$parent] = $cat;
+            }
+        }
+
+        foreach ($rows as $i => $row) {
+            if (! is_array($row) || empty($row['is_parent_row']) || trim((string) ($row['excel_category'] ?? '')) !== '') {
+                continue;
+            }
+            $parent = strtoupper(trim((string) ($row['Parent'] ?? '')));
+            if ($parent !== '' && isset($byParent[$parent])) {
+                $rows[$i]['excel_category'] = $byParent[$parent];
+            }
+        }
+
+        return $rows;
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
+use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\CpMasterDil;
 use App\Support\DilVsSbidListingRollup;
@@ -292,7 +293,14 @@ class DilVsSbidApplyService
 
         $bids = PmtCategoryBidRule::bids($account);
         $categories = app(ExcelCategoryLookupService::class)->map($account);
-        $decider = fn (string $lid, object $ad, array $rolled): array => $this->pmtDecision($lid, $rolled, $bids, $categories);
+        // eBay 2: the rule is decided once per PARENT (INV / OV L30 / eBay sold of the whole family),
+        // and every ad listing of that parent gets the same bid. Other accounts decide per listing.
+        $families = $account === 'ebay2'
+            ? $this->pmtParentFamilies($listingIds, $cfg['metric'], $categories)
+            : [];
+        $decider = fn (string $lid, object $ad, array $rolled): array => isset($families[(string) $lid])
+            ? $this->pmtDecisionFromInputs($families[(string) $lid], $bids)
+            : $this->pmtDecision($lid, $rolled, $bids, $categories);
 
         if ($onlyLocalMismatch) {
             $listingIds = $this->pmtLocalMismatches($listingIds, $adsTable, $cfg['metric'], $decider);
@@ -323,17 +331,34 @@ class DilVsSbidApplyService
      */
     private function pmtDecision(string $listingId, array $rolled, array $bids, array $categories): array
     {
-        $inv = $rolled['shopify']->inv ?? null;
+        return $this->pmtDecisionFromInputs([
+            'inv' => $rolled['shopify']->inv ?? null,
+            'ovL30' => $rolled['shopify']->quantity ?? 0,
+            'sold' => $rolled['metric']->ebay_l30 ?? 0,
+            'category' => $categories[ExcelCategoryLookupService::normalizeItemId($listingId)] ?? '',
+        ], $bids);
+    }
+
+    /**
+     * Ads Rule PMT decision from already rolled-up numbers (one listing, or one whole parent family).
+     *
+     * @param  array{inv:mixed,ovL30:mixed,sold:mixed,category:string}  $in
+     * @param  array<string, array{highest:?float,lowest:?float}>  $bids
+     * @return array{skip:?string, off:bool, formatted:?string, label:string}
+     */
+    private function pmtDecisionFromInputs(array $in, array $bids): array
+    {
+        $inv = $in['inv'] ?? null;
         if ($inv === null || ! is_numeric($inv)) {
             // No Shopify match is not the same as INV 0 — never pause on missing data.
             return ['skip' => 'PMT rule: no inventory data', 'off' => false, 'formatted' => null, 'label' => ''];
         }
         $inv = (float) $inv;
-        $ovL30 = (float) ($rolled['shopify']->quantity ?? 0);
-        $sold = (float) ($rolled['metric']->ebay_l30 ?? 0);
+        $ovL30 = (float) ($in['ovL30'] ?? 0);
+        $sold = (float) ($in['sold'] ?? 0);
         $dil = $inv > 0 ? ($ovL30 / $inv) * 100 : 0.0;
 
-        $category = $categories[ExcelCategoryLookupService::normalizeItemId($listingId)] ?? '';
+        $category = (string) ($in['category'] ?? '');
         $range = $bids[$category] ?? ['highest' => null, 'lowest' => null];
         $d = PmtCategoryBidRule::decide($inv, $dil, $sold, $range['highest'], $range['lowest']);
 
@@ -346,6 +371,140 @@ class DilVsSbidApplyService
         }
 
         return ['skip' => null, 'off' => false, 'formatted' => $formatted, 'label' => $d['label']];
+    }
+
+    /**
+     * Ads Rule PMT on eBay 2 runs per PARENT, not per SKU / listing: INV and OV L30 are summed over
+     * every child SKU of the parent (same as the PARENT row on /ebay2-tabulator-view), eBay sold is
+     * summed over the parent's listings, and the category is the parent's listing category.
+     * Every ad listing of the parent then gets the same decision. A listing whose SKUs have no
+     * parent is its own family (same numbers as the old per-listing roll-up).
+     *
+     * @param  array<int, mixed>  $listingIds
+     * @param  class-string  $metricClass
+     * @param  array<string, string>  $categories  normalized item id => category
+     * @return array<string, array{inv:?float,ovL30:float,sold:float,category:string}>  listing id => family inputs
+     */
+    private function pmtParentFamilies(array $listingIds, string $metricClass, array $categories): array
+    {
+        $listingIds = array_values(array_unique(array_map('strval', $listingIds)));
+        if ($listingIds === []) {
+            return [];
+        }
+
+        $normSku = static fn ($s): string => strtoupper(trim((string) $s));
+        $isParentSku = static fn (string $s): bool => str_starts_with($s, 'PARENT');
+
+        // 1. SKUs of the ad listings -> their parent value.
+        $adMetrics = $metricClass::whereIn('item_id', $listingIds)->get(['item_id', 'sku', 'ebay_l30']);
+        $adSkus = $adMetrics->pluck('sku')->map(fn ($s) => trim((string) $s))->filter()->unique()->values()->all();
+        $parentBySku = $adSkus === []
+            ? []
+            : ProductMaster::query()->whereIn('sku', $adSkus)->pluck('parent', 'sku')
+                ->mapWithKeys(fn ($p, $s) => [$normSku($s) => trim((string) $p)])->all();
+
+        // 2. Every child SKU of those parents (also the ones with no ad / no listing).
+        $parentValues = array_values(array_unique(array_filter($parentBySku, fn ($p) => $p !== '')));
+        $familySkus = []; // family key => list of child SKUs
+        $familyKeyBySku = [];
+        if ($parentValues !== []) {
+            foreach (ProductMaster::query()->whereIn('parent', $parentValues)->get(['sku', 'parent']) as $pm) {
+                $sku = trim((string) $pm->sku);
+                if ($sku === '' || $isParentSku($normSku($sku))) {
+                    continue;
+                }
+                $key = 'P:'.$normSku($pm->parent);
+                $familySkus[$key][$normSku($sku)] = $sku;
+                $familyKeyBySku[$normSku($sku)] = $key;
+            }
+        }
+
+        // 3. Family key per ad listing (a listing with no parent is its own family).
+        $familyByListing = [];
+        foreach ($adMetrics as $m) {
+            $lid = (string) $m->item_id;
+            $sku = $normSku($m->sku);
+            $key = $familyKeyBySku[$sku] ?? null;
+            if ($key === null) {
+                $key = 'L:'.$lid;
+                $familySkus[$key][$sku] = trim((string) $m->sku);
+            }
+            $familyByListing[$lid] ??= $key;
+        }
+
+        // 4. Inventory / sold for every child SKU of every family.
+        $allSkus = [];
+        foreach ($familySkus as $skus) {
+            foreach ($skus as $sku) {
+                if ($sku !== '' && ! $isParentSku($normSku($sku))) {
+                    $allSkus[$sku] = true;
+                }
+            }
+        }
+        $allSkus = array_keys($allSkus);
+        $shopifyMap = $this->shopifyBySku($allSkus);
+        $soldByItem = []; // item id => listing-level eBay sold (the same number sits on every variation)
+        $itemsByFamily = [];
+        if ($allSkus !== []) {
+            foreach ($metricClass::whereIn('sku', $allSkus)->get(['item_id', 'sku', 'ebay_l30']) as $m) {
+                $item = trim((string) $m->item_id);
+                $key = $familyKeyBySku[$normSku($m->sku)] ?? null;
+                if ($item === '' || $key === null) {
+                    continue;
+                }
+                $soldByItem[$item] = max($soldByItem[$item] ?? 0.0, (float) ($m->ebay_l30 ?? 0));
+                $itemsByFamily[$key][$item] = true;
+            }
+        }
+        foreach ($adMetrics as $m) { // listings of the no-parent families + any the SKU lookup missed
+            $item = trim((string) $m->item_id);
+            $key = $familyByListing[$item] ?? null;
+            if ($item === '' || $key === null) {
+                continue;
+            }
+            $soldByItem[$item] = max($soldByItem[$item] ?? 0.0, (float) ($m->ebay_l30 ?? 0));
+            $itemsByFamily[$key][$item] = true;
+        }
+
+        // 5. Roll each family up once, then hand the same numbers to every ad listing in it.
+        $rolledByFamily = [];
+        foreach ($familySkus as $key => $skus) {
+            $inv = 0.0;
+            $ov = 0.0;
+            $hasInv = false;
+            foreach ($skus as $sku) {
+                $shop = $shopifyMap[$sku] ?? null;
+                if ($shop === null) {
+                    continue;
+                }
+                if (isset($shop->inv) && is_numeric($shop->inv)) {
+                    $inv += (float) $shop->inv;
+                    $hasInv = true;
+                }
+                if (isset($shop->quantity) && is_numeric($shop->quantity)) {
+                    $ov += (float) $shop->quantity;
+                }
+            }
+            $sold = 0.0;
+            $category = '';
+            foreach (array_keys($itemsByFamily[$key] ?? []) as $item) {
+                $sold += $soldByItem[$item] ?? 0.0;
+                if ($category === '') {
+                    $category = $categories[ExcelCategoryLookupService::normalizeItemId($item)] ?? '';
+                }
+            }
+            $rolledByFamily[$key] = ['inv' => $hasInv ? $inv : null, 'ovL30' => $ov, 'sold' => $sold, 'category' => $category];
+        }
+
+        $out = [];
+        foreach ($listingIds as $lid) {
+            $key = $familyByListing[$lid] ?? null;
+            if ($key !== null && isset($rolledByFamily[$key])) {
+                $out[$lid] = $rolledByFamily[$key];
+            }
+        }
+
+        return $out;
     }
 
     /**

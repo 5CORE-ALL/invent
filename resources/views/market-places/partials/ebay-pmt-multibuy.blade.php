@@ -11,6 +11,9 @@
     $pmtBenchPage = $pmtAccount === 'ebay1' ? '/benchmarks' : '/'.$pmtAccount.'-benchmarks';
     $pmtExcelPath = $pmtAccount === 'ebay1' ? '/excel' : '/'.$pmtAccount.'-excel';
     $pmtDilNote = $pmtAccount === 'ebay1' ? ' Dil vs SBid is not pushed for eBay 1 while this is on.' : '';
+    // eBay 2: the rule is decided per PARENT (family INV / OV L30 / eBay sold), not per child SKU.
+    $pmtByParent = $pmtAccount === 'ebay2';
+    $pmtUnit = $pmtByParent ? 'Parent' : 'SKU';
 @endphp
 @if ($pmtPart === 'css')
         /* Ads Rule PMT modal (next-gen look) */
@@ -96,7 +99,7 @@
                         <span class="arp-title-icon"><i class="fas fa-bullhorn"></i></span>
                         <div>
                             <h5 class="mb-0">Ads Rule PMT</h5>
-                            <div class="arp-subtitle">Bid range by category &middot; rules decide which bid each SKU gets</div>
+                            <div class="arp-subtitle">Bid range by category &middot; rules decide which bid each {{ $pmtUnit }} gets</div>
                         </div>
                     </div>
                     <div class="d-flex align-items-center gap-3">
@@ -137,7 +140,7 @@
                                 <thead>
                                     <tr>
                                         <th>Category</th>
-                                        <th class="text-center" style="width: 80px;">SKUs</th>
+                                        <th class="text-center" style="width: 80px;">{{ $pmtUnit }}s</th>
                                         <th style="width: 140px;">Highest (%)</th>
                                         <th style="width: 140px;">Lowest (%)</th>
                                     </tr>
@@ -230,6 +233,20 @@
                 return sku.indexOf('PARENT') !== -1;
             };
 
+            /**
+             * Rows the Ads Rule PMT applies to. eBay 2 decides per PARENT (the PARENT row carries the family
+             * INV / OV L30 / eBay L30); a child SKU only gets a rule when it has no parent at all.
+             * Other accounts decide per SKU (every non-parent row).
+             */
+            const PMT_BY_PARENT = @json($pmtByParent);
+            window.ebayPmtIsRuled = function(d) {
+                if (!d) return false;
+                if (!PMT_BY_PARENT) return !window.ebayPmtIsParent(d);
+                if (d.is_parent_summary === true) return false;
+                if (window.ebayPmtIsParent(d)) return true;
+                return String(d.Parent || '').trim() === '';
+            };
+
             // ===== Ads Rule PMT: suggested bid (%) per category =====
             (function() {
                 const PMT_BIDS_URL = @json($pmtBase.'/campaign-ads/pmt-category-bids');
@@ -268,11 +285,12 @@
                     return Number(String(row.INV == null ? '' : row.INV).replace(/[,\s\u00A0]/g, '')) || 0;
                 }
                 function rowDil(row) {
-                    if (typeof chPromoDil === 'function') return Number(chPromoDil(row)) || 0;
+                    // Parent rows (eBay 2) hold the family sums: Dil = family OV L30 ÷ family INV.
+                    if (typeof chPromoDil === 'function' && !(PMT_BY_PARENT && window.ebayPmtIsParent(row))) return Number(chPromoDil(row)) || 0;
                     const inv = rowInv(row);
                     return inv > 0 ? ((parseFloat(row.L30) || 0) / inv) * 100 : 0;
                 }
-                /** Which rule key ('1'..'5' / 'base') applies to this SKU row. */
+                /** Which rule key ('1'..'5' / 'base') applies to this {{ $pmtUnit }} row. */
                 function classifyRow(row) {
                     if (rowInv(row) <= 0) return '1';
                     const sold = parseFloat(row['eBay L30']) || 0;
@@ -288,11 +306,12 @@
                     return isFinite(n) ? n : null;
                 }
                 /**
-                 * Suggested PMT bid for a row: { rule, bid, pause, missing, title } (null for PARENT rows).
+                 * Suggested PMT bid for a row: { rule, bid, pause, missing, title }
+                 * (null for rows the rule does not apply to: child SKUs on eBay 2, PARENT rows elsewhere).
                  * bid is null when the rule needs a category Highest / Lowest that is not set.
                  */
                 window.ebayPmtRuleBid = function(row) {
-                    if (!row || window.ebayPmtIsParent(row)) return null;
+                    if (!row || !window.ebayPmtIsRuled(row)) return null;
                     const rule = classifyRow(row);
                     const cat = String(row.excel_category || '').trim();
                     const saved = savedBids[cat] || {};
@@ -315,7 +334,7 @@
                     else { need = 'Highest'; if (hi !== null) calc = hi; out.title = 'Dil ≤ 25% and eBay sold > 0 — Highest'; }
                     if (calc === null) {
                         out.missing = true;
-                        out.title += ' (' + (cat ? 'set ' + need + ' for "' + cat + '"' : 'no category for this SKU') + ')';
+                        out.title += ' (' + (cat ? 'set ' + need + ' for "' + cat + '"' : 'no category for this {{ strtolower($pmtUnit) }}') + ')';
                         return out;
                     }
                     out.bid = Math.min(100, Math.max(2, Math.round(calc * 100) / 100)); // eBay accepts 2-100
@@ -348,7 +367,7 @@
                     const counts = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, 'base': 0 };
                     let total = 0;
                     currentRows().forEach(function(row) {
-                        if (window.ebayPmtIsParent(row)) return;
+                        if (!window.ebayPmtIsRuled(row)) return;
                         counts[classifyRow(row)]++;
                         total++;
                     });
@@ -360,12 +379,12 @@
                                 .append($('<div>')
                                     .append($('<div class="arp-rule-cond">').html(r.label))
                                     .append($('<span class="arp-rule-bid">').html(r.bid)))
-                                .append($('<div class="arp-rule-count">').text(counts[r.key].toLocaleString()).append('<small>SKUs</small>'))
+                                .append($('<div class="arp-rule-count">').text(counts[r.key].toLocaleString()).append('<small>{{ $pmtUnit }}s</small>'))
                         );
                     });
                     $b.append(
                         $('<div class="arp-rule-total">')
-                            .append('<span>Total SKUs</span>')
+                            .append('<span>Total {{ $pmtUnit }}s</span>')
                             .append($('<b>').text(total.toLocaleString()))
                     );
                 }
@@ -468,7 +487,7 @@
                         : (table ? table.getData('all') : []);
                     const counts = {};
                     src.forEach(function(row) {
-                        if (window.ebayPmtIsParent(row)) return;
+                        if (!window.ebayPmtIsRuled(row)) return;
                         const cat = String(row.excel_category || '').trim();
                         if (cat) counts[cat] = (counts[cat] || 0) + 1;
                     });
@@ -711,7 +730,7 @@
                         field: "pmt_rule_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "Suggested PMT bid from Ads Rule PMT: INV 0 = 0 and ads paused; eBay sold 0 = Highest + 1; Dil > 25% = Lowest; Dil > 50% = Lowest − 1; Dil > 100% = 2. Uses the category Highest / Lowest. Display only.",
+                        headerTooltip: "Suggested PMT bid from Ads Rule PMT: INV 0 = 0 and ads paused; eBay sold 0 = Highest + 1; Dil > 25% = Lowest; Dil > 50% = Lowest − 1; Dil > 100% = 2. Uses the category Highest / Lowest.{{ $pmtByParent ? ' Decided per PARENT (family INV, OV L30 and eBay sold) and shown on the PARENT row; every ad listing of that parent gets this bid.' : '' }} Display only.",
                         sorter: function(a, b, aRow, bRow) {
                             const f = function(row) {
                                 const r = typeof window.ebayPmtRuleBid === 'function' ? window.ebayPmtRuleBid(row.getData()) : null;
