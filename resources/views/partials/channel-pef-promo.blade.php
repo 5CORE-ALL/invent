@@ -4926,17 +4926,30 @@
             }
             const customKey = chPromoCustomDilSlabKey(n);
             if (customKey) return customKey;
-            if (!isFinite(n) || n < 0.01) return 'none';
-            if (n > 25) return 'gt-25';
-            if (n >= 24) return '24-25';
-            if (n >= 21) return '21-24';
-            if (n >= 18) return '18-21';
-            if (n >= 15) return '15-18';
-            if (n >= 12) return '12-15';
-            if (n >= 9) return '9-12';
-            if (n >= 6) return '6-9';
-            if (n >= 3) return '3-6';
-            return '0-3';
+            if (!isFinite(n)) return 'none';
+            // Built-in slabs match by their (editable) Dil% range: min ≤ Dil < max. Last slab (24-25) includes max.
+            for (let i = 0; i < chPromoDilPrmtRules.length; i++) {
+                const r = chPromoDilPrmtRules[i];
+                if (!r) continue;
+                const range = chPromoBuiltinDilRange(r);
+                if (!range) continue;
+                if (n >= range.min && (n < range.max || (r.key === '24-25' && n <= range.max))) return r.key;
+            }
+            return n > 25 ? 'gt-25' : 'none';
+        }
+        /** Dil% range of a built-in slab: edited min/max, else parsed from its key ("3-6"; first slab starts at 0.01). */
+        function chPromoBuiltinDilRange(r) {
+            const key = String(r.key || '');
+            if (key.indexOf('custom-') === 0) return null;
+            const m = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/.exec(key);
+            if (!m || chPromoIsZeroSoldRuleKey(key)) return null;
+            let lo = parseFloat(m[1]);
+            let hi = parseFloat(m[2]);
+            if (r.min != null && r.min !== '' && isFinite(Number(r.min))) lo = Number(r.min);
+            else if (lo <= 0) lo = 0.01;
+            if (r.max != null && r.max !== '' && isFinite(Number(r.max))) hi = Number(r.max);
+            if (!(hi > lo)) return null;
+            return { min: lo, max: hi };
         }
         function chPromoPrmtForRuleKey(key) {
             const rule = chPromoDilPrmtRules.find(function(r) { return r.key === key; });
@@ -5861,19 +5874,28 @@
             chPromoDilPrmtRules.forEach(function(r, idx) {
                 if (chPromoIsZeroSoldRuleKey(r.key)) return;
                 const prmt = isFinite(Number(r.prmt)) ? Number(r.prmt) : 0;
-                if (String(r.key).indexOf('custom-') === 0) {
+                const isCustom = String(r.key).indexOf('custom-') === 0;
+                const range = isCustom
+                    ? { min: r.min, max: r.max }
+                    : (chPromoBuiltinDilRange(r) || { min: '', max: '' });
+                const lo = (range.min != null && range.min !== '' && isFinite(Number(range.min))) ? Number(range.min) : '';
+                const hi = (range.max != null && range.max !== '' && isFinite(Number(range.max))) ? Number(range.max) : '';
+                const rangeCell = '<td><div class="d-flex align-items-center gap-1">'
+                    + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-range" data-bound="min" '
+                    + 'min="0" step="0.1" style="width:78px;" value="' + lo + '" title="Dil% from (inclusive)">'
+                    + '<span>–</span>'
+                    + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-range" data-bound="max" '
+                    + 'min="0" step="0.1" style="width:78px;" value="' + hi + '" title="Dil% to (exclusive)">'
+                    + '<span>%</span>'
+                    + (isCustom
+                        ? '<button type="button" class="btn btn-sm btn-outline-danger ms-auto ch-promo-dil-prmt-remove-row" title="Remove this row">'
+                            + '<i class="fas fa-trash"></i></button>'
+                        : '')
+                    + '</div></td>';
+                if (isCustom) {
                     $tb.append(
                         '<tr class="ch-promo-dil-prmt-custom-row" data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
-                        + '<td><div class="d-flex align-items-center gap-1">'
-                        + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-range" data-bound="min" '
-                        + 'min="0" step="0.1" style="width:78px;" value="' + (isFinite(Number(r.min)) ? Number(r.min) : '') + '" title="Dil% from (inclusive)">'
-                        + '<span>–</span>'
-                        + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-range" data-bound="max" '
-                        + 'min="0" step="0.1" style="width:78px;" value="' + (isFinite(Number(r.max)) ? Number(r.max) : '') + '" title="Dil% to (exclusive)">'
-                        + '<span>%</span>'
-                        + '<button type="button" class="btn btn-sm btn-outline-danger ms-auto ch-promo-dil-prmt-remove-row" title="Remove this row">'
-                        + '<i class="fas fa-trash"></i></button>'
-                        + '</div></td>'
+                        + rangeCell
                         + '<td class="text-end">'
                         + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-input" '
                         + 'min="0" step="0.1" value="' + prmt + '" data-idx="' + idx + '">'
@@ -5884,7 +5906,7 @@
                 const first = visibleIdx === 0;
                 $tb.append(
                     '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
-                    + '<td>' + String(r.label || r.key) + '</td>'
+                    + rangeCell
                     + '<td class="text-end">'
                     + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-input" '
                     + 'min="0" step="0.1" value="' + prmt + '" data-idx="' + idx + '"'
@@ -5924,8 +5946,9 @@
                 const rule = chPromoDilPrmtRules.find(function(r) { return r.key === key; });
                 if (!rule) return;
                 rule.prmt = (isFinite(val) && val >= 0) ? val : 0;
-                if (key.indexOf('custom-') === 0) {
-                    const lo = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="min"]').val());
+                const $lo = $(this).find('.ch-promo-dil-prmt-range[data-bound="min"]');
+                if ($lo.length) {
+                    const lo = parseFloat($lo.val());
                     const hi = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="max"]').val());
                     rule.min = isFinite(lo) ? Math.max(0, lo) : null;
                     rule.max = isFinite(hi) ? hi : null;
@@ -5936,9 +5959,16 @@
             });
             return chPromoDilPrmtRules.map(function(r) {
                 const out = { key: r.key, label: r.label, prmt: Number(r.prmt) || 0 };
-                if (String(r.key).indexOf('custom-') === 0) {
+                const isCustom = String(r.key).indexOf('custom-') === 0;
+                if (isCustom) {
                     out.min = r.min;
                     out.max = r.max;
+                } else {
+                    const range = chPromoBuiltinDilRange(r);
+                    if (range) {
+                        out.min = range.min;
+                        out.max = range.max;
+                    }
                 }
                 return out;
             });
@@ -5987,13 +6017,13 @@
         function chPromoOnDilPrmtRangeChanged() {
             readChPromoDilPrmtRulesFromModal();
             let bad = false;
-            $('#ch-promo-dil-prmt-tbody tr.ch-promo-dil-prmt-custom-row').each(function() {
+            $('#ch-promo-dil-prmt-tbody tr').each(function() {
                 const lo = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="min"]').val());
                 const hi = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="max"]').val());
                 if (!isFinite(lo) || !isFinite(hi) || lo < 0 || hi <= lo) bad = true;
             });
             if (bad) {
-                $('#ch-promo-dil-prmt-status').text('Each added row needs a valid range (From ≥ 0 and To > From).');
+                $('#ch-promo-dil-prmt-status').text('Each row needs a valid Dil% range (From ≥ 0 and To > From).');
                 return;
             }
             chPromoSyncEbayPrmtColumnFromSlabs();

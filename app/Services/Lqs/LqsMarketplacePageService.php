@@ -22,6 +22,7 @@ use App\Models\TemuMetric;
 use App\Models\WalmartListingViewsData;
 use App\Models\WalmartMetrics;
 use App\Support\Lqs\LqsMarketplaceCatalog;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class LqsMarketplacePageService
@@ -99,9 +100,11 @@ class LqsMarketplacePageService
             }
             $rating = $this->firstNullableNumber($score->rating ?? null, $api['rating'] ?? null);
             $reviews = $this->firstNullableInt($score->reviews ?? null, $api['reviews'] ?? null);
-            $listingUrl = ($shopifyRow && ! empty($shopifyRow->product_link))
-                ? $shopifyRow->product_link
-                : ($yoast['listing_url'] ?? $this->listingUrl($channel['listing_url'] ?? null, $listingId));
+            $listingUrl = ! empty($api['listing_url'])
+                ? $api['listing_url']
+                : (($shopifyRow && ! empty($shopifyRow->product_link))
+                    ? $shopifyRow->product_link
+                    : ($yoast['listing_url'] ?? $this->listingUrl($channel['listing_url'] ?? null, $listingId)));
 
             $displaySku = trim((string) ($productMaster->sku ?? $normalizedSku));
             $parent = $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null;
@@ -358,6 +361,9 @@ class LqsMarketplacePageService
                 'listing_id' => 'product_id',
             ]);
         }
+        if ($source === 'wayfair') {
+            return $this->mapWayfairMetrics($normalizeSku);
+        }
         if ($source === 'doba' && class_exists(DobaMetric::class) && Schema::hasTable((new DobaMetric)->getTable())) {
             return $this->mapGenericMetrics(DobaMetric::query()->orderByDesc('id')->get(), $normalizeSku, [
                 'l30' => 'quantity_l30',
@@ -431,6 +437,61 @@ class LqsMarketplacePageService
                 'rating' => isset($fields['rating']) ? ($row->{$fields['rating']} ?? null) : null,
                 'reviews' => isset($fields['reviews']) ? ($row->{$fields['reviews']} ?? null) : null,
             ];
+        }
+
+        return $map;
+    }
+
+    /**
+     * Wayfair: L30 units from wayfair_daily_data (period l30), price from the uploaded Wayfair prices, and the Wayfair
+     * SKU / shopper page from Partner Home listing statuses. Wayfair has no sessions feed, so sessions stay null.
+     */
+    private function mapWayfairMetrics(callable $normalizeSku): array
+    {
+        $blank = [
+            'l30' => 0, 'sessions' => null, 'price' => null, 'listing_id' => null, 'listing_url' => null,
+            'lqs' => null, 'rating' => null, 'reviews' => null,
+        ];
+        $map = [];
+
+        if (Schema::hasTable('wayfair_daily_data')) {
+            foreach (DB::table('wayfair_daily_data')
+                ->selectRaw('sku, SUM(COALESCE(quantity, 0)) as units')
+                ->where('period', 'l30')->whereNotNull('sku')->where('sku', '!=', '')
+                ->groupBy('sku')->get() as $row) {
+                $key = $normalizeSku($row->sku);
+                if ($key !== '') {
+                    $map[$key] = ['l30' => (int) $row->units] + ($map[$key] ?? $blank);
+                }
+            }
+        }
+
+        if (Schema::hasTable('wayfair_pricing_prices')) {
+            foreach (DB::table('wayfair_pricing_prices')->select('sku', 'price')->whereNotNull('sku')->where('sku', '!=', '')->get() as $row) {
+                $key = $normalizeSku($row->sku);
+                if ($key !== '') {
+                    $map[$key] = ['price' => $row->price > 0 ? (float) $row->price : null] + ($map[$key] ?? $blank);
+                }
+            }
+        }
+
+        if (Schema::hasTable('wayfair_listing_statuses')) {
+            foreach (DB::table('wayfair_listing_statuses')->select('sku', 'value')->whereNotNull('sku')->where('sku', '!=', '')->orderBy('id')->get() as $row) {
+                $key = $normalizeSku($row->sku);
+                $state = json_decode((string) $row->value, true) ?: [];
+                if ($key === '') {
+                    continue;
+                }
+                $id = trim((string) ($state['listing_id'] ?? $state['item_id'] ?? ''));
+                if ($id === '' && preg_match('#product-merchandising/([A-Za-z0-9]+)#', (string) ($state['seller_link'] ?? ''), $m)) {
+                    $id = $m[1];
+                }
+                $buyer = trim((string) ($state['buyer_link'] ?? ''));
+                $map[$key] = [
+                    'listing_id' => $id !== '' ? $id : null,
+                    'listing_url' => $buyer !== '' ? $buyer : null,
+                ] + ($map[$key] ?? $blank);
+            }
         }
 
         return $map;

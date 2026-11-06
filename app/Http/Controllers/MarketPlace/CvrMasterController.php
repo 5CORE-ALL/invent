@@ -315,17 +315,18 @@ class CvrMasterController extends Controller
             }
             $byKey[$k] = $item;
         }
+        $ranges = ChannelPromoPricingController::sanitizeSharedDilPrmtBuiltinRanges($saved);
         $rules = [];
         foreach ($defaults as $def) {
             $k = $def['key'];
             $prmt = array_key_exists($k, $byKey) && is_numeric($byKey[$k]['prmt'] ?? null)
                 ? (float) $byKey[$k]['prmt']
                 : $def['prmt'];
-            $rules[] = [
+            $rules[] = ChannelPromoPricingController::withBuiltinDilPrmtRange([
                 'key' => $k,
                 'label' => $def['label'],
                 'prmt' => $prmt,
-            ];
+            ], $ranges);
         }
 
         foreach (ChannelPromoPricingController::sanitizeSharedDilPrmtCustomRules($saved) as $custom) {
@@ -362,6 +363,10 @@ class CvrMasterController extends Controller
             $byKey[$k] = $item;
         }
 
+        // Keep edited built-in ranges: client-sent ones, else what is already saved.
+        $ranges = ChannelPromoPricingController::sharedDilPrmtBuiltinRangesFromStore();
+        $ranges = array_merge($ranges, ChannelPromoPricingController::sanitizeSharedDilPrmtBuiltinRanges($incoming));
+
         $rules = [];
         foreach ($defaults as $def) {
             $k = $def['key'];
@@ -372,11 +377,11 @@ class CvrMasterController extends Controller
             if ($prmt < 0) {
                 $prmt = 0;
             }
-            $rules[] = [
+            $rules[] = ChannelPromoPricingController::withBuiltinDilPrmtRange([
                 'key' => $k,
                 'label' => $def['label'],
                 'prmt' => $prmt,
-            ];
+            ], $ranges);
         }
 
         // Keep custom rows: use the ones sent by the client, else preserve what is already saved.

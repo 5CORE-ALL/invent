@@ -1246,9 +1246,14 @@ class ChannelPromoPricingController extends Controller
 
         // Append user-added custom rows ("Add more row").
         $payload = $response->getData(true);
+        $ranges = self::sharedDilPrmtBuiltinRangesFromStore();
+        $payload['rules'] = array_map(
+            static fn ($r) => self::withBuiltinDilPrmtRange($r, $ranges),
+            $payload['rules'] ?? []
+        );
         $custom = self::sharedDilPrmtCustomRulesFromStore();
         if ($custom !== []) {
-            $payload['rules'] = array_merge($payload['rules'] ?? [], $custom);
+            $payload['rules'] = array_merge($payload['rules'], $custom);
             $payload['is_default'] = false;
         }
 
@@ -1273,6 +1278,10 @@ class ChannelPromoPricingController extends Controller
             $incoming,
             'prmt'
         );
+
+        // Built-in rows keep their (possibly edited) Dil% range.
+        $ranges = self::sanitizeSharedDilPrmtBuiltinRanges($incoming);
+        $rules = array_map(static fn ($r) => self::withBuiltinDilPrmtRange($r, $ranges), $rules);
 
         // Custom rows (min/max/prmt) are replaced by whatever the client sends.
         $custom = self::sanitizeSharedDilPrmtCustomRules($incoming);
@@ -3065,12 +3074,101 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * @param  list<array<string,mixed>>  $customRules  From sharedDilPrmtCustomRulesFromStore() / rules list
+     * Default Dil% range of a built-in slab key ("3-6" → [3, 6]; first slab starts at 0.01).
+     *
+     * @return array{min:float,max:float}|null
      */
-    public static function sharedDilPrmtSlabKey(float $dil, array $customRules = []): string
+    public static function builtinDilPrmtDefaultRange(string $key): ?array
+    {
+        foreach (self::sharedDilPrmtDefaults() as $def) {
+            if ($def['key'] !== $key) {
+                continue;
+            }
+            $parts = explode('-', $key);
+            $min = (float) ($parts[0] ?? 0);
+
+            return ['min' => $min <= 0 ? 0.01 : $min, 'max' => (float) ($parts[1] ?? 0)];
+        }
+
+        return null;
+    }
+
+    /**
+     * Valid user-edited Dil% ranges of built-in slabs (key => [min,max]).
+     *
+     * @return array<string,array{min:float,max:float}>
+     */
+    public static function sanitizeSharedDilPrmtBuiltinRanges(mixed $items): array
+    {
+        $out = [];
+        if (! is_array($items)) {
+            return $out;
+        }
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $key = (string) ($item['key'] ?? '');
+            if (self::builtinDilPrmtDefaultRange($key) === null) {
+                continue;
+            }
+            if (! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
+                continue;
+            }
+            $min = round((float) $item['min'], 2);
+            $max = round((float) $item['max'], 2);
+            if ($min < 0 || $max <= $min) {
+                continue;
+            }
+            $out[$key] = ['min' => $min, 'max' => $max];
+        }
+
+        return $out;
+    }
+
+    /** @return array<string,array{min:float,max:float}> */
+    public static function sharedDilPrmtBuiltinRangesFromStore(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', self::DIL_PRMT_SHARED_STORE)
+            ->first();
+
+        return self::sanitizeSharedDilPrmtBuiltinRanges($row?->visibility);
+    }
+
+    /**
+     * Add min/max (+ matching label) to a built-in rule.
+     *
+     * @param  array<string,mixed>  $rule
+     * @param  array<string,array{min:float,max:float}>  $ranges  Edited ranges by key
+     * @return array<string,mixed>
+     */
+    public static function withBuiltinDilPrmtRange(array $rule, array $ranges): array
+    {
+        $key = (string) ($rule['key'] ?? '');
+        $default = self::builtinDilPrmtDefaultRange($key);
+        if ($default === null) {
+            return $rule;
+        }
+        $range = $ranges[$key] ?? $default;
+        $rule['min'] = $range['min'];
+        $rule['max'] = $range['max'];
+        if (isset($ranges[$key])) {
+            $fmt = static fn (float $n): string => rtrim(rtrim(number_format($n, 2, '.', ''), '0'), '.');
+            $rule['label'] = $fmt($range['min']).'–'.$fmt($range['max']).'%';
+        }
+
+        return $rule;
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $rules  Rules list (custom + built-in rows carrying min/max)
+     */
+    public static function sharedDilPrmtSlabKey(float $dil, array $rules = []): string
     {
         if (is_finite($dil)) {
-            foreach ($customRules as $c) {
+            // Custom rows win over built-in rows.
+            foreach ($rules as $c) {
                 $key = (string) ($c['key'] ?? '');
                 if (! str_starts_with($key, self::DIL_PRMT_CUSTOM_PREFIX)) {
                     continue;
@@ -3078,6 +3176,25 @@ class ChannelPromoPricingController extends Controller
                 if (isset($c['min'], $c['max']) && $dil >= (float) $c['min'] && $dil < (float) $c['max']) {
                     return $key;
                 }
+            }
+            // Built-in rows with editable ranges. Last slab (24-25) includes its upper bound.
+            $hasBuiltinRanges = false;
+            foreach ($rules as $c) {
+                $key = (string) ($c['key'] ?? '');
+                if (str_starts_with($key, self::DIL_PRMT_CUSTOM_PREFIX) || self::builtinDilPrmtDefaultRange($key) === null) {
+                    continue;
+                }
+                if (! isset($c['min'], $c['max'])) {
+                    continue;
+                }
+                $hasBuiltinRanges = true;
+                $inclusiveMax = $key === '24-25';
+                if ($dil >= (float) $c['min'] && ($dil < (float) $c['max'] || ($inclusiveMax && $dil <= (float) $c['max']))) {
+                    return $key;
+                }
+            }
+            if ($hasBuiltinRanges) {
+                return 'none';
             }
         }
         // Lower-inclusive slabs: 0.01–3, 3–6, …, 21–24, 24–25. Dil < 0.01 or > 25 → no rule.

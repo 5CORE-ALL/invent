@@ -47,6 +47,7 @@ class PefDilPrmtAutoApplyService
             }
         }
 
+        $ranges = ChannelPromoPricingController::sanitizeSharedDilPrmtBuiltinRanges($saved);
         $rules = [];
         foreach ($defaults as $def) {
             $k = $def['key'];
@@ -56,11 +57,11 @@ class PefDilPrmtAutoApplyService
             if ($prmt < 0) {
                 $prmt = 0.0;
             }
-            $rules[] = [
+            $rules[] = ChannelPromoPricingController::withBuiltinDilPrmtRange([
                 'key' => $k,
                 'label' => $def['label'],
                 'prmt' => $prmt,
-            ];
+            ], $ranges);
         }
 
         // User-added custom rows (min/max) take precedence over built-in slabs.

@@ -60,6 +60,7 @@ class WayfairLqsApiSyncService
     public function listedContexts(?array $only = null): array
     {
         $query = ProductMaster::query()
+            ->select($this->masterColumns())
             ->whereNotNull('sku')->where('sku', '!=', '')
             ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%']);
         if ($only !== null) {
@@ -118,8 +119,12 @@ class WayfairLqsApiSyncService
                 ->map(fn ($s) => trim((string) $s))
                 ->all();
 
-            return collect(array_keys(ChannelListingRegistry::listedWayfair($skus)))
-                ->map(fn ($s) => self::normalizeSku((string) $s))
+            // The registry map also holds alias keys; a SKU is listed when its own lowercase key is present.
+            $listed = ChannelListingRegistry::listedWayfair($skus);
+
+            return collect($skus)
+                ->filter(fn ($s) => isset($listed[strtolower($s)]))
+                ->map(fn ($s) => self::normalizeSku($s))
                 ->unique()
                 ->values()
                 ->all();
@@ -268,6 +273,29 @@ class WayfairLqsApiSyncService
         return '';
     }
 
+    /**
+     * Only the columns scoring reads: product_master rows carry very large A+/HTML columns that would exhaust memory.
+     *
+     * @return list<string>
+     */
+    private function masterColumns(): array
+    {
+        static $columns = null;
+        if ($columns === null) {
+            $wanted = array_merge(
+                ['id', 'sku', 'parent', 'Values', 'barcode', 'main_video', 'main_image', 'main_image_brand'],
+                self::TITLE_FIELDS,
+                self::DESCRIPTION_FIELDS,
+                ['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5', 'feature1', 'feature2', 'feature3', 'feature4'],
+                array_map(fn ($i) => 'image'.$i, range(1, 20)),
+                array_map(fn ($i) => 'video'.$i, range(1, 10)),
+            );
+            $columns = array_values(array_intersect($wanted, Schema::getColumnListing((new ProductMaster)->getTable())));
+        }
+
+        return $columns;
+    }
+
     /** @param  list<string>  $fields */
     private function firstText(ProductMaster $pm, array $fields): string
     {
@@ -331,6 +359,7 @@ class WayfairLqsApiSyncService
 
         $out = [];
         $rows = ProductMaster::query()
+            ->select($this->masterColumns())
             ->whereRaw('UPPER(sku) LIKE ?', ['PARENT%'])
             ->where(function ($q) use ($names) {
                 foreach ($names->chunk(500) as $chunk) {
