@@ -594,13 +594,6 @@
                     </button>
 
 
-                    {{-- Sbid (Views) — same as /ebay2/campaign-ads --}}
-                    <button type="button" class="btn btn-sm pricing-filter-item"
-                            style="border:1px solid #6610f2; color:#6610f2;"
-                            data-bs-toggle="modal" data-bs-target="#sbidViewsRuleModal"
-                            title="Configure Min/Max caps and the daily ±%/day step per L7 View colour for the S BID column">
-                        <i class="fas fa-eye me-1"></i>Sbid
-                    </button>
 
 
                 </div>
@@ -654,7 +647,7 @@
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                             title="LMP M.: SKUs with no LMP data. Green = 0 missing. Click to show only those rows.">
                             LMP M. 0</span>
-                        <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
+                        <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours">L7: 0</span>
                         
                     </div>
                 </div>
@@ -913,105 +906,6 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="sku-link-lmp-save-btn">
                         <i class="fas fa-link"></i> <span id="sku-link-lmp-save-btn-label">Link SKU(s)</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- Sbid (Views) Modal — shared with /ebay2/campaign-ads (ebay_sbid_rules.key = ebay2_sbid_views). --}}
-    <div class="modal fade" id="sbidViewsRuleModal" tabindex="-1" aria-labelledby="sbidViewsRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="sbidViewsRuleModalLabel">
-                        <i class="fas fa-eye me-2" style="color:#6610f2;"></i>Sbid (Views)
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted small mb-3">
-                        The <strong>S BID</strong> column adjusts each row's current <strong>C BID</strong> once per day based on
-                        its <strong>L7 View</strong> colour (green = keep C Bid), then clamps the result between the Min and Max caps.
-                        Same rule as <code>/ebay2/campaign-ads</code>.
-                    </p>
-
-                    <div class="row g-3 mb-3">
-                        <div class="col-6">
-                            <label class="form-label mb-1" for="sbid-views-min-cap">Min Cap %</label>
-                            <input type="number" step="0.1" id="sbid-views-min-cap" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label mb-1" for="sbid-views-max-cap">Max Cap %</label>
-                            <input type="number" step="0.1" id="sbid-views-max-cap" class="form-control form-control-sm">
-                        </div>
-                    </div>
-
-                    <div class="border rounded p-2 mb-3 bg-light">
-                        <div class="small fw-bold mb-1">Do not decrease when E L30 sold is low</div>
-                        <div class="row g-2 align-items-end">
-                            <div class="col-auto">
-                                <label class="form-label mb-1 small" for="sbid-views-no-dec-max-el30">
-                                    If E L30 sold ≤
-                                </label>
-                                <input type="number" step="1" min="0" id="sbid-views-no-dec-max-el30"
-                                       class="form-control form-control-sm" style="width: 88px;"
-                                       title="When eBay L30 units sold is at or below this qty, Decrease steps are skipped (bid stays at C Bid).">
-                            </div>
-                            <div class="col">
-                                <div class="small text-muted pb-1">
-                                    then <strong>do not decrease</strong> bid (Increase / No change still apply).
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="border rounded p-2">
-                        <div class="small fw-bold mb-2">Daily action per L7 View colour (direction + %/day)</div>
-                        <div class="row g-3">
-                            <div class="col-4">
-                                <label class="form-label mb-1">
-                                    <span style="color:#d63384; font-weight:700;">Pink</span> (high views)
-                                </label>
-                                <select id="sbid-views-pink-dir" class="form-select form-select-sm mb-1">
-                                    <option value="dec">Decrease</option>
-                                    <option value="inc">Increase</option>
-                                    <option value="none">No change</option>
-                                </select>
-                                <input type="number" step="0.1" id="sbid-views-pink-step" class="form-control form-control-sm"
-                                       title="Points/day to apply for Pink L7 (≥ 2× avg)">
-                            </div>
-                            <div class="col-4">
-                                <label class="form-label mb-1">
-                                    <span style="color:#28a745; font-weight:700;">Green</span> (mid views)
-                                </label>
-                                <select id="sbid-views-green-dir" class="form-select form-select-sm mb-1">
-                                    <option value="none">No change</option>
-                                    <option value="inc">Increase</option>
-                                    <option value="dec">Decrease</option>
-                                </select>
-                                <input type="number" step="0.1" id="sbid-views-green-step" class="form-control form-control-sm"
-                                       title="Points/day to apply for Green L7 (avg..2× avg)">
-                            </div>
-                            <div class="col-4">
-                                <label class="form-label mb-1">
-                                    <span style="color:#a00211; font-weight:700;">Red</span> (low views)
-                                </label>
-                                <select id="sbid-views-red-dir" class="form-select form-select-sm mb-1">
-                                    <option value="inc">Increase</option>
-                                    <option value="dec">Decrease</option>
-                                    <option value="none">No change</option>
-                                </select>
-                                <input type="number" step="0.1" id="sbid-views-red-step" class="form-control form-control-sm"
-                                       title="Points/day to apply for Red L7 (< avg)">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="sbid-views-save-btn">
-                        <i class="fas fa-save me-1"></i>Save
                     </button>
                 </div>
             </div>
@@ -1627,7 +1521,7 @@
             } catch (e) { /* ignore */ }
         }
 
-        /** Average L7 views (rows with E Stock > 0) — drives L7 View colours + Sbid (Views). */
+        /** Average L7 views (rows with E Stock > 0) — drives L7 View colours. */
         let avgL7ViewsGlobal = 0;
 
         /** L7 View colour band: red < avg, green avg..2×avg, pink ≥ 2×avg. */
@@ -1638,57 +1532,6 @@
             if (v < avg) return { key: 'red', color: '#a00211' };
             if (v < avg * 2) return { key: 'green', color: '#28a745' };
             return { key: 'pink', color: '#d63384' };
-        }
-
-        /** Sbid (Views) settings — shared with /ebay2/campaign-ads (ebay2_sbid_views). */
-        function sbidViewsNum(key, fallback) {
-            const v = parseFloat(localStorage.getItem(key));
-            return isFinite(v) ? v : fallback;
-        }
-        function sbidViewsDir(key, fallback) {
-            const v = localStorage.getItem(key);
-            return (v === 'inc' || v === 'dec' || v === 'none') ? v : fallback;
-        }
-        let sbidViewsMinCap   = sbidViewsNum('ebay2_sbid_views_min_cap', 1);
-        let sbidViewsMaxCap   = sbidViewsNum('ebay2_sbid_views_max_cap', 20);
-        let sbidViewsPinkDir  = sbidViewsDir('ebay2_sbid_views_pink_dir', 'dec');
-        let sbidViewsPinkStep = sbidViewsNum('ebay2_sbid_views_pink_step', 1);
-        let sbidViewsGreenDir = sbidViewsDir('ebay2_sbid_views_green_dir', 'none');
-        let sbidViewsGreenStep = sbidViewsNum('ebay2_sbid_views_green_step', 0);
-        let sbidViewsRedDir   = sbidViewsDir('ebay2_sbid_views_red_dir', 'inc');
-        let sbidViewsRedStep  = sbidViewsNum('ebay2_sbid_views_red_step', 1);
-        let sbidViewsNoDecMaxEl30 = sbidViewsNum('ebay2_sbid_views_no_dec_max_el30', 0);
-
-        function sbidViewsApplyStep(base, dir, step, el30Sold) {
-            let d = dir;
-            if (d === 'dec' && isFinite(el30Sold) && el30Sold <= sbidViewsNoDecMaxEl30) {
-                d = 'none';
-            }
-            const s = isFinite(step) ? step : 0;
-            if (d === 'inc') return base + s;
-            if (d === 'dec') return base - s;
-            return base;
-        }
-
-        /** Daily one-step adjustment of C BID by L7 View band, clamped to Min/Max. */
-        function computeSbidViews(rowData) {
-            const cbid = parseFloat(rowData.ca_bid_percentage);
-            if (!isFinite(cbid) || cbid <= 0) {
-                return { bid: 0, color: '#6c757d', skip: true };
-            }
-            const el30Sold = parseFloat(rowData['eBay L30']) || 0;
-            const band = l7ViewBand(rowData.l7_views);
-            let bid = cbid;
-            if (band.key === 'pink') bid = sbidViewsApplyStep(cbid, sbidViewsPinkDir, sbidViewsPinkStep, el30Sold);
-            else if (band.key === 'green') bid = sbidViewsApplyStep(cbid, sbidViewsGreenDir, sbidViewsGreenStep, el30Sold);
-            else if (band.key === 'red') bid = sbidViewsApplyStep(cbid, sbidViewsRedDir, sbidViewsRedStep, el30Sold);
-
-            const min = isFinite(sbidViewsMinCap) ? sbidViewsMinCap : -Infinity;
-            const max = isFinite(sbidViewsMaxCap) ? sbidViewsMaxCap : Infinity;
-            if (bid < min) bid = min;
-            if (bid > max) bid = max;
-
-            return { bid: bid, color: band.color || '#0d6efd', skip: false };
         }
 
         /** True when this listing exists on /ebay2/campaign-ads. */
@@ -2615,76 +2458,6 @@
             if (lmpModalEl) {
                 lmpModalEl.addEventListener('hidden.bs.modal', cleanupLmpModalBackdrop);
             }
-
-            // Sbid (Views) modal — shared settings with /ebay2/campaign-ads
-            function seedSbidViewsInputs() {
-                $('#sbid-views-min-cap').val(isFinite(sbidViewsMinCap) ? sbidViewsMinCap : '');
-                $('#sbid-views-max-cap').val(isFinite(sbidViewsMaxCap) ? sbidViewsMaxCap : '');
-                $('#sbid-views-no-dec-max-el30').val(isFinite(sbidViewsNoDecMaxEl30) ? sbidViewsNoDecMaxEl30 : 0);
-                $('#sbid-views-pink-dir').val(sbidViewsPinkDir);
-                $('#sbid-views-pink-step').val(isFinite(sbidViewsPinkStep) ? sbidViewsPinkStep : '');
-                $('#sbid-views-green-dir').val(sbidViewsGreenDir);
-                $('#sbid-views-green-step').val(isFinite(sbidViewsGreenStep) ? sbidViewsGreenStep : '');
-                $('#sbid-views-red-dir').val(sbidViewsRedDir);
-                $('#sbid-views-red-step').val(isFinite(sbidViewsRedStep) ? sbidViewsRedStep : '');
-            }
-            function applySbidViewsSettings(s) {
-                if (!s || typeof s !== 'object') return;
-                if (isFinite(parseFloat(s.min_cap)))    sbidViewsMinCap   = parseFloat(s.min_cap);
-                if (isFinite(parseFloat(s.max_cap)))    sbidViewsMaxCap   = parseFloat(s.max_cap);
-                if (isFinite(parseFloat(s.no_dec_max_el30))) sbidViewsNoDecMaxEl30 = parseFloat(s.no_dec_max_el30);
-                if (s.pink_dir)  sbidViewsPinkDir  = s.pink_dir;
-                if (isFinite(parseFloat(s.pink_step)))  sbidViewsPinkStep = parseFloat(s.pink_step);
-                if (s.green_dir) sbidViewsGreenDir = s.green_dir;
-                if (isFinite(parseFloat(s.green_step))) sbidViewsGreenStep = parseFloat(s.green_step);
-                if (s.red_dir)   sbidViewsRedDir   = s.red_dir;
-                if (isFinite(parseFloat(s.red_step)))   sbidViewsRedStep  = parseFloat(s.red_step);
-            }
-            $.get(@json(url('/ebay2/campaign-ads/sbid-views-rule')), function(s) {
-                applySbidViewsSettings(s);
-                seedSbidViewsInputs();
-                if (table) table.redraw(false);
-            });
-            seedSbidViewsInputs();
-            $('#sbidViewsRuleModal').on('show.bs.modal', seedSbidViewsInputs);
-            $('#sbid-views-save-btn').on('click', function() {
-                const num = function(sel, dflt) {
-                    const v = parseFloat($(sel).val());
-                    return isFinite(v) ? v : dflt;
-                };
-                const dir = function(sel, dflt) {
-                    let v = $(sel).val();
-                    return (v === 'inc' || v === 'dec' || v === 'none') ? v : dflt;
-                };
-                const payload = {
-                    min_cap:    num('#sbid-views-min-cap', 1),
-                    max_cap:    num('#sbid-views-max-cap', 20),
-                    no_dec_max_el30: num('#sbid-views-no-dec-max-el30', 0),
-                    pink_dir:   dir('#sbid-views-pink-dir', 'dec'),
-                    pink_step:  num('#sbid-views-pink-step', 1),
-                    green_dir:  dir('#sbid-views-green-dir', 'none'),
-                    green_step: num('#sbid-views-green-step', 0),
-                    red_dir:    dir('#sbid-views-red-dir', 'inc'),
-                    red_step:   num('#sbid-views-red-step', 1),
-                };
-                $.ajax({
-                    url: @json(url('/ebay2/campaign-ads/sbid-views-rule')),
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                    contentType: 'application/json',
-                    data: JSON.stringify(payload),
-                    success: function(resp) {
-                        applySbidViewsSettings(resp && resp.rule ? resp.rule : payload);
-                        if (table) table.redraw(false);
-                        const modalEl = document.getElementById('sbidViewsRuleModal');
-                        const inst = bootstrap.Modal.getInstance(modalEl);
-                        if (inst) inst.hide();
-                    },
-                    error: function(xhr) {
-                        alert('Save failed: ' + xhr.status);
-                    }
-                });
-            });
 
             // ---- Edit Links (Buyer / Seller) ----
             function ebay2LinksNotify(msg, type) {

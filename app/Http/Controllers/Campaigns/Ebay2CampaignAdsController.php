@@ -22,21 +22,12 @@ use Illuminate\Support\Facades\Schema;
  *   - Metrics:       `ebay_2_metrics` (App\Models\Ebay2Metric)
  *   - Rule keys:     `ebay2_dil` (DIL colour bands) and `ebay2_dil_sbid`
  *                    in `ebay_sbid_rules` (`ebay2` SCVR bands kept only for
- *                    legacy getRule/saveRule; `ebay2_sbid_views` kept for
- *                    /ebay2-tabulator-view)
+ *                    legacy getRule/saveRule)
  *   - Token / push:  Ebay2ApiService
  */
 class Ebay2CampaignAdsController extends Controller
 {
     use ProvidesEbayCampaignAdsBadgeSummary;
-
-    /**
-     * Sbid (Views) settings — kept for /ebay2-tabulator-view.
-     */
-    public function getSbidViewsRule()
-    {
-        return response()->json(\App\Support\SbidViewsRule::settings(\App\Support\SbidViewsRule::KEY_EBAY2));
-    }
 
     private function numOrNull($v): ?float
     {
@@ -48,18 +39,6 @@ class Ebay2CampaignAdsController extends Controller
         }
 
         return (float) $v;
-    }
-
-    public function saveSbidViewsRule(Request $request)
-    {
-        $settings = \App\Support\SbidViewsRule::sanitize($request->all());
-
-        DB::table('ebay_sbid_rules')->updateOrInsert(
-            ['key' => \App\Support\SbidViewsRule::KEY_EBAY2],
-            ['rule' => json_encode($settings), 'updated_at' => now()]
-        );
-
-        return response()->json(['success' => true, 'rule' => $settings]);
     }
 
     public function index()
