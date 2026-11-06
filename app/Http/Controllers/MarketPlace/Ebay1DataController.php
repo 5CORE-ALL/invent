@@ -92,6 +92,13 @@ class Ebay1DataController extends Controller
                     }
                 }
 
+                // Brand is always 5 Core, as on Technical Specifications.
+                foreach (array_keys($specifics) as $specName) {
+                    if ($this->aspectKey((string) $specName) === 'brand') {
+                        $specifics[$specName] = '5 Core';
+                    }
+                }
+
                 $itemId = trim((string) ($item->listing_id ?? ''));
                 if ($itemId === '' && ! empty($metric['item_id']) && ! in_array((string) ($metric['listing_status'] ?? ''), ['inactive', 'ended', 'unsold', 'completed', 'sold', 'missing', 'not_listed'], true)) {
                     $itemId = trim((string) $metric['item_id']);
@@ -231,7 +238,9 @@ class Ebay1DataController extends Controller
     public function deleteSpecific(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:191',
+            'name' => 'nullable|string|max:191',
+            'names' => 'nullable|array|max:50',
+            'names.*' => 'required|string|max:191',
             'category' => 'nullable|string|max:500',
             'items' => 'nullable|array|max:20',
             'items.*.sku' => 'required|string|max:191',
@@ -242,20 +251,25 @@ class Ebay1DataController extends Controller
         }
         @set_time_limit(300);
 
-        $name = trim((string) $validated['name']);
-        $wanted = $this->aspectKey($name);
+        // One or several columns: every SKU is changed once on eBay, whatever the number of columns.
+        $names = [];
+        foreach (array_merge((array) ($validated['names'] ?? []), isset($validated['name']) ? [$validated['name']] : []) as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($candidate !== '' && $this->aspectKey($candidate) !== '') {
+                $names[$this->aspectKey($candidate)] = $candidate;
+            }
+        }
+        if ($names === []) {
+            return response()->json(['success' => false, 'message' => 'Choose a column.'], 422);
+        }
+        $wantedKeys = array_keys($names);
 
-        // A column added by hand to this category tab is dropped as well (the live listings below are separate).
+        // Columns added by hand to this category tab are dropped as well (the live listings below are separate).
         if (array_key_exists('category', $validated) && Schema::hasTable('ebay1_extra_columns')) {
-            DB::table('ebay1_extra_columns')
-                ->where('category_hash', $this->categoryHash((string) $validated['category']))
-                ->where('name_key', $wanted)
-                ->delete();
+            $hash = $this->categoryHash((string) $validated['category']);
+            DB::table('ebay1_extra_columns')->where('category_hash', $hash)->whereIn('name_key', $wantedKeys)->delete();
             if (Schema::hasTable('ebay1_column_sources')) {
-                DB::table('ebay1_column_sources')
-                    ->where('category_hash', $this->categoryHash((string) $validated['category']))
-                    ->where('column_key', $wanted)
-                    ->delete();
+                DB::table('ebay1_column_sources')->where('category_hash', $hash)->whereIn('column_key', $wantedKeys)->delete();
             }
             Cache::forget('ebay1data.column_options');
         }
@@ -290,10 +304,10 @@ class Ebay1DataController extends Controller
                     $ctx['siteId'],
                     $ctx['authToken'],
                     $item,
-                    $name
+                    array_values($names)
                 );
             } catch (\Throwable $e) {
-                Log::warning('Ebay1Data: delete specific failed', ['sku' => $sku, 'name' => $name, 'error' => $e->getMessage()]);
+                Log::warning('Ebay1Data: delete specific failed', ['sku' => $sku, 'names' => array_values($names), 'error' => $e->getMessage()]);
                 $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $e->getMessage()];
 
                 continue;
@@ -309,7 +323,7 @@ class Ebay1DataController extends Controller
                 $decoded = json_decode((string) $stored->specifics, true);
                 $decoded = is_array($decoded) ? $decoded : [];
                 foreach (array_keys($decoded) as $storedName) {
-                    if ($this->aspectKey((string) $storedName) === $wanted) {
+                    if (in_array($this->aspectKey((string) $storedName), $wantedKeys, true)) {
                         unset($decoded[$storedName]);
                     }
                 }
@@ -363,7 +377,7 @@ class Ebay1DataController extends Controller
             foreach ($found as $name) {
                 $name = trim($name);
                 $key = $this->aspectKey($name);
-                if ($name !== '' && $key !== '' && ! isset($unique[$key])) {
+                if ($name !== '' && $key !== '' && strlen($name) <= 120 && ! preg_match('/[{};<>]|text-decoration|^\./', $name) && ! isset($unique[$key])) {
                     $unique[$key] = $name;
                 }
             }
@@ -384,7 +398,9 @@ class Ebay1DataController extends Controller
     public function addColumn(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:191',
+            'name' => 'nullable|string|max:191',
+            'names' => 'nullable|array|max:50',
+            'names.*' => 'required|string|max:191',
             'category' => 'nullable|string|max:500',
             'skus' => 'required|array|min:1|max:3000',
             'skus.*' => 'required|string|max:191',
@@ -392,51 +408,67 @@ class Ebay1DataController extends Controller
         if (! Schema::hasTable('ebay1_extra_columns')) {
             return response()->json(['success' => false, 'message' => 'Run php artisan migrate first (table ebay1_extra_columns is missing).'], 500);
         }
-        $name = trim(preg_replace('/\s+/u', ' ', (string) $validated['name']) ?? '');
-        $key = $this->aspectKey($name);
-        if ($name === '' || $key === '' || preg_match('/[{}<>]/', $name)) {
+
+        $requested = array_merge((array) ($validated['names'] ?? []), isset($validated['name']) ? [$validated['name']] : []);
+        $names = [];
+        foreach ($requested as $candidate) {
+            $candidate = trim(preg_replace('/\s+/u', ' ', (string) $candidate) ?? '');
+            $candidateKey = $this->aspectKey($candidate);
+            if ($candidate === '' || $candidateKey === '' || preg_match('/[{}<>;]/', $candidate)) {
+                continue;
+            }
+            $names[$candidateKey] = $candidate;
+        }
+        if ($names === []) {
             return response()->json(['success' => false, 'message' => 'Enter a valid column name.'], 422);
         }
         @set_time_limit(300);
 
         $category = trim((string) ($validated['category'] ?? ''));
         $hash = $this->categoryHash($category);
-        $existing = DB::table('ebay1_extra_columns')->where('category_hash', $hash)->where('name_key', $key)->first();
-        if (! $existing) {
-            DB::table('ebay1_extra_columns')->insert([
-                'category' => $category,
-                'category_hash' => $hash,
-                'name' => $name,
-                'name_key' => $key,
-                'added_by' => $request->user()?->id,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        } else {
-            $name = (string) $existing->name;
+        $skus = array_values(array_unique(array_filter(array_map('trim', $validated['skus']), static fn ($s) => $s !== '' && stripos($s, 'PARENT') === false)));
+
+        // Technical Specifications: a column exists once a SKU of the category carries its name.
+        $stored = [];
+        foreach ($names as $key => $name) {
+            $existing = DB::table('ebay1_extra_columns')->where('category_hash', $hash)->where('name_key', $key)->first();
+            if ($existing) {
+                $names[$key] = (string) $existing->name;
+            } else {
+                DB::table('ebay1_extra_columns')->insert([
+                    'category' => $category,
+                    'category_hash' => $hash,
+                    'name' => $name,
+                    'name_key' => $key,
+                    'added_by' => $request->user()?->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+            $stored[] = $names[$key];
         }
 
-        // Technical Specifications: the column exists once a SKU of the category carries the name.
         $touched = 0;
         if (Schema::hasColumn('product_master', 'description_v2_specifications')) {
-            $skus = array_values(array_unique(array_filter(array_map('trim', $validated['skus']), static fn ($s) => $s !== '' && stripos($s, 'PARENT ') !== 0)));
             foreach (array_chunk($skus, 200) as $chunk) {
                 foreach (ProductMaster::query()->whereIn('sku', $chunk)->get() as $product) {
                     $specs = is_array($product->description_v2_specifications) ? $product->description_v2_specifications : [];
-                    $has = false;
+                    $have = [];
                     foreach ($specs as $spec) {
-                        if ($this->aspectKey((string) ($spec['key'] ?? '')) === $key) {
-                            $has = true;
-                            break;
+                        $have[$this->aspectKey((string) ($spec['key'] ?? ''))] = true;
+                    }
+                    $changed = false;
+                    foreach ($names as $key => $name) {
+                        if (! isset($have[$key])) {
+                            $specs[] = ['key' => $name, 'value' => ''];
+                            $changed = true;
                         }
                     }
-                    if ($has) {
-                        continue;
+                    if ($changed) {
+                        $product->description_v2_specifications = $specs;
+                        $product->save();
+                        $touched++;
                     }
-                    $specs[] = ['key' => $name, 'value' => ''];
-                    $product->description_v2_specifications = $specs;
-                    $product->save();
-                    $touched++;
                 }
             }
         }
@@ -444,8 +476,7 @@ class Ebay1DataController extends Controller
 
         return response()->json([
             'success' => true,
-            'name' => $name,
-            'created' => ! $existing,
+            'names' => $stored,
             'skus_updated' => $touched,
         ]);
     }

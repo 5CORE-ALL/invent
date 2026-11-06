@@ -1400,7 +1400,7 @@ final class EbayTradingReviseItem
         string $siteId,
         string $authToken,
         array $getItemResponse,
-        string $name,
+        string|array $name,
     ): array {
         $item = self::itemFromGetItem($getItemResponse);
         $itemId = trim(self::xmlText($item['ItemID'] ?? ''));
@@ -1408,11 +1408,15 @@ final class EbayTradingReviseItem
             return ['success' => false, 'removed' => false, 'message' => 'GetItem response missing ItemID.'];
         }
 
-        $key = self::aspectKey($name);
+        // One name or several: a single ReviseItem drops all of them.
+        $wanted = [];
+        foreach ((array) $name as $candidate) {
+            $wanted[self::aspectKey((string) $candidate)] = true;
+        }
         $kept = [];
         $found = false;
         foreach (self::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null) as $row) {
-            if (self::aspectKey((string) ($row['name'] ?? '')) === $key) {
+            if (isset($wanted[self::aspectKey((string) ($row['name'] ?? ''))])) {
                 $found = true;
 
                 continue;

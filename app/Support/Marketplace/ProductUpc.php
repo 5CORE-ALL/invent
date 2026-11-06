@@ -57,6 +57,34 @@ class ProductUpc
         return '';
     }
 
+    /**
+     * Digits of a code that looks like a UPC / EAN (8 to 14 digits) without checking the check digit.
+     * Used for CP Master only. 9 to 11 digits get their leading zeros back (12 digits).
+     */
+    public static function normalizeLenient(mixed $value): string
+    {
+        if (is_int($value) || is_float($value)) {
+            $value = sprintf('%.0f', $value);
+        }
+        $text = trim((string) ($value ?? ''));
+        if ($text === '' || $text === '-') {
+            return '';
+        }
+        if (is_numeric($text) && (stripos($text, 'e') !== false || str_contains($text, '.'))) {
+            $text = sprintf('%.0f', (float) $text);
+        }
+        $text = (string) preg_replace('/[\s\-]+/', '', $text);
+        if ($text === '' || ! ctype_digit($text) || (int) ltrim($text, '0') === 0) {
+            return '';
+        }
+        $length = strlen($text);
+        if ($length >= 9 && $length < 12) {
+            return str_pad($text, 12, '0', STR_PAD_LEFT);
+        }
+
+        return in_array($length, [8, 12, 13, 14], true) ? $text : '';
+    }
+
     public static function validGtin(string $code): bool
     {
         if (! preg_match('/^\d+$/', $code) || ! in_array(strlen($code), [8, 12, 13, 14], true)) {
@@ -166,7 +194,7 @@ class ProductUpc
                     if (isset($found[$key])) {
                         continue;
                     }
-                    $upc = '';
+                    $raws = [];
                     if ($hasValues) {
                         $values = $row->Values ?? null;
                         if (is_string($values)) {
@@ -175,15 +203,29 @@ class ProductUpc
                         }
                         if (is_array($values)) {
                             foreach (['upc', 'UPC', 'Upc', 'gtin', 'GTIN'] as $name) {
-                                $upc = self::normalize($values[$name] ?? null);
-                                if ($upc !== '') {
-                                    break;
-                                }
+                                $raws[] = $values[$name] ?? null;
                             }
                         }
                     }
-                    if ($upc === '' && $hasUpc) {
-                        $upc = self::normalize($row->upc ?? null);
+                    if ($hasUpc) {
+                        $raws[] = $row->upc ?? null;
+                    }
+                    // A code with a correct check digit wins. Otherwise the CP Master code is still used as typed
+                    // (digits only), because CP Master is the source of truth for the UPC.
+                    $upc = '';
+                    foreach ($raws as $raw) {
+                        $upc = self::normalize($raw);
+                        if ($upc !== '') {
+                            break;
+                        }
+                    }
+                    if ($upc === '') {
+                        foreach ($raws as $raw) {
+                            $upc = self::normalizeLenient($raw);
+                            if ($upc !== '') {
+                                break;
+                            }
+                        }
                     }
                     if ($upc !== '') {
                         $found[$key] = $upc;
