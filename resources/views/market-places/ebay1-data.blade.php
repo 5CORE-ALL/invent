@@ -42,6 +42,58 @@
         #ebay1-data-table .tabulator-col { background: transparent !important; border-right: 1px solid rgba(255,255,255,.15); }
         #ebay1-data-table .tabulator-col .tabulator-col-title { color: #fff; font-size: 12px; font-weight: 700; }
         #ebay1-data-table .tabulator-header .tabulator-col.tabulator-frozen { background: #2c6ed5 !important; }
+        .e1g-wrap { position: relative; display: inline-block; }
+        .e1d-toolbar .e1g-panel {
+            position: absolute; top: 100%; left: 0; z-index: 1500; width: min(480px, 92vw); max-height: 65vh; overflow: auto;
+            background: #fff; border: 1px solid #cbd5e1; border-radius: 10px; box-shadow: 0 10px 30px rgba(15,23,42,.2);
+            padding: .4rem; margin-top: 4px; color: #334155; font-size: .84rem;
+        }
+        .e1g-panel[hidden] { display: none; }
+        .e1d-toolbar .e1g-panel input[type=checkbox] { height: auto; min-width: 0; width: auto; padding: 0; margin: 0; border-radius: 3px; }
+        .e1d-toolbar .e1g-panel input[type=text], .e1d-toolbar .e1g-panel input[type=search] { height: 28px; min-width: 0; width: 100%; font-size: .8rem; }
+        .e1d-toolbar .e1g-panel select { height: 26px; font-size: .74rem; max-width: 120px; padding: 0 .2rem; border-radius: 6px; }
+        .e1g-label { display: inline-flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; }
+        .e1g-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: .35rem .3rem; font-size: .78rem; color: #64748b; border-bottom: 1px solid #e2e8f0; margin-bottom: .3rem; }
+        .e1g-group { border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: .3rem; background: #f8fafc; }
+        .e1g-head { display: flex; align-items: center; gap: 6px; padding: .3rem .5rem; }
+        .e1g-name { font-weight: 700; flex: 1; cursor: pointer; }
+        .e1g-count { color: #64748b; font-size: .75rem; }
+        .e1g-body { padding: .2rem .5rem .5rem 1.6rem; background: #fff; border-top: 1px solid #e2e8f0; border-radius: 0 0 8px 8px; }
+        .e1g-col { display: flex; align-items: center; gap: 6px; padding: .12rem 0; }
+        .e1g-col .e1g-label { flex: 1; }
+        .e1g-icon { border: 0; background: transparent; color: #64748b; padding: 0 .3rem; font-weight: 700; line-height: 1; }
+        .e1g-icon:hover { color: #dc2626; }
+        .e1g-add { display: flex; gap: 6px; margin-top: .35rem; }
+        .e1g-new { display: flex; gap: 6px; padding: .4rem .2rem .1rem; border-top: 1px solid #e2e8f0; margin-top: .3rem; }
+        /* Frozen columns (select box and SKU on the left, pen on the right) stay solid while the rest scrolls under them. */
+        #ebay1-data-table .tabulator-row .tabulator-cell.tabulator-frozen { background: #fff; z-index: 13; }
+        #ebay1-data-table .tabulator-row.tabulator-row-even .tabulator-cell.tabulator-frozen { background: #f8fafc; }
+        #ebay1-data-table .tabulator-row:hover .tabulator-cell.tabulator-frozen { background: #e8f0fe !important; }
+        #ebay1-data-table .tabulator-row.tabulator-selected .tabulator-cell.tabulator-frozen { background: #d6e6ff; }
+        #ebay1-data-table .tabulator-cell.tabulator-frozen-left[tabulator-field="sku"],
+        #ebay1-data-table .tabulator-col.tabulator-frozen-left[tabulator-field="sku"] { box-shadow: 3px 0 6px rgba(15,23,42,.15); }
+        #ebay1-data-table .tabulator-frozen.tabulator-frozen-right { box-shadow: -3px 0 6px rgba(15,23,42,.15); z-index: 14; }
+        #ebay1-data-table .tabulator-col[tabulator-field="_edit"] .tabulator-col-title { writing-mode: horizontal-tb; transform: none; }
+        /* Small pen button to save space. */
+        #ebay1-data-table .tabulator-cell.e1d-edit-col { padding: 2px !important; }
+        #ebay1-data-table .e1d-edit-btn { padding: 0 !important; width: 22px; height: 20px; line-height: 18px; font-size: 10px; border-radius: 4px; }
+        #ebay1-data-table .tabulator-col[tabulator-field="_edit"] .tabulator-col-content { padding: 8px 0 !important; }
+        #ebay1-data-table .tabulator-col[tabulator-field="_edit"] .tabulator-col-title i { font-size: 11px; transform: none; margin: 0; }
+        /* Every header is written vertically, reading bottom to top. */
+        #ebay1-data-table .tabulator-header,
+        #ebay1-data-table .tabulator-header .tabulator-headers,
+        #ebay1-data-table .tabulator-col,
+        #ebay1-data-table .tabulator-col-content,
+        #ebay1-data-table .tabulator-col-title-holder { height: 105px !important; }
+        #ebay1-data-table .tabulator-col-content {
+            display: flex !important; align-items: flex-end; justify-content: center; padding: 8px 2px !important;
+        }
+        #ebay1-data-table .tabulator-col-title-holder { display: flex; align-items: center; justify-content: flex-end; }
+        #ebay1-data-table .tabulator-col .tabulator-col-title {
+            writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis; max-height: 90px; line-height: 1.15; letter-spacing: .02em; text-align: center;
+        }
+        #ebay1-data-table .tabulator-col .tabulator-col-title i { transform: rotate(90deg); display: inline-block; margin-top: 4px; }
         #ebay1-data-table .tabulator-row:nth-child(even) { background: #f8fafc; }
         #ebay1-data-table .tabulator-row:hover { background: #e8f0fe !important; }
         #ebay1-data-table .tabulator-cell { font-size: 13px; color: #475569; }
@@ -97,28 +149,37 @@
                             <option value="in">In stock (INV &gt; 0)</option>
                             <option value="out">Out of stock</option>
                         </select>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="e1dRefresh" title="Reload the data">
-                            <i class="fas fa-sync-alt"></i> Refresh
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="e1dRefresh" title="Refresh: reload the data" aria-label="Refresh">
+                            <i class="fas fa-sync-alt"></i>
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-success" id="e1dExport" title="Download the rows of this tab as CSV">
-                            <i class="fas fa-file-csv"></i> CSV
-                        </button>
-                        <button type="button" class="btn btn-sm btn-warning" id="e1dPull" title="Reads the live eBay 1 listing of every SKU once and stores its category and item specifics">
-                            <i class="fas fa-cloud-download-alt"></i> <span id="e1dPullLabel">Pull item specifics (one time)</span>
+                        <button type="button" class="btn btn-sm btn-outline-success" id="e1dExport" title="CSV: download the rows of this tab" aria-label="CSV">
+                            <i class="fas fa-file-csv"></i>
                         </button>
                         <span class="small text-muted" id="e1dPullStatus"></span>
                         <button type="button" class="btn btn-sm btn-primary" id="e1dPush" title="Push the item specifics of the ticked rows, or of the whole open tab, to the live eBay 1 listings" disabled>
-                            <i class="fas fa-cloud-upload-alt"></i> <span id="e1dPushLabel">Push to eBay 1</span>
+                            <i class="fas fa-cloud-upload-alt"></i> <span id="e1dPushLabel">0</span>
                         </button>
-                        <button type="button" class="btn btn-sm btn-success" id="e1dAddCol" title="Add a column to the open category tab" disabled>
-                            <i class="fas fa-plus"></i> Add Column
+                        <button type="button" class="btn btn-sm btn-success" id="e1dAddCol" title="Add Column: add a column to the open category tab" aria-label="Add Column" disabled>
+                            <i class="fas fa-plus"></i>
                         </button>
-                        <button type="button" class="btn btn-sm btn-info text-white" id="e1dSrcBtn" title="Choose which Technical Specifications column a column of this tab always reads from" disabled>
-                            <i class="fas fa-link"></i> Source Data
+                        <button type="button" class="btn btn-sm btn-info text-white" id="e1dSrcBtn" title="Source Data: choose which Technical Specifications column a column of this tab always reads from" aria-label="Source Data" disabled>
+                            <i class="fas fa-link"></i>
                         </button>
-                        <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete one item-specific column of the open category tab, here and on the live eBay 1 listings" disabled>
-                            <i class="fas fa-trash-alt"></i> Delete Column
+                        <button type="button" class="btn btn-sm btn-warning" id="e1dEditCol" title="Edit Column: set one column to the same value on every row of the open tab, or only on the ticked rows" aria-label="Edit Column" disabled>
+                            <i class="fas fa-edit"></i>
                         </button>
+                        <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete Column: delete one item-specific column of the open category tab, here and on the live eBay 1 listings" aria-label="Delete Column" disabled>
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                        <div class="e1g-wrap" id="e1gWrap">
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="e1gBtn" title="Column headers: show the columns of a header (Basics, Common, Others and your own)" aria-label="Column headers">
+                                <i class="fas fa-columns"></i>
+                            </button>
+                            <div class="e1g-panel" id="e1gPanel" hidden>
+                                <input type="search" id="e1gSearch" placeholder="Search headers or columns…" autocomplete="off">
+                                <div id="e1gBody"></div>
+                            </div>
+                        </div>
                         <div class="e1d-badges" id="e1dBadges"></div>
                     </div>
 
@@ -162,6 +223,25 @@
                     <button type="button" class="btn btn-sm btn-light" id="e1dSrcCancel">Cancel</button>
                     <button type="button" class="btn btn-sm btn-primary" id="e1dSrcSave" disabled>Save</button>
                 </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="e1d-modal" id="e1dEditModal" hidden>
+        <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dEditTitle">
+            <h5 id="e1dEditTitle" class="mb-2"><i class="fas fa-edit text-warning"></i> Edit Column</h5>
+            <p class="small text-muted mb-2" id="e1dEditIntro"></p>
+            <label class="form-label small fw-bold" for="e1dEditSearch">1. Search the column to edit</label>
+            <input type="text" id="e1dEditSearch" class="form-control form-control-sm mb-1" placeholder="Quick search a column…" autocomplete="off">
+            <div class="e1d-addlist" id="e1dEditList" role="listbox"></div>
+            <div class="small my-2 fw-bold" id="e1dEditPicked"></div>
+            <label class="form-label small fw-bold" for="e1dEditValue">2. New data for the column</label>
+            <input type="text" id="e1dEditValue" class="form-control form-control-sm mb-1" list="e1dEditValues" placeholder="Pick a column first" autocomplete="off" disabled>
+            <datalist id="e1dEditValues"></datalist>
+            <div class="small my-2" id="e1dEditHint"></div>
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-sm btn-light" id="e1dEditCancel">Cancel</button>
+                <button type="button" class="btn btn-sm btn-warning" id="e1dEditGo" disabled>Apply</button>
             </div>
         </div>
     </div>
@@ -321,7 +401,6 @@
                 renderTabs();
                 syncSpecColumns();
                 applyFilters();
-                updatePullButton();
                 updateDelButton();
                 updatePushButton();
             }
@@ -524,10 +603,12 @@
                 if (!btn || btn.dataset.busy === '1') return;
                 const scope = pushScope();
                 btn.disabled = scope.targets.length === 0;
-                document.getElementById('e1dPushLabel').textContent = 'Push to eBay 1 · ' + scope.targets.length + (scope.selected ? ' selected' : '');
-                btn.title = scope.selected
-                    ? 'Push the ticked rows to the live eBay 1 listings'
-                    : (activeTab === ALL ? 'Push every listed SKU of all categories' : 'Push the whole open category to the live eBay 1 listings');
+                document.getElementById('e1dPushLabel').textContent = String(scope.targets.length);
+                btn.setAttribute('aria-label', 'Push to eBay 1');
+                btn.title = 'Push to eBay 1 (' + scope.targets.length + (scope.selected ? ' ticked' : '') + '): '
+                    + (scope.selected
+                        ? 'push the ticked rows to the live eBay 1 listings'
+                        : (activeTab === ALL ? 'push every listed SKU of all categories' : 'push the whole open category to the live eBay 1 listings'));
             }
 
             async function pushToEbay() {
@@ -691,6 +772,8 @@
                 if (addBtn) addBtn.disabled = activeTab === ALL;
                 const srcBtn = document.getElementById('e1dSrcBtn');
                 if (srcBtn) srcBtn.disabled = activeTab === ALL || specNamesForTab().length === 0;
+                const editBtn = document.getElementById('e1dEditCol');
+                if (editBtn) editBtn.disabled = activeTab === ALL || editableColumnNames().length === 0;
                 const btn = document.getElementById('e1dDelCol');
                 if (!btn) return;
                 const has = activeTab !== ALL && specNamesForTab().length > 0;
@@ -816,61 +899,6 @@
                 }
             }
 
-            // SKUs with a live eBay item ID whose item specifics were not pulled yet.
-            function pendingPull() {
-                return rows.filter(function (row) { return !row.specs_pulled && /^\d{9,15}$/.test(String(row.item_id || '').trim()); });
-            }
-
-            function updatePullButton() {
-                const btn = document.getElementById('e1dPull');
-                if (!btn || btn.dataset.busy === '1') return;
-                const pending = pendingPull().length;
-                const done = rows.filter(function (row) { return row.specs_pulled; }).length;
-                btn.disabled = pending === 0;
-                document.getElementById('e1dPullLabel').textContent = pending === 0
-                    ? 'Item specifics pulled'
-                    : 'Pull item specifics (one time) · ' + pending;
-                document.getElementById('e1dPullStatus').textContent = done ? done + ' SKUs pulled' : '';
-            }
-
-            async function pullSpecifics() {
-                const btn = document.getElementById('e1dPull');
-                const status = document.getElementById('e1dPullStatus');
-                const todo = pendingPull();
-                if (!todo.length) return;
-                if (!window.confirm('Pull the category and item specifics of ' + todo.length + ' SKUs from the live eBay 1 listings?\nThis runs once. SKUs already pulled are never overwritten.')) return;
-                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                btn.dataset.busy = '1';
-                btn.disabled = true;
-                let done = 0, failed = 0;
-                const problems = [];
-                const size = 5;
-                for (let i = 0; i < todo.length; i += size) {
-                    const chunk = todo.slice(i, i + size).map(function (row) { return { sku: row.sku, item_id: String(row.item_id).trim() }; });
-                    status.textContent = 'Pulling ' + Math.min(i + size, todo.length) + ' / ' + todo.length + '…';
-                    try {
-                        const res = await fetch('/ebay1-data/pull-specifics', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
-                            body: JSON.stringify({ items: chunk }),
-                        });
-                        const json = await res.json();
-                        if (!res.ok || !json.success) throw new Error(json.message || 'Request failed');
-                        (json.results || []).forEach(function (r) {
-                            if (r.status === 'failed') { failed++; problems.push(r.sku + ': ' + r.message); } else { done++; }
-                        });
-                    } catch (e) {
-                        failed += chunk.length;
-                        problems.push(e.message || 'Request failed');
-                    }
-                }
-                btn.dataset.busy = '0';
-                status.textContent = 'Pulled ' + done + (failed ? ', failed ' + failed : '') + '.';
-                if (problems.length) window.alert(problems.slice(0, 15).join('\n') + (problems.length > 15 ? '\n…' : ''));
-                await loadData();
-                if (failed) status.textContent = 'Pulled ' + done + ', failed ' + failed + ' (click the button to retry those).';
-            }
-
             function numberFormatter(decimals) {
                 return function (cell) {
                     const v = cell.getValue();
@@ -911,6 +939,461 @@
                 });
             }
 
+            // ---- Edit Column: one value for a whole column, or for the ticked rows only ----
+            const E1_AUTOFILLED = ['brand', 'manufacturer', 'condition', 'countryoforigin', 'mpn', 'model', 'upc'];
+            let editPicked = '';
+            let editBusy = false;
+            let editRow = null; // set when the pen button of one row opened the window
+
+            // Item-specific columns of the open tab. Columns filled automatically or synced from a source are not editable.
+            function editableColumnNames() {
+                return specNamesForTab().filter(function (name) {
+                    return E1_AUTOFILLED.indexOf(gKey(name)) === -1 && !sourceFor(name);
+                });
+            }
+
+            // Columns the window lists: those of the open tab, or the item specifics of the one row being edited.
+            function editNames() {
+                if (!editRow) return editableColumnNames();
+                const spec = editRow.specifics && !Array.isArray(editRow.specifics) ? editRow.specifics : {};
+                const seen = new Set();
+                const out = [];
+                Object.keys(spec).forEach(function (n) {
+                    const k = gKey(n);
+                    if (!k || seen.has(k)) return;
+                    seen.add(k);
+                    if (E1_AUTOFILLED.indexOf(k) === -1 && !sourceFor(n, editRow.category || '')) out.push(n);
+                });
+                return out.sort(function (a, b) { return a.localeCompare(b); });
+            }
+
+            function editScope() {
+                if (editRow) return { selected: false, single: true, targets: [editRow] };
+                const selected = table && tableReady ? table.getSelectedData().filter(passesTab) : [];
+                const base = selected.length ? selected : (table && tableReady ? table.getData('active').filter(passesTab) : []);
+                return { selected: selected.length > 0, targets: base };
+            }
+
+            function renderEditList() {
+                const q = String(document.getElementById('e1dEditSearch').value || '').trim().toLowerCase();
+                const names = editNames().filter(function (n) { return !q || n.toLowerCase().indexOf(q) !== -1; });
+                document.getElementById('e1dEditList').innerHTML = names.map(function (n) {
+                    return '<button type="button" data-name="' + esc(n) + '"' + (n === editPicked ? ' class="active"' : '') + '>' + esc(n) + '</button>';
+                }).join('');
+                const scope = editScope();
+                document.getElementById('e1dEditPicked').textContent = editPicked ? 'Column: ' + editPicked : 'No column picked yet.';
+                const value = document.getElementById('e1dEditValue');
+                value.disabled = !editPicked || editBusy;
+                value.placeholder = editPicked ? 'Type the data for ' + editPicked : 'Pick a column first';
+                document.getElementById('e1dEditHint').textContent = editPicked
+                    ? (scope.single
+                        ? 'Changes only ' + editRow.sku + '.'
+                        : 'Changes ' + scope.targets.length + (scope.selected ? ' ticked' : '') + ' row' + (scope.targets.length === 1 ? '' : 's') + '.')
+                        + ' Nothing is sent to eBay until you press Push.'
+                    : '';
+                document.getElementById('e1dEditGo').disabled = !editPicked || editBusy || scope.targets.length === 0;
+            }
+
+            function pickEditColumn(name) {
+                editPicked = name;
+                const values = new Map();
+                const sample = editRow ? rows.filter(function (r) { return (r.category || '') === (editRow.category || ''); }) : editScope().targets;
+                sample.forEach(function (row) {
+                    const spec = row.specifics && !Array.isArray(row.specifics) ? row.specifics : {};
+                    Object.keys(spec).forEach(function (k) {
+                        const v = String(spec[k] || '').trim();
+                        if (gKey(k) === gKey(name) && v !== '') values.set(v, (values.get(v) || 0) + 1);
+                    });
+                });
+                document.getElementById('e1dEditValues').innerHTML = Array.from(values.keys()).sort(function (a, b) { return values.get(b) - values.get(a); }).slice(0, 40)
+                    .map(function (v) { return '<option value="' + esc(v) + '"></option>'; }).join('');
+                // A single row starts with its own current value.
+                let current = '';
+                if (editRow) {
+                    const spec = editRow.specifics && !Array.isArray(editRow.specifics) ? editRow.specifics : {};
+                    const own = Object.keys(spec).find(function (k) { return gKey(k) === gKey(name); });
+                    current = own ? String(spec[own] || '') : '';
+                }
+                document.getElementById('e1dEditValue').value = current;
+                renderEditList();
+                document.getElementById('e1dEditValue').focus();
+            }
+
+            // Without a row: the whole open tab (or the ticked rows). With a row (pen button): that row only.
+            function openEditModal(row) {
+                editRow = row && row.sku ? row : null;
+                const scope = editScope();
+                if (!scope.targets.length) {
+                    editRow = null;
+                    window.alert('There are no rows in this tab to edit.');
+                    return;
+                }
+                if (editRow && !editNames().length) {
+                    const sku = editRow.sku;
+                    editRow = null;
+                    window.alert('There are no editable item specifics for ' + sku + '. Pull the item specifics first.');
+                    return;
+                }
+                editPicked = '';
+                document.getElementById('e1dEditSearch').value = '';
+                document.getElementById('e1dEditValue').value = '';
+                document.getElementById('e1dEditIntro').textContent = scope.single
+                    ? 'Editing the data of ' + editRow.sku + ' only.'
+                    : (scope.selected
+                        ? 'Only the ' + scope.targets.length + ' ticked row' + (scope.targets.length === 1 ? '' : 's') + ' will change.'
+                        : 'Every row shown in this tab (' + scope.targets.length + ') will change. Tick rows first to change only those.');
+                document.getElementById('e1dEditModal').hidden = false;
+                renderEditList();
+                document.getElementById('e1dEditSearch').focus();
+            }
+
+            function closeEditModal() {
+                if (editBusy) return;
+                document.getElementById('e1dEditModal').hidden = true;
+            }
+
+            async function runEditColumn() {
+                if (editBusy || !editPicked) return;
+                const scope = editScope();
+                const value = String(document.getElementById('e1dEditValue').value || '').trim();
+                if (!scope.targets.length) return;
+                if (value === '' && !window.confirm('Clear ' + editPicked + ' on ' + scope.targets.length + ' row' + (scope.targets.length === 1 ? '' : 's') + '?')) return;
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                const skus = scope.targets.map(function (row) { return row.sku; });
+                const go = document.getElementById('e1dEditGo');
+                editBusy = true;
+                renderEditList();
+                try {
+                    for (let i = 0; i < skus.length; i += 300) {
+                        go.textContent = 'Saving ' + Math.min(i + 300, skus.length) + ' / ' + skus.length + '…';
+                        const res = await fetch('/ebay1-data/edit-column', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify({ column: editPicked, value: value, skus: skus.slice(i, i + 300) }),
+                        });
+                        let json = {};
+                        try { json = await res.json(); } catch (e) {}
+                        if (!res.ok || json.success === false) throw new Error(json.message || 'Could not save');
+                    }
+                    const field = specKey(editPicked);
+                    const bySku = new Map();
+                    table.getRows().forEach(function (tRow) { bySku.set(String(tRow.getData().sku), tRow); });
+                    table.blockRedraw();
+                    try {
+                        scope.targets.forEach(function (row) {
+                            const tRow = bySku.get(String(row.sku));
+                            const data = tRow ? tRow.getData() : row;
+                            const spec = data.specifics && !Array.isArray(data.specifics) ? data.specifics : {};
+                            const existing = Object.keys(spec).find(function (k) { return gKey(k) === gKey(editPicked); });
+                            spec[existing || editPicked] = value;
+                            if (tRow) tRow.update({ specifics: spec, [field]: value });
+                            else { row.specifics = spec; row[field] = value; }
+                        });
+                    } finally {
+                        table.restoreRedraw();
+                    }
+                    editBusy = false;
+                    document.getElementById('e1dEditModal').hidden = true;
+                    refreshAll();
+                } catch (e) {
+                    window.alert(e.message || 'Could not save the column');
+                } finally {
+                    editBusy = false;
+                    go.textContent = 'Apply';
+                    renderEditList();
+                }
+            }
+
+            // ---- Column headers: named headers (Basics, Common, Others, ...) with tick boxes ----
+            // Ticking a header or a column shows only the ticked columns (the select box and SKU always stay).
+            // A column can sit in several headers: it can be moved to another header or copied to one.
+            const E1G_SEL_KEY = 'ebay1_data_group_sel_v1';
+            const E1G_DEFAULTS = ['Basics', 'Common', 'Others'];
+            let e1gGroups = [];
+            let e1gKnown = null;
+            const e1gOpen = new Set();
+            const e1gSel = (function () {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(E1G_SEL_KEY) || '[]');
+                    return new Set(Array.isArray(parsed) ? parsed : []);
+                } catch (e) {
+                    return new Set();
+                }
+            })();
+            let e1gSaving = Promise.resolve();
+
+            function gKey(name) {
+                return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+            }
+
+            function gClean(value) {
+                return String(value || '').replace(/\s+/g, ' ').trim();
+            }
+
+            function e1gToast(message) {
+                window.alert(message);
+            }
+
+            function initColumnGroups(saved) {
+                const list = Array.isArray(saved) && saved.length ? saved : E1G_DEFAULTS.map(function (n) { return { name: n, columns: [] }; });
+                e1gGroups = list.map(function (g) {
+                    return { name: String(g.name || ''), columns: Array.isArray(g.columns) ? g.columns.map(String) : [] };
+                }).filter(function (g) { return g.name !== ''; });
+                e1gKnown = null;
+            }
+
+            function persistColumnGroups() {
+                const payload = { groups: e1gGroups.map(function (g) { return { name: g.name, columns: g.columns }; }) };
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                e1gSaving = e1gSaving.then(async function () {
+                    const res = await fetch('/ebay1-data/column-groups', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                        body: JSON.stringify(payload),
+                    });
+                    let json = {};
+                    try { json = await res.json(); } catch (e) {}
+                    if (!res.ok || json.success === false) throw new Error(json.message || 'Could not save the headers');
+                }).catch(function (e) { e1gToast(e.message || 'Could not save the headers'); });
+            }
+
+            // Every column the page can show: the fixed columns and every item specific of any category.
+            function e1gKnownColumns() {
+                if (e1gKnown) return e1gKnown;
+                const map = new Map();
+                baseColumns().forEach(function (c) {
+                    if (c.title && c.field) map.set(gKey(c.title), c.title);
+                });
+                const found = new Set();
+                rows.forEach(function (row) {
+                    if (!row.specifics || Array.isArray(row.specifics)) return;
+                    Object.keys(row.specifics).forEach(function (n) { found.add(n); });
+                });
+                Array.from(found).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (n) {
+                    if (!map.has(gKey(n))) map.set(gKey(n), n);
+                });
+                e1gKnown = map;
+                return map;
+            }
+
+            function e1gGroupNames(group, map) {
+                const out = [];
+                const seen = new Set();
+                group.columns.forEach(function (c) {
+                    const key = gKey(c);
+                    const real = map.get(key);
+                    if (real && !seen.has(key)) {
+                        seen.add(key);
+                        out.push(real);
+                    }
+                });
+                return out;
+            }
+
+            // Show only the ticked columns that exist in the open tab; nothing ticked (or nothing matching) shows all.
+            function applyColumnGroupVisibility() {
+                if (!table || !tableReady) return;
+                const fieldKey = new Map();
+                baseColumns().forEach(function (c) { if (c.field && c.title) fieldKey.set(c.field, gKey(c.title)); });
+                specNamesForTab().forEach(function (n) { fieldKey.set(specKey(n), gKey(n)); });
+                let matched = 0;
+                if (e1gSel.size) fieldKey.forEach(function (k) { if (e1gSel.has(k)) matched++; });
+                const filtering = matched > 0;
+                table.blockRedraw();
+                try {
+                    table.getColumns().forEach(function (col) {
+                        const field = col.getDefinition().field;
+                        if (!field || field === 'sku' || field === '_edit') return;
+                        const want = !filtering || e1gSel.has(fieldKey.get(field));
+                        if (want && !col.isVisible()) col.show();
+                        else if (!want && col.isVisible()) col.hide();
+                    });
+                } finally {
+                    table.restoreRedraw();
+                }
+            }
+
+            function e1gSaveSel() {
+                try { localStorage.setItem(E1G_SEL_KEY, JSON.stringify(Array.from(e1gSel))); } catch (e) {}
+            }
+
+            function e1gApplySel() {
+                e1gSaveSel();
+                applyColumnGroupVisibility();
+            }
+
+            function renderColumnGroups() {
+                const body = document.getElementById('e1gBody');
+                if (!body) return;
+                const panel = document.getElementById('e1gPanel');
+                const scroll = panel.scrollTop;
+                const q = String(document.getElementById('e1gSearch').value || '').trim().toLowerCase();
+                const map = e1gKnownColumns();
+                const allNames = Array.from(map.values());
+                let html = '<datalist id="e1gNames">' + allNames.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('') + '</datalist>';
+                html += '<div class="e1g-top"><span>' + (e1gSel.size ? e1gSel.size + ' column' + (e1gSel.size === 1 ? '' : 's') + ' ticked' : 'All columns shown') + '</span>'
+                    + '<button type="button" class="btn btn-sm btn-outline-secondary py-0" data-act="clear"' + (e1gSel.size ? '' : ' disabled') + '>Show all</button></div>';
+                e1gGroups.forEach(function (group, gi) {
+                    const names = e1gGroupNames(group, map);
+                    const nameHit = q !== '' && group.name.toLowerCase().indexOf(q) !== -1;
+                    const hits = q !== '' ? names.filter(function (n) { return n.toLowerCase().indexOf(q) !== -1; }) : names;
+                    if (q !== '' && !nameHit && !hits.length) return;
+                    const open = q !== '' ? true : e1gOpen.has(group.name);
+                    const visibleNames = (q !== '' && !nameHit) ? hits : names;
+                    html += '<div class="e1g-group"><div class="e1g-head">'
+                        + '<input type="checkbox" class="e1g-gcb" data-g="' + gi + '" title="Show the columns of this header">'
+                        + '<span class="e1g-name" data-act="toggle" data-g="' + gi + '">' + esc(group.name) + '</span>'
+                        + '<span class="e1g-count">' + names.length + '</span>'
+                        + '<button type="button" class="e1g-icon" data-act="toggle" data-g="' + gi + '" title="Open or close">' + (open ? '&#9662;' : '&#9656;') + '</button>'
+                        + '<button type="button" class="e1g-icon" data-act="delgroup" data-g="' + gi + '" title="Delete this header (its columns stay)">&times;</button>'
+                        + '</div>';
+                    if (open) {
+                        const others = e1gGroups.map(function (g, i) { return { g: g, i: i }; }).filter(function (o) { return o.i !== gi; });
+                        html += '<div class="e1g-body">';
+                        visibleNames.forEach(function (name) {
+                            const key = gKey(name);
+                            html += '<div class="e1g-col"><label class="e1g-label"><input type="checkbox" class="e1g-ccb" data-key="' + esc(key) + '"' + (e1gSel.has(key) ? ' checked' : '') + '> ' + esc(name) + '</label>';
+                            if (others.length) {
+                                html += '<select data-act="xfer" data-g="' + gi + '" data-name="' + esc(name) + '"><option value="">Move / copy…</option>'
+                                    + '<optgroup label="Move to">' + others.map(function (o) { return '<option value="move:' + o.i + '">' + esc(o.g.name) + '</option>'; }).join('') + '</optgroup>'
+                                    + '<optgroup label="Copy to">' + others.map(function (o) { return '<option value="copy:' + o.i + '">' + esc(o.g.name) + '</option>'; }).join('') + '</optgroup></select>';
+                            }
+                            html += '<button type="button" class="e1g-icon" data-act="remove" data-g="' + gi + '" data-name="' + esc(name) + '" title="Remove from this header">&times;</button></div>';
+                        });
+                        if (!visibleNames.length) html += '<div class="text-muted small">No columns in this header yet.</div>';
+                        html += '<div class="e1g-add"><input type="text" list="e1gNames" data-add="' + gi + '" placeholder="+ Add a column to ' + esc(group.name) + '" autocomplete="off"></div></div>';
+                    }
+                    html += '</div>';
+                });
+                html += '<div class="e1g-new"><input type="text" id="e1gNewGroup" placeholder="New header name" autocomplete="off" maxlength="100">'
+                    + '<button type="button" class="btn btn-sm btn-primary py-0" data-act="newgroup" title="Add a header">+</button></div>';
+                body.innerHTML = html;
+                body.querySelectorAll('.e1g-gcb').forEach(function (cb) {
+                    const names = e1gGroupNames(e1gGroups[Number(cb.dataset.g)], map);
+                    const on = names.filter(function (n) { return e1gSel.has(gKey(n)); }).length;
+                    cb.checked = names.length > 0 && on === names.length;
+                    cb.indeterminate = on > 0 && on < names.length;
+                    cb.disabled = names.length === 0;
+                });
+                panel.scrollTop = scroll;
+            }
+
+            function e1gAddTo(group, name) {
+                const key = gKey(name);
+                if (!group.columns.some(function (c) { return gKey(c) === key; })) group.columns.push(name);
+            }
+
+            function e1gRemoveFrom(group, name) {
+                const key = gKey(name);
+                group.columns = group.columns.filter(function (c) { return gKey(c) !== key; });
+            }
+
+            function e1gNewGroup() {
+                const input = document.getElementById('e1gNewGroup');
+                const name = gClean(input ? input.value : '');
+                if (!name) return;
+                if (e1gGroups.some(function (g) { return g.name.toLowerCase() === name.toLowerCase(); })) {
+                    e1gToast('A header named ' + name + ' already exists.');
+                    return;
+                }
+                e1gGroups.push({ name: name, columns: [] });
+                e1gOpen.add(name);
+                persistColumnGroups();
+                renderColumnGroups();
+                const next = document.querySelector('#e1gBody [data-add="' + (e1gGroups.length - 1) + '"]');
+                if (next) next.focus();
+            }
+
+            function bindColumnGroups() {
+                const wrap = document.getElementById('e1gWrap');
+                const panel = document.getElementById('e1gPanel');
+                const body = document.getElementById('e1gBody');
+                document.getElementById('e1gBtn').addEventListener('click', function () {
+                    panel.hidden = !panel.hidden;
+                    if (!panel.hidden) {
+                        renderColumnGroups();
+                        document.getElementById('e1gSearch').focus();
+                    }
+                });
+                document.getElementById('e1gSearch').addEventListener('input', renderColumnGroups);
+                document.addEventListener('mousedown', function (e) {
+                    if (!wrap.contains(e.target)) panel.hidden = true;
+                });
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape') panel.hidden = true;
+                });
+                body.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' && e.target.id === 'e1gNewGroup') {
+                        e.preventDefault();
+                        e1gNewGroup();
+                    }
+                });
+                body.addEventListener('click', function (e) {
+                    const el = e.target.closest('[data-act]');
+                    if (!el || el.tagName === 'SELECT') return;
+                    const act = el.dataset.act;
+                    const group = e1gGroups[Number(el.dataset.g)];
+                    if (act === 'newgroup') {
+                        e1gNewGroup();
+                    } else if (act === 'clear') {
+                        e1gSel.clear();
+                        e1gApplySel();
+                        renderColumnGroups();
+                    } else if (act === 'toggle' && group) {
+                        if (e1gOpen.has(group.name)) e1gOpen.delete(group.name);
+                        else e1gOpen.add(group.name);
+                        renderColumnGroups();
+                    } else if (act === 'delgroup' && group) {
+                        if (!window.confirm('Delete the header "' + group.name + '"? Its columns stay in the table.')) return;
+                        e1gGroups = e1gGroups.filter(function (g) { return g !== group; });
+                        persistColumnGroups();
+                        renderColumnGroups();
+                    } else if (act === 'remove' && group) {
+                        e1gRemoveFrom(group, el.dataset.name);
+                        persistColumnGroups();
+                        renderColumnGroups();
+                    }
+                });
+                body.addEventListener('change', function (e) {
+                    const t = e.target;
+                    const map = e1gKnownColumns();
+                    if (t.classList.contains('e1g-gcb')) {
+                        e1gGroupNames(e1gGroups[Number(t.dataset.g)], map).forEach(function (n) {
+                            if (t.checked) e1gSel.add(gKey(n));
+                            else e1gSel.delete(gKey(n));
+                        });
+                        e1gApplySel();
+                        renderColumnGroups();
+                    } else if (t.classList.contains('e1g-ccb')) {
+                        if (t.checked) e1gSel.add(t.dataset.key);
+                        else e1gSel.delete(t.dataset.key);
+                        e1gApplySel();
+                        renderColumnGroups();
+                    } else if (t.dataset.act === 'xfer') {
+                        const parts = String(t.value || '').split(':');
+                        const from = e1gGroups[Number(t.dataset.g)];
+                        const to = e1gGroups[Number(parts[1])];
+                        if (!from || !to || !parts[0]) return;
+                        e1gAddTo(to, t.dataset.name);
+                        if (parts[0] === 'move') e1gRemoveFrom(from, t.dataset.name);
+                        e1gOpen.add(to.name);
+                        persistColumnGroups();
+                        renderColumnGroups();
+                    } else if (t.dataset.add !== undefined) {
+                        const group = e1gGroups[Number(t.dataset.add)];
+                        const real = map.get(gKey(t.value));
+                        if (!group) return;
+                        if (!real) {
+                            if (gClean(t.value) !== '') e1gToast('No column named ' + t.value + '. Create it with Add Column first.');
+                            return;
+                        }
+                        e1gAddTo(group, real);
+                        persistColumnGroups();
+                        renderColumnGroups();
+                    }
+                });
+            }
+
             function syncSpecColumns(force) {
                 if (!table || !tableReady) return;
                 const names = specNamesForTab();
@@ -927,7 +1410,34 @@
                         formatter: textFormatter,
                     };
                 });
-                table.setColumns(baseColumns().concat(specColumns));
+                table.setColumns(baseColumns().concat(specColumns, [editColumn()]));
+                applyColumnGroupVisibility();
+            }
+
+            // One line per word in the header. A trailing link icon (Source Data columns) stays on the last line.
+            function breakTitle(cell) {
+                const raw = String(cell.getValue() == null ? '' : cell.getValue());
+                const at = raw.indexOf(' <i ');
+                const text = at === -1 ? raw : raw.slice(0, at);
+                const icon = at === -1 ? '' : raw.slice(at);
+                const safe = at === -1 && /<[a-z]/i.test(raw) ? raw : text.trim().split(/\s+/).join('<br>');
+                return safe + icon;
+            }
+
+            // Pen button, always the last column and frozen on the right whatever the horizontal scroll.
+            function editColumn() {
+                return {
+                    title: '', field: '_edit', width: 32, minWidth: 32, hozAlign: 'center', headerHozAlign: 'center',
+                    headerSort: false, resizable: false, frozen: true, download: false, cssClass: 'e1d-edit-col',
+                    headerTooltip: 'Edit this row',
+                    titleFormatter: function () { return '<i class="fas fa-pen" title="Edit"></i>'; },
+                    formatter: function () {
+                        return '<button type="button" class="btn btn-sm btn-primary e1d-edit-btn" title="Edit this row"><i class="fas fa-pen"></i></button>';
+                    },
+                    cellClick: function (e, cell) {
+                        if (e.target.closest('.e1d-edit-btn')) openEditModal(cell.getRow().getData());
+                    },
+                };
             }
 
             function baseColumns() {
@@ -935,12 +1445,14 @@
                         {
                             formatter: 'rowSelection', titleFormatter: 'rowSelection', titleFormatterParams: { rowRange: 'active' },
                             hozAlign: 'center', headerHozAlign: 'center', headerSort: false, resizable: false,
-                            width: 44, minWidth: 44, frozen: true, download: false, cssClass: 'e1d-select-col',                        },
-                        { title: 'Parent', field: 'parent', minWidth: 90, formatter: textFormatter },
+                            width: 44, minWidth: 44, frozen: true, download: false, cssClass: 'e1d-select-col',
+                        },
+                        // The select box and SKU stay side by side on the left while scrolling; Parent follows them.
                         {
                             title: 'SKU', field: 'sku', minWidth: 130, frozen: true,
                             formatter: function (cell) { return '<strong>' + esc(cell.getValue()) + '</strong>'; },
                         },
+                        { title: 'Parent', field: 'parent', minWidth: 90, formatter: textFormatter },
                         { title: 'INV', field: 'inv', hozAlign: 'right', width: 70, formatter: numberFormatter(0) },
                         { title: 'Sold L30', field: 'sold_l30', hozAlign: 'right', width: 80, formatter: numberFormatter(0) },
                         {
@@ -1008,7 +1520,9 @@
                     initialSort: [{ column: 'sku', dir: 'asc' }],
                     selectableRows: true,
                     selectableRowsRangeMode: 'click',
-                    columns: baseColumns(),
+                    // Header titles break at every space (<br>), so the vertical headers stay short.
+                    columnDefaults: { titleFormatter: breakTitle },
+                    columns: baseColumns().concat([editColumn()]),
                 });
                 table.on('rowSelectionChanged', function () { renderBadges(); updatePushButton(); });
                 table.on('tableBuilt', function () {
@@ -1030,6 +1544,7 @@
                     }
                     rows = (json.data || []).filter(function (row) { return !isParentRow(row); });
                     columnSources = Array.isArray(json.sources) ? json.sources : [];
+                    initColumnGroups(json.column_groups);
                     flattenSpecifics(rows);
                     if (table && tableReady) {
                         table.replaceData(rows);
@@ -1052,8 +1567,19 @@
                 ['e1dListed', 'e1dNr', 'e1dStock'].forEach(function (id) {
                     document.getElementById(id).addEventListener('change', refreshAll);
                 });
+                bindColumnGroups();
+                document.getElementById('e1dEditCol').addEventListener('click', function () { openEditModal(null); });
+                document.getElementById('e1dEditCancel').addEventListener('click', closeEditModal);
+                document.getElementById('e1dEditGo').addEventListener('click', runEditColumn);
+                document.getElementById('e1dEditSearch').addEventListener('input', renderEditList);
+                document.getElementById('e1dEditList').addEventListener('click', function (e) {
+                    const btn = e.target.closest('button[data-name]');
+                    if (btn) pickEditColumn(btn.dataset.name);
+                });
+                document.getElementById('e1dEditValue').addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') { e.preventDefault(); runEditColumn(); }
+                });
                 document.getElementById('e1dRefresh').addEventListener('click', loadData);
-                document.getElementById('e1dPull').addEventListener('click', pullSpecifics);
                 document.getElementById('e1dPush').addEventListener('click', pushToEbay);
                 document.getElementById('e1dAddCol').addEventListener('click', openAddModal);
                 document.getElementById('e1dAddCancel').addEventListener('click', closeAddModal);

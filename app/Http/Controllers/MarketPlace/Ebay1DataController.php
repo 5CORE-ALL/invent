@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\TechnicalSpecificationsController;
 use App\Models\EbayDataView;
 use App\Models\ProductMaster;
-use App\Services\CategoryMasters\CategoryChannelSyncService;
 use App\Services\EbayApiService;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Support\Marketplace\AutomatedListingPage;
@@ -136,6 +135,7 @@ class Ebay1DataController extends Controller
                 'status' => 200,
                 'data' => $data,
                 'sources' => $this->columnSourceList(),
+                'column_groups' => $this->columnGroups(),
             ]);
         } catch (\Throwable $e) {
             Log::error('Ebay1Data: rows failed', ['error' => $e->getMessage()]);
@@ -145,89 +145,6 @@ class Ebay1DataController extends Controller
                 'message' => 'Failed to load Ebay1 Data: '.$e->getMessage(),
             ], 500);
         }
-    }
-
-    /**
-     * POST /ebay1-data/pull-specifics
-     * One-time pull: reads the live eBay 1 listing of each SKU and stores its category and item specifics.
-     * SKUs that were pulled before are skipped, so running it again never overwrites the stored data.
-     */
-    public function pullSpecifics(Request $request)
-    {
-        $validated = $request->validate([
-            'items' => 'required|array|min:1|max:20',
-            'items.*.sku' => 'required|string|max:191',
-            'items.*.item_id' => 'required|string|max:64',
-        ]);
-        if (! Schema::hasTable('ebay1_item_specifics')) {
-            return response()->json(['success' => false, 'message' => 'Run php artisan migrate first (table ebay1_item_specifics is missing).'], 500);
-        }
-        @set_time_limit(300);
-
-        $service = app(EbayApiService::class);
-        $results = [];
-        foreach ($validated['items'] as $entry) {
-            $sku = trim((string) $entry['sku']);
-            $itemId = trim((string) $entry['item_id']);
-            $key = $this->skuKey($sku);
-            if (! preg_match('/^\d{9,15}$/', $itemId)) {
-                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => 'No eBay item ID.'];
-
-                continue;
-            }
-            if (DB::table('ebay1_item_specifics')->where('sku', $key)->exists()) {
-                $results[] = ['sku' => $sku, 'status' => 'skipped', 'message' => 'Already pulled.'];
-
-                continue;
-            }
-
-            try {
-                $item = $service->getItem($itemId);
-            } catch (\Throwable $e) {
-                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $e->getMessage()];
-
-                continue;
-            }
-            if (! is_array($item)) {
-                $why = trim((string) ($service->lastGetItemError ?? ''));
-                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
-
-                continue;
-            }
-
-            $node = is_array($item['Item'] ?? null) ? $item['Item'] : $item;
-            $specifics = [];
-            foreach (EbayTradingReviseItem::normalizeItemSpecificsNameValueLists($node['ItemSpecifics'] ?? null) as $row) {
-                $name = trim((string) ($row['name'] ?? ''));
-                $value = trim(implode(', ', (array) ($row['values'] ?? [])));
-                if ($name !== '' && $value !== '' && ! array_key_exists($name, $specifics)) {
-                    $specifics[$name] = $value;
-                }
-            }
-            $category = $node['PrimaryCategory'] ?? [];
-            $categoryId = is_array($category) ? trim((string) ($category['CategoryID'] ?? '')) : '';
-            $categoryPath = is_array($category)
-                ? CategoryChannelSyncService::normalizePath((string) ($category['CategoryName'] ?? ''), ':')
-                : '';
-            if ($categoryPath === '' && $categoryId !== '') {
-                $categoryPath = 'eBay category '.$categoryId;
-            }
-
-            DB::table('ebay1_item_specifics')->insert([
-                'sku' => $key,
-                'item_id' => $itemId,
-                'category_id' => $categoryId !== '' ? $categoryId : null,
-                'category_path' => $categoryPath !== '' ? $categoryPath : null,
-                'specifics' => json_encode($specifics, JSON_UNESCAPED_UNICODE),
-                'pulled_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            $count = count($specifics);
-            $results[] = ['sku' => $sku, 'status' => 'pulled', 'message' => $count.' item specific'.($count === 1 ? '' : 's').'.'];
-        }
-
-        return response()->json(['success' => true, 'results' => $results]);
     }
 
     /**
@@ -665,6 +582,160 @@ class Ebay1DataController extends Controller
         }
 
         return response()->json(['success' => true, 'removed' => false, 'source' => $source]);
+    }
+
+    /**
+     * POST /ebay1-data/edit-column
+     * Sets one item-specific column to the same value on the given SKUs. The value is saved as the SKU's
+     * Technical Specifications value and in the stored eBay 1 copy this page shows. Nothing is sent to eBay until Push.
+     */
+    public function editColumn(Request $request)
+    {
+        $data = $request->validate([
+            'column' => 'required|string|max:191',
+            'value' => 'nullable|string|max:2000',
+            'skus' => 'required|array|min:1|max:300',
+            'skus.*' => 'required|string|max:191',
+        ]);
+        $column = trim(preg_replace('/\s+/u', ' ', (string) $data['column']) ?? '');
+        $columnKey = $this->aspectKey($column);
+        if ($columnKey === '') {
+            return response()->json(['success' => false, 'message' => 'Choose a column.'], 422);
+        }
+        if (in_array($columnKey, ['brand', 'manufacturer', 'condition', 'countryoforigin', 'mpn', 'model', 'upc'], true)) {
+            return response()->json(['success' => false, 'message' => $column.' is filled automatically on Technical Specifications and cannot be edited here.'], 422);
+        }
+        $value = trim((string) ($data['value'] ?? ''));
+        @set_time_limit(300);
+
+        $skus = array_values(array_unique(array_filter(
+            array_map('trim', $data['skus']),
+            static fn ($s) => $s !== '' && stripos($s, 'PARENT') === false
+        )));
+
+        $specsUpdated = 0;
+        if (Schema::hasColumn('product_master', 'description_v2_specifications')) {
+            foreach (ProductMaster::query()->whereIn('sku', $skus)->get() as $product) {
+                $specs = is_array($product->description_v2_specifications) ? $product->description_v2_specifications : [];
+                $found = false;
+                foreach ($specs as &$spec) {
+                    if ($this->aspectKey((string) ($spec['key'] ?? '')) === $columnKey) {
+                        $spec['value'] = $value;
+                        $found = true;
+                    }
+                }
+                unset($spec);
+                if (! $found) {
+                    $specs[] = ['key' => $column, 'value' => $value];
+                }
+                $product->description_v2_specifications = $specs;
+                $product->save();
+                $specsUpdated++;
+            }
+        }
+
+        $copiesUpdated = 0;
+        if (Schema::hasTable('ebay1_item_specifics')) {
+            foreach ($skus as $sku) {
+                $stored = DB::table('ebay1_item_specifics')->where('sku', $this->skuKey($sku))->first();
+                if (! $stored) {
+                    continue;
+                }
+                $decoded = json_decode((string) $stored->specifics, true);
+                $decoded = is_array($decoded) ? $decoded : [];
+                $changed = false;
+                foreach (array_keys($decoded) as $name) {
+                    if ($this->aspectKey((string) $name) === $columnKey) {
+                        $decoded[$name] = $value;
+                        $changed = true;
+                    }
+                }
+                if (! $changed) {
+                    // The listing did not carry this item specific yet; it gets it so the cell shows and Push sends it.
+                    $decoded[$column] = $value;
+                    $changed = true;
+                }
+                if ($changed) {
+                    DB::table('ebay1_item_specifics')->where('sku', $this->skuKey($sku))->update([
+                        'specifics' => json_encode($decoded, JSON_UNESCAPED_UNICODE),
+                        'updated_at' => now(),
+                    ]);
+                    $copiesUpdated++;
+                }
+            }
+        }
+
+        return response()->json(['success' => true, 'skus' => count($skus), 'specs_updated' => $specsUpdated, 'copies_updated' => $copiesUpdated]);
+    }
+
+    /**
+     * POST /ebay1-data/column-groups
+     * Replaces the whole list of headers and the columns in each (a column can be in several headers).
+     */
+    public function saveColumnGroups(Request $request)
+    {
+        $data = $request->validate([
+            'groups' => 'present|array|max:100',
+            'groups.*.name' => 'required|string|max:100',
+            'groups.*.columns' => 'nullable|array|max:2000',
+            'groups.*.columns.*' => 'nullable|string|max:191',
+        ]);
+        if (! Schema::hasTable('ebay1_column_groups')) {
+            return response()->json(['success' => false, 'message' => 'Run php artisan migrate first (table ebay1_column_groups is missing).'], 500);
+        }
+
+        $groups = [];
+        foreach ($data['groups'] as $group) {
+            $name = trim(preg_replace('/\s+/u', ' ', (string) ($group['name'] ?? '')) ?? '');
+            if ($name === '' || isset($groups[strtolower($name)])) {
+                continue;
+            }
+            $columns = [];
+            foreach ((array) ($group['columns'] ?? []) as $column) {
+                $column = trim((string) $column);
+                if ($column !== '' && $this->aspectKey($column) !== '') {
+                    $columns[$this->aspectKey($column)] = $column;
+                }
+            }
+            $groups[strtolower($name)] = ['name' => $name, 'columns' => array_values($columns)];
+        }
+
+        DB::transaction(function () use ($groups, $request) {
+            DB::table('ebay1_column_groups')->delete();
+            $order = 0;
+            foreach ($groups as $group) {
+                DB::table('ebay1_column_groups')->insert([
+                    'name' => $group['name'],
+                    'columns' => json_encode($group['columns'], JSON_UNESCAPED_UNICODE),
+                    'sort_order' => $order++,
+                    'saved_by' => $request->user()?->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        });
+
+        return response()->json(['success' => true, 'groups' => array_values($groups)]);
+    }
+
+    /**
+     * @return list<array{name: string, columns: list<string>}>
+     */
+    private function columnGroups(): array
+    {
+        if (! Schema::hasTable('ebay1_column_groups')) {
+            return [];
+        }
+        $out = [];
+        foreach (DB::table('ebay1_column_groups')->orderBy('sort_order')->orderBy('id')->get(['name', 'columns']) as $row) {
+            $decoded = json_decode((string) $row->columns, true);
+            $out[] = [
+                'name' => (string) $row->name,
+                'columns' => array_values(array_filter(is_array($decoded) ? $decoded : [], 'is_string')),
+            ];
+        }
+
+        return $out;
     }
 
     /**
