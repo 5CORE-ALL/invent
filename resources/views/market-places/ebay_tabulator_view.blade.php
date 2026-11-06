@@ -4585,6 +4585,19 @@
                 }
                 window.ebayMultiBuyDiscounts = function() { return Object.assign({}, saved); };
 
+                function refreshColumn() {
+                    try {
+                        const t = window.table;
+                        const col = t && t.getColumn ? t.getColumn('multi_buy_rule') : null;
+                        if (col) col.getCells().forEach(function(c) { c.reformat(); });
+                    } catch (e) { /* table not built yet; the formatter reads `saved` when it renders */ }
+                }
+                // Load the saved rule on page load so the MULTI BUY column shows it without opening the window.
+                fetch(URL, { headers: { 'Accept': 'application/json' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) { if (d && d.discounts) { saved = d.discounts; refreshColumn(); } })
+                    .catch(function() {});
+
                 function paintStatus(d) {
                     const $s = $('#multi-buy-status');
                     const run = d && d.last_run;
@@ -4632,6 +4645,7 @@
                                 return;
                             }
                             saved = res.d.discounts || saved;
+                            refreshColumn();
                             paintStatus(res.d);
                             if (apply && !res.d.applying) {
                                 $err.removeClass('d-none').text('Saved, but the push to eBay could not start. Run: php artisan ebay1:multi-buy-apply');
@@ -6761,6 +6775,26 @@
                         }
                     },
                     {
+                        title: "MULTI BUY",
+                        field: "multi_buy_rule",
+                        hozAlign: "center",
+                        width: 150,
+                        headerSort: false,
+                        headerTooltip: "Multi Buy rule: discount % for Buy 2 / Buy 3 / Buy 4 (set in the Multi Buy window). Save and Apply puts it on the listing as volume pricing.",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            if (typeof ebayIsParentRowData === 'function' && ebayIsParentRowData(row)) return '';
+                            if (!String(row.eBay_item_id || row.ebay_item_id || row.item_id || '').trim()) {
+                                return '<span class="text-muted" title="No eBay listing id">—</span>';
+                            }
+                            const d = typeof window.ebayMultiBuyDiscounts === 'function' ? window.ebayMultiBuyDiscounts() : null;
+                            if (!d) return '';
+                            const fmt = function(v) { const n = parseFloat(v); return isFinite(n) ? (Math.round(n * 100) / 100) + '%' : '—'; };
+                            return '<span style="color:#047857; font-weight:600; white-space:nowrap;" title="Buy 2 ' + fmt(d.buy2) + ', Buy 3 ' + fmt(d.buy3) + ', Buy 4 ' + fmt(d.buy4) + '">'
+                                + '2: ' + fmt(d.buy2) + ' · 3: ' + fmt(d.buy3) + ' · 4: ' + fmt(d.buy4) + '</span>';
+                        }
+                    },
+                    {
                         title: "PROMOTE",
                         field: "ca_promote_with_ad",
                         hozAlign: "center",
@@ -7810,7 +7844,7 @@
 
                 // Pricing
                 if (
-                    /^(eBay Price|STANDARD_PRICE|std_prc_diff|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc)$/i.test(f) ||
+                    /^(eBay Price|STANDARD_PRICE|std_prc_diff|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc|multi_buy_rule)$/i.test(f) ||
                     /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|prmt|cpn|dsc|appr|push\s*prc|push\s*std\s*prc|sale\s*event|push\s*cpn)\b/i.test(tl) ||
                     /^\+$/i.test(t)
                 ) {
