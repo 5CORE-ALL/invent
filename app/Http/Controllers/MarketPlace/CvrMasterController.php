@@ -328,6 +328,10 @@ class CvrMasterController extends Controller
             ];
         }
 
+        foreach (ChannelPromoPricingController::sanitizeSharedDilPrmtCustomRules($saved) as $custom) {
+            $rules[] = $custom;
+        }
+
         return response()->json([
             'success' => true,
             'is_default' => false,
@@ -373,6 +377,15 @@ class CvrMasterController extends Controller
                 'label' => $def['label'],
                 'prmt' => $prmt,
             ];
+        }
+
+        // Keep custom rows: use the ones sent by the client, else preserve what is already saved.
+        $custom = ChannelPromoPricingController::sanitizeSharedDilPrmtCustomRules($incoming);
+        if ($custom === []) {
+            $custom = ChannelPromoPricingController::sharedDilPrmtCustomRulesFromStore();
+        }
+        foreach ($custom as $c) {
+            $rules[] = $c;
         }
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(

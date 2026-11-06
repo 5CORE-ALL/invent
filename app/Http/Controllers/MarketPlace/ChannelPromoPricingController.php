@@ -1238,11 +1238,21 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
-        return $this->loadRules(
+        $response = $this->loadRules(
             self::DIL_PRMT_SHARED_STORE,
             self::sharedDilPrmtDefaults(),
             'prmt'
         );
+
+        // Append user-added custom rows ("Add more row").
+        $payload = $response->getData(true);
+        $custom = self::sharedDilPrmtCustomRulesFromStore();
+        if ($custom !== []) {
+            $payload['rules'] = array_merge($payload['rules'] ?? [], $custom);
+            $payload['is_default'] = false;
+        }
+
+        return response()->json($payload);
     }
 
     public function saveDilPrmtRules(Request $request, string $channel): JsonResponse
@@ -1262,6 +1272,16 @@ class ChannelPromoPricingController extends Controller
             self::sharedDilPrmtDefaults(),
             $incoming,
             'prmt'
+        );
+
+        // Custom rows (min/max/prmt) are replaced by whatever the client sends.
+        $custom = self::sanitizeSharedDilPrmtCustomRules($incoming);
+        if ($custom !== []) {
+            $rules = array_merge($rules, $custom);
+        }
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => self::DIL_PRMT_SHARED_STORE],
+            ['visibility' => $rules, 'column_order' => array_column($rules, 'key')]
         );
 
         return response()->json(['success' => true, 'channel' => $channel, 'shared' => true, 'rules' => $rules]);
@@ -2979,8 +2999,87 @@ class ChannelPromoPricingController extends Controller
         return $rules;
     }
 
-    public static function sharedDilPrmtSlabKey(float $dil): string
+    public const DIL_PRMT_CUSTOM_PREFIX = 'custom-';
+
+    public const DIL_PRMT_CUSTOM_MAX_ROWS = 30;
+
+    /**
+     * User-added Dil vs PRMT rows ("Add more row"): key custom-N, min ≤ Dil < max → prmt.
+     * Custom rows take precedence over the built-in slabs.
+     *
+     * @return list<array{key:string,label:string,min:float,max:float,prmt:float}>
+     */
+    public static function sanitizeSharedDilPrmtCustomRules(mixed $items): array
     {
+        if (! is_array($items)) {
+            return [];
+        }
+        $out = [];
+        $usedKeys = [];
+        $fmt = static fn (float $n): string => rtrim(rtrim(number_format($n, 2, '.', ''), '0'), '.');
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $key = (string) ($item['key'] ?? '');
+            if (! str_starts_with($key, self::DIL_PRMT_CUSTOM_PREFIX) || isset($usedKeys[$key])) {
+                continue;
+            }
+            if (! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
+                continue;
+            }
+            $min = round((float) $item['min'], 2);
+            $max = round((float) $item['max'], 2);
+            if ($min < 0 || $max <= $min) {
+                continue;
+            }
+            $prmt = is_numeric($item['prmt'] ?? null) ? max(0.0, round((float) $item['prmt'], 2)) : 0.0;
+            $usedKeys[$key] = true;
+            $out[] = [
+                'key' => $key,
+                'label' => $fmt($min).'–'.$fmt($max).'%',
+                'min' => $min,
+                'max' => $max,
+                'prmt' => $prmt,
+            ];
+            if (count($out) >= self::DIL_PRMT_CUSTOM_MAX_ROWS) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Custom rows saved in the shared Dil vs PRMT store.
+     *
+     * @return list<array{key:string,label:string,min:float,max:float,prmt:float}>
+     */
+    public static function sharedDilPrmtCustomRulesFromStore(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', self::DIL_PRMT_SHARED_STORE)
+            ->first();
+
+        return self::sanitizeSharedDilPrmtCustomRules($row?->visibility);
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $customRules  From sharedDilPrmtCustomRulesFromStore() / rules list
+     */
+    public static function sharedDilPrmtSlabKey(float $dil, array $customRules = []): string
+    {
+        if (is_finite($dil)) {
+            foreach ($customRules as $c) {
+                $key = (string) ($c['key'] ?? '');
+                if (! str_starts_with($key, self::DIL_PRMT_CUSTOM_PREFIX)) {
+                    continue;
+                }
+                if (isset($c['min'], $c['max']) && $dil >= (float) $c['min'] && $dil < (float) $c['max']) {
+                    return $key;
+                }
+            }
+        }
         // Lower-inclusive slabs: 0.01–3, 3–6, …, 21–24, 24–25. Dil < 0.01 or > 25 → no rule.
         if (! is_finite($dil) || $dil < 0.01) {
             return 'none';

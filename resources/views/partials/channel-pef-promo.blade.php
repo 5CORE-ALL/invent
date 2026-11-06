@@ -903,6 +903,12 @@
                             <tbody id="ch-promo-dil-prmt-tbody"></tbody>
                         </table>
                     </div>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-success" id="ch-promo-dil-prmt-add-row-btn"
+                            title="Add an extra Dil% range → PRMT% row (applies to all marketplaces; overrides built-in slabs where ranges overlap)">
+                            <i class="fas fa-plus me-1"></i>Add more row
+                        </button>
+                    </div>
                     <div class="small text-muted mt-2" id="ch-promo-dil-prmt-status"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
@@ -4890,6 +4896,19 @@
             return out;
         }
 
+        /** User-added Dil vs PRMT rows ("Add more row"): custom-N with min ≤ Dil < max. Wins over built-in slabs. */
+        function chPromoCustomDilSlabKey(n) {
+            if (!isFinite(n)) return null;
+            for (let i = 0; i < chPromoDilPrmtRules.length; i++) {
+                const r = chPromoDilPrmtRules[i];
+                if (!r || String(r.key).indexOf('custom-') !== 0) continue;
+                if (r.min == null || r.max == null || r.min === '' || r.max === '') continue;
+                const lo = Number(r.min);
+                const hi = Number(r.max);
+                if (isFinite(lo) && isFinite(hi) && hi > lo && n >= lo && n < hi) return r.key;
+            }
+            return null;
+        }
         function chPromoDilSlabKey(dil) {
             const n = Number(dil);
             if (CH_PEF_USES_REVERB_SLABS) {
@@ -4905,6 +4924,8 @@
                 if (CHANNEL_PROMO_CHANNEL === 'reverb' && n < 0.1) return 'lt-0.1';
                 return '0-20';
             }
+            const customKey = chPromoCustomDilSlabKey(n);
+            if (customKey) return customKey;
             if (!isFinite(n) || n < 0.01) return 'none';
             if (n > 25) return 'gt-25';
             if (n >= 24) return '24-25';
@@ -5808,7 +5829,7 @@
         }
 
         function cascadeChPromoDilPrmtFromFirst() {
-            const $rows = $('#ch-promo-dil-prmt-tbody tr');
+            const $rows = $('#ch-promo-dil-prmt-tbody tr').not('.ch-promo-dil-prmt-custom-row');
             if (!$rows.length) return;
             const firstVal = parseFloat($rows.eq(0).find('.ch-promo-dil-prmt-input').val());
             if (!isFinite(firstVal)) return;
@@ -5840,6 +5861,26 @@
             chPromoDilPrmtRules.forEach(function(r, idx) {
                 if (chPromoIsZeroSoldRuleKey(r.key)) return;
                 const prmt = isFinite(Number(r.prmt)) ? Number(r.prmt) : 0;
+                if (String(r.key).indexOf('custom-') === 0) {
+                    $tb.append(
+                        '<tr class="ch-promo-dil-prmt-custom-row" data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                        + '<td><div class="d-flex align-items-center gap-1">'
+                        + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-range" data-bound="min" '
+                        + 'min="0" step="0.1" style="width:78px;" value="' + (isFinite(Number(r.min)) ? Number(r.min) : '') + '" title="Dil% from (inclusive)">'
+                        + '<span>–</span>'
+                        + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-range" data-bound="max" '
+                        + 'min="0" step="0.1" style="width:78px;" value="' + (isFinite(Number(r.max)) ? Number(r.max) : '') + '" title="Dil% to (exclusive)">'
+                        + '<span>%</span>'
+                        + '<button type="button" class="btn btn-sm btn-outline-danger ms-auto ch-promo-dil-prmt-remove-row" title="Remove this row">'
+                        + '<i class="fas fa-trash"></i></button>'
+                        + '</div></td>'
+                        + '<td class="text-end">'
+                        + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-input" '
+                        + 'min="0" step="0.1" value="' + prmt + '" data-idx="' + idx + '">'
+                        + '</td></tr>'
+                    );
+                    return;
+                }
                 const first = visibleIdx === 0;
                 $tb.append(
                     '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
@@ -5883,10 +5924,82 @@
                 const rule = chPromoDilPrmtRules.find(function(r) { return r.key === key; });
                 if (!rule) return;
                 rule.prmt = (isFinite(val) && val >= 0) ? val : 0;
+                if (key.indexOf('custom-') === 0) {
+                    const lo = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="min"]').val());
+                    const hi = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="max"]').val());
+                    rule.min = isFinite(lo) ? Math.max(0, lo) : null;
+                    rule.max = isFinite(hi) ? hi : null;
+                    if (isFinite(rule.min) && isFinite(rule.max) && rule.max > rule.min) {
+                        rule.label = chPromoFmtDilBound(rule.min) + '–' + chPromoFmtDilBound(rule.max) + '%';
+                    }
+                }
             });
             return chPromoDilPrmtRules.map(function(r) {
-                return { key: r.key, label: r.label, prmt: Number(r.prmt) || 0 };
+                const out = { key: r.key, label: r.label, prmt: Number(r.prmt) || 0 };
+                if (String(r.key).indexOf('custom-') === 0) {
+                    out.min = r.min;
+                    out.max = r.max;
+                }
+                return out;
             });
+        }
+        function chPromoFmtDilBound(n) {
+            return String(Math.round(Number(n) * 100) / 100);
+        }
+        /** "Add more row": append a custom Dil range → PRMT% row (starts right after the last range). */
+        function chPromoAddDilPrmtRow() {
+            readChPromoDilPrmtRulesFromModal();
+            let customCount = 0;
+            let start = 25;
+            chPromoDilPrmtRules.forEach(function(r) {
+                if (String(r.key).indexOf('custom-') !== 0) return;
+                customCount++;
+                if (isFinite(Number(r.max))) start = Math.max(start, Number(r.max));
+            });
+            if (customCount >= 30) {
+                chPromoToast('error', 'Maximum 30 extra rows');
+                return;
+            }
+            const lo = start;
+            const hi = start + 5;
+            chPromoDilPrmtRules.push({
+                key: 'custom-' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36),
+                label: chPromoFmtDilBound(lo) + '–' + chPromoFmtDilBound(hi) + '%',
+                min: lo,
+                max: hi,
+                prmt: 0,
+            });
+            renderChPromoDilPrmtModalTable();
+            const $last = $('#ch-promo-dil-prmt-tbody tr.ch-promo-dil-prmt-custom-row').last();
+            $last.find('.ch-promo-dil-prmt-range[data-bound="min"]').trigger('focus').trigger('select');
+            $('#ch-promo-dil-prmt-status').text('Row added — set Dil% range and PRMT %, then Save & Apply.');
+        }
+        function chPromoRemoveDilPrmtRow(key) {
+            readChPromoDilPrmtRulesFromModal();
+            chPromoDilPrmtRules = chPromoDilPrmtRules.filter(function(r) { return r.key !== key; });
+            renderChPromoDilPrmtModalTable();
+            chPromoSyncEbayPrmtColumnFromSlabs();
+            if (typeof chPromoScheduleDilPrmtAutoApply === 'function') {
+                chPromoScheduleDilPrmtAutoApply({ force: true, saveRules: true });
+            }
+        }
+        /** Range edit on a custom row: refill PRMT% column, auto-apply only when the range is valid. */
+        function chPromoOnDilPrmtRangeChanged() {
+            readChPromoDilPrmtRulesFromModal();
+            let bad = false;
+            $('#ch-promo-dil-prmt-tbody tr.ch-promo-dil-prmt-custom-row').each(function() {
+                const lo = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="min"]').val());
+                const hi = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="max"]').val());
+                if (!isFinite(lo) || !isFinite(hi) || lo < 0 || hi <= lo) bad = true;
+            });
+            if (bad) {
+                $('#ch-promo-dil-prmt-status').text('Each added row needs a valid range (From ≥ 0 and To > From).');
+                return;
+            }
+            chPromoSyncEbayPrmtColumnFromSlabs();
+            if (typeof chPromoScheduleDilPrmtAutoApply === 'function') {
+                chPromoScheduleDilPrmtAutoApply({ force: true, saveRules: true });
+            }
         }
         async function loadChPromoDilPrmtRules() {
             $('#ch-promo-dil-prmt-status').text('Loading…');
@@ -11792,6 +11905,19 @@
             $(document).off('input.chPromoDilCascade change.chPromoDilCascade', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input')
                 .on('input.chPromoDilCascade change.chPromoDilCascade', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input', function() {
                     chPromoOnDilPrmtNumberChanged(this);
+                });
+            $('#ch-promo-dil-prmt-add-row-btn').off('click.chpromo').on('click.chpromo', function(e) {
+                e.preventDefault();
+                chPromoAddDilPrmtRow();
+            });
+            $(document).off('click.chPromoDilRemoveRow', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-remove-row')
+                .on('click.chPromoDilRemoveRow', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-remove-row', function(e) {
+                    e.preventDefault();
+                    chPromoRemoveDilPrmtRow(String($(this).closest('tr').attr('data-key') || ''));
+                });
+            $(document).off('change.chPromoDilRange', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-range')
+                .on('change.chPromoDilRange', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-range', function() {
+                    chPromoOnDilPrmtRangeChanged();
                 });
 
             $('#ch-promo-dil-vs-sgroi-btn').off('click.chpromo').on('click.chpromo', function(e) {

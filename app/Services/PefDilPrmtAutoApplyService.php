@@ -63,20 +63,28 @@ class PefDilPrmtAutoApplyService
             ];
         }
 
+        // User-added custom rows (min/max) take precedence over built-in slabs.
+        foreach (ChannelPromoPricingController::sanitizeSharedDilPrmtCustomRules($saved) as $custom) {
+            $rules[] = $custom;
+        }
+
         return $rules;
     }
 
-    public function dilSlabKey(float $dil): string
+    /**
+     * @param  list<array<string,mixed>>  $rules  Rules from loadRules() (custom rows carry min/max)
+     */
+    public function dilSlabKey(float $dil, array $rules = []): string
     {
-        return ChannelPromoPricingController::sharedDilPrmtSlabKey($dil);
+        return ChannelPromoPricingController::sharedDilPrmtSlabKey($dil, $rules);
     }
 
     /**
-     * @param  list<array{key:string,label:string,prmt:float}>  $rules
+     * @param  list<array<string,mixed>>  $rules
      */
     public function prmtForDil(float $dil, array $rules): float
     {
-        $key = $this->dilSlabKey($dil);
+        $key = $this->dilSlabKey($dil, $rules);
         foreach ($rules as $rule) {
             if (($rule['key'] ?? '') === $key) {
                 $n = (float) ($rule['prmt'] ?? 0);
