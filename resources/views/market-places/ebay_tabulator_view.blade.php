@@ -1524,8 +1524,9 @@
                 </div>
                 <div class="arp-footer">
                     <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="ads-rule-pmt-save">
-                        <i class="fa fa-save"></i> Save
+                    <button type="button" class="btn btn-primary" id="ads-rule-pmt-save"
+                        title="Save the ranges. When the switch is On, the new bids are pushed to eBay right away.">
+                        <i class="fa fa-save"></i> Save and Apply
                     </button>
                 </div>
             </div>
