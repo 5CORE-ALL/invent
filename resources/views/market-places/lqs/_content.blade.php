@@ -82,7 +82,7 @@
                         </button>
                         @if(!empty($lqsPage['has_api_sync']))
                             <button type="button" id="lqs-api-sync-btn" class="btn btn-sm btn-success"
-                                    title="Score every {{ $lqsPage['label'] ?? '' }} listing from the live marketplace API (title, photos, attributes, description, shipping). Runs in the background.">
+                                    title="Score every {{ $lqsPage['label'] ?? '' }} listing automatically (title, photos, description, bullets, listing health). Runs in the background.">
                                 <i class="fas fa-plug me-1"></i><span id="lqs-api-sync-label">Sync LQS from API</span>
                             </button>
                             <span id="lqs-api-sync-progress" class="small text-muted align-self-center"></span>
