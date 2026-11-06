@@ -896,8 +896,9 @@
                         <table class="table table-sm table-bordered align-middle mb-0" id="ch-promo-dil-prmt-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width:55%;">Dil%</th>
-                                    <th style="width:45%;" class="text-end">PRMT %</th>
+                                    <th style="width:50%;">Dil%</th>
+                                    <th style="width:18%;" class="text-center" title="SKUs currently getting this row's PRMT %">Count</th>
+                                    <th style="width:32%;" class="text-end">PRMT %</th>
                                 </tr>
                             </thead>
                             <tbody id="ch-promo-dil-prmt-tbody"></tbody>
@@ -909,6 +910,7 @@
                             <i class="fas fa-plus me-1"></i>Add more row
                         </button>
                         <span class="badge bg-secondary" id="ch-promo-dil-prmt-row-count" title="Number of rows">0 rows</span>
+                        <span class="small text-muted" id="ch-promo-dil-prmt-count-total"></span>
                         <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="ch-promo-dil-prmt-restore-btn"
                             title="Bring back deleted rows">
                             <i class="fas fa-undo me-1"></i>Restore <span class="ch-promo-dil-prmt-deleted-count">0</span> deleted
@@ -5900,10 +5902,13 @@
                     + '<button type="button" class="btn btn-sm btn-outline-danger ms-auto ch-promo-dil-prmt-remove-row" title="Delete this row">'
                     + '<i class="fas fa-trash"></i></button>'
                     + '</div></td>';
+                const countCell = '<td class="text-center"><span class="badge bg-info text-dark ch-promo-dil-prmt-count" '
+                    + 'title="SKUs currently getting this row\'s PRMT %">…</span></td>';
                 if (isCustom) {
                     $tb.append(
                         '<tr class="ch-promo-dil-prmt-custom-row" data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
                         + rangeCell
+                        + countCell
                         + '<td class="text-end">'
                         + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-input" '
                         + 'min="0" step="0.1" value="' + prmt + '" data-idx="' + idx + '">'
@@ -5915,6 +5920,7 @@
                 $tb.append(
                     '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
                     + rangeCell
+                    + countCell
                     + '<td class="text-end">'
                     + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-input" '
                     + 'min="0" step="0.1" value="' + prmt + '" data-idx="' + idx + '"'
@@ -5928,6 +5934,46 @@
             $('#ch-promo-dil-prmt-restore-btn')
                 .toggleClass('d-none', deletedCount === 0)
                 .find('.ch-promo-dil-prmt-deleted-count').text(deletedCount);
+            chPromoRefreshDilPrmtCounts();
+        }
+        /**
+         * How many SKUs each Dil vs PRMT row currently applies to (unique SKU, child rows, INV > 0,
+         * and E L30 > 0 where the apply is sale-gated — same rules as Apply).
+         */
+        function chPromoDilPrmtSlabCounts() {
+            const counts = { total: 0, none: 0 };
+            const seen = new Set();
+            function consider(d) {
+                if (!d || !chPromoDilPrmtEligible(d)) return;
+                if (chPromoInv(d) <= 0) return;
+                const sku = chPromoSkuKey(chPromoSku(d));
+                if (!sku || seen.has(sku)) return;
+                seen.add(sku);
+                const key = chPromoDilSlabKey(chPromoDil(d));
+                const hit = chPromoDilPrmtRules.some(function(r) { return r.key === key && !r.deleted; });
+                counts.total++;
+                if (!hit) { counts.none++; return; }
+                counts[key] = (counts[key] || 0) + 1;
+            }
+            if (typeof table !== 'undefined' && table && typeof chPromoEachTableRow === 'function') {
+                chPromoEachTableRow(function(row, d) { consider(d); });
+            }
+            chPromoDilPrmtDatasetRows().forEach(consider);
+            return counts;
+        }
+        function chPromoRefreshDilPrmtCounts() {
+            const $rows = $('#ch-promo-dil-prmt-tbody tr');
+            if (!$rows.length) return;
+            let counts;
+            try { counts = chPromoDilPrmtSlabCounts(); } catch (e) { counts = null; }
+            $rows.each(function() {
+                const key = String($(this).attr('data-key') || '');
+                $(this).find('.ch-promo-dil-prmt-count').text(counts ? (counts[key] || 0) : '–');
+            });
+            $('#ch-promo-dil-prmt-count-total').text(counts
+                ? ('Applied SKUs: ' + (counts.total - counts.none) + ' of ' + counts.total
+                    + (counts.none ? (' (' + counts.none + ' outside all ranges)') : ''))
+                : '');
         }
         function renderChPromoZeroSoldPrmtModalTable() {
             const $tb = $('#ch-promo-zero-sold-prmt-tbody').empty();
@@ -6054,6 +6100,7 @@
                 const hi = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="max"]').val());
                 if (!isFinite(lo) || !isFinite(hi) || lo < 0 || hi <= lo) bad = true;
             });
+            chPromoRefreshDilPrmtCounts();
             if (bad) {
                 $('#ch-promo-dil-prmt-status').text('Each row needs a valid Dil% range (From ≥ 0 and To > From).');
                 return;
@@ -11971,6 +12018,9 @@
             $('#ch-promo-dil-prmt-add-row-btn').off('click.chpromo').on('click.chpromo', function(e) {
                 e.preventDefault();
                 chPromoAddDilPrmtRow();
+            });
+            $('#chPromoDilVsPrmtModal').off('shown.bs.modal.chpromoCount').on('shown.bs.modal.chpromoCount', function() {
+                chPromoRefreshDilPrmtCounts();
             });
             $('#ch-promo-dil-prmt-restore-btn').off('click.chpromo').on('click.chpromo', function(e) {
                 e.preventDefault();

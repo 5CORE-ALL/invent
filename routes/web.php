@@ -6478,6 +6478,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/topdawg/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsTopdawgController::class, 'apiScore'])->name('lqs.topdawg.api.score');
     Route::post('/lqs/topdawg/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsTopdawgController::class, 'startApiSync'])->name('lqs.topdawg.api.sync');
     Route::get('/lqs/topdawg/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsTopdawgController::class, 'apiSyncStatus'])->name('lqs.topdawg.api.sync.status');
+    // Faire: scored from the live Faire product API (GET /products/{id})
+    Route::post('/lqs/faire/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsFaireController::class, 'apiScore'])->name('lqs.faire.api.score');
+    Route::post('/lqs/faire/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsFaireController::class, 'startApiSync'])->name('lqs.faire.api.sync');
+    Route::get('/lqs/faire/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsFaireController::class, 'apiSyncStatus'])->name('lqs.faire.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation

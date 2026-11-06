@@ -356,6 +356,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('lqs-sync-topdawg')
             ->appendOutputTo($log);
+        // Faire LQS from the live Faire product API (one GET per product).
+        $schedule->command('lqs:sync-faire')
+            ->dailyAt('05:50')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->name('lqs-sync-faire')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)
