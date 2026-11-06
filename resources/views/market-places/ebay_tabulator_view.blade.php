@@ -1580,13 +1580,16 @@
                             </div>
                         </div>
                     </div>
-                    <div class="small text-muted mt-3">Defaults are 1%, 2% and 3%. Change any value and press Save.</div>
+                    <div class="small text-muted mt-3">Defaults are 1%, 2% and 3%. <b>Save and Apply</b> puts these discounts on every eBay 1 listing as volume pricing (Buy 2 / Buy 3 / Buy 4). <b>Save</b> only stores them.</div>
+                    <div class="small mt-2 d-none" id="multi-buy-status"></div>
+                    <div class="small text-warning-emphasis bg-warning-subtle rounded p-2 mt-2 d-none" id="multi-buy-warning">Volume Pricing (Weight + Dil + Std NPFT) has Rules On and Auto push On. Its next run (05:30 / 21:30 IST) will replace these discounts. Turn it off on the Volume Pricing page to keep Multi Buy.</div>
                     <div class="small text-danger mt-2 d-none" id="multi-buy-error"></div>
                 </div>
                 <div class="arp-footer">
                     <button type="button" class="btn btn-light border me-auto" id="multi-buy-reset">Reset to 1 / 2 / 3</button>
                     <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-success" id="multi-buy-save"><i class="fa fa-save"></i> Save</button>
+                    <button type="button" class="btn btn-outline-success" id="multi-buy-save-only"><i class="fa fa-save"></i> Save</button>
+                    <button type="button" class="btn btn-success" id="multi-buy-save" title="Save the discounts and push them to every eBay 1 listing"><i class="fa fa-bolt"></i> Save and Apply</button>
                 </div>
             </div>
         </div>
@@ -4582,13 +4585,25 @@
                 }
                 window.ebayMultiBuyDiscounts = function() { return Object.assign({}, saved); };
 
+                function paintStatus(d) {
+                    const $s = $('#multi-buy-status');
+                    const run = d && d.last_run;
+                    if (!run) { $s.addClass('d-none').text(''); }
+                    else {
+                        const cls = run.status === 'ok' ? 'text-success' : (run.status === 'running' ? 'text-primary' : 'text-danger');
+                        $s.removeClass('d-none text-success text-primary text-danger').addClass(cls)
+                            .text('Last apply (' + (run.at || '') + '): ' + (run.message || run.status));
+                    }
+                    $('#multi-buy-warning').toggleClass('d-none', !(d && d.volume_pricing_auto));
+                }
+
                 $('#multi-buy-btn').on('click', function() {
                     $('#multi-buy-error').addClass('d-none').text('');
                     fill(saved);
                     bootstrap.Modal.getOrCreateInstance(modalEl).show();
                     fetch(URL, { headers: { 'Accept': 'application/json' } })
                         .then(function(r) { return r.json(); })
-                        .then(function(d) { if (d && d.discounts) { saved = d.discounts; fill(saved); } })
+                        .then(function(d) { if (d && d.discounts) { saved = d.discounts; fill(saved); } paintStatus(d); })
                         .catch(function() {});
                 });
 
@@ -4596,10 +4611,10 @@
                     fill({ buy2: 1, buy3: 2, buy4: 3 });
                 });
 
-                $('#multi-buy-save').on('click', function() {
+                function save(apply) {
                     const discounts = {};
                     Object.keys(FIELDS).forEach(function(k) { discounts[k] = $(FIELDS[k]).val(); });
-                    const $btn = $(this).prop('disabled', true);
+                    const $btns = $('#multi-buy-save, #multi-buy-save-only').prop('disabled', true);
                     const $err = $('#multi-buy-error').addClass('d-none').text('');
                     fetch(URL, {
                         method: 'POST',
@@ -4608,7 +4623,7 @@
                             'Accept': 'application/json',
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         },
-                        body: JSON.stringify({ discounts: discounts })
+                        body: JSON.stringify({ discounts: discounts, apply: !!apply })
                     })
                         .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
                         .then(function(res) {
@@ -4617,12 +4632,25 @@
                                 return;
                             }
                             saved = res.d.discounts || saved;
+                            paintStatus(res.d);
+                            if (apply && !res.d.applying) {
+                                $err.removeClass('d-none').text('Saved, but the push to eBay could not start. Run: php artisan ebay1:multi-buy-apply');
+                                return;
+                            }
+                            if (apply) {
+                                $('#multi-buy-status').removeClass('d-none text-success text-danger').addClass('text-primary')
+                                    .text('Applying to eBay in the background. Reopen this window in a few minutes to see the result.');
+                                if (typeof showToast === 'function') showToast('success', 'Saved. Applying Multi Buy to eBay in the background.');
+                                return;
+                            }
                             bootstrap.Modal.getOrCreateInstance(modalEl).hide();
                             if (typeof showToast === 'function') showToast('success', 'Multi Buy discounts saved');
                         })
                         .catch(function() { $err.removeClass('d-none').text('Could not save.'); })
-                        .finally(function() { $btn.prop('disabled', false); });
-                });
+                        .finally(function() { $btns.prop('disabled', false); });
+                }
+                $('#multi-buy-save').on('click', function() { save(true); });
+                $('#multi-buy-save-only').on('click', function() { save(false); });
             })();
 
             $('#more-sold-count-badge').on('click', function(e) {

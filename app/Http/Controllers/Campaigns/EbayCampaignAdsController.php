@@ -179,7 +179,12 @@ class EbayCampaignAdsController extends Controller
             $out[$field] = isset($stored[$field]) && is_numeric($stored[$field]) ? (float) $stored[$field] : $default;
         }
 
-        return response()->json(['discounts' => $out, 'defaults' => self::MULTI_BUY_DEFAULTS]);
+        return response()->json([
+            'discounts' => $out,
+            'defaults' => self::MULTI_BUY_DEFAULTS,
+            'last_run' => \Illuminate\Support\Facades\Cache::get(\App\Console\Commands\Ebay1MultiBuyApplyCommand::RESULT_KEY),
+            'volume_pricing_auto' => $this->volumePricingAutoIsOn(),
+        ]);
     }
 
     public function saveMultiBuyRule(Request $request)
@@ -203,7 +208,54 @@ class EbayCampaignAdsController extends Controller
             ['rule' => json_encode($out), 'updated_at' => now()]
         );
 
-        return response()->json(['success' => true, 'discounts' => $out]);
+        $applying = false;
+        if ($request->boolean('apply')) {
+            $applying = $this->startMultiBuyApply();
+        }
+
+        return response()->json([
+            'success' => true,
+            'discounts' => $out,
+            'applying' => $applying,
+            'volume_pricing_auto' => $this->volumePricingAutoIsOn(),
+            'last_run' => \Illuminate\Support\Facades\Cache::get(\App\Console\Commands\Ebay1MultiBuyApplyCommand::RESULT_KEY),
+        ]);
+    }
+
+    /** True when the Volume Pricing page would re-push its own Buy 2/3/4 over the Multi Buy discounts. */
+    private function volumePricingAutoIsOn(): bool
+    {
+        try {
+            $rules = app(\App\Services\Ebay1VolumePricingService::class)->loadRules();
+
+            return ! empty($rules['enabled']) && ! empty($rules['auto_push']);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /** Run ebay1:multi-buy-apply detached, so it keeps going after this request ends. */
+    private function startMultiBuyApply(): bool
+    {
+        try {
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                return false;
+            }
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $log = storage_path('logs/ebay1-multi-buy-apply.log');
+            exec('nohup '.escapeshellarg($php).' '.escapeshellarg(base_path('artisan'))
+                .' ebay1:multi-buy-apply >> '.escapeshellarg($log).' 2>&1 &');
+
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /**

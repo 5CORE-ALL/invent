@@ -648,6 +648,67 @@ class Ebay1VolumePricingService
     }
 
     /**
+     * Multi Buy rule: the same Buy 2 / Buy 3 / Buy 4 discount % on every eBay 1 listing, pushed as one
+     * volume pricing promotion (400 listings per promotion). Uses the same promotion bookkeeping as the
+     * Volume Pricing page, so listings move out of any promotion they were in before.
+     *
+     * @param  array{buy2?:mixed,buy3?:mixed,buy4?:mixed}  $discounts
+     * @return array{status:string,message:string,listings:int,pushed:int,groups:int,unchanged:int,skipped:int,errors:list<string>}
+     */
+    public function applyMultiBuy(array $discounts, ?callable $log = null): array
+    {
+        $say = $log ?? static function (string $m): void {};
+        $tiers = EbayVolumePricingRule::ebayTiers([
+            'buy2' => (float) ($discounts['buy2'] ?? 0),
+            'buy3' => (float) ($discounts['buy3'] ?? 0),
+            'buy4' => (float) ($discounts['buy4'] ?? 0),
+        ]);
+        if ($tiers === []) {
+            return $this->autoResult('empty', 'Buy 2 must be above 0 (and at most '.EbayVolumePricingRule::MAX_PCT.'%). Nothing pushed.');
+        }
+
+        $seen = [];
+        $skipped = 0;
+        foreach ($this->gridRows() as $d) {
+            $row = EbayVolumePricingRule::listingRow($d);
+            if ($row === null) {
+                continue;
+            }
+            $itemId = $this->listingId((string) $row['item_id']);
+            if ($itemId === '') {
+                $skipped++;
+
+                continue;
+            }
+            $seen[$itemId] = true;
+        }
+        $say('Listings with an eBay id: '.count($seen));
+        if ($seen === []) {
+            return $this->autoResult('empty', 'No eBay 1 listings with an item id were found.');
+        }
+
+        $sig = EbayVolumePricingRule::signature($tiers);
+        $bySig = [$sig => ['tiers' => $tiers, 'ids' => array_map('strval', array_keys($seen))]];
+        $rules = $this->loadRules();
+        $result = $this->apply($rules, $bySig, $seen, $skipped, 0, false, true);
+
+        $fresh = $this->loadRules();
+        $fresh['promotion_ids'] = $result['promotion_ids'];
+        $fresh['promotion_state'] = $result['promotion_state'];
+        $this->saveRules($fresh);
+
+        $out = $this->autoResult($result['success'] ? 'ok' : 'failed', $result['message']);
+        $out['listings'] = count($seen);
+        $out['pushed'] = $result['pushed'];
+        $out['groups'] = $result['groups'];
+        $out['unchanged'] = $result['unchanged'];
+        $out['skipped'] = $result['skipped'];
+        $out['errors'] = $result['errors'];
+
+        return $out;
+    }
+
+    /**
      * Same rows the eBay 1 pages use, flattened (child rows can sit under a parent).
      *
      * @return list<array<string, mixed>>
