@@ -11,14 +11,14 @@ use Illuminate\Support\Facades\Schema;
 class SyncTemuLqsFromApi extends Command
 {
     protected $signature = 'lqs:sync-temu
-        {--channel=temu : Temu account to score: temu or temu2}
+        {--channel=temu : Temu account to score: temu, temu2 or temu3}
         {--sku= : Score only the listing behind this SKU}
         {--limit=300 : Max SKUs per run}
         {--stale-hours=24 : Skip SKUs scored within this many hours (0 = rescore all)}
         {--sleep-ms=300 : Pause between Temu calls}
         {--dry-run : Fetch and score but do not save}';
 
-    protected $description = 'Score Temu / Temu 2 listings (LQS 0-100) from live Temu API data (title, photos, bullets, description, attributes, shipping).';
+    protected $description = 'Score Temu / Temu 2 / Temu 3 listings (LQS 0-100) from live Temu API data (title, photos, bullets, description, attributes, shipping).';
 
     public function handle(TemuLqsApiSyncService $sync): int
     {

@@ -4,15 +4,17 @@ namespace App\Services\Lqs;
 
 use App\Models\LqsMarketplaceScore;
 use App\Models\Temu2Metric;
+use App\Models\Temu3Metric;
 use App\Models\TemuMetric;
 use App\Services\Temu2ApiService;
+use App\Services\Temu3ApiService;
 use App\Services\TemuApiService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 
 /**
  * Pulls the live Temu listing (bg.local.goods.detail.query) and stores an API-based LQS (0-100)
- * in lqs_marketplace_scores (marketplace = 'temu' | 'temu2'), replacing the manual sheet value.
+ * in lqs_marketplace_scores (marketplace = 'temu' | 'temu2' | 'temu3'), replacing the manual sheet value.
  *
  * Each Temu account has its own API credentials and its own *_metrics table, so every method takes the
  * marketplace slug. Temu groups variations under one goods_id, so one API call scores every SKU of that goods.
@@ -25,6 +27,7 @@ class TemuLqsApiSyncService
     private const CHANNELS = [
         'temu' => [TemuApiService::class, TemuMetric::class, 'temu_metrics', 'Temu'],
         'temu2' => [Temu2ApiService::class, Temu2Metric::class, 'temu2_metrics', 'Temu 2'],
+        'temu3' => [Temu3ApiService::class, Temu3Metric::class, 'temu3_metrics', 'Temu 3'],
     ];
 
     public function __construct(

@@ -25,7 +25,7 @@ class LqsMarketplaceCatalog
             ['shopify', 'Shopify', 'Listing ID', 'sheet', 'shopify', null],
             ['temu', 'Temu', 'Goods ID', 'sheet', 'temu', null],
             ['temu2', 'Temu 2', 'Goods ID', 'sheet', 'temu2', null],
-            ['temu3', 'Temu 3', 'Goods ID', 'sheet', null, null],
+            ['temu3', 'Temu 3', 'Goods ID', 'sheet', 'temu3', null],
             ['tiktok', 'TikTok', 'Listing ID', 'sheet', null, null],
             ['tiktok2', 'TikTok 2', 'Listing ID', 'sheet', null, null],
             ['aliexpress', 'AliExpress', 'Product ID', 'sheet', 'aliexpress', 'https://www.aliexpress.com/item/{id}.html'],

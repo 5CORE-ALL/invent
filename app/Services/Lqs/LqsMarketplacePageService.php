@@ -18,6 +18,7 @@ use App\Models\ReverbMetric;
 use App\Models\SheinMetric;
 use App\Models\ShopifySku;
 use App\Models\Temu2Metric;
+use App\Models\Temu3Metric;
 use App\Models\TemuMetric;
 use App\Models\WalmartListingViewsData;
 use App\Models\WalmartMetrics;
@@ -303,6 +304,9 @@ class LqsMarketplacePageService
         }
         if ($source === 'temu2' && class_exists(Temu2Metric::class) && Schema::hasTable('temu2_metrics')) {
             return $this->mapTemuStyleMetrics(Temu2Metric::query()->orderByDesc('id')->get(), $normalizeSku);
+        }
+        if ($source === 'temu3' && class_exists(Temu3Metric::class) && Schema::hasTable('temu3_metrics')) {
+            return $this->mapTemuStyleMetrics(Temu3Metric::query()->orderByDesc('id')->get(), $normalizeSku);
         }
         if ($source === 'shopify') {
             return $this->mapGenericMetrics(ShopifySku::all(), $normalizeSku, [
