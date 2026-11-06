@@ -324,9 +324,11 @@ class AllMarketplaceMasterBadgeAggregator
                 ? $cogsL30 * ($sales / $l30)
                 : $sales * max(0.0, 1 - $gp / 100);
             $totalGross += $sales * $gp / 100;
-            $totalNet += $sales * $npft / 100;
             // Real T Spend (Amazon) when pulled, else Today Sales × the channel's ad rate.
-            $totalSpend += \App\Support\Marketplace\AmmColumnHistory::measuredTodaySpend($row) ?? ($sales * $adsRate / 100);
+            $tSpend = \App\Support\Marketplace\AmmColumnHistory::measuredTodaySpend($row);
+            // With real T Spend, net = gross − T Spend (matches the T NPFT% / T NROI% columns).
+            $totalNet += $tSpend !== null ? ($sales * $gp / 100) - $tSpend : $sales * $npft / 100;
+            $totalSpend += $tSpend ?? ($sales * $adsRate / 100);
             $totalViews += ($l30 > 0 && $views > 0) ? $views * ($sales / $l30) : 0.0;
             $totalOrders += ($l30 > 0 && $l30Orders > 0) ? $l30Orders * ($sales / $l30) : 0.0;
         }

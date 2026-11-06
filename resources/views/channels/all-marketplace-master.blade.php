@@ -2270,11 +2270,66 @@
             return {
                 sales: sales,
                 gross: sales * gp / 100,
-                net: sales * npft / 100,
+                // With real T Spend, net = gross − T Spend (so T NPFT / T NROI use the same spend as T Ads%).
+                net: tSpend > 0 ? (sales * gp / 100) - tSpend : sales * npft / 100,
                 cogs: cogs,
                 spend: tSpend > 0 ? tSpend : sales * ads / 100,
                 views: todayViews,
                 orders: todayOrders
+            };
+        }
+        // Today profit columns, all built from todayPartsFromRow() so they agree with the Today badges:
+        //   T GPFT% = gross ÷ Today Sales   T NPFT% = net ÷ Today Sales
+        //   T GROI% = gross ÷ today COGS    T NROI% = net ÷ today COGS
+        function tProfitPctFromRow(row, kind) {
+            const p = todayPartsFromRow(row);
+            if (p.sales <= 0) return null;
+            switch (kind) {
+                case 'gpft': return (p.gross / p.sales) * 100;
+                case 'npft': return (p.net / p.sales) * 100;
+                case 'groi': return p.cogs > 0 ? (p.gross / p.cogs) * 100 : null;
+                case 'nroi': return p.cogs > 0 ? (p.net / p.cogs) * 100 : null;
+            }
+            return null;
+        }
+        function tProfitPctColumn(title, field, kind, metric, tooltip) {
+            const fmtEmpty = '<span style="color:#adb5bd;font-weight:600;" title="No sales yet today (Eastern)">—</span>';
+            return {
+                title: title,
+                field: field,
+                headerTooltip: tooltip,
+                hozAlign: "center",
+                sorter: "number",
+                width: 80,
+                mutator: function(value, data) {
+                    return tProfitPctFromRow(data, kind);
+                },
+                formatter: function(cell) {
+                    const value = cell.getValue();
+                    if (value === null || value === undefined || value === '' || !isFinite(Number(value))) {
+                        return fmtEmpty;
+                    }
+                    return `<span style="${ammMetricCellStyle(metric, parseNumber(value))}font-weight:600;">${parseNumber(value).toFixed(1)}%</span>`;
+                },
+                bottomCalc: function(values, data) {
+                    let num = 0, den = 0;
+                    data.forEach(function(row) {
+                        const p = todayPartsFromRow(row);
+                        if (p.sales <= 0) return;
+                        if (kind === 'gpft') { num += p.gross; den += p.sales; }
+                        else if (kind === 'npft') { num += p.net; den += p.sales; }
+                        else if (kind === 'groi') { num += p.gross; den += p.cogs; }
+                        else { num += p.net; den += p.cogs; }
+                    });
+                    return den > 0 ? (num / den) * 100 : null;
+                },
+                bottomCalcFormatter: function(cell) {
+                    const value = cell.getValue();
+                    if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                        return '<strong style="color:#adb5bd;">—</strong>';
+                    }
+                    return `<strong style="${ammMetricCellStyle(metric, parseNumber(value))}">${parseNumber(value).toFixed(1)}%</strong>`;
+                }
             };
         }
         // Y Ads% = yesterday ad spend ÷ yesterday sales; null (shown as NYS) with no yesterday sales.
@@ -2444,14 +2499,18 @@
             switch (metric) {
                 case 'nroi':
                 case 'y_nroi_pct':
+                case 't_nroi_pct':
                 case 'p_nroi_pct': return 'nroi';
                 case 'groi':
                 case 'y_groi_pct':
+                case 't_groi_pct':
                 case 'p_groi_pct': return 'groi';
                 case 'npft':
                 case 'p_npft':
+                case 't_npft_pct':
                 case 'y_npft_pct': return 'npft';
-                case 'gprofit': return 'gpft';
+                case 'gprofit':
+                case 't_gpft_pct': return 'gpft';
                 default: return null;
             }
         }
@@ -4115,6 +4174,14 @@
                             return `<strong style="${ammMetricCellStyle('t_ads_pct', parseNumber(value))}">${parseNumber(value).toFixed(1)}%</strong>`;
                         }
                     },
+                    tProfitPctColumn("T GPFT%", "T GPFT%", 'gpft', 't_gpft_pct',
+                        "Today GPFT% = today gross PFT $ ÷ Today Sales (the channel's Gprofit% applied to Today Sales). Blank when Today Sales is 0."),
+                    tProfitPctColumn("T GROI%", "T GROI%", 'groi', 't_groi_pct',
+                        "Today GROI% = today gross PFT $ ÷ today COGS. Today COGS = L30 COGS × (Today Sales ÷ L30 Sales). Blank when Today Sales is 0."),
+                    tProfitPctColumn("T NPFT%", "T NPFT%", 'npft', 't_npft_pct',
+                        "Today NPFT% = (today gross PFT $ − today ad spend) ÷ Today Sales. Amazon uses its real T Spend; other channels use their L30 NPFT%. Blank when Today Sales is 0."),
+                    tProfitPctColumn("T NROI%", "T NROI%", 'nroi', 't_nroi_pct',
+                        "Today NROI% = (today gross PFT $ − today ad spend) ÷ today COGS. Amazon uses its real T Spend; other channels use their L30 NPFT%. Blank when Today Sales is 0."),
                     {
                         title: "L7 Sales",
                         field: "L7 Sales",
@@ -7308,7 +7375,7 @@
             // Build Column Visibility Dropdown — grouped, with a header checkbox per group.
             const COLUMN_MENU_GROUPS = [
                 { id: 'basic', label: 'Basic', fields: ['logo', 'Channel ', 'type', 'brand_authorisation'] },
-                { id: 'today', label: 'Today', fields: ['Today Sales', 'T Orders', 'T CVR', 'T Views', 'T Ads%'] },
+                { id: 'today', label: 'Today', fields: ['Today Sales', 'T Orders', 'T CVR', 'T Views', 'T Ads%', 'T GPFT%', 'T GROI%', 'T NPFT%', 'T NROI%'] },
                 { id: 'yesterday', label: 'Yesterday', fields: ['Y Sales', 'Y Orders', 'Y CVR', 'Y Views', 'Y GROI%', 'YNPFT%', 'Y Ads%'] },
                 { id: 'l30', label: 'L30', fields: ['L30 Sales', 'L30 Orders', 'Qty', 'G Roi', 'Gprofit%', 'N ROI', 'N PFT', 'Total Views', 'CVR'] },
                 { id: 'projected', label: 'Projected', fields: ['P-Sales', 'P Growth', 'P GROI%', 'PNPFT%'] },
