@@ -20,109 +20,15 @@ use Illuminate\Support\Facades\Schema;
  * eBay 2 mirror of {@see EbayCampaignAdsController}, driven off eBay-2 data:
  *   - Campaign data: `ebay2_campaign_ads`
  *   - Metrics:       `ebay_2_metrics` (App\Models\Ebay2Metric)
- *   - Rule keys:     `ebay2_dil_sbid`
- *                    in `ebay_sbid_rules` (`ebay2` SCVR bands kept only for
- *                    legacy getRule/saveRule)
  *   - Token / push:  Ebay2ApiService
  */
 class Ebay2CampaignAdsController extends Controller
 {
     use ProvidesEbayCampaignAdsBadgeSummary;
 
-    private function numOrNull($v): ?float
-    {
-        if ($v === null || $v === '') {
-            return null;
-        }
-        if (! is_numeric($v)) {
-            return null;
-        }
-
-        return (float) $v;
-    }
-
     public function index()
     {
         return view('campaign.ebay2-campaign-ads');
-    }
-
-    public function getRule()
-    {
-        $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay2')->first();
-        return response()->json($rule ? json_decode($rule->rule, true) : $this->defaultRule());
-    }
-
-    public function saveRule(Request $request)
-    {
-        $bands       = $request->input('bands', []);
-        $threshold   = $request->input('l7_views_threshold', 70);
-        $l30SoldMax  = $request->input('l30_sold_es_bid_max', 0);
-
-        if (empty($bands) || !is_array($bands)) {
-            return response()->json(['error' => 'Invalid rule data'], 422);
-        }
-        if (!is_numeric($threshold) || $threshold < 0) {
-            return response()->json(['error' => 'l7_views_threshold must be a non-negative number'], 422);
-        }
-        if (!is_numeric($l30SoldMax) || $l30SoldMax < 0) {
-            return response()->json(['error' => 'l30_sold_es_bid_max must be a non-negative number'], 422);
-        }
-
-        usort($bands, fn($a, $b) => $a['scvr_max'] <=> $b['scvr_max']);
-
-        $rule = [
-            'l7_views_threshold'    => (float) $threshold,
-            'l30_sold_es_bid_max'   => (float) $l30SoldMax,
-            'bands'                 => $bands,
-        ];
-
-        DB::table('ebay_sbid_rules')->updateOrInsert(
-            ['key' => 'ebay2'],
-            ['rule' => json_encode($rule), 'updated_at' => now()]
-        );
-
-        return response()->json(['success' => true, 'rule' => $rule]);
-    }
-
-    public function getDilSbidRule()
-    {
-        return response()->json(\App\Support\DilVsSbidRule::load(\App\Support\DilVsSbidRule::KEY_EBAY2));
-    }
-
-    public function saveDilSbidRule(Request $request)
-    {
-        $saved = \App\Support\DilVsSbidRule::save(
-            \App\Support\DilVsSbidRule::KEY_EBAY2,
-            $request->input('slabs', []),
-            $request->exists('enabled') ? $request->boolean('enabled') : null,
-            $request->exists('cvr') ? $request->input('cvr') : null,
-            $request->exists('tables') ? $request->input('tables') : null,
-            $request->exists('cap') ? $request->input('cap') : null,
-            $request->exists('views_over') ? $request->input('views_over') : null
-        );
-
-        return response()->json($saved, ($saved['success'] ?? false) ? 200 : 422);
-    }
-
-    public function pushSelected(Request $request)
-    {
-        $listingIds = $request->input('listing_ids', []);
-        if (empty($listingIds) || ! is_array($listingIds)) {
-            return response()->json(['error' => 'No listings selected'], 422);
-        }
-
-        $result = app(\App\Services\DilVsSbidApplyService::class)->apply(
-            \App\Support\DilVsSbidRule::KEY_EBAY2,
-            'ebay2_campaign_ads',
-            \App\Models\Ebay2Metric::class,
-            \App\Services\Ebay2ApiService::class,
-            $listingIds
-        );
-        if (! empty($result['error'])) {
-            return response()->json(['error' => $result['error']], 500);
-        }
-
-        return response()->json($result);
     }
 
     public function getCampaignList()
@@ -747,21 +653,6 @@ class Ebay2CampaignAdsController extends Controller
             }
         }
         return $map;
-    }
-
-    /** Default SCVR bands — kept for legacy getRule/saveRule. */
-    private function defaultRule(): array
-    {
-        return [
-            'l7_views_threshold'  => 70,
-            'l30_sold_es_bid_max' => 0,
-            'bands' => [
-                ['scvr_max' => 4,    'bid' => 9.1, 'label' => 'Red',    'color' => '#dc3545'],
-                ['scvr_max' => 7,    'bid' => 7.1, 'label' => 'Yellow', 'color' => '#ffc107'],
-                ['scvr_max' => 13,   'bid' => 4.1, 'label' => 'Green',  'color' => '#198754'],
-                ['scvr_max' => 9999, 'bid' => 2.1, 'label' => 'Pink',   'color' => '#e83e8c'],
-            ]
-        ];
     }
 
     /**

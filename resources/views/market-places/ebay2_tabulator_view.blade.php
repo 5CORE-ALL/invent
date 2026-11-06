@@ -1548,54 +1548,6 @@
             const n = parseFloat(data && data[field]);
             return isFinite(n) && n > 0 ? n : 0;
         }
-        function getCombinedSbid(row) {
-            const listingKey = (typeof dilSbidListingKey === 'function') ? dilSbidListingKey(row) : '';
-            if (!ebay2HasCampaignAdsRow(row) && !listingKey) {
-                return { bid: 0, color: '#6c757d', skip: true, title: 'No bid on /ebay2/campaign-ads' };
-            }
-            if (typeof campaignSbid === 'function') return campaignSbid(row);
-            return { bid: 0, color: '#6c757d', skip: true, title: 'No Dil vs SBid' };
-        }
-
-        function ebay2TabRound2(n) {
-            return Math.round(Number(n) * 100) / 100;
-        }
-        /** Same tenth the C Bid and S Bid cells print. Matches /ebay2/campaign-ads. */
-        function ebay2TabShownPercent(n) {
-            return Math.round(Number(n) * 10) / 10;
-        }
-
-        /** Running COST_PER_SALE listing with Dil vs SBid on and a real S Bid. Parent and variation SKUs share that listing bid. */
-        function ebay2TabSbidResult(row) {
-            if (!row || typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
-            if (String(row.ca_funding_strategy || '') !== 'COST_PER_SALE') return null;
-            if (String(row.ca_campaign_status || '').trim().toUpperCase() !== 'RUNNING') return null;
-            const res = getCombinedSbid(row);
-            if (!res || res.skip || res.off || !(res.bid > 0)) return null;
-            return res;
-        }
-
-        /** Green when C Bid matches S Bid, yellow when it is still waiting. Null outside that rule. */
-        function ebay2TabBidSync(row) {
-            const res = ebay2TabSbidResult(row);
-            if (!res) return null;
-            const live = parseFloat(row.ca_bid_percentage);
-            const liveOk = isFinite(live) && live > 0;
-            const want = Number(res.bid).toFixed(1);
-            const liveText = liveOk ? live.toFixed(1) + '%' : 'empty';
-            if (liveOk && ebay2TabShownPercent(live) === ebay2TabShownPercent(res.bid)) {
-                return { color: 'green', tip: 'Updated — C Bid matches S Bid ' + want + '%' };
-            }
-            return { color: 'yellow', tip: 'Pending — S Bid ' + want + '% does not match C Bid ' + liveText };
-        }
-
-        /** Same alert as /ebay2/campaign-ads: red only after a failed push. A pending gap stays the yellow dot. */
-        function ebay2TabBidAlertText(row) {
-            const sync = ebay2TabBidSync(row);
-            if (!sync || sync.color !== 'red') return '';
-            return 'S Bid: ' + sync.tip;
-        }
-
         // ── Sku Link LMP (mirrors /ebay-tabulator-view; shared sku.link.lmp.* routes) ──
         const linkedSkuAddUrl = @json(route('sku.link.lmp.linked-skus.add'));
         const linkedSkuBulkLinkUrl = @json(route('sku.link.lmp.linked-skus.bulk-link'));
@@ -3107,9 +3059,6 @@
                     ebay2StampAllOrder(allTableData);
                     if (window.LmpIgnore) LmpIgnore.applyDataset(allTableData);
                     window.allTableData = allTableData;
-                    if (typeof dilSbidClearListingCache === 'function') {
-                        dilSbidClearListingCache();
-                    }
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     setTimeout(function() {
                         if (typeof ebay2PullEndedListings === 'function') ebay2PullEndedListings();
@@ -4248,33 +4197,12 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,
-                        headerTooltip: "Live eBay bid, shown just before Alert. Green = C Bid matches S Bid. Yellow = still waiting to push.",
+                        headerTooltip: "Live eBay bid percentage.",
                         formatter: function(cell) {
-                            const row = cell.getRow().getData();
                             const v = parseFloat(cell.getValue());
-                            let valueHtml = '<span class="text-muted">—</span>';
-                            if (!isNaN(v)) {
-                                const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
-                                valueHtml = '<span style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
-                            }
-                            const sync = ebay2TabBidSync(row);
-                            if (!sync) return valueHtml;
-                            const safe = (typeof escapeHtmlAttr === 'function') ? escapeHtmlAttr(sync.tip) : sync.tip;
-                            return '<span class="eca-sync-cell"><span class="eca-sync-dot is-' + sync.color + '" title="' + safe + '"></span>' + valueHtml + '</span>';
-                        }
-                    },
-                    {
-                        title: "Alert",
-                        field: "_bid_alert",
-                        width: 56,
-                        hozAlign: "center",
-                        headerSort: false,
-                        headerTooltip: "Shown only when the S Bid push failed. A pending gap stays the yellow dot on C Bid.",
-                        formatter: function(cell) {
-                            const tip = ebay2TabBidAlertText(cell.getRow().getData());
-                            if (!tip) return '';
-                            const safe = (typeof escapeHtmlAttr === 'function') ? escapeHtmlAttr(tip) : tip;
-                            return '<span class="eca-push-alert" title="' + safe + '" aria-label="' + safe + '">!</span>';
+                            if (isNaN(v)) return '<span class="text-muted">—</span>';
+                            const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
+                            return '<span style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
                         }
                     },
 @include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'columns', 'pmtAccount' => 'ebay2'])
@@ -5014,7 +4942,7 @@
                 }
                 syncEbay2TriangleBadgeState();
 
-                // Repaint L7 View + S BID colours when the avg changes.
+                // Repaint L7 View colours when the avg changes.
                 if (table && Math.abs(prevAvgL7Views - avgL7Views) > 0.0001) {
                     table.redraw(false);
                 }
@@ -5222,9 +5150,6 @@
             });
 
             table.on('dataLoaded', function() {
-                if (typeof renderDilSbidTable === 'function' && document.getElementById('dilSbidRuleModal')?.classList.contains('show')) {
-                    renderDilSbidTable();
-                }
                 if (ebay2SkipNextDataLoadedFilter) {
                     ebay2SkipNextDataLoadedFilter = false;
                 } else if (allTableData.length) {
@@ -5232,9 +5157,6 @@
                 }
                 if (typeof chPromoInvalidateListingDilCache === 'function') {
                     chPromoInvalidateListingDilCache({ skipApply: true });
-                }
-                if (typeof dilSbidClearListingCache === 'function') {
-                    dilSbidClearListingCache();
                 }
                 updateCalcValues();
                 updateSummary();
@@ -5435,15 +5357,6 @@
                 'rpt_spend': 'Spend',
                 'rpt_sales': 'Sales',
                 'ca_suggested_bid': 'ES BID',
-                'sbid_diff_dil': 'Dil',
-                'sbid_diff_views': 'Views',
-                'sbid_diff_cvr': 'CVR %',
-                'sbid_diff_sold': 'eBay Sold',
-                'sbid_diff_npft': 'Std NPFT %',
-                'sbid_diff_cvrAdj': 'CVR up / down',
-                'sbid_diff_viewAdj': 'L30 View up / down',
-                'sbid_total_discount': 'Sum S Bid',
-                's_bid': 'S BID',
                 'ca_bid_percentage': 'C BID',
                 'ca_promote_with_ad': 'PROMOTE'
             };

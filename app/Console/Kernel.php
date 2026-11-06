@@ -76,9 +76,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\AutoUpdateAmazonBgtPt::class,
         \App\Console\Commands\AutoUpdateAmazonBgtHl::class,
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
-        \App\Console\Commands\Ebay2UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\Ebay2AutoEnrollEligibleAds::class,
-        \App\Console\Commands\Ebay3UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\AssignAmzListingVariationVerifyDailyTask::class,
         \App\Console\Commands\AssignMissingMappingDailyTask::class,
         \App\Console\Commands\UpdateEbayOneBudget::class,
@@ -2493,42 +2491,10 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('ebay2:auto-update-utilized-bids')
-            ->dailyAt('21:04')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay2-utilized-bids')
-            ->withoutOverlapping(60)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('ebay3:auto-update-utilized-bids')
-            ->dailyAt('21:06')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay3-utilized-bids')
-            ->withoutOverlapping(60)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         $schedule->command('ebay1:update-budget')
             ->dailyAt('21:29')
             ->timezone('Asia/Kolkata')
             ->name('ebay1-budget')
-            ->withoutOverlapping(60)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('ebay2:update-budget')
-            ->dailyAt('21:31')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay2-budget')
-            ->withoutOverlapping(60)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('ebay3:update-budget')
-            ->dailyAt('21:33')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay3-budget')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);

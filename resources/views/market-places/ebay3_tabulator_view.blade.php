@@ -1468,10 +1468,6 @@
     /** 'badge' = channel summary series; 'sku' = per-SKU L30 View / L7 View daily history (own endpoint). */
     let ebay3ChartMode = 'badge';
     let ebay3ChartSku = '';
-    /** 'sbid' mode: daily SKU count for one Dil vs SBid slab / range. */
-    let ebay3ChartSbidBand = '';
-    let ebay3ChartSbidLabel = '';
-    let ebay3ChartSbidLive = null;
     const EBAY3_SKU_VIEW_LABELS = { views: 'L30 View', l7_views: 'L7 View' };
     const EBAY3_NO_DATA_BADGE = 'No daily snapshots yet. Open this page on separate days to build history (auto-saved from summary).';
     const EBAY3_NO_DATA_SKU = 'No historical data for this SKU yet. Data appears after the metrics collection job runs.';
@@ -1492,7 +1488,6 @@
 
     function ebay3OpenChartModal() {
         const modalEl = document.getElementById('ebay3MetricChartModal');
-        // Can open on top of the Dil vs SBid modal (count dots), which comes later in the DOM.
         modalEl.style.zIndex = '1080';
         $(modalEl).off('shown.bs.modal.ebay3z').on('shown.bs.modal.ebay3z', function() {
             const backs = document.querySelectorAll('.modal-backdrop');
@@ -1506,9 +1501,6 @@
     }
 
     function ebay3ChartTitle() {
-        if (ebay3ChartMode === 'sbid') {
-            return 'eBay 3 — Dil vs SBid SKU Count — ' + ebay3ChartSbidLabel + ' (Daily snapshot)';
-        }
         if (ebay3ChartMode === 'sku') {
             return 'eBay 3 — ' + (EBAY3_SKU_VIEW_LABELS[ebay3ChartMetricKey] || ebay3ChartMetricKey) + ' — ' + ebay3ChartSku + ' (Daily snapshot)';
         }
@@ -1524,37 +1516,6 @@
         $('#ebay3ChartModalTitle').text(ebay3ChartTitle());
         ebay3OpenChartModal();
         loadEbay3MetricChart();
-    }
-
-    /** Daily SKU count for one Dil vs SBid slab / range (eBay 3 only: /ebay3/sbid-slab-count-history). */
-    function showEbay3SbidCountChart(band, label, liveCount) {
-        if (!band) return;
-        ebay3ChartMode = 'sbid';
-        ebay3ChartSku = '';
-        ebay3ChartSbidBand = String(band);
-        ebay3ChartSbidLabel = label || band;
-        ebay3ChartSbidLive = isFinite(Number(liveCount)) ? Number(liveCount) : null;
-        ebay3ChartMetricKey = 'sbid_count';
-        ebay3ChartDays = 30;
-        $('#ebay3ChartRangeSelect').val('30');
-        $('#ebay3ChartModalTitle').text(ebay3ChartTitle());
-        ebay3OpenChartModal();
-        loadEbay3MetricChart();
-    }
-    // The Dil vs SBid modal (shared partial) calls this when a count dot is clicked.
-    window.dilSbidCountChartHook = showEbay3SbidCountChart;
-
-    /** Add today's live count as the last point, replacing a saved point for the same day. */
-    function ebay3OverlaySbidLive(series) {
-        if (ebay3ChartSbidLive === null) return series;
-        const out = series.slice();
-        const today = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', timeZone: 'America/Los_Angeles' });
-        if (out.length && out[out.length - 1].date === today) {
-            out[out.length - 1] = { date: today, value: ebay3ChartSbidLive };
-        } else {
-            out.push({ date: today, value: ebay3ChartSbidLive });
-        }
-        return out;
     }
 
     /** Per-SKU L30 View / L7 View daily history (eBay 3 only: /ebay3-metrics-history). */
@@ -1578,42 +1539,6 @@
         $('#ebay3ChartContainer').hide();
         $('#ebay3ChartLoading').show();
         $('#ebay3ChartNoDataMsg').text(ebay3ChartMode === 'sku' ? EBAY3_NO_DATA_SKU : EBAY3_NO_DATA_BADGE);
-
-        if (ebay3ChartMode === 'sbid') {
-            ebay3ChartAjax = $.ajax({
-                url: '/ebay3/sbid-slab-count-history',
-                method: 'GET',
-                data: { band: ebay3ChartSbidBand, days: ebay3ChartDays },
-                success: function(resp) {
-                    ebay3ChartAjax = null;
-                    $('#ebay3ChartLoading').hide();
-                    const rows = (resp && resp.success && Array.isArray(resp.data)) ? resp.data : [];
-                    const mapped = rows.filter(function(d) {
-                        return d && d.date && d.value != null && isFinite(Number(d.value));
-                    }).map(function(d) { return { date: d.date, value: Number(d.value) }; });
-                    const series = ebay3OverlaySbidLive(mapped);
-                    if (series.length) {
-                        $('#ebay3ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
-                        renderEbay3MetricChart(series);
-                    } else {
-                        $('#ebay3ChartNoData').show();
-                    }
-                },
-                error: function(xhr, status) {
-                    ebay3ChartAjax = null;
-                    if (status === 'abort') return;
-                    $('#ebay3ChartLoading').hide();
-                    const series = ebay3OverlaySbidLive([]);
-                    if (series.length) {
-                        $('#ebay3ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
-                        renderEbay3MetricChart(series);
-                    } else {
-                        $('#ebay3ChartNoData').show();
-                    }
-                }
-            });
-            return;
-        }
 
         if (ebay3ChartMode === 'sku') {
             const field = ebay3ChartMetricKey === 'l7_views' ? 'l7_views' : 'views';
@@ -2877,42 +2802,6 @@
             if (data.ca_bid_percentage != null && data.ca_bid_percentage !== '') return true;
             return false;
         }
-        function getCombinedSbid(row) {
-            if (!ebay3HasCampaignAdsRow(row)) {
-                return { bid: 0, color: '#6c757d', skip: true, title: 'No bid on /ebay3/campaign-ads' };
-            }
-            if (typeof campaignSbid === 'function') return campaignSbid(row);
-            return { bid: 0, color: '#6c757d', skip: true, title: 'No Dil vs SBid' };
-        }
-        function ebay3TabRound2(n) { return Math.round(Number(n) * 100) / 100; }
-        function ebay3TabSbidResult(row) {
-            if (!row || typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
-            if (typeof ebay3IsAlertParentRow === 'function' && ebay3IsAlertParentRow(row)) return null;
-            if (String(row.ca_funding_strategy || '') !== 'COST_PER_SALE') return null;
-            if (String(row.ca_campaign_status || '').trim().toUpperCase() !== 'RUNNING') return null;
-            const res = getCombinedSbid(row);
-            if (!res || res.skip || res.off || !(res.bid > 0)) return null;
-            return res;
-        }
-        function ebay3TabBidSync(row) {
-            const res = ebay3TabSbidResult(row);
-            if (!res) return null;
-            const live = parseFloat(row.ca_bid_percentage);
-            const liveOk = isFinite(live) && live > 0;
-            const want = Number(res.bid).toFixed(1);
-            const liveText = liveOk ? live.toFixed(1) + '%' : 'empty';
-            if (liveOk && Math.round(Number(live) * 10) / 10 === Math.round(Number(res.bid) * 10) / 10) {
-                return { color: 'green', tip: 'Updated — C Bid matches S Bid ' + want + '%' };
-            }
-            return { color: 'yellow', tip: 'Pending — S Bid ' + want + '% does not match C Bid ' + liveText };
-        }
-        /** Same alert as /ebay3/campaign-ads: red only after a failed push. A pending gap stays the yellow dot. */
-        function ebay3TabBidAlertText(row) {
-            const sync = ebay3TabBidSync(row);
-            if (!sync || sync.color !== 'red') return '';
-            return 'S Bid: ' + sync.tip;
-        }
-
         // Initialize Tabulator
         table = new Tabulator("#ebay3-table", {
             ajaxURL: "/ebay3-data-json",
@@ -3665,36 +3554,14 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 90,
-                    headerTooltip: "Live eBay bid, shown just before Alert. Green = C Bid matches S Bid. Yellow = still waiting to push.",
+                    headerTooltip: "Live eBay bid percentage.",
                     formatter: function(cell) {
-                        const row = cell.getRow().getData();
                         const v = parseFloat(cell.getValue());
-                        let valueHtml = '<span class="text-muted">—</span>';
-                        if (!isNaN(v)) {
-                            const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
-                            valueHtml = '<span style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
-                        }
-                        const sync = ebay3TabBidSync(row);
-                        if (!sync) return valueHtml;
-                        const safe = String(sync.tip).replace(/"/g, '&quot;');
-                        return '<span class="eca-sync-cell"><span class="eca-sync-dot is-' + sync.color + '" title="' + safe + '"></span>' + valueHtml + '</span>';
+                        if (isNaN(v)) return '<span class="text-muted">—</span>';
+                        const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
+                        return '<span style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
                     }
                 },
-                {
-                    title: "Alert",
-                    field: "_bid_alert",
-                    width: 56,
-                    hozAlign: "center",
-                    headerSort: false,
-                    headerTooltip: "Shown only when the S Bid push failed. A pending gap stays the yellow dot on C Bid.",
-                    formatter: function(cell) {
-                        const tip = ebay3TabBidAlertText(cell.getRow().getData());
-                        if (!tip) return '';
-                        const safe = String(tip).replace(/"/g, '&quot;');
-                        return '<span class="eca-push-alert" title="' + safe + '" aria-label="' + safe + '">!</span>';
-                    }
-                },
-                // Per-slab S Bid from the Dil vs SBid modal (Dil, Views, CVR %, eBay Sold, Std NPFT %, up / down, Sum).
 @include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'columns', 'pmtAccount' => 'ebay3'])
             ]
         });
