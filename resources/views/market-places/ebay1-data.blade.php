@@ -96,8 +96,18 @@
         #ebay1-data-table .tabulator-col .tabulator-col-title i { transform: rotate(90deg); display: inline-block; margin-top: 4px; }
         #ebay1-data-table .tabulator-row:nth-child(even) { background: #f8fafc; }
         #ebay1-data-table .tabulator-row:hover { background: #e8f0fe !important; }
-        #ebay1-data-table .tabulator-cell { font-size: 13px; color: #475569; }
+        #ebay1-data-table .tabulator-cell { font-size: 12px; color: #475569; padding: 4px 6px; }
+        #ebay1-data-table .tabulator-col-content { padding-left: 4px; padding-right: 4px; }
         .e1d-pill { display: inline-block; padding: .1rem .5rem; border-radius: 6px; font-size: .75rem; font-weight: 700; color: #fff; }
+        .e1d-copy { cursor: pointer; color: #64748b; margin-right: .45rem; padding: 0 .15rem; }
+        .e1d-copy:hover { color: #0284c7; }
+        .e1d-title-text { vertical-align: middle; }
+        .e1d-tick { font-size: 1.1rem; vertical-align: middle; }
+        .e1d-tick.green { color: #16a34a; }
+        .e1d-tick.red { color: #dc2626; }
+        .e1d-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: middle; cursor: pointer; }
+        .e1d-dot.green { background: #16a34a; }
+        .e1d-dot.red { background: #dc2626; }
         .e1d-pill.green { background: #16a34a; }
         .e1d-pill.red { background: #dc2626; }
         .e1d-pill.amber { background: #d97706; }
@@ -1405,7 +1415,6 @@
                     return {
                         title: src ? esc(name) + ' <i class="fas fa-link" style="font-size:10px;opacity:.8"></i>' : esc(name),
                         field: specKey(name),
-                        minWidth: 110,
                         headerTooltip: src ? 'Synced from Technical Specifications: ' + src : name,
                         formatter: textFormatter,
                     };
@@ -1449,40 +1458,39 @@
                         },
                         // The select box and SKU stay side by side on the left while scrolling; Parent follows them.
                         {
-                            title: 'SKU', field: 'sku', minWidth: 130, frozen: true,
+                            title: 'SKU', field: 'sku', hozAlign: 'left', minWidth: 110, frozen: true,
                             formatter: function (cell) { return '<strong>' + esc(cell.getValue()) + '</strong>'; },
                         },
-                        { title: 'Parent', field: 'parent', minWidth: 90, formatter: textFormatter },
-                        { title: 'INV', field: 'inv', hozAlign: 'right', width: 70, formatter: numberFormatter(0) },
-                        { title: 'Sold L30', field: 'sold_l30', hozAlign: 'right', width: 80, formatter: numberFormatter(0) },
+                        { title: 'Parent', field: 'parent', hozAlign: 'left', formatter: textFormatter },
+                        { title: 'INV', field: 'inv', formatter: numberFormatter(0) },
+                        { title: 'Sold L30', field: 'sold_l30', formatter: numberFormatter(0) },
                         {
-                            title: 'REQ/NRL', field: 'nr_req', hozAlign: 'center', width: 96,
+                            title: 'REQ/NRL', field: 'nr_req', 
                             headerTooltip: 'Click a value to change it. Saved to the same data as the Listing eBay page.',
                             editor: 'list',
                             editorParams: { values: { REQ: 'REQ', NR: 'NRL' }, autocomplete: false, listOnEmpty: true, clearable: false },
                             formatter: function (cell) {
                                 return cell.getValue() === 'NR'
-                                    ? '<span class="e1d-pill red">NRL</span>'
-                                    : '<span class="e1d-pill green">REQ</span>';
+                                    ? '<span class="e1d-dot red" title="NRL"></span>'
+                                    : '<span class="e1d-dot green" title="REQ"></span>';
                             },
                             cellEdited: function (cell) { saveNrReq(cell); },
                         },
                         {
-                            title: 'Listed', field: 'listed', hozAlign: 'center', width: 100,
+                            title: 'Listed', field: 'listed', 
                             sorter: function (a, b, aRow, bRow) {
                                 const rank = function (d) { return d.listed === 'Listed' ? 2 : (d.listed === 'Created' ? 1 : 0); };
                                 return rank(aRow.getData()) - rank(bRow.getData());
                             },
                             formatter: function (cell) {
                                 const d = cell.getRow().getData();
-                                if (d.listed === 'Listed') return '<span class="e1d-pill blue">Listed</span>';
+                                if (d.listed === 'Listed') return '<i class="fas fa-check-square e1d-tick green" title="Listed"></i>';
                                 if (d.listed === 'Created') return '<span class="e1d-pill amber">Created</span>';
-                                if (!inStock(d) || d.nr_req === 'NR') return '<span class="e1d-pill grey">Not listed</span>';
-                                return '<span class="e1d-pill red">Missing L</span>';
+                                return '<i class="fas fa-times e1d-tick red" title="Missing L"></i>';
                             },
                         },
                         {
-                            title: 'Item ID', field: 'item_id', minWidth: 120,
+                            title: 'Item ID', field: 'item_id', 
                             formatter: function (cell) {
                                 const id = String(cell.getValue() || '').trim();
                                 if (!id) return '<span class="e1d-muted">—</span>';
@@ -1491,20 +1499,55 @@
                                 return '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(id) + '</a>';
                             },
                         },
-                        { title: 'Status', field: 'listing_status', width: 96, formatter: textFormatter },
-                        { title: 'eBay title', field: 'ebay_title', minWidth: 260, formatter: textFormatter },
-                        { title: 'Price', field: 'ebay_price', hozAlign: 'right', width: 86, formatter: numberFormatter(2) },
-                        { title: 'Stock', field: 'ebay_stock', hozAlign: 'right', width: 72, formatter: numberFormatter(0) },
-                        { title: 'L7', field: 'ebay_l7', hozAlign: 'right', width: 60, formatter: numberFormatter(0) },
-                        { title: 'L30', field: 'ebay_l30', hozAlign: 'right', width: 60, formatter: numberFormatter(0) },
-                        { title: 'L60', field: 'ebay_l60', hozAlign: 'right', width: 60, formatter: numberFormatter(0) },
-                        { title: 'Views', field: 'views', hozAlign: 'right', width: 76, formatter: numberFormatter(0) },
-                        { title: 'L7 Views', field: 'l7_views', hozAlign: 'right', width: 84, formatter: numberFormatter(0) },
-                        { title: 'L1 Views', field: 'l1_views', hozAlign: 'right', width: 84, formatter: numberFormatter(0) },
-                        { title: 'Organic Clicks', field: 'organic_clicks', hozAlign: 'right', width: 110, formatter: numberFormatter(0) },
-                        { title: 'Reason', field: 'inactive_reason', minWidth: 120, formatter: textFormatter },
-                        { title: 'Report date', field: 'report_date', width: 110, formatter: textFormatter },
-                        { title: 'Category', field: 'category', minWidth: 260, formatter: textFormatter },
+                        { title: 'Status', field: 'listing_status',  formatter: textFormatter },
+                        {
+                            title: 'eBay title', field: 'ebay_title', 
+                            formatter: function (cell) {
+                                const v = String(cell.getValue() || '').trim();
+                                if (!v) return '<span class="e1d-muted">—</span>';
+                                const shown = v.length > 80 ? v.slice(0, 80).trimEnd() + '…' : v;
+                                return '<span class="e1d-copy" title="Copy title"><i class="far fa-copy"></i></span>'
+                                    + '<span class="e1d-title-text" title="' + esc(v) + '">' + esc(shown) + '</span>';
+                            },
+                            cellClick: function (e, cell) {
+                                if (!e.target.closest || !e.target.closest('.e1d-copy')) return;
+                                const text = String(cell.getValue() || '').trim();
+                                const icon = e.target.closest('.e1d-copy').querySelector('i');
+                                const done = function (ok) {
+                                    if (icon) icon.className = ok ? 'fas fa-check' : 'fas fa-times';
+                                    setTimeout(function () { if (icon) icon.className = 'far fa-copy'; }, 1200);
+                                };
+                                const fallback = function () {
+                                    const ta = document.createElement('textarea');
+                                    ta.value = text;
+                                    ta.style.position = 'fixed';
+                                    ta.style.opacity = '0';
+                                    document.body.appendChild(ta);
+                                    ta.select();
+                                    let ok = false;
+                                    try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+                                    document.body.removeChild(ta);
+                                    done(ok);
+                                };
+                                if (navigator.clipboard && window.isSecureContext) {
+                                    navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+                                } else {
+                                    fallback();
+                                }
+                            },
+                        },
+                        { title: 'Price', field: 'ebay_price', formatter: numberFormatter(2) },
+                        { title: 'Stock', field: 'ebay_stock', formatter: numberFormatter(0) },
+                        { title: 'L7', field: 'ebay_l7', formatter: numberFormatter(0) },
+                        { title: 'L30', field: 'ebay_l30', formatter: numberFormatter(0) },
+                        { title: 'L60', field: 'ebay_l60', formatter: numberFormatter(0) },
+                        { title: 'Views', field: 'views', formatter: numberFormatter(0) },
+                        { title: 'L7 Views', field: 'l7_views', formatter: numberFormatter(0) },
+                        { title: 'L1 Views', field: 'l1_views', formatter: numberFormatter(0) },
+                        { title: 'Organic Clicks', field: 'organic_clicks', formatter: numberFormatter(0) },
+                        { title: 'Reason', field: 'inactive_reason',  formatter: textFormatter },
+                        { title: 'Report date', field: 'report_date',  formatter: textFormatter },
+                        { title: 'Category', field: 'category',  formatter: textFormatter },
                 ];
             }
 
@@ -1521,7 +1564,7 @@
                     selectableRows: true,
                     selectableRowsRangeMode: 'click',
                     // Header titles break at every space (<br>), so the vertical headers stay short.
-                    columnDefaults: { titleFormatter: breakTitle },
+                    columnDefaults: { titleFormatter: breakTitle, hozAlign: 'center', headerHozAlign: 'center' },
                     columns: baseColumns().concat([editColumn()]),
                 });
                 table.on('rowSelectionChanged', function () { renderBadges(); updatePushButton(); });
