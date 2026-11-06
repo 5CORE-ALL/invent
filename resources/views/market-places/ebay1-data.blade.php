@@ -692,7 +692,7 @@
                             const v = String(row.specifics[name] || '').trim();
                             if (v !== '') specifics[name] = v;
                         });
-                        return { sku: row.sku, item_id: String(row.item_id).trim(), specifics: specifics };
+                        return { sku: row.sku, item_id: String(row.item_id || '').trim(), specifics: specifics };
                     });
                     status.textContent = 'Pushing ' + Math.min(i + size, todo.length) + ' / ' + todo.length + '…';
                     try {
@@ -852,8 +852,7 @@
                 return rows.filter(function (row) {
                     return passesTab(row)
                         && row.specifics && !Array.isArray(row.specifics)
-                        && list.some(function (name) { return Object.prototype.hasOwnProperty.call(row.specifics, name); })
-                        && /^\d{9,15}$/.test(String(row.item_id || '').trim());
+                        && list.some(function (name) { return Object.prototype.hasOwnProperty.call(row.specifics, name); });
                 });
             }
 
@@ -864,8 +863,8 @@
                 document.getElementById('e1dDelWarn').innerHTML = !picked.length
                     ? 'Tick one or more columns.'
                     : (n === 0
-                        ? 'No live eBay 1 listing in this category has ' + label + '. ' + (picked.length === 1 ? 'The column is' : 'The columns are') + ' only removed from this tab.'
-                        : 'This removes ' + label + ' from <strong>' + n + '</strong> live eBay 1 listing' + (n === 1 ? '' : 's') + ' in this category and from the stored data. It cannot be undone here.');
+                        ? 'No SKU in this category has ' + label + '. ' + (picked.length === 1 ? 'The column is' : 'The columns are') + ' only removed from this tab.'
+                        : 'This removes ' + label + ' from <strong>' + n + '</strong> SKU' + (n === 1 ? '' : 's') + ' in this category: on the live eBay 1 listing where there is one, and always in the app. It cannot be undone here.');
                 const go = document.getElementById('e1dDelGo');
                 go.disabled = !picked.length || delRunning;
                 go.textContent = picked.length > 1 ? 'Delete ' + picked.length + ' columns' : 'Delete column';
@@ -888,9 +887,7 @@
                 const names = specNamesForTab();
                 delPicked = new Set(Array.from(delPicked).filter(function (name) { return names.indexOf(name) !== -1; }));
                 const list = document.getElementById('e1dDelList');
-                const delTotal = rows.filter(function (row) {
-                    return passesTab(row) && /^\d{9,15}$/.test(String(row.item_id || '').trim());
-                }).length;
+                const delTotal = rows.filter(passesTab).length;
                 list.innerHTML = '';
                 const shown = delVisibleNames();
                 if (!shown.length) list.innerHTML = '<div class="small text-muted p-2">No matching column.</div>';
@@ -906,12 +903,12 @@
                     });
                     row.appendChild(cb);
                     row.appendChild(document.createTextNode(' ' + name + ' '));
-                    // available / total: live listings of this tab that carry the column / all live listings of this tab.
+                    // available / total: SKUs of this tab that carry the column / all SKUs of this tab.
                     const have = delTargets(name).length;
                     const count = document.createElement('span');
                     count.className = 'e1d-cnt ' + (have === delTotal ? 'green' : 'red');
                     count.textContent = have + '/' + delTotal;
-                    count.title = have + ' of ' + delTotal + ' live listings in this category have this column';
+                    count.title = have + ' of ' + delTotal + ' SKUs in this category have this column';
                     row.appendChild(count);
                     list.appendChild(row);
                 });
@@ -958,7 +955,7 @@
                 if (delRunning) return;
                 const category = activeTab === NO_CATEGORY ? '' : activeTab;
                 if (!window.confirm(todo.length
-                    ? 'Delete ' + label + ' from ' + todo.length + ' live eBay 1 listings?'
+                    ? 'Delete ' + label + ' from ' + todo.length + ' SKUs (live eBay 1 listing where there is one, and the app)?'
                     : 'Remove ' + label + ' from this tab?')) return;
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 const goBtn = document.getElementById('e1dDelGo');

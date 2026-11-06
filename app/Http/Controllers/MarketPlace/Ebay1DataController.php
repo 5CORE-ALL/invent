@@ -102,14 +102,18 @@ class Ebay1DataController extends Controller
                     }
                 }
 
-                // UPC always shows the CP Master code (eBay's "Does not apply" is replaced). No CP Master code leaves it as it was.
+                // UPC is always the CP Master code: it replaces "Does not apply", "Not Applicable" and a blank cell,
+                // and every SKU with a CP Master UPC gets the column. No CP Master code leaves the cell as it was.
                 $upc = ($cpUpc[$sku]['source'] ?? '') === ProductUpc::SOURCE_CP_MASTER ? (string) $cpUpc[$sku]['upc'] : '';
                 if ($upc !== '') {
+                    $upcName = null;
                     foreach (array_keys($specifics) as $specName) {
                         if ($this->aspectKey((string) $specName) === 'upc') {
-                            $specifics[$specName] = $upc;
+                            $upcName = (string) $specName;
+                            break;
                         }
                     }
+                    $specifics[$upcName ?? 'UPC'] = $upc;
                 }
 
                 $itemId = trim((string) ($item->listing_id ?? ''));
@@ -170,12 +174,12 @@ class Ebay1DataController extends Controller
     {
         $validated = $request->validate([
             'name' => 'nullable|string|max:191',
-            'names' => 'nullable|array|max:50',
+            'names' => 'nullable|array|max:500',
             'names.*' => 'required|string|max:191',
             'category' => 'nullable|string|max:500',
             'items' => 'nullable|array|max:20',
             'items.*.sku' => 'required|string|max:191',
-            'items.*.item_id' => 'required|string|max:64',
+            'items.*.item_id' => 'nullable|string|max:64',
         ]);
         if (! Schema::hasTable('ebay1_item_specifics')) {
             return response()->json(['success' => false, 'message' => 'Run php artisan migrate first (table ebay1_item_specifics is missing).'], 500);
@@ -207,12 +211,37 @@ class Ebay1DataController extends Controller
         $validated['items'] = $validated['items'] ?? [];
         $service = app(EbayApiService::class);
         $results = [];
+
+        // The app's own copy of the item specifics of a SKU loses the columns.
+        $dropStored = function (string $key) use ($wantedKeys): void {
+            $stored = DB::table('ebay1_item_specifics')->where('sku', $key)->first();
+            if (! $stored) {
+                return;
+            }
+            $decoded = json_decode((string) $stored->specifics, true);
+            $decoded = is_array($decoded) ? $decoded : [];
+            foreach (array_keys($decoded) as $storedName) {
+                if (in_array($this->aspectKey((string) $storedName), $wantedKeys, true)) {
+                    unset($decoded[$storedName]);
+                }
+            }
+            DB::table('ebay1_item_specifics')->where('sku', $key)->update([
+                'specifics' => json_encode($decoded, JSON_UNESCAPED_UNICODE),
+                'updated_at' => now(),
+            ]);
+        };
+        // eBay answers that mean the listing is simply not there (ended, deleted, wrong id).
+        $listingGone = static fn (string $message): bool => (bool) preg_match('/\b(not found|no longer|has ended|ended|closed|does not exist|invalid item)\b/i', $message);
+
         foreach ($validated['items'] as $entry) {
             $sku = trim((string) $entry['sku']);
-            $itemId = trim((string) $entry['item_id']);
+            $itemId = trim((string) ($entry['item_id'] ?? ''));
             $key = $this->skuKey($sku);
+
+            // No live listing: the columns are still removed in the app.
             if (! preg_match('/^\d{9,15}$/', $itemId)) {
-                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => 'No eBay item ID.'];
+                $dropStored($key);
+                $results[] = ['sku' => $sku, 'status' => 'app_only', 'message' => 'No eBay listing. Removed in the app.'];
 
                 continue;
             }
@@ -221,7 +250,9 @@ class Ebay1DataController extends Controller
                 $item = $service->getItem($itemId);
                 if (! is_array($item)) {
                     $why = trim((string) ($service->lastGetItemError ?? ''));
-                    $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
+                    // The listing is not on eBay (any more): remove in the app anyway.
+                    $dropStored($key);
+                    $results[] = ['sku' => $sku, 'status' => 'app_only', 'message' => 'Listing not on eBay'.($why !== '' ? ' ('.$why.')' : '').'. Removed in the app.'];
 
                     continue;
                 }
@@ -244,25 +275,18 @@ class Ebay1DataController extends Controller
                 continue;
             }
             if (! ($result['success'] ?? false)) {
-                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => (string) ($result['message'] ?? 'eBay rejected the change.')];
+                $message = (string) ($result['message'] ?? 'eBay rejected the change.');
+                if ($listingGone($message)) {
+                    $dropStored($key);
+                    $results[] = ['sku' => $sku, 'status' => 'app_only', 'message' => $message.' Removed in the app.'];
+                } else {
+                    $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $message];
+                }
 
                 continue;
             }
 
-            $stored = DB::table('ebay1_item_specifics')->where('sku', $key)->first();
-            if ($stored) {
-                $decoded = json_decode((string) $stored->specifics, true);
-                $decoded = is_array($decoded) ? $decoded : [];
-                foreach (array_keys($decoded) as $storedName) {
-                    if (in_array($this->aspectKey((string) $storedName), $wantedKeys, true)) {
-                        unset($decoded[$storedName]);
-                    }
-                }
-                DB::table('ebay1_item_specifics')->where('sku', $key)->update([
-                    'specifics' => json_encode($decoded, JSON_UNESCAPED_UNICODE),
-                    'updated_at' => now(),
-                ]);
-            }
+            $dropStored($key);
             $results[] = [
                 'sku' => $sku,
                 'status' => ($result['removed'] ?? false) ? 'deleted' : 'absent',
