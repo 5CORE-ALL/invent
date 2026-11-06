@@ -8904,7 +8904,11 @@ class ChannelMasterController extends Controller
                 $canonicalKey = $this->canonicalChannelKey($channel->channel);
                 $todaySalesValue = $hasTodaySales ? (float) ($channel->today_sales ?? 0) : 0.0;
                 $isAmazonRow = $this->allMarketplaceSnapshotKey((string) $channel->channel) === 'amazon';
-                $tAdSpend = ($isAmazonRow && $amazonTodayAdSpend !== null && $amazonTodayAdSpend > 0) ? $amazonTodayAdSpend : null;
+                // Amazon's same-day ad report lags by hours, so "spend so far today" ÷ "sales so far
+                // today" read ~1% against a ~12% L30 Ads%. T Ads% therefore uses the latest measured
+                // full-day Ads% (else L30 Ads%) like every other channel; the partial T spend is not shown.
+                $useAmazonPartialTodaySpend = false;
+                $tAdSpend = ($useAmazonPartialTodaySpend && $isAmazonRow && $amazonTodayAdSpend !== null && $amazonTodayAdSpend > 0) ? $amazonTodayAdSpend : null;
                 return [
                     'Channel ' => $this->allMarketplaceDisplayName($channel->channel),
                     'alias' => $aliasMap[$canonicalKey] ?? null,
