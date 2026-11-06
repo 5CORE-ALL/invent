@@ -518,19 +518,35 @@ class DilVsSbidApplyService
         // 3. Family key per ad listing (a listing with no parent is its own family).
         // A real parent family always wins over the standalone fallback, whatever the metric row order is
         // (a PARENT ... row or an unmapped SKU can come first and must not hide the child SKUs' family).
-        $familyByListing = [];
+        // A multi-variation listing can carry SKUs of several parents (e.g. GSS, GSS 2N1, GSS AL, GSS UKU).
+        // Its family is the one of its own PARENT row, else the parent with the most SKUs on the listing
+        // (ties: first seen) - never just "whichever row comes first".
+        $scoreByListing = []; // listing id => [family key => score]
         foreach ($adMetrics as $m) {
             $sku = $normSku($m->sku);
             $key = $familyKeyBySku[$sku] ?? null;
+            $weight = 1;
             if ($key === null && $isParentSku($sku)) {
                 // A PARENT row itself: its family is the parent value it belongs to (children carry the stock).
                 $pv = $parentBySku[$sku] ?? '';
                 $pk = 'P:'.$normSku($pv);
                 $key = ($pv !== '' && isset($familySkus[$pk])) ? $pk : null;
+                $weight = 1000;
             }
             if ($key !== null) {
-                $familyByListing[(string) $m->item_id] ??= $key;
+                $lid = (string) $m->item_id;
+                $scoreByListing[$lid][$key] = ($scoreByListing[$lid][$key] ?? 0) + $weight;
             }
+        }
+        $familyByListing = [];
+        foreach ($scoreByListing as $lid => $scores) {
+            $best = null;
+            foreach ($scores as $key => $score) { // first key wins a tie
+                if ($best === null || $score > $scores[$best]) {
+                    $best = $key;
+                }
+            }
+            $familyByListing[(string) $lid] = $best;
         }
         foreach ($adMetrics as $m) {
             $lid = (string) $m->item_id;
@@ -553,7 +569,10 @@ class DilVsSbidApplyService
         }
         $allSkus = array_keys($allSkus);
         $shopifyMap = $this->shopifyBySku($allSkus);
-        $soldByItem = []; // item id => listing-level eBay sold (the same number sits on every variation)
+        // Sold is kept per (family, item) from that family's own rows, so a listing shared by several
+        // parents does not leak one parent's sold into another, and the result does not depend on which
+        // other listings are in the same run.
+        $soldByFamilyItem = []; // family key => item id => eBay sold (the same number sits on every variation)
         $itemsByFamily = [];
         if ($allSkus !== []) {
             foreach ($metricClass::whereIn('sku', $allSkus)->get(['item_id', 'sku', 'ebay_l30']) as $m) {
@@ -562,17 +581,21 @@ class DilVsSbidApplyService
                 if ($item === '' || $key === null) {
                     continue;
                 }
-                $soldByItem[$item] = max($soldByItem[$item] ?? 0.0, (float) ($m->ebay_l30 ?? 0));
+                $soldByFamilyItem[$key][$item] = max($soldByFamilyItem[$key][$item] ?? 0.0, (float) ($m->ebay_l30 ?? 0));
                 $itemsByFamily[$key][$item] = true;
             }
         }
-        foreach ($adMetrics as $m) { // listings of the no-parent families + any the SKU lookup missed
+        foreach ($adMetrics as $m) { // the ad listing's own rows: PARENT row, no-parent families, any the SKU lookup missed
             $item = trim((string) $m->item_id);
             $key = $familyByListing[$item] ?? null;
             if ($item === '' || $key === null) {
                 continue;
             }
-            $soldByItem[$item] = max($soldByItem[$item] ?? 0.0, (float) ($m->ebay_l30 ?? 0));
+            $rowKey = $familyKeyBySku[$normSku($m->sku)] ?? null;
+            if ($rowKey !== null && $rowKey !== $key) {
+                continue; // this row belongs to another parent that shares the listing
+            }
+            $soldByFamilyItem[$key][$item] = max($soldByFamilyItem[$key][$item] ?? 0.0, (float) ($m->ebay_l30 ?? 0));
             $itemsByFamily[$key][$item] = true;
         }
 
@@ -598,7 +621,7 @@ class DilVsSbidApplyService
             $sold = 0.0;
             $category = '';
             foreach (array_keys($itemsByFamily[$key] ?? []) as $item) {
-                $sold += $soldByItem[$item] ?? 0.0;
+                $sold += $soldByFamilyItem[$key][$item] ?? 0.0;
                 if ($category === '') {
                     $category = $categories[ExcelCategoryLookupService::normalizeItemId($item)] ?? '';
                 }
