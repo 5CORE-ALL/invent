@@ -89,6 +89,18 @@
                         title="Set the discount % for Buy 2, Buy 3 and Buy 4">
                         <i class="fas fa-tags"></i> Multi Buy
                     </button>
+                    <div class="btn-group pricing-filter-item" id="ebay-cat-add-wrap">
+                        <button type="button" class="btn btn-sm btn-warning fw-bold" id="ebay-cat-add-btn"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                            title="Tick SKUs, click +, pick a category. It fills the Category column of the ticked rows, and PMT BID follows that category's Highest / Lowest.">
+                            <i class="fas fa-plus"></i> Category
+                        </button>
+                        <div class="dropdown-menu p-2" id="ebay-cat-add-menu" style="min-width: 280px; max-height: 420px; overflow-y: auto;">
+                            <div class="small fw-semibold mb-1" id="ebay-cat-add-info"></div>
+                            <input type="text" class="form-control form-control-sm mb-2" id="ebay-cat-add-search" placeholder="Search category...">
+                            <div id="ebay-cat-add-list"></div>
+                        </div>
+                    </div>
 @elseif ($pmtPart === 'modals')
     <!-- Ads Rule PMT Modal: suggested bid % per category -->
     <div class="modal fade" id="adsRulePmtModal" tabindex="-1" aria-hidden="true">
@@ -389,6 +401,7 @@
                     );
                 }
 
+                window.ebayPmtRefresh = refreshPmtColumn;
                 loadSavedBids().then(refreshPmtColumn);
 
                 // ---- Benchmarks (/benchmarks): "Impressions in eBay search" -> Promoted Listings ads rate ----
@@ -723,6 +736,159 @@
                 }
                 $('#multi-buy-save').on('click', function() { save(true); });
                 $('#multi-buy-save-only').on('click', function() { save(false); });
+            })();
+
+            // ===== "+" Category: put a category on the ticked SKUs so PMT BID follows it =====
+            (function() {
+                const CATEGORY_OPTIONS_URL = @json($pmtBase.'/campaign-ads/category-options');
+                const CATEGORY_SAVE_URL = @json($pmtBase.'/campaign-ads/category-override');
+                const CSRF = @json(csrf_token());
+                const menuEl = document.getElementById('ebay-cat-add-menu');
+                const btnEl = document.getElementById('ebay-cat-add-btn');
+                if (!menuEl || !btnEl) return;
+                let serverCategories = [];
+
+                function rowSku(d) {
+                    return String((d && (d['(Child) sku'] || d.SKU || d.sku)) || '').trim();
+                }
+                function rowItemId(d) {
+                    return String((d && (d.eBay_item_id || d.listing_id)) || '').trim();
+                }
+                /** Every grid row (children of parents too) as Tabulator row components. */
+                function allRowComponents() {
+                    const out = [];
+                    const t = window.table;
+                    if (!t || typeof t.getRows !== 'function') return out;
+                    const walk = function(r) {
+                        out.push(r);
+                        if (typeof r.getTreeChildren === 'function') {
+                            (r.getTreeChildren() || []).forEach(walk);
+                        }
+                    };
+                    t.getRows().forEach(walk);
+                    return out;
+                }
+                /** Ticked rows: the page's selectedSkus set, matched to grid rows (parent rows are never ticked). */
+                function selectedRows() {
+                    const set = (typeof selectedSkus !== 'undefined' && selectedSkus) ? selectedSkus : new Set();
+                    if (!set.size) return [];
+                    return allRowComponents().filter(function(r) {
+                        const d = r.getData() || {};
+                        return set.has(rowSku(d)) && !window.ebayPmtIsParent(d);
+                    });
+                }
+                function esc(v) {
+                    return String(v).replace(/[&<>"']/g, function(c) {
+                        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                    });
+                }
+                function allCategories() {
+                    const names = {};
+                    serverCategories.forEach(function(c) { names[c] = true; });
+                    allRowComponents().forEach(function(r) {
+                        const c = String((r.getData() || {}).excel_category || '').trim();
+                        if (c) names[c] = true;
+                    });
+                    return Object.keys(names).sort(function(a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); });
+                }
+                function paintList() {
+                    const rows = selectedRows();
+                    const q = String($('#ebay-cat-add-search').val() || '').toLowerCase();
+                    $('#ebay-cat-add-info').html(rows.length
+                        ? esc(rows.length) + ' SKU' + (rows.length === 1 ? '' : 's') + ' ticked. Pick a category:'
+                        : '<span class="text-danger">Tick the SKU checkboxes first.</span>');
+                    const list = allCategories().filter(function(c) { return !q || c.toLowerCase().indexOf(q) !== -1; });
+                    const $l = $('#ebay-cat-add-list').empty();
+                    if (!list.length) {
+                        $l.append('<div class="small text-muted px-1">No category found.</div>');
+                        return;
+                    }
+                    list.forEach(function(c) {
+                        $l.append($('<button type="button" class="dropdown-item rounded py-1 ebay-cat-add-item">')
+                            .prop('disabled', !rows.length)
+                            .attr('data-category', c)
+                            .text(c));
+                    });
+                    if (rows.length) {
+                        $l.append('<div class="dropdown-divider"></div>');
+                        $l.append('<button type="button" class="dropdown-item rounded py-1 text-danger ebay-cat-add-item" data-category="">Clear category</button>');
+                    }
+                }
+                function loadCategories() {
+                    return fetch(CATEGORY_OPTIONS_URL, { headers: { 'Accept': 'application/json' } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) { serverCategories = (d && d.categories) || []; })
+                        .catch(function() { /* the grid's own categories still list */ });
+                }
+                function notify(type, msg) {
+                    if (typeof showToast === 'function') showToast(type, msg);
+                    else alert(msg);
+                }
+
+                function apply(category) {
+                    const rows = selectedRows();
+                    if (!rows.length) { notify('error', 'Tick the SKU checkboxes first.'); return; }
+                    const withId = rows.filter(function(r) { return rowItemId(r.getData()) !== ''; });
+                    const noId = rows.length - withId.length;
+                    if (!withId.length) { notify('error', 'The ticked SKUs have no eBay item id, so no category can be set.'); return; }
+
+                    const changing = withId.filter(function(r) {
+                        const cur = String((r.getData() || {}).excel_category || '').trim();
+                        return cur !== '' && cur !== category;
+                    }).length;
+                    if (changing > 0 && !confirm(changing + ' ticked SKU(s) already have another category. '
+                        + (category ? 'Change them to "' + category + '"?' : 'Clear the category?'))) {
+                        return;
+                    }
+
+                    const itemIds = {};
+                    withId.forEach(function(r) { itemIds[rowItemId(r.getData())] = true; });
+                    $('.ebay-cat-add-item').prop('disabled', true);
+                    fetch(CATEGORY_SAVE_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                        body: JSON.stringify({ item_ids: Object.keys(itemIds), category: category })
+                    })
+                        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
+                        .then(function(res) {
+                            if (!res.ok) {
+                                notify('error', (res.d && (res.d.error || res.d.message)) || 'Could not save the category.');
+                                return;
+                            }
+                            // Same item id (variations of one listing) all take the category; eBay 2 decides per PARENT, so a blank parent takes it too.
+                            const picked = itemIds;
+                            allRowComponents().forEach(function(r) {
+                                const d = r.getData() || {};
+                                if (picked[rowItemId(d)]) {
+                                    r.update({ excel_category: category });
+                                }
+                            });
+                            if (PMT_BY_PARENT) {
+                                withId.forEach(function(r) {
+                                    const parent = typeof r.getTreeParent === 'function' ? r.getTreeParent() : null;
+                                    if (parent && parent.getData && !String((parent.getData() || {}).excel_category || '').trim()) {
+                                        parent.update({ excel_category: category });
+                                    }
+                                });
+                            }
+                            if (typeof window.ebayPmtRefresh === 'function') window.ebayPmtRefresh();
+                            bootstrap.Dropdown.getOrCreateInstance(btnEl).hide();
+                            notify('success', (category ? '"' + category + '" set on ' : 'Category cleared on ') + withId.length + ' SKU(s)'
+                                + (noId ? ' (' + noId + ' skipped: no item id)' : '') + '. PMT BID updated.');
+                        })
+                        .catch(function() { notify('error', 'Could not save the category.'); })
+                        .finally(function() { $('.ebay-cat-add-item').prop('disabled', false); });
+                }
+
+                btnEl.addEventListener('show.bs.dropdown', function() {
+                    $('#ebay-cat-add-search').val('');
+                    paintList();
+                    loadCategories().then(paintList);
+                });
+                $('#ebay-cat-add-search').on('input', paintList);
+                $(document).on('click', '.ebay-cat-add-item', function() {
+                    apply(String($(this).attr('data-category') || ''));
+                });
             })();
 @elseif ($pmtPart === 'columns')
                     {

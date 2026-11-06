@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\ExcelWorksheet;
 use App\Models\ExcelWorksheetRow;
+use App\Support\PmtCategoryBidRule;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -74,9 +76,134 @@ class ExcelCategoryLookupService
     }
 
     /**
+     * Item id => category, with the manual picks (the "+" Category button on the eBay pages) on top of the
+     * /excel upload. A manual pick wins over the upload for that item id.
+     *
      * @return array<string, string> normalized item id => category
      */
     public function map(string $account = 'ebay1'): array
+    {
+        $map = $this->baseMap($account);
+        foreach ($this->overrides($account) as $itemId => $category) {
+            $map[$itemId] = $category;
+        }
+
+        return $map;
+    }
+
+    /** ebay_sbid_rules key that holds the manual category picks of an account. */
+    public static function overrideKey(string $account = 'ebay1'): string
+    {
+        return ($account === 'ebay1' ? 'ebay1' : $account).'_excel_category_override';
+    }
+
+    /**
+     * @return array<string, string> normalized item id => category picked by hand
+     */
+    public function overrides(string $account = 'ebay1'): array
+    {
+        try {
+            $row = DB::table('ebay_sbid_rules')->where('key', self::overrideKey($account))->first();
+        } catch (\Throwable $e) {
+            return [];
+        }
+        $stored = $row ? (json_decode((string) $row->rule, true) ?: []) : [];
+
+        $out = [];
+        foreach ($stored as $itemId => $category) {
+            $itemId = self::normalizeItemId($itemId);
+            $category = trim((string) $category);
+            if ($itemId !== '' && $category !== '') {
+                $out[$itemId] = $category;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Set (or, with a blank category, clear) the manual category of some listings.
+     *
+     * @param  array<int, string>  $itemIds
+     * @return int how many item ids were written
+     */
+    public function saveOverrides(string $account, array $itemIds, string $category): int
+    {
+        $category = trim($category);
+        $stored = $this->overrides($account);
+
+        $count = 0;
+        foreach ($itemIds as $itemId) {
+            $itemId = self::normalizeItemId($itemId);
+            if ($itemId === '') {
+                continue;
+            }
+            if ($category === '') {
+                unset($stored[$itemId]);
+            } else {
+                $stored[$itemId] = $category;
+            }
+            $count++;
+        }
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => self::overrideKey($account)],
+            ['rule' => json_encode($stored, JSON_UNESCAPED_UNICODE), 'updated_at' => now()]
+        );
+
+        return $count;
+    }
+
+    /**
+     * Every category the "+" button can offer: the /excel worksheet tabs, the categories that already have a PMT
+     * bid range, and the ones picked by hand before.
+     *
+     * @return array<int, string>
+     */
+    public function categoryNames(string $account = 'ebay1'): array
+    {
+        $names = [];
+
+        try {
+            $importId = ExcelWorksheet::query()->forAccount($account)->orderByDesc('id')->value('excel_import_id');
+            if ($importId) {
+                foreach (ExcelWorksheet::query()->where('excel_import_id', $importId)->pluck('worksheet_name') as $name) {
+                    $name = trim((string) $name);
+                    if ($this->isCategorySheet($name)) {
+                        $names[$name] = true;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ExcelCategoryLookupService::categoryNames: '.$e->getMessage());
+        }
+
+        try {
+            $row = DB::table('ebay_sbid_rules')->where('key', PmtCategoryBidRule::keyBids($account))->first();
+            foreach (array_keys($row ? (json_decode((string) $row->rule, true) ?: []) : []) as $name) {
+                $name = trim((string) $name);
+                if ($name !== '') {
+                    $names[$name] = true;
+                }
+            }
+        } catch (\Throwable $e) {
+            // no bid ranges yet
+        }
+
+        foreach ($this->overrides($account) as $name) {
+            $names[$name] = true;
+        }
+
+        $list = array_keys($names);
+        natcasesort($list);
+
+        return array_values($list);
+    }
+
+    /**
+     * @return array<string, string> normalized item id => category, from the /excel upload only
+     */
+    private function baseMap(string $account = 'ebay1'): array
     {
         $latestId = (int) ExcelWorksheet::query()->forAccount($account)->max('id');
         if ($latestId === 0) {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Campaigns;
 use App\Console\Commands\EbayMultiBuyApplyCommand;
 use App\Http\Controllers\Controller;
 use App\Services\Ebay1VolumePricingService;
+use App\Services\ExcelCategoryLookupService;
 use App\Support\PmtCategoryBidRule;
 use App\Support\PmtRuleAutoPush;
 use Illuminate\Http\Request;
@@ -114,6 +115,41 @@ class EbayAccountRulesController extends Controller
         }
 
         return response()->json(['success' => true, 'bids' => (object) $bids, 'enabled' => $on]);
+    }
+
+    /** Every category the "+" button offers for this account. */
+    public function getCategoryOptions(Request $request)
+    {
+        $account = $this->account($request);
+
+        return response()->json([
+            'categories' => app(ExcelCategoryLookupService::class)->categoryNames($account),
+        ]);
+    }
+
+    /**
+     * "+" Category button: put the picked category on the ticked listings (by eBay item id). The PMT BID column then
+     * reads that category's Highest / Lowest range. A blank category clears the manual pick.
+     */
+    public function saveCategoryOverride(Request $request)
+    {
+        $account = $this->account($request);
+        $itemIds = $request->input('item_ids', []);
+        $category = trim((string) $request->input('category', ''));
+
+        if (! is_array($itemIds) || $itemIds === [] || count($itemIds) > 5000) {
+            return response()->json(['error' => 'Select at least one listing.'], 422);
+        }
+
+        $service = app(ExcelCategoryLookupService::class);
+        if ($category !== '' && ! in_array($category, $service->categoryNames($account), true)) {
+            return response()->json(['error' => 'Unknown category "'.$category.'".'], 422);
+        }
+
+        $itemIds = array_values(array_filter(array_map(static fn ($id) => trim((string) $id), $itemIds), static fn ($id) => $id !== ''));
+        $saved = $service->saveOverrides($account, $itemIds, $category);
+
+        return response()->json(['success' => true, 'category' => $category, 'saved' => $saved]);
     }
 
     /** Multi Buy rule: discount % for "Buy 2 / Buy 3 / Buy 4", stored as {"buy2": 1, "buy3": 2, "buy4": 3}. */
