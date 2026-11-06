@@ -5075,7 +5075,7 @@
                             const def = col.getDefinition();
                             if (!def.field) return;
                             if (def.field === '_parent_expand' || def.field === '_select' || def.field === '_ebay2_all_ord') return;
-                            if (/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt)$/i.test(def.field)) return;
+                            if (/^(cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct)$/i.test(def.field)) return;
 
                             const rawTitle = def.title || def.field;
                             const title = String(rawTitle).replace(/<[^>]*>/g, '').trim() || def.field;
@@ -5115,7 +5115,7 @@
                 const visibility = {};
                 table.getColumns().forEach(col => {
                     const def = col.getDefinition();
-                    if (def.field && !/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt)$/i.test(def.field)) {
+                    if (def.field && !/^(cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct)$/i.test(def.field)) {
                         visibility[def.field] = col.isVisible();
                     }
                 });

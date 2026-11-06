@@ -4677,7 +4677,7 @@
                         const def = col.getDefinition();
                         if (!def.field) return;
                         if (def.field === '_parent_expand' || def.field === '_select' || def.field === 'nr_req' || def.field === 'CVR_60' || def.field === 'eBay Stock') return;
-                        if (/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|growth_percent|NROI|PFT %|SROI|SPFT)$/i.test(def.field)) return;
+                        if (/^(cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|growth_percent|NROI|PFT %|SROI|SPFT)$/i.test(def.field)) return;
 
                         const rawTitle = def.title || def.field;
                         const title = String(rawTitle).replace(/<[^>]*>/g, '').trim() || def.field;
@@ -4717,7 +4717,7 @@
             const visibility = {};
             table.getColumns().forEach(col => {
                 const def = col.getDefinition();
-                if (def.field && !/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|nr_req|growth_percent|CVR_60|eBay Stock|NROI|PFT %|SROI|SPFT)$/i.test(def.field)) {
+                if (def.field && !/^(cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|nr_req|growth_percent|CVR_60|eBay Stock|NROI|PFT %|SROI|SPFT)$/i.test(def.field)) {
                     visibility[def.field] = col.isVisible();
                 }
             });

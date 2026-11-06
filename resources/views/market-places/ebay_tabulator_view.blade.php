@@ -888,7 +888,7 @@
                         <option value="pink">Pink</option>
                     </select>
 
-                    {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / CVR Up/Dn / 0 Sold removed --}}
+                    {{-- CVR% / coupons / Push Prc / Sprc Dil / Prmt% (markdown sale) — CVR Up/Dn / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay1'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay1'])
                     <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
@@ -6774,20 +6774,20 @@
             });
 
             // Columns that should ALWAYS stay hidden, regardless of saved state.
-            // prmt_* = deleted Dil vs PRMT rule (removed from ebay1; keep out of the Columns box).
+            // cvr_up_dn / t_discounts / 0 Sold / >0 Sold rules stay removed from ebay1.
+            // prmt_pct + push_prmt are back (PRMT% column + markdown sale push).
             var alwaysHiddenColumns = [
                 'CVR_60', 'CVR_45', 'eBay L60', 'eBay L45', '_ads_pct',
-                'prmt_pct', 'cvr_up_dn', 't_discounts',
-                'zero_sold_prmt', 'gt_sold_pct', 'push_prmt',
+                'cvr_up_dn', 't_discounts',
+                'zero_sold_prmt', 'gt_sold_pct',
                 '_parent_expand'
             ];
             function isEbay1RemovedRuleColumn(field, title) {
                 const f = String(field || '');
                 if (alwaysHiddenColumns.indexOf(f) !== -1) return true;
                 const t = String(title || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-                return /^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|_parent_expand)$/i.test(f)
+                return /^(cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|_parent_expand)$/i.test(f)
                     || /^p$/i.test(t)
-                    || /^prmt\s*%?$/i.test(t)
                     || /^cvr\s*up\/?dn$/i.test(t)
                     || /^t\s*discounts?$/i.test(t)
                     || /^0\s*sold/i.test(t);

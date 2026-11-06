@@ -14,6 +14,7 @@
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
     $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'pls', 'mercari_wship', 'mercari_woship', 'depop', 'vinted', 'instagram', 'alibaba'], true);
+    $channelPromoShowSaleUi = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3'], true);
     $channelPromoShowZeroSoldDilRule = !$channelPromoUsesSprcDil;
     $channelPromoZeroSoldDilColorSlabs = true;
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['temu', 'temu2', 'temu3'], true) && empty($channelPromoUsesSprcDil);
@@ -657,13 +658,13 @@
                     @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'buttons'])
                     @include('partials.channel-ship-slabs', ['channelShipPart' => 'buttons'])
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
-                    @unless(!empty($channelPromoUsesSprcDil) || !empty($channelPromoHideDilPrmt))
+                    @unless((!empty($channelPromoUsesSprcDil) && empty($channelPromoShowSaleUi)) || !empty($channelPromoHideDilPrmt))
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm" id="ch-promo-dil-vs-prmt-btn"
                             title="Shared Dil vs PRMT (0.01–3 … 21–24, 24–25). PRMT% auto-applies when Dil slab changes. Save updates all marketplaces.">
                             <i class="fas fa-sliders-h"></i> {{ $channelPromoChannel === 'aliexpress' ? 'PRMT%' : 'Prmt%' }}
                         </button>
-                        @if(in_array($channelPromoChannel, ['ebay2op', 'ebay3'], true))
+                        @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
                         <button type="button" class="btn btn-sm dropdown-toggle dropdown-toggle-split" id="ch-promo-prmt-menu-btn"
                             data-bs-toggle="dropdown" aria-expanded="false" title="More Prmt% actions">
                             <span class="visually-hidden">More</span>
@@ -868,7 +869,7 @@
     @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'modals', 'cvrUpDnChannel' => $channelPromoChannel])
     @endif
 
-    @unless(!empty($channelPromoUsesSprcDil) || !empty($channelPromoHideDilPrmt))
+    @unless((!empty($channelPromoUsesSprcDil) && empty($channelPromoShowSaleUi)) || !empty($channelPromoHideDilPrmt))
     <div class="modal fade" id="chPromoDilVsPrmtModal" tabindex="-1" aria-labelledby="chPromoDilVsPrmtModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-md">
             <div class="modal-content">
@@ -1220,8 +1221,15 @@
                 || CHANNEL_PROMO_CHANNEL === 'ebay2op';
         }
         const CHANNEL_PROMO_HIDE_DIL_PRMT = @json(!empty($channelPromoHideDilPrmt));
+        /** eBay 1/2/3: Prmt% rules + PRMT% column + markdown sale push are shown; S PRC stays on Sprc Dil. */
+        function chPromoEbaySaleUi() {
+            return CHANNEL_PROMO_CHANNEL === 'ebay1'
+                || CHANNEL_PROMO_CHANNEL === 'ebay2'
+                || CHANNEL_PROMO_CHANNEL === 'ebay3';
+        }
         function chPromoHideDilPrmt() {
-            return !!CHANNEL_PROMO_HIDE_DIL_PRMT || chPromoUsesSprcDilInsteadOfPrmt();
+            return !!CHANNEL_PROMO_HIDE_DIL_PRMT
+                || (chPromoUsesSprcDilInsteadOfPrmt() && !chPromoEbaySaleUi());
         }
         const CHANNEL_PROMO_TAKEHOME = {{ (float) ($channelPromoTakehome ?? 1) }};
         let chPromoPageReloadPushEnabled = @json($channelPromoPageReloadPushEnabled ?? true);
@@ -2408,7 +2416,7 @@
         }
         function bulkPushChannelPrmtQueued() {
             if (!chPromoPushPrmtQueueEnabled) {
-                chPromoToast('error', 'Push PRMT% queue is eBay 2 / eBay 3 only');
+                chPromoToast('error', 'Push PRMT% queue is eBay 1 / 2 / 3 only');
                 return;
             }
             const eligible = chPromoPushPrmtCollectEligible();
@@ -3425,7 +3433,7 @@
         const CH_PROMO_PUSH_QUEUE_URL = '/channel-push-prc/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
         @include('partials.channel-push-sprice-queue', ['channelPushSpriceChannel' => $channelPromoChannel])
         @include('partials.temu-listing-autopush', ['channelPromoChannel' => $channelPromoChannel])
-        const CH_PROMO_PUSH_PRMT_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3'];
+        const CH_PROMO_PUSH_PRMT_QUEUE_CHANNELS = ['ebay1', 'ebay2', 'ebay2op', 'ebay3'];
         const chPromoPushPrmtQueueEnabled = CH_PROMO_PUSH_PRMT_QUEUE_CHANNELS.indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
         const CH_PROMO_PUSH_PRMT_QUEUE_URL = '/channel-push-prmt/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
         const CH_PROMO_PUSH_PRMT_CHUNK = 25;
@@ -11223,7 +11231,7 @@
                             + sign + pct + '%</span>';
                     },
                 }] : []),
-                ...(CHANNEL_PROMO_CHANNEL === 'ebay2op'
+                ...((CHANNEL_PROMO_CHANNEL === 'ebay2op' || chPromoEbaySaleUi())
                     ? [channelPromoPushPrmtColumn()]
                     : []),
                 ...(CHANNEL_PROMO_HIDE_CVR_CPN ? [] : [{
@@ -11454,16 +11462,16 @@
                 ...((['ebay1', 'ebay2', 'ebay3'].indexOf(CHANNEL_PROMO_CHANNEL) !== -1)
                     ? [channelPromoPushPrcColumn()] : []),
             ];
-            if (chPromoHideDilPrmt()) {
+            if (chPromoHideDilPrmt() || chPromoUsesSprcDilInsteadOfPrmt()) {
                 return cols.filter(function(c) {
                     if (!c) return false;
-                    if (c.field === 'prmt_pct') return false;
+                    if (c.field === 'prmt_pct' && chPromoHideDilPrmt()) return false;
                     if (!chPromoUsesSprcDilInsteadOfPrmt()) return true;
+                    if (c.field === 'push_prmt') return chPromoEbaySaleUi();
                     return c.field !== 'cvr_up_dn'
                         && c.field !== 't_discounts'
                         && c.field !== 'zero_sold_prmt'
-                        && c.field !== 'gt_sold_pct'
-                        && c.field !== 'push_prmt';
+                        && c.field !== 'gt_sold_pct';
                 });
             }
             return cols;
