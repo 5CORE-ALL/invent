@@ -3,11 +3,15 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ProductMaster\TechnicalSpecificationsController;
+use App\Models\EbayDataView;
+use App\Models\ProductMaster;
 use App\Services\CategoryMasters\CategoryChannelSyncService;
 use App\Services\EbayApiService;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Support\Marketplace\AutomatedListingPage;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -39,11 +43,14 @@ class Ebay1DataController extends Controller
             $metrics = $this->metricsBySku();
             $pulled = $this->pulledSpecificsBySku();
             $categories = $this->categoriesBySku($listing);
+            $extras = $this->extraColumnsByCategory();
+            $sources = $this->columnSourcesByCategory();
+            $techSpecs = ($extras === [] && $sources === []) ? [] : $this->technicalSpecValuesBySku();
 
             $data = [];
             foreach ($listing as $item) {
                 $sku = trim((string) ($item->sku ?? ''));
-                if ($sku === '' || stripos($sku, 'PARENT ') === 0) {
+                if ($this->isParentRow($sku, (string) ($item->parent ?? ''))) {
                     continue;
                 }
                 $key = $this->skuKey($sku);
@@ -51,6 +58,39 @@ class Ebay1DataController extends Controller
                 $live = $pulled[$key] ?? null;
                 // The live eBay category of a pulled listing wins over the sheet categories.
                 $category = ($live['category_path'] ?? '') !== '' ? $live['category_path'] : ($categories[$key] ?? '');
+
+                // Columns added by hand to this category tab: the value comes from Technical Specifications.
+                $specifics = $live['specifics'] ?? [];
+                foreach ($extras[$this->categoryHash($category)] ?? [] as $extraKey => $extraName) {
+                    $already = false;
+                    foreach (array_keys($specifics) as $existingName) {
+                        if ($this->aspectKey((string) $existingName) === $extraKey) {
+                            $already = true;
+                            break;
+                        }
+                    }
+                    if (! $already) {
+                        $specifics[$extraName] = (string) ($techSpecs[$key][$extraKey] ?? '');
+                    }
+                }
+
+                // Source Data: the column always shows the current Technical Specifications value of its source column.
+                // A blank source value leaves what the column already had.
+                foreach ($sources[$this->categoryHash($category)] ?? [] as $columnKey => $map) {
+                    $target = $map['column_name'];
+                    foreach (array_keys($specifics) as $existingName) {
+                        if ($this->aspectKey((string) $existingName) === $columnKey) {
+                            $target = (string) $existingName;
+                            break;
+                        }
+                    }
+                    $value = (string) ($techSpecs[$key][$map['source_key']] ?? '');
+                    if ($value !== '') {
+                        $specifics[$target] = $value;
+                    } elseif (! array_key_exists($target, $specifics)) {
+                        $specifics[$target] = '';
+                    }
+                }
 
                 $itemId = trim((string) ($item->listing_id ?? ''));
                 if ($itemId === '' && ! empty($metric['item_id']) && ! in_array((string) ($metric['listing_status'] ?? ''), ['inactive', 'ended', 'unsold', 'completed', 'sold', 'missing', 'not_listed'], true)) {
@@ -81,13 +121,14 @@ class Ebay1DataController extends Controller
                     'report_date' => (string) ($metric['report_date'] ?? ''),
                     'category' => $category,
                     'specs_pulled' => $live !== null,
-                    'specifics' => $live['specifics'] ?? [],
+                    'specifics' => $specifics,
                 ];
             }
 
             return response()->json([
                 'status' => 200,
                 'data' => $data,
+                'sources' => $this->columnSourceList(),
             ]);
         } catch (\Throwable $e) {
             Log::error('Ebay1Data: rows failed', ['error' => $e->getMessage()]);
@@ -191,7 +232,8 @@ class Ebay1DataController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:191',
-            'items' => 'required|array|min:1|max:20',
+            'category' => 'nullable|string|max:500',
+            'items' => 'nullable|array|max:20',
             'items.*.sku' => 'required|string|max:191',
             'items.*.item_id' => 'required|string|max:64',
         ]);
@@ -202,6 +244,22 @@ class Ebay1DataController extends Controller
 
         $name = trim((string) $validated['name']);
         $wanted = $this->aspectKey($name);
+
+        // A column added by hand to this category tab is dropped as well (the live listings below are separate).
+        if (array_key_exists('category', $validated) && Schema::hasTable('ebay1_extra_columns')) {
+            DB::table('ebay1_extra_columns')
+                ->where('category_hash', $this->categoryHash((string) $validated['category']))
+                ->where('name_key', $wanted)
+                ->delete();
+            if (Schema::hasTable('ebay1_column_sources')) {
+                DB::table('ebay1_column_sources')
+                    ->where('category_hash', $this->categoryHash((string) $validated['category']))
+                    ->where('column_key', $wanted)
+                    ->delete();
+            }
+            Cache::forget('ebay1data.column_options');
+        }
+        $validated['items'] = $validated['items'] ?? [];
         $service = app(EbayApiService::class);
         $results = [];
         foreach ($validated['items'] as $entry) {
@@ -268,6 +326,416 @@ class Ebay1DataController extends Controller
         }
 
         return response()->json(['success' => true, 'results' => $results]);
+    }
+
+    /**
+     * GET /ebay1-data/column-options
+     * Every column name available on Technical Specifications, plus the item specifics already pulled here.
+     */
+    public function columnOptions()
+    {
+        $names = Cache::remember('ebay1data.column_options', 600, function () {
+            $found = [];
+            try {
+                $response = app(TechnicalSpecificationsController::class)->getData(request());
+                $payload = $response->getData(true);
+                foreach ((array) ($payload['ebay_aspects'] ?? []) as $name) {
+                    $found[] = (string) $name;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Ebay1Data: could not read Technical Specifications columns', ['error' => $e->getMessage()]);
+            }
+            if (Schema::hasTable('ebay1_item_specifics')) {
+                foreach (DB::table('ebay1_item_specifics')->pluck('specifics') as $json) {
+                    $decoded = json_decode((string) $json, true);
+                    foreach (is_array($decoded) ? array_keys($decoded) : [] as $name) {
+                        $found[] = (string) $name;
+                    }
+                }
+            }
+            if (Schema::hasTable('ebay1_extra_columns')) {
+                foreach (DB::table('ebay1_extra_columns')->pluck('name') as $name) {
+                    $found[] = (string) $name;
+                }
+            }
+
+            $unique = [];
+            foreach ($found as $name) {
+                $name = trim($name);
+                $key = $this->aspectKey($name);
+                if ($name !== '' && $key !== '' && ! isset($unique[$key])) {
+                    $unique[$key] = $name;
+                }
+            }
+            $list = array_values($unique);
+            usort($list, static fn ($a, $b) => strcasecmp($a, $b));
+
+            return $list;
+        });
+
+        return response()->json(['success' => true, 'columns' => $names]);
+    }
+
+    /**
+     * POST /ebay1-data/add-column
+     * Adds a column to one category tab. The name is also written as a blank specification on the category's SKUs,
+     * so Technical Specifications shows the same column. An unknown name simply becomes a new column.
+     */
+    public function addColumn(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:191',
+            'category' => 'nullable|string|max:500',
+            'skus' => 'required|array|min:1|max:3000',
+            'skus.*' => 'required|string|max:191',
+        ]);
+        if (! Schema::hasTable('ebay1_extra_columns')) {
+            return response()->json(['success' => false, 'message' => 'Run php artisan migrate first (table ebay1_extra_columns is missing).'], 500);
+        }
+        $name = trim(preg_replace('/\s+/u', ' ', (string) $validated['name']) ?? '');
+        $key = $this->aspectKey($name);
+        if ($name === '' || $key === '' || preg_match('/[{}<>]/', $name)) {
+            return response()->json(['success' => false, 'message' => 'Enter a valid column name.'], 422);
+        }
+        @set_time_limit(300);
+
+        $category = trim((string) ($validated['category'] ?? ''));
+        $hash = $this->categoryHash($category);
+        $existing = DB::table('ebay1_extra_columns')->where('category_hash', $hash)->where('name_key', $key)->first();
+        if (! $existing) {
+            DB::table('ebay1_extra_columns')->insert([
+                'category' => $category,
+                'category_hash' => $hash,
+                'name' => $name,
+                'name_key' => $key,
+                'added_by' => $request->user()?->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } else {
+            $name = (string) $existing->name;
+        }
+
+        // Technical Specifications: the column exists once a SKU of the category carries the name.
+        $touched = 0;
+        if (Schema::hasColumn('product_master', 'description_v2_specifications')) {
+            $skus = array_values(array_unique(array_filter(array_map('trim', $validated['skus']), static fn ($s) => $s !== '' && stripos($s, 'PARENT ') !== 0)));
+            foreach (array_chunk($skus, 200) as $chunk) {
+                foreach (ProductMaster::query()->whereIn('sku', $chunk)->get() as $product) {
+                    $specs = is_array($product->description_v2_specifications) ? $product->description_v2_specifications : [];
+                    $has = false;
+                    foreach ($specs as $spec) {
+                        if ($this->aspectKey((string) ($spec['key'] ?? '')) === $key) {
+                            $has = true;
+                            break;
+                        }
+                    }
+                    if ($has) {
+                        continue;
+                    }
+                    $specs[] = ['key' => $name, 'value' => ''];
+                    $product->description_v2_specifications = $specs;
+                    $product->save();
+                    $touched++;
+                }
+            }
+        }
+        Cache::forget('ebay1data.column_options');
+
+        return response()->json([
+            'success' => true,
+            'name' => $name,
+            'created' => ! $existing,
+            'skus_updated' => $touched,
+        ]);
+    }
+
+    /**
+     * POST /ebay1-data/push
+     * Sends the item specifics shown in the table to the live eBay 1 listing of each SKU.
+     * Blank values are never sent, and values that already match eBay are left alone.
+     */
+    public function pushSpecifics(Request $request)
+    {
+        $validated = $request->validate([
+            'items' => 'required|array|min:1|max:10',
+            'items.*.sku' => 'required|string|max:191',
+            'items.*.item_id' => 'required|string|max:64',
+            'items.*.specifics' => 'nullable|array|max:300',
+        ]);
+        @set_time_limit(300);
+
+        $service = app(EbayApiService::class);
+        $results = [];
+        foreach ($validated['items'] as $entry) {
+            $sku = trim((string) $entry['sku']);
+            $itemId = trim((string) $entry['item_id']);
+            if (! preg_match('/^\d{9,15}$/', $itemId)) {
+                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => 'No eBay item ID.'];
+
+                continue;
+            }
+
+            $overrides = [];
+            foreach ((array) ($entry['specifics'] ?? []) as $name => $value) {
+                $name = trim((string) $name);
+                $value = is_scalar($value) ? trim((string) $value) : '';
+                // UPC is not an item specific. It is pushed from Technical Specifications.
+                if ($name === '' || $value === '' || strcasecmp($name, 'UPC') === 0) {
+                    continue;
+                }
+                $overrides[] = ['name' => $name, 'value' => $value];
+            }
+            if ($overrides === []) {
+                $results[] = ['sku' => $sku, 'status' => 'skipped', 'message' => 'No values to send.'];
+
+                continue;
+            }
+
+            try {
+                $item = $service->getItem($itemId);
+                if (! is_array($item)) {
+                    $why = trim((string) ($service->lastGetItemError ?? ''));
+                    $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
+
+                    continue;
+                }
+                $ctx = $service->tradingReviseContext();
+                $result = EbayTradingReviseItem::reviseTechnicalSpecifications(
+                    $ctx['endpoint'],
+                    $ctx['compatLevel'],
+                    $ctx['devId'],
+                    $ctx['appId'],
+                    $ctx['certId'],
+                    $ctx['siteId'],
+                    $ctx['authToken'],
+                    $item,
+                    $sku,
+                    $overrides
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Ebay1Data: push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $e->getMessage()];
+
+                continue;
+            }
+
+            if (! ($result['success'] ?? false)) {
+                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => (string) ($result['message'] ?? 'eBay rejected the change.')];
+
+                continue;
+            }
+
+            // The stored copy follows eBay once eBay accepted the values.
+            if (Schema::hasTable('ebay1_item_specifics')) {
+                $stored = DB::table('ebay1_item_specifics')->where('sku', $this->skuKey($sku))->first();
+                if ($stored) {
+                    $decoded = json_decode((string) $stored->specifics, true);
+                    $decoded = is_array($decoded) ? $decoded : [];
+                    foreach ($overrides as $row) {
+                        $target = $row['name'];
+                        foreach (array_keys($decoded) as $existing) {
+                            if ($this->aspectKey((string) $existing) === $this->aspectKey($row['name'])) {
+                                $target = (string) $existing;
+                                break;
+                            }
+                        }
+                        $decoded[$target] = $row['value'];
+                    }
+                    DB::table('ebay1_item_specifics')->where('sku', $this->skuKey($sku))->update([
+                        'specifics' => json_encode($decoded, JSON_UNESCAPED_UNICODE),
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
+
+            $message = (string) ($result['message'] ?? '');
+            $unchanged = stripos($message, 'No values changed') === 0;
+            $results[] = ['sku' => $sku, 'status' => $unchanged ? 'unchanged' : 'pushed', 'message' => $message];
+        }
+
+        return response()->json(['success' => true, 'results' => $results]);
+    }
+
+    /**
+     * POST /ebay1-data/nr-req
+     * REQ / NRL of a SKU. It is stored exactly as the Listing eBay page stores it (ebay_data_view.value.NRL),
+     * so both pages always show the same value.
+     */
+    public function saveNrReq(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:191',
+            'nr_req' => 'required|string|in:REQ,NR,NRL',
+        ]);
+        $sku = trim((string) $validated['sku']);
+        $isNr = in_array($validated['nr_req'], ['NR', 'NRL'], true);
+
+        $record = EbayDataView::where('sku', $sku)->first();
+        $existing = $record ? $record->value : [];
+        if (! is_array($existing)) {
+            $existing = json_decode((string) $existing, true) ?: [];
+        }
+        $existing['NRL'] = $isNr ? 'NRL' : 'REQ';
+
+        EbayDataView::updateOrCreate(['sku' => $sku], ['value' => $existing]);
+
+        return response()->json(['success' => true, 'sku' => $sku, 'nr_req' => $isNr ? 'NR' : 'REQ']);
+    }
+
+    /**
+     * POST /ebay1-data/save-source
+     * Saves (or, with a blank source, removes) the Technical Specifications column a tab column reads from.
+     */
+    public function saveSource(Request $request)
+    {
+        $validated = $request->validate([
+            'category' => 'nullable|string|max:500',
+            'column' => 'required|string|max:191',
+            'source' => 'nullable|string|max:191',
+        ]);
+        if (! Schema::hasTable('ebay1_column_sources')) {
+            return response()->json(['success' => false, 'message' => 'Run php artisan migrate first (table ebay1_column_sources is missing).'], 500);
+        }
+
+        $category = trim((string) ($validated['category'] ?? ''));
+        $hash = $this->categoryHash($category);
+        $column = trim((string) $validated['column']);
+        $columnKey = $this->aspectKey($column);
+        $source = trim(preg_replace('/\s+/u', ' ', (string) ($validated['source'] ?? '')) ?? '');
+        $sourceKey = $this->aspectKey($source);
+        if ($columnKey === '') {
+            return response()->json(['success' => false, 'message' => 'Choose a column.'], 422);
+        }
+
+        $query = DB::table('ebay1_column_sources')->where('category_hash', $hash)->where('column_key', $columnKey);
+        if ($source === '' || $sourceKey === '') {
+            $query->delete();
+
+            return response()->json(['success' => true, 'removed' => true]);
+        }
+
+        $payload = [
+            'category' => $category,
+            'column_name' => $column,
+            'source_name' => $source,
+            'source_key' => $sourceKey,
+            'saved_by' => $request->user()?->id,
+            'updated_at' => now(),
+        ];
+        if ($query->exists()) {
+            DB::table('ebay1_column_sources')->where('category_hash', $hash)->where('column_key', $columnKey)->update($payload);
+        } else {
+            DB::table('ebay1_column_sources')->insert($payload + [
+                'category_hash' => $hash,
+                'column_key' => $columnKey,
+                'created_at' => now(),
+            ]);
+        }
+
+        return response()->json(['success' => true, 'removed' => false, 'source' => $source]);
+    }
+
+    /**
+     * Column sources: category hash => [column key => {column_name, source_name, source_key}].
+     *
+     * @return array<string, array<string, array{column_name: string, source_name: string, source_key: string}>>
+     */
+    private function columnSourcesByCategory(): array
+    {
+        if (! Schema::hasTable('ebay1_column_sources')) {
+            return [];
+        }
+        $out = [];
+        foreach (DB::table('ebay1_column_sources')->get(['category_hash', 'column_key', 'column_name', 'source_name', 'source_key']) as $row) {
+            $out[(string) $row->category_hash][(string) $row->column_key] = [
+                'column_name' => (string) $row->column_name,
+                'source_name' => (string) $row->source_name,
+                'source_key' => (string) $row->source_key,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{category: string, column: string, source: string}>
+     */
+    private function columnSourceList(): array
+    {
+        if (! Schema::hasTable('ebay1_column_sources')) {
+            return [];
+        }
+
+        return DB::table('ebay1_column_sources')->get(['category', 'column_name', 'source_name'])
+            ->map(static fn ($row) => ['category' => (string) $row->category, 'column' => (string) $row->column_name, 'source' => (string) $row->source_name])
+            ->all();
+    }
+
+    /**
+     * Hand-added columns: category hash => [name key => name].
+     *
+     * @return array<string, array<string, string>>
+     */
+    private function extraColumnsByCategory(): array
+    {
+        if (! Schema::hasTable('ebay1_extra_columns')) {
+            return [];
+        }
+        $out = [];
+        foreach (DB::table('ebay1_extra_columns')->orderBy('id')->get(['category_hash', 'name', 'name_key']) as $row) {
+            $out[(string) $row->category_hash][(string) $row->name_key] = (string) $row->name;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Technical Specifications values: SKU key => [name key => value].
+     *
+     * @return array<string, array<string, string>>
+     */
+    private function technicalSpecValuesBySku(): array
+    {
+        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'description_v2_specifications')) {
+            return [];
+        }
+        $out = [];
+        ProductMaster::query()
+            ->whereNotNull('description_v2_specifications')
+            ->select(['id', 'sku', 'description_v2_specifications'])
+            ->chunkById(500, function ($products) use (&$out) {
+                foreach ($products as $product) {
+                    $specs = is_array($product->description_v2_specifications) ? $product->description_v2_specifications : [];
+                    foreach ($specs as $spec) {
+                        $value = trim((string) ($spec['value'] ?? ''));
+                        $specKey = $this->aspectKey((string) ($spec['key'] ?? ''));
+                        if ($value !== '' && $specKey !== '') {
+                            $out[$this->skuKey((string) $product->sku)][$specKey] = $value;
+                        }
+                    }
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * A parent row is a "PARENT ..." SKU, or a row whose SKU is the parent name itself.
+     */
+    private function isParentRow(string $sku, string $parent): bool
+    {
+        $sku = trim($sku);
+        if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+            return true;
+        }
+
+        return $parent !== '' && $this->skuKey($sku) === $this->skuKey($parent);
+    }
+
+    private function categoryHash(string $category): string
+    {
+        return sha1(strtolower(trim($category)));
     }
 
     private function aspectKey(string $name): string
