@@ -439,7 +439,10 @@ class YesterdayMarketplaceMetricsService
 
         $ads = $this->ebayAdMetrics($which, $date);
 
-        return $this->pack($orderSales, $merch, $pft, $cogs, $ads['spend'], $orderCount, $qty, $orderSales, $ads['sales']);
+        $row = $this->pack($orderSales, $merch, $pft, $cogs, $ads['spend'], $orderCount, $qty, $orderSales, $ads['sales']);
+        $row['ad_unmeasured'] = ! $ads['measured'];
+
+        return $row;
     }
 
     /**
@@ -492,7 +495,10 @@ class YesterdayMarketplaceMetricsService
 
         $ads = $this->ebayAdMetrics(3, $date);
 
-        return $this->pack($orderSales, $merch, $pft, $cogs, $ads['spend'], count($byOrder), $qty, $orderSales, $ads['sales']);
+        $row = $this->pack($orderSales, $merch, $pft, $cogs, $ads['spend'], count($byOrder), $qty, $orderSales, $ads['sales']);
+        $row['ad_unmeasured'] = ! $ads['measured'];
+
+        return $row;
     }
 
     /**
@@ -1550,7 +1556,7 @@ class YesterdayMarketplaceMetricsService
     }
 
     /**
-     * @return array{spend: float, sales: float}
+     * @return array{spend: float, sales: float, measured: bool}
      */
     private function ebayAdMetrics(int $which, string $date): array
     {
@@ -1567,11 +1573,15 @@ class YesterdayMarketplaceMetricsService
 
         $spend = 0.0;
         $sales = 0.0;
-        // Never use L1. eBay 2/3 L1 is $289 / $132 from another pull;
-        // pairing that with Aug 12 Y Sales ($94 / $77) would invent 300%+ Ads%.
+        // One-day windows read the report saved under THAT Pacific date (report_range = Y-m-d), never
+        // L1: L1 is a rollup of another pull (eBay 2/3 L1 was $289 / $132 against Y Sales of $94 / $77,
+        // i.e. 300%+ Ads%) and is a day off the Y Sales it gets divided by. Same rule as
+        // EbayYesterdaySpend and the L30 Ads% (which sums dated rows). 7-day windows keep L7.
+        $dated = $this->windowDays < 7;
+        $spendKnown = true;
         try {
             if (Schema::hasTable($priority)) {
-                $key = $this->adReportKey($priority, 'report_range', $date);
+                $key = $dated ? $date : $this->adReportKey($priority, 'report_range', $date);
                 $row = DB::table($priority)
                     ->where('report_range', $key)
                     ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend')
@@ -1581,7 +1591,7 @@ class YesterdayMarketplaceMetricsService
                 $sales += (float) ($row->sales ?? 0);
             }
             if (Schema::hasTable($general)) {
-                $key = $this->adReportKey($general, 'report_range', $date);
+                $key = $dated ? $date : $this->adReportKey($general, 'report_range', $date);
                 $row = DB::table($general)
                     ->where('report_range', $key)
                     ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend')
@@ -1592,9 +1602,18 @@ class YesterdayMarketplaceMetricsService
             }
         } catch (\Throwable $e) {
             Log::warning("Yesterday eBay {$which} ad metrics failed: ".$e->getMessage());
+            $spend = 0.0;
+            $sales = 0.0;
+            $spendKnown = false;
         }
 
-        return ['spend' => $spend, 'sales' => $sales];
+        // A day with no dated spend yet (report not imported, or eBay 2's clicks-only / gapped daily
+        // rows) is "unknown", not "no ads": flag it so Y / T Ads% fall back to L30 Ads%.
+        return [
+            'spend' => $spend,
+            'sales' => $sales,
+            'measured' => $dated ? ($spendKnown && $spend > 0) : true,
+        ];
     }
 
     /**
