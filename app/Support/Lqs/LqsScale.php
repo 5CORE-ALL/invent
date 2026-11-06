@@ -8,6 +8,7 @@ use App\Services\Lqs\DobaLqsApiSyncService;
 use App\Services\Lqs\EbayLqsApiSyncService;
 use App\Services\Lqs\SheinLqsApiSyncService;
 use App\Services\Lqs\TemuLqsApiSyncService;
+use App\Services\Lqs\TopdawgLqsApiSyncService;
 use App\Services\Lqs\WayfairLqsApiSyncService;
 
 /**
@@ -23,7 +24,8 @@ class LqsScale
             || $slug === DobaLqsApiSyncService::MARKETPLACE
             || $slug === ReverbLqsApiSyncService::MARKETPLACE
             || $slug === WayfairLqsApiSyncService::MARKETPLACE
-            || $slug === SheinLqsApiSyncService::MARKETPLACE;
+            || $slug === SheinLqsApiSyncService::MARKETPLACE
+            || $slug === TopdawgLqsApiSyncService::MARKETPLACE;
     }
 
     /** Marketplaces with a bulk "Sync LQS from API" button. */

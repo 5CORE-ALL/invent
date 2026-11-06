@@ -42,7 +42,7 @@ class LqsMarketplaceCatalog
             ['purchasingpower', 'Purchasing Power', 'Listing ID', 'sheet', null, null],
             ['walmart', 'Walmart', 'Item ID', 'sheet', 'walmart', 'https://www.walmart.com/ip/{id}'],
             ['fbmarketplace', 'FB Marketplace', 'Listing ID', 'sheet', null, null],
-            ['topdawg', 'TopDawg', 'Listing ID', 'sheet', null, null],
+            ['topdawg', 'TopDawg', 'Listing ID', 'sheet', 'topdawg', null],
             ['b5cb2b', 'Business 5 Core', 'Listing ID', 'sheet', null, null],
         ];
 

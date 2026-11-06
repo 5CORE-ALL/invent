@@ -349,6 +349,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('lqs-sync-shein')
             ->appendOutputTo($log);
+        // TopDawg LQS from the synced TopDawg products (topdawg_products); no API calls (25k/day limit).
+        $schedule->command('lqs:sync-topdawg')
+            ->dailyAt('05:45')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->name('lqs-sync-topdawg')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)

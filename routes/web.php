@@ -6474,6 +6474,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/shein/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsSheinController::class, 'apiScore'])->name('lqs.shein.api.score');
     Route::post('/lqs/shein/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsSheinController::class, 'startApiSync'])->name('lqs.shein.api.sync');
     Route::get('/lqs/shein/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsSheinController::class, 'apiSyncStatus'])->name('lqs.shein.api.sync.status');
+    // TopDawg: scored from the synced TopDawg products (title, price, MSRP, stock, TDID) plus pushed content; no API calls
+    Route::post('/lqs/topdawg/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsTopdawgController::class, 'apiScore'])->name('lqs.topdawg.api.score');
+    Route::post('/lqs/topdawg/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsTopdawgController::class, 'startApiSync'])->name('lqs.topdawg.api.sync');
+    Route::get('/lqs/topdawg/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsTopdawgController::class, 'apiSyncStatus'])->name('lqs.topdawg.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation

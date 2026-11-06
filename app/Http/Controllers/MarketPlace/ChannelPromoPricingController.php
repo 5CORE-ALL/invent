@@ -3112,15 +3112,18 @@ class ChannelPromoPricingController extends Controller
             if (self::builtinDilPrmtDefaultRange($key) === null) {
                 continue;
             }
-            if (! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
-                continue;
+            $deleted = filter_var($item['deleted'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $min = is_numeric($item['min'] ?? null) ? round((float) $item['min'], 2) : null;
+            $max = is_numeric($item['max'] ?? null) ? round((float) $item['max'], 2) : null;
+            if ($min === null || $max === null || $min < 0 || $max <= $min) {
+                if (! $deleted) {
+                    continue;
+                }
+                $default = self::builtinDilPrmtDefaultRange($key);
+                $min = $default['min'];
+                $max = $default['max'];
             }
-            $min = round((float) $item['min'], 2);
-            $max = round((float) $item['max'], 2);
-            if ($min < 0 || $max <= $min) {
-                continue;
-            }
-            $out[$key] = ['min' => $min, 'max' => $max];
+            $out[$key] = ['min' => $min, 'max' => $max, 'deleted' => $deleted];
         }
 
         return $out;
@@ -3153,6 +3156,7 @@ class ChannelPromoPricingController extends Controller
         $range = $ranges[$key] ?? $default;
         $rule['min'] = $range['min'];
         $rule['max'] = $range['max'];
+        $rule['deleted'] = ! empty($ranges[$key]['deleted']);
         if (isset($ranges[$key])) {
             $fmt = static fn (float $n): string => rtrim(rtrim(number_format($n, 2, '.', ''), '0'), '.');
             $rule['label'] = $fmt($range['min']).'–'.$fmt($range['max']).'%';
@@ -3188,6 +3192,9 @@ class ChannelPromoPricingController extends Controller
                     continue;
                 }
                 $hasBuiltinRanges = true;
+                if (! empty($c['deleted'])) {
+                    continue; // deleted row: its range gets no PRMT
+                }
                 $inclusiveMax = $key === '24-25';
                 if ($dil >= (float) $c['min'] && ($dil < (float) $c['max'] || ($inclusiveMax && $dil <= (float) $c['max']))) {
                     return $key;

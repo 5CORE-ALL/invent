@@ -5,6 +5,7 @@ namespace App\Services\Lqs;
 use App\Models\AlibabaMetric;
 use App\Models\AliexpressMetric;
 use App\Models\DobaMetric;
+use App\Models\TopDawgProduct;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
@@ -367,6 +368,14 @@ class LqsMarketplacePageService
         }
         if ($source === 'wayfair') {
             return $this->mapWayfairMetrics($normalizeSku);
+        }
+        if ($source === 'topdawg' && class_exists(TopDawgProduct::class) && Schema::hasTable('topdawg_products')) {
+            return $this->mapGenericMetrics(TopDawgProduct::query()->orderByDesc('id')->get(), $normalizeSku, [
+                'l30' => 'r_l30',
+                'sessions' => 'views',
+                'price' => 'price',
+                'listing_id' => 'topdawg_listing_id',
+            ]);
         }
         if ($source === 'doba' && class_exists(DobaMetric::class) && Schema::hasTable((new DobaMetric)->getTable())) {
             return $this->mapGenericMetrics(DobaMetric::query()->orderByDesc('id')->get(), $normalizeSku, [

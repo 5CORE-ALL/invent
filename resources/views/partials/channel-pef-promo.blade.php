@@ -903,10 +903,15 @@
                             <tbody id="ch-promo-dil-prmt-tbody"></tbody>
                         </table>
                     </div>
-                    <div class="mt-2">
+                    <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
                         <button type="button" class="btn btn-sm btn-outline-success" id="ch-promo-dil-prmt-add-row-btn"
                             title="Add an extra Dil% range → PRMT% row (applies to all marketplaces; overrides built-in slabs where ranges overlap)">
                             <i class="fas fa-plus me-1"></i>Add more row
+                        </button>
+                        <span class="badge bg-secondary" id="ch-promo-dil-prmt-row-count" title="Number of rows">0 rows</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="ch-promo-dil-prmt-restore-btn"
+                            title="Bring back deleted rows">
+                            <i class="fas fa-undo me-1"></i>Restore <span class="ch-promo-dil-prmt-deleted-count">0</span> deleted
                         </button>
                     </div>
                     <div class="small text-muted mt-2" id="ch-promo-dil-prmt-status"></div>
@@ -4940,7 +4945,7 @@
         /** Dil% range of a built-in slab: edited min/max, else parsed from its key ("3-6"; first slab starts at 0.01). */
         function chPromoBuiltinDilRange(r) {
             const key = String(r.key || '');
-            if (key.indexOf('custom-') === 0) return null;
+            if (key.indexOf('custom-') === 0 || r.deleted) return null;
             const m = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/.exec(key);
             if (!m || chPromoIsZeroSoldRuleKey(key)) return null;
             let lo = parseFloat(m[1]);
@@ -5871,8 +5876,12 @@
         function renderChPromoDilPrmtModalTable() {
             const $tb = $('#ch-promo-dil-prmt-tbody').empty();
             let visibleIdx = 0;
+            let rowNo = 0;
+            let deletedCount = 0;
             chPromoDilPrmtRules.forEach(function(r, idx) {
                 if (chPromoIsZeroSoldRuleKey(r.key)) return;
+                if (r.deleted) { deletedCount++; return; }
+                rowNo++;
                 const prmt = isFinite(Number(r.prmt)) ? Number(r.prmt) : 0;
                 const isCustom = String(r.key).indexOf('custom-') === 0;
                 const range = isCustom
@@ -5881,16 +5890,15 @@
                 const lo = (range.min != null && range.min !== '' && isFinite(Number(range.min))) ? Number(range.min) : '';
                 const hi = (range.max != null && range.max !== '' && isFinite(Number(range.max))) ? Number(range.max) : '';
                 const rangeCell = '<td><div class="d-flex align-items-center gap-1">'
+                    + '<span class="text-muted small ch-promo-dil-prmt-rowno" style="min-width:20px;">' + rowNo + '.</span>'
                     + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-range" data-bound="min" '
                     + 'min="0" step="0.1" style="width:78px;" value="' + lo + '" title="Dil% from (inclusive)">'
                     + '<span>–</span>'
                     + '<input type="number" class="form-control form-control-sm ch-promo-dil-prmt-range" data-bound="max" '
                     + 'min="0" step="0.1" style="width:78px;" value="' + hi + '" title="Dil% to (exclusive)">'
                     + '<span>%</span>'
-                    + (isCustom
-                        ? '<button type="button" class="btn btn-sm btn-outline-danger ms-auto ch-promo-dil-prmt-remove-row" title="Remove this row">'
-                            + '<i class="fas fa-trash"></i></button>'
-                        : '')
+                    + '<button type="button" class="btn btn-sm btn-outline-danger ms-auto ch-promo-dil-prmt-remove-row" title="Delete this row">'
+                    + '<i class="fas fa-trash"></i></button>'
                     + '</div></td>';
                 if (isCustom) {
                     $tb.append(
@@ -5916,6 +5924,10 @@
                 );
                 visibleIdx++;
             });
+            $('#ch-promo-dil-prmt-row-count').text(rowNo + (rowNo === 1 ? ' row' : ' rows'));
+            $('#ch-promo-dil-prmt-restore-btn')
+                .toggleClass('d-none', deletedCount === 0)
+                .find('.ch-promo-dil-prmt-deleted-count').text(deletedCount);
         }
         function renderChPromoZeroSoldPrmtModalTable() {
             const $tb = $('#ch-promo-zero-sold-prmt-tbody').empty();
@@ -5969,6 +5981,7 @@
                         out.min = range.min;
                         out.max = range.max;
                     }
+                    out.deleted = !!r.deleted;
                 }
                 return out;
             });
@@ -6004,10 +6017,29 @@
             $last.find('.ch-promo-dil-prmt-range[data-bound="min"]').trigger('focus').trigger('select');
             $('#ch-promo-dil-prmt-status').text('Row added — set Dil% range and PRMT %, then Save & Apply.');
         }
+        /** Delete a row: added rows are removed; built-in rows are marked deleted (restorable) and get no PRMT. */
         function chPromoRemoveDilPrmtRow(key) {
             readChPromoDilPrmtRulesFromModal();
-            chPromoDilPrmtRules = chPromoDilPrmtRules.filter(function(r) { return r.key !== key; });
+            const rule = chPromoDilPrmtRules.find(function(r) { return r.key === key; });
+            if (!rule) return;
+            if (!window.confirm('Delete the ' + String(rule.label || rule.key) + ' row?')) return;
+            if (String(key).indexOf('custom-') === 0) {
+                chPromoDilPrmtRules = chPromoDilPrmtRules.filter(function(r) { return r.key !== key; });
+            } else {
+                rule.deleted = true;
+            }
             renderChPromoDilPrmtModalTable();
+            $('#ch-promo-dil-prmt-status').text('Row deleted.');
+            chPromoSyncEbayPrmtColumnFromSlabs();
+            if (typeof chPromoScheduleDilPrmtAutoApply === 'function') {
+                chPromoScheduleDilPrmtAutoApply({ force: true, saveRules: true });
+            }
+        }
+        function chPromoRestoreDeletedDilPrmtRows() {
+            readChPromoDilPrmtRulesFromModal();
+            chPromoDilPrmtRules.forEach(function(r) { if (r.deleted) r.deleted = false; });
+            renderChPromoDilPrmtModalTable();
+            $('#ch-promo-dil-prmt-status').text('Deleted rows restored.');
             chPromoSyncEbayPrmtColumnFromSlabs();
             if (typeof chPromoScheduleDilPrmtAutoApply === 'function') {
                 chPromoScheduleDilPrmtAutoApply({ force: true, saveRules: true });
@@ -11939,6 +11971,10 @@
             $('#ch-promo-dil-prmt-add-row-btn').off('click.chpromo').on('click.chpromo', function(e) {
                 e.preventDefault();
                 chPromoAddDilPrmtRow();
+            });
+            $('#ch-promo-dil-prmt-restore-btn').off('click.chpromo').on('click.chpromo', function(e) {
+                e.preventDefault();
+                chPromoRestoreDeletedDilPrmtRows();
             });
             $(document).off('click.chPromoDilRemoveRow', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-remove-row')
                 .on('click.chPromoDilRemoveRow', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-remove-row', function(e) {
