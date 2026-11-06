@@ -796,6 +796,16 @@
         .arp-table td { font-size: 13px; padding-top: 3px; padding-bottom: 3px; }
         .arp-table .form-control { border-radius: 8px; height: 28px; }
         .arp-table input.arp-bench { background: #ecfdf5; border-color: #86efac; }
+        .mb-buy-card { background: #fff; border: 1px solid #e6e8f0; border-radius: 12px; padding: 14px 10px; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+        .mb-buy-title { font-weight: 700; font-size: 15px; color: #047857; margin-bottom: 8px; }
+        .mb-buy-hint { font-size: 11px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
+        .arp-switch { color: #fff; padding-left: 2.6em; }
+        .arp-switch .form-check-input { width: 2.4em; height: 1.25em; cursor: pointer; }
+        .arp-switch .form-check-input:checked { background-color: #22c55e; border-color: #22c55e; }
+        .arp-switch .form-check-label { min-width: 24px; cursor: pointer; }
+        .arp-mode-note { font-size: 11.5px; line-height: 1.35; border-radius: 8px; padding: 7px 10px; margin-bottom: 10px; }
+        .arp-mode-note.is-off { background: #f1f5f9; color: #64748b; }
+        .arp-mode-note.is-on { background: #ecfdf5; color: #047857; }
         .arp-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 22px; background: #fff; border-top: 1px solid #e6e8f0; }
         @media (max-width: 900px) {
             .arp-body { grid-template-columns: 1fr; overflow-y: auto; }
@@ -953,6 +963,10 @@
                     <button type="button" class="btn btn-sm btn-primary pricing-filter-item" id="ads-rule-pmt-btn"
                         title="Set the suggested PMT bid % for each category">
                         <i class="fas fa-bullhorn"></i> Ads Rule PMT
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success pricing-filter-item" id="multi-buy-btn"
+                        title="Set the discount % for Buy 2, Buy 3 and Buy 4">
+                        <i class="fas fa-tags"></i> Multi Buy
                     </button>
 
                     <!-- Column Visibility Dropdown -->
@@ -1458,12 +1472,19 @@
                             <div class="arp-subtitle">Bid range by category &middot; rules decide which bid each SKU gets</div>
                         </div>
                     </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="form-check form-switch arp-switch mb-0" title="On: the rules below are pushed to eBay automatically (INV 0 pauses the ad). Off: nothing is pushed.">
+                            <input class="form-check-input" type="checkbox" role="switch" id="ads-rule-pmt-enabled">
+                            <label class="form-check-label fw-semibold" for="ads-rule-pmt-enabled" id="ads-rule-pmt-enabled-label">Off</label>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
                 </div>
                 <div class="arp-body">
                     <!-- Rules -->
                     <aside class="arp-rules">
                         <div class="arp-section-title">Rules <span class="arp-muted">&middot; first match wins</span></div>
+                        <div id="ads-rule-pmt-mode-note" class="arp-mode-note is-off">Off. No PMT bids are pushed.</div>
                         <div id="ads-rule-pmt-rules-body" class="arp-rule-list"></div>
                     </aside>
                     <!-- Categories -->
@@ -1506,6 +1527,65 @@
                     <button type="button" class="btn btn-primary" id="ads-rule-pmt-save">
                         <i class="fa fa-save"></i> Save
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Multi Buy Rule Modal -->
+    <div class="modal fade" id="multiBuyModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content arp-modal" style="height:auto;">
+                <div class="arp-header" style="background: linear-gradient(120deg, #047857 0%, #10b981 100%);">
+                    <div class="arp-title">
+                        <span class="arp-title-icon"><i class="fas fa-tags"></i></span>
+                        <div>
+                            <h5 class="mb-0">Multi Buy Rule</h5>
+                            <div class="arp-subtitle">Discount % when a buyer takes 2, 3 or 4 items</div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="p-4" style="background:#f6f7fb;">
+                    <div class="row g-3 text-center">
+                        <div class="col-4">
+                            <div class="mb-buy-card">
+                                <div class="mb-buy-title">Buy 2</div>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control text-center mb-buy-input" id="multi-buy-2" data-default="1" min="0" max="100" step="0.01" value="1">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                <div class="mb-buy-hint">off</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="mb-buy-card">
+                                <div class="mb-buy-title">Buy 3</div>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control text-center mb-buy-input" id="multi-buy-3" data-default="2" min="0" max="100" step="0.01" value="2">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                <div class="mb-buy-hint">off</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="mb-buy-card">
+                                <div class="mb-buy-title">Buy 4</div>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control text-center mb-buy-input" id="multi-buy-4" data-default="3" min="0" max="100" step="0.01" value="3">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                <div class="mb-buy-hint">off</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="small text-muted mt-3">Defaults are 1%, 2% and 3%. Change any value and press Save.</div>
+                    <div class="small text-danger mt-2 d-none" id="multi-buy-error"></div>
+                </div>
+                <div class="arp-footer">
+                    <button type="button" class="btn btn-light border me-auto" id="multi-buy-reset">Reset to 1 / 2 / 3</button>
+                    <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="multi-buy-save"><i class="fa fa-save"></i> Save</button>
                 </div>
             </div>
         </div>
@@ -4113,6 +4193,17 @@
                 const modalEl = document.getElementById('adsRulePmtModal');
                 if (!modalEl) return;
                 let savedBids = {};
+                let ruleOn = false;
+
+                function paintMode() {
+                    $('#ads-rule-pmt-enabled').prop('checked', ruleOn);
+                    $('#ads-rule-pmt-enabled-label').text(ruleOn ? 'On' : 'Off');
+                    $('#ads-rule-pmt-mode-note')
+                        .toggleClass('is-on', ruleOn).toggleClass('is-off', !ruleOn)
+                        .text(ruleOn
+                            ? 'On. Each running eBay 1 ad gets its rule bid (INV 0 pauses it) after Save, when inventory or sales change, and every 30 minutes. Dil vs SBid is not pushed for eBay 1 while this is on.'
+                            : 'Off. No PMT bids are pushed.');
+                }
 
                 // ---- Rules (first match wins; a higher Dil rule overrides a lower one) ----
                 //  1. INV = 0                         -> bid 0, ads paused
@@ -4184,7 +4275,7 @@
                         out.title += ' (' + (cat ? 'set ' + need + ' for "' + cat + '"' : 'no category for this SKU') + ')';
                         return out;
                     }
-                    out.bid = Math.round(calc * 100) / 100;
+                    out.bid = Math.min(100, Math.max(2, Math.round(calc * 100) / 100)); // eBay accepts 2-100
                     return out;
                 };
 
@@ -4200,7 +4291,7 @@
                 function loadSavedBids() {
                     return fetch(PMT_BIDS_URL, { headers: { 'Accept': 'application/json' } })
                         .then(function(r) { return r.json(); })
-                        .then(function(d) { savedBids = (d && d.bids) || {}; })
+                        .then(function(d) { savedBids = (d && d.bids) || {}; ruleOn = !!(d && d.enabled); paintMode(); })
                         .catch(function() { savedBids = {}; });
                 }
 
@@ -4390,6 +4481,7 @@
                     $('#ads-rule-pmt-error').addClass('d-none').text('');
                     bootstrap.Modal.getOrCreateInstance(modalEl).show();
                     $('#ads-rule-pmt-bench-status').text('');
+                    paintMode();
                     loadSavedBids().finally(function() {
                         renderRows();
                         fillFromBenchmarks(false); // blank inputs only; saved values are kept
@@ -4408,6 +4500,29 @@
                     updateSummary();
                 });
                 $('#ads-rule-pmt-bench-fill').on('click', function() { fillFromBenchmarks(true); });
+
+                $('#ads-rule-pmt-enabled').on('change', function() {
+                    const want = !!this.checked;
+                    const $box = $(this).prop('disabled', true);
+                    const $err = $('#ads-rule-pmt-error').addClass('d-none').text('');
+                    fetch('/ebay/campaign-ads/pmt-rule-switch', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({ enabled: want })
+                    })
+                        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
+                        .then(function(res) {
+                            if (!res.ok) throw new Error((res.d && (res.d.error || res.d.message)) || 'Could not change the switch.');
+                            ruleOn = !!res.d.enabled;
+                            if (typeof showToast === 'function') showToast('success', ruleOn ? 'Ads Rule PMT is On' : 'Ads Rule PMT is Off');
+                        })
+                        .catch(function(e) { $err.removeClass('d-none').text(e.message || 'Could not change the switch.'); })
+                        .finally(function() { $box.prop('disabled', false); paintMode(); });
+                });
 
                 $('#ads-rule-pmt-apply-all').on('click', function() {
                     const hi = $('#ads-rule-pmt-all-high').val();
@@ -4443,8 +4558,66 @@
                                 return;
                             }
                             savedBids = res.d.bids || {};
+                            if (typeof res.d.enabled === 'boolean') { ruleOn = res.d.enabled; paintMode(); }
+                            if (ruleOn && typeof showToast === 'function') showToast('success', 'Saved. Pushing the new bids to eBay in the background.');
                             refreshPmtColumn();
                             bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                        })
+                        .catch(function() { $err.removeClass('d-none').text('Could not save.'); })
+                        .finally(function() { $btn.prop('disabled', false); });
+                });
+            })();
+
+            // ===== Multi Buy rule: discount % for Buy 2 / Buy 3 / Buy 4 =====
+            (function() {
+                const URL = '/ebay/campaign-ads/multi-buy-rule';
+                const modalEl = document.getElementById('multiBuyModal');
+                if (!modalEl) return;
+                const FIELDS = { buy2: '#multi-buy-2', buy3: '#multi-buy-3', buy4: '#multi-buy-4' };
+                let saved = { buy2: 1, buy3: 2, buy4: 3 };
+
+                function fill(d) {
+                    Object.keys(FIELDS).forEach(function(k) { $(FIELDS[k]).val(d[k]); });
+                }
+                window.ebayMultiBuyDiscounts = function() { return Object.assign({}, saved); };
+
+                $('#multi-buy-btn').on('click', function() {
+                    $('#multi-buy-error').addClass('d-none').text('');
+                    fill(saved);
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    fetch(URL, { headers: { 'Accept': 'application/json' } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) { if (d && d.discounts) { saved = d.discounts; fill(saved); } })
+                        .catch(function() {});
+                });
+
+                $('#multi-buy-reset').on('click', function() {
+                    fill({ buy2: 1, buy3: 2, buy4: 3 });
+                });
+
+                $('#multi-buy-save').on('click', function() {
+                    const discounts = {};
+                    Object.keys(FIELDS).forEach(function(k) { discounts[k] = $(FIELDS[k]).val(); });
+                    const $btn = $(this).prop('disabled', true);
+                    const $err = $('#multi-buy-error').addClass('d-none').text('');
+                    fetch(URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({ discounts: discounts })
+                    })
+                        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
+                        .then(function(res) {
+                            if (!res.ok) {
+                                $err.removeClass('d-none').text((res.d && (res.d.error || res.d.message)) || 'Could not save.');
+                                return;
+                            }
+                            saved = res.d.discounts || saved;
+                            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                            if (typeof showToast === 'function') showToast('success', 'Multi Buy discounts saved');
                         })
                         .catch(function() { $err.removeClass('d-none').text('Could not save.'); })
                         .finally(function() { $btn.prop('disabled', false); });

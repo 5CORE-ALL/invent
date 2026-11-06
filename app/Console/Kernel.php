@@ -622,6 +622,25 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log));
         }
 
+        // Ads Rule PMT (eBay 1) autopush. The command does nothing while its switch is off.
+        // Morning / evening push every running ad; every 30 minutes only the ones whose C Bid changed.
+        foreach ([['09:45', 'ebay1-pmt-rule-morning'], ['19:45', 'ebay1-pmt-rule-evening']] as [$at, $name]) {
+            $ist($schedule->command('ebay:pmt-rule-auto-push')
+                ->dailyAt($at)
+                ->timezone('Asia/Kolkata')
+                ->name($name)
+                ->withoutOverlapping(90)
+                ->runInBackground()
+                ->appendOutputTo($log));
+        }
+        $ist($schedule->command('ebay:pmt-rule-auto-push --mismatch')
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-pmt-rule-onchange')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         // eBay 3 per-SKU Price / Dil snapshots for /ebay3-tabulator-view Sprc Dil history
         $ist($schedule->command('ebay3:collect-metrics')
             ->dailyAt('19:21')

@@ -7242,6 +7242,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/ebay/campaign-ads/rule', 'saveRule')->name('ebay.campaign.ads.rule.save');
         Route::get('/ebay/campaign-ads/pmt-category-bids', 'getPmtCategoryBids')->name('ebay.campaign.ads.pmt.category.bids');
         Route::post('/ebay/campaign-ads/pmt-category-bids', 'savePmtCategoryBids')->name('ebay.campaign.ads.pmt.category.bids.save');
+        Route::post('/ebay/campaign-ads/pmt-rule-switch', 'savePmtRuleSwitch')->name('ebay.campaign.ads.pmt.rule.switch');
+        Route::get('/ebay/campaign-ads/multi-buy-rule', 'getMultiBuyRule')->name('ebay.campaign.ads.multi.buy');
+        Route::post('/ebay/campaign-ads/multi-buy-rule', 'saveMultiBuyRule')->name('ebay.campaign.ads.multi.buy.save');
         Route::get('/ebay/campaign-ads/dil-rule', 'getDilRule')->name('ebay.campaign.ads.dil.rule');
         Route::post('/ebay/campaign-ads/dil-rule', 'saveDilRule')->name('ebay.campaign.ads.dil.rule.save');
         Route::get('/ebay/campaign-ads/dil-sbid-rule', 'getDilSbidRule')->name('ebay.campaign.ads.dil.sbid');

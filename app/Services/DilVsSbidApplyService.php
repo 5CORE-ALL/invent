@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\EbayMetric;
 use App\Models\ShopifySku;
 use App\Support\CpMasterDil;
 use App\Support\DilVsSbidListingRollup;
@@ -11,6 +12,7 @@ use App\Support\EbayCampaignAdLiveBid;
 use App\Support\EbayGpftLookup;
 use App\Support\EbayMarketingPushRetry;
 use App\Support\EbayStdNpftLookup;
+use App\Support\PmtCategoryBidRule;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\Marketplace\EbayListingEnded;
 use Illuminate\Support\Facades\DB;
@@ -35,13 +37,41 @@ class DilVsSbidApplyService
     /** @var class-string|null Metrics model of the account being pushed (for relist lookups). */
     private ?string $metricClass = null;
 
+    /** Rule key of the run in progress (used to re-check the On / Off switch mid-run). */
+    private ?string $ruleKey = null;
+
+    /** Listings left unpushed because the switch was turned Off during the run. */
+    private int $switchOffSkipped = 0;
+
+    private bool $switchedOffMidRun = false;
+
+    /** @var (callable(): bool)|null Live On / Off check used instead of the Dil vs SBid switch (Ads Rule PMT). */
+    private $switchCheck = null;
+
+    /** True once the switch is Off: no more bids or pauses are sent for the rest of the run. */
+    private function switchIsOff(): bool
+    {
+        if ($this->switchedOffMidRun) {
+            return true;
+        }
+        if ($this->switchCheck !== null) {
+            if (! ($this->switchCheck)()) {
+                $this->switchedOffMidRun = true;
+            }
+        } elseif ($this->ruleKey !== null && ! DilVsSbidRule::isOn($this->ruleKey)) {
+            $this->switchedOffMidRun = true;
+        }
+
+        return $this->switchedOffMidRun;
+    }
+
     /**
      * @param  class-string  $metricClass
      * @param  class-string  $apiServiceClass
      * @param  array<int, mixed>  $listingIds
      * @return array{success:int,failed:int,skipped:int,unchanged?:int,results:array<int,array<string,mixed>>,error?:string}
      */
-    public function apply(string $ruleKey, string $adsTable, string $metricClass, string $apiServiceClass, array $listingIds, bool $onlyChanged = false): array
+    public function apply(string $ruleKey, string $adsTable, string $metricClass, string $apiServiceClass, array $listingIds, bool $onlyChanged = false, ?callable $decider = null, ?callable $switchOn = null): array
     {
         $listingIds = array_values(array_unique(array_map('strval', $listingIds)));
         if ($listingIds === []) {
@@ -49,8 +79,13 @@ class DilVsSbidApplyService
         }
 
         $this->metricClass = $metricClass;
+        $this->ruleKey = $ruleKey;
+        $this->switchOffSkipped = 0;
+        $this->switchedOffMidRun = false;
+        $this->switchCheck = $switchOn;
+        $custom = $decider !== null; // Ads Rule PMT supplies its own decision per listing
         $stored = DilVsSbidRule::load($ruleKey);
-        $useDil = ! empty($stored['enabled']);
+        $useDil = $custom || ! empty($stored['enabled']);
         $slabs = $stored['slabs'];
         $cvr = $stored['cvr'];
         $tables = $stored['tables'];
@@ -67,10 +102,10 @@ class DilVsSbidApplyService
 
         $skus = $this->skusForListings($listingIds, $metricsByListing, $ads);
         $shopifyMap = $this->shopifyBySku($skus);
-        $npftMap = ($useDil && DilVsSbidRule::usesNpft($tables))
+        $npftMap = (! $custom && $useDil && DilVsSbidRule::usesNpft($tables))
             ? EbayStdNpftLookup::forSkus($skus)
             : [];
-        $gpftMap = ($useDil && DilVsSbidRule::usesGpft($tables))
+        $gpftMap = (! $custom && $useDil && DilVsSbidRule::usesGpft($tables))
             ? $this->gpftBySku($metricsByListing)
             : [];
 
@@ -106,7 +141,7 @@ class DilVsSbidApplyService
                 }
 
                 $rolled = $this->rolledListingInputs($lid, $ad, $metricsByListing, $shopifyMap, $npftMap, $gpftMap);
-                $wanted = $this->listingDecision(
+                $wanted = $custom ? $decider((string) $lid, $ad, $rolled) : $this->listingDecision(
                     $useDil,
                     $ad,
                     $rolled['metric'],
@@ -162,6 +197,14 @@ class DilVsSbidApplyService
 
         foreach ($offsByCampaign as $campaignId => $requests) {
             foreach (array_chunk($requests, 200) as $chunk) {
+                if ($this->switchIsOff()) {
+                    foreach ($chunk as $r) {
+                        $results[] = ['listing_id' => $r['listingId'], 'status' => 'skipped', 'reason' => 'Dil vs SBid switched off'];
+                        $this->switchOffSkipped++;
+                    }
+
+                    continue;
+                }
                 $this->pauseAds($http, $adsTable, $campaignId, $chunk, $results, $success, $failed);
             }
         }
@@ -169,9 +212,10 @@ class DilVsSbidApplyService
         return [
             'success' => $success,
             'failed' => $failed,
-            'skipped' => $skipped,
+            'skipped' => $skipped + $this->switchOffSkipped,
             'unchanged' => $unchanged,
             'results' => $results,
+            'stopped' => $this->switchedOffMidRun,
         ];
     }
 
@@ -188,6 +232,10 @@ class DilVsSbidApplyService
         $stored = DilVsSbidRule::load($ruleKey);
         if (empty($stored['enabled'])) {
             return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => [], 'error' => 'Dil vs SBid is off'];
+        }
+        if ($ruleKey === DilVsSbidRule::KEY_EBAY1 && PmtCategoryBidRule::isOn()) {
+            // Ads Rule PMT owns the eBay 1 bids while it is on; two rules would keep overwriting each other.
+            return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => [], 'error' => 'Ads Rule PMT is on'];
         }
 
         $listingIds = DB::table($adsTable)
@@ -206,6 +254,133 @@ class DilVsSbidApplyService
         }
 
         return $this->apply($ruleKey, $adsTable, $metricClass, $apiServiceClass, $listingIds, true);
+    }
+
+    /**
+     * Ads Rule PMT (eBay 1): push the per-category rule bid, or pause the ad (INV 0), for every RUNNING
+     * COST_PER_SALE ad. With $onlyLocalMismatch only ads whose stored C Bid differs are touched.
+     *
+     * @return array{success:int,failed:int,skipped:int,unchanged?:int,results:array<int,array<string,mixed>>,error?:string,stopped?:bool}
+     */
+    public function applyPmtChanged(bool $onlyLocalMismatch = false): array
+    {
+        if (! PmtCategoryBidRule::isOn()) {
+            return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => [], 'error' => 'Ads Rule PMT is off'];
+        }
+
+        $adsTable = 'ebay_campaign_ads';
+        $listingIds = DB::table($adsTable)
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->where('funding_strategy', 'COST_PER_SALE')
+            ->whereRaw("UPPER(TRIM(COALESCE(campaign_status, ''))) = 'RUNNING'")
+            ->pluck('listing_id')
+            ->all();
+
+        $bids = PmtCategoryBidRule::bids();
+        $categories = app(ExcelCategoryLookupService::class)->map();
+        $decider = fn (string $lid, object $ad, array $rolled): array => $this->pmtDecision($lid, $rolled, $bids, $categories);
+
+        if ($onlyLocalMismatch) {
+            $listingIds = $this->pmtLocalMismatches($listingIds, $adsTable, $decider);
+            if ($listingIds === []) {
+                return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => []];
+            }
+        }
+
+        return $this->apply(
+            DilVsSbidRule::KEY_EBAY1,
+            $adsTable,
+            EbayMetric::class,
+            EbayApiService::class,
+            $listingIds,
+            true,
+            $decider,
+            fn (): bool => PmtCategoryBidRule::isOn()
+        );
+    }
+
+    /**
+     * Ads Rule PMT decision for one listing (family INV / OV L30 / eBay sold already rolled up).
+     *
+     * @param  array{metric:object,shopify:object}  $rolled
+     * @param  array<string, array{highest:?float,lowest:?float}>  $bids
+     * @param  array<string, string>  $categories
+     * @return array{skip:?string, off:bool, formatted:?string, label:string}
+     */
+    private function pmtDecision(string $listingId, array $rolled, array $bids, array $categories): array
+    {
+        $inv = $rolled['shopify']->inv ?? null;
+        if ($inv === null || ! is_numeric($inv)) {
+            // No Shopify match is not the same as INV 0 — never pause on missing data.
+            return ['skip' => 'PMT rule: no inventory data', 'off' => false, 'formatted' => null, 'label' => ''];
+        }
+        $inv = (float) $inv;
+        $ovL30 = (float) ($rolled['shopify']->quantity ?? 0);
+        $sold = (float) ($rolled['metric']->ebay_l30 ?? 0);
+        $dil = $inv > 0 ? ($ovL30 / $inv) * 100 : 0.0;
+
+        $category = $categories[ExcelCategoryLookupService::normalizeItemId($listingId)] ?? '';
+        $range = $bids[$category] ?? ['highest' => null, 'lowest' => null];
+        $d = PmtCategoryBidRule::decide($inv, $dil, $sold, $range['highest'], $range['lowest']);
+
+        if ($d['pause']) {
+            return ['skip' => null, 'off' => true, 'formatted' => null, 'label' => $d['label']];
+        }
+        $formatted = $d['bid'] !== null ? EbayBidPercentage::forPush($d['bid']) : null;
+        if ($formatted === null) {
+            return ['skip' => $d['label'], 'off' => false, 'formatted' => null, 'label' => $d['label']];
+        }
+
+        return ['skip' => null, 'off' => false, 'formatted' => $formatted, 'label' => $d['label']];
+    }
+
+    /**
+     * @param  array<int, mixed>  $listingIds
+     * @param  callable(string, object, array): array  $decider
+     * @return list<string>
+     */
+    private function pmtLocalMismatches(array $listingIds, string $adsTable, callable $decider): array
+    {
+        $listingIds = array_values(array_unique(array_map('strval', $listingIds)));
+        if ($listingIds === []) {
+            return [];
+        }
+
+        $metricsByListing = EbayMetric::whereIn('item_id', $listingIds)->get()->groupBy(fn ($m) => (string) $m->item_id);
+        $ads = DB::table($adsTable)
+            ->whereIn('listing_id', $listingIds)
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->where('funding_strategy', 'COST_PER_SALE')
+            ->get()
+            ->groupBy(fn ($ad) => (string) $ad->listing_id);
+        $shopifyMap = $this->shopifyBySku($this->skusForListings($listingIds, $metricsByListing, $ads));
+
+        $out = [];
+        foreach ($listingIds as $lid) {
+            foreach ($ads->get($lid) ?? [] as $ad) {
+                if (! $ad->campaign_id) {
+                    continue;
+                }
+                $rolled = $this->rolledListingInputs($lid, $ad, $metricsByListing, $shopifyMap, [], []);
+                $wanted = $decider($lid, $ad, $rolled);
+                if ($wanted['skip'] !== null) {
+                    continue;
+                }
+                if ($wanted['off']) {
+                    $out[] = $lid; // still RUNNING, so it needs pausing
+
+                    continue;
+                }
+                $local = isset($ad->bid_percentage) && is_numeric($ad->bid_percentage) ? (float) $ad->bid_percentage : null;
+                if (! EbayCampaignAdLiveBid::matches($local, (float) $wanted['formatted'])) {
+                    $out[] = $lid;
+                }
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**
@@ -507,6 +682,15 @@ class DilVsSbidApplyService
             $next = [];
             foreach ($pending as $campaignId => $requests) {
                 $campaignId = (string) $campaignId;
+                if ($this->switchIsOff()) {
+                    // Switch turned Off while this run was going: stop pushing.
+                    foreach ($requests as $r) {
+                        $results[] = ['listing_id' => $r['listingId'], 'status' => 'skipped', 'reason' => 'Dil vs SBid switched off'];
+                        $this->switchOffSkipped++;
+                    }
+
+                    continue;
+                }
                 $live = $this->pullListingBids($http, $campaignId, $requests);
                 $needPush = [];
                 foreach ($requests as $r) {
@@ -554,7 +738,7 @@ class DilVsSbidApplyService
                 }
             }
             $first = false;
-            $pending = $next;
+            $pending = $this->switchIsOff() ? [] : $next;
         }
 
         if ($pending === []) {

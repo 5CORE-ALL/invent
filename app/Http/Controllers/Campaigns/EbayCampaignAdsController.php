@@ -93,7 +93,22 @@ class EbayCampaignAdsController extends Controller
                 : ['highest' => $value, 'lowest' => null];
         }
 
-        return response()->json(['bids' => (object) $bids]);
+        return response()->json([
+            'bids' => (object) $bids,
+            'enabled' => \App\Support\PmtCategoryBidRule::isOn(),
+        ]);
+    }
+
+    /** Ads Rule PMT On / Off switch. Turning it on starts a background push right away. */
+    public function savePmtRuleSwitch(Request $request)
+    {
+        $on = $request->boolean('enabled');
+        \App\Support\PmtCategoryBidRule::setEnabled($on);
+        if ($on) {
+            \App\Support\PmtRuleAutoPush::spawn(true);
+        }
+
+        return response()->json(['success' => true, 'enabled' => $on]);
     }
 
     public function savePmtCategoryBids(Request $request)
@@ -139,7 +154,56 @@ class EbayCampaignAdsController extends Controller
             ['rule' => json_encode($bids, JSON_UNESCAPED_UNICODE), 'updated_at' => now()]
         );
 
-        return response()->json(['success' => true, 'bids' => (object) $bids]);
+        // New ranges while the rule is on: push the changed bids in the background.
+        $on = \App\Support\PmtCategoryBidRule::isOn();
+        if ($on) {
+            \App\Support\PmtRuleAutoPush::spawn(true);
+        }
+
+        return response()->json(['success' => true, 'bids' => (object) $bids, 'enabled' => $on]);
+    }
+
+    /**
+     * Multi Buy rule — discount % for "Buy 2 / Buy 3 / Buy 4".
+     * Stored in ebay_sbid_rules under key 'ebay1_multi_buy' as {"buy2": 1, "buy3": 2, "buy4": 3}.
+     */
+    private const MULTI_BUY_DEFAULTS = ['buy2' => 1.0, 'buy3' => 2.0, 'buy4' => 3.0];
+
+    public function getMultiBuyRule()
+    {
+        $row = DB::table('ebay_sbid_rules')->where('key', 'ebay1_multi_buy')->first();
+        $stored = $row ? (json_decode($row->rule, true) ?: []) : [];
+
+        $out = [];
+        foreach (self::MULTI_BUY_DEFAULTS as $field => $default) {
+            $out[$field] = isset($stored[$field]) && is_numeric($stored[$field]) ? (float) $stored[$field] : $default;
+        }
+
+        return response()->json(['discounts' => $out, 'defaults' => self::MULTI_BUY_DEFAULTS]);
+    }
+
+    public function saveMultiBuyRule(Request $request)
+    {
+        $input = $request->input('discounts', []);
+        if (! is_array($input)) {
+            return response()->json(['error' => 'Invalid data'], 422);
+        }
+
+        $out = [];
+        foreach (array_keys(self::MULTI_BUY_DEFAULTS) as $field) {
+            $v = $input[$field] ?? null;
+            if ($v === null || $v === '' || ! is_numeric($v) || $v < 0 || $v > 100) {
+                return response()->json(['error' => strtoupper(str_replace('buy', 'Buy ', $field)).' discount must be a number between 0 and 100'], 422);
+            }
+            $out[$field] = round((float) $v, 2);
+        }
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => 'ebay1_multi_buy'],
+            ['rule' => json_encode($out), 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'discounts' => $out]);
     }
 
     /**

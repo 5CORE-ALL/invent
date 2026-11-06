@@ -321,6 +321,18 @@ final class DilVsSbidRule
         return $decision;
     }
 
+    /**
+     * Live read of the switch for this account (no caching). Long pushes call this between
+     * campaigns so turning the switch Off stops a run that is already in progress.
+     */
+    public static function isOn(string $key): bool
+    {
+        $row = DB::table('ebay_sbid_rules')->where('key', $key)->first();
+        $decoded = $row ? json_decode((string) $row->rule, true) : null;
+
+        return self::isEnabled(is_array($decoded) ? $decoded : null);
+    }
+
     /** Off until this account turns the switch on. Off uses View VS SBID. */
     public static function isEnabled(?array $decoded): bool
     {

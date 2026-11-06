@@ -100,10 +100,19 @@ class EbayDilSbidAutoPushCommand extends Command
 
             return;
         }
+        if (($result['error'] ?? '') === 'Ads Rule PMT is on') {
+            $this->line($account.': Ads Rule PMT is on and owns the bids, Dil vs SBid not pushed');
+
+            return;
+        }
         if (! empty($result['error'])) {
             $this->error($account.': '.$result['error']);
 
             return;
+        }
+
+        if (! empty($result['stopped'])) {
+            $this->warn($account.': switch was turned off during the run — remaining pushes stopped');
         }
 
         $this->info(sprintf(
