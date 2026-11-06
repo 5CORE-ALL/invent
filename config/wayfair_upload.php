@@ -90,8 +90,9 @@ return [
         // "Export Product Spreadsheet" button; the Pricing Home /products dashboard does not.
         'export_url' => env('WAYFAIR_EXPORT_URL', ''),
         'export_label' => env('WAYFAIR_EXPORT_LABEL', 'Export Product Spreadsheet'),
-        // Runs well after the 12:00 AM PT push and 12:30 AM PT upload so Wayfair has processed them.
-        'cron' => env('WAYFAIR_BASE_COST_PULL_CRON', '0 6 * * *'),
+        // Twice a day: 6:00 AM PT (well after the 12:00 AM push and 12:30 AM upload, so Wayfair has processed
+        // them) and 6:00 PM PT (picks up any price change made in Partner Home during the day).
+        'cron' => env('WAYFAIR_BASE_COST_PULL_CRON', '0 6,18 * * *'),
         'timezone' => env('WAYFAIR_BASE_COST_PULL_TZ', 'America/Los_Angeles'),
         // Abort (unless --force) when more than this % of matched SKUs would change: a wrong export must not rewrite everything.
         'max_change_percent' => (float) env('WAYFAIR_BASE_COST_MAX_CHANGE_PERCENT', 50),
