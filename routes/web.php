@@ -7232,6 +7232,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/pink-dil/ads/data', 'getEbayPinkDilAdsData');
     });
 
+    // Ads Rule PMT + Multi Buy: each eBay account has its own ranges, On/Off switch and discounts.
+    foreach (['ebay1' => '/ebay', 'ebay2' => '/ebay2', 'ebay3' => '/ebay3'] as $ebayRulesAccount => $ebayRulesBase) {
+        $ebayRulesCtl = \App\Http\Controllers\Campaigns\EbayAccountRulesController::class;
+        $ebayRulesName = $ebayRulesAccount === 'ebay1' ? 'ebay' : $ebayRulesAccount;
+        Route::get($ebayRulesBase.'/campaign-ads/pmt-category-bids', [$ebayRulesCtl, 'getPmtCategoryBids'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.pmt.category.bids');
+        Route::post($ebayRulesBase.'/campaign-ads/pmt-category-bids', [$ebayRulesCtl, 'savePmtCategoryBids'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.pmt.category.bids.save');
+        Route::post($ebayRulesBase.'/campaign-ads/pmt-rule-switch', [$ebayRulesCtl, 'savePmtRuleSwitch'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.pmt.rule.switch');
+        Route::get($ebayRulesBase.'/campaign-ads/multi-buy-rule', [$ebayRulesCtl, 'getMultiBuyRule'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.multi.buy');
+        Route::post($ebayRulesBase.'/campaign-ads/multi-buy-rule', [$ebayRulesCtl, 'saveMultiBuyRule'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.multi.buy.save');
+    }
+
     Route::controller(EbayCampaignAdsController::class)->group(function () {
         Route::get('/ebay/campaign-ads', 'index')->name('ebay.campaign.ads');
         Route::get('/ebay/campaign-ads/badges', 'getBadgeSummary')->name('ebay.campaign.ads.badges');
@@ -7240,11 +7251,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/listing-report-history', 'listingReportHistory')->name('ebay.listing.report.history');
         Route::get('/ebay/campaign-ads/rule', 'getRule')->name('ebay.campaign.ads.rule');
         Route::post('/ebay/campaign-ads/rule', 'saveRule')->name('ebay.campaign.ads.rule.save');
-        Route::get('/ebay/campaign-ads/pmt-category-bids', 'getPmtCategoryBids')->name('ebay.campaign.ads.pmt.category.bids');
-        Route::post('/ebay/campaign-ads/pmt-category-bids', 'savePmtCategoryBids')->name('ebay.campaign.ads.pmt.category.bids.save');
-        Route::post('/ebay/campaign-ads/pmt-rule-switch', 'savePmtRuleSwitch')->name('ebay.campaign.ads.pmt.rule.switch');
-        Route::get('/ebay/campaign-ads/multi-buy-rule', 'getMultiBuyRule')->name('ebay.campaign.ads.multi.buy');
-        Route::post('/ebay/campaign-ads/multi-buy-rule', 'saveMultiBuyRule')->name('ebay.campaign.ads.multi.buy.save');
         Route::get('/ebay/campaign-ads/dil-rule', 'getDilRule')->name('ebay.campaign.ads.dil.rule');
         Route::post('/ebay/campaign-ads/dil-rule', 'saveDilRule')->name('ebay.campaign.ads.dil.rule.save');
         Route::get('/ebay/campaign-ads/dil-sbid-rule', 'getDilSbidRule')->name('ebay.campaign.ads.dil.sbid');

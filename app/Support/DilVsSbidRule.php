@@ -46,6 +46,12 @@ final class DilVsSbidRule
         ];
     }
 
+    /** eBay 2 / eBay 3 no longer use Dil vs SBid (Ads Rule PMT replaced it): always Off, nothing pushes. */
+    public static function isRetired(string $key): bool
+    {
+        return $key === self::KEY_EBAY2 || $key === self::KEY_EBAY3;
+    }
+
     public static function load(string $key): array
     {
         $row = DB::table('ebay_sbid_rules')->where('key', $key)->first();
@@ -53,7 +59,7 @@ final class DilVsSbidRule
         $raw = is_array($decoded['slabs'] ?? null) ? $decoded['slabs'] : self::defaultSlabs();
 
         return [
-            'enabled' => self::isEnabled(is_array($decoded) ? $decoded : null),
+            'enabled' => ! self::isRetired($key) && self::isEnabled(is_array($decoded) ? $decoded : null),
             'slabs' => self::normalize($raw),
             'cvr' => self::normalizeCvr(is_array($decoded) ? ($decoded['cvr'] ?? null) : null),
             'tables' => self::normalizeTables(is_array($decoded) ? ($decoded['tables'] ?? null) : null),
@@ -327,6 +333,9 @@ final class DilVsSbidRule
      */
     public static function isOn(string $key): bool
     {
+        if (self::isRetired($key)) {
+            return false;
+        }
         $row = DB::table('ebay_sbid_rules')->where('key', $key)->first();
         $decoded = $row ? json_decode((string) $row->rule, true) : null;
 
@@ -532,7 +541,7 @@ final class DilVsSbidRule
         }
 
         $stored = self::load($key);
-        $on = $enabled === null ? $stored['enabled'] : (bool) $enabled;
+        $on = self::isRetired($key) ? false : ($enabled === null ? $stored['enabled'] : (bool) $enabled);
         $cvrClean = $cvr === null ? $stored['cvr'] : self::normalizeCvr($cvr);
         // A page that does not show every table (GPFT is eBay 1 only) leaves the missing ones as saved.
         $tablesClean = $tables === null ? $stored['tables'] : self::normalizeTables(self::withStoredTables($tables, $stored['tables']));

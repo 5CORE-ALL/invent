@@ -24,18 +24,31 @@ final class PmtCategoryBidRule
 
     public const KEY_SWITCH = 'ebay1_pmt_rule';
 
-    public static function isOn(): bool
+    public const ACCOUNTS = ['ebay1', 'ebay2', 'ebay3'];
+
+    /** eBay 1 keeps its original keys; eBay 2 / eBay 3 use ebay2_... / ebay3_... */
+    public static function keyBids(string $account = 'ebay1'): string
     {
-        $row = DB::table('ebay_sbid_rules')->where('key', self::KEY_SWITCH)->first();
+        return $account === 'ebay1' ? self::KEY_BIDS : $account.'_pmt_category_bids';
+    }
+
+    public static function keySwitch(string $account = 'ebay1'): string
+    {
+        return $account === 'ebay1' ? self::KEY_SWITCH : $account.'_pmt_rule';
+    }
+
+    public static function isOn(string $account = 'ebay1'): bool
+    {
+        $row = DB::table('ebay_sbid_rules')->where('key', self::keySwitch($account))->first();
         $decoded = $row ? json_decode((string) $row->rule, true) : null;
 
         return (bool) (is_array($decoded) ? ($decoded['enabled'] ?? false) : false);
     }
 
-    public static function setEnabled(bool $on): void
+    public static function setEnabled(bool $on, string $account = 'ebay1'): void
     {
         DB::table('ebay_sbid_rules')->updateOrInsert(
-            ['key' => self::KEY_SWITCH],
+            ['key' => self::keySwitch($account)],
             ['rule' => json_encode(['enabled' => $on]), 'updated_at' => now()]
         );
     }
@@ -43,9 +56,9 @@ final class PmtCategoryBidRule
     /**
      * @return array<string, array{highest:?float,lowest:?float}>
      */
-    public static function bids(): array
+    public static function bids(string $account = 'ebay1'): array
     {
-        $row = DB::table('ebay_sbid_rules')->where('key', self::KEY_BIDS)->first();
+        $row = DB::table('ebay_sbid_rules')->where('key', self::keyBids($account))->first();
         $stored = $row ? (json_decode((string) $row->rule, true) ?: []) : [];
 
         $out = [];

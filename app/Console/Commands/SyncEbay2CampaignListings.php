@@ -386,20 +386,15 @@ class SyncEbay2CampaignListings extends Command
     private function verifyDilVsSbid(): void
     {
         $this->line('');
-        $this->info('Dil vs SBid verify — push listings whose live C Bid still differs.');
-        $result = app(DilVsSbidApplyService::class)->applyChanged(
-            DilVsSbidRule::KEY_EBAY2,
-            'ebay2_campaign_ads',
-            Ebay2Metric::class,
-            Ebay2ApiService::class
-        );
+        $this->info('Ads Rule PMT verify — push listings whose live C Bid still differs.');
+        $result = app(DilVsSbidApplyService::class)->applyPmtChanged('ebay2', true);
         if (! empty($result['error'])) {
-            $this->warn('Dil vs SBid verify: '.$result['error']);
+            $this->warn('Ads Rule PMT verify: '.$result['error']);
 
             return;
         }
         $this->info(sprintf(
-            'Dil vs SBid verify: pushed %d, unchanged %d, failed %d, skipped %d',
+            'Ads Rule PMT verify: pushed %d, unchanged %d, failed %d, skipped %d',
             (int) ($result['success'] ?? 0),
             (int) ($result['unchanged'] ?? 0),
             (int) ($result['failed'] ?? 0),

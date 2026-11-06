@@ -600,9 +600,7 @@ class Kernel extends ConsoleKernel
         // eBay 3 stays off the clock — switch On still pushes after its metrics fetch.
         foreach ([
             ['09:50', 'ebay:dil-sbid-auto-push ebay1', 'ebay1-dil-sbid-morning'],
-            ['09:55', 'ebay:dil-sbid-auto-push ebay2', 'ebay2-dil-sbid-morning'],
             ['19:50', 'ebay:dil-sbid-auto-push ebay1', 'ebay1-dil-sbid-evening'],
-            ['19:55', 'ebay:dil-sbid-auto-push ebay2', 'ebay2-dil-sbid-evening'],
         ] as [$at, $cmd, $name]) {
             $ist($schedule->command($cmd)
                 ->dailyAt($at)
@@ -612,7 +610,7 @@ class Kernel extends ConsoleKernel
                 ->runInBackground()
                 ->appendOutputTo($log));
         }
-        foreach (['ebay1', 'ebay2'] as $account) {
+        foreach (['ebay1'] as $account) { // eBay 2 / 3: Dil vs SBid retired, Ads Rule PMT replaced it
             $ist($schedule->command('ebay:dil-sbid-auto-push '.$account.' --mismatch')
                 ->everyThirtyMinutes()
                 ->timezone('Asia/Kolkata')
@@ -622,9 +620,9 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log));
         }
 
-        // Ads Rule PMT (eBay 1) autopush. The command does nothing while its switch is off.
+        // Ads Rule PMT (eBay 1, 2, 3) autopush. The command skips every account whose switch is off.
         // Morning / evening push every running ad; every 30 minutes only the ones whose C Bid changed.
-        foreach ([['09:45', 'ebay1-pmt-rule-morning'], ['19:45', 'ebay1-pmt-rule-evening']] as [$at, $name]) {
+        foreach ([['09:45', 'ebay-pmt-rule-morning'], ['19:45', 'ebay-pmt-rule-evening']] as [$at, $name]) {
             $ist($schedule->command('ebay:pmt-rule-auto-push')
                 ->dailyAt($at)
                 ->timezone('Asia/Kolkata')
@@ -636,7 +634,7 @@ class Kernel extends ConsoleKernel
         $ist($schedule->command('ebay:pmt-rule-auto-push --mismatch')
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
-            ->name('ebay1-pmt-rule-onchange')
+            ->name('ebay-pmt-rule-onchange')
             ->withoutOverlapping(90)
             ->runInBackground()
             ->appendOutputTo($log));

@@ -45,6 +45,35 @@ class ExcelCategoryLookupService
     }
 
     /**
+     * Put `excel_category` on every grid row (and its `_children`) from the account's uploaded report,
+     * matched by eBay item id. Blank when there is no match / no upload yet.
+     *
+     * @param  array<int, mixed>  $rows
+     * @return array<int, mixed>
+     */
+    public function attachToRows(array $rows, string $account): array
+    {
+        $map = $this->map($account);
+        $walk = function (array $list) use (&$walk, $map): array {
+            foreach ($list as $i => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $key = self::normalizeItemId($row['eBay_item_id'] ?? $row['listing_id'] ?? '');
+                $row['excel_category'] = $key !== '' ? ($map[$key] ?? '') : '';
+                if (isset($row['_children']) && is_array($row['_children'])) {
+                    $row['_children'] = $walk($row['_children']);
+                }
+                $list[$i] = $row;
+            }
+
+            return $list;
+        };
+
+        return $walk($rows);
+    }
+
+    /**
      * @return array<string, string> normalized item id => category
      */
     public function map(string $account = 'ebay1'): array

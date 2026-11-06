@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\DilVsSbidApplyService;
+use App\Support\PmtCategoryBidRule;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
@@ -10,54 +11,74 @@ use Throwable;
 class EbayPmtRuleAutoPushCommand extends Command
 {
     protected $signature = 'ebay:pmt-rule-auto-push
+        {account=all : ebay1, ebay2, ebay3, or all}
         {--mismatch : Only ads whose stored C Bid differs from the PMT rule bid}';
 
-    protected $description = 'eBay 1: push the Ads Rule PMT bid (or pause the ad) while the PMT switch is on.';
+    protected $description = 'eBay 1, 2 and 3: push the Ads Rule PMT bid (or pause the ad) while that account\'s PMT switch is on.';
 
     public function handle(DilVsSbidApplyService $apply): int
     {
         @ini_set('max_execution_time', '0');
         @set_time_limit(0);
 
-        $lock = Cache::lock('ebay-pmt-rule-auto-push', 7200);
-        if (! $lock->get()) {
-            $this->warn('ebay1: PMT push already running — skip');
+        $arg = strtolower(trim((string) $this->argument('account')));
+        $accounts = $arg === 'all' ? PmtCategoryBidRule::ACCOUNTS : (in_array($arg, PmtCategoryBidRule::ACCOUNTS, true) ? [$arg] : []);
+        if ($accounts === []) {
+            $this->error('Unsupported account. Use ebay1, ebay2, ebay3, or all.');
 
-            return self::SUCCESS;
+            return self::FAILURE;
+        }
+
+        $failed = false;
+        foreach ($accounts as $account) {
+            $failed = $this->runAccount($apply, $account) === false || $failed;
+        }
+
+        return $failed ? self::FAILURE : self::SUCCESS;
+    }
+
+    private function runAccount(DilVsSbidApplyService $apply, string $account): bool
+    {
+        $lock = Cache::lock('ebay-pmt-rule-auto-push-'.$account, 7200);
+        if (! $lock->get()) {
+            $this->warn($account.': PMT push already running, skip');
+
+            return true;
         }
 
         try {
-            $result = $apply->applyPmtChanged((bool) $this->option('mismatch'));
+            $result = $apply->applyPmtChanged($account, (bool) $this->option('mismatch'));
         } catch (Throwable $e) {
-            $this->error($e->getMessage());
+            $this->error($account.': '.$e->getMessage());
 
-            return self::FAILURE;
+            return false;
         } finally {
             $lock->release();
         }
 
         if (($result['error'] ?? '') === 'Ads Rule PMT is off') {
-            $this->line('ebay1: PMT switch is off, nothing pushed');
+            $this->line($account.': PMT switch is off, nothing pushed');
 
-            return self::SUCCESS;
+            return true;
         }
         if (! empty($result['error'])) {
-            $this->error('ebay1: '.$result['error']);
+            $this->error($account.': '.$result['error']);
 
-            return self::FAILURE;
+            return false;
         }
         if (! empty($result['stopped'])) {
-            $this->warn('ebay1: PMT switch was turned off during the run — remaining pushes stopped');
+            $this->warn($account.': PMT switch was turned off during the run, remaining pushes stopped');
         }
 
         $this->info(sprintf(
-            'ebay1 PMT: pushed %d, unchanged %d, failed %d, skipped %d',
+            '%s PMT: pushed %d, unchanged %d, failed %d, skipped %d',
+            $account,
             (int) ($result['success'] ?? 0),
             (int) ($result['unchanged'] ?? 0),
             (int) ($result['failed'] ?? 0),
             (int) ($result['skipped'] ?? 0)
         ));
 
-        return self::SUCCESS;
+        return true;
     }
 }

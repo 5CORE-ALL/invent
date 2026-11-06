@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Ebay2Metric;
+use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
 use App\Models\ShopifySku;
 use App\Support\CpMasterDil;
@@ -26,6 +28,13 @@ use Illuminate\Support\Facades\Log;
  */
 class DilVsSbidApplyService
 {
+    /** Ads Rule PMT: per eBay account, its ads table, metrics model, API service and Dil rule key. */
+    private const PMT_ACCOUNTS = [
+        'ebay1' => ['ads' => 'ebay_campaign_ads', 'metric' => EbayMetric::class, 'api' => EbayApiService::class, 'rule' => DilVsSbidRule::KEY_EBAY1],
+        'ebay2' => ['ads' => 'ebay2_campaign_ads', 'metric' => Ebay2Metric::class, 'api' => Ebay2ApiService::class, 'rule' => DilVsSbidRule::KEY_EBAY2],
+        'ebay3' => ['ads' => 'ebay3_campaign_ads', 'metric' => Ebay3Metric::class, 'api' => EbayThreeApiService::class, 'rule' => DilVsSbidRule::KEY_EBAY3],
+    ];
+
     public const VERIFY_ROUNDS = 5;
 
     /** @var list<int> */
@@ -262,13 +271,17 @@ class DilVsSbidApplyService
      *
      * @return array{success:int,failed:int,skipped:int,unchanged?:int,results:array<int,array<string,mixed>>,error?:string,stopped?:bool}
      */
-    public function applyPmtChanged(bool $onlyLocalMismatch = false): array
+    public function applyPmtChanged(string $account = 'ebay1', bool $onlyLocalMismatch = false): array
     {
-        if (! PmtCategoryBidRule::isOn()) {
+        $cfg = self::PMT_ACCOUNTS[$account] ?? null;
+        if ($cfg === null) {
+            return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => [], 'error' => 'Unknown eBay account'];
+        }
+        if (! PmtCategoryBidRule::isOn($account)) {
             return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => [], 'error' => 'Ads Rule PMT is off'];
         }
 
-        $adsTable = 'ebay_campaign_ads';
+        $adsTable = $cfg['ads'];
         $listingIds = DB::table($adsTable)
             ->whereNotNull('campaign_id')
             ->where('campaign_id', '!=', '')
@@ -277,26 +290,26 @@ class DilVsSbidApplyService
             ->pluck('listing_id')
             ->all();
 
-        $bids = PmtCategoryBidRule::bids();
-        $categories = app(ExcelCategoryLookupService::class)->map();
+        $bids = PmtCategoryBidRule::bids($account);
+        $categories = app(ExcelCategoryLookupService::class)->map($account);
         $decider = fn (string $lid, object $ad, array $rolled): array => $this->pmtDecision($lid, $rolled, $bids, $categories);
 
         if ($onlyLocalMismatch) {
-            $listingIds = $this->pmtLocalMismatches($listingIds, $adsTable, $decider);
+            $listingIds = $this->pmtLocalMismatches($listingIds, $adsTable, $cfg['metric'], $decider);
             if ($listingIds === []) {
                 return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => []];
             }
         }
 
         return $this->apply(
-            DilVsSbidRule::KEY_EBAY1,
+            $cfg['rule'],
             $adsTable,
-            EbayMetric::class,
-            EbayApiService::class,
+            $cfg['metric'],
+            $cfg['api'],
             $listingIds,
             true,
             $decider,
-            fn (): bool => PmtCategoryBidRule::isOn()
+            fn (): bool => PmtCategoryBidRule::isOn($account)
         );
     }
 
@@ -340,14 +353,14 @@ class DilVsSbidApplyService
      * @param  callable(string, object, array): array  $decider
      * @return list<string>
      */
-    private function pmtLocalMismatches(array $listingIds, string $adsTable, callable $decider): array
+    private function pmtLocalMismatches(array $listingIds, string $adsTable, string $metricClass, callable $decider): array
     {
         $listingIds = array_values(array_unique(array_map('strval', $listingIds)));
         if ($listingIds === []) {
             return [];
         }
 
-        $metricsByListing = EbayMetric::whereIn('item_id', $listingIds)->get()->groupBy(fn ($m) => (string) $m->item_id);
+        $metricsByListing = $metricClass::whereIn('item_id', $listingIds)->get()->groupBy(fn ($m) => (string) $m->item_id);
         $ads = DB::table($adsTable)
             ->whereIn('listing_id', $listingIds)
             ->whereNotNull('campaign_id')

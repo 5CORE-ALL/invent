@@ -12,15 +12,22 @@ final class PmtRuleAutoPush
 {
     public const SPAWN_SECONDS = 600;
 
-    public static function spawn(bool $force = false): void
+    /**
+     * @param  'ebay1'|'ebay2'|'ebay3'|'all'  $account
+     */
+    public static function spawn(string $account = 'ebay1', bool $force = false): void
     {
-        if (! $force && ! Cache::add('ebay-pmt-rule-spawn', 1, self::SPAWN_SECONDS)) {
+        $account = strtolower(trim($account));
+        if (! in_array($account, ['ebay1', 'ebay2', 'ebay3', 'all'], true)) {
+            return;
+        }
+        if (! $force && ! Cache::add('ebay-pmt-rule-spawn-'.$account, 1, self::SPAWN_SECONDS)) {
             return;
         }
 
         $php = escapeshellarg(PHP_BINARY);
         $artisan = escapeshellarg(base_path('artisan'));
-        $cmd = "{$php} {$artisan} ebay:pmt-rule-auto-push --mismatch";
+        $cmd = "{$php} {$artisan} ebay:pmt-rule-auto-push ".escapeshellarg($account).' --mismatch';
 
         if (PHP_OS_FAMILY === 'Windows') {
             pclose(popen('start /B '.$cmd, 'r'));
@@ -29,5 +36,16 @@ final class PmtRuleAutoPush
         }
 
         exec($cmd.' > /dev/null 2>&1 &');
+    }
+
+    /** Start a push for every listed account whose PMT switch is on. */
+    public static function afterDataChange(string $account = 'all'): void
+    {
+        $accounts = $account === 'all' ? PmtCategoryBidRule::ACCOUNTS : [$account];
+        foreach ($accounts as $acc) {
+            if (in_array($acc, PmtCategoryBidRule::ACCOUNTS, true) && PmtCategoryBidRule::isOn($acc)) {
+                self::spawn($acc);
+            }
+        }
     }
 }

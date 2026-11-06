@@ -448,6 +448,7 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay3'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay3'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'css', 'pmtAccount' => 'ebay3'])
     </style>
 @endsection
 
@@ -620,11 +621,7 @@
                     </button>
 
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay3'])
-                    <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
-                        title="Set S Bid from Dil. eBay 3 keeps its own slabs.">
-                        Dil vs SBid
-                    </button>
-                    @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 3'])
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'buttons', 'pmtAccount' => 'ebay3'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay3'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay3'])
 
@@ -826,11 +823,7 @@
     </div>
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay3'])
-    @include('campaign.partials.ebay-dil-sbid-rule', [
-        'part' => 'modal',
-        'account' => 'eBay 3',
-        'extended' => true,
-    ])
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'modals', 'pmtAccount' => 'ebay3'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay3'])
 @endsection
@@ -851,18 +844,9 @@
         window.CH_CLEARANCE_KEEPS_RULES = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
     @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
-    @include('campaign.partials.ebay-dil-sbid-rule', [
-        'part' => 'script',
-        'account' => 'eBay 3',
-        'extended' => true,
-        'getUrl' => url('/ebay3/campaign-ads/dil-sbid-rule'),
-        'saveUrl' => url('/ebay3/campaign-ads/dil-sbid-rule'),
-        'applyUrl' => url('/ebay3/campaign-ads/push-selected'),
-        'countHistory' => [
-            'historyUrl' => url('/ebay3/sbid-slab-count-history'),
-            'snapshotUrl' => url('/ebay3/sbid-slab-count-snapshot'),
-        ],
-    ])
+        $(function () {
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'script', 'pmtAccount' => 'ebay3'])
+        });
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay3'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
@@ -3711,29 +3695,7 @@
                     }
                 },
                 // Per-slab S Bid from the Dil vs SBid modal (Dil, Views, CVR %, eBay Sold, Std NPFT %, up / down, Sum).
-                ...(typeof ebaySbidDiffColumns === 'function' ? ebaySbidDiffColumns() : []),
-                {
-                    title: "S BID",
-                    field: "s_bid",
-                    hozAlign: "center",
-                    width: 90,
-                    headerTooltip: "eBay 3 Dil vs SBid: Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Same S Bid as /ebay3/campaign-ads.",
-                    sorter: function(a, b, aRow, bRow) {
-                        return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
-                    },
-                    formatter: function(cell) {
-                        const res = getCombinedSbid(cell.getRow().getData());
-                        if (res && res.off) {
-                            return `<span class="fw-bold" style="color:#842029;" title="${res.title || 'Paused slab'}">OFF</span>`;
-                        }
-                        if (!res || res.skip) {
-                            const why = String((res && res.title) || 'No S Bid').replace(/"/g, '&quot;');
-                            return `<span style="color:#b45309; font-size:10px; font-weight:600; white-space:nowrap; cursor:help;" title="${why}">${(res && res.short) || 'No S Bid'}</span>`;
-                        }
-                        const title = res.title || 'Dil vs SBid';
-                        return `<span title="${title}" style="font-weight:700;">${Number(res.bid).toFixed(1)}%</span>`;
-                    }
-                },
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'columns', 'pmtAccount' => 'ebay3'])
             ]
         });
         window.table = table;

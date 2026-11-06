@@ -21,9 +21,54 @@ class Ebay1VolumePricingService
 
     private const LISTING_CHUNK = 400;
 
-    public function __construct(private ?EbayApiService $ebay = null)
+    /**
+     * @param  object|null  $ebay  The account's eBay API service (anything with generateBearerToken())
+     * @param  'ebay1'|'ebay2'|'ebay3'  $account
+     */
+    public function __construct(private ?object $ebay = null, private string $account = 'ebay1')
     {
-        $this->ebay ??= app(EbayApiService::class);
+        $this->ebay ??= match ($account) {
+            'ebay2' => app(Ebay2ApiService::class),
+            'ebay3' => app(EbayThreeApiService::class),
+            default => app(EbayApiService::class),
+        };
+    }
+
+    /** Where this account's promotion bookkeeping (and, on eBay 1, the Volume Pricing rules) is saved. */
+    private function ruleKey(): string
+    {
+        return $this->account === 'ebay1' ? EbayVolumePricingRule::KEY : $this->account.'_volume_pricing';
+    }
+
+    /**
+     * Every listing id of the account that has one (eBay 1 reads the grid, eBay 2 / 3 their metrics table).
+     *
+     * @return array<string, true>
+     */
+    private function accountListingIds(): array
+    {
+        $seen = [];
+        if ($this->account === 'ebay1') {
+            foreach ($this->gridRows() as $d) {
+                $row = EbayVolumePricingRule::listingRow($d);
+                $itemId = $row !== null ? $this->listingId((string) $row['item_id']) : '';
+                if ($itemId !== '') {
+                    $seen[$itemId] = true;
+                }
+            }
+
+            return $seen;
+        }
+
+        $metric = $this->account === 'ebay2' ? \App\Models\Ebay2Metric::class : \App\Models\Ebay3Metric::class;
+        foreach ($metric::query()->whereNotNull('item_id')->where('item_id', '!=', '')->pluck('item_id') as $id) {
+            $itemId = $this->listingId((string) $id);
+            if ($itemId !== '') {
+                $seen[$itemId] = true;
+            }
+        }
+
+        return $seen;
     }
 
     /**
@@ -245,7 +290,7 @@ class Ebay1VolumePricingService
         if (! Schema::hasTable('ebay_sbid_rules')) {
             return EbayVolumePricingRule::defaults();
         }
-        $row = DB::table('ebay_sbid_rules')->where('key', EbayVolumePricingRule::KEY)->first();
+        $row = DB::table('ebay_sbid_rules')->where('key', $this->ruleKey())->first();
         $saved = null;
         if ($row && isset($row->rule)) {
             $decoded = is_array($row->rule) ? $row->rule : json_decode((string) $row->rule, true);
@@ -268,10 +313,10 @@ class Ebay1VolumePricingService
             'rule' => json_encode($rules),
             'updated_at' => $now,
         ];
-        if (! DB::table('ebay_sbid_rules')->where('key', EbayVolumePricingRule::KEY)->exists()) {
+        if (! DB::table('ebay_sbid_rules')->where('key', $this->ruleKey())->exists()) {
             $values['created_at'] = $now;
         }
-        DB::table('ebay_sbid_rules')->updateOrInsert(['key' => EbayVolumePricingRule::KEY], $values);
+        DB::table('ebay_sbid_rules')->updateOrInsert(['key' => $this->ruleKey()], $values);
     }
 
     /**
@@ -487,6 +532,11 @@ class Ebay1VolumePricingService
             ->timeout(60);
     }
 
+    private function accountLabel(): string
+    {
+        return ['ebay1' => 'eBay 1', 'ebay2' => 'eBay 2', 'ebay3' => 'eBay 3'][$this->account] ?? 'eBay';
+    }
+
     private function listingId(string $itemId): string
     {
         $id = trim($itemId);
@@ -667,24 +717,11 @@ class Ebay1VolumePricingService
             return $this->autoResult('empty', 'Buy 2 must be above 0 (and at most '.EbayVolumePricingRule::MAX_PCT.'%). Nothing pushed.');
         }
 
-        $seen = [];
         $skipped = 0;
-        foreach ($this->gridRows() as $d) {
-            $row = EbayVolumePricingRule::listingRow($d);
-            if ($row === null) {
-                continue;
-            }
-            $itemId = $this->listingId((string) $row['item_id']);
-            if ($itemId === '') {
-                $skipped++;
-
-                continue;
-            }
-            $seen[$itemId] = true;
-        }
+        $seen = $this->accountListingIds();
         $say('Listings with an eBay id: '.count($seen));
         if ($seen === []) {
-            return $this->autoResult('empty', 'No eBay 1 listings with an item id were found.');
+            return $this->autoResult('empty', 'No '.$this->accountLabel().' listings with an item id were found.');
         }
 
         $sig = EbayVolumePricingRule::signature($tiers);

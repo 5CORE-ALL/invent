@@ -439,6 +439,7 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay2'])
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'css', 'pmtAccount' => 'ebay2'])
     </style>
 @endsection
 
@@ -546,11 +547,7 @@
                     {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay2'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay2'])
-                    <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
-                        title="Set S Bid from Dil. eBay 2 keeps its own slabs.">
-                        Dil vs SBid
-                    </button>
-                    @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 2'])
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'buttons', 'pmtAccount' => 'ebay2'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay2'])
 
                     {{-- Price (eBay Price) min–max range filter --}}
@@ -1023,12 +1020,7 @@
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay2'])
-    @include('campaign.partials.ebay-dil-sbid-rule', [
-        'part' => 'modal',
-        'account' => 'eBay 2',
-        'extended' => true,
-        'listingWise' => true,
-    ])
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'modals', 'pmtAccount' => 'ebay2'])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay2'])
 
 @endsection
@@ -1053,15 +1045,9 @@
         @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
         @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay2'])
-        @include('campaign.partials.ebay-dil-sbid-rule', [
-            'part' => 'script',
-            'account' => 'eBay 2',
-            'extended' => true,
-            'listingWise' => true,
-            'getUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
-            'saveUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
-            'applyUrl' => url('/ebay2/campaign-ads/push-selected'),
-        ])
+        $(function () {
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'script', 'pmtAccount' => 'ebay2'])
+        });
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         /** L30 units / sales from ebay2_order_metrics — same getData as /ebay2/daily-sales. */
         const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
@@ -4518,35 +4504,7 @@
                             return '<span class="eca-push-alert" title="' + safe + '" aria-label="' + safe + '">!</span>';
                         }
                     },
-                    ...(typeof ebaySbidDiffColumns === 'function' ? ebaySbidDiffColumns() : []),
-                    {
-                        title: "S BID",
-                        field: "s_bid",
-                        hozAlign: "center",
-                        width: 108,
-                        headerTooltip: "eBay 2 Dil vs SBid is one bid per parent. Dil, Views, CVR, eBay Sold and Std NPFT % come from the parent row, then CVR / L30 View overlays, then the Min / Max cap. Every SKU under that parent shows the same S Bid. Orange dil means this S BID is from Dil and the listing has no ad running.",
-                        sorter: function(a, b, aRow, bRow) {
-                            return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
-                        },
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const res = getCombinedSbid(row);
-                            if (res && res.off) {
-                                return `<span class="fw-bold" style="color:#842029;" title="${res.title || 'Paused slab'}">OFF</span>`;
-                            }
-                            if (res.skip) {
-                                const why = String(res.title || 'No S Bid').replace(/"/g, '&quot;');
-                                return `<span style="color:#b45309; font-size:10px; font-weight:600; white-space:nowrap; cursor:help;" title="${why}">${res.short || 'No S Bid'}</span>`;
-                            }
-                            const color = res.bid > EBAY2_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
-                            const title = res.title || 'Dil vs SBid';
-                            const noAds = !isEbay2TabulatorParentRow(row) && !ebay2AdsAlreadyRunning(row);
-                            const dilText = noAds
-                                ? '<span style="color:#fd7e14;font-weight:700;margin-left:4px;" title="No ads. This S BID is from Dil.">dil</span>'
-                                : '';
-                            return `<span title="${title}" style="color:${color}; font-weight:700;">${Number(res.bid).toFixed(1)}%</span>${dilText}`;
-                        }
-                    },
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'columns', 'pmtAccount' => 'ebay2'])
                     {
                         title: "PROMOTE",
                         field: "ca_promote_with_ad",

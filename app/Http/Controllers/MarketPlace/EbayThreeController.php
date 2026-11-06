@@ -121,6 +121,7 @@ class EbayThreeController extends Controller
             $tree = $data['data'] ?? [];
             if (is_array($tree)) {
                 $tree = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->attachAgeDays($tree);
+                $tree = app(\App\Services\ExcelCategoryLookupService::class)->attachToRows($tree, 'ebay3');
             }
 
             // Auto-save daily summary in background (non-blocking)

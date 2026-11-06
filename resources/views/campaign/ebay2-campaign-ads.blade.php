@@ -28,11 +28,6 @@
             <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#dilRuleModal">
                 <i class="fas fa-tint me-1"></i>Dil Rule
             </button>
-            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
-                    title="Set S Bid from Dil. This account keeps its own slabs.">
-                <i class="fas fa-percent me-1"></i>Dil vs SBid
-            </button>
-            @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 2'])
             <button class="btn btn-sm btn-outline-secondary" title="Download the rows on this page" onclick="table.download('csv','ebay2_campaign_ads.csv')">
                 <i class="fas fa-download me-1"></i>CSV
             </button>

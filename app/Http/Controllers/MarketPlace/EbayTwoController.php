@@ -314,6 +314,7 @@ class EbayTwoController extends Controller
                 $rows = [];
             }
             $rows = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->attachAgeDays($rows);
+            $rows = app(\App\Services\ExcelCategoryLookupService::class)->attachToRows($rows, 'ebay2');
 
             array_walk_recursive($rows, static function (&$value) {
                 if (is_float($value) && ! is_finite($value)) {

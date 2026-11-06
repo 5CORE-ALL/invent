@@ -29,8 +29,9 @@ final class DilVsSbidAutoPush
         if (! in_array($account, ['ebay1', 'ebay2', 'ebay3', 'all'], true)) {
             return;
         }
-        if (in_array($account, ['ebay1', 'all'], true) && PmtCategoryBidRule::isOn()) {
-            PmtRuleAutoPush::spawn();
+        PmtRuleAutoPush::afterDataChange($account);
+        if (in_array($account, ['ebay2', 'ebay3'], true)) {
+            return; // Dil vs SBid is retired for eBay 2 / 3; Ads Rule PMT replaced it
         }
         if (! Cache::add(self::spawnLockName($account), 1, self::SPAWN_SECONDS)) {
             return;
