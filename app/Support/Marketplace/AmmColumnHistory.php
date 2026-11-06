@@ -33,11 +33,16 @@ class AmmColumnHistory
 
     /**
      * Channels whose yesterday ad spend comes from a real per-day campaign report
-     * (see YesterdayMarketplaceMetricsService: Amazon, eBay 1/2/3, Temu 1/2, Shopify Google Ads).
+     * (see YesterdayMarketplaceMetricsService: Amazon, eBay 1/3, Temu 1/2, Shopify Google Ads).
      * Every other channel reports 0 spend there, which is "no source", not "no ads".
+     *
+     * eBay 2 is intentionally NOT listed: its daily/L1 campaign rows are clicks-only or gapped
+     * (ChannelMasterController uses the latest L30 snapshot for eBay 2 spend for the same reason)
+     * and the L1 pull is a UTC-day window that does not line up with the Pacific-day Y Sales, so
+     * Y/T Ads% read ~29% against an L30 Ads% of ~12%. eBay 2 falls back to its L30 Ads%.
      */
     private const YESTERDAY_ADS_SOURCES = [
-        'amazon', 'ebay', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
+        'amazon', 'ebay', 'ebay3', 'ebaythree',
         'temu', 'temu2', 'shopify', 'shopifyb2c',
     ];
 
