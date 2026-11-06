@@ -33,12 +33,51 @@
             line-height: 30px; color: #0f172a; padding-left: .15rem;
         }
         .ts-search-row .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow { height: 30px; }
+        .tsc-modal { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+        .tsc-modal[hidden] { display: none; }
+        .tsc-modal-box { background: #fff; border-radius: 12px; padding: 1.1rem 1.25rem; width: min(480px, 92vw); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+        .tsc-list { max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; }
+        .tsc-list:empty { display: none; }
+        .tsc-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+        .tsc-chips:empty { display: none; }
+        .tsc-chip { background: #dbeafe; color: #1e40af; border-radius: 12px; padding: 1px 4px 1px 10px; font-size: .78rem; font-weight: 600; }
+        .tsc-chip button { border: 0; background: transparent; color: #1e40af; font-weight: 700; padding: 0 4px; }
+        .tsc-opt { display: flex; align-items: center; gap: 6px; padding: .3rem .6rem; font-size: .84rem; color: #334155; cursor: pointer; margin: 0; }
+        .tsc-opt:hover { background: #eff6ff; }
+        .tsc-opt.disabled { color: #94a3b8; cursor: default; }
+        .tsc-list button { display: block; width: 100%; text-align: left; border: 0; background: #fff; padding: .35rem .6rem; font-size: .84rem; color: #334155; }
+        .tsc-list button:hover, .tsc-list button.active { background: #eff6ff; color: #1d4ed8; }
+        .tsc-list button.new { color: #15803d; font-weight: 700; border-top: 1px solid #e2e8f0; }
         .select2-container--open { z-index: 1080; }
         .select2-search--dropdown .select2-search__field { border-radius: 8px; }
         .ts-search-quick { color:#334155; }
         .ts-search-quick input { background:#f8fafc; border-color:#cbd5e1; }
         .ts-search-any { color:#0f766e; }
         .ts-search-any input { background:#f0fdfa; border-color:#5eead4; }
+        .tsg-wrap { position:relative; min-width:180px; flex:1; }
+        .tsg-wrap > label { width:100%; }
+        .ts-search-row .tsg-panel {
+            position:absolute; top:100%; left:0; z-index:1500; width:min(480px, 92vw); max-height:62vh; overflow:auto;
+            background:#fff; border:1px solid #cbd5e1; border-radius:10px; box-shadow:0 10px 30px rgba(15,23,42,.2);
+            padding:.4rem; margin-top:4px; color:#334155; text-transform:none; letter-spacing:0; font-weight:500;
+        }
+        .tsg-panel[hidden] { display:none; }
+        .ts-search-row .tsg-panel label { display:inline-flex; flex-direction:row; align-items:center; gap:6px; min-width:0; flex:0 1 auto; margin:0; font-size:.84rem; font-weight:500; text-transform:none; letter-spacing:0; cursor:pointer; color:#334155; }
+        .ts-search-row .tsg-panel input[type=checkbox] { height:auto; width:auto; padding:0; border-radius:3px; margin:0; }
+        .ts-search-row .tsg-panel input[type=text] { height:28px; font-size:.8rem; background:#fff; border-color:#cbd5e1; flex:1; min-width:0; }
+        .tsg-top { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:.15rem .3rem .4rem; font-size:.78rem; color:#64748b; border-bottom:1px solid #e2e8f0; margin-bottom:.3rem; }
+        .tsg-group { border:1px solid #e2e8f0; border-radius:8px; margin-bottom:.3rem; background:#f8fafc; }
+        .tsg-head { display:flex; align-items:center; gap:6px; padding:.3rem .5rem; }
+        .tsg-head .tsg-name { font-weight:700; flex:1; cursor:pointer; }
+        .tsg-count { color:#64748b; font-size:.75rem; }
+        .tsg-body { padding:.2rem .5rem .5rem 1.6rem; background:#fff; border-top:1px solid #e2e8f0; border-radius:0 0 8px 8px; }
+        .tsg-col { display:flex; align-items:center; gap:6px; padding:.12rem 0; }
+        .tsg-col > label { flex:1; }
+        .ts-search-row .tsg-panel select { height:26px; font-size:.74rem; max-width:120px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; padding:0 .2rem; }
+        .tsg-icon { border:0; background:transparent; color:#64748b; padding:0 .3rem; font-weight:700; line-height:1; }
+        .tsg-icon:hover { color:#dc2626; }
+        .tsg-add { display:flex; gap:6px; margin-top:.35rem; }
+        .tsg-new { display:flex; gap:6px; padding:.4rem .2rem .1rem; border-top:1px solid #e2e8f0; margin-top:.3rem; }
         #ts-hscroll {
             overflow-x: auto;
             overflow-y: hidden;
@@ -656,6 +695,15 @@
                             </button>
                             <div class="dropdown-menu" id="ts-column-dropdown" data-bs-popper="static" aria-labelledby="tsColumnVisibility"></div>
                         </div>
+                        <button type="button" id="tscAddBtn" class="btn btn-sm btn-primary" title="Add a column for the categories of the selected rows">
+                            <i class="fas fa-plus"></i> Add Column
+                        </button>
+                        <button type="button" id="tscSrcBtn" class="btn btn-sm btn-info text-white" title="Choose the column another column always copies its value from">
+                            <i class="fas fa-link"></i> Source Data
+                        </button>
+                        <button type="button" id="tscDelBtn" class="btn btn-sm btn-danger" title="Delete columns from the categories of the selected rows, here and on the live eBay 1 listings">
+                            <i class="fas fa-trash-alt"></i> Delete Column
+                        </button>
                         <button type="button" id="clearSpecsBtn" class="btn btn-sm btn-outline-secondary" title="Clear the saved specifications of the selected rows in this app. eBay is not changed.">
                             <i class="fas fa-eraser"></i> Clear
                         </button>
@@ -693,9 +741,12 @@
                         <label class="ts-search-sku">SKU
                             <input type="search" id="skuSearch" placeholder="Search SKU column" autocomplete="off">
                         </label>
-                        <label class="ts-search-any">Anything
-                            <input type="search" id="anythingSearch" placeholder="Search every other column" autocomplete="off">
-                        </label>
+                        <div class="ts-search-any tsg-wrap" id="tscGroupWrap">
+                            <label>Search headers
+                                <input type="search" id="tscHeaderSearch" placeholder="Search headers, tick groups…" autocomplete="off">
+                            </label>
+                            <div class="tsg-panel" id="tscGroupPanel" hidden></div>
+                        </div>
                     </div>
 
                     <div id="ts-hscroll" title="Scroll columns"><div id="ts-hscroll-inner"></div></div>
@@ -760,6 +811,58 @@
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="viewCopyBtn"><i class="fas fa-copy me-1"></i> Copy</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tsc-modal" id="tscAddModal" hidden>
+        <div class="tsc-modal-box" role="dialog" aria-modal="true" aria-labelledby="tscAddTitle">
+            <h5 id="tscAddTitle" class="mb-2"><i class="fas fa-plus-circle text-primary"></i> Add Column</h5>
+            <p class="small text-muted mb-2" id="tscAddIntro"></p>
+            <label class="form-label small fw-bold" for="tscAddInput">Search a column, or type a new name</label>
+            <div class="tsc-chips" id="tscAddChips"></div>
+            <input type="text" id="tscAddInput" class="form-control form-control-sm mb-1" placeholder="e.g. Impedance" autocomplete="off">
+            <div class="tsc-list" id="tscAddList"></div>
+            <div class="small my-2" id="tscAddHint"></div>
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-sm btn-light" id="tscAddCancel">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="tscAddGo" disabled>Add column</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="tsc-modal" id="tscSrcModal" hidden>
+        <div class="tsc-modal-box" role="dialog" aria-modal="true" aria-labelledby="tscSrcTitle">
+            <h5 id="tscSrcTitle" class="mb-2"><i class="fas fa-link text-info"></i> Source Data</h5>
+            <p class="small text-muted mb-2">The column below always copies its value from the source column of the same SKU. It is saved for every SKU and stays in step when the source changes.</p>
+            <label class="form-label small fw-bold" for="tscSrcCol">Column</label>
+            <select id="tscSrcCol" class="form-select form-select-sm mb-2"></select>
+            <label class="form-label small fw-bold" for="tscSrcInput">Source column to read from</label>
+            <input type="text" id="tscSrcInput" class="form-control form-control-sm mb-1" placeholder="Search a column…" autocomplete="off">
+            <div class="tsc-list" id="tscSrcList"></div>
+            <div class="small my-2" id="tscSrcHint"></div>
+            <div class="d-flex justify-content-between gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="tscSrcClear" title="Stop copying this column">Remove source</button>
+                <span class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-light" id="tscSrcCancel">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="tscSrcSave" disabled>Save</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="tsc-modal" id="tscDelModal" hidden>
+        <div class="tsc-modal-box" role="dialog" aria-modal="true" aria-labelledby="tscDelTitle">
+            <h5 id="tscDelTitle" class="mb-2"><i class="fas fa-trash-alt text-danger"></i> Delete Column</h5>
+            <p class="small text-muted mb-2" id="tscDelIntro"></p>
+            <label class="tsc-opt fw-bold border-bottom mb-1"><input type="checkbox" id="tscDelAll"> Columns of these categories (tick one or more)</label>
+            <div class="tsc-list mb-2" id="tscDelList"></div>
+            <label class="tsc-opt mb-2"><input type="checkbox" id="tscDelEbay" checked> Also remove them from the live eBay 1 listings</label>
+            <div class="alert alert-danger small py-2 mb-2" id="tscDelWarn"></div>
+            <div class="small mb-2" id="tscDelProgress"></div>
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-sm btn-light" id="tscDelCancel">Cancel</button>
+                <button type="button" class="btn btn-sm btn-danger" id="tscDelGo">Delete column</button>
             </div>
         </div>
     </div>
@@ -965,7 +1068,6 @@
                 const parentQ = searchValue('parentSearch');
                 const skuQ = searchValue('skuSearch');
                 const quickQ = searchValue('quickSearch');
-                const anyQ = searchValue('anythingSearch');
                 function passesBase(data) {
                     const isParent = window.isPmParentRowData
                         ? window.isPmParentRowData(data)
@@ -976,7 +1078,6 @@
                     if (parentQ && !containsText(data.Parent || data.title150 || '', parentQ)) return false;
                     if (skuQ && !containsText(data.SKU, skuQ)) return false;
                     if (quickQ && !containsText([data.SKU, data.Parent, data.title150, categoryText(data), anythingText(data)].join('\n'), quickQ)) return false;
-                    if (anyQ && !containsText(anythingText(data), anyQ)) return false;
                     const text = specsText(data);
                     if (mode === 'has') return text !== '';
                     if (mode === 'missing') return text === '';
@@ -1094,7 +1195,26 @@
                 return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
             }
 
+            // Columns that always read another column (Source Data): column key => source name.
+            let columnSources = [];
+
+            function columnSourceOf(name) {
+                const key = specNameKey(name);
+                const found = columnSources.find(function (m) { return specNameKey(m.column) === key; });
+                return found ? found.source : '';
+            }
+
+            // Fixed or sourced value, or null when the cell is typed by hand. A sourced column is blank while its source is blank.
             function autofillValue(row, name) {
+                const fixed = fixedAutofillValue(row, name);
+                if (fixed !== null) return fixed;
+                const source = columnSourceOf(name);
+                if (source === '') return null;
+                const own = fixedAutofillValue(row, source);
+                return own !== null ? own : savedSpecValue(row, source);
+            }
+
+            function fixedAutofillValue(row, name) {
                 const key = specNameKey(name);
                 if (Object.prototype.hasOwnProperty.call(AUTOFILL_FIXED, key)) return AUTOFILL_FIXED[key];
                 if (key === 'mpn' || key === 'model') {
@@ -1234,8 +1354,9 @@
                         description_v2_specifications: specs,
                         ebay_values: Object.assign({}, data.ebay_values || {}),
                     };
+                    const fresh = Object.assign({}, data, { description_v2_specifications: specs });
                     ebayAspectNames.forEach(function (name) {
-                        const auto = autofillValue(data, name);
+                        const auto = autofillValue(fresh, name);
                         const value = rowRequiresAspect(data, name)
                             ? (auto !== null ? auto : (byKey[String(name).toLowerCase()] || savedSpecValue({ description_v2_specifications: specs }, name)))
                             : '';
@@ -1652,8 +1773,10 @@
 
             function prepareColumnVisibility() {
                 if (!table || !tableReady) return;
-                const keep = null;
-                const saved = loadTsColumnVisibility();
+                // Ticked columns in the Search headers panel are the only ones shown; nothing ticked shows the saved choice.
+                const keep = colGroupSelectionFields();
+                const saved = keep ? null : loadTsColumnVisibility();
+                groupFocusActive = !!keep;
                 // One redraw for all the column changes, and only the columns that really change.
                 table.blockRedraw();
                 try {
@@ -1674,7 +1797,7 @@
             }
 
             function saveTsColumnVisibility() {
-                if (!table) return;
+                if (!table || groupFocusActive) return;
                 const visibility = loadTsColumnVisibility();
                 table.getColumns().forEach(function (col) {
                     const field = col.getDefinition().field;
@@ -2147,7 +2270,10 @@
                         throw new Error(json.message || 'Failed to load data');
                     }
                     hiddenSpecFields = json.hidden_fields || {};
+                    columnSources = Array.isArray(json.column_sources) ? json.column_sources : [];
+                    initColGroups(json.column_groups);
                     initTable(json.data || [], json.ebay_aspects || []);
+                    renderColGroups();
                     applyStatusFilter();
                     if (table) buildTsColumnPicker();
                 } catch (e) {
@@ -2395,6 +2521,652 @@
                 ebaySyncAction = null;
             }
 
+            // ---- Search headers: named headers (Basics, Stands, ...) with tick boxes ----
+            // Ticking a header or a column shows only the ticked columns. Nothing ticked shows the saved column choice.
+            // A column can sit in several headers: it can be moved to another header or copied to one.
+            const TS_GROUP_SEL_KEY = 'technical_specs_group_sel_v1';
+            const TS_DEFAULT_GROUPS = ['Basics', 'Stands', 'Drum Thrones', 'Keyboard Bench', 'Speaker', 'Amplifier', 'Microphones', 'Wireless Microphone', 'Common', 'Others'];
+            let groupFocusActive = false;
+            let colGroups = [];
+            const colGroupOpen = new Set();
+            const colGroupSel = (function () {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(TS_GROUP_SEL_KEY) || '[]');
+                    return new Set(Array.isArray(parsed) ? parsed : []);
+                } catch (e) {
+                    return new Set();
+                }
+            })();
+            let colGroupSaving = Promise.resolve();
+
+            function saveColGroupSel() {
+                try { localStorage.setItem(TS_GROUP_SEL_KEY, JSON.stringify(Array.from(colGroupSel))); } catch (e) {}
+            }
+
+            function initColGroups(saved) {
+                const list = Array.isArray(saved) && saved.length
+                    ? saved
+                    : TS_DEFAULT_GROUPS.map(function (n) { return { name: n, columns: [] }; });
+                colGroups = list.map(function (g) {
+                    return { name: String(g.name || ''), columns: Array.isArray(g.columns) ? g.columns.map(String) : [] };
+                }).filter(function (g) { return g.name !== ''; });
+            }
+
+            function persistColGroups() {
+                const payload = { groups: colGroups.map(function (g) { return { name: g.name, columns: g.columns }; }) };
+                colGroupSaving = colGroupSaving
+                    .then(function () { return tscPost('/technical-specifications/column-groups', payload); })
+                    .catch(function (e) { toast(e.message || 'Could not save the headers', 'error'); });
+            }
+
+            function existingColumnMap() {
+                const map = new Map();
+                ebayAspectNames.forEach(function (n) { map.set(specNameKey(n), n); });
+                return map;
+            }
+
+            function groupColumnNames(group, map) {
+                const out = [];
+                const seen = new Set();
+                group.columns.forEach(function (c) {
+                    const key = specNameKey(c);
+                    const real = map.get(key);
+                    if (real && !seen.has(key)) {
+                        seen.add(key);
+                        out.push(real);
+                    }
+                });
+                return out;
+            }
+
+            function colGroupSelectionFields() {
+                if (!colGroupSel.size) return null;
+                const keep = { category_ebay: true };
+                let n = 0;
+                ebayAspectNames.forEach(function (name) {
+                    if (colGroupSel.has(specNameKey(name))) {
+                        keep[aspectKey(name)] = true;
+                        n++;
+                    }
+                });
+                return n ? keep : null;
+            }
+
+            function applyColGroupSelection() {
+                saveColGroupSel();
+                if (table && tableReady) buildTsColumnPicker();
+            }
+
+            function renderColGroups() {
+                const panel = document.getElementById('tscGroupPanel');
+                if (!panel) return;
+                const scroll = panel.scrollTop;
+                const q = String(document.getElementById('tscHeaderSearch').value || '').trim().toLowerCase();
+                const map = existingColumnMap();
+                const allNames = Array.from(map.values()).sort(function (a, b) { return a.localeCompare(b); });
+                const shown = colGroupSelectionFields();
+                let html = '<datalist id="tscColNames">' + allNames.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('') + '</datalist>';
+                html += '<div class="tsg-top"><span>' + (shown ? (Object.keys(shown).length - 1) + ' ticked column' + (Object.keys(shown).length === 2 ? '' : 's') + ' shown' : 'All columns shown') + '</span>'
+                    + '<button type="button" class="btn btn-sm btn-outline-secondary py-0" data-act="clear"' + (shown ? '' : ' disabled') + '>Show all</button></div>';
+                colGroups.forEach(function (group, gi) {
+                    const names = groupColumnNames(group, map);
+                    const nameHit = q !== '' && group.name.toLowerCase().indexOf(q) !== -1;
+                    const hits = q !== '' ? names.filter(function (n) { return n.toLowerCase().indexOf(q) !== -1; }) : names;
+                    if (q !== '' && !nameHit && !hits.length) return;
+                    const open = q !== '' ? true : colGroupOpen.has(group.name);
+                    const visibleNames = (q !== '' && !nameHit) ? hits : names;
+                    html += '<div class="tsg-group"><div class="tsg-head">'
+                        + '<input type="checkbox" class="tsg-gcb" data-g="' + gi + '" title="Show the columns of this header">'
+                        + '<span class="tsg-name" data-act="toggle" data-g="' + gi + '">' + esc(group.name) + '</span>'
+                        + '<span class="tsg-count">' + names.length + '</span>'
+                        + '<button type="button" class="tsg-icon" data-act="toggle" data-g="' + gi + '" title="Open or close">' + (open ? '&#9662;' : '&#9656;') + '</button>'
+                        + '<button type="button" class="tsg-icon" data-act="delgroup" data-g="' + gi + '" title="Delete this header (its columns stay)">&times;</button>'
+                        + '</div>';
+                    if (open) {
+                        const others = colGroups.map(function (g, i) { return { g: g, i: i }; }).filter(function (o) { return o.i !== gi; });
+                        html += '<div class="tsg-body">';
+                        visibleNames.forEach(function (name) {
+                            const key = specNameKey(name);
+                            html += '<div class="tsg-col"><label><input type="checkbox" class="tsg-ccb" data-key="' + esc(key) + '"' + (colGroupSel.has(key) ? ' checked' : '') + '> ' + esc(name) + '</label>';
+                            if (others.length) {
+                                html += '<select data-act="xfer" data-g="' + gi + '" data-name="' + esc(name) + '"><option value="">Move / copy…</option>'
+                                    + '<optgroup label="Move to">' + others.map(function (o) { return '<option value="move:' + o.i + '">' + esc(o.g.name) + '</option>'; }).join('') + '</optgroup>'
+                                    + '<optgroup label="Copy to">' + others.map(function (o) { return '<option value="copy:' + o.i + '">' + esc(o.g.name) + '</option>'; }).join('') + '</optgroup></select>';
+                            }
+                            html += '<button type="button" class="tsg-icon" data-act="remove" data-g="' + gi + '" data-name="' + esc(name) + '" title="Remove from this header">&times;</button></div>';
+                        });
+                        if (!visibleNames.length) html += '<div class="text-muted small">No columns in this header yet.</div>';
+                        html += '<div class="tsg-add"><input type="text" list="tscColNames" data-add="' + gi + '" placeholder="+ Add a column to ' + esc(group.name) + '" autocomplete="off"></div></div>';
+                    }
+                    html += '</div>';
+                });
+                html += '<div class="tsg-new"><input type="text" id="tscNewGroup" placeholder="New header name" autocomplete="off" maxlength="100">'
+                    + '<button type="button" class="btn btn-sm btn-primary py-0" data-act="newgroup" title="Add a header">+</button></div>';
+                panel.innerHTML = html;
+                panel.querySelectorAll('.tsg-gcb').forEach(function (cb) {
+                    const names = groupColumnNames(colGroups[Number(cb.dataset.g)], map);
+                    const on = names.filter(function (n) { return colGroupSel.has(specNameKey(n)); }).length;
+                    cb.checked = names.length > 0 && on === names.length;
+                    cb.indeterminate = on > 0 && on < names.length;
+                    cb.disabled = names.length === 0;
+                });
+                panel.scrollTop = scroll;
+            }
+
+            function addColumnToGroup(group, name) {
+                const key = specNameKey(name);
+                if (!group.columns.some(function (c) { return specNameKey(c) === key; })) group.columns.push(name);
+            }
+
+            function removeColumnFromGroup(group, name) {
+                const key = specNameKey(name);
+                group.columns = group.columns.filter(function (c) { return specNameKey(c) !== key; });
+            }
+
+            function addColGroup() {
+                const input = document.getElementById('tscNewGroup');
+                const name = cleanColumnName(input ? input.value : '');
+                if (!name) return;
+                if (colGroups.some(function (g) { return g.name.toLowerCase() === name.toLowerCase(); })) {
+                    toast('A header named ' + name + ' already exists.', 'error');
+                    return;
+                }
+                colGroups.push({ name: name, columns: [] });
+                colGroupOpen.add(name);
+                persistColGroups();
+                renderColGroups();
+                const next = document.querySelector('#tscGroupPanel [data-add="' + (colGroups.length - 1) + '"]');
+                if (next) next.focus();
+            }
+
+            function bindColGroups() {
+                const wrap = document.getElementById('tscGroupWrap');
+                const panel = document.getElementById('tscGroupPanel');
+                const search = document.getElementById('tscHeaderSearch');
+                const open = function () {
+                    if (panel.hidden) {
+                        panel.hidden = false;
+                        renderColGroups();
+                    }
+                };
+                search.addEventListener('focus', open);
+                search.addEventListener('click', open);
+                search.addEventListener('input', function () {
+                    panel.hidden = false;
+                    renderColGroups();
+                });
+                document.addEventListener('mousedown', function (e) {
+                    if (!wrap.contains(e.target)) panel.hidden = true;
+                });
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape') panel.hidden = true;
+                });
+
+                panel.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' && e.target.id === 'tscNewGroup') {
+                        e.preventDefault();
+                        addColGroup();
+                    }
+                });
+                panel.addEventListener('click', function (e) {
+                    const el = e.target.closest('[data-act]');
+                    if (!el) return;
+                    const act = el.dataset.act;
+                    const group = colGroups[Number(el.dataset.g)];
+                    if (act === 'newgroup') {
+                        addColGroup();
+                    } else if (act === 'clear') {
+                        colGroupSel.clear();
+                        applyColGroupSelection();
+                        renderColGroups();
+                    } else if (act === 'toggle' && group) {
+                        if (colGroupOpen.has(group.name)) colGroupOpen.delete(group.name);
+                        else colGroupOpen.add(group.name);
+                        renderColGroups();
+                    } else if (act === 'delgroup' && group) {
+                        if (!window.confirm('Delete the header "' + group.name + '"? Its columns stay in the table.')) return;
+                        colGroups = colGroups.filter(function (g) { return g !== group; });
+                        persistColGroups();
+                        renderColGroups();
+                    } else if (act === 'remove' && group) {
+                        removeColumnFromGroup(group, el.dataset.name);
+                        persistColGroups();
+                        renderColGroups();
+                    }
+                });
+                panel.addEventListener('change', function (e) {
+                    const t = e.target;
+                    const map = existingColumnMap();
+                    if (t.classList.contains('tsg-gcb')) {
+                        const names = groupColumnNames(colGroups[Number(t.dataset.g)], map);
+                        names.forEach(function (n) {
+                            if (t.checked) colGroupSel.add(specNameKey(n));
+                            else colGroupSel.delete(specNameKey(n));
+                        });
+                        applyColGroupSelection();
+                        renderColGroups();
+                    } else if (t.classList.contains('tsg-ccb')) {
+                        if (t.checked) colGroupSel.add(t.dataset.key);
+                        else colGroupSel.delete(t.dataset.key);
+                        applyColGroupSelection();
+                        renderColGroups();
+                    } else if (t.dataset.act === 'xfer') {
+                        const parts = String(t.value || '').split(':');
+                        const from = colGroups[Number(t.dataset.g)];
+                        const to = colGroups[Number(parts[1])];
+                        const name = t.dataset.name;
+                        if (!from || !to || !parts[0]) return;
+                        addColumnToGroup(to, name);
+                        if (parts[0] === 'move') removeColumnFromGroup(from, name);
+                        colGroupOpen.add(to.name);
+                        persistColGroups();
+                        renderColGroups();
+                        toast((parts[0] === 'move' ? 'Moved ' : 'Copied ') + name + ' to ' + to.name, 'success');
+                    } else if (t.dataset.add !== undefined) {
+                        const group = colGroups[Number(t.dataset.add)];
+                        const real = map.get(specNameKey(t.value));
+                        if (!group) return;
+                        if (!real) {
+                            if (String(t.value || '').trim() !== '') toast('No column named ' + t.value + '. Create it with Add Column first.', 'error');
+                            return;
+                        }
+                        addColumnToGroup(group, real);
+                        persistColGroups();
+                        renderColGroups();
+                    }
+                });
+            }
+
+            // ---- Add Column, Source Data and Delete Column ----
+            // They work on every SKU of the eBay categories of the ticked rows, because a column belongs to a category.
+
+            function normCatName(value) {
+                return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            }
+
+            function isParentSkuRow(row) {
+                return /parent/i.test(String(row.SKU || '')) || (window.isPmParentRowData ? !!window.isPmParentRowData(row) : false);
+            }
+
+            function columnScope() {
+                const picked = table ? table.getSelectedData() : [];
+                const cats = new Map();
+                const skus = new Set();
+                picked.forEach(function (row) {
+                    if (isParentSkuRow(row)) return;
+                    const category = String(row.category_ebay || '').trim();
+                    if (category) cats.set(normCatName(category), category);
+                    else skus.add(String(row.SKU || '').trim());
+                });
+                allRows.forEach(function (row) {
+                    if (isParentSkuRow(row)) return;
+                    if (cats.has(normCatName(row.category_ebay))) skus.add(String(row.SKU || '').trim());
+                });
+                skus.delete('');
+                const list = Array.from(skus);
+                const set = new Set(list);
+                const rows = allRows.filter(function (row) { return set.has(String(row.SKU || '').trim()); });
+                return { categories: Array.from(cats.values()), skus: list, rows: rows };
+            }
+
+            function scopeText(scope) {
+                const c = scope.categories.length;
+                return scope.skus.length + ' SKU' + (scope.skus.length === 1 ? '' : 's')
+                    + (c ? ' in ' + c + ' categor' + (c === 1 ? 'y' : 'ies') : '');
+            }
+
+            function needScope() {
+                const scope = columnScope();
+                if (!scope.skus.length) {
+                    toast('Tick the rows first. The change applies to every SKU in the categories of the ticked rows.', 'error');
+                    return null;
+                }
+                return scope;
+            }
+
+            function tscShow(id, show) {
+                document.getElementById(id).hidden = !show;
+            }
+
+            async function tscPost(url, body) {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                    body: JSON.stringify(body),
+                });
+                let json = {};
+                try { json = await res.json(); } catch (e) {}
+                if (!res.ok || json.success === false) throw new Error(json.message || 'Request failed');
+                return json;
+            }
+
+            // Every column name the page knows plus the names eBay 1 pulls and hand-made columns brought in.
+            let tscOptionNames = [];
+            async function loadTscOptions() {
+                let server = [];
+                try {
+                    const res = await fetch('/technical-specifications/column-options', { headers: { Accept: 'application/json' } });
+                    const json = await res.json();
+                    if (res.ok && Array.isArray(json.columns)) server = json.columns;
+                } catch (e) {}
+                const map = new Map();
+                ebayAspectNames.concat(server).forEach(function (n) {
+                    const name = String(n || '').trim();
+                    const key = specNameKey(name);
+                    if (name && key && !map.has(key)) map.set(key, name);
+                });
+                tscOptionNames = Array.from(map.values()).sort(function (a, b) { return a.localeCompare(b); });
+            }
+
+            // ---- Add Column ----
+            const tscAddPicked = new Map();
+            let tscAddScope = null;
+            let tscBusy = false;
+
+            function tscScopeCounts(scope) {
+                const counts = new Map();
+                scope.rows.forEach(function (row) {
+                    const seen = new Set();
+                    (row.ebay_required || []).forEach(function (n) { seen.add(specNameKey(n)); });
+                    seen.forEach(function (k) { counts.set(k, (counts.get(k) || 0) + 1); });
+                });
+                return counts;
+            }
+
+            function cleanColumnName(value) {
+                return String(value || '').replace(/\s+/g, ' ').trim();
+            }
+
+            function renderTscAdd() {
+                const scope = tscAddScope;
+                const counts = tscScopeCounts(scope);
+                const q = cleanColumnName(document.getElementById('tscAddInput').value);
+                const ql = q.toLowerCase();
+                document.getElementById('tscAddChips').innerHTML = Array.from(tscAddPicked.entries()).map(function (entry) {
+                    return '<span class="tsc-chip">' + esc(entry[1]) + '<button type="button" data-key="' + esc(entry[0]) + '" title="Remove">&times;</button></span>';
+                }).join('');
+                let html = tscOptionNames.filter(function (n) { return !ql || n.toLowerCase().indexOf(ql) !== -1; }).map(function (name) {
+                    const key = specNameKey(name);
+                    const done = counts.get(key) === scope.rows.length;
+                    return '<label class="tsc-opt' + (done ? ' disabled' : '') + '"><input type="checkbox" data-name="' + esc(name) + '"'
+                        + (tscAddPicked.has(key) ? ' checked' : '') + (done ? ' disabled' : '') + '> ' + esc(name)
+                        + (done ? ' <span class="text-muted">(already here)</span>' : '') + '</label>';
+                }).join('');
+                const exact = q !== '' && tscOptionNames.some(function (n) { return specNameKey(n) === specNameKey(q); });
+                if (q !== '' && !exact && specNameKey(q) !== '' && !/[{}<>;]/.test(q)) {
+                    html += '<button type="button" class="new" data-new="' + esc(q) + '">+ Create new column "' + esc(q) + '"</button>';
+                }
+                document.getElementById('tscAddList').innerHTML = html;
+                const n = tscAddPicked.size;
+                document.getElementById('tscAddHint').textContent = n ? n + ' column' + (n === 1 ? '' : 's') + ' ticked.' : 'Tick one or more columns, or type a new name.';
+                const go = document.getElementById('tscAddGo');
+                go.disabled = tscBusy || n === 0;
+                go.textContent = n > 1 ? 'Add ' + n + ' columns' : 'Add column';
+            }
+
+            async function openTscAdd() {
+                const scope = needScope();
+                if (!scope) return;
+                tscAddScope = scope;
+                tscAddPicked.clear();
+                document.getElementById('tscAddInput').value = '';
+                document.getElementById('tscAddIntro').textContent = 'The column is added to ' + scopeText(scope) + ' (every SKU of the categories of the ticked rows). It also appears on the same category tabs of Ebay1 Data.';
+                tscShow('tscAddModal', true);
+                renderTscAdd();
+                await loadTscOptions();
+                if (!document.getElementById('tscAddModal').hidden) renderTscAdd();
+                document.getElementById('tscAddInput').focus();
+            }
+
+            async function runTscAdd() {
+                if (tscBusy || !tscAddPicked.size || !tscAddScope) return;
+                const names = Array.from(tscAddPicked.values());
+                const scope = tscAddScope;
+                tscBusy = true;
+                renderTscAdd();
+                const go = document.getElementById('tscAddGo');
+                try {
+                    for (let i = 0; i < scope.skus.length; i += 200) {
+                        go.textContent = 'Adding ' + Math.min(i + 200, scope.skus.length) + ' / ' + scope.skus.length + '…';
+                        await tscPost('/technical-specifications/add-columns', {
+                            names: names,
+                            skus: scope.skus.slice(i, i + 200),
+                            categories: i === 0 ? scope.categories : [],
+                        });
+                    }
+                    toast('Added ' + names.join(', ') + ' to ' + scopeText(scope), 'success');
+                    tscShow('tscAddModal', false);
+                    await loadData();
+                } catch (e) {
+                    toast(e.message || 'Could not add the column', 'error');
+                } finally {
+                    tscBusy = false;
+                    renderTscAdd();
+                }
+            }
+
+            // ---- Delete Column ----
+            let tscDelScope = null;
+            let tscDelNames = [];
+            const tscDelPicked = new Set();
+
+            function renderTscDel() {
+                const list = document.getElementById('tscDelList');
+                list.innerHTML = tscDelNames.map(function (item) {
+                    return '<label class="tsc-opt"><input type="checkbox" data-key="' + esc(item.key) + '"' + (tscDelPicked.has(item.key) ? ' checked' : '') + '> '
+                        + esc(item.name) + ' <span class="text-muted">(' + item.count + ' SKU' + (item.count === 1 ? '' : 's') + ')</span></label>';
+                }).join('');
+                const all = document.getElementById('tscDelAll');
+                all.checked = tscDelNames.length > 0 && tscDelPicked.size === tscDelNames.length;
+                const n = tscDelPicked.size;
+                const ebay = document.getElementById('tscDelEbay').checked;
+                document.getElementById('tscDelWarn').textContent = n
+                    ? 'This deletes ' + n + ' column' + (n === 1 ? '' : 's') + ' from ' + scopeText(tscDelScope)
+                        + (ebay ? ' and from their live eBay 1 listings. It cannot be undone and can take a few minutes. Keep this window open.' : '. eBay is not changed. This cannot be undone.')
+                    : 'Tick the columns to delete.';
+                document.getElementById('tscDelGo').disabled = tscBusy || n === 0;
+            }
+
+            function openTscDel() {
+                const scope = needScope();
+                if (!scope) return;
+                tscDelScope = scope;
+                const found = new Map();
+                scope.rows.forEach(function (row) {
+                    const seen = new Set();
+                    (row.ebay_required || []).forEach(function (name) {
+                        if (!isRealAspect(name)) return;
+                        const key = specNameKey(name);
+                        if (seen.has(key)) return;
+                        seen.add(key);
+                        if (!found.has(key)) found.set(key, { key: key, name: name, count: 0 });
+                        found.get(key).count++;
+                    });
+                });
+                tscDelNames = Array.from(found.values()).sort(function (a, b) { return a.name.localeCompare(b.name); });
+                tscDelPicked.clear();
+                document.getElementById('tscDelProgress').textContent = '';
+                document.getElementById('tscDelIntro').textContent = 'Columns used by ' + scopeText(scope) + ' (every SKU of the categories of the ticked rows).';
+                tscShow('tscDelModal', true);
+                renderTscDel();
+            }
+
+            async function runTscDel() {
+                if (tscBusy || !tscDelPicked.size || !tscDelScope) return;
+                const picked = tscDelNames.filter(function (item) { return tscDelPicked.has(item.key); }).map(function (item) { return item.name; });
+                const scope = tscDelScope;
+                const withEbay = document.getElementById('tscDelEbay').checked;
+                const size = withEbay ? 10 : 100;
+                const progress = document.getElementById('tscDelProgress');
+                const failures = [];
+                let done = 0;
+                tscBusy = true;
+                renderTscDel();
+                try {
+                    for (let i = 0; i < scope.skus.length; i += size) {
+                        progress.textContent = 'Deleting ' + (i + 1) + '–' + Math.min(i + size, scope.skus.length) + ' of ' + scope.skus.length + '…';
+                        const json = await tscPost('/technical-specifications/delete-columns', {
+                            names: picked,
+                            skus: scope.skus.slice(i, i + size),
+                            ebay: withEbay,
+                            cleanup: i === 0,
+                            categories: i === 0 ? scope.categories : [],
+                        });
+                        (json.results || []).forEach(function (r) {
+                            if (r.status === 'failed') failures.push(r.sku + ' — ' + r.message);
+                            else done++;
+                        });
+                    }
+                } catch (e) {
+                    failures.push(e.message || 'Delete failed');
+                } finally {
+                    tscBusy = false;
+                }
+                await loadData();
+                if (failures.length) {
+                    progress.innerHTML = '<div class="text-danger fw-semibold">' + done + ' SKUs done, ' + failures.length + ' failed. Run it again for the failed ones.</div>'
+                        + '<ul class="mb-0 text-danger" style="max-height:120px;overflow:auto;">'
+                        + failures.slice(0, 20).map(function (f) { return '<li>' + esc(f) + '</li>'; }).join('') + '</ul>';
+                    tscDelNames = [];
+                    tscDelPicked.clear();
+                    renderTscDel();
+                    document.getElementById('tscDelWarn').textContent = 'Close this window and tick the rows again to retry.';
+                    toast('Delete finished with ' + failures.length + ' failure' + (failures.length === 1 ? '' : 's'), 'error');
+                    return;
+                }
+                tscShow('tscDelModal', false);
+                toast('Deleted ' + picked.join(', ') + ' from ' + done + ' SKU' + (done === 1 ? '' : 's'), 'success');
+            }
+
+            // ---- Source Data ----
+            let tscSrcPicked = '';
+            const TSC_AUTO_COLUMNS = ['brand', 'manufacturer', 'condition', 'countryoforigin', 'mpn', 'model', 'upc'];
+
+            function renderTscSrc() {
+                const column = document.getElementById('tscSrcCol').value;
+                const q = cleanColumnName(document.getElementById('tscSrcInput').value).toLowerCase();
+                const colKey = specNameKey(column);
+                document.getElementById('tscSrcList').innerHTML = tscOptionNames.filter(function (n) {
+                    return specNameKey(n) !== colKey && (!q || n.toLowerCase().indexOf(q) !== -1);
+                }).map(function (name) {
+                    return '<button type="button" data-name="' + esc(name) + '"' + (specNameKey(name) === specNameKey(tscSrcPicked) ? ' class="active"' : '') + '>' + esc(name) + '</button>';
+                }).join('');
+                const current = columnSourceOf(column);
+                document.getElementById('tscSrcHint').textContent = tscSrcPicked
+                    ? column + ' will always copy ' + tscSrcPicked + '.'
+                    : (current ? column + ' currently copies ' + current + '.' : 'Pick the column ' + column + ' should copy.');
+                document.getElementById('tscSrcSave').disabled = tscBusy || !column || !tscSrcPicked;
+                document.getElementById('tscSrcClear').disabled = tscBusy || !current;
+            }
+
+            function pickTscSrcColumn() {
+                tscSrcPicked = columnSourceOf(document.getElementById('tscSrcCol').value);
+                renderTscSrc();
+            }
+
+            async function openTscSrc() {
+                const names = ebayAspectNames.filter(function (n) { return TSC_AUTO_COLUMNS.indexOf(specNameKey(n)) === -1; });
+                if (!names.length) {
+                    toast('There are no columns yet.', 'error');
+                    return;
+                }
+                document.getElementById('tscSrcCol').innerHTML = names.map(function (n) {
+                    return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
+                }).join('');
+                document.getElementById('tscSrcInput').value = '';
+                tscShow('tscSrcModal', true);
+                pickTscSrcColumn();
+                await loadTscOptions();
+                if (!document.getElementById('tscSrcModal').hidden) renderTscSrc();
+            }
+
+            async function saveTscSrc(remove) {
+                if (tscBusy) return;
+                const column = document.getElementById('tscSrcCol').value;
+                if (!column) return;
+                tscBusy = true;
+                renderTscSrc();
+                try {
+                    const json = await tscPost('/technical-specifications/save-source', { column: column, source: remove ? '' : tscSrcPicked });
+                    tscShow('tscSrcModal', false);
+                    await loadData();
+                    toast(remove ? column + ' no longer copies another column' : column + ' now copies ' + tscSrcPicked + ' (' + (json.updated || 0) + ' SKUs updated)', 'success');
+                } catch (e) {
+                    toast(e.message || 'Could not save the source', 'error');
+                } finally {
+                    tscBusy = false;
+                    renderTscSrc();
+                }
+            }
+
+            function bindColumnTools() {
+                const addList = document.getElementById('tscAddList');
+                document.getElementById('tscAddBtn').addEventListener('click', openTscAdd);
+                document.getElementById('tscSrcBtn').addEventListener('click', openTscSrc);
+                document.getElementById('tscDelBtn').addEventListener('click', openTscDel);
+
+                document.getElementById('tscAddCancel').addEventListener('click', function () { tscShow('tscAddModal', false); });
+                document.getElementById('tscAddGo').addEventListener('click', runTscAdd);
+                document.getElementById('tscAddInput').addEventListener('input', renderTscAdd);
+                document.getElementById('tscAddInput').addEventListener('keydown', function (e) {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    const fresh = addList.querySelector('button.new');
+                    if (fresh) fresh.click();
+                });
+                addList.addEventListener('change', function (e) {
+                    const box = e.target.closest('input[data-name]');
+                    if (!box) return;
+                    const name = box.dataset.name;
+                    const key = specNameKey(name);
+                    if (box.checked) tscAddPicked.set(key, name);
+                    else tscAddPicked.delete(key);
+                    renderTscAdd();
+                });
+                addList.addEventListener('click', function (e) {
+                    const fresh = e.target.closest('button.new');
+                    if (!fresh) return;
+                    const name = cleanColumnName(fresh.dataset.new);
+                    if (name) tscAddPicked.set(specNameKey(name), name);
+                    document.getElementById('tscAddInput').value = '';
+                    renderTscAdd();
+                });
+                document.getElementById('tscAddChips').addEventListener('click', function (e) {
+                    const btn = e.target.closest('button[data-key]');
+                    if (!btn) return;
+                    tscAddPicked.delete(btn.dataset.key);
+                    renderTscAdd();
+                });
+
+                document.getElementById('tscDelCancel').addEventListener('click', function () { if (!tscBusy) tscShow('tscDelModal', false); });
+                document.getElementById('tscDelGo').addEventListener('click', runTscDel);
+                document.getElementById('tscDelEbay').addEventListener('change', renderTscDel);
+                document.getElementById('tscDelList').addEventListener('change', function (e) {
+                    const box = e.target.closest('input[data-key]');
+                    if (!box) return;
+                    if (box.checked) tscDelPicked.add(box.dataset.key);
+                    else tscDelPicked.delete(box.dataset.key);
+                    renderTscDel();
+                });
+                document.getElementById('tscDelAll').addEventListener('change', function (e) {
+                    tscDelPicked.clear();
+                    if (e.target.checked) tscDelNames.forEach(function (item) { tscDelPicked.add(item.key); });
+                    renderTscDel();
+                });
+
+                document.getElementById('tscSrcCancel').addEventListener('click', function () { if (!tscBusy) tscShow('tscSrcModal', false); });
+                document.getElementById('tscSrcCol').addEventListener('change', pickTscSrcColumn);
+                document.getElementById('tscSrcInput').addEventListener('input', renderTscSrc);
+                document.getElementById('tscSrcList').addEventListener('click', function (e) {
+                    const btn = e.target.closest('button[data-name]');
+                    if (!btn) return;
+                    tscSrcPicked = btn.dataset.name;
+                    renderTscSrc();
+                });
+                document.getElementById('tscSrcSave').addEventListener('click', function () { saveTscSrc(false); });
+                document.getElementById('tscSrcClear').addEventListener('click', function () { saveTscSrc(true); });
+            }
+
             // Save MPN = SKU for rows whose category uses MPN, so the push sends the right value.
             async function ensureAutofillSaved(skus) {
                 const wanted = new Set(skus);
@@ -2406,7 +3178,7 @@
                     const changes = [];
                     (row.ebay_required || []).forEach(function (name) {
                         const value = autofillValue(row, name);
-                        if (value === null) return;
+                        if (value === null || value === '') return;
                         if (valueForSpecSaved(row, name) !== value) changes.push({ key: name, value: value });
                     });
                     if (!changes.length) continue;
@@ -2541,6 +3313,8 @@
                     },
                 });
 
+                bindColumnTools();
+                bindColGroups();
                 document.getElementById('exportBtn').addEventListener('click', exportExcel);
                 document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
                 document.getElementById('importFile').addEventListener('change', function (e) {
@@ -2558,7 +3332,7 @@
                     applyStatusFilter();
                 });
                 let searchTimer = null;
-                ['quickSearch', 'parentSearch', 'skuSearch', 'anythingSearch'].forEach(function (id) {
+                ['quickSearch', 'parentSearch', 'skuSearch'].forEach(function (id) {
                     document.getElementById(id).addEventListener('input', function () {
                         clearTimeout(searchTimer);
                         searchTimer = setTimeout(applyStatusFilter, 150);

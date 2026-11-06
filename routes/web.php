@@ -5003,6 +5003,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/technical-specifications-descriptions', [TechnicalSpecificationsController::class, 'descriptions'])->name('technical.specifications.descriptions');
     Route::post('/technical-specifications/save', [TechnicalSpecificationsController::class, 'save'])->name('technical.specifications.save');
     Route::post('/technical-specifications/push-ebay', [TechnicalSpecificationsController::class, 'pushEbay'])->name('technical.specifications.push.ebay');
+    Route::get('/technical-specifications/column-options', [TechnicalSpecificationsController::class, 'columnOptions'])->name('technical.specifications.column.options');
+    Route::post('/technical-specifications/add-columns', [TechnicalSpecificationsController::class, 'addColumns'])->name('technical.specifications.add.columns');
+    Route::post('/technical-specifications/delete-columns', [TechnicalSpecificationsController::class, 'deleteColumns'])->name('technical.specifications.delete.columns');
+    Route::post('/technical-specifications/save-source', [TechnicalSpecificationsController::class, 'saveSource'])->name('technical.specifications.save.source');
+    Route::post('/technical-specifications/column-groups', [TechnicalSpecificationsController::class, 'saveColumnGroups'])->name('technical.specifications.column.groups');
     Route::post('/technical-specifications/hidden-fields', [TechnicalSpecificationsController::class, 'hideField'])->name('technical.specifications.hidden.fields');
     Route::post('/technical-specifications/hidden-fields/restore', [TechnicalSpecificationsController::class, 'restoreHiddenFields'])->name('technical.specifications.hidden.fields.restore');
     Route::get('/ebay1-data', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'index'])->name('ebay1.data');

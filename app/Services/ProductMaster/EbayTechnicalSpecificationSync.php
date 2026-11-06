@@ -121,6 +121,59 @@ class EbayTechnicalSpecificationSync
         return ['success' => ! $failed, 'message' => implode(' ', $messages)];
     }
 
+    /**
+     * Removes item specifics from the live eBay 1 listing of a SKU.
+     * Status: deleted (removed), absent (the listing did not have them), not_listed, skipped (parent row), failed.
+     *
+     * @param  list<string>  $names
+     * @return array{status: string, message: string}
+     */
+    public function removeSpecifics(string $sku, array $names): array
+    {
+        $sku = trim($sku);
+        if ($this->isParentSku($sku)) {
+            return ['status' => 'skipped', 'message' => 'Parent rows are not listed on eBay.'];
+        }
+        $itemId = $this->listingId('ebay_metrics', $sku);
+        if ($itemId === null) {
+            return ['status' => 'not_listed', 'message' => 'Not listed on eBay 1.'];
+        }
+
+        try {
+            $service = app(EbayApiService::class);
+            $item = $service->getItem($itemId);
+            if (! is_array($item)) {
+                $why = trim((string) ($service->lastGetItemError ?? ''));
+
+                return ['status' => 'failed', 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
+            }
+            $ctx = $service->tradingReviseContext();
+            $result = EbayTradingReviseItem::removeItemSpecific(
+                $ctx['endpoint'],
+                $ctx['compatLevel'],
+                $ctx['devId'],
+                $ctx['appId'],
+                $ctx['certId'],
+                $ctx['siteId'],
+                $ctx['authToken'],
+                $item,
+                array_values($names)
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Technical specifications eBay remove failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+
+        if (! ($result['success'] ?? false)) {
+            return ['status' => 'failed', 'message' => (string) ($result['message'] ?? 'eBay rejected the change.')];
+        }
+
+        return ($result['removed'] ?? false)
+            ? ['status' => 'deleted', 'message' => 'Removed from eBay 1.']
+            : ['status' => 'absent', 'message' => 'Was not on the eBay 1 listing.'];
+    }
+
     private function listingId(string $table, string $sku): ?string
     {
         try {
