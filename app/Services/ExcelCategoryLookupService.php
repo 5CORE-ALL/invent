@@ -47,21 +47,21 @@ class ExcelCategoryLookupService
     /**
      * @return array<string, string> normalized item id => category
      */
-    public function map(): array
+    public function map(string $account = 'ebay1'): array
     {
-        $latestId = (int) ExcelWorksheet::query()->max('id');
+        $latestId = (int) ExcelWorksheet::query()->forAccount($account)->max('id');
         if ($latestId === 0) {
             return [];
         }
 
-        $key = self::CACHE_KEY.':'.$latestId;
+        $key = self::CACHE_KEY.($account === 'ebay1' ? '' : ':'.$account).':'.$latestId;
         $cached = Cache::get($key);
         if (is_array($cached) && $cached !== []) {
             return $cached;
         }
 
         try {
-            $map = $this->build();
+            $map = $this->build(null, $account);
         } catch (\Throwable $e) {
             Log::warning('ExcelCategoryLookupService: '.$e->getMessage());
 
@@ -115,10 +115,10 @@ class ExcelCategoryLookupService
      * @param  (callable(string, string, int, int, array<int, string>): void)|null  $onSheet
      * @return array<string, string>
      */
-    public function build(?callable $onSheet = null): array
+    public function build(?callable $onSheet = null, string $account = 'ebay1'): array
     {
         // Only the most recently uploaded workbook is used.
-        $importId = ExcelWorksheet::query()->orderByDesc('id')->value('excel_import_id');
+        $importId = ExcelWorksheet::query()->forAccount($account)->orderByDesc('id')->value('excel_import_id');
         if (! $importId) {
             return [];
         }

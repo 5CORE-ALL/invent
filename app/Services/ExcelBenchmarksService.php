@@ -38,9 +38,9 @@ class ExcelBenchmarksService
      *     rows: array<int, array<string, mixed>>
      * }
      */
-    public function get(): array
+    public function get(string $account = 'ebay1'): array
     {
-        $importId = ExcelWorksheet::query()->orderByDesc('id')->value('excel_import_id');
+        $importId = ExcelWorksheet::query()->forAccount($account)->orderByDesc('id')->value('excel_import_id');
         $import = $importId ? ExcelImport::query()->find($importId) : null;
         if (! $import) {
             return $this->empty();

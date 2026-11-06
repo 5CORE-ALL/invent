@@ -30,18 +30,33 @@
             <li class="side-nav-title">Main</li>
 
             <li class="side-nav-item">
-                <a href="{{ route('excel.index') }}" class="side-nav-link {{ request()->routeIs('excel.*') ? 'active' : '' }}">
+                <a href="{{ route('excel.index') }}" class="side-nav-link {{ request()->routeIs('excel.*') && ! request()->routeIs('excel.ebay*') ? 'active' : '' }}">
                     <i class="ri-file-excel-2-line"></i>
                     <span>eBay LQS</span>
                 </a>
             </li>
 
             <li class="side-nav-item">
-                <a href="{{ route('benchmarks.index') }}" class="side-nav-link {{ request()->routeIs('benchmarks.*') ? 'active' : '' }}">
+                <a href="{{ route('benchmarks.index') }}" class="side-nav-link {{ request()->routeIs('benchmarks.*') && ! request()->routeIs('benchmarks.ebay*') ? 'active' : '' }}">
                     <i class="ri-bar-chart-grouped-line"></i>
                     <span>Benchmarks</span>
                 </a>
             </li>
+
+            @foreach (['ebay2' => 'eBay 2', 'ebay3' => 'eBay 3'] as $lqsAcc => $lqsLabel)
+            <li class="side-nav-item">
+                <a href="{{ route('excel.'.$lqsAcc.'.index') }}" class="side-nav-link {{ request()->routeIs('excel.'.$lqsAcc.'.*') ? 'active' : '' }}">
+                    <i class="ri-file-excel-2-line"></i>
+                    <span>{{ $lqsLabel }} Listing Quality Report</span>
+                </a>
+            </li>
+            <li class="side-nav-item">
+                <a href="{{ route('benchmarks.'.$lqsAcc.'.index') }}" class="side-nav-link {{ request()->routeIs('benchmarks.'.$lqsAcc.'.*') ? 'active' : '' }}">
+                    <i class="ri-bar-chart-grouped-line"></i>
+                    <span>{{ $lqsLabel }} Benchmarks</span>
+                </a>
+            </li>
+            @endforeach
 
             {{-- Tasks --}}
             @php $tasksMenuOpen = request()->routeIs('incentives.*') || request()->routeIs('meetings.*'); @endphp

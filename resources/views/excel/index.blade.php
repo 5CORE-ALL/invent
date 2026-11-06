@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'eBay LQS'])
+@extends('layouts.vertical', ['title' => ($account ?? 'ebay1') === 'ebay1' ? 'eBay LQS' : ($accountLabel.' Listing Quality Report')])
 
 @section('css')
 <style>
@@ -139,7 +139,7 @@
 <div class="excel-manager py-2" id="excel-manager">
     <div class="excel-manager-head">
         <div>
-            <h3>eBay LQS</h3>
+            <h3>{{ ($account ?? 'ebay1') === 'ebay1' ? 'eBay LQS' : $accountLabel.' Listing Quality Report' }}</h3>
             <p>Upload a workbook, switch worksheets, then search, sort, page, and export.</p>
         </div>
         <div class="d-flex gap-2">
@@ -225,7 +225,7 @@
 
 @php
     $excelManagerConfig = [
-        'importUrl' => route('excel.import'),
+        'importUrl' => $importUrl ?? route('excel.import'),
         'worksheetUrl' => url('/excel/worksheets/__ID__'),
         'dataUrl' => url('/excel/worksheets/__ID__/data'),
         'exportUrl' => url('/excel/worksheets/__ID__/export'),

@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Benchmarks', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => ($account ?? 'ebay1') === 'ebay1' ? 'Benchmarks' : ($accountLabel.' Benchmarks'), 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -40,7 +40,7 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         (function() {
-            const DATA_URL = @json(route('benchmarks.data'));
+            const DATA_URL = @json($dataUrl ?? route('benchmarks.data'));
             const FIXED_FIELDS = ['category', 'section', 'benchmark', 'metric', 'value'];
 
             const $category = document.getElementById('bm-category');
@@ -192,8 +192,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Benchmarks',
-        'sub_title' => 'More benchmarks by category (from /excel eBay LQS upload)',
+        'page_title' => ($account ?? 'ebay1') === 'ebay1' ? 'Benchmarks' : $accountLabel.' Benchmarks',
+        'sub_title' => 'More benchmarks by category (from the '.(($account ?? 'ebay1') === 'ebay1' ? 'eBay LQS' : $accountLabel.' Listing Quality Report').' upload)',
     ])
 
     <div class="row">
@@ -223,7 +223,7 @@
 
                 <div id="bm-empty" class="alert alert-info d-none mb-2">
                     No benchmarks found. Upload the eBay Listing Quality report in
-                    <a href="{{ route('excel.index') }}">eBay LQS</a> first.
+                    <a href="{{ $excelUrl ?? route('excel.index') }}">{{ ($account ?? 'ebay1') === 'ebay1' ? 'eBay LQS' : $accountLabel.' Listing Quality Report' }}</a> first.
                 </div>
 
                 <div id="benchmarks-table"></div>

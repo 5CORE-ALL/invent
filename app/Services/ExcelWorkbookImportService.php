@@ -34,7 +34,7 @@ class ExcelWorkbookImportService
 
     private const MAX_ROWS = 200000;
 
-    public function import(UploadedFile $file, int $userId): ExcelImport
+    public function import(UploadedFile $file, int $userId, string $account = 'ebay1'): ExcelImport
     {
         $this->assertUpload($file);
 
@@ -71,12 +71,16 @@ class ExcelWorkbookImportService
 
             DB::beginTransaction();
 
-            $import = ExcelImport::create([
+            $attributes = [
                 'original_filename' => $this->originalFilename($file),
                 'stored_filename' => $storedPath,
                 'total_worksheets' => count($sheets),
                 'uploaded_by' => $userId,
-            ]);
+            ];
+            if (ExcelImport::hasAccountColumn()) {
+                $attributes['account'] = $account;
+            }
+            $import = ExcelImport::create($attributes);
 
             foreach (array_values($sheets) as $index => $info) {
                 $name = (string) ($info['worksheetName'] ?? ('Sheet '.($index + 1)));

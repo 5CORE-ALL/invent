@@ -34,6 +34,13 @@ class ExcelWorksheet extends Model
         return $this->hasMany(ExcelWorksheetRow::class);
     }
 
+    public function scopeForAccount(Builder $query, string $account = 'ebay1'): Builder
+    {
+        return $query->whereHas('import', function (Builder $import) use ($account) {
+            $import->forAccount($account);
+        });
+    }
+
     public function scopeOwnedBy(Builder $query, int $userId): Builder
     {
         return $query->whereHas('import', function (Builder $import) use ($userId) {

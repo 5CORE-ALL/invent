@@ -18,27 +18,33 @@ use Throwable;
 
 class ExcelImportController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, string $account = 'ebay1'): View
     {
+        $account = $this->account($account);
         $import = ExcelImport::query()
             ->ownedBy((int) $request->user()->id)
+            ->forAccount($account)
             ->with('worksheets')
             ->latest('id')
             ->first();
 
         return view('excel.index', [
             'importPayload' => $import ? $this->importPayload($import) : null,
+            'account' => $account,
+            'accountLabel' => ExcelImport::ACCOUNTS[$account],
+            'importUrl' => $account === 'ebay1' ? route('excel.import') : route('excel.'.$account.'.import'),
         ]);
     }
 
-    public function import(Request $request, ExcelWorkbookImportService $importer): JsonResponse
+    public function import(Request $request, ExcelWorkbookImportService $importer, string $account = 'ebay1'): JsonResponse
     {
+        $account = $this->account($account);
         $request->validate([
             'file' => ['required', 'file', 'max:51200'],
         ]);
 
         try {
-            $import = $importer->import($request->file('file'), (int) $request->user()->id);
+            $import = $importer->import($request->file('file'), (int) $request->user()->id, $account);
         } catch (ExcelImportException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         } catch (Throwable $exception) {
@@ -122,6 +128,11 @@ class ExcelImportController extends Controller
         return response()->download($absolute, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ])->deleteFileAfterSend(true);
+    }
+
+    private function account(string $account): string
+    {
+        return array_key_exists($account, ExcelImport::ACCOUNTS) ? $account : 'ebay1';
     }
 
     private function ownedWorksheet(Request $request, int $worksheetId): ExcelWorksheet

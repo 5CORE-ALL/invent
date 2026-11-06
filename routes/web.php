@@ -8401,6 +8401,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/benchmarks', [\App\Http\Controllers\BenchmarksController::class, 'index'])->name('benchmarks.index');
     Route::get('/benchmarks/data', [\App\Http\Controllers\BenchmarksController::class, 'data'])->name('benchmarks.data');
 
+    // eBay 2 and eBay 3: their own Listing Quality Report upload and Benchmarks (eBay 1 is /excel and /benchmarks).
+    foreach (['ebay2', 'ebay3'] as $ebayAccount) {
+        $excelController = \App\Http\Controllers\ExcelImportController::class;
+        $benchmarksController = \App\Http\Controllers\BenchmarksController::class;
+        Route::get('/'.$ebayAccount.'-excel', [$excelController, 'index'])->defaults('account', $ebayAccount)->name('excel.'.$ebayAccount.'.index');
+        Route::post('/'.$ebayAccount.'-excel/import', [$excelController, 'import'])->defaults('account', $ebayAccount)->name('excel.'.$ebayAccount.'.import');
+        Route::get('/'.$ebayAccount.'-benchmarks', [$benchmarksController, 'index'])->defaults('account', $ebayAccount)->name('benchmarks.'.$ebayAccount.'.index');
+        Route::get('/'.$ebayAccount.'-benchmarks/data', [$benchmarksController, 'data'])->defaults('account', $ebayAccount)->name('benchmarks.'.$ebayAccount.'.data');
+    }
+
     Route::get('', [RoutingController::class, 'index'])->name('root');
     Route::get('{first}/{second}', [RoutingController::class, 'secondLevel'])->name('second')->where('first', '^(?!\.well-known$).+');
     Route::get('{first}/{second}/{third}', [RoutingController::class, 'thirdLevel'])->name('third');
