@@ -292,6 +292,13 @@ class OverallAmazonController extends Controller
                 $nrValues[$n] = $r->value;
             }
         }
+        // Case-insensitive copy: Product Master "GS EL POWER" vs data view "GS EL Power". MySQL matches them (whereIn above),
+        // but PHP array keys are case-sensitive, so the row lost its STANDARD_PRICE / SPRICE / push status and the page
+        // priced it differently from the Amazon cron (which matches on UPPER(sku)).
+        $nrValuesCi = [];
+        foreach ($nrValues as $k => $v) {
+            $nrValuesCi[strtoupper((string) $k)] ??= $v;
+        }
 
         // Load Bid Caps from dedicated table
         $bidCaps = AmazonBidCap::whereIn('sku', $skus)
@@ -601,7 +608,8 @@ class OverallAmazonController extends Controller
                 : 0;
 
             // Load NR field from AmazonDataView (exact SKU or normalized SKU so spacing variants match)
-            $nrRaw = $nrValues[$pm->sku] ?? $nrValues[$normalizeSku($pm->sku)] ?? null;
+            $nrRaw = $nrValues[$pm->sku] ?? $nrValues[$normalizeSku($pm->sku)]
+                ?? $nrValuesCi[strtoupper((string) $pm->sku)] ?? $nrValuesCi[strtoupper($normalizeSku($pm->sku))] ?? null;
             if ($nrRaw !== null) {
                 $raw = is_array($nrRaw) ? $nrRaw : (is_string($nrRaw) ? json_decode($nrRaw, true) : null);
 

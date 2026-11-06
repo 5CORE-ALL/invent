@@ -1607,7 +1607,11 @@
             const rounded = +Number(s).toFixed(2);
             const std = amazonStdPrice(rowData);
             let ceiling = std;
-            if (std > 0 && typeof computeAmzSumDiscountPct === 'function') {
+            // Sprc Dil rule: Std Prc is always the maximum (modal text + AmazonSprcDilAutoPushService). Only the Std prc vs dil
+            // rule may raise the ceiling with a negative stack discount. Raising it here made the page push 27.26 on a
+            // 26.99 Std while the cron priced the same SKU at 26.99, so the two kept re-pushing each other.
+            const dilRuleOn = (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil');
+            if (!dilRuleOn && std > 0 && typeof computeAmzSumDiscountPct === 'function') {
                 const disc = Number(computeAmzSumDiscountPct(rowData));
                 if (isFinite(disc) && disc < 0) {
                     ceiling = +Number(std * (1 - (disc / 100))).toFixed(2);
