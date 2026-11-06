@@ -515,7 +515,7 @@ class YesterdayMarketplaceMetricsService
         $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
         $ads = $this->temuAdMetrics('temu_campaign_reports', $date);
 
-        return $this->pack(
+        $row = $this->pack(
             (float) $m['base_sales'],
             (float) $m['sales'],
             (float) $m['pft'],
@@ -529,6 +529,9 @@ class YesterdayMarketplaceMetricsService
             // so its Y percentages have to divide by the same thing to be comparable.
             (float) $m['sales']
         );
+        $row['ad_unmeasured'] = ! $ads['measured'];
+
+        return $row;
     }
 
     /**
@@ -546,7 +549,7 @@ class YesterdayMarketplaceMetricsService
         $ads = $this->temuAdMetrics('temu2_campaign_reports', $date);
         $full = (float) ($m['full_sales'] ?? $m['sales'] ?? 0);
 
-        return $this->pack(
+        $row = $this->pack(
             (float) ($m['base_sales'] ?? $m['sales'] ?? 0),
             $full,
             (float) $m['pft'],
@@ -557,6 +560,9 @@ class YesterdayMarketplaceMetricsService
             $full,
             $ads['sales']
         );
+        $row['ad_unmeasured'] = ! $ads['measured'];
+
+        return $row;
     }
 
     /**
@@ -1654,25 +1660,35 @@ class YesterdayMarketplaceMetricsService
     private function temuAdMetrics(string $table, string $date): array
     {
         if (! Schema::hasTable($table)) {
-            return ['spend' => 0.0, 'sales' => 0.0];
+            return ['spend' => 0.0, 'sales' => 0.0, 'measured' => false];
         }
 
+        $dated = $this->windowDays < 7;
         try {
-            $key = $this->adReportKey($table, 'report_range', $date);
+            // Temu ad sheets are uploaded by hand under a report_range label. L1 is "whatever was last
+            // uploaded as one day", not necessarily this Pacific day, so one-day windows only trust a
+            // report saved under the date itself; otherwise the day is unmeasured and Y / T Ads% use
+            // the L30 Ads% (a stale or multi-day L1 divided by one day of sales read 45% vs ~7%).
+            if ($dated && ! $this->adReportHasDatedKey($table, 'report_range', $date)) {
+                return ['spend' => 0.0, 'sales' => 0.0, 'measured' => false];
+            }
+            $key = $dated ? $date : $this->adReportKey($table, 'report_range', $date);
             $row = DB::table($table)
                 ->where('report_range', $key)
                 ->selectRaw('COALESCE(SUM(spend), 0) as spend')
                 ->selectRaw('COALESCE(SUM(base_price_sales), 0) as sales')
                 ->first();
+            $spend = (float) ($row->spend ?? 0);
 
             return [
-                'spend' => (float) ($row->spend ?? 0),
+                'spend' => $spend,
                 'sales' => (float) ($row->sales ?? 0),
+                'measured' => $dated ? $spend > 0 : true,
             ];
         } catch (\Throwable $e) {
             Log::warning("Yesterday {$table} ad metrics failed: ".$e->getMessage());
 
-            return ['spend' => 0.0, 'sales' => 0.0];
+            return ['spend' => 0.0, 'sales' => 0.0, 'measured' => false];
         }
     }
 
