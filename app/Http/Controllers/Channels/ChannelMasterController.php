@@ -18657,7 +18657,27 @@ class ChannelMasterController extends Controller
                 // Y / T Orders, Views, CVR cells: the graph's newest point must be the number
                 // the cell shows (same idea as pinAllYSalesChartLastPoint for Y Sales), so a
                 // graph and its cell can never disagree on the latest day.
-                if (in_array($metric, \App\Support\Marketplace\AmmColumnHistory::FIELDS, true)
+                if ($metric === 'y_ads_pct' && $live !== null && $live !== '' && is_numeric($live)) {
+                    // The Y Ads% cell is Pacific yesterday's rate (Y Ad Spend ÷ Y Total Sales), but the
+                    // newest saved point can be an older day. Pin the cell to yesterday's own point
+                    // (or add it) instead of overwriting whichever day happens to be last.
+                    $yLabel = now(\App\Models\BadgeDataHistory::TZ)->subDay()->format('M j');
+                    $pinned = false;
+                    foreach ($points as $i => $p) {
+                        if (($p['date'] ?? null) === $yLabel) {
+                            $points[$i]['value'] = round((float) $live, 2);
+                            $pinned = true;
+                            break;
+                        }
+                    }
+                    if (! $pinned) {
+                        $points[] = [
+                            'date' => $yLabel,
+                            'value' => round((float) $live, 2),
+                            'tone' => 'gray',
+                        ];
+                    }
+                } elseif (in_array($metric, \App\Support\Marketplace\AmmColumnHistory::FIELDS, true)
                     && $live !== null && $live !== '' && is_numeric($live)) {
                     if ($points !== []) {
                         $points[array_key_last($points)]['value'] = round((float) $live, 2);

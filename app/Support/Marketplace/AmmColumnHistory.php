@@ -409,7 +409,9 @@ class AmmColumnHistory
             // Same basis as the page's Y Day Sales; channels without a real daily ad source are skipped.
             $ySales = (float) (($row['pft_sales'] ?? 0) > 0 ? $row['pft_sales'] : ($row['sales'] ?? 0));
             $ySpend = (float) ($row['ad_spend'] ?? 0);
-            if (! empty($row['computed']) && self::yesterdayAdsMeasured((string) ($row['channel'] ?? ''), $ySpend, $ySales)) {
+            if (! empty($row['computed'])
+                && empty($row['ad_unmeasured'])
+                && self::yesterdayAdsMeasured((string) ($row['channel'] ?? ''), $ySpend, $ySales)) {
                 $data['y_ads_pct'] = round(($ySpend / $ySales) * 100, 4);
                 $totAdSpend += $ySpend;
                 $totAdSales += $ySales;

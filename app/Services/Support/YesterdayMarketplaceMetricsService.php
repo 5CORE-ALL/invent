@@ -359,7 +359,11 @@ class YesterdayMarketplaceMetricsService
 
         $ads = $this->amazonAdMetrics($date);
 
-        return $this->pack($displaySales, $skuLineSales, $pft, $cogs, $ads['spend'], count($orderIds), $qty, $skuLineSales, $ads['sales']);
+        $row = $this->pack($displaySales, $skuLineSales, $pft, $cogs, $ads['spend'], count($orderIds), $qty, $skuLineSales, $ads['sales']);
+        // No ad spend exists yet for this exact day: spend 0 is "unknown", not "no ads".
+        $row['ad_unmeasured'] = ! $ads['measured'];
+
+        return $row;
     }
 
     /**
@@ -1381,17 +1385,29 @@ class YesterdayMarketplaceMetricsService
             'gpft_sales' => $gpftSales,
             'pft_sales' => round($pftSales, 2),
             'computed' => $computed,
+            'ad_unmeasured' => (bool) ($m['ad_unmeasured'] ?? false),
         ];
     }
 
     /**
      * 1-day Amazon spend/sales from the same SP+SB campaign tables as /amazon-ads/all.
-     * Uses L1 (the ads-page yesterday pull) — dated daily keys are a thin subset.
      *
-     * @return array{spend: float, sales: float}
+     * One-day windows read the campaign rows saved under THAT date's key (report_date_range =
+     * Y-m-d), never L1. L1 is simply "the newest finished day imported", so while the import for
+     * the latest day is still pending (it runs ~00:30-04:30 Pacific) L1 is a day older, and for
+     * any past day (history backfill) it is a day newer. Dividing that spend by this day's Total
+     * Sales produced wrong Y Ads% points, mostly on the last two days. When the finished-day
+     * report for the date is not imported yet, the last hourly amazon:pull-today-ad-spend value
+     * for that date is used; with neither the day is flagged unmeasured. 7-day windows keep L7.
+     *
+     * @return array{spend: float, sales: float, measured: bool}
      */
     private function amazonAdMetrics(string $date): array
     {
+        if ($this->windowDays < 7) {
+            return $this->amazonAdMetricsForDate($date);
+        }
+
         $spend = 0.0;
         $sales = 0.0;
         try {
@@ -1421,7 +1437,57 @@ class YesterdayMarketplaceMetricsService
             Log::warning('Yesterday Amazon ad metrics failed: '.$e->getMessage());
         }
 
-        return ['spend' => $spend, 'sales' => $sales];
+        return ['spend' => $spend, 'sales' => $sales, 'measured' => true];
+    }
+
+    /**
+     * @return array{spend: float, sales: float, measured: bool}
+     */
+    private function amazonAdMetricsForDate(string $date): array
+    {
+        $spend = 0.0;
+        $sales = 0.0;
+        $measured = false;
+        try {
+            // SP is the bulk of spend, so its dated import decides whether the day is measured.
+            if ($this->adReportHasDatedKey('amazon_sp_campaign_reports', 'report_date_range', $date)) {
+                $measured = true;
+                $sp = $this->amazonDistinctCampaignTotals(
+                    'amazon_sp_campaign_reports',
+                    $date,
+                    'COALESCE(cost, spend, 0)',
+                    $this->amazonDailySalesExpr('amazon_sp_campaign_reports')
+                );
+                $spend += $sp['spend'];
+                $sales += $sp['sales'];
+
+                if ($this->adReportHasDatedKey('amazon_sb_campaign_reports', 'report_date_range', $date)) {
+                    $sb = $this->amazonDistinctCampaignTotals(
+                        'amazon_sb_campaign_reports',
+                        $date,
+                        'COALESCE(cost, 0)',
+                        $this->amazonDailySalesExpr('amazon_sb_campaign_reports')
+                    );
+                    $spend += $sb['spend'];
+                    $sales += $sb['sales'];
+                }
+            }
+
+            // Dated rows can be zero-activity placeholders when the real report failed, and a day
+            // without any dated import has no spend yet: fall back to that day's last hourly pull.
+            if ($spend <= 0) {
+                $pulled = \App\Models\AmazonTodayAdSpend::spendForDate($date);
+                if ($pulled !== null) {
+                    $measured = true;
+                    $spend = $pulled;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Yesterday Amazon ad metrics failed for '.$date.': '.$e->getMessage());
+            $measured = false;
+        }
+
+        return ['spend' => $spend, 'sales' => $sales, 'measured' => $measured];
     }
 
     /**

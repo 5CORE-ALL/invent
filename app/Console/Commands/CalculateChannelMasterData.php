@@ -299,7 +299,9 @@ class CalculateChannelMasterData extends Command
             'y_day_sales' => round($daySales > 0 ? $daySales : (float) $row['gpft_sales'], 2),
             'y_pft' => round((float) ($row['pft'] ?? 0), 2),
             'y_cogs' => round((float) ($row['cogs'] ?? 0), 2),
-            'y_ad_spend' => round((float) ($row['ad_spend'] ?? 0), 2),
+            // Null (not 0) while the day's ad spend is not available yet, so Y Ads% falls back
+            // to the channel's L30 Ads% instead of showing a wrong or 0% figure.
+            'y_ad_spend' => ! empty($row['ad_unmeasured']) ? null : round((float) ($row['ad_spend'] ?? 0), 2),
         ];
     }
 
