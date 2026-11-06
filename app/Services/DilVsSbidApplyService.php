@@ -322,6 +322,94 @@ class DilVsSbidApplyService
     }
 
     /**
+     * Read-only: what Ads Rule PMT wants for one listing, what is stored locally and what eBay
+     * says is live right now. Pushes nothing.
+     *
+     * @return array<string, mixed>
+     */
+    public function explainPmt(string $account, string $listingId): array
+    {
+        $cfg = self::PMT_ACCOUNTS[$account] ?? null;
+        if ($cfg === null) {
+            return ['error' => 'Unknown eBay account'];
+        }
+        $listingId = trim($listingId);
+        $bids = PmtCategoryBidRule::bids($account);
+        $categories = app(ExcelCategoryLookupService::class)->map($account);
+
+        $ads = DB::table($cfg['ads'])->where('listing_id', $listingId)->get();
+        $out = [
+            'account' => $account,
+            'listing_id' => $listingId,
+            'switch_on' => PmtCategoryBidRule::isOn($account),
+            'ads_rows' => $ads->map(fn ($a) => [
+                'campaign_id' => $a->campaign_id ?? null,
+                'ad_id' => $a->ad_id ?? null,
+                'funding' => $a->funding_strategy ?? null,
+                'status' => $a->campaign_status ?? null,
+                'stored_c_bid' => $a->bid_percentage ?? null,
+                'updated_at' => (string) ($a->updated_at ?? ''),
+            ])->all(),
+        ];
+
+        // What the rule wants.
+        if ($account === 'ebay2') {
+            $in = $this->pmtParentFamilies([$listingId], $cfg['metric'], $categories)[$listingId] ?? null;
+            $out['level'] = 'parent family';
+        } else {
+            $metrics = $cfg['metric']::where('item_id', $listingId)->get()->groupBy(fn ($m) => (string) $m->item_id);
+            $first = $ads->first() ?? (object) [];
+            $shopify = $this->shopifyBySku($this->skusForListings([$listingId], $metrics, $ads->groupBy(fn ($a) => (string) $a->listing_id)));
+            $rolled = $this->rolledListingInputs($listingId, $first, $metrics, $shopify, [], []);
+            $in = [
+                'inv' => $rolled['shopify']->inv,
+                'ovL30' => $rolled['shopify']->quantity,
+                'sold' => $rolled['metric']->ebay_l30,
+                'category' => $categories[ExcelCategoryLookupService::normalizeItemId($listingId)] ?? '',
+            ];
+            $out['level'] = 'listing';
+        }
+        if ($in === null) {
+            $out['wanted'] = ['skip' => 'listing not found in metrics', 'off' => false, 'formatted' => null, 'label' => ''];
+
+            return $out;
+        }
+        $out['inputs'] = $in + ['dil_pct' => ((float) ($in['inv'] ?? 0)) > 0 ? round(((float) $in['ovL30'] / (float) $in['inv']) * 100, 1) : 0];
+        $out['category_range'] = $bids[$in['category']] ?? null;
+        $out['wanted'] = $this->pmtDecisionFromInputs($in, $bids);
+
+        // What eBay says is live.
+        $out['live'] = [];
+        try {
+            $http = new EbayMarketingPushRetry(new $cfg['api']());
+            $http->acquireToken();
+            foreach ($ads as $ad) {
+                if (empty($ad->campaign_id)) {
+                    continue;
+                }
+                $res = $http->get('https://api.ebay.com/sell/marketing/v1/ad_campaign/'.$ad->campaign_id.'/ad', ['listing_ids' => $listingId]);
+                $body = ($res['ok'] && $res['response'] !== null) ? $res['response']->json() : null;
+                $found = is_array($body) ? ($body['ads'] ?? []) : [];
+                $out['live'][] = [
+                    'campaign_id' => (string) $ad->campaign_id,
+                    'ok' => $res['ok'],
+                    'error' => $res['error'],
+                    'ads' => array_map(fn ($x) => [
+                        'adId' => $x['adId'] ?? null,
+                        'listingId' => $x['listingId'] ?? null,
+                        'status' => $x['adStatus'] ?? null,
+                        'bidPercentage' => $x['bidPercentage'] ?? null,
+                    ], is_array($found) ? $found : []),
+                ];
+            }
+        } catch (\Throwable $e) {
+            $out['live_error'] = $e->getMessage();
+        }
+
+        return $out;
+    }
+
+    /**
      * Ads Rule PMT decision for one listing (family INV / OV L30 / eBay sold already rolled up).
      *
      * @param  array{metric:object,shopify:object}  $rolled
