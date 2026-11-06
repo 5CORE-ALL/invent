@@ -18818,8 +18818,10 @@ class ChannelMasterController extends Controller
 
             // TikTok 2 Y Sales: live per-Pacific-day order totals (same rows as the cell),
             // not frozen snapshot days that left zeros / wrong days on the graph.
-            if ($metric === 'y_sales' && ! $isAll && ! $useL7Window && $channel === 'tiktokshop2') {
-                $live = $this->buildTiktokTwoLiveDailyYSalesChart($days);
+            if ($metric === 'y_sales' && ! $isAll && ! $useL7Window && in_array($channel, ['tiktokshop2', 'aliexpress'], true)) {
+                $live = $channel === 'aliexpress'
+                    ? $this->buildAliexpressLiveDailyYSalesChart($days)
+                    : $this->buildTiktokTwoLiveDailyYSalesChart($days);
                 if ($live !== []) {
                     $live = $this->pinChartSeriesLastToTable(
                         $live,
@@ -20266,6 +20268,7 @@ class ChannelMasterController extends Controller
                 $this->alignYesterdayProfitDotsWithYSales($out);
                 $this->overlayBusiness5CoreB2bLiveSalesDot($out);
                 $this->overlayLiveTiktokDotTrends($out);
+                $this->overlayLiveAliexpressYSalesDot($out);
             }
 
             return $out;
@@ -22869,6 +22872,34 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * AliExpress Y Sales chart: one point per Pacific day through yesterday from
+     * aliexpress_order_metrics (same rows as the Y Sales cell). Saved snapshots
+     * were all $0, so the graph and dot never moved.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildAliexpressLiveDailyYSalesChart(int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->subDay()->startOfDay();
+        $span = $days > 0 ? $days : 30;
+        $start = $end->copy()->subDays($span - 1);
+        $byDate = app(AliexpressController::class)->dailyApiSalesByPacificDate($start, $end);
+
+        $out = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round((float) ($byDate[$cursor->toDateString()] ?? 0), 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
      * Shein Y Sales chart: one Pacific calendar day each. Gap days are $0.
      *
      * @return list<array{date: string, value: float}>
@@ -23898,6 +23929,31 @@ class ChannelMasterController extends Controller
             }
         } catch (\Throwable $e) {
             Log::warning('TikTok 2 live dot overlay failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * AliExpress Y Sales dot = last two graph points (yesterday vs the day before),
+     * summed live from aliexpress_order_metrics.
+     *
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $out
+     */
+    private function overlayLiveAliexpressYSalesDot(array &$out): void
+    {
+        try {
+            $chart = $this->buildAliexpressLiveDailyYSalesChart(2);
+            if (count($chart) < 2) {
+                return;
+            }
+            if (! isset($out['aliexpress']) || ! is_array($out['aliexpress'])) {
+                $out['aliexpress'] = [];
+            }
+            $out['aliexpress']['y_sales'] = [
+                (float) $chart[count($chart) - 2]['value'],
+                (float) $chart[count($chart) - 1]['value'],
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('AliExpress Y Sales dot overlay failed: '.$e->getMessage());
         }
     }
 
