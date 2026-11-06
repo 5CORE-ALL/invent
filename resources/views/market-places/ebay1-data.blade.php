@@ -56,6 +56,12 @@
         .e1d-modal[hidden] { display: none; }
         .e1d-addlist { max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; }
         .e1d-addlist:empty { display: none; }
+        .e1d-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+        .e1d-chips:empty { display: none; }
+        .e1d-chip { background: #dcfce7; color: #166534; border-radius: 12px; padding: 1px 4px 1px 10px; font-size: .78rem; font-weight: 600; }
+        .e1d-chip button { border: 0; background: transparent; color: #166534; font-weight: 700; padding: 0 4px; }
+        .e1d-addopt { display: flex; align-items: center; gap: 6px; padding: .3rem .6rem; font-size: .84rem; color: #334155; cursor: pointer; margin: 0; }
+        .e1d-addopt:hover { background: #eff6ff; }
         .e1d-addlist button { display: block; width: 100%; text-align: left; border: 0; background: #fff; padding: .35rem .6rem; font-size: .84rem; color: #334155; }
         .e1d-addlist button:hover, .e1d-addlist button.active { background: #eff6ff; color: #1d4ed8; }
         .e1d-addlist button.new { color: #15803d; font-weight: 700; border-top: 1px solid #e2e8f0; }
@@ -129,6 +135,7 @@
             <h5 id="e1dAddTitle" class="mb-2"><i class="fas fa-plus-circle text-success"></i> Add Column</h5>
             <p class="small text-muted mb-2" id="e1dAddIntro"></p>
             <label class="form-label small fw-bold" for="e1dAddInput">Search a column, or type a new name</label>
+            <div class="e1d-chips" id="e1dAddChips"></div>
             <input type="text" id="e1dAddInput" class="form-control form-control-sm mb-1" placeholder="e.g. Impedance" autocomplete="off">
             <div class="e1d-addlist" id="e1dAddList" role="listbox"></div>
             <div class="small my-2" id="e1dAddHint"></div>
@@ -163,8 +170,8 @@
         <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dDelTitle">
             <h5 id="e1dDelTitle" class="mb-2"><i class="fas fa-trash-alt text-danger"></i> Delete Column</h5>
             <p class="small text-muted mb-2" id="e1dDelIntro"></p>
-            <label class="form-label small fw-bold" for="e1dDelSelect">Column</label>
-            <select id="e1dDelSelect" class="form-select form-select-sm mb-2"></select>
+            <label class="e1d-addopt fw-bold border-bottom mb-1"><input type="checkbox" id="e1dDelAll"> Columns of this tab (tick one or more)</label>
+            <div class="e1d-addlist mb-2" id="e1dDelList"></div>
             <div class="alert alert-danger small py-2 mb-2" id="e1dDelWarn"></div>
             <div class="small mb-2" id="e1dDelProgress"></div>
             <div class="d-flex justify-content-end gap-2">
@@ -340,52 +347,84 @@
                 renderSrcList();
             }
 
+            // Columns picked so far, in the order they were picked: normalised key => name.
+            let addPicked = new Map();
+
+            function cleanName(value) {
+                return String(value || '').replace(/\s+/g, ' ').trim();
+            }
+
             function addState() {
-                const typed = String(document.getElementById('e1dAddInput').value || '').replace(/\s+/g, ' ').trim();
+                const typed = cleanName(document.getElementById('e1dAddInput').value);
                 const key = normName(typed);
                 const inTab = new Set(specNamesForTab().map(normName));
-                const known = (columnOptions || []).some(function (name) { return normName(name) === key; });
+                const known = (columnOptions || []).find(function (name) { return normName(name) === key; }) || '';
                 return { typed: typed, key: key, inTab: key !== '' && inTab.has(key), known: known, tabKeys: inTab };
+            }
+
+            function togglePicked(name) {
+                const key = normName(name);
+                if (key === '') return;
+                if (addPicked.has(key)) addPicked.delete(key); else addPicked.set(key, name);
+                renderAddList();
             }
 
             function renderAddList() {
                 const list = document.getElementById('e1dAddList');
+                const chips = document.getElementById('e1dAddChips');
                 const hint = document.getElementById('e1dAddHint');
                 const go = document.getElementById('e1dAddGo');
                 const s = addState();
                 list.innerHTML = '';
+                chips.innerHTML = '';
+                addPicked.forEach(function (name, key) {
+                    const chip = document.createElement('span');
+                    chip.className = 'e1d-chip';
+                    chip.appendChild(document.createTextNode(name + ' '));
+                    const x = document.createElement('button');
+                    x.type = 'button';
+                    x.title = 'Remove';
+                    x.innerHTML = '&times;';
+                    x.addEventListener('click', function () { addPicked.delete(key); renderAddList(); });
+                    chip.appendChild(x);
+                    chips.appendChild(chip);
+                });
+                go.textContent = addPicked.size > 1 ? 'Add ' + addPicked.size + ' columns' : 'Add column';
+                go.disabled = addPicked.size === 0 || columnOptions === null;
                 if (columnOptions === null) {
                     hint.textContent = 'Loading columns…';
-                    go.disabled = true;
                     return;
                 }
-                const matches = columnOptions.filter(function (name) {
+                columnOptions.filter(function (name) {
                     const k = normName(name);
                     return !s.tabKeys.has(k) && (s.key === '' || k.indexOf(s.key) !== -1);
-                }).slice(0, 60);
-                matches.forEach(function (name) {
-                    const b = document.createElement('button');
-                    b.type = 'button';
-                    b.textContent = name;
-                    b.addEventListener('click', function () {
-                        document.getElementById('e1dAddInput').value = name;
-                        renderAddList();
-                    });
-                    list.appendChild(b);
+                }).slice(0, 100).forEach(function (name) {
+                    const row = document.createElement('label');
+                    row.className = 'e1d-addopt';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.checked = addPicked.has(normName(name));
+                    cb.addEventListener('change', function () { togglePicked(name); });
+                    row.appendChild(cb);
+                    row.appendChild(document.createTextNode(' ' + name));
+                    list.appendChild(row);
                 });
                 if (s.key !== '' && !s.known && !s.inTab) {
                     const b = document.createElement('button');
                     b.type = 'button';
                     b.className = 'new';
-                    b.textContent = 'Create new column “' + s.typed + '”';
-                    b.addEventListener('click', runAddColumn);
+                    b.textContent = '+ Create new column “' + s.typed + '”';
+                    b.addEventListener('click', function () {
+                        addPicked.set(s.key, s.typed);
+                        document.getElementById('e1dAddInput').value = '';
+                        renderAddList();
+                        document.getElementById('e1dAddInput').focus();
+                    });
                     list.appendChild(b);
                 }
-                if (s.key === '') hint.textContent = 'Choose from the list, or type a name that is not there to create it.';
-                else if (s.inTab) hint.textContent = 'This column is already in this tab.';
-                else if (s.known) hint.textContent = 'Existing column. It will be added to this category.';
-                else hint.innerHTML = '<span class="text-success fw-bold">New column.</span> It is created in this category here and on Technical Specifications.';
-                go.disabled = s.key === '' || s.inTab;
+                if (s.inTab) hint.textContent = 'This column is already in this tab.';
+                else if (addPicked.size) hint.textContent = addPicked.size + ' selected. Tick more, or press Add.';
+                else hint.textContent = 'Tick one or more columns, or type a name that is not there to create it.';
             }
 
             function openAddModal() {
@@ -393,6 +432,7 @@
                 document.getElementById('e1dAddIntro').textContent = 'Category: ' + catLabel(activeTab);
                 const input = document.getElementById('e1dAddInput');
                 input.value = '';
+                addPicked = new Map();
                 document.getElementById('e1dAddModal').hidden = false;
                 renderAddList();
                 input.focus();
@@ -403,9 +443,21 @@
                 document.getElementById('e1dAddModal').hidden = true;
             }
 
-            async function runAddColumn() {
+            // Enter: put the typed name on the list of picked columns; Enter on an empty box adds them all.
+            function addTypedOrSubmit() {
                 const s = addState();
-                if (s.key === '' || s.inTab || activeTab === ALL) return;
+                if (s.key === '' || s.inTab) {
+                    if (s.key === '' && addPicked.size) runAddColumn();
+                    return;
+                }
+                addPicked.set(s.key, s.known || s.typed);
+                document.getElementById('e1dAddInput').value = '';
+                renderAddList();
+            }
+
+            async function runAddColumn() {
+                if (!addPicked.size || activeTab === ALL) return;
+                const names = Array.from(addPicked.values());
                 const go = document.getElementById('e1dAddGo');
                 go.disabled = true;
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -415,13 +467,16 @@
                     const res = await fetch('/ebay1-data/add-column', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
-                        body: JSON.stringify({ name: s.typed, category: activeTab === NO_CATEGORY ? '' : activeTab, skus: skus }),
+                        body: JSON.stringify({ names: names, category: activeTab === NO_CATEGORY ? '' : activeTab, skus: skus }),
                     });
                     const json = await res.json();
                     if (!res.ok || !json.success) throw new Error(json.message || 'Request failed');
                     columnOptions = null;
                     closeAddModal();
-                    document.getElementById('e1dPullStatus').textContent = 'Column "' + json.name + '" added' + (json.created ? ' (new)' : '') + '.';
+                    const added = json.names || names;
+                    document.getElementById('e1dPullStatus').textContent = added.length === 1
+                        ? 'Column "' + added[0] + '" added.'
+                        : added.length + ' columns added.';
                     await loadData();
                 } catch (e) {
                     document.getElementById('e1dAddHint').innerHTML = '<span class="text-danger">' + esc(e.message || 'Failed') + '</span>';
@@ -645,40 +700,67 @@
                     : 'Open a category tab with pulled item specifics first';
             }
 
-            function delTargets(name) {
+            // Columns ticked in the Delete Column window.
+            let delPicked = new Set();
+
+            function delTargets(names) {
+                const list = Array.isArray(names) ? names : [names];
                 return rows.filter(function (row) {
                     return passesTab(row)
-                        && row.specifics && !Array.isArray(row.specifics) && Object.prototype.hasOwnProperty.call(row.specifics, name)
+                        && row.specifics && !Array.isArray(row.specifics)
+                        && list.some(function (name) { return Object.prototype.hasOwnProperty.call(row.specifics, name); })
                         && /^\d{9,15}$/.test(String(row.item_id || '').trim());
                 });
             }
 
             function refreshDelWarning() {
-                const name = document.getElementById('e1dDelSelect').value;
-                const n = name ? delTargets(name).length : 0;
-                document.getElementById('e1dDelWarn').innerHTML = !name
-                    ? 'Choose a column.'
+                const picked = Array.from(delPicked);
+                const n = picked.length ? delTargets(picked).length : 0;
+                const label = picked.length === 1 ? '<strong>' + esc(picked[0]) + '</strong>' : '<strong>' + picked.length + ' columns</strong>';
+                document.getElementById('e1dDelWarn').innerHTML = !picked.length
+                    ? 'Tick one or more columns.'
                     : (n === 0
-                        ? 'No live eBay 1 listing in this category has <strong>' + esc(name) + '</strong>. The column is only removed from this tab.'
-                        : 'This removes <strong>' + esc(name) + '</strong> from <strong>' + n + '</strong> live eBay 1 listing' + (n === 1 ? '' : 's') + ' in this category and from the stored data. It cannot be undone here.');
-                document.getElementById('e1dDelGo').disabled = !name;
+                        ? 'No live eBay 1 listing in this category has ' + label + '. ' + (picked.length === 1 ? 'The column is' : 'The columns are') + ' only removed from this tab.'
+                        : 'This removes ' + label + ' from <strong>' + n + '</strong> live eBay 1 listing' + (n === 1 ? '' : 's') + ' in this category and from the stored data. It cannot be undone here.');
+                const go = document.getElementById('e1dDelGo');
+                go.disabled = !picked.length;
+                go.textContent = picked.length > 1 ? 'Delete ' + picked.length + ' columns' : 'Delete column';
+                const all = document.getElementById('e1dDelAll');
+                const total = specNamesForTab().length;
+                all.checked = total > 0 && picked.length === total;
+                all.indeterminate = picked.length > 0 && picked.length < total;
             }
 
-            function openDelModal() {
+            function renderDelList() {
+                const names = specNamesForTab();
+                delPicked = new Set(Array.from(delPicked).filter(function (name) { return names.indexOf(name) !== -1; }));
+                const list = document.getElementById('e1dDelList');
+                list.innerHTML = '';
+                names.forEach(function (name) {
+                    const row = document.createElement('label');
+                    row.className = 'e1d-addopt';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.checked = delPicked.has(name);
+                    cb.addEventListener('change', function () {
+                        if (cb.checked) delPicked.add(name); else delPicked.delete(name);
+                        refreshDelWarning();
+                    });
+                    row.appendChild(cb);
+                    row.appendChild(document.createTextNode(' ' + name + ' (' + delTargets(name).length + ')'));
+                    list.appendChild(row);
+                });
+                refreshDelWarning();
+            }
+
+            function openDelModal(keepPicked) {
                 const names = specNamesForTab();
                 if (activeTab === ALL || !names.length) return;
+                if (keepPicked !== true) delPicked = new Set();
                 document.getElementById('e1dDelIntro').textContent = 'Category: ' + catLabel(activeTab);
-                const sel = document.getElementById('e1dDelSelect');
-                sel.innerHTML = '';
-                names.forEach(function (name) {
-                    const opt = document.createElement('option');
-                    opt.value = name;
-                    opt.textContent = name + ' (' + delTargets(name).length + ')';
-                    sel.appendChild(opt);
-                });
                 document.getElementById('e1dDelProgress').textContent = '';
                 document.getElementById('e1dDelModal').hidden = false;
-                refreshDelWarning();
+                renderDelList();
             }
 
             function closeDelModal() {
@@ -686,13 +768,14 @@
             }
 
             async function runDelete() {
-                const name = document.getElementById('e1dDelSelect').value;
-                const todo = delTargets(name);
-                if (!name) return;
+                const names = Array.from(delPicked);
+                if (!names.length) return;
+                const todo = delTargets(names);
+                const label = names.length === 1 ? '"' + names[0] + '"' : names.length + ' columns';
                 const category = activeTab === NO_CATEGORY ? '' : activeTab;
                 if (!window.confirm(todo.length
-                    ? 'Delete "' + name + '" from ' + todo.length + ' live eBay 1 listings?'
-                    : 'Remove the column "' + name + '" from this tab?')) return;
+                    ? 'Delete ' + label + ' from ' + todo.length + ' live eBay 1 listings?'
+                    : 'Remove ' + label + ' from this tab?')) return;
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 const goBtn = document.getElementById('e1dDelGo');
                 const progress = document.getElementById('e1dDelProgress');
@@ -701,7 +784,7 @@
                 let done = 0, failed = 0;
                 const problems = [];
                 const size = 5;
-                // With no listing to change, one call still drops the column of this tab.
+                // With no listing to change, one call still drops the columns of this tab.
                 for (let i = 0; i < Math.max(todo.length, 1); i += size) {
                     const chunk = todo.slice(i, i + size).map(function (row) { return { sku: row.sku, item_id: String(row.item_id).trim() }; });
                     progress.textContent = 'Deleting ' + Math.min(i + size, todo.length) + ' / ' + todo.length + '…';
@@ -709,7 +792,7 @@
                         const res = await fetch('/ebay1-data/delete-specific', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
-                            body: JSON.stringify({ name: name, category: category, items: chunk }),
+                            body: JSON.stringify({ names: names, category: category, items: chunk }),
                         });
                         const json = await res.json();
                         if (!res.ok || !json.success) throw new Error(json.message || 'Request failed');
@@ -726,7 +809,7 @@
                 if (problems.length) window.alert(problems.slice(0, 15).join('\n') + (problems.length > 15 ? '\n…' : ''));
                 await loadData();
                 if (failed) {
-                    openDelModal();
+                    openDelModal(true);
                     document.getElementById('e1dDelProgress').textContent = 'Deleted ' + done + ', failed ' + failed + '. Delete again to retry the failed SKUs.';
                 } else {
                     closeDelModal();
@@ -977,7 +1060,7 @@
                 document.getElementById('e1dAddGo').addEventListener('click', runAddColumn);
                 document.getElementById('e1dAddInput').addEventListener('input', renderAddList);
                 document.getElementById('e1dAddInput').addEventListener('keydown', function (e) {
-                    if (e.key === 'Enter') { e.preventDefault(); runAddColumn(); }
+                    if (e.key === 'Enter') { e.preventDefault(); addTypedOrSubmit(); }
                     if (e.key === 'Escape') closeAddModal();
                 });
                 document.getElementById('e1dSrcBtn').addEventListener('click', openSrcModal);
@@ -989,9 +1072,12 @@
                 document.getElementById('e1dSrcInput').addEventListener('input', renderSrcList);
                 document.getElementById('e1dSrcSave').addEventListener('click', function () { postSource(srcState().match); });
                 document.getElementById('e1dSrcClear').addEventListener('click', function () { postSource(''); });
-                document.getElementById('e1dDelCol').addEventListener('click', openDelModal);
+                document.getElementById('e1dDelCol').addEventListener('click', function () { openDelModal(); });
                 document.getElementById('e1dDelCancel').addEventListener('click', closeDelModal);
-                document.getElementById('e1dDelSelect').addEventListener('change', refreshDelWarning);
+                document.getElementById('e1dDelAll').addEventListener('change', function () {
+                    delPicked = this.checked ? new Set(specNamesForTab()) : new Set();
+                    renderDelList();
+                });
                 document.getElementById('e1dDelGo').addEventListener('click', runDelete);
                 document.getElementById('e1dExport').addEventListener('click', function () {
                     if (!table) return;
