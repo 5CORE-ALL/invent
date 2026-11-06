@@ -9,6 +9,7 @@ use App\Models\ProductMaster;
 use App\Services\EbayApiService;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Support\Marketplace\AutomatedListingPage;
+use App\Support\Marketplace\ProductUpc;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +46,9 @@ class Ebay1DataController extends Controller
             $extras = $this->extraColumnsByCategory();
             $sources = $this->columnSourcesByCategory();
             $techSpecs = ($extras === [] && $sources === []) ? [] : $this->technicalSpecValuesBySku();
+
+            // UPC column: the code held in CP Master (product_master), as on Technical Specifications.
+            $cpUpc = ProductUpc::forSkus($listing->map(static fn ($item) => trim((string) ($item->sku ?? '')))->filter()->values()->all());
 
             $data = [];
             foreach ($listing as $item) {
@@ -95,6 +99,16 @@ class Ebay1DataController extends Controller
                 foreach (array_keys($specifics) as $specName) {
                     if ($this->aspectKey((string) $specName) === 'brand') {
                         $specifics[$specName] = '5 Core';
+                    }
+                }
+
+                // UPC always shows the CP Master code (eBay's "Does not apply" is replaced). No CP Master code leaves it as it was.
+                $upc = ($cpUpc[$sku]['source'] ?? '') === ProductUpc::SOURCE_CP_MASTER ? (string) $cpUpc[$sku]['upc'] : '';
+                if ($upc !== '') {
+                    foreach (array_keys($specifics) as $specName) {
+                        if ($this->aspectKey((string) $specName) === 'upc') {
+                            $specifics[$specName] = $upc;
+                        }
                     }
                 }
 

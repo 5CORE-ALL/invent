@@ -114,20 +114,36 @@
         .e1d-pill.blue { background: #0284c7; }
         .e1d-pill.grey { background: #64748b; }
         .e1d-muted { color: #94a3b8; }
-        .e1d-modal { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+        .e1d-modal { position: fixed; inset: 0; background: rgba(15,23,42,.28); backdrop-filter: blur(3px); z-index: 2000; display: flex; align-items: stretch; justify-content: flex-end; }
         .e1d-modal[hidden] { display: none; }
-        .e1d-addlist { max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; }
+        .e1d-addlist { flex: 1 1 auto; min-height: 140px; overflow-y: auto; border: 1px solid #eef2f7; border-radius: 12px; background: #fff; scrollbar-width: thin; }
         .e1d-addlist:empty { display: none; }
         .e1d-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
         .e1d-chips:empty { display: none; }
         .e1d-chip { background: #dcfce7; color: #166534; border-radius: 12px; padding: 1px 4px 1px 10px; font-size: .78rem; font-weight: 600; }
         .e1d-chip button { border: 0; background: transparent; color: #166534; font-weight: 700; padding: 0 4px; }
-        .e1d-addopt { display: flex; align-items: center; gap: 6px; padding: .3rem .6rem; font-size: .84rem; color: #334155; cursor: pointer; margin: 0; }
-        .e1d-addopt:hover { background: #eff6ff; }
-        .e1d-addlist button { display: block; width: 100%; text-align: left; border: 0; background: #fff; padding: .35rem .6rem; font-size: .84rem; color: #334155; }
-        .e1d-addlist button:hover, .e1d-addlist button.active { background: #eff6ff; color: #1d4ed8; }
+        .e1d-addopt { display: flex; align-items: center; gap: 10px; padding: .55rem .9rem; font-size: .88rem; color: #334155; cursor: pointer; margin: 0; border-bottom: 1px solid #f4f6fa; transition: background .12s; }
+        .e1d-addopt:last-child { border-bottom: 0; }
+        .e1d-addopt:hover { background: #f5f8ff; }
+        .e1d-addopt input[type=checkbox] { width: 16px; height: 16px; accent-color: #2c6ed5; flex: 0 0 auto; }
+        .e1d-addlist button { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid #f4f6fa; background: #fff; padding: .55rem .9rem; font-size: .88rem; color: #334155; transition: background .12s; }
+        .e1d-addlist button:hover, .e1d-addlist button.active { background: #f5f8ff; color: #1d4ed8; }
         .e1d-addlist button.new { color: #15803d; font-weight: 700; border-top: 1px solid #e2e8f0; }
-        .e1d-modal-box { background: #fff; border-radius: 12px; padding: 1.1rem 1.25rem; width: min(480px, 92vw); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+        /* Full-height side panel: header on top, list fills the middle, buttons pinned to the bottom. */
+        .e1d-modal-box { background: #fcfdff; height: 100vh; width: min(540px, 100vw); padding: 1.75rem 1.75rem 1.25rem; display: flex; flex-direction: column; gap: .35rem; overflow-y: auto; box-shadow: -12px 0 40px rgba(15,23,42,.14); animation: e1dSlide .22s ease-out; }
+        @keyframes e1dSlide { from { transform: translateX(32px); opacity: 0; } to { transform: none; opacity: 1; } }
+        .e1d-modal-box > h5 { font-size: 1.15rem; font-weight: 600; letter-spacing: .01em; color: #0f172a; margin: 0 0 .15rem !important; }
+        .e1d-modal-box > h5 i { margin-right: .35rem; }
+        .e1d-modal-box > p { margin: 0 0 .9rem !important; color: #94a3b8 !important; }
+        .e1d-modal-box .form-label { font-size: .72rem !important; text-transform: uppercase; letter-spacing: .06em; color: #64748b; margin: .6rem 0 .25rem; font-weight: 600 !important; }
+        .e1d-modal-box .form-control, .e1d-modal-box .form-select { border-radius: 10px; border-color: #e5eaf2; background: #fff; padding: .5rem .75rem; font-size: .9rem; height: auto; box-shadow: none; }
+        .e1d-modal-box .form-control:focus, .e1d-modal-box .form-select:focus { border-color: #8db2f0; box-shadow: 0 0 0 3px rgba(44,110,213,.12); }
+        .e1d-modal-box .alert { border: 0; border-radius: 10px; margin: .5rem 0 !important; }
+        .e1d-modal-box > .d-flex:last-child { margin-top: auto; padding-top: 1rem; border-top: 1px solid #eef2f7; }
+        .e1d-modal-box .btn { border-radius: 999px; padding: .42rem 1.15rem; font-weight: 600; }
+        .e1d-modal-box .btn-light { background: #f1f5f9; border-color: #f1f5f9; color: #475569; }
+        .e1d-modal-box .btn-light:hover { background: #e2e8f0; }
+        .e1d-chip { padding: 3px 6px 3px 12px; }
     </style>
 @endsection
 
@@ -260,6 +276,7 @@
         <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dDelTitle">
             <h5 id="e1dDelTitle" class="mb-2"><i class="fas fa-trash-alt text-danger"></i> Delete Column</h5>
             <p class="small text-muted mb-2" id="e1dDelIntro"></p>
+            <input type="text" id="e1dDelSearch" class="form-control form-control-sm mb-1" placeholder="Quick search a column…" autocomplete="off">
             <label class="e1d-addopt fw-bold border-bottom mb-1"><input type="checkbox" id="e1dDelAll"> Columns of this tab (tick one or more)</label>
             <div class="e1d-addlist mb-2" id="e1dDelList"></div>
             <div class="alert alert-danger small py-2 mb-2" id="e1dDelWarn"></div>
@@ -819,9 +836,18 @@
                 go.disabled = !picked.length;
                 go.textContent = picked.length > 1 ? 'Delete ' + picked.length + ' columns' : 'Delete column';
                 const all = document.getElementById('e1dDelAll');
-                const total = specNamesForTab().length;
-                all.checked = total > 0 && picked.length === total;
-                all.indeterminate = picked.length > 0 && picked.length < total;
+                const visible = delVisibleNames();
+                const ticked = visible.filter(function (name) { return delPicked.has(name); }).length;
+                all.checked = visible.length > 0 && ticked === visible.length;
+                all.indeterminate = ticked > 0 && ticked < visible.length;
+            }
+
+            // Columns of the open tab, A to Z, narrowed by the quick search.
+            function delVisibleNames() {
+                const q = String(document.getElementById('e1dDelSearch').value || '').trim().toLowerCase();
+                return specNamesForTab().slice()
+                    .sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); })
+                    .filter(function (name) { return !q || name.toLowerCase().indexOf(q) !== -1; });
             }
 
             function renderDelList() {
@@ -829,7 +855,9 @@
                 delPicked = new Set(Array.from(delPicked).filter(function (name) { return names.indexOf(name) !== -1; }));
                 const list = document.getElementById('e1dDelList');
                 list.innerHTML = '';
-                names.forEach(function (name) {
+                const shown = delVisibleNames();
+                if (!shown.length) list.innerHTML = '<div class="small text-muted p-2">No matching column.</div>';
+                shown.forEach(function (name) {
                     const row = document.createElement('label');
                     row.className = 'e1d-addopt';
                     const cb = document.createElement('input');
@@ -850,6 +878,7 @@
                 const names = specNamesForTab();
                 if (activeTab === ALL || !names.length) return;
                 if (keepPicked !== true) delPicked = new Set();
+                document.getElementById('e1dDelSearch').value = '';
                 document.getElementById('e1dDelIntro').textContent = 'Category: ' + catLabel(activeTab);
                 document.getElementById('e1dDelProgress').textContent = '';
                 document.getElementById('e1dDelModal').hidden = false;
@@ -1561,8 +1590,9 @@
                     paginationSizeSelector: [50, 100, 200, 500, true],
                     placeholder: 'No rows',
                     initialSort: [{ column: 'sku', dir: 'asc' }],
-                    selectableRows: true,
-                    selectableRowsRangeMode: 'click',
+                    // Rows are ticked only with their checkbox, any number of them. (Click-range mode replaced the
+                    // previous tick with the new one, so only one row stayed selected.)
+                    selectableRows: 'highlight',
                     // Header titles break at every space (<br>), so the vertical headers stay short.
                     columnDefaults: { titleFormatter: breakTitle, hozAlign: 'center', headerHozAlign: 'center' },
                     columns: baseColumns().concat([editColumn()]),
@@ -1644,10 +1674,25 @@
                 document.getElementById('e1dDelCol').addEventListener('click', function () { openDelModal(); });
                 document.getElementById('e1dDelCancel').addEventListener('click', closeDelModal);
                 document.getElementById('e1dDelAll').addEventListener('change', function () {
-                    delPicked = this.checked ? new Set(specNamesForTab()) : new Set();
+                    const visible = delVisibleNames();
+                    if (this.checked) visible.forEach(function (name) { delPicked.add(name); });
+                    else visible.forEach(function (name) { delPicked.delete(name); });
                     renderDelList();
                 });
+                document.getElementById('e1dDelSearch').addEventListener('input', renderDelList);
                 document.getElementById('e1dDelGo').addEventListener('click', runDelete);
+                // Click outside a side panel, or Esc, does the same as its Cancel button.
+                const dismissModal = function (modal) {
+                    const cancel = modal && modal.querySelector('[id$="Cancel"]');
+                    if (cancel && !cancel.disabled) cancel.click();
+                };
+                document.querySelectorAll('.e1d-modal').forEach(function (modal) {
+                    modal.addEventListener('mousedown', function (e) { if (e.target === modal) dismissModal(modal); });
+                });
+                document.addEventListener('keydown', function (e) {
+                    if (e.key !== 'Escape') return;
+                    dismissModal(document.querySelector('.e1d-modal:not([hidden])'));
+                });
                 document.getElementById('e1dExport').addEventListener('click', function () {
                     if (!table) return;
                     const label = activeTab === ALL ? 'all' : catLabel(activeTab).replace(/[^a-z0-9]+/gi, '_').toLowerCase();
