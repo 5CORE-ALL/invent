@@ -95,6 +95,10 @@ return [
         'timezone' => env('WAYFAIR_BASE_COST_PULL_TZ', 'America/Los_Angeles'),
         // Abort (unless --force) when more than this % of matched SKUs would change: a wrong export must not rewrite everything.
         'max_change_percent' => (float) env('WAYFAIR_BASE_COST_MAX_CHANGE_PERCENT', 50),
+        // Skip the pull only while an upload started less than this many hours ago is still queued/processing.
+        // Older ones are ignored: with no WAYFAIR_STATUS_URL an upload stays PROCESSING forever, which used to
+        // block the daily pull every day (the upload runs 12:30 AM PT, the pull 6:00 AM PT).
+        'upload_wait_hours' => (float) env('WAYFAIR_BASE_COST_UPLOAD_WAIT_HOURS', 4),
         'directory' => 'wayfair/exports',
         'browser_script' => env('WAYFAIR_EXPORT_SCRIPT', base_path('scripts/wayfair/export-base-cost.js')),
     ],

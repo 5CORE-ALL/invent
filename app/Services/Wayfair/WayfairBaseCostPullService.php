@@ -118,7 +118,10 @@ class WayfairBaseCostPullService
         // overwrite our fresh S PRC with the old base cost while it is still on its way.
         if (! $force && ! $dryRun && $this->uploadInFlight()) {
             $stats['skipped_upload_in_flight'] = true;
-            $stats['message'] = 'A Wayfair price upload is still queued or processing. Skipped so the old base cost does not overwrite the new price. Use --force to override.';
+            $stats['message'] = 'A Wayfair price upload started in the last '
+                .(float) config('wayfair_upload.base_cost_pull.upload_wait_hours', 4)
+                .'h is still queued or processing. Skipped so the old base cost does not overwrite the new price. Use --force to override.';
+            Log::warning('Wayfair base cost pull skipped: '.$stats['message']);
 
             return $stats;
         }
@@ -295,7 +298,9 @@ class WayfairBaseCostPullService
                 WayfairPriceUpload::UPLOADED,
                 WayfairPriceUpload::PROCESSING,
             ])
-            ->where('created_at', '>=', now()->subDay())
+            ->where('created_at', '>=', now()->subMinutes((int) round(
+                max(0.0, (float) config('wayfair_upload.base_cost_pull.upload_wait_hours', 4)) * 60
+            )))
             ->exists();
     }
 
