@@ -355,7 +355,21 @@ class AmazonSprcDilAutoPushService
                 AmazonDilGroiRule::TAKE_HOME,
                 $std,
                 // x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as the page.
-                AmazonDilGroiRule::lmpCapReducePct($dil, $this->lmpCapCfg),
+                // LMP CVR Rule: an Up / Down CVR arrow with a % for its Dil band replaces it (same as the page).
+                AmazonDilGroiRule::lmpCvrReducePct(
+                    $dil,
+                    AmazonDilGroiRule::cvrTrend(
+                        AmazonDilGroiRule::cvrL30((float) ($row['a_l30'] ?? 0), (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0)),
+                        AmazonDilGroiRule::cvrL45(
+                            (float) ($row['a_l30'] ?? 0),
+                            (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0),
+                            (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0),
+                            (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0)
+                        )
+                    ),
+                    $this->lmpCvrCfg,
+                    $this->lmpCapCfg
+                ),
                 // LMP rule: LMP available and the calculated S PRC ≥ LMP → LMP − x%. No "SNROI at LMP ≥ 20%" condition.
                 false
             );
@@ -1259,6 +1273,9 @@ class AmazonSprcDilAutoPushService
     /** LMP cap (reduce % by Dil band) saved in the Sprc Dil modal; null = default 2%. */
     private ?array $lmpCapCfg = null;
 
+    /** LMP CVR Rule (LMP reduce % by Dil band and CVR Up / Down arrow) saved in the Sprc Dil modal; null / blank % = the LMP Rule %. */
+    private ?array $lmpCvrCfg = null;
+
     /** Diff rule (gt_pct / points) saved in the Sprc Dil modal; null = default 20% / +10. */
     private ?array $diffAdjCfg = null;
 
@@ -1295,6 +1312,7 @@ class AmazonSprcDilAutoPushService
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
         $this->lmpCapCfg = $unpacked['lmp_cap'] ?? null;
+        $this->lmpCvrCfg = $unpacked['lmp_cvr'] ?? null;
         $this->diffAdjCfg = $unpacked['diff_adj'] ?? null;
         $this->ageAdjCfg = $unpacked['age_adj'] ?? null;
         $cn = $unpacked['clearance_nroi'] ?? null;

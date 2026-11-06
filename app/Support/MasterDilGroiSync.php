@@ -286,6 +286,7 @@ class MasterDilGroiSync
                 'cvr_adj' => $unpacked['cvr_adj'],
                 'clearance_nroi' => $unpacked['clearance_nroi'],
                 'lmp_cap' => $unpacked['lmp_cap'],
+                'lmp_cvr' => $unpacked['lmp_cvr'],
                 'diff_adj' => $unpacked['diff_adj'],
                 'age_adj' => $unpacked['age_adj'],
                 'is_default' => true,
@@ -300,6 +301,7 @@ class MasterDilGroiSync
             'cvr_adj' => $unpacked['cvr_adj'],
             'clearance_nroi' => $unpacked['clearance_nroi'],
             'lmp_cap' => $unpacked['lmp_cap'],
+            'lmp_cvr' => $unpacked['lmp_cvr'],
             'diff_adj' => $unpacked['diff_adj'],
             'age_adj' => $unpacked['age_adj'],
             'is_default' => false,
@@ -322,6 +324,9 @@ class MasterDilGroiSync
         $visibility = ['rules' => $rules, 'cvr_adj' => $existing['cvr_adj']];
         if (is_array($existing['lmp_cap'] ?? null)) {
             $visibility['lmp_cap'] = $existing['lmp_cap'];
+        }
+        if (is_array($existing['lmp_cvr'] ?? null)) {
+            $visibility['lmp_cvr'] = $existing['lmp_cvr'];
         }
         if (is_array($existing['diff_adj'] ?? null)) {
             $visibility['diff_adj'] = $existing['diff_adj'];
