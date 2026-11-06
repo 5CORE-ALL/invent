@@ -747,6 +747,60 @@
             line-height: 1;
             cursor: help;
         }
+        /* Ads Rule PMT modal (next-gen look) */
+        #adsRulePmtModal .modal-dialog { max-width: min(1200px, 96vw); }
+        .arp-modal { height: 94vh; border: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(15, 23, 42, .28); }
+        .arp-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; color: #fff;
+            background: linear-gradient(120deg, #1e3a8a 0%, #4f46e5 55%, #7c3aed 100%); }
+        .arp-header .btn-close { filter: invert(1) grayscale(1) brightness(2); opacity: .85; }
+        .arp-title { display: flex; align-items: center; gap: 12px; }
+        .arp-title h5 { font-weight: 700; letter-spacing: .2px; }
+        .arp-title-icon { width: 38px; height: 38px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
+            background: rgba(255, 255, 255, .18); font-size: 16px; }
+        .arp-subtitle { font-size: 12px; opacity: .85; }
+        .arp-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 18px; padding: 18px 22px; background: #f6f7fb; }
+        .arp-rules, .arp-cats { min-height: 0; display: flex; flex-direction: column; background: #fff; border-radius: 12px;
+            border: 1px solid #e6e8f0; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); padding: 14px; }
+        .arp-section-title { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: #334155; margin-bottom: 10px; }
+        .arp-muted { text-transform: none; letter-spacing: 0; font-weight: 500; color: #94a3b8; }
+        .arp-rule-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; }
+        .arp-rule { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px;
+            border: 1px solid #eceef5; background: #fafbff; }
+        .arp-rule-num { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 12px; color: #fff; background: #4f46e5; }
+        .arp-rule.is-1 .arp-rule-num { background: #dc2626; }
+        .arp-rule.is-2 .arp-rule-num { background: #0891b2; }
+        .arp-rule.is-3 .arp-rule-num { background: #16a34a; }
+        .arp-rule.is-4 .arp-rule-num { background: #d97706; }
+        .arp-rule.is-5 .arp-rule-num { background: #db2777; }
+        .arp-rule.is-base .arp-rule-num { background: #94a3b8; }
+        .arp-rule-cond { font-size: 12.5px; font-weight: 600; color: #1e293b; line-height: 1.25; }
+        .arp-rule-bid { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 600; color: #4338ca; background: #eef0ff;
+            border-radius: 999px; padding: 1px 8px; }
+        .arp-rule-count { min-width: 44px; text-align: center; font-weight: 700; font-size: 14px; color: #0f172a; background: #fff;
+            border: 1px solid #e2e5ef; border-radius: 8px; padding: 3px 6px; }
+        .arp-rule-count small { display: block; font-size: 9px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+        .arp-rule-total { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding: 10px 12px; border-radius: 10px;
+            background: #1e293b; color: #fff; font-weight: 600; font-size: 13px; }
+        .arp-rule-total b { font-size: 16px; }
+        .arp-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+        .arp-search { position: relative; flex: 1 1 200px; max-width: 260px; }
+        .arp-search i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 12px; }
+        .arp-search input { padding-left: 30px; border-radius: 8px; }
+        .arp-bulk { max-width: 380px; }
+        .arp-summary { margin-left: auto; font-size: 12px; font-weight: 600; color: #4338ca; background: #eef0ff; border-radius: 999px; padding: 4px 12px; }
+        .arp-table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid #e6e8f0; border-radius: 10px; }
+        .arp-table thead th { position: sticky; top: 0; z-index: 2; background: #eef0fb; color: #1e293b; font-size: 12px; text-transform: uppercase;
+            letter-spacing: .4px; border-bottom: 1px solid #dfe3f1; }
+        .arp-table tbody tr:hover { background: #f8f9ff; }
+        .arp-table td { font-size: 13px; padding-top: 3px; padding-bottom: 3px; }
+        .arp-table .form-control { border-radius: 8px; height: 28px; }
+        .arp-table input.arp-bench { background: #ecfdf5; border-color: #86efac; }
+        .arp-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 22px; background: #fff; border-top: 1px solid #e6e8f0; }
+        @media (max-width: 900px) {
+            .arp-body { grid-template-columns: 1fr; overflow-y: auto; }
+            .arp-table-wrap { max-height: 50vh; }
+        }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay1'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay1'])
     </style>
@@ -1394,48 +1448,61 @@
 
     <!-- Ads Rule PMT Modal: suggested bid % per category -->
     <div class="modal fade" id="adsRulePmtModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-bullhorn"></i> Ads Rule PMT &mdash; Bid Range by Category</h5>
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content arp-modal">
+                <div class="arp-header">
+                    <div class="arp-title">
+                        <span class="arp-title-icon"><i class="fas fa-bullhorn"></i></span>
+                        <div>
+                            <h5 class="mb-0">Ads Rule PMT</h5>
+                            <div class="arp-subtitle">Bid range by category &middot; rules decide which bid each SKU gets</div>
+                        </div>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <input type="text" class="form-control form-control-sm" id="ads-rule-pmt-search" placeholder="Search category..." style="max-width: 220px;">
-                        <div class="input-group input-group-sm" style="max-width: 360px;">
-                            <input type="number" class="form-control" id="ads-rule-pmt-all-high" min="0" max="100" step="0.01" placeholder="All Highest">
-                            <input type="number" class="form-control" id="ads-rule-pmt-all-low" min="0" max="100" step="0.01" placeholder="All Lowest">
-                            <button type="button" class="btn btn-outline-secondary" id="ads-rule-pmt-apply-all" title="Fill the visible categories (blank fields are left unchanged)">Apply</button>
+                <div class="arp-body">
+                    <!-- Rules -->
+                    <aside class="arp-rules">
+                        <div class="arp-section-title">Rules <span class="arp-muted">&middot; first match wins</span></div>
+                        <div id="ads-rule-pmt-rules-body" class="arp-rule-list"></div>
+                    </aside>
+                    <!-- Categories -->
+                    <section class="arp-cats">
+                        <div class="arp-toolbar">
+                            <div class="arp-search">
+                                <i class="fas fa-search"></i>
+                                <input type="text" class="form-control form-control-sm" id="ads-rule-pmt-search" placeholder="Search category...">
+                            </div>
+                            <div class="input-group input-group-sm arp-bulk">
+                                <input type="number" class="form-control" id="ads-rule-pmt-all-high" min="0" max="100" step="0.01" placeholder="All Highest">
+                                <input type="number" class="form-control" id="ads-rule-pmt-all-low" min="0" max="100" step="0.01" placeholder="All Lowest">
+                                <button type="button" class="btn btn-outline-primary" id="ads-rule-pmt-apply-all" title="Fill the visible categories (blank fields are left unchanged)">Apply</button>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-success" id="ads-rule-pmt-bench-fill"
+                                title="Highest = Top 10%, Lowest = Bottom 10% of the Promoted Listings ads rate (Impressions in eBay search) from /benchmarks. Overwrites the visible categories.">
+                                <i class="fas fa-magic"></i> Fill from Benchmarks
+                            </button>
+                            <span class="arp-summary" id="ads-rule-pmt-summary"></span>
                         </div>
-                        <span class="ms-auto small text-muted" id="ads-rule-pmt-summary"></span>
-                    </div>
-                    <table class="table table-sm table-bordered align-middle mb-3">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width: 40px;" class="text-center">#</th>
-                                <th>Rule</th>
-                                <th>Bid</th>
-                                <th class="text-center" style="width: 80px;">Count</th>
-                            </tr>
-                        </thead>
-                        <tbody id="ads-rule-pmt-rules-body"></tbody>
-                    </table>
-                    <table class="table table-sm table-bordered align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Category</th>
-                                <th class="text-center" style="width: 80px;">SKUs</th>
-                                <th style="width: 130px;">Highest (%)</th>
-                                <th style="width: 130px;">Lowest (%)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="ads-rule-pmt-body"></tbody>
-                    </table>
-                    <div class="small text-danger mt-2 d-none" id="ads-rule-pmt-error"></div>
+                        <div class="arp-table-wrap">
+                            <table class="table table-sm align-middle mb-0 arp-table">
+                                <thead>
+                                    <tr>
+                                        <th>Category</th>
+                                        <th class="text-center" style="width: 80px;">SKUs</th>
+                                        <th style="width: 140px;">Highest (%)</th>
+                                        <th style="width: 140px;">Lowest (%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ads-rule-pmt-body"></tbody>
+                            </table>
+                        </div>
+                        <div class="small mt-2 text-muted" id="ads-rule-pmt-bench-status"></div>
+                        <div class="small text-danger mt-2 d-none" id="ads-rule-pmt-error"></div>
+                    </section>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <div class="arp-footer">
+                    <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="ads-rule-pmt-save">
                         <i class="fa fa-save"></i> Save
                     </button>
@@ -4153,23 +4220,112 @@
                     });
                     const $b = $('#ads-rule-pmt-rules-body').empty();
                     RULE_DEFS.forEach(function(r) {
-                        const $tr = $('<tr>');
-                        $tr.append($('<td class="text-center">').text(r.key === 'base' ? '–' : r.key));
-                        $tr.append($('<td>').html(r.label));
-                        $tr.append($('<td>').html(r.bid));
-                        $tr.append($('<td class="text-center fw-semibold">').text(counts[r.key].toLocaleString()));
-                        $b.append($tr);
+                        $b.append(
+                            $('<div class="arp-rule">').addClass('is-' + r.key)
+                                .append($('<span class="arp-rule-num">').text(r.key === 'base' ? '–' : r.key))
+                                .append($('<div>')
+                                    .append($('<div class="arp-rule-cond">').html(r.label))
+                                    .append($('<span class="arp-rule-bid">').html(r.bid)))
+                                .append($('<div class="arp-rule-count">').text(counts[r.key].toLocaleString()).append('<small>SKUs</small>'))
+                        );
                     });
                     $b.append(
-                        $('<tr class="table-light">')
-                            .append('<td></td>')
-                            .append('<td class="fw-semibold">Total SKUs</td>')
-                            .append('<td></td>')
-                            .append($('<td class="text-center fw-bold">').text(total.toLocaleString()))
+                        $('<div class="arp-rule-total">')
+                            .append('<span>Total SKUs</span>')
+                            .append($('<b>').text(total.toLocaleString()))
                     );
                 }
 
                 loadSavedBids().then(refreshPmtColumn);
+
+                // ---- Benchmarks (/benchmarks): "Impressions in eBay search" -> Promoted Listings ads rate ----
+                // Highest = Top 10%, Lowest = Bottom 10%, matched to the modal category (= Excel sheet name).
+                const BENCH_URL = '/benchmarks/data';
+                let benchPromise = null;
+
+                function normCat(v) { return String(v || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+                function benchPct(v) {
+                    const n = parseFloat(String(v == null ? '' : v).replace(/[%,$\s]/g, ''));
+                    return isFinite(n) ? n : null;
+                }
+                /** Promoted Listings ads rate column: prefers a title with promoted + ad(s) + rate. */
+                function findRateField(columns) {
+                    let best = null;
+                    let bestScore = 0;
+                    (columns || []).forEach(function(c) {
+                        const t = String(c.title || '').toLowerCase();
+                        let score = 0;
+                        if (t.indexOf('promoted') !== -1) score += 2;
+                        if (/\bads?\b/.test(t)) score += 1;
+                        if (t.indexOf('rate') !== -1) score += 2;
+                        if (score >= 4 && score > bestScore) { best = c; bestScore = score; }
+                    });
+                    return best;
+                }
+                function loadBenchmarks() {
+                    if (benchPromise) return benchPromise;
+                    benchPromise = fetch(BENCH_URL, { headers: { 'Accept': 'application/json' } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            const col = findRateField(d && d.columns);
+                            const map = {};
+                            if (col) {
+                                ((d && d.rows) || []).forEach(function(row) {
+                                    if (normCat(row.section).indexOf('impressions in ebay search') === -1) return;
+                                    const key = normCat(row.category);
+                                    const val = benchPct(row[col.field]);
+                                    if (!key || val === null) return;
+                                    map[key] = map[key] || {};
+                                    if (row.benchmark === 'Top 10%') map[key].highest = val;
+                                    else if (row.benchmark === 'Bottom 10%') map[key].lowest = val;
+                                });
+                            }
+                            return { map: map, column: col ? col.title : '' };
+                        })
+                        .catch(function() {
+                            benchPromise = null; // allow a retry next time
+                            return { map: {}, column: '', failed: true };
+                        });
+                    return benchPromise;
+                }
+                function benchFor(map, category) {
+                    const c = normCat(category);
+                    if (map[c]) return map[c];
+                    // Sheet names are cut at 31 chars, so also accept a prefix match.
+                    const keys = Object.keys(map);
+                    for (let i = 0; i < keys.length; i++) {
+                        const k = keys[i];
+                        if (Math.min(k.length, c.length) >= 10 && (c.indexOf(k) === 0 || k.indexOf(c) === 0)) return map[k];
+                    }
+                    return null;
+                }
+                /** Fill Highest / Lowest inputs from the benchmarks. overwrite=false only fills blank inputs. */
+                function fillFromBenchmarks(overwrite) {
+                    const $status = $('#ads-rule-pmt-bench-status').text('Loading benchmarks...');
+                    return loadBenchmarks().then(function(b) {
+                        let cats = 0;
+                        let missing = 0;
+                        $('#ads-rule-pmt-body tr[data-category]' + (overwrite ? ':visible' : '')).each(function() {
+                            const hit = benchFor(b.map, $(this).attr('data-category'));
+                            if (!hit || (hit.highest == null && hit.lowest == null)) { missing++; return; }
+                            let touched = false;
+                            [['.ads-rule-pmt-high', hit.highest], ['.ads-rule-pmt-low', hit.lowest]].forEach(function(p) {
+                                const $in = $(this).find(p[0]);
+                                if (p[1] == null) return;
+                                if (overwrite || $in.val() === '') {
+                                    $in.val(p[1]).addClass('arp-bench');
+                                    touched = true;
+                                }
+                            }.bind(this));
+                            if (touched) cats++;
+                        });
+                        updateSummary();
+                        if (b.failed) $status.text('Could not load /benchmarks data.');
+                        else if (!b.column) $status.text('No "Promoted Listings ads rate" column found in /benchmarks (upload the eBay LQS report in /excel).');
+                        else $status.text('Benchmarks (' + b.column + ', Impressions in eBay search): filled ' + cats + ' categor' + (cats === 1 ? 'y' : 'ies')
+                            + (missing ? ', ' + missing + ' without a benchmark' : '') + '. Green = from benchmarks, not saved until you press Save.');
+                    });
+                }
 
                 /** Distinct categories (+ SKU counts) from the live table data, merged with saved ones. */
                 function collectCategories() {
@@ -4233,7 +4389,11 @@
                 $('#ads-rule-pmt-btn').on('click', function() {
                     $('#ads-rule-pmt-error').addClass('d-none').text('');
                     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-                    loadSavedBids().finally(renderRows);
+                    $('#ads-rule-pmt-bench-status').text('');
+                    loadSavedBids().finally(function() {
+                        renderRows();
+                        fillFromBenchmarks(false); // blank inputs only; saved values are kept
+                    });
                 });
 
                 $('#ads-rule-pmt-search').on('input', function() {
@@ -4243,7 +4403,11 @@
                     });
                 });
 
-                $('#ads-rule-pmt-body').on('input', '.ads-rule-pmt-input', updateSummary);
+                $('#ads-rule-pmt-body').on('input', '.ads-rule-pmt-input', function() {
+                    $(this).removeClass('arp-bench');
+                    updateSummary();
+                });
+                $('#ads-rule-pmt-bench-fill').on('click', function() { fillFromBenchmarks(true); });
 
                 $('#ads-rule-pmt-apply-all').on('click', function() {
                     const hi = $('#ads-rule-pmt-all-high').val();
