@@ -393,11 +393,15 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const sourceUrl = (row.source_url || '').trim();
-                            // Only when there is no LQS score yet: link to the page that produces it
-                            if (!sourceUrl || lqsMasterFormatScore(row.lqs)) {
+                            // Every channel that has an LQS page gets the icon
+                            if (!sourceUrl) {
                                 return '';
                             }
-                            return `<a href="${lqsMasterEscape(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="lqs-master-source-link" title="No LQS data yet. Open the ${lqsMasterEscape(row.channel || '')} LQS page"><i class="fas fa-external-link-alt"></i></a>`;
+                            const hasScore = !!lqsMasterFormatScore(row.lqs);
+                            const tip = hasScore
+                                ? `Open the ${row.channel || ''} LQS page`
+                                : `No LQS data yet. Open the ${row.channel || ''} LQS page`;
+                            return `<a href="${lqsMasterEscape(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="lqs-master-source-link" title="${lqsMasterEscape(tip)}"><i class="fas fa-external-link-alt"></i></a>`;
                         }
                     },
                     {
