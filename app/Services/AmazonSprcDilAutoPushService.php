@@ -355,23 +355,11 @@ class AmazonSprcDilAutoPushService
                 AmazonDilGroiRule::TAKE_HOME,
                 $std,
                 // x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as the page.
-                // LMP CVR Rule: an Up / Down CVR arrow with a % for its Dil band replaces it (same as the page).
-                AmazonDilGroiRule::lmpCvrReducePct(
-                    $dil,
-                    AmazonDilGroiRule::cvrTrend(
-                        AmazonDilGroiRule::cvrL30((float) ($row['a_l30'] ?? 0), (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0)),
-                        AmazonDilGroiRule::cvrL45(
-                            (float) ($row['a_l30'] ?? 0),
-                            (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0),
-                            (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0),
-                            (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0)
-                        )
-                    ),
-                    $this->lmpCvrCfg,
-                    $this->lmpCapCfg
-                ),
+                AmazonDilGroiRule::lmpCapReducePct($dil, $this->lmpCapCfg),
                 // LMP rule: LMP available and the calculated S PRC ≥ LMP → LMP − x%. No "SNROI at LMP ≥ 20%" condition.
-                false
+                false,
+                // LMP CVR Rule: a $ amount for the SKU's Dil band and Up / Down CVR arrow replaces the % (same as the page).
+                $this->lmpCvrAmount($row, $dil)
             );
             if (! is_finite($capped) || $capped < 0.01) {
                 return null;
@@ -1273,7 +1261,7 @@ class AmazonSprcDilAutoPushService
     /** LMP cap (reduce % by Dil band) saved in the Sprc Dil modal; null = default 2%. */
     private ?array $lmpCapCfg = null;
 
-    /** LMP CVR Rule (LMP reduce % by Dil band and CVR Up / Down arrow) saved in the Sprc Dil modal; null / blank % = the LMP Rule %. */
+    /** LMP CVR Rule (LMP reduce $ by Dil band and CVR Up / Down arrow) saved in the Sprc Dil modal; blank $ = the LMP Rule %. */
     private ?array $lmpCvrCfg = null;
 
     /** Diff rule (gt_pct / points) saved in the Sprc Dil modal; null = default 20% / +10. */
@@ -1284,6 +1272,26 @@ class AmazonSprcDilAutoPushService
 
     /** Clearance Target NROI% (last "clearance" row of the Sprc Dil modal); null = not saved (treated as 0). */
     private ?float $clearanceNroiCfg = null;
+
+    /**
+     * LMP CVR Rule: dollars to take off LMP for this row's Dil band and CVR arrow (same arrow as the CVR column), or null
+     * when there is none (blank box, flat arrow) so the LMP Rule % applies.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function lmpCvrAmount(array $row, float $dil): ?float
+    {
+        $aL30 = (float) ($row['a_l30'] ?? 0);
+        $sess30 = (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0);
+        $aL60 = (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0);
+        $sess60 = (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0);
+        $trend = AmazonDilGroiRule::cvrTrend(
+            AmazonDilGroiRule::cvrL30($aL30, $sess30),
+            AmazonDilGroiRule::cvrL45($aL30, $sess30, $aL60, $sess60)
+        );
+
+        return AmazonDilGroiRule::lmpCvrReduceAmount($dil, $trend, $this->lmpCvrCfg, $this->lmpCapCfg);
+    }
 
     /** Dynamic Rule (Ads % by price slab) saved on /amazon-tabulator-view. Loaded once per service instance. */
     protected function dynamicAdsRule(): array

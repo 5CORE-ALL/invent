@@ -428,7 +428,7 @@
             font-weight: 600;
         }
         #amz-lmp-cvr-table .amz-lmp-cvr-input {
-            max-width: 92px;
+            max-width: 104px;
             display: inline-block;
             text-align: right;
             font-weight: 600;
@@ -1080,14 +1080,14 @@
                         </table>
                     </div>
                     <div class="amz-dg-rules-title mt-3"
-                        title="Same as the LMP Rule, split by the CVR arrow. If LMP is available and the calculated S PRC is at or above LMP: S PRC = LMP × (1 − x/100). x is the CVR Up % when the SKU's CVR arrow is Up, the CVR Down % when it is Down. Blank % or a flat arrow uses the LMP Rule %.">
+                        title="Same as the LMP Rule, but in dollars and split by the CVR arrow. If LMP is available and the calculated S PRC is at or above LMP: S PRC = LMP − $x. x is the CVR Up $ when the SKU's CVR arrow is Up, the CVR Down $ when it is Down. A blank $ or a flat arrow uses the LMP Rule %.">
                         LMP CVR Rule
                     </div>
                     <div class="small text-muted mb-1">
                         <strong>If</strong> LMP is available and the calculated S PRC is at or above LMP,
-                        <strong>S PRC = LMP − x%</strong>, where x follows the SKU's Dil band and its CVR arrow
+                        <strong>S PRC = LMP − $x</strong>, where x is the dollar amount for the SKU's Dil band and its CVR arrow
                         (<span class="text-success fw-semibold">▲ Up</span> / <span class="text-danger fw-semibold">▼ Down</span>).
-                        A blank % or a flat CVR arrow keeps the LMP Rule % above. Std Prc is still the maximum.
+                        A blank $ or a flat CVR arrow keeps the LMP Rule % above. Std Prc is still the maximum.
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-lmp-cvr-table">
@@ -1095,13 +1095,13 @@
                                 <tr>
                                     <th>Dil band</th>
                                     <th class="text-center" title="Dil limits come from the LMP Rule table above">Dil %</th>
-                                    <th class="text-end" title="LMP reduce % when the CVR arrow is Up. Blank = LMP Rule %.">
-                                        <span class="text-success">▲</span> CVR Up %
+                                    <th class="text-end" title="Dollars off LMP when the CVR arrow is Up. Blank = LMP Rule %.">
+                                        <span class="text-success">▲</span> CVR Up $
                                     </th>
-                                    <th class="text-end" title="LMP reduce % when the CVR arrow is Down. Blank = LMP Rule %.">
-                                        <span class="text-danger">▼</span> CVR Down %
+                                    <th class="text-end" title="Dollars off LMP when the CVR arrow is Down. Blank = LMP Rule %.">
+                                        <span class="text-danger">▼</span> CVR Down $
                                     </th>
-                                    <th class="text-center" style="width:120px;" title="S PRC at the LMP cap for an Up / Down CVR SKU, e.g. LMP $100 with 6% → $94.00">S PRC</th>
+                                    <th class="text-center" style="width:120px;" title="S PRC at the LMP cap for an Up / Down CVR SKU, e.g. LMP $100 with $6 → $94.00. A blank box shows the LMP Rule % price.">S PRC</th>
                                     <th class="text-center" style="width:110px;" title="SKUs (INV &gt; 0) in this Dil band, with an Up / Down CVR arrow, whose calculated S PRC is at or above LMP">Count</th>
                                 </tr>
                             </thead>
@@ -1110,10 +1110,10 @@
                                     <td>Below</td>
                                     <td class="text-center">&lt; <span class="amz-lmp-cvr-low-range">25</span></td>
                                     <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" placeholder="LMP Rule" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-low-up" value="">
+                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-low-up" value="">
                                     </td>
                                     <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" placeholder="LMP Rule" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-low-down" value="">
+                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-low-down" value="">
                                     </td>
                                     <td class="text-center text-muted small">
                                         <div><span class="text-success">▲</span> <span class="amz-lmp-cvr-eg-low-up">LMP × 0.98</span></div>
@@ -1129,10 +1129,10 @@
                                     <td>Between</td>
                                     <td class="text-center"><span class="amz-lmp-cvr-mid-range">25 – 50</span></td>
                                     <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" placeholder="LMP Rule" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-mid-up" value="">
+                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-mid-up" value="">
                                     </td>
                                     <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" placeholder="LMP Rule" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-mid-down" value="">
+                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-mid-down" value="">
                                     </td>
                                     <td class="text-center text-muted small">
                                         <div><span class="text-success">▲</span> <span class="amz-lmp-cvr-eg-mid-up">LMP × 0.98</span></div>
@@ -1148,10 +1148,10 @@
                                     <td>Above</td>
                                     <td class="text-center">&gt; <span class="amz-lmp-cvr-high-range">50</span></td>
                                     <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" placeholder="LMP Rule" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-high-up" value="">
+                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-high-up" value="">
                                     </td>
                                     <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" placeholder="LMP Rule" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-high-down" value="">
+                                        <input type="number" min="0" step="0.01" placeholder="LMP Rule %" class="form-control form-control-sm amz-lmp-cvr-input amz-lmp-cvr-high-down" value="">
                                     </td>
                                     <td class="text-center text-muted small">
                                         <div><span class="text-success">▲</span> <span class="amz-lmp-cvr-eg-high-up">LMP × 0.98</span></div>
@@ -1348,9 +1348,9 @@
             amzPaintLmpCapExamples(cfg);
         }
         /**
-         * LMP CVR Rule (Sprc Dil, Amazon): the LMP Rule's reduce % split by the CVR arrow. Same Dil bands as the LMP Rule.
-         * For a SKU whose CVR arrow is Up (or Down), S PRC at LMP = LMP − that band's Up (or Down) %.
-         * A blank % (null) or a flat arrow keeps the LMP Rule %. Same as the server (AmazonDilGroiRule::lmpCvrReducePct).
+         * LMP CVR Rule (Sprc Dil, Amazon): dollars off LMP, split by the CVR arrow. Same Dil bands as the LMP Rule.
+         * For a SKU whose CVR arrow is Up (or Down), S PRC at LMP = LMP − that band's Up (or Down) $.
+         * A blank $ (null) or a flat arrow keeps the LMP Rule %. Same as the server (AmazonDilGroiRule::lmpCvrReduceAmount).
          */
         const AMZ_LMP_CVR_KEYS = ['low_up', 'low_down', 'mid_up', 'mid_down', 'high_up', 'high_down'];
         function amzLmpCvrBlank() {
@@ -1366,7 +1366,7 @@
                 if (raw[k] === '' || raw[k] === null || raw[k] === undefined) return;
                 const n = Number(raw[k]);
                 if (!isFinite(n) || n < 0) return;
-                out[k] = Math.round(Math.min(99, n) * 100) / 100;
+                out[k] = Math.round(n * 100) / 100;
             });
             return out;
         }
@@ -1382,20 +1382,21 @@
             }
             return amzNormalizeLmpCvr(amzLmpCvr);
         }
-        /** Mirror the LMP Rule's Dil limits and show the S PRC each Up / Down % lands on (blank % shows the LMP Rule %). */
+        /** Mirror the LMP Rule's Dil limits and show what each Up / Down $ lands on (blank box shows the LMP Rule % price). */
         function amzPaintLmpCvrExamples(capCfg) {
             const $tbl = $('#amz-lmp-cvr-table');
             if (!$tbl.length) return;
             const cap = amzNormalizeLmpCap(capCfg || amzLmpCap);
             const cvr = amzLmpCvrNow();
             const f = function(p) { return 'LMP × ' + (1 - p / 100).toFixed(3).replace(/0+$/, '').replace(/\.$/, ''); };
+            const money = function(v) { return 'LMP − $' + Number(v).toFixed(2); };
             $tbl.find('.amz-lmp-cvr-low-range').text(cap.low_lt);
             $tbl.find('.amz-lmp-cvr-mid-range').text(cap.low_lt + ' – ' + cap.high_gt);
             $tbl.find('.amz-lmp-cvr-high-range').text(cap.high_gt);
             ['low', 'mid', 'high'].forEach(function(band) {
                 ['up', 'down'].forEach(function(arrow) {
                     const v = cvr[band + '_' + arrow];
-                    $tbl.find('.amz-lmp-cvr-eg-' + band + '-' + arrow).text(f(v != null ? v : cap[band + '_pct']));
+                    $tbl.find('.amz-lmp-cvr-eg-' + band + '-' + arrow).text(v != null ? money(v) : f(cap[band + '_pct']));
                 });
             });
         }
@@ -1409,18 +1410,28 @@
             });
             amzPaintLmpCvrExamples();
         }
-        /** LMP reduce % for one grid row: its Dil band and CVR arrow pick the LMP CVR Rule %; none there = the LMP Rule %. */
+        /** LMP reduce % for one grid row, from its Dil (OV L30 ÷ INV): the LMP Rule %. */
         function amzLmpReducePctForRow(d) {
             const cfg = amzNormalizeLmpCap(amzLmpCap);
             const dil = Number(amzPefDil(d)) || 0;
-            const band = dil < cfg.low_lt ? 'low' : (dil > cfg.high_gt ? 'high' : 'mid');
-            const trend = amzPefCvrTrend(d);
-            if (trend === 'up' || trend === 'down') {
-                const v = amzNormalizeLmpCvr(amzLmpCvr)[band + '_' + trend];
-                if (v != null) return v;
-            }
-            return cfg[band + '_pct'];
+            if (dil < cfg.low_lt) return cfg.low_pct;
+            if (dil > cfg.high_gt) return cfg.high_pct;
+            return cfg.mid_pct;
         }
+        /**
+         * LMP CVR Rule: dollars off LMP for one grid row (its Dil band and CVR arrow), or null when there is none
+         * (blank box, flat arrow) so the LMP Rule % applies.
+         */
+        function amzLmpReduceAmountForRow(d) {
+            const trend = amzPefCvrTrend(d);
+            if (trend !== 'up' && trend !== 'down') return null;
+            const cfg = amzNormalizeLmpCap(amzLmpCap);
+            const dil = Number(amzPefDil(d)) || 0;
+            const band = dil < cfg.low_lt ? 'low' : (dil > cfg.high_gt ? 'high' : 'mid');
+            const v = amzNormalizeLmpCvr(amzLmpCvr)[band + '_' + trend];
+            return v != null ? v : null;
+        }
+        window.amzLmpReduceAmountForRow = amzLmpReduceAmountForRow;
         window.amzLmpReducePctForRow = amzLmpReducePctForRow;
         /**
          * LMP Rule counts per Dil band: SKUs (INV > 0, not clearance-priced) with an LMP whose calculated Sprc Dil price

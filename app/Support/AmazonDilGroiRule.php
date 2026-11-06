@@ -370,6 +370,7 @@ class AmazonDilGroiRule
      *
      * $requireSnroiAtLmp = false (Amazon Sprc Dil): the 20% condition is dropped. When LMP is available and the
      * calculated price is at or above LMP, the LMP rule always applies (S PRC = LMP − x% by Dil band).
+     * $lmpReduceAmount (Amazon LMP CVR Rule, dollars) replaces the % when it is not null: S PRC = LMP − $amount.
      */
     public static function capSpriceToLmp(
         float $sprice,
@@ -379,7 +380,8 @@ class AmazonDilGroiRule
         float $margin = self::TAKE_HOME,
         float $std = 0.0,
         float $lmpReducePct = 0.0,
-        bool $requireSnroiAtLmp = true
+        bool $requireSnroiAtLmp = true,
+        ?float $lmpReduceAmount = null
     ): float {
         $s = round($sprice, 2);
         if (! ($s > 0)) {
@@ -388,7 +390,10 @@ class AmazonDilGroiRule
         if ($lmp > 0 && ($s + 0.0001) >= $lmp) {
             $sgroiAtLmp = $requireSnroiAtLmp ? self::sgroiAtPrice($lmp, $lp, $ship, $margin) : null;
             if ($sgroiAtLmp === null || $sgroiAtLmp >= self::LMP_SGROI_MIN) {
-                $s = self::lmpTargetPrice($lmp, $lmpReducePct);
+                // LMP CVR Rule: a $ amount for the SKU's Dil band and CVR arrow replaces the LMP Rule %.
+                $s = $lmpReduceAmount !== null && is_finite($lmpReduceAmount)
+                    ? round(max(0.01, $lmp - max(0.0, $lmpReduceAmount)), 2)
+                    : self::lmpTargetPrice($lmp, $lmpReducePct);
             }
         }
 
@@ -1007,9 +1012,9 @@ class AmazonDilGroiRule
     }
 
     /**
-     * Sprc Dil "LMP CVR Rule" (Amazon): the LMP Rule's reduce % split by the CVR arrow. Same Dil bands as the LMP Rule
-     * (low_lt / high_gt come from lmp_cap). For a SKU whose CVR arrow is Up (or Down), S PRC at LMP = LMP − that band's Up (or Down) %.
-     * A blank % (null), or a flat CVR arrow, falls back to the LMP Rule % of the Dil band, so nothing changes until a % is entered.
+     * Sprc Dil "LMP CVR Rule" (Amazon): the LMP Rule split by the CVR arrow, in dollars. Same Dil bands as the LMP Rule
+     * (low_lt / high_gt come from lmp_cap). For a SKU whose CVR arrow is Up (or Down), S PRC at LMP = LMP − the band's Up (or Down) $.
+     * A blank amount (null), or a flat CVR arrow, falls back to the LMP Rule % of the Dil band, so nothing changes until a $ is entered.
      *
      * @return array{low_up:?float,low_down:?float,mid_up:?float,mid_down:?float,high_up:?float,high_down:?float}
      */
@@ -1043,30 +1048,29 @@ class AmazonDilGroiRule
             if (! is_finite($n) || $n < 0) {
                 continue;
             }
-            $out[$key] = min(99.0, $n);
+            $out[$key] = $n;
         }
 
         return $out;
     }
 
     /**
-     * LMP reduce % for a SKU: its Dil band and CVR arrow pick the LMP CVR Rule %; no % there (or flat arrow) = the LMP Rule %.
+     * Dollars the LMP CVR Rule takes off LMP for a SKU: its Dil band and CVR arrow pick the amount.
+     * null = no amount for this SKU (blank box or flat arrow), so the LMP Rule % applies.
      *
      * @param  'down'|'up'|'flat'  $trend
      * @param  array<string, mixed>|null  $lmpCvr
      * @param  array<string, mixed>|null  $lmpCap
      */
-    public static function lmpCvrReducePct(float $dil, string $trend, ?array $lmpCvr = null, ?array $lmpCap = null): float
+    public static function lmpCvrReduceAmount(float $dil, string $trend, ?array $lmpCvr = null, ?array $lmpCap = null): ?float
     {
-        $base = self::lmpCapReducePct($dil, $lmpCap);
         if ($trend !== 'up' && $trend !== 'down') {
-            return $base;
+            return null;
         }
         $cap = self::normalizeLmpCap($lmpCap);
         $band = $dil < $cap['low_lt'] ? 'low' : ($dil > $cap['high_gt'] ? 'high' : 'mid');
-        $pct = self::normalizeLmpCvr($lmpCvr)[$band.'_'.$trend];
 
-        return $pct ?? $base;
+        return self::normalizeLmpCvr($lmpCvr)[$band.'_'.$trend];
     }
 
     /**

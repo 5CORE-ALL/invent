@@ -502,40 +502,39 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertEqualsWithDelta(50.0, AmazonDilGroiRule::capSpriceToLmp(50, 12, 10, 0, 0.80, 0, 10.0), 0.001);
     }
 
-    public function test_lmp_cvr_rule_picks_the_pct_by_dil_band_and_cvr_arrow(): void
+    public function test_lmp_cvr_rule_picks_the_dollar_amount_by_dil_band_and_cvr_arrow(): void
     {
         $cap = ['low_lt' => 25, 'high_gt' => 50, 'low_pct' => 12, 'mid_pct' => 6, 'high_pct' => 0];
-        $cvr = ['low_up' => 8, 'low_down' => 14, 'mid_up' => 4, 'mid_down' => 9, 'high_up' => 0, 'high_down' => 3];
+        $cvr = ['low_up' => 8, 'low_down' => 14.5, 'mid_up' => 4, 'mid_down' => 9, 'high_up' => 0, 'high_down' => 3];
 
-        // Up / Down arrow: the band's CVR % wins.
-        $this->assertSame(8.0, AmazonDilGroiRule::lmpCvrReducePct(10, 'up', $cvr, $cap));
-        $this->assertSame(14.0, AmazonDilGroiRule::lmpCvrReducePct(10, 'down', $cvr, $cap));
-        $this->assertSame(4.0, AmazonDilGroiRule::lmpCvrReducePct(25, 'up', $cvr, $cap));
-        $this->assertSame(9.0, AmazonDilGroiRule::lmpCvrReducePct(50, 'down', $cvr, $cap));
-        $this->assertSame(0.0, AmazonDilGroiRule::lmpCvrReducePct(80, 'up', $cvr, $cap));
-        $this->assertSame(3.0, AmazonDilGroiRule::lmpCvrReducePct(80, 'down', $cvr, $cap));
+        // Up / Down arrow: the band's $ amount.
+        $this->assertSame(8.0, AmazonDilGroiRule::lmpCvrReduceAmount(10, 'up', $cvr, $cap));
+        $this->assertSame(14.5, AmazonDilGroiRule::lmpCvrReduceAmount(10, 'down', $cvr, $cap));
+        $this->assertSame(4.0, AmazonDilGroiRule::lmpCvrReduceAmount(25, 'up', $cvr, $cap));
+        $this->assertSame(9.0, AmazonDilGroiRule::lmpCvrReduceAmount(50, 'down', $cvr, $cap));
+        $this->assertSame(0.0, AmazonDilGroiRule::lmpCvrReduceAmount(80, 'up', $cvr, $cap));
+        $this->assertSame(3.0, AmazonDilGroiRule::lmpCvrReduceAmount(80, 'down', $cvr, $cap));
 
-        // Flat arrow keeps the LMP Rule %.
-        $this->assertSame(12.0, AmazonDilGroiRule::lmpCvrReducePct(10, 'flat', $cvr, $cap));
-        $this->assertSame(6.0, AmazonDilGroiRule::lmpCvrReducePct(30, 'flat', $cvr, $cap));
+        // Flat arrow: no amount, so the LMP Rule % applies.
+        $this->assertNull(AmazonDilGroiRule::lmpCvrReduceAmount(10, 'flat', $cvr, $cap));
     }
 
-    public function test_lmp_cvr_rule_blank_pct_falls_back_to_the_lmp_rule(): void
+    public function test_lmp_cvr_rule_blank_amount_falls_back_to_the_lmp_rule(): void
     {
         $cap = ['low_lt' => 25, 'high_gt' => 50, 'low_pct' => 12, 'mid_pct' => 6, 'high_pct' => 0];
 
-        // Nothing saved, or blank / bad values: every SKU keeps the LMP Rule %.
+        // Nothing saved, or blank / bad values: no amount for any SKU.
         $this->assertSame(AmazonDilGroiRule::defaultLmpCvr(), AmazonDilGroiRule::unpackStored(['rules' => []])['lmp_cvr']);
         $blank = ['low_up' => '', 'low_down' => null, 'mid_up' => 'x', 'mid_down' => -3];
         $this->assertSame(AmazonDilGroiRule::defaultLmpCvr(), AmazonDilGroiRule::normalizeLmpCvr($blank));
-        $this->assertSame(12.0, AmazonDilGroiRule::lmpCvrReducePct(10, 'up', $blank, $cap));
-        $this->assertSame(6.0, AmazonDilGroiRule::lmpCvrReducePct(30, 'down', null, $cap));
+        $this->assertNull(AmazonDilGroiRule::lmpCvrReduceAmount(10, 'up', $blank, $cap));
+        $this->assertNull(AmazonDilGroiRule::lmpCvrReduceAmount(30, 'down', null, $cap));
 
-        // One side set: the other side still uses the LMP Rule %. Values are capped at 99.
+        // One side set: the other side still has no amount. Dollars are not capped at 99.
         $half = ['low_up' => 5];
-        $this->assertSame(5.0, AmazonDilGroiRule::lmpCvrReducePct(10, 'up', $half, $cap));
-        $this->assertSame(12.0, AmazonDilGroiRule::lmpCvrReducePct(10, 'down', $half, $cap));
-        $this->assertSame(99.0, AmazonDilGroiRule::normalizeLmpCvr(['mid_up' => 150])['mid_up']);
+        $this->assertSame(5.0, AmazonDilGroiRule::lmpCvrReduceAmount(10, 'up', $half, $cap));
+        $this->assertNull(AmazonDilGroiRule::lmpCvrReduceAmount(10, 'down', $half, $cap));
+        $this->assertSame(150.0, AmazonDilGroiRule::normalizeLmpCvr(['mid_up' => 150])['mid_up']);
 
         // A saved block survives unpackStored.
         $saved = AmazonDilGroiRule::unpackStored(['rules' => [], 'lmp_cvr' => ['high_down' => 7.5]]);
@@ -543,16 +542,21 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertNull($saved['lmp_cvr']['high_up']);
     }
 
-    public function test_lmp_cvr_rule_lands_the_price_on_lmp_less_the_cvr_pct(): void
+    public function test_lmp_cvr_rule_lands_the_price_on_lmp_less_the_dollar_amount(): void
     {
-        $cap = ['low_lt' => 25, 'high_gt' => 50, 'low_pct' => 12, 'mid_pct' => 6, 'high_pct' => 0];
-        $cvr = ['mid_up' => 4, 'mid_down' => 9];
-        $up = AmazonDilGroiRule::lmpCvrReducePct(30, 'up', $cvr, $cap);
-        $down = AmazonDilGroiRule::lmpCvrReducePct(30, 'down', $cvr, $cap);
-
-        // LMP $40, calculated Dil price $50 ≥ LMP → S PRC = LMP − x%.
-        $this->assertEqualsWithDelta(38.4, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, $up, false), 0.001);
-        $this->assertEqualsWithDelta(36.4, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, $down, false), 0.001);
+        // LMP $40, calculated Dil price $50 ≥ LMP → S PRC = LMP − $amount (the LMP Rule % of 6 is ignored).
+        $this->assertEqualsWithDelta(38.0, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, 6.0, false, 2.0), 0.001);
+        $this->assertEqualsWithDelta(35.5, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, 6.0, false, 4.5), 0.001);
+        // $0 is a valid amount: S PRC = LMP.
+        $this->assertEqualsWithDelta(40.0, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, 6.0, false, 0.0), 0.001);
+        // No amount: the LMP Rule % applies.
+        $this->assertEqualsWithDelta(37.6, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, 6.0, false, null), 0.001);
+        // An amount bigger than LMP never goes below 1 cent.
+        $this->assertEqualsWithDelta(0.01, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 0, 6.0, false, 99.0), 0.001);
+        // Below LMP: nothing changes.
+        $this->assertEqualsWithDelta(30.0, AmazonDilGroiRule::capSpriceToLmp(30, 40, 10, 0, 0.80, 0, 6.0, false, 2.0), 0.001);
+        // Std Prc is still the maximum.
+        $this->assertEqualsWithDelta(36.0, AmazonDilGroiRule::capSpriceToLmp(50, 40, 10, 0, 0.80, 36.0, 6.0, false, 2.0), 0.001);
     }
 
     public function test_amazon_sprc_dil_lmp_rule_has_no_snroi_condition(): void

@@ -1634,6 +1634,12 @@
                             ? Number(window.amzLmpReducePctForRow(rowData)) : AMZ_DIL_LMP_REDUCE_PCT)
                         : ((typeof window.amzStdLmpReducePct === 'function') ? Number(window.amzStdLmpReducePct(rowData)) || 0 : 0);
                     out = +Number(lmp * (1 - (Math.min(99, Math.max(0, reducePct)) / 100))).toFixed(2);
+                    // LMP CVR Rule (Sprc Dil modal): a $ amount for the SKU's Dil band and Up / Down CVR arrow replaces the %.
+                    const reduceAmt = (dilRuleOn && typeof window.amzLmpReduceAmountForRow === 'function')
+                        ? window.amzLmpReduceAmountForRow(rowData) : null;
+                    if (reduceAmt != null && isFinite(Number(reduceAmt))) {
+                        out = +Math.max(0.01, lmp - Math.max(0, Number(reduceAmt))).toFixed(2);
+                    }
                 }
             }
             return amazonCapToStdWhenNoLmp(rowData, out);
