@@ -153,15 +153,36 @@ class AmazonPullTodayAdSpend extends Command
 
         // One value per campaign even if Amazon repeats a row.
         $byCampaign = [];
+        $names = [];
         foreach ($rows as $r) {
             $id = (string) ($r['campaignId'] ?? '');
             if ($id === '') {
                 continue;
             }
             $byCampaign[$id] = max($byCampaign[$id] ?? 0.0, (float) ($r['cost'] ?? 0));
+            if (! empty($r['campaignName'])) {
+                $names[$id] = (string) $r['campaignName'];
+            }
         }
 
-        return round(array_sum($byCampaign), 2);
+        if ($adProduct !== 'SPONSORED_PRODUCTS') {
+            return round(array_sum($byCampaign), 2);
+        }
+
+        // Same universe as the L30 Ads% (advertisement-master): SP campaigns whose name contains
+        // KW plus those containing PT (a name with both counts in each), so T Ads% is comparable
+        // to the 12%-style L30 figure instead of including every campaign.
+        $total = 0.0;
+        foreach ($byCampaign as $id => $cost) {
+            $name = $names[$id] ?? '';
+            foreach (['KW', 'PT'] as $needle) {
+                if ($name !== '' && stripos($name, $needle) !== false) {
+                    $total += $cost;
+                }
+            }
+        }
+
+        return round($total, 2);
     }
 
     /**

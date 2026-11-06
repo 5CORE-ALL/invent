@@ -1452,21 +1452,28 @@ class YesterdayMarketplaceMetricsService
             // SP is the bulk of spend, so its dated import decides whether the day is measured.
             if ($this->adReportHasDatedKey('amazon_sp_campaign_reports', 'report_date_range', $date)) {
                 $measured = true;
-                $sp = $this->amazonDistinctCampaignTotals(
-                    'amazon_sp_campaign_reports',
-                    $date,
-                    'COALESCE(cost, spend, 0)',
-                    $this->amazonDailySalesExpr('amazon_sp_campaign_reports')
-                );
-                $spend += $sp['spend'];
-                $sales += $sp['sales'];
+                // Same universe as the L30 Ads% (KW + PT campaigns, archived included).
+                foreach (['KW', 'PT'] as $nameLike) {
+                    $sp = $this->amazonDistinctCampaignTotals(
+                        'amazon_sp_campaign_reports',
+                        $date,
+                        'COALESCE(cost, spend, 0)',
+                        $this->amazonDailySalesExpr('amazon_sp_campaign_reports'),
+                        $nameLike,
+                        true
+                    );
+                    $spend += $sp['spend'];
+                    $sales += $sp['sales'];
+                }
 
                 if ($this->adReportHasDatedKey('amazon_sb_campaign_reports', 'report_date_range', $date)) {
                     $sb = $this->amazonDistinctCampaignTotals(
                         'amazon_sb_campaign_reports',
                         $date,
                         'COALESCE(cost, 0)',
-                        $this->amazonDailySalesExpr('amazon_sb_campaign_reports')
+                        $this->amazonDailySalesExpr('amazon_sb_campaign_reports'),
+                        null,
+                        true
                     );
                     $spend += $sb['spend'];
                     $sales += $sb['sales'];
@@ -1494,15 +1501,24 @@ class YesterdayMarketplaceMetricsService
      * One row per campaign_id (MAX spend/sales) so re-imported L1/daily rows
      * do not inflate totals — same distinct rule as /amazon-ads/all badges.
      *
+     * $nameLike / $includeArchived reproduce the L30 Ads% universe (AmazonAdsController
+     * advertisement-master scopes: campaignName LIKE %KW% / %PT%, archived campaigns included)
+     * so Y / T Ads% are on the same basis as the L30 Ads% they are compared with.
+     *
      * @return array{spend: float, sales: float}
      */
-    private function amazonDistinctCampaignTotals(string $table, string $key, string $spendExpr, string $salesExpr): array
+    private function amazonDistinctCampaignTotals(string $table, string $key, string $spendExpr, string $salesExpr, ?string $nameLike = null, bool $includeArchived = false): array
     {
         $inner = DB::table($table)
             ->where('report_date_range', $key)
-            ->where(function ($q) {
-                $q->whereNull('campaignStatus')
-                    ->orWhereRaw("UPPER(TRIM(campaignStatus)) != 'ARCHIVED'");
+            ->when(! $includeArchived, function ($q) {
+                $q->where(function ($q2) {
+                    $q2->whereNull('campaignStatus')
+                        ->orWhereRaw("UPPER(TRIM(campaignStatus)) != 'ARCHIVED'");
+                });
+            })
+            ->when($nameLike !== null, function ($q) use ($nameLike) {
+                $q->where('campaignName', 'LIKE', '%'.addcslashes($nameLike, '%_\\').'%');
             })
             ->selectRaw('campaign_id')
             ->selectRaw('MAX('.$spendExpr.') as spend')
