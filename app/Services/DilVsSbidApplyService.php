@@ -520,7 +520,14 @@ class DilVsSbidApplyService
         // (a PARENT ... row or an unmapped SKU can come first and must not hide the child SKUs' family).
         $familyByListing = [];
         foreach ($adMetrics as $m) {
-            $key = $familyKeyBySku[$normSku($m->sku)] ?? null;
+            $sku = $normSku($m->sku);
+            $key = $familyKeyBySku[$sku] ?? null;
+            if ($key === null && $isParentSku($sku)) {
+                // A PARENT row itself: its family is the parent value it belongs to (children carry the stock).
+                $pv = $parentBySku[$sku] ?? '';
+                $pk = 'P:'.$normSku($pv);
+                $key = ($pv !== '' && isset($familySkus[$pk])) ? $pk : null;
+            }
             if ($key !== null) {
                 $familyByListing[(string) $m->item_id] ??= $key;
             }
