@@ -52,6 +52,9 @@
         .e1d-pill.blue { background: #0284c7; }
         .e1d-pill.grey { background: #64748b; }
         .e1d-muted { color: #94a3b8; }
+        .e1d-modal { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+        .e1d-modal[hidden] { display: none; }
+        .e1d-modal-box { background: #fff; border-radius: 12px; padding: 1.1rem 1.25rem; width: min(480px, 92vw); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
     </style>
 @endsection
 
@@ -93,6 +96,9 @@
                             <i class="fas fa-cloud-download-alt"></i> <span id="e1dPullLabel">Pull item specifics (one time)</span>
                         </button>
                         <span class="small text-muted" id="e1dPullStatus"></span>
+                        <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete one item-specific column of the open category tab, here and on the live eBay 1 listings" disabled>
+                            <i class="fas fa-trash-alt"></i> Delete Column
+                        </button>
                         <div class="e1d-badges" id="e1dBadges"></div>
                     </div>
 
@@ -100,6 +106,21 @@
 
                     <div id="ebay1-data-table"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="e1d-modal" id="e1dDelModal" hidden>
+        <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dDelTitle">
+            <h5 id="e1dDelTitle" class="mb-2"><i class="fas fa-trash-alt text-danger"></i> Delete Column</h5>
+            <p class="small text-muted mb-2" id="e1dDelIntro"></p>
+            <label class="form-label small fw-bold" for="e1dDelSelect">Column</label>
+            <select id="e1dDelSelect" class="form-select form-select-sm mb-2"></select>
+            <div class="alert alert-danger small py-2 mb-2" id="e1dDelWarn"></div>
+            <div class="small mb-2" id="e1dDelProgress"></div>
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-sm btn-light" id="e1dDelCancel">Cancel</button>
+                <button type="button" class="btn btn-sm btn-danger" id="e1dDelGo">Delete column</button>
             </div>
         </div>
     </div>
@@ -202,6 +223,7 @@
                         renderTabs();
                         syncSpecColumns();
                         applyFilters();
+                        updateDelButton();
                     });
                     holder.appendChild(tab);
                 }
@@ -211,6 +233,7 @@
 
             function renderBadges() {
                 let req = 0, nrl = 0, listed = 0, missing = 0, shown = 0;
+                const selected = table && tableReady ? table.getSelectedRows().length : 0;
                 rows.forEach(function (row) {
                     if (!passesTab(row) || !passesControls(row)) return;
                     shown++;
@@ -225,7 +248,8 @@
                     '<span class="e1d-badge nrl" title="In stock, not required">NRL ' + nrl + '</span>' +
                     '<span class="e1d-badge listed">Listed ' + listed + '</span>' +
                     '<span class="e1d-badge missing">Missing L ' + missing + '</span>' +
-                    '<span class="e1d-badge rows">Rows ' + shown + '</span>';
+                    '<span class="e1d-badge rows">Rows ' + shown + '</span>' +
+                    (selected ? '<span class="e1d-badge listed" title="Rows ticked in the first column">Selected ' + selected + '</span>' : '');
             }
 
             function applyFilters() {
@@ -240,6 +264,100 @@
                 syncSpecColumns();
                 applyFilters();
                 updatePullButton();
+                updateDelButton();
+            }
+
+            // ---- Delete Column: removes one item specific from every SKU of the open tab, here and on eBay 1. ----
+            function updateDelButton() {
+                const btn = document.getElementById('e1dDelCol');
+                if (!btn) return;
+                const has = activeTab !== ALL && specNamesForTab().length > 0;
+                btn.disabled = !has;
+                btn.title = has
+                    ? 'Delete one item-specific column of this category, here and on the live eBay 1 listings'
+                    : 'Open a category tab with pulled item specifics first';
+            }
+
+            function delTargets(name) {
+                return rows.filter(function (row) {
+                    return passesTab(row)
+                        && row.specifics && !Array.isArray(row.specifics) && Object.prototype.hasOwnProperty.call(row.specifics, name)
+                        && /^\d{9,15}$/.test(String(row.item_id || '').trim());
+                });
+            }
+
+            function refreshDelWarning() {
+                const name = document.getElementById('e1dDelSelect').value;
+                const n = name ? delTargets(name).length : 0;
+                document.getElementById('e1dDelWarn').innerHTML = name
+                    ? 'This removes <strong>' + esc(name) + '</strong> from <strong>' + n + '</strong> live eBay 1 listing' + (n === 1 ? '' : 's') + ' in this category and from the stored data. It cannot be undone here.'
+                    : 'Choose a column.';
+                document.getElementById('e1dDelGo').disabled = !name || n === 0;
+            }
+
+            function openDelModal() {
+                const names = specNamesForTab();
+                if (activeTab === ALL || !names.length) return;
+                document.getElementById('e1dDelIntro').textContent = 'Category: ' + catLabel(activeTab);
+                const sel = document.getElementById('e1dDelSelect');
+                sel.innerHTML = '';
+                names.forEach(function (name) {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name + ' (' + delTargets(name).length + ')';
+                    sel.appendChild(opt);
+                });
+                document.getElementById('e1dDelProgress').textContent = '';
+                document.getElementById('e1dDelModal').hidden = false;
+                refreshDelWarning();
+            }
+
+            function closeDelModal() {
+                document.getElementById('e1dDelModal').hidden = true;
+            }
+
+            async function runDelete() {
+                const name = document.getElementById('e1dDelSelect').value;
+                const todo = delTargets(name);
+                if (!name || !todo.length) return;
+                if (!window.confirm('Delete "' + name + '" from ' + todo.length + ' live eBay 1 listings?')) return;
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                const goBtn = document.getElementById('e1dDelGo');
+                const progress = document.getElementById('e1dDelProgress');
+                goBtn.disabled = true;
+                document.getElementById('e1dDelCancel').disabled = true;
+                let done = 0, failed = 0;
+                const problems = [];
+                const size = 5;
+                for (let i = 0; i < todo.length; i += size) {
+                    const chunk = todo.slice(i, i + size).map(function (row) { return { sku: row.sku, item_id: String(row.item_id).trim() }; });
+                    progress.textContent = 'Deleting ' + Math.min(i + size, todo.length) + ' / ' + todo.length + '…';
+                    try {
+                        const res = await fetch('/ebay1-data/delete-specific', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify({ name: name, items: chunk }),
+                        });
+                        const json = await res.json();
+                        if (!res.ok || !json.success) throw new Error(json.message || 'Request failed');
+                        (json.results || []).forEach(function (r) {
+                            if (r.status === 'failed') { failed++; problems.push(r.sku + ': ' + r.message); } else { done++; }
+                        });
+                    } catch (e) {
+                        failed += chunk.length;
+                        problems.push(e.message || 'Request failed');
+                    }
+                }
+                document.getElementById('e1dDelCancel').disabled = false;
+                progress.textContent = 'Deleted ' + done + (failed ? ', failed ' + failed : '') + '.';
+                if (problems.length) window.alert(problems.slice(0, 15).join('\n') + (problems.length > 15 ? '\n…' : ''));
+                await loadData();
+                if (failed) {
+                    openDelModal();
+                    document.getElementById('e1dDelProgress').textContent = 'Deleted ' + done + ', failed ' + failed + '. Delete again to retry the failed SKUs.';
+                } else {
+                    closeDelModal();
+                }
             }
 
             // SKUs with a live eBay item ID whose item specifics were not pulled yet.
@@ -350,6 +468,10 @@
 
             function baseColumns() {
                 return [
+                        {
+                            formatter: 'rowSelection', titleFormatter: 'rowSelection', titleFormatterParams: { rowRange: 'active' },
+                            hozAlign: 'center', headerHozAlign: 'center', headerSort: false, resizable: false,
+                            width: 44, minWidth: 44, frozen: true, download: false, cssClass: 'e1d-select-col',                        },
                         { title: 'Parent', field: 'parent', minWidth: 90, formatter: textFormatter },
                         {
                             title: 'SKU', field: 'sku', minWidth: 130, frozen: true,
@@ -416,8 +538,11 @@
                     paginationSizeSelector: [50, 100, 200, 500, true],
                     placeholder: 'No rows',
                     initialSort: [{ column: 'sku', dir: 'asc' }],
+                    selectableRows: true,
+                    selectableRowsRangeMode: 'click',
                     columns: baseColumns(),
                 });
+                table.on('rowSelectionChanged', function () { renderBadges(); });
                 table.on('tableBuilt', function () {
                     tableReady = true;
                     syncSpecColumns(true);
@@ -460,6 +585,10 @@
                 });
                 document.getElementById('e1dRefresh').addEventListener('click', loadData);
                 document.getElementById('e1dPull').addEventListener('click', pullSpecifics);
+                document.getElementById('e1dDelCol').addEventListener('click', openDelModal);
+                document.getElementById('e1dDelCancel').addEventListener('click', closeDelModal);
+                document.getElementById('e1dDelSelect').addEventListener('change', refreshDelWarning);
+                document.getElementById('e1dDelGo').addEventListener('click', runDelete);
                 document.getElementById('e1dExport').addEventListener('click', function () {
                     if (!table) return;
                     const label = activeTab === ALL ? 'all' : catLabel(activeTab).replace(/[^a-z0-9]+/gi, '_').toLowerCase();

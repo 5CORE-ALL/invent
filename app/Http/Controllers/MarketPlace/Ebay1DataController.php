@@ -183,6 +183,99 @@ class Ebay1DataController extends Controller
     }
 
     /**
+     * POST /ebay1-data/delete-specific
+     * Removes one item specific from the live eBay 1 listing of each SKU, then from the stored copy.
+     * The stored copy is only changed for SKUs where eBay accepted the change (or never had it), so a failed SKU can be retried.
+     */
+    public function deleteSpecific(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:191',
+            'items' => 'required|array|min:1|max:20',
+            'items.*.sku' => 'required|string|max:191',
+            'items.*.item_id' => 'required|string|max:64',
+        ]);
+        if (! Schema::hasTable('ebay1_item_specifics')) {
+            return response()->json(['success' => false, 'message' => 'Run php artisan migrate first (table ebay1_item_specifics is missing).'], 500);
+        }
+        @set_time_limit(300);
+
+        $name = trim((string) $validated['name']);
+        $wanted = $this->aspectKey($name);
+        $service = app(EbayApiService::class);
+        $results = [];
+        foreach ($validated['items'] as $entry) {
+            $sku = trim((string) $entry['sku']);
+            $itemId = trim((string) $entry['item_id']);
+            $key = $this->skuKey($sku);
+            if (! preg_match('/^\d{9,15}$/', $itemId)) {
+                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => 'No eBay item ID.'];
+
+                continue;
+            }
+
+            try {
+                $item = $service->getItem($itemId);
+                if (! is_array($item)) {
+                    $why = trim((string) ($service->lastGetItemError ?? ''));
+                    $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
+
+                    continue;
+                }
+                $ctx = $service->tradingReviseContext();
+                $result = EbayTradingReviseItem::removeItemSpecific(
+                    $ctx['endpoint'],
+                    $ctx['compatLevel'],
+                    $ctx['devId'],
+                    $ctx['appId'],
+                    $ctx['certId'],
+                    $ctx['siteId'],
+                    $ctx['authToken'],
+                    $item,
+                    $name
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Ebay1Data: delete specific failed', ['sku' => $sku, 'name' => $name, 'error' => $e->getMessage()]);
+                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $e->getMessage()];
+
+                continue;
+            }
+            if (! ($result['success'] ?? false)) {
+                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => (string) ($result['message'] ?? 'eBay rejected the change.')];
+
+                continue;
+            }
+
+            $stored = DB::table('ebay1_item_specifics')->where('sku', $key)->first();
+            if ($stored) {
+                $decoded = json_decode((string) $stored->specifics, true);
+                $decoded = is_array($decoded) ? $decoded : [];
+                foreach (array_keys($decoded) as $storedName) {
+                    if ($this->aspectKey((string) $storedName) === $wanted) {
+                        unset($decoded[$storedName]);
+                    }
+                }
+                DB::table('ebay1_item_specifics')->where('sku', $key)->update([
+                    'specifics' => json_encode($decoded, JSON_UNESCAPED_UNICODE),
+                    'updated_at' => now(),
+                ]);
+            }
+            $results[] = [
+                'sku' => $sku,
+                'status' => ($result['removed'] ?? false) ? 'deleted' : 'absent',
+                'message' => ($result['removed'] ?? false) ? 'Removed from eBay.' : 'Was not on the eBay listing.',
+            ];
+        }
+
+        return response()->json(['success' => true, 'results' => $results]);
+    }
+
+    private function aspectKey(string $name): string
+    {
+        return strtolower(preg_replace('/[^a-z0-9]+/i', '', $name) ?? $name);
+    }
+
+    /**
      * Stored one-time pulls, by SKU key.
      *
      * @return array<string, array{category_path: string, specifics: array<string, string>}>

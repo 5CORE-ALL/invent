@@ -5009,6 +5009,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay1-data', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'index'])->name('ebay1.data');
     Route::get('/ebay1-data/rows', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'rows'])->name('ebay1.data.rows');
     Route::post('/ebay1-data/pull-specifics', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'pullSpecifics'])->name('ebay1.data.pull.specifics');
+    Route::post('/ebay1-data/delete-specific', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'deleteSpecific'])->name('ebay1.data.delete.specific');
     Route::get('/description-for-html', [DescriptionForHtmlController::class, 'index'])->name('description.for.html');
     Route::get('/description-for-html-data', [DescriptionForHtmlController::class, 'getData'])->name('description.for.html.data');
     Route::post('/description-for-html/save', [DescriptionForHtmlController::class, 'save'])->name('description.for.html.save');

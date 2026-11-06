@@ -1385,6 +1385,54 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Remove one item specific from a live listing. ReviseItem replaces the whole ItemSpecifics block,
+     * so every other specific is sent back unchanged. Nothing is sent when the listing does not have it.
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     * @return array{success: bool, removed: bool, message: string}
+     */
+    public static function removeItemSpecific(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        array $getItemResponse,
+        string $name,
+    ): array {
+        $item = self::itemFromGetItem($getItemResponse);
+        $itemId = trim(self::xmlText($item['ItemID'] ?? ''));
+        if ($itemId === '') {
+            return ['success' => false, 'removed' => false, 'message' => 'GetItem response missing ItemID.'];
+        }
+
+        $key = self::aspectKey($name);
+        $kept = [];
+        $found = false;
+        foreach (self::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null) as $row) {
+            if (self::aspectKey((string) ($row['name'] ?? '')) === $key) {
+                $found = true;
+
+                continue;
+            }
+            $kept[] = $row;
+        }
+        if (! $found) {
+            return ['success' => true, 'removed' => false, 'message' => 'Not on the eBay listing.'];
+        }
+
+        $result = self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $kept, 'ReviseItem', 'ReviseItemRequest', null, null);
+
+        return [
+            'success' => (bool) ($result['success'] ?? false),
+            'removed' => (bool) ($result['success'] ?? false),
+            'message' => (string) ($result['message'] ?? ''),
+        ];
+    }
+
+    /**
      * @param  list<array{name: string, values: list<string>}>  $rows
      * @return array{success: bool, message: string}
      */
