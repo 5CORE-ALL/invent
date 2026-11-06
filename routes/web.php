@@ -6469,6 +6469,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/wayfair/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsWayfairController::class, 'apiScore'])->name('lqs.wayfair.api.score');
     Route::post('/lqs/wayfair/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsWayfairController::class, 'startApiSync'])->name('lqs.wayfair.api.sync');
     Route::get('/lqs/wayfair/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsWayfairController::class, 'apiSyncStatus'])->name('lqs.wayfair.api.sync.status');
+    // Shein: scored from the synced Shein products (images, attributes, shelf state, stock, price) plus pushed content
+    Route::post('/lqs/shein/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsSheinController::class, 'apiScore'])->name('lqs.shein.api.score');
+    Route::post('/lqs/shein/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsSheinController::class, 'startApiSync'])->name('lqs.shein.api.sync');
+    Route::get('/lqs/shein/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsSheinController::class, 'apiSyncStatus'])->name('lqs.shein.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation

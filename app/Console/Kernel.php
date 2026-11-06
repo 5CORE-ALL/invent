@@ -336,6 +336,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('lqs-sync-wayfair')
             ->appendOutputTo($log);
+        // Shein LQS from the synced Shein products (shein_metrics); no API calls.
+        $schedule->command('lqs:sync-shein')
+            ->dailyAt('05:35')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->name('lqs-sync-shein')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)
