@@ -820,7 +820,7 @@
                 </div>
                 <div class="inc-nx-foot">
                     <button type="button" class="inc-nx-cancel" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="inc-nx-submit" id="inc-extend-submit">Save date</button>
+                    <button type="submit" class="inc-nx-submit" id="inc-extend-submit">Make request</button>
                 </div>
             </form>
         </div>
@@ -1023,7 +1023,10 @@
         var sheet = modal.querySelector('.inc-nx-sheet');
         if (sheet) sheet.setAttribute('data-kind', type);
         if (submit) {
-            submit.textContent = type === 'help' ? 'Send help request' : (type === 'end' ? 'Request to End' : (canEditIncentive ? 'Save date' : 'Send extend request'));
+            submit.textContent = 'Make request';
+        }
+        if (note && canEditIncentive && type !== 'help') {
+            note.textContent += ' You can approve incentives yourself, so this is applied right away.';
         }
     }
     if (extendModal) {
