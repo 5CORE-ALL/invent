@@ -329,6 +329,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('lqs-sync-reverb')
             ->appendOutputTo($log);
+        // Wayfair LQS from app records (Product Master content, Partner Home state, price/stock); no API calls.
+        $schedule->command('lqs:sync-wayfair')
+            ->dailyAt('05:30')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->name('lqs-sync-wayfair')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)

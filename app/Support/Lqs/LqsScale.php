@@ -7,6 +7,7 @@ use App\Services\Lqs\ReverbLqsApiSyncService;
 use App\Services\Lqs\DobaLqsApiSyncService;
 use App\Services\Lqs\EbayLqsApiSyncService;
 use App\Services\Lqs\TemuLqsApiSyncService;
+use App\Services\Lqs\WayfairLqsApiSyncService;
 
 /**
  * Which LQS pages store the score as a 0-100 percentage (API-scored) instead of the 0-10 sheet scale.
@@ -19,7 +20,8 @@ class LqsScale
         return EbayLqsApiSyncService::supports($slug) || TemuLqsApiSyncService::supports($slug)
             || MiraklLqsApiSyncService::supports($slug)
             || $slug === DobaLqsApiSyncService::MARKETPLACE
-            || $slug === ReverbLqsApiSyncService::MARKETPLACE;
+            || $slug === ReverbLqsApiSyncService::MARKETPLACE
+            || $slug === WayfairLqsApiSyncService::MARKETPLACE;
     }
 
     /** Marketplaces with a bulk "Sync LQS from API" button. */

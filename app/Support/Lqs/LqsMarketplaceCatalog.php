@@ -33,7 +33,7 @@ class LqsMarketplaceCatalog
             ['reverb', 'Reverb', 'Product ID', 'sheet', 'reverb', 'https://reverb.com/item/{id}'],
             ['newegg', 'Newegg', 'Product ID', 'sheet', 'newegg', null],
             ['shein', 'Shein', 'SKU Code', 'sheet', 'shein', null],
-            ['wayfair', 'Wayfair', 'Listing ID', 'sheet', null, null],
+            ['wayfair', 'Wayfair', 'Listing ID', 'sheet', 'wayfair', null],
             ['bestbuy', 'Best Buy', 'Listing ID', 'sheet', null, null],
             ['macy', "Macy's", 'Listing ID', 'sheet', null, null],
             ['doba', 'Doba', 'Item ID', 'sheet', 'doba', null],

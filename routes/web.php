@@ -6463,6 +6463,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/reverb/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsReverbController::class, 'apiScore'])->name('lqs.reverb.api.score');
     Route::post('/lqs/reverb/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsReverbController::class, 'startApiSync'])->name('lqs.reverb.api.sync');
     Route::get('/lqs/reverb/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsReverbController::class, 'apiSyncStatus'])->name('lqs.reverb.api.sync.status');
+    // Wayfair: scored from app records (Product Master content, listing state, price/stock; no AI audit modal)
+    Route::post('/lqs/wayfair/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsWayfairController::class, 'apiScore'])->name('lqs.wayfair.api.score');
+    Route::post('/lqs/wayfair/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsWayfairController::class, 'startApiSync'])->name('lqs.wayfair.api.sync');
+    Route::get('/lqs/wayfair/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsWayfairController::class, 'apiSyncStatus'])->name('lqs.wayfair.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation
