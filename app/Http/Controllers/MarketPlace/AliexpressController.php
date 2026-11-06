@@ -577,6 +577,33 @@ class AliexpressController extends Controller
     }
 
     /**
+     * API sales, distinct order count and unit qty in a Pacific window (cancel/refund/closed skipped).
+     * Same rows as sumApiOrderSalesBetween.
+     *
+     * @return array{0: float, 1: int, 2: int} sales, orders, qty
+     */
+    public function apiOrderTotalsBetween(Carbon $start, Carbon $end): array
+    {
+        $sum = 0.0;
+        $qty = 0;
+        $orders = [];
+        foreach ($this->aliexpressOrderMetricsAsDailyRows($start, $end) as $row) {
+            $status = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($status, 'refund') || str_contains($status, 'return')
+                || str_contains($status, 'cancel') || str_contains($status, 'closed')) {
+                continue;
+            }
+            $sum += (float) ($row->product_total ?? 0);
+            $qty += max(1, (int) ($row->quantity ?? 1));
+            if (! empty($row->order_id)) {
+                $orders[(string) $row->order_id] = true;
+            }
+        }
+
+        return [round($sum, 2), count($orders), $qty];
+    }
+
+    /**
      * API line sales per Pacific calendar day (cancel/refund/closed skipped), same rows as
      * sumApiOrderSalesBetween. Used for the Active Channel Y Sales graph and dot.
      *

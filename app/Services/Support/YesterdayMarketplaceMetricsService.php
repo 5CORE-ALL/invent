@@ -68,7 +68,9 @@ class YesterdayMarketplaceMetricsService
         $this->windowDays = max(1, $days);
         $this->alignLatestCompleteDay = true;
         $this->adReportKeyCache = [];
-        $day = Carbon::yesterday(self::TZ)->subDay();
+        // Pacific yesterday — the same day as the Y Sales column. (This used to be the day
+        // before, so Y Orders / Y Views / Y CVR lagged Y Sales by one day.)
+        $day = Carbon::yesterday(self::TZ);
         $date = $day->toDateString();
         $end = $day->copy()->endOfDay();
         $start = $day->copy()->subDays($this->windowDays - 1)->startOfDay();
@@ -593,6 +595,14 @@ class YesterdayMarketplaceMetricsService
      */
     private function shopify(Carbon $start, Carbon $end): array
     {
+        // Shopify B2C: same rows as the Y Sales cell (shopify_b2c_daily_data, total_amount,
+        // refunded/cancelled excluded). shopify_raw_orders also holds other-store sources, so
+        // its order count / sales did not match Y Sales (e.g. 8 orders $509.71 vs 7 orders $490.08).
+        $b2c = $this->shopifyB2cFromDailyData($start, $end);
+        if ($b2c !== null) {
+            return $b2c;
+        }
+
         if (! Schema::hasTable('shopify_raw_orders')) {
             return $this->fallback('shopify');
         }
@@ -992,10 +1002,62 @@ class YesterdayMarketplaceMetricsService
     }
 
     /**
+     * Shopify B2C one-day metrics from shopify_b2c_daily_data. Null when the table has no
+     * sales in the window (caller falls back to shopify_raw_orders, like the Y Sales cell).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function shopifyB2cFromDailyData(Carbon $start, Carbon $end): ?array
+    {
+        if (! Schema::hasTable('shopify_b2c_daily_data')) {
+            return null;
+        }
+
+        $rows = DB::table('shopify_b2c_daily_data')
+            ->where('order_date', '>=', $start->copy()->startOfDay())
+            ->where('order_date', '<=', $end->copy()->endOfDay())
+            ->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])
+            ->get(['order_id', 'sku', 'quantity', 'total_amount']);
+
+        $sales = (float) $rows->sum('total_amount');
+        if ($sales <= 0) {
+            return null;
+        }
+
+        $qty = (int) $rows->sum('quantity');
+        $orders = $rows->pluck('order_id')->filter()->unique()->count();
+        $margin = ShopifyRawDataController::SHOPIFY_GROSS_MARGIN;
+        $pft = 0.0;
+        $cogs = 0.0;
+        foreach ($rows as $r) {
+            $q = (int) ($r->quantity ?? 0);
+            $amount = (float) ($r->total_amount ?? 0);
+            $pm = $this->pm((string) ($r->sku ?? ''));
+            $shipCost = $this->shipCost($pm['ship'], $pm['wt'], $q);
+            $cogs += $pm['lp'] * $q;
+            $pft += ($amount * $margin) - ($pm['lp'] * $q) - ($shipCost * $q);
+        }
+
+        $ads = $this->shopifyGoogleAdMetrics($start->toDateString());
+
+        return $this->pack($sales, $sales, $pft, $cogs, $ads['spend'], $orders, $qty, $sales, $ads['sales']);
+    }
+
+    /**
      * @return array{0: float, 1: int, 2: int} sales, orders, qty
      */
     private function aliexpressSales(Carbon $start, Carbon $end): array
     {
+        // Live API orders (aliexpress_order_metrics) — same rows as the Y Sales cell.
+        // aliexpress_daily_data is a stale sheet upload (last order Sep 28).
+        if (Schema::hasTable('aliexpress_order_metrics')) {
+            try {
+                return app(\App\Http\Controllers\MarketPlace\AliexpressController::class)
+                    ->apiOrderTotalsBetween($start, $end);
+            } catch (\Throwable $e) {
+                Log::warning('AliExpress yesterday orders failed: '.$e->getMessage());
+            }
+        }
         if (! Schema::hasTable('aliexpress_daily_data')) {
             return [0.0, 0, 0];
         }
