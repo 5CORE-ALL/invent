@@ -1316,6 +1316,75 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Set the UPC on a live listing. The UPC lives in ProductListingDetails (or, for a variation SKU,
+     * VariationProductListingDetails), not in the item specifics. Nothing is sent when eBay already has it.
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     * @return array{success: bool, message: string}
+     */
+    public static function reviseUpc(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        array $getItemResponse,
+        string $sku,
+        string $upc,
+    ): array {
+        $upc = trim($upc);
+        if ($upc === '') {
+            return ['success' => true, 'message' => 'No UPC to send.'];
+        }
+        $item = self::itemFromGetItem($getItemResponse);
+        $itemId = trim(self::xmlText($item['ItemID'] ?? ''));
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'GetItem response missing ItemID.'];
+        }
+
+        $variation = self::findVariationForSku($getItemResponse, $sku);
+        if ($variation !== null) {
+            $details = is_array($variation['VariationProductListingDetails'] ?? null) ? $variation['VariationProductListingDetails'] : [];
+        } else {
+            $details = is_array($item['ProductListingDetails'] ?? null) ? $item['ProductListingDetails'] : [];
+        }
+        $current = preg_replace('/\D+/', '', self::xmlText($details['UPC'] ?? '')) ?? '';
+        if ($current === $upc) {
+            return ['success' => true, 'message' => 'UPC '.$upc.' is already on the listing.'];
+        }
+
+        $root = $variation !== null ? 'ReviseFixedPriceItemRequest' : 'ReviseItemRequest';
+        $callName = $variation !== null ? 'ReviseFixedPriceItem' : 'ReviseItem';
+        $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><'.$root.' xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+        $creds = $xml->addChild('RequesterCredentials');
+        $creds->addChild('eBayAuthToken', $authToken);
+        $xml->addChild('ErrorLanguage', 'en_US');
+        $xml->addChild('WarningLevel', 'High');
+        $itemNode = $xml->addChild('Item');
+        $itemNode->addChild('ItemID', $itemId);
+        if ($variation !== null) {
+            $node = $itemNode->addChild('Variations')->addChild('Variation');
+            $node->addChild('SKU', htmlspecialchars($sku, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            $node->addChild('VariationProductListingDetails')->addChild('UPC', $upc);
+        } else {
+            $itemNode->addChild('ProductListingDetails')->addChild('UPC', $upc);
+        }
+        $xmlBody = $xml->asXML();
+        if ($xmlBody === false) {
+            return ['success' => false, 'message' => 'Failed to build '.$callName.' XML for UPC.'];
+        }
+
+        $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'UPC', $callName);
+
+        return [
+            'success' => (bool) ($result['success'] ?? false),
+            'message' => ($result['success'] ?? false) ? 'UPC '.$upc.' sent. '.($result['message'] ?? '') : (string) ($result['message'] ?? 'UPC update failed.'),
+        ];
+    }
+
+    /**
      * @param  list<array{name: string, values: list<string>}>  $rows
      * @return array{success: bool, message: string}
      */
