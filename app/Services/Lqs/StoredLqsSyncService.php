@@ -134,6 +134,34 @@ abstract class StoredLqsSyncService
         ];
     }
 
+    /**
+     * After a complete bulk run, clear the score of SKUs that are no longer listed. Those rows hold old 0-10 sheet
+     * scores that would otherwise drag down the 0-100 average on LQS Master. The rows themselves are kept.
+     *
+     * @param  list<string>  $scoredKeys  normalized SKUs scored in this run
+     */
+    public function clearUnlisted(array $scoredKeys): int
+    {
+        if ($scoredKeys === []) {
+            return 0;
+        }
+
+        $cleared = 0;
+        LqsMarketplaceScore::query()
+            ->where('marketplace', static::MARKETPLACE)
+            ->whereNotNull('lqs')
+            ->select(['id', 'sku'])
+            ->chunkById(500, function ($rows) use ($scoredKeys, &$cleared) {
+                $keep = array_flip($scoredKeys);
+                $ids = $rows->filter(fn ($r) => ! isset($keep[self::normalizeSku((string) $r->sku)]))->pluck('id')->all();
+                if ($ids !== []) {
+                    $cleared += LqsMarketplaceScore::query()->whereIn('id', $ids)->update(['lqs' => null]);
+                }
+            });
+
+        return $cleared;
+    }
+
     /** @return array{sku: string, lqs: float, findings: string, suggestions: string, checks: list<array<string, mixed>>} */
     public function syncSku(string $sku): array
     {

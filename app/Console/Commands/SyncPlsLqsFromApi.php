@@ -90,11 +90,16 @@ class SyncPlsLqsFromApi extends Command
             }
         }
 
+        $cleared = (! $dry && $failed === 0 && $total > 0) ? $sync->clearUnlisted(array_keys($contexts)) : 0;
+
         $status['running'] = false;
         $status['done'] = $ok;
         $status['failed'] = $failed;
         $status['finished_at'] = now()->toDateTimeString();
         $status['message'] = "Scored {$ok}, failed {$failed}".($ok ? sprintf(', average %.1f.', $sum / $ok) : '.');
+        if ($cleared > 0) {
+            $status['message'] .= " Cleared $cleared stale score(s) of SKUs no longer listed.";
+        }
         $this->publish($status);
 
         $this->info('Done. '.$status['message']);
