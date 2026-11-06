@@ -14,7 +14,8 @@ use Illuminate\Console\Command;
  */
 class EbayPmtCheckCommand extends Command
 {
-    protected $signature = 'ebay:pmt-check {itemId : eBay item / listing id} {account=ebay2 : ebay1, ebay2 or ebay3}';
+    protected $signature = 'ebay:pmt-check {itemId : eBay item / listing id} {account=ebay2 : ebay1, ebay2 or ebay3}
+        {--push : Also push the rule bid for this one listing now and print the result (changes the live bid)}';
 
     protected $description = 'Read-only: show the Ads Rule PMT bid wanted, the stored C Bid and the live eBay bid for one listing.';
 
@@ -88,6 +89,22 @@ class EbayPmtCheckCommand extends Command
             $this->info('RESULT: APPLIED. The live eBay bid matches the rule.');
         } else {
             $this->warn('RESULT: NOT APPLIED. The live eBay bid differs from what the rule wants.');
+        }
+
+        if ($this->option('push')) {
+            $this->newLine();
+            $this->line('Pushing the rule bid for this listing only...');
+            $res = $apply->applyPmtChanged($account, false, [(string) $this->argument('itemId')]);
+            if (! empty($res['error'])) {
+                $this->error('Push error: '.$res['error']);
+            }
+            $this->line(sprintf(
+                'Pushed %d, unchanged %d, failed %d, skipped %d',
+                (int) ($res['success'] ?? 0), (int) ($res['unchanged'] ?? 0), (int) ($res['failed'] ?? 0), (int) ($res['skipped'] ?? 0)
+            ));
+            foreach ($res['results'] ?? [] as $row) {
+                $this->line('  '.json_encode($row, JSON_UNESCAPED_SLASHES));
+            }
         }
 
         return self::SUCCESS;

@@ -272,7 +272,7 @@ class DilVsSbidApplyService
      *
      * @return array{success:int,failed:int,skipped:int,unchanged?:int,results:array<int,array<string,mixed>>,error?:string,stopped?:bool}
      */
-    public function applyPmtChanged(string $account = 'ebay1', bool $onlyLocalMismatch = false): array
+    public function applyPmtChanged(string $account = 'ebay1', bool $onlyLocalMismatch = false, array $onlyListingIds = []): array
     {
         $cfg = self::PMT_ACCOUNTS[$account] ?? null;
         if ($cfg === null) {
@@ -290,6 +290,14 @@ class DilVsSbidApplyService
             ->whereRaw("UPPER(TRIM(COALESCE(campaign_status, ''))) = 'RUNNING'")
             ->pluck('listing_id')
             ->all();
+
+        if ($onlyListingIds !== []) { // a manual run for specific listings (ebay:pmt-check --push)
+            $only = array_map('strval', $onlyListingIds);
+            $listingIds = array_values(array_filter($listingIds, fn ($id) => in_array((string) $id, $only, true)));
+            if ($listingIds === []) {
+                return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => [], 'error' => 'Listing is not in a RUNNING COST_PER_SALE campaign'];
+            }
+        }
 
         $bids = PmtCategoryBidRule::bids($account);
         $categories = app(ExcelCategoryLookupService::class)->map($account);

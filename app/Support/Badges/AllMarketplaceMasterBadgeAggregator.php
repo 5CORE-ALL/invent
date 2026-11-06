@@ -325,7 +325,8 @@ class AllMarketplaceMasterBadgeAggregator
                 : $sales * max(0.0, 1 - $gp / 100);
             $totalGross += $sales * $gp / 100;
             $totalNet += $sales * $npft / 100;
-            $totalSpend += $sales * $adsRate / 100;
+            // Real T Spend (Amazon) when pulled, else Today Sales × the channel's ad rate.
+            $totalSpend += \App\Support\Marketplace\AmmColumnHistory::measuredTodaySpend($row) ?? ($sales * $adsRate / 100);
             $totalViews += ($l30 > 0 && $views > 0) ? $views * ($sales / $l30) : 0.0;
             $totalOrders += ($l30 > 0 && $l30Orders > 0) ? $l30Orders * ($sales / $l30) : 0.0;
         }

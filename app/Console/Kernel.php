@@ -1196,6 +1196,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // T Spend for T Ads% (Amazon): today's SP + SB spend so far, pulled before each Today Sales refresh.
+        $schedule->command('amazon:pull-today-ad-spend')
+            ->cron('35 8-22 * * *')
+            ->timezone('America/New_York')
+            ->name('amazon-pull-today-ad-spend')
+            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
         $retryFiveTimesUntil('sync:tiktok-api-data --channel=tiktok2', 'sync-tiktok2-api-data', '16:00');
     }

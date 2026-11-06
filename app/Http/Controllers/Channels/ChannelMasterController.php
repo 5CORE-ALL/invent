@@ -8895,9 +8895,16 @@ class ChannelMasterController extends Controller
 
             $hasTodaySales = Schema::hasColumn('channel_master_calculated_data', 'today_sales');
 
+            // Amazon T Spend: today's SP + SB spend so far (amazon:pull-today-ad-spend). Null when not
+            // pulled for the current day, in which case T Ads% keeps using the latest measured rate.
+            $amazonTodayAdSpend = \App\Models\AmazonTodayAdSpend::currentSpend();
+
             // Format data for frontend (match expected format)
-            $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap, $aliasMap, $promotionsMap, $complianceCountMap, $brandAuthorisationMap, $hasTodaySales) {
+            $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap, $aliasMap, $promotionsMap, $complianceCountMap, $brandAuthorisationMap, $hasTodaySales, $amazonTodayAdSpend) {
                 $canonicalKey = $this->canonicalChannelKey($channel->channel);
+                $todaySalesValue = $hasTodaySales ? (float) ($channel->today_sales ?? 0) : 0.0;
+                $isAmazonRow = $this->allMarketplaceSnapshotKey((string) $channel->channel) === 'amazon';
+                $tAdSpend = ($isAmazonRow && $amazonTodayAdSpend !== null && $amazonTodayAdSpend > 0) ? $amazonTodayAdSpend : null;
                 return [
                     'Channel ' => $this->allMarketplaceDisplayName($channel->channel),
                     'alias' => $aliasMap[$canonicalKey] ?? null,
@@ -8918,6 +8925,10 @@ class ChannelMasterController extends Controller
                     'L30 Sales' => (int) $channel->l30_sales,
                     'Y Sales' => $channel->yesterday_sales,
                     'Today Sales' => $hasTodaySales ? (float) ($channel->today_sales ?? 0) : 0,
+                    // T Ads% = T Ad Spend ÷ Today Sales, only for channels with a real today-spend pull
+                    // (Amazon) and only when that spend is plausible against today's sales so far.
+                    'T Ad Spend' => $tAdSpend,
+                    'T Ads Measured' => $tAdSpend !== null && $todaySalesValue > 0 && $tAdSpend <= $todaySalesValue,
                     'L7 Sales' => $channel->l7_sales,
                     'P-Sales' => $this->projectedSalesFromL7($channel->l7_sales),
                     'Y PFT' => $channel->y_pft !== null

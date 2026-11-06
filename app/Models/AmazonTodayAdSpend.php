@@ -31,10 +31,15 @@ class AmazonTodayAdSpend extends Model
 
     /**
      * Today's pulled spend, or null when nothing has been pulled for the current Pacific day.
+     * Also null in the 3 hours when the Eastern date (Today Sales) is already tomorrow while the
+     * Pacific ad day is still today, so spend and sales never describe different days.
      */
     public static function currentSpend(): ?float
     {
         try {
+            if (Carbon::now('America/New_York')->toDateString() !== self::pacificToday()) {
+                return null;
+            }
             if (! Schema::hasTable('amazon_today_ad_spend')) {
                 return null;
             }
