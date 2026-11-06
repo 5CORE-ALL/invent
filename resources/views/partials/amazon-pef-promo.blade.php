@@ -4673,6 +4673,13 @@
                 const st = String(t.status || '');
                 let patch = null;
                 if (st === 'ok') {
+                    // A finished task only says what THAT job pushed. When the S PRC has moved since (an old job still
+                    // listed in job.json), copying its price onto the row made Price ≠ S PRC and kept the blue badge on
+                    // SKUs Amazon already had right. Skip tasks that no longer match the current S PRC.
+                    const wantNow = Number(typeof amzDisplayedSprice === 'function' ? amzDisplayedSprice(d) : d.SPRICE) || 0;
+                    if (t.effective != null && wantNow > 0 && Math.abs(wantNow - Number(t.effective)) > 0.009) {
+                        return;
+                    }
                     const livePrice = Number(t.effective != null ? t.effective : d.SPRICE) || 0;
                     const nextVal = t.effective != null ? t.effective : d.PUSH_PRC_VALUE;
                     const nextSprice = t.effective != null ? t.effective : d.SPRICE;

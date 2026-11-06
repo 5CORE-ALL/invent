@@ -117,6 +117,9 @@ class AmazonSprcDilAutoPushService
                     );
                     if ($computed === null) {
                         $stats['skipped']++;
+                        if ($blueCatchUp) {
+                            $this->log($logger, 'Skip '.$row['sku'].': no S PRC computed — '.$this->noTargetReason($row));
+                        }
                         continue;
                     }
 
@@ -136,11 +139,14 @@ class AmazonSprcDilAutoPushService
                         if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $cooldownMinutes)) {
                             // Amazon rejected the last push — retry after the cooldown, not every run.
                             $stats['skipped']++;
+                            $this->log($logger, 'Skip '.$row['sku'].': last push was rejected at '.$row['push_error_at']." — retry after {$cooldownMinutes} min cooldown");
                             continue;
                         }
                         if ($this->isUnchanged($row, $computed)) {
                             if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
                                 $stats['skipped_unchanged']++;
+                                $this->log($logger, 'Skip '.$row['sku'].': already pushed '.$computed['sprice'].' at '.$row['pushed_at']." — waiting {$cooldownMinutes} min for Amazon (page Price "
+                                    .$row['price'].')');
                                 continue;
                             }
                             // Pull the live Price first. Amazon may already be right and only the Price column stale.
@@ -203,6 +209,7 @@ class AmazonSprcDilAutoPushService
                         $stats['pushed']++;
                     } else {
                         $stats['push_failed']++;
+                        $this->log($logger, 'Push FAILED '.$row['sku'].' (target '.$computed['sprice'].'): see AmazonDataView SPRICE_STATUS / laravel.log "Amazon Sprc Dil push failed"');
                     }
 
                     if ($sleepMs > 0) {
@@ -504,6 +511,28 @@ class AmazonSprcDilAutoPushService
             'snroi_capped' => $snroiCapped,
             'base' => $std > 0 ? round($std, 2) : round($sprice, 2),
         ];
+    }
+
+    /** Why computeTarget() returned null for a row (diagnostics only). @param array<string, mixed> $row */
+    protected function noTargetReason(array $row): string
+    {
+        $bits = [];
+        $dilRuleActive = \App\Support\SpriceActiveRule::forChannel('amazon') === 'dil';
+        if (! ((float) ($row['lp'] ?? 0) > 0)) {
+            $bits[] = 'LP missing in Product Master';
+        }
+        if (! $dilRuleActive && ! ((float) ($row['standard_price'] ?? 0) > 0)) {
+            $bits[] = 'Std Prc (STANDARD_PRICE) missing/0';
+        }
+        if ((new StdPrcVsDilPricer([], 'amazon'))->isClearanceRow($row)) {
+            $bits[] = 'clearance SKU without a Clearance slab/target for its Dil';
+        }
+        $bits[] = 'rule='.\App\Support\SpriceActiveRule::forChannel('amazon')
+            .' inv='.($row['inv'] ?? 0).' dil='.round((float) ($row['dil'] ?? 0), 2)
+            .' lp='.($row['lp'] ?? 0).' ship='.($row['ship'] ?? 0).' std='.($row['standard_price'] ?? 0)
+            .' lmp='.($row['lmp'] ?? 0).' price='.($row['price'] ?? 0);
+
+        return implode('; ', $bits);
     }
 
     /**

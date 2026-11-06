@@ -2072,6 +2072,19 @@ class OverallAmazonController extends Controller
     {
         $state = $store->load();
 
+        // No worker holds the lock but a task is still 'pushing' = a worker died mid-push. Recover it (retry / fail)
+        // so the job can finish instead of staying "running" with a frozen task for hours.
+        if ($store->isActive($state) && ! $this->amazonPushPrcRunnerLockHeld()) {
+            foreach ($state['tasks'] ?? [] as $task) {
+                if (is_array($task) && (string) ($task['status'] ?? '') === 'pushing') {
+                    $state = $store->recoverOrphanedPushing();
+                    $this->amazonPushPrcReleaseUniqueJobLock();
+                    $this->spawnAmazonPushPrcWorker();
+                    break;
+                }
+            }
+        }
+
         if ($store->isActive($state) && $this->amazonPushPrcLooksStuck($state) && ! $this->amazonPushPrcRunnerLockHeld()) {
             $this->amazonPushPrcReleaseUniqueJobLock();
             $kicked = $this->spawnAmazonPushPrcWorker();

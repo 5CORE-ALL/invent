@@ -20,6 +20,7 @@ class AmazonPushBluePricesCommand extends Command
         {--max-pushes=300 : Max Amazon pushes per run (rest next run)}
         {--cooldown=10 : Minutes Amazon gets to apply a push before the same SKU is checked/re-pushed}
         {--sleep-ms=300 : Delay between Amazon Listings API calls (ms)}
+        {--sku=* : Only these SKUs (diagnose a few blue badges; repeat the option per SKU)}
         {--respect-switch : Skip the run when the page Push on reload switch is off}';
 
     protected $description = 'Always check + push Amazon prices for blue-triangle SKUs (Price ≠ S PRC) without the page open.';
@@ -40,7 +41,7 @@ class AmazonPushBluePricesCommand extends Command
             skipPush: false,
             limit: null,
             sleepMs: max(0, (int) $this->option('sleep-ms')),
-            onlySkus: null,
+            onlySkus: array_values(array_filter(array_map('strval', (array) $this->option('sku')))) ?: null,
             logger: fn (string $msg) => $this->line($msg),
             pushAll: false,
             blueCatchUp: true,

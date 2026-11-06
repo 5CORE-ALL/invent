@@ -57,6 +57,10 @@ class AmazonPushPrcRunner
         /** @var OverallAmazonController $controller */
         $controller = app(OverallAmazonController::class);
 
+        // We hold runner.lock, so no other worker is alive: any task still 'pushing' was left by a dead worker.
+        // findNextPendingIndex() ignores 'pushing', and the idle branch below refuses to complete while one exists.
+        $this->store->recoverOrphanedPushing();
+
         while (true) {
             $state = $this->store->load();
             if (($state['status'] ?? 'idle') !== 'running') {

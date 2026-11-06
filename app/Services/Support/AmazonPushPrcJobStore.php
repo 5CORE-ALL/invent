@@ -384,6 +384,41 @@ class AmazonPushPrcJobStore
         });
     }
 
+    /**
+     * A task is only 'pushing' while a worker holds runner.lock. Call this when no worker holds the lock:
+     * every 'pushing' task is orphaned (worker died mid-push). Without it the job stays "running" forever,
+     * keeps polling, and its stale finished tasks keep being applied to the page rows.
+     * First orphan = retry once (pending). Second = failed (no failed_block, so it can be queued again).
+     */
+    public function recoverOrphanedPushing(): array
+    {
+        return $this->update(function (array $state) {
+            $changed = false;
+            foreach ($state['tasks'] ?? [] as $i => $task) {
+                if (! is_array($task) || (string) ($task['status'] ?? '') !== 'pushing') {
+                    continue;
+                }
+                $changed = true;
+                if (((int) ($task['attempts'] ?? 0)) >= 2) {
+                    $state['tasks'][$i]['status'] = 'failed';
+                    $state['tasks'][$i]['error'] = 'Worker stopped mid-push';
+                    $state['tasks'][$i]['message'] = 'Worker stopped mid-push';
+                } else {
+                    $state['tasks'][$i]['status'] = 'pending';
+                    $state['tasks'][$i]['message'] = 're-queued after worker stopped';
+                }
+            }
+            if (! $changed) {
+                return $state;
+            }
+            $state['current_sku'] = null;
+            $state = $this->recount($state);
+            $state['last_message'] = 'Recovered a push left half-done by a stopped worker.';
+
+            return $state;
+        });
+    }
+
     public function markFailed(string $message): array
     {
         return $this->update(function (array $state) use ($message) {

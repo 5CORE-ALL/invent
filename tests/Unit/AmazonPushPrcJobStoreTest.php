@@ -131,6 +131,42 @@ class AmazonPushPrcJobStoreTest extends TestCase
         $this->assertSame('failed', $state['tasks'][0]['status']);
     }
 
+    public function test_orphaned_pushing_task_is_retried_once_then_failed(): void
+    {
+        $this->writeJob([
+            'status' => 'running',
+            'tasks' => [
+                ['sku' => 'A', 'std' => 10, 'effective' => 9, 'status' => 'ok'],
+                ['sku' => 'GRACK 5N1', 'std' => 33.88, 'effective' => 31.3, 'status' => 'pushing', 'attempts' => 1],
+            ],
+            'total' => 2,
+            'current_sku' => 'GRack 5N1',
+        ]);
+
+        $state = $this->store()->recoverOrphanedPushing();
+        $this->assertSame('pending', $state['tasks'][1]['status']);
+        $this->assertNull($state['current_sku']);
+        $this->assertSame(1, $state['ok_count']);
+
+        $second = $this->writeJobAndRecover(2);
+        $this->assertSame('failed', $second['tasks'][0]['status']);
+        $this->assertSame(1, $second['fail_count']);
+        $this->assertSame([], $second['failed_block']);
+    }
+
+    /** @return array<string, mixed> */
+    private function writeJobAndRecover(int $attempts): array
+    {
+        $this->writeJob([
+            'status' => 'running',
+            'tasks' => [['sku' => 'GRACK 5N1', 'std' => 33.88, 'effective' => 31.3, 'status' => 'pushing', 'attempts' => $attempts]],
+            'total' => 1,
+            'ok_count' => 0,
+        ]);
+
+        return $this->store()->recoverOrphanedPushing();
+    }
+
     private function store(): AmazonPushPrcJobStore
     {
         return AmazonPushPrcJobStore::atPath($this->path);
