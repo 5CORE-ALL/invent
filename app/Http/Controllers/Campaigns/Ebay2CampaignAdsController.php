@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Schema;
  * eBay 2 mirror of {@see EbayCampaignAdsController}, driven off eBay-2 data:
  *   - Campaign data: `ebay2_campaign_ads`
  *   - Metrics:       `ebay_2_metrics` (App\Models\Ebay2Metric)
- *   - Rule keys:     `ebay2_dil` (DIL colour bands) and `ebay2_dil_sbid`
+ *   - Rule keys:     `ebay2_dil_sbid`
  *                    in `ebay_sbid_rules` (`ebay2` SCVR bands kept only for
  *                    legacy getRule/saveRule)
  *   - Token / push:  Ebay2ApiService
@@ -43,12 +43,7 @@ class Ebay2CampaignAdsController extends Controller
 
     public function index()
     {
-        $dil = DB::table('ebay_sbid_rules')->where('key', 'ebay2_dil')->first();
-        $dilData = $dil ? json_decode($dil->rule, true) : $this->defaultDilRule();
-
-        return view('campaign.ebay2-campaign-ads', [
-            'dilRule' => $dilData,
-        ]);
+        return view('campaign.ebay2-campaign-ads');
     }
 
     public function getRule()
@@ -87,49 +82,6 @@ class Ebay2CampaignAdsController extends Controller
         );
 
         return response()->json(['success' => true, 'rule' => $rule]);
-    }
-
-    /**
-     * Dilution rule — DIL% color bands stored under key `ebay2_dil` in
-     * `ebay_sbid_rules`. DIL = (L30 sold / inventory) * 100. Bands evaluated
-     * ascending by dil_max — first band where DIL <= dil_max wins.
-     */
-    public function getDilRule()
-    {
-        $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay2_dil')->first();
-        return response()->json($rule ? json_decode($rule->rule, true) : $this->defaultDilRule());
-    }
-
-    public function saveDilRule(Request $request)
-    {
-        $bands = $request->input('bands', []);
-
-        if (empty($bands) || !is_array($bands)) {
-            return response()->json(['error' => 'Invalid rule data'], 422);
-        }
-
-        usort($bands, fn($a, $b) => $a['dil_max'] <=> $b['dil_max']);
-
-        $rule = ['bands' => $bands];
-
-        DB::table('ebay_sbid_rules')->updateOrInsert(
-            ['key' => 'ebay2_dil'],
-            ['rule' => json_encode($rule), 'updated_at' => now()]
-        );
-
-        return response()->json(['success' => true, 'rule' => $rule]);
-    }
-
-    private function defaultDilRule(): array
-    {
-        return [
-            'bands' => [
-                ['dil_max' => 16.66, 'bid' => 9.1, 'label' => 'Red',    'color' => '#a00211'],
-                ['dil_max' => 25,    'bid' => 7.1, 'label' => 'Yellow', 'color' => '#ffc107'],
-                ['dil_max' => 50,    'bid' => 4.1, 'label' => 'Green',  'color' => '#28a745'],
-                ['dil_max' => 9999,  'bid' => 2.1, 'label' => 'Pink',   'color' => '#e83e8c'],
-            ]
-        ];
     }
 
     public function getDilSbidRule()

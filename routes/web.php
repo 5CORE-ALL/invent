@@ -7267,8 +7267,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay2/listing-report-history', 'listingReportHistory')->name('ebay2.listing.report.history');
         Route::get('/ebay2/campaign-ads/rule', 'getRule')->name('ebay2.campaign.ads.rule');
         Route::post('/ebay2/campaign-ads/rule', 'saveRule')->name('ebay2.campaign.ads.rule.save');
-        Route::get('/ebay2/campaign-ads/dil-rule', 'getDilRule')->name('ebay2.campaign.ads.dil.rule');
-        Route::post('/ebay2/campaign-ads/dil-rule', 'saveDilRule')->name('ebay2.campaign.ads.dil.rule.save');
         Route::get('/ebay2/campaign-ads/dil-sbid-rule', 'getDilSbidRule')->name('ebay2.campaign.ads.dil.sbid');
         Route::post('/ebay2/campaign-ads/dil-sbid-rule', 'saveDilSbidRule')->name('ebay2.campaign.ads.dil.sbid.save');
         Route::post('/ebay2/campaign-ads/push-selected', 'pushSelected')->name('ebay2.campaign.ads.push.selected');

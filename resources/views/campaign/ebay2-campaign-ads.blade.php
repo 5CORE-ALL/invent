@@ -25,9 +25,6 @@
             <button class="btn btn-sm btn-info text-white d-none" id="enroll-selected-btn" data-bs-toggle="modal" data-bs-target="#enrollModal">
                 <i class="fas fa-plus-circle me-1"></i>Enroll in Campaign (<span id="enroll-count">0</span>)
             </button>
-            <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#dilRuleModal">
-                <i class="fas fa-tint me-1"></i>Dil Rule
-            </button>
             <button class="btn btn-sm btn-outline-secondary" title="Download the rows on this page" onclick="table.download('csv','ebay2_campaign_ads.csv')">
                 <i class="fas fa-download me-1"></i>CSV
             </button>
@@ -121,58 +118,6 @@
                 <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-sm btn-info text-white" id="enroll-confirm-btn">
                     <i class="fas fa-plus-circle me-1"></i>Enroll Now
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-{{-- Dilution Rule Modal --}}
-<div class="modal fade" id="dilRuleModal" tabindex="-1" aria-labelledby="dilRuleModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h5 class="modal-title" id="dilRuleModalLabel">
-                    <i class="fas fa-tint me-2 text-danger"></i>eBay 2 Dilution Rule — DIL % → Color
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p class="small text-muted mb-3">
-                    Bands evaluated <strong>top to bottom</strong> — first match wins.
-                    <code>DIL = (L30 sold / Inventory) × 100</code>. Each band sets a color and a bid.
-                </p>
-
-                <table class="table table-sm table-bordered align-middle" id="dil-rule-table">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width:40px;">#</th>
-                            <th>Label</th>
-                            <th>Color</th>
-                            <th>DIL ≤ (%)</th>
-                            <th>Bid (%)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="dil-bands-body">
-                        {{-- filled by JS --}}
-                    </tbody>
-                </table>
-
-                <button type="button" class="btn btn-sm btn-outline-primary py-0 mb-2" id="dil-add-band-btn">
-                    <i class="fas fa-plus me-1"></i>Add band
-                </button>
-
-                <div class="alert alert-info small py-2 mb-0">
-                    <i class="fas fa-info-circle me-1"></i>
-                    Set DIL Max to <code>9999</code> for the last band (catches everything above the previous threshold).
-                    Used for the Dil % column colours. Bid push uses Dil vs SBid.
-                </div>
-                <p class="small text-danger mb-0 mt-2 d-none" id="dil-rule-err"></p>
-            </div>
-            <div class="modal-footer py-2">
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-sm btn-primary" id="dil-rule-save-btn">
-                    <i class="fas fa-save me-1"></i>Save Rule
                 </button>
             </div>
         </div>
@@ -1070,11 +1015,8 @@ function getCombinedSbid() {
     return { bid: 0, color: '#6c757d', skip: true, title: 'Sbid Rule removed' };
 }
 
-// ── Dilution Rule ───────────────────────────────────
-// DIL = (L30 sold / Inventory) × 100. Bands evaluated top-to-bottom, first DIL ≤ max wins.
-const dilGetUrl  = '/ebay2/campaign-ads/dil-rule';
-const dilSaveUrl = '/ebay2/campaign-ads/dil-rule';
-let currentDilRule = @json($dilRule ?? ['bands' => []]);
+// ── DIL % ───────────────────────────────────────────
+// DIL = (L30 sold / Inventory) × 100. The Dil % column uses fixed colours (the editable Dilution Rule was removed).
 
 // CP Master Dil = round(OV L30 sold / Inventory × 100). Inv 0 or missing is not Dil 0.
 function dilValue(row) {
@@ -1099,120 +1041,14 @@ function dilSortValue(row) {
     return d === null ? -1 : d;
 }
 
-// Color for a DIL% from the dynamic dilution rule
+// Fixed colour for a DIL%: <=16.66 red, <=25 yellow, <=50 green, above that pink.
 function getDilColor(dil) {
     const d = parseFloat(dil);
-    const bands = currentDilRule.bands || [];
-    for (let i = 0; i < bands.length; i++) {
-        if (d <= parseFloat(bands[i].dil_max)) {
-            return bands[i].color || '#333';
-        }
-    }
-    const last = bands[bands.length - 1];
-    return last ? (last.color || '#333') : '#e83e8c';
+    if (d <= 16.66) return '#a00211';
+    if (d <= 25) return '#ffc107';
+    if (d <= 50) return '#28a745';
+    return '#e83e8c';
 }
-
-function renderDilBands(bands) {
-    const tbody = document.getElementById('dil-bands-body');
-    tbody.innerHTML = '';
-    bands.forEach(function(band, i) {
-        const isLast = (parseFloat(band.dil_max) >= 9999);
-        tbody.innerHTML += `
-        <tr>
-            <td class="text-center text-muted small">${i+1}</td>
-            <td><input type="text" class="form-control form-control-sm" value="${band.label || ''}"
-                       data-idx="${i}" data-field="label" onchange="updateDilBand(this)"></td>
-            <td>
-                <div class="d-flex align-items-center gap-2">
-                    <input type="color" class="form-control form-control-color form-control-sm" style="width:40px;height:31px;"
-                           value="${band.color || '#6c757d'}" data-idx="${i}" data-field="color" onchange="updateDilBand(this)">
-                    <span class="badge" style="background:${band.color || '#6c757d'};">${band.label || ''}</span>
-                </div>
-            </td>
-            <td>
-                ${isLast
-                    ? '<span class="text-muted small">∞ (catch-all)</span><input type="hidden" value="9999" data-idx="'+i+'" data-field="dil_max">'
-                    : `<input type="number" step="0.01" min="0" class="form-control form-control-sm" value="${band.dil_max}"
-                              data-idx="${i}" data-field="dil_max" onchange="updateDilBand(this)">`
-                }
-            </td>
-            <td>
-                <div class="input-group input-group-sm">
-                    <input type="number" step="0.1" min="0" max="100" class="form-control form-control-sm fw-semibold"
-                           value="${band.bid != null ? band.bid : ''}" data-idx="${i}" data-field="bid"
-                           style="color:${band.color || '#333'}; font-weight:600;" onchange="updateDilBand(this)">
-                    <span class="input-group-text">%</span>
-                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="removeDilBand(${i})"
-                            title="Remove band">&times;</button>
-                </div>
-            </td>
-        </tr>`;
-    });
-}
-
-function updateDilBand(el) {
-    const idx   = parseInt(el.dataset.idx);
-    const field = el.dataset.field;
-    currentDilRule.bands[idx][field] = (field === 'dil_max' || field === 'bid') ? parseFloat(el.value) : el.value;
-    if (field === 'color') {
-        el.closest('tr').querySelector('.badge').style.background = el.value;
-    }
-}
-
-function removeDilBand(idx) {
-    currentDilRule.bands.splice(idx, 1);
-    renderDilBands(currentDilRule.bands);
-}
-
-document.getElementById('dil-add-band-btn').addEventListener('click', function() {
-    const bands = currentDilRule.bands;
-    const lastIsCatch = bands.length && parseFloat(bands[bands.length - 1].dil_max) >= 9999;
-    const newBand = { dil_max: 0, bid: 2.1, label: 'New', color: '#6c757d' };
-    if (lastIsCatch) bands.splice(bands.length - 1, 0, newBand);
-    else bands.push(newBand);
-    renderDilBands(bands);
-});
-
-// Load rule when modal opens
-document.getElementById('dilRuleModal').addEventListener('show.bs.modal', function() {
-    $.get(dilGetUrl, function(data) {
-        currentDilRule = data;
-        renderDilBands(data.bands || []);
-    });
-});
-
-// Save rule
-document.getElementById('dil-rule-save-btn').addEventListener('click', function() {
-    const errEl = document.getElementById('dil-rule-err');
-    errEl.classList.add('d-none');
-    const btn = this;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
-
-    $.ajax({
-        url: dilSaveUrl,
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-        contentType: 'application/json',
-        data: JSON.stringify({ bands: currentDilRule.bands }),
-        success: function(resp) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
-            currentDilRule = resp.rule;
-            if (table) table.redraw(true);
-            setTimeout(() => {
-                btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
-                bootstrap.Modal.getInstance(document.getElementById('dilRuleModal')).hide();
-            }, 1200);
-        },
-        error: function(xhr) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
-            errEl.textContent = 'Error: ' + (xhr.responseJSON?.error || xhr.responseText);
-            errEl.classList.remove('d-none');
-        }
-    });
-});
 @include('campaign.partials.ebay-dil-sbid-rule', [
     'part' => 'script',
     'account' => 'eBay 2',

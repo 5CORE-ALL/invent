@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         if (Schema::hasTable('ebay_sbid_rules')) {
-            DB::table('ebay_sbid_rules')->where('key', 'ebay2_sbid_views')->delete();
+            DB::table('ebay_sbid_rules')->whereIn('key', ['ebay2_sbid_views'])->delete();
         }
     }
 
