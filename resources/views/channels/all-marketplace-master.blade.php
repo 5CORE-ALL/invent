@@ -2264,12 +2264,15 @@
                 : sales * Math.max(0, 1 - gp / 100);
             const todayViews = (l30 > 0 && views > 0) ? views * (sales / l30) : 0;
             const todayOrders = (l30 > 0 && l30Orders > 0) ? l30Orders * (sales / l30) : 0;
+            // T Spend: Amazon's real spend so far today (amazon:pull-today-ad-spend) when available,
+            // so T Ads% = T Spend ÷ T (Today) Sales. Other channels apply their ad rate to Today Sales.
+            const tSpend = (row['T Ads Measured'] === true) ? parseNumber(row['T Ad Spend'] || 0) : 0;
             return {
                 sales: sales,
                 gross: sales * gp / 100,
                 net: sales * npft / 100,
                 cogs: cogs,
-                spend: sales * ads / 100,
+                spend: tSpend > 0 ? tSpend : sales * ads / 100,
                 views: todayViews,
                 orders: todayOrders
             };
@@ -4077,7 +4080,7 @@
                     {
                         title: "T Ads%",
                         field: "T Ads%",
-                        headerTooltip: "Today Ads% = ad rate applied to Today Sales. Ad platforms do not report today live, so the rate is the latest measured day's Ads% (Amazon, eBay 1/2/3, Temu 1/2, Shopify); other channels use their L30 Ads%. Blank when Today Sales is 0. Dot: green = lower than the previous day.",
+                        headerTooltip: "Today Ads% = T Spend ÷ Today Sales for Amazon (today's SP + SB spend so far, pulled hourly). Other channels have no live today spend, so they apply the latest measured day's Ads% (eBay 1/2/3, Temu 1/2, Shopify) or their L30 Ads% to Today Sales. Blank when Today Sales is 0. Dot: green = lower than the previous day.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 80,

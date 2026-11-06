@@ -85,6 +85,22 @@ class AmmColumnHistory
     }
 
     /**
+     * Real T Spend for a channel payload row (Amazon: today's SP + SB spend so far), or null when
+     * the row has none. T Ads% = this ÷ Today Sales.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    public static function measuredTodaySpend(array $row): ?float
+    {
+        if (empty($row['T Ads Measured'])) {
+            return null;
+        }
+        $spend = self::num($row['T Ad Spend'] ?? 0);
+
+        return $spend > 0 ? $spend : null;
+    }
+
+    /**
      * Save today's Inv@SP / Inv@LP $ per DIL band under the all-channels page so the INV band
      * dots open the same standard history graph as every other badge.
      *
@@ -462,7 +478,11 @@ class AmmColumnHistory
             if ($sales > 0) {
                 // Rate = latest measured day's Ads% where the channel has a real daily ad source
                 // (ad platforms do not report today live); otherwise the channel's L30 Ads%.
-                $adsRaw = self::measuredAdsRate($row) ?? self::num($row['Ads%'] ?? ($row['TACOS'] ?? 0));
+                // Amazon: real T Spend ÷ Today Sales when today's spend has been pulled.
+                $tSpend = self::measuredTodaySpend($row);
+                $adsRaw = $tSpend !== null
+                    ? ($tSpend / $sales) * 100
+                    : (self::measuredAdsRate($row) ?? self::num($row['Ads%'] ?? ($row['TACOS'] ?? 0)));
                 $data['t_ads_pct'] = round((float) $adsRaw, 4);
             }
 
