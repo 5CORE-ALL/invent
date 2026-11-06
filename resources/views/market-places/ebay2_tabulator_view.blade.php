@@ -3227,6 +3227,20 @@
                             return html;
                         }
                     },
+                    {
+                        // Category from the eBay 2 /excel upload (worksheet name), matched by eBay 2 Item ID
+                        title: "Category",
+                        field: "excel_category",
+                        sorter: "string", sorterParams: { alignEmptyValues: "bottom" },
+                        headerFilter: "input",
+                        headerFilterPlaceholder: "Search Category...",
+                        tooltip: true,
+                        width: 140,
+                        visible: true,
+                        formatter: function(cell) {
+                            return cell.getValue() || '';
+                        }
+                    },
                     // {
                     //     title: "Ratings",
                     //     field: "rating",
@@ -4984,7 +4998,7 @@
                 }
 
                 if (
-                    /^(image_path|Parent|\(Child\) sku|INV|L30|rating|links_column|E Stock|nr_req|nrp|NRL|NR|eBay L30|eBay L45|eBay L60|growth_percent)$/i.test(f) ||
+                    /^(image_path|Parent|\(Child\) sku|excel_category|INV|L30|rating|links_column|E Stock|nr_req|nrp|NRL|NR|eBay L30|eBay L45|eBay L60|growth_percent)$/i.test(f) ||
                     /\b(image|parent|sku|inv|ov\s*l30|links|rating|stock|nr\/req|nrp|nrl|nra|growth|e\s*l\d+)\b/i.test(tl)
                 ) {
                     return 'basics';
