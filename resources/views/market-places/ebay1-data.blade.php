@@ -123,6 +123,26 @@
         .e1d-chip { background: #dcfce7; color: #166534; border-radius: 12px; padding: 1px 4px 1px 10px; font-size: .78rem; font-weight: 600; }
         .e1d-chip button { border: 0; background: transparent; color: #166534; font-weight: 700; padding: 0 4px; }
         .e1d-addopt { display: flex; align-items: center; gap: 10px; padding: .55rem .9rem; font-size: .88rem; color: #334155; cursor: pointer; margin: 0; border-bottom: 1px solid #f4f6fa; transition: background .12s; }
+        .e1d-cnt { margin-left: auto; font-size: .8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .e1d-cnt.green { color: #16a34a; }
+        .e1d-cnt.red { color: #dc2626; }
+        .e1d-job { border: 1px solid #e6ecf5; border-radius: 12px; background: #fcfdff; padding: .65rem .9rem; margin: 0 0 .75rem; box-shadow: 0 2px 10px rgba(15,23,42,.05); }
+        .e1d-job[hidden] { display: none; }
+        .e1d-job-head { display: flex; align-items: center; gap: .6rem; font-size: .88rem; color: #0f172a; }
+        .e1d-job-counts { margin-left: auto; display: flex; gap: .8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .e1d-ok { color: #16a34a; }
+        .e1d-bad { color: #dc2626; }
+        .e1d-job-x { border: 0; background: transparent; color: #94a3b8; width: 26px; height: 26px; border-radius: 50%; }
+        .e1d-job-x:hover { background: #f1f5f9; color: #334155; }
+        .e1d-job-bar { display: flex; height: 8px; border-radius: 999px; background: #e9eef6; overflow: hidden; margin-top: .5rem; }
+        .e1d-job-ok { background: #16a34a; transition: width .25s; }
+        .e1d-job-bad { background: #dc2626; transition: width .25s; }
+        .e1d-job-note { font-size: .78rem; color: #dc2626; margin-top: .4rem; white-space: pre-line; }
+        .e1d-job-note:empty { display: none; }
+        .e1d-job-icon .fa-spin { color: #2c6ed5; }
+        .e1d-modal-box { position: relative; }
+        .e1d-x { position: absolute; top: 1.1rem; right: 1.1rem; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #f1f5f9; color: #475569; display: flex; align-items: center; justify-content: center; transition: background .12s; }
+        .e1d-x:hover { background: #e2e8f0; color: #0f172a; }
         .e1d-addopt:last-child { border-bottom: 0; }
         .e1d-addopt:hover { background: #f5f8ff; }
         .e1d-addopt input[type=checkbox] { width: 16px; height: 16px; accent-color: #2c6ed5; flex: 0 0 auto; }
@@ -207,6 +227,17 @@
                             </div>
                         </div>
                         <div class="e1d-badges" id="e1dBadges"></div>
+                    </div>
+
+                    <div class="e1d-job" id="e1dJob" hidden>
+                        <div class="e1d-job-head">
+                            <span class="e1d-job-icon" id="e1dJobIcon"></span>
+                            <strong id="e1dJobTitle"></strong>
+                            <span class="e1d-job-counts"><span class="e1d-ok" id="e1dJobOk"></span> <span class="e1d-bad" id="e1dJobBad"></span></span>
+                            <button type="button" class="e1d-job-x" id="e1dJobClose" title="Dismiss" aria-label="Dismiss"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div class="e1d-job-bar"><span class="e1d-job-ok" id="e1dJobBarOk"></span><span class="e1d-job-bad" id="e1dJobBarBad"></span></div>
+                        <div class="e1d-job-note" id="e1dJobNote"></div>
                     </div>
 
                     <div class="e1d-tabs" id="e1dTabs" role="tablist" aria-label="eBay categories"></div>
@@ -682,6 +713,7 @@
                         failed += chunk.length;
                         problems.push(e.message || 'Request failed');
                     }
+                    jobShow('Deleting ' + label + '…', todo.length, done, failed, true, problems);
                 }
                 btn.dataset.busy = '0';
                 status.textContent = 'Pushed ' + pushed + ', unchanged ' + unchanged + (skipped ? ', skipped ' + skipped : '') + (failed ? ', failed ' + failed : '') + '.';
@@ -812,6 +844,8 @@
 
             // Columns ticked in the Delete Column window.
             let delPicked = new Set();
+            // True while a delete keeps running. The window can be closed meanwhile; progress then shows in the toolbar.
+            let delRunning = false;
 
             function delTargets(names) {
                 const list = Array.isArray(names) ? names : [names];
@@ -833,7 +867,7 @@
                         ? 'No live eBay 1 listing in this category has ' + label + '. ' + (picked.length === 1 ? 'The column is' : 'The columns are') + ' only removed from this tab.'
                         : 'This removes ' + label + ' from <strong>' + n + '</strong> live eBay 1 listing' + (n === 1 ? '' : 's') + ' in this category and from the stored data. It cannot be undone here.');
                 const go = document.getElementById('e1dDelGo');
-                go.disabled = !picked.length;
+                go.disabled = !picked.length || delRunning;
                 go.textContent = picked.length > 1 ? 'Delete ' + picked.length + ' columns' : 'Delete column';
                 const all = document.getElementById('e1dDelAll');
                 const visible = delVisibleNames();
@@ -854,6 +888,9 @@
                 const names = specNamesForTab();
                 delPicked = new Set(Array.from(delPicked).filter(function (name) { return names.indexOf(name) !== -1; }));
                 const list = document.getElementById('e1dDelList');
+                const delTotal = rows.filter(function (row) {
+                    return passesTab(row) && /^\d{9,15}$/.test(String(row.item_id || '').trim());
+                }).length;
                 list.innerHTML = '';
                 const shown = delVisibleNames();
                 if (!shown.length) list.innerHTML = '<div class="small text-muted p-2">No matching column.</div>';
@@ -868,7 +905,14 @@
                         refreshDelWarning();
                     });
                     row.appendChild(cb);
-                    row.appendChild(document.createTextNode(' ' + name + ' (' + delTargets(name).length + ')'));
+                    row.appendChild(document.createTextNode(' ' + name + ' '));
+                    // available / total: live listings of this tab that carry the column / all live listings of this tab.
+                    const have = delTargets(name).length;
+                    const count = document.createElement('span');
+                    count.className = 'e1d-cnt ' + (have === delTotal ? 'green' : 'red');
+                    count.textContent = have + '/' + delTotal;
+                    count.title = have + ' of ' + delTotal + ' live listings in this category have this column';
+                    row.appendChild(count);
                     list.appendChild(row);
                 });
                 refreshDelWarning();
@@ -877,10 +921,10 @@
             function openDelModal(keepPicked) {
                 const names = specNamesForTab();
                 if (activeTab === ALL || !names.length) return;
-                if (keepPicked !== true) delPicked = new Set();
+                if (keepPicked !== true && !delRunning) delPicked = new Set();
                 document.getElementById('e1dDelSearch').value = '';
                 document.getElementById('e1dDelIntro').textContent = 'Category: ' + catLabel(activeTab);
-                document.getElementById('e1dDelProgress').textContent = '';
+                if (!delRunning) document.getElementById('e1dDelProgress').textContent = '';
                 document.getElementById('e1dDelModal').hidden = false;
                 renderDelList();
             }
@@ -889,11 +933,29 @@
                 document.getElementById('e1dDelModal').hidden = true;
             }
 
+            // Progress shown outside the side panel: bar and counts, green for done and red for failed.
+            function jobShow(title, total, done, failed, running, problems) {
+                const box = document.getElementById('e1dJob');
+                box.hidden = false;
+                document.getElementById('e1dJobTitle').textContent = title;
+                document.getElementById('e1dJobIcon').innerHTML = running
+                    ? '<i class="fas fa-spinner fa-spin"></i>'
+                    : (failed ? '<i class="fas fa-exclamation-circle e1d-bad"></i>' : '<i class="fas fa-check-circle e1d-ok"></i>');
+                document.getElementById('e1dJobOk').textContent = done ? '✔ ' + done + ' done' : '';
+                document.getElementById('e1dJobBad').textContent = failed ? '✖ ' + failed + ' failed' : '';
+                const t = Math.max(total, 1);
+                document.getElementById('e1dJobBarOk').style.width = Math.min(100, done / t * 100) + '%';
+                document.getElementById('e1dJobBarBad').style.width = Math.min(100, failed / t * 100) + '%';
+                const list = problems || [];
+                document.getElementById('e1dJobNote').textContent = list.slice(0, 6).join('\n') + (list.length > 6 ? '\n… and ' + (list.length - 6) + ' more' : '');
+            }
+
             async function runDelete() {
                 const names = Array.from(delPicked);
                 if (!names.length) return;
                 const todo = delTargets(names);
                 const label = names.length === 1 ? '"' + names[0] + '"' : names.length + ' columns';
+                if (delRunning) return;
                 const category = activeTab === NO_CATEGORY ? '' : activeTab;
                 if (!window.confirm(todo.length
                     ? 'Delete ' + label + ' from ' + todo.length + ' live eBay 1 listings?'
@@ -902,14 +964,16 @@
                 const goBtn = document.getElementById('e1dDelGo');
                 const progress = document.getElementById('e1dDelProgress');
                 goBtn.disabled = true;
-                document.getElementById('e1dDelCancel').disabled = true;
+                delRunning = true;
+                const modalOpen = function () { return !document.getElementById('e1dDelModal').hidden; };
                 let done = 0, failed = 0;
                 const problems = [];
                 const size = 5;
                 // With no listing to change, one call still drops the columns of this tab.
                 for (let i = 0; i < Math.max(todo.length, 1); i += size) {
                     const chunk = todo.slice(i, i + size).map(function (row) { return { sku: row.sku, item_id: String(row.item_id).trim() }; });
-                    progress.textContent = 'Deleting ' + Math.min(i + size, todo.length) + ' / ' + todo.length + '…';
+                    progress.textContent = 'Deleting ' + Math.min(i + size, todo.length) + ' / ' + todo.length + '… (you can close this window, it keeps running)';
+                    jobShow('Deleting ' + label + '…', todo.length, done, failed, true, problems);
                     try {
                         const res = await fetch('/ebay1-data/delete-specific', {
                             method: 'POST',
@@ -926,14 +990,17 @@
                         problems.push(e.message || 'Request failed');
                     }
                 }
-                document.getElementById('e1dDelCancel').disabled = false;
-                progress.textContent = 'Deleted ' + done + (failed ? ', failed ' + failed : '') + '.';
-                if (problems.length) window.alert(problems.slice(0, 15).join('\n') + (problems.length > 15 ? '\n…' : ''));
+                const summary = 'Deleted ' + done + (failed ? ', failed ' + failed : '') + '.';
+                progress.textContent = summary;
                 await loadData();
+                delRunning = false;
+                jobShow('Delete finished: ' + label, todo.length, done, failed, false, problems);
                 if (failed) {
-                    openDelModal(true);
-                    document.getElementById('e1dDelProgress').textContent = 'Deleted ' + done + ', failed ' + failed + '. Delete again to retry the failed SKUs.';
-                } else {
+                    if (modalOpen()) {
+                        openDelModal(true);
+                        document.getElementById('e1dDelProgress').textContent = 'Deleted ' + done + ', failed ' + failed + '. Delete again to retry the failed SKUs.';
+                    }
+                } else if (modalOpen()) {
                     closeDelModal();
                 }
             }
@@ -1681,11 +1748,32 @@
                 });
                 document.getElementById('e1dDelSearch').addEventListener('input', renderDelList);
                 document.getElementById('e1dDelGo').addEventListener('click', runDelete);
+                document.getElementById('e1dJobClose').addEventListener('click', function () { document.getElementById('e1dJob').hidden = true; });
                 // Click outside a side panel, or Esc, does the same as its Cancel button.
                 const dismissModal = function (modal) {
-                    const cancel = modal && modal.querySelector('[id$="Cancel"]');
+                    if (!modal) return;
+                    const cancel = modal.querySelector('[id$="Cancel"]');
                     if (cancel && !cancel.disabled) cancel.click();
+                    else modal.hidden = true;
                 };
+                // A close (x) button on every side panel.
+                document.querySelectorAll('.e1d-modal').forEach(function (modal) {
+                    const box = modal.querySelector('.e1d-modal-box');
+                    if (!box) return;
+                    const x = document.createElement('button');
+                    x.type = 'button';
+                    x.className = 'e1d-x';
+                    x.title = 'Close';
+                    x.setAttribute('aria-label', 'Close');
+                    x.innerHTML = '<i class="fas fa-times"></i>';
+                    x.addEventListener('click', function () { dismissModal(modal); });
+                    box.prepend(x);
+                });
+                window.addEventListener('beforeunload', function (e) {
+                    if (!delRunning) return;
+                    e.preventDefault();
+                    e.returnValue = '';
+                });
                 document.querySelectorAll('.e1d-modal').forEach(function (modal) {
                     modal.addEventListener('mousedown', function (e) { if (e.target === modal) dismissModal(modal); });
                 });
