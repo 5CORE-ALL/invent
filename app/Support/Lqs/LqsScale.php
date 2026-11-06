@@ -2,6 +2,7 @@
 
 namespace App\Support\Lqs;
 
+use App\Services\Lqs\AlibabaLqsApiSyncService;
 use App\Services\Lqs\MiraklLqsApiSyncService;
 use App\Services\Lqs\ReverbLqsApiSyncService;
 use App\Services\Lqs\DobaLqsApiSyncService;
@@ -27,7 +28,8 @@ class LqsScale
             || $slug === WayfairLqsApiSyncService::MARKETPLACE
             || $slug === SheinLqsApiSyncService::MARKETPLACE
             || $slug === TopdawgLqsApiSyncService::MARKETPLACE
-            || $slug === FaireLqsApiSyncService::MARKETPLACE;
+            || $slug === FaireLqsApiSyncService::MARKETPLACE
+            || $slug === AlibabaLqsApiSyncService::MARKETPLACE;
     }
 
     /** Marketplaces with a bulk "Sync LQS from API" button. */

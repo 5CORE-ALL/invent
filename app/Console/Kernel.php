@@ -363,6 +363,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('lqs-sync-faire')
             ->appendOutputTo($log);
+        // Alibaba LQS from the live ICBU product API (one GET per product; server IP is whitelisted).
+        $schedule->command('lqs:sync-alibaba')
+            ->dailyAt('06:00')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->name('lqs-sync-alibaba')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:chargeback-osize')
             ->dailyAt('05:15')
             ->withoutOverlapping(60)

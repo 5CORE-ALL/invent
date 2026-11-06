@@ -883,7 +883,7 @@
                     <p class="small text-muted mb-2" id="ch-promo-dil-prmt-help">
                         Shared Dil vs PRMT for <strong>all marketplaces</strong>:
                         <strong>0.01–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>
-                        (Dil 0% gets no PRMT). Save on any page updates every page.
+                        (Dil 0% uses the first row). Save on any page updates every page.
                         Changing any slab fills <strong>PRMT %</strong>.
                         <strong>PRMT% auto-applies when Dil slab changes</strong>.
                         <strong>Save &amp; Apply</strong> stores the slabs and applies PRMT% to selected (or visible) SKUs.
@@ -920,7 +920,7 @@
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-dil-prmt-apply-btn"
-                        title="Save Dil→PRMT slabs, then apply PRMT% — selected rows if checked, otherwise all visible. Only SKUs with E L30 &gt; 0.">
+                        title="Save Dil→PRMT slabs, then apply PRMT% — selected rows if checked, otherwise all visible SKUs in the table (no E L30 condition).">
                         <i class="fas fa-save me-1"></i>Save &amp; Apply
                     </button>
                 </div>
@@ -3286,7 +3286,7 @@
                 const max = min + 3;
                 rules.push({
                     key: min + '-' + max,
-                    label: min === 0 ? '0.01–3%' : (min + '–' + max + '%'),
+                    label: min + '–' + max + '%',
                     prmt: prmt
                 });
                 prmt -= 1;
@@ -4944,7 +4944,7 @@
             }
             return n > 25 ? 'gt-25' : 'none';
         }
-        /** Dil% range of a built-in slab: edited min/max, else parsed from its key ("3-6"; first slab starts at 0.01). */
+        /** Dil% range of a built-in slab: edited min/max, else parsed from its key ("3-6"; first slab starts at 0, so Dil 0% is covered). */
         function chPromoBuiltinDilRange(r) {
             const key = String(r.key || '');
             if (key.indexOf('custom-') === 0 || r.deleted) return null;
@@ -4953,7 +4953,8 @@
             let lo = parseFloat(m[1]);
             let hi = parseFloat(m[2]);
             if (r.min != null && r.min !== '' && isFinite(Number(r.min))) lo = Number(r.min);
-            else if (lo <= 0) lo = 0.01;
+            // Legacy saved default 0.01 for the first slab → starts at 0 so Dil 0% is covered.
+            if (key === '0-3' && Math.abs(lo - 0.01) < 0.0001) lo = 0;
             if (r.max != null && r.max !== '' && isFinite(Number(r.max))) hi = Number(r.max);
             if (!(hi > lo)) return null;
             return { min: lo, max: hi };
@@ -5000,7 +5001,7 @@
             if (!d || d.is_parent_summary) return null;
             if (!chPromoIsChildRow(d)) return null;
             if (chPromoInv(d) === 0) return 0;
-            if (chPromoIsEbayChannel()
+            if (chPromoDilPrmtSaleGated() && chPromoIsEbayChannel()
                 && typeof chPromoIsZeroSoldRow === 'function'
                 && chPromoIsZeroSoldRow(d)) {
                 return 0;
@@ -7072,7 +7073,7 @@
                 targets = collectChPromoVisibleRows();
                 label = 'all visible';
             }
-            if (chPromoSaleGatedApply()) {
+            if (chPromoDilPrmtSaleGated()) {
                 targets = targets.filter(function(t) {
                     const d = (t.d || (t.row && t.row.getData())) || {};
                     return chPromoHasSaleQty(d);
@@ -7082,7 +7083,7 @@
                 $btn.prop('disabled', false).html(html);
                 chPromoToast(
                     'success',
-                    chPromoSaleGatedApply()
+                    chPromoDilPrmtSaleGated()
                         ? ('Rules saved. No rows with ' + chPromoSaleGateLabel() + ' to apply.')
                         : 'Rules saved. No SKUs to apply.'
                 );
@@ -7093,7 +7094,7 @@
                 if (!confirm(
                     'No rows selected — apply Dil→PRMT % to '
                     + targets.length + ' visible SKU(s)'
-                    + (chPromoSaleGatedApply() ? (' with ' + chPromoSaleGateLabel()) : '')
+                    + (chPromoDilPrmtSaleGated() ? (' with ' + chPromoSaleGateLabel()) : '')
                     + '?'
                 )) {
                     $btn.prop('disabled', false).html(html);
@@ -8116,7 +8117,7 @@
                 }
             }
             if (!ebayParentDil && !opts.zeroSoldOnly) {
-                if (chPromoSaleGatedApply() && !chPromoUsesAmazonDilPrmtSlabs()) {
+                if (chPromoDilPrmtSaleGated() && !chPromoUsesAmazonDilPrmtSlabs()) {
                     const soldLabel = chPromoSoldFieldLabel();
                     applyTargets = applyTargets.filter(function(item) {
                         const d = (item.d || (item.row && item.row.getData())) || {};
@@ -8160,14 +8161,16 @@
                 applyTargets = targets.filter(function(item) {
                     const d = (item.d || (item.row && item.row.getData())) || {};
                     if (!chPromoIsChildRow(d)) return false;
-                    if (typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d)) return false;
-                    if (chPromoEbayListingSaleQty(d) <= 0) return false;
+                    if (chPromoDilPrmtSaleGated()) {
+                        if (typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d)) return false;
+                        if (chPromoEbayListingSaleQty(d) <= 0) return false;
+                    }
                     const k = keyOf(d);
                     if (k) keys.add(k);
                     return true;
                 });
                 if (!applyTargets.length) {
-                    if (!silent) chPromoToast('error', 'No rows with eBay sale (E L30) > 0 to apply');
+                    if (!silent) chPromoToast('error', 'No SKUs to apply');
                     return;
                 }
                 listingCount = keys.size;
@@ -8412,7 +8415,7 @@
         }
         function chPromoDilPrmtEligible(d) {
             if (!d || !chPromoIsChildRow(d)) return false;
-            if (chPromoIsEbayChannel()
+            if (chPromoDilPrmtSaleGated() && chPromoIsEbayChannel()
                 && typeof chPromoIsZeroSoldRow === 'function'
                 && chPromoIsZeroSoldRow(d)) {
                 return false;
@@ -8422,7 +8425,7 @@
                 && chPromoIsZeroSoldRow(d)) {
                 return false;
             }
-            if (chPromoSaleGatedApply() && !chPromoUsesAmazonDilPrmtSlabs()
+            if (chPromoDilPrmtSaleGated() && !chPromoUsesAmazonDilPrmtSlabs()
                 && typeof chPromoHasSaleQty === 'function' && !chPromoHasSaleQty(d)) {
                 return false;
             }
@@ -9953,6 +9956,10 @@
             return true;
         }
         /** Dil→PRMT / CVR→CPN Apply: gate to sold > 0 (eBay E L30, AliExpress / Shein AL30). */
+        /** Dil→PRMT Apply covers the whole table (no E L30 / sold > 0 gate). CVR→CPN still uses chPromoSaleGatedApply(). */
+        function chPromoDilPrmtSaleGated() {
+            return false;
+        }
         function chPromoSaleGatedApply() {
             return true;
         }
@@ -11904,13 +11911,13 @@
                     if (help) {
                         help.innerHTML = 'Shared Dil vs PRMT (<strong>all marketplaces</strong>): '
                             + '<strong>0.01–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong> '
-                            + '(Dil 0% gets no PRMT). Save on this page updates every marketplace. '
+                            + '(Dil 0% uses the first row). Save on this page updates every marketplace. '
                             + 'On eBay, Dil is <strong>listing-wise</strong> '
                             + '(Σ OV L30 ÷ Σ INV by variation item id). Changing <strong>any</strong> slab number '
                             + 'immediately fills the <strong>PRMT %</strong> column. '
-                            + '<strong>PRMT% auto-applies when Dil slab changes</strong> on SKUs with '
-                            + '<strong>eBay sale (E L30) &gt; 0</strong>. '
-                            + '<strong>Save &amp; Apply</strong> stores the slabs and applies PRMT% to selected (or visible) SKUs. '
+                            + '<strong>PRMT% auto-applies when Dil slab changes</strong> on <strong>all SKUs in the table</strong> '
+                            + '(no E L30 condition). '
+                            + '<strong>Save &amp; Apply</strong> stores the slabs and applies PRMT% to selected (or all visible) SKUs. '
                             + 'If the listing’s total INV is 0, SKU PRMT% is <strong>0</strong>.';
                     }
                 } else if (chPromoUsesAmazonDilPrmtSlabs()) {

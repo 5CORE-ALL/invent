@@ -6487,6 +6487,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/faire/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsFaireController::class, 'apiScore'])->name('lqs.faire.api.score');
     Route::post('/lqs/faire/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsFaireController::class, 'startApiSync'])->name('lqs.faire.api.sync');
     Route::get('/lqs/faire/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsFaireController::class, 'apiSyncStatus'])->name('lqs.faire.api.sync.status');
+    // Alibaba: scored from the live ICBU product API (/icbu/product/get)
+    Route::post('/lqs/alibaba/api-score', [App\Http\Controllers\MarketPlace\Lqs\LqsAlibabaController::class, 'apiScore'])->name('lqs.alibaba.api.score');
+    Route::post('/lqs/alibaba/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsAlibabaController::class, 'startApiSync'])->name('lqs.alibaba.api.sync');
+    Route::get('/lqs/alibaba/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsAlibabaController::class, 'apiSyncStatus'])->name('lqs.alibaba.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation

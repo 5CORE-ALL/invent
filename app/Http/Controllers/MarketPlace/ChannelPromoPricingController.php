@@ -3087,7 +3087,8 @@ class ChannelPromoPricingController extends Controller
             $parts = explode('-', $key);
             $min = (float) ($parts[0] ?? 0);
 
-            return ['min' => $min <= 0 ? 0.01 : $min, 'max' => (float) ($parts[1] ?? 0)];
+            // First slab starts at 0 so Dil 0% is covered too.
+            return ['min' => max(0.0, $min), 'max' => (float) ($parts[1] ?? 0)];
         }
 
         return null;
@@ -3114,6 +3115,10 @@ class ChannelPromoPricingController extends Controller
             }
             $deleted = filter_var($item['deleted'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $min = is_numeric($item['min'] ?? null) ? round((float) $item['min'], 2) : null;
+            // Legacy saved default: first slab used to start at 0.01 → now starts at 0 (covers Dil 0%).
+            if ($key === '0-3' && $min !== null && abs($min - 0.01) < 0.0001) {
+                $min = 0.0;
+            }
             $max = is_numeric($item['max'] ?? null) ? round((float) $item['max'], 2) : null;
             if ($min === null || $max === null || $min < 0 || $max <= $min) {
                 if (! $deleted) {
@@ -3204,8 +3209,8 @@ class ChannelPromoPricingController extends Controller
                 return 'none';
             }
         }
-        // Lower-inclusive slabs: 0.01–3, 3–6, …, 21–24, 24–25. Dil < 0.01 or > 25 → no rule.
-        if (! is_finite($dil) || $dil < 0.01) {
+        // Lower-inclusive slabs: 0–3, 3–6, …, 21–24, 24–25. Dil < 0 or > 25 → no rule (Dil 0 is in 0–3).
+        if (! is_finite($dil) || $dil < 0) {
             return 'none';
         }
         if ($dil > 25) {
