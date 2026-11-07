@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ProductMaster\TechnicalSpecificationsController;
 use App\Support\Marketplace\AutomatedListingPage;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Models\ProductMaster;
@@ -47,6 +48,164 @@ class ListingEbayController extends Controller
             'status' => 200,
             'data' => AutomatedListingPage::rows('ebay'),
         ]);
+    }
+
+    /**
+     * GET /listing_ebay/field-counts
+     * Per SKU, from the data in our app (Technical Specifications and the eBay category of Category Master):
+     *   m = [fields with data, mandatory fields]  (the eBay required fields of the SKU's category)
+     *   a = [fields with data, all fields]        (required fields, every field saved in the category, UPC)
+     * Fields crossed out for a category on Technical Specifications are left out of both counts.
+     */
+    public function getFieldCounts(Request $request)
+    {
+        try {
+            @set_time_limit(300);
+            @ini_set('memory_limit', '512M');
+
+            $json = app(TechnicalSpecificationsController::class)->getData($request)->getData(true);
+            if (($json['status'] ?? 500) !== 200) {
+                return response()->json(['status' => 500, 'message' => (string) ($json['error'] ?? $json['message'] ?? 'Could not load the fields.')], 500);
+            }
+
+            $hidden = [];
+            foreach ((array) ($json['hidden_fields'] ?? []) as $scope => $keys) {
+                $hidden[(string) $scope] = array_flip(array_map('strval', (array) $keys));
+            }
+            $sources = [];
+            foreach ((array) ($json['column_sources'] ?? []) as $map) {
+                $column = $this->specKey((string) ($map['column'] ?? ''));
+                if ($column !== '') {
+                    $sources[$column] = (string) ($map['source'] ?? '');
+                }
+            }
+
+            $out = [];
+            foreach ((array) ($json['data'] ?? []) as $row) {
+                $sku = trim((string) ($row['SKU'] ?? ''));
+                if ($sku === '' || stripos($sku, 'PARENT ') === 0) {
+                    continue;
+                }
+                $skipped = $hidden[(string) ($row['hide_scope'] ?? '')] ?? [];
+                $mandatory = $this->countFields((array) ($row['ebay_required_only'] ?? []), $row, $skipped, $sources);
+                $all = $this->countFields((array) ($row['ebay_required'] ?? []), $row, $skipped, $sources);
+                $out[strtoupper(trim(str_replace("\u{00a0}", ' ', $sku)))] = ['m' => $mandatory, 'a' => $all];
+            }
+
+            return response()->json(['status' => 200, 'data' => $out]);
+        } catch (\Throwable $e) {
+            Log::error('ListingEbay: field counts failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['status' => 500, 'message' => 'Could not count the fields: '.$e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * @param  array<int, mixed>  $names
+     * @param  array<string, mixed>  $row
+     * @param  array<string, int>  $skipped
+     * @param  array<string, string>  $sources
+     * @return array{0: int, 1: int}  [with data, total]
+     */
+    private function countFields(array $names, array $row, array $skipped, array $sources): array
+    {
+        $seen = [];
+        $have = 0;
+        foreach ($names as $name) {
+            $name = trim((string) $name);
+            if ($name === '' || strlen($name) > 120 || preg_match('/[{};]|text-decoration/', $name)) {
+                continue;
+            }
+            $identity = $this->specIdentity($name);
+            if (isset($seen[$identity]) || isset($skipped[$identity])) {
+                continue;
+            }
+            $seen[$identity] = true;
+            if ($this->fieldHasData($row, $name, $sources)) {
+                $have++;
+            }
+        }
+
+        return [$have, count($seen)];
+    }
+
+    /**
+     * Same rules as the Technical Specifications grid: fixed values, MPN and Model = SKU, UPC from CP Master/Amazon,
+     * columns that follow a source column, then what is saved for the SKU.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array<string, string>  $sources
+     */
+    private function fieldHasData(array $row, string $name, array $sources): bool
+    {
+        $fixed = $this->fixedFieldValue($row, $name);
+        if ($fixed !== null) {
+            return $fixed !== '';
+        }
+        $source = $sources[$this->specKey($name)] ?? '';
+        if ($source !== '') {
+            $own = $this->fixedFieldValue($row, $source);
+
+            return trim((string) ($own ?? $this->savedFieldValue($row, $source))) !== '';
+        }
+        if ($this->savedFieldValue($row, $name) !== '') {
+            return true;
+        }
+        $values = (array) ($row['ebay_values'] ?? []);
+
+        return trim((string) ($values[$name] ?? '')) !== '';
+    }
+
+    private function fixedFieldValue(array $row, string $name): ?string
+    {
+        $key = $this->specKey($name);
+        $fixed = ['brand' => '5 Core', 'manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China'];
+        if (isset($fixed[$key])) {
+            return $fixed[$key];
+        }
+        if ($key === 'mpn' || $key === 'model') {
+            $sku = trim((string) ($row['SKU'] ?? ''));
+
+            return $sku === '' || stripos($sku, 'PARENT ') === 0 ? null : $sku;
+        }
+        if ($key === 'upc') {
+            $upc = trim((string) ($row['upc'] ?? ''));
+
+            return $upc !== '' ? $upc : null;
+        }
+
+        return null;
+    }
+
+    private function savedFieldValue(array $row, string $name): string
+    {
+        $want = $this->specIdentity($name);
+        foreach ((array) ($row['description_v2_specifications'] ?? []) as $spec) {
+            if (is_array($spec) && $this->specIdentity((string) ($spec['key'] ?? '')) === $want && trim((string) ($spec['value'] ?? '')) !== '') {
+                return trim((string) $spec['value']);
+            }
+        }
+
+        return '';
+    }
+
+    private function specKey(string $name): string
+    {
+        return strtolower(preg_replace('/[^a-z0-9]+/i', '', $name) ?? $name);
+    }
+
+    private function specIdentity(string $name): string
+    {
+        $key = $this->specKey(trim($name));
+        if ($key === '') {
+            $key = strtolower(trim($name));
+        }
+        $canon = [
+            'maxpower' => 'maxpower', 'pmpo' => 'maxpower', 'pmpopower' => 'maxpower', 'peakpower' => 'maxpower', 'powercapacity' => 'maxpower',
+            'rmspower' => 'rmspower', 'rms' => 'rmspower',
+        ];
+
+        return $canon[$key] ?? $key;
     }
 
     public function updateStatus(Request $request)

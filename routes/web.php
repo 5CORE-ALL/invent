@@ -4044,6 +4044,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-fba-status', [OverallAmazonController::class, 'updateFbaStatus'])
         ->name('update.fba.status');
     Route::get('/listing_ebay/view-data', [ListingEbayController::class, 'getViewListingEbayData']);
+    Route::get('/listing_ebay/field-counts', [ListingEbayController::class, 'getFieldCounts']);
     Route::post('/update-ebay-price', [EbayZeroController::class, 'updateEbayPrice'])->name('update.ebay.price');
 
     Route::get('/ebay/zero/view-data', [EbayZeroController::class, 'getVieweBayZeroData'])->name('ebay.zero.viewData');
