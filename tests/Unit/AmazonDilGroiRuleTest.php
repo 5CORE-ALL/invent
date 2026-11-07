@@ -576,6 +576,18 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame([['min' => 0.0, 'max' => 100.0, 'points' => -4.0]], $saved['age_adj']);
     }
 
+    public function test_rule_on_switches_default_to_on_and_only_an_explicit_off_turns_a_rule_off(): void
+    {
+        $allOn = ['cvr' => true, 'age' => true, 'diff' => true, 'lmp' => true, 'clearance' => true];
+        // Rows saved before the switches existed, or with garbage, stay fully ON.
+        $this->assertSame($allOn, AmazonDilGroiRule::unpackStored(['rules' => []])['rule_on']);
+        $this->assertSame($allOn, AmazonDilGroiRule::normalizeRuleOn('nope'));
+        $this->assertSame($allOn, AmazonDilGroiRule::normalizeRuleOn(['cvr' => true, 'unknown' => false]));
+
+        $saved = AmazonDilGroiRule::unpackStored(['rules' => [], 'rule_on' => ['age' => false, 'lmp' => 0, 'diff' => 'false', 'cvr' => '0']]);
+        $this->assertSame(['cvr' => false, 'age' => false, 'diff' => false, 'lmp' => false, 'clearance' => true], $saved['rule_on']);
+    }
+
     public function test_clearance_snroi_slabs_are_up_to_25_then_up_to_50_then_above(): void
     {
         $rules = AmazonDilGroiRule::normalizeClearanceSnroiRules(null);

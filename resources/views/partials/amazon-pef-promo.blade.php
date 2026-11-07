@@ -218,7 +218,23 @@
             color: #dc3545;
             font-weight: 700;
         }
-        #amz-dg-clearance-block .amz-dg-clearance-nroi { margin-left: 0.35rem; }
+        #amz-dg-clearance-block .amz-dg-clearance-nroi { margin-left: 0; }
+        #amz-dg-clearance-block.amz-dg-clr {
+            display: flex; flex-direction: column; gap: 8px;
+            padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;
+        }
+        #amz-dg-clearance-block .amz-dg-clr-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+        #amz-dg-clearance-block .amz-dg-clr-stat {
+            display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+            padding: 4px 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; min-width: 0;
+        }
+        #amz-dg-clearance-block .amz-dg-clr-lbl {
+            font-size: 10px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: #64748b; line-height: 1.2;
+        }
+        #amz-dg-clearance-block .amz-dg-clr-stat > span:not(.amz-dg-clr-lbl) { font-size: 15px; line-height: 1.2; white-space: nowrap; }
+        #amz-dg-clearance-block .amz-dg-clr-stat .amz-dg-hist-dot { margin-left: 0; margin-top: 2px; }
+        #amz-dg-clearance-block .amz-dg-clr-input { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        #amz-dg-clearance-block .amz-dg-clr-input .form-control { width: 90px !important; text-align: right; font-weight: 600; }
         #amz-dil-groi-table .amz-dg-count {
             font-weight: 700;
             text-align: center;
@@ -485,6 +501,23 @@
             width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-weight: 700;
         }
         #amzDilGroiModal .amz-dg-min-btn:hover { background: #e2e8f0; }
+        /* ON / OFF switch on each rule: OFF dims the rule and it no longer applies */
+        #amzDilGroiModal .amz-dg-rules-title.amz-dg-has-sw { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        #amzDilGroiModal .amz-dg-rule-sw { display: inline-flex; align-items: center; gap: 5px; margin: 0; cursor: pointer; user-select: none; flex: 0 0 auto; }
+        #amzDilGroiModal .amz-dg-rule-sw-in {
+            -webkit-appearance: none; appearance: none; position: relative; margin: 0; cursor: pointer;
+            width: 28px; height: 15px; border-radius: 8px; background: #cbd5e1; transition: background .15s; flex: 0 0 28px;
+        }
+        #amzDilGroiModal .amz-dg-rule-sw-in::after {
+            content: ''; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%;
+            background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, .3); transition: transform .15s;
+        }
+        #amzDilGroiModal .amz-dg-rule-sw-in:checked { background: #22c55e; }
+        #amzDilGroiModal .amz-dg-rule-sw-in:checked::after { transform: translateX(13px); }
+        #amzDilGroiModal .amz-dg-rule-sw-txt { font-size: 10px; font-weight: 700; color: #16a34a; min-width: 20px; letter-spacing: .03em; }
+        #amzDilGroiModal .amz-dg-rule-sw-in:not(:checked) + .amz-dg-rule-sw-txt { color: #94a3b8; }
+        #amzDilGroiModal .amz-dg-dim { opacity: .4; filter: grayscale(1); pointer-events: none; }
+        #amzDilGroiModal .amz-dg-card.is-min .amz-dg-rule-sw { display: none !important; }
         #amzDilGroiModal .amz-dg-card > .amz-dg-card-title,
         #amzDilGroiModal .amz-dg-card > .amz-dg-min-btn + .amz-dg-rules-title { padding-right: 28px; }
         /* minimized: a slim strip with the title written vertically; click it to restore */
@@ -1004,19 +1037,31 @@
                         </table>
                     </div>
                     <div class="amz-dg-clearance-wrap mt-3">
-                        <div class="amz-dg-rules-title">Clearance</div>
+                        <div class="amz-dg-rules-title amz-dg-has-sw"><span>Clearance</span>
+                            <label class="amz-dg-rule-sw" title="ON / OFF. OFF = clearance SKUs are priced like any other SKU (the Clearance Target NROI% no longer applies)."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="clearance" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
+                        </div>
                         <div class="small text-muted mb-1">
                             <strong>Clearance Rule:</strong> If Item is On Clearance Then Follow The Dynamic Target <strong>SNROI%</strong>.
                         </div>
-                        <div id="amz-dg-clearance-block" class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
-                            <span class="fw-semibold">Clearance</span>
-                            <span title="INV &gt; 0 and Clearance Yes on Inv Days. Count and Target NROI% in red.">
-                                <span class="amz-dg-clearance-count">0</span><span class="small text-muted ms-2 me-1" title="Total INV (units in stock) of those clearance SKUs">INV</span><span class="amz-dg-clearance-inv">0</span><span class="amz-dg-clearance-nroi">0%</span>
-                            </span>
-                            <span class="d-flex align-items-center gap-2">
-                                <label class="small mb-0 text-muted">Target NROI%</label>
-                                <input type="number" min="0" step="0.1" class="form-control form-control-sm amz-dg-clearance-groi" style="width:110px;" value="0" title="Target NROI% for clearance">
-                            </span>
+                        <div id="amz-dg-clearance-block" class="amz-dg-clr">
+                            <div class="amz-dg-clr-stats" title="INV &gt; 0 and Clearance Yes on Inv Days.">
+                                <div class="amz-dg-clr-stat" title="Clearance SKUs">
+                                    <span class="amz-dg-clr-lbl">SKUs</span>
+                                    <span class="amz-dg-clearance-count">0</span>
+                                </div>
+                                <div class="amz-dg-clr-stat" title="Total INV (units in stock) of those clearance SKUs">
+                                    <span class="amz-dg-clr-lbl">INV</span>
+                                    <span class="amz-dg-clearance-inv">0</span>
+                                </div>
+                                <div class="amz-dg-clr-stat" title="Target NROI% used for clearance SKUs">
+                                    <span class="amz-dg-clr-lbl">NROI</span>
+                                    <span class="amz-dg-clearance-nroi">0%</span>
+                                </div>
+                            </div>
+                            <div class="amz-dg-clr-input">
+                                <label class="amz-dg-clr-lbl mb-0" for="amz-dg-clearance-groi-input">Target NROI%</label>
+                                <input type="number" min="0" step="0.1" id="amz-dg-clearance-groi-input" class="form-control form-control-sm amz-dg-clearance-groi" value="0" title="Target NROI% for clearance">
+                            </div>
                         </div>
                     </div>
                     <div class="amz-dg-hist-wrap" id="amz-dg-hist-wrap">
@@ -1031,7 +1076,9 @@
                     </div>
                     <div class="amz-dg-card">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
-                    <div class="amz-dg-rules-title mt-2">CVR overlay — Target NROI</div>
+                    <div class="amz-dg-rules-title amz-dg-has-sw mt-2"><span>CVR overlay — Target NROI</span>
+                        <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the CVR overlay no longer changes the Target NROI."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="cvr" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-cvr-groi-table">
                             <thead class="table-light">
@@ -1071,9 +1118,10 @@
                     </div>
                     <div class="amz-dg-card">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
-                    <div class="amz-dg-rules-title mt-2"
+                    <div class="amz-dg-rules-title amz-dg-has-sw mt-2"
                         title="Each age band (days in stock) adds its points to the Dil slab Target NROI, after the CVR overlay and before the Diff rule. Count = SKUs (INV &gt; 0) whose age is in that band.">
-                        Ageing Rule
+                        <span>Ageing Rule</span>
+                        <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Ageing Rule no longer changes the Target NROI."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="age" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
                     </div>
                     <div class="small text-muted mb-1">
                         <strong>If</strong> the SKU's age (days) is inside an age band,
@@ -1097,7 +1145,10 @@
                     <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 mt-1" id="amz-age-adj-add-btn">
                         <i class="fas fa-plus me-1"></i> Add age band
                     </button>
-                    <div class="amz-dg-rules-title mt-2" title="Std Diff rule: when (Std Prc − Price) / Price is above the threshold, add points to the Target NROI.">Diff rule</div>
+                    <div class="amz-dg-rules-title amz-dg-has-sw mt-2" title="Std Diff rule: when (Std Prc − Price) / Price is above the threshold, add points to the Target NROI.">
+                        <span>Diff rule</span>
+                        <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Diff rule no longer adds points to the Target NROI."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="diff" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
+                    </div>
                     <div class="small amz-dg-diffrow">
                         <strong>When</strong> the <strong>Std Diff</strong> column
                             (<code>(Std Prc − Price) / Price</code>) is <strong>&gt;</strong>
@@ -1108,9 +1159,10 @@
                     </div>
                     <div class="amz-dg-card">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
-                    <div class="amz-dg-rules-title mt-3"
+                    <div class="amz-dg-rules-title amz-dg-has-sw mt-3"
                         title="If LMP is available and the calculated S PRC is at or above LMP: S PRC = LMP × (1 − x/100). x depends on the SKU's Dil band. Count = SKUs (INV &gt; 0) in that band whose calculated S PRC is at or above LMP.">
-                        LMP Rule
+                        <span>LMP Rule</span>
+                        <label class="amz-dg-rule-sw" title="ON / OFF. OFF = S PRC is no longer capped to LMP (Std Prc is still the maximum)."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="lmp" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
                     </div>
                     <div class="small text-muted mb-1">
                         <strong>If</strong> LMP is available and the calculated S PRC is at or above LMP,
@@ -1285,6 +1337,53 @@
             '#eab308', '#f59e0b', '#ea580c', '#dc3545', '#e83e8c',
             '#7c3aed', '#0ea5e9',
         ];
+        /**
+         * ON / OFF switches of the Sprc Dil blocks (same keys as AmazonDilGroiRule::RULE_ON_KEYS). A block that is OFF no longer
+         * applies: cvr = CVR overlay, age = Ageing Rule, diff = Diff rule, lmp = LMP Rule (cap), clearance = Clearance NROI%.
+         * Saved with Save Only / Save All and read by AmazonSprcDilAutoPushService, so the page and the cron agree.
+         */
+        const AMZ_RULE_ON_KEYS = ['cvr', 'age', 'diff', 'lmp', 'clearance'];
+        let amzRuleOn = { cvr: true, age: true, diff: true, lmp: true, clearance: true };
+        function amzRuleIsOn(key) { return amzRuleOn[key] !== false; }
+        window.amzRuleIsOn = amzRuleIsOn;
+        function amzNormalizeRuleOn(raw) {
+            const out = { cvr: true, age: true, diff: true, lmp: true, clearance: true };
+            if (!raw || typeof raw !== 'object') return out;
+            AMZ_RULE_ON_KEYS.forEach(function(k) {
+                const v = raw[k];
+                if (v === false || v === 0 || v === '0' || v === 'false' || v === 'off') out[k] = false;
+            });
+            return out;
+        }
+        /** Dim the blocks of a switched-off rule (they stay saved, they just no longer apply). */
+        function amzPaintRuleOnState() {
+            AMZ_RULE_ON_KEYS.forEach(function(k) {
+                const on = amzRuleIsOn(k);
+                const $sw = $('#amzDilGroiModal .amz-dg-rule-sw-in[data-amz-rule="' + k + '"]');
+                $sw.prop('checked', on);
+                $sw.siblings('.amz-dg-rule-sw-txt').text(on ? 'ON' : 'OFF');
+                let $parts = $();
+                if (k === 'cvr') $parts = $('#amz-cvr-groi-table').closest('.table-responsive');
+                else if (k === 'age') $parts = $('#amz-age-adj-table').closest('.table-responsive').prev('.small').add($('#amz-age-adj-table').closest('.table-responsive')).add('#amz-age-adj-add-btn');
+                else if (k === 'diff') $parts = $('#amzDilGroiModal .amz-dg-diffrow');
+                else if (k === 'lmp') $parts = $('#amz-lmp-cap-table').closest('.table-responsive').prev('.small').add($('#amz-lmp-cap-table').closest('.table-responsive'));
+                else if (k === 'clearance') $parts = $('#amzDilGroiModal .amz-dg-clearance-wrap > .small.text-muted').add('#amz-dg-clearance-block');
+                $parts.toggleClass('amz-dg-dim', !on);
+            });
+        }
+        function amzPaintRuleOn(raw) {
+            amzRuleOn = amzNormalizeRuleOn(raw);
+            amzPaintRuleOnState();
+        }
+        function amzReadRuleOnFromModal() {
+            const cfg = {};
+            AMZ_RULE_ON_KEYS.forEach(function(k) {
+                const $sw = $('#amzDilGroiModal .amz-dg-rule-sw-in[data-amz-rule="' + k + '"]');
+                cfg[k] = $sw.length ? $sw.is(':checked') : amzRuleIsOn(k);
+            });
+            amzRuleOn = amzNormalizeRuleOn(cfg);
+            return amzRuleOn;
+        }
         let amzCvrGroiAdj = { down_lt: 7, down_adj: -10, up_gt: 10, up_adj: 10 };
         function amzNormalizeCvrGroiAdj(raw) {
             const out = { down_lt: 7, down_adj: -10, up_gt: 10, up_adj: 10 };
@@ -1469,7 +1568,7 @@
             const days = amzRowAgeDays(d);
             const i = amzAgeAdjSlabIdx(days, amzAgeAdj);
             const band = i >= 0 ? amzAgeAdjBand(amzAgeAdj[i]) : null;
-            const on = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+            const on = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil' && amzRuleIsOn('age');
             return {
                 days: days,
                 idx: i,
@@ -2083,6 +2182,7 @@
             return trend + '-' + bucket;
         }
         function amzDilGroiCvrAdj(d) {
+            if (!amzRuleIsOn('cvr')) return 0;
             const cvr = amzPefCvrL30Live(d);
             const trend = amzPefCvrTrend(d);
             const cfg = amzCvrGroiAdjNow();
@@ -2128,7 +2228,7 @@
             return ((std - price) / price) * 100;
         }
         function amzDilGroiDiffAdj(d) {
-            if (!d) return 0;
+            if (!d || !amzRuleIsOn('diff')) return 0;
             const pct = amzStdPrcDiffPct(d);
             return (pct !== null && pct > amzDiffAdj.gt_pct) ? amzDiffAdj.points : 0;
         }
@@ -2148,7 +2248,7 @@
          * different S PRC values and Amazon alternated between two prices. A listed SKU (Price > 0) is still required.
          */
         function amzDilGroiStableDiffAdj(afterCvr, d) {
-            if (!d || !(parseFloat(d.price) > 0)) return 0;
+            if (!d || !amzRuleIsOn('diff') || !(parseFloat(d.price) > 0)) return 0;
             const std = (typeof amazonStdPrice === 'function') ? amazonStdPrice(d) : (parseFloat(d.STANDARD_PRICE) || 0);
             const base = amzSpriceFromTargetNroi(d, afterCvr);
             if (!(std > 0) || !(base > 0)) return 0;
@@ -2894,6 +2994,7 @@
                 if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
                 else amzRenderAgeAdjTable();
+                amzPaintRuleOn(res && res.rule_on);
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
                 }
@@ -2922,6 +3023,7 @@
             const diffAdj = amzDiffAdjNow();
             amzDiffAdj = diffAdj;
             const ageAdj = amzAgeAdjPayload();
+            const ruleOn = amzReadRuleOnFromModal();
             // CVR up / down extra discount lives in this modal too: save it with the rest.
             if (typeof window.amzLmpCvrSaveQuiet === 'function') window.amzLmpCvrSaveQuiet();
             return $.ajax({
@@ -2932,7 +3034,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, age_adj: ageAdj, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, age_adj: ageAdj, rule_on: ruleOn, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
             }).then(function(res) {
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
@@ -2948,6 +3050,7 @@
                 if (res && res.lmp_cap) amzPaintLmpCapTable(res.lmp_cap);
                 if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
+                if (res && res.rule_on) amzPaintRuleOn(res.rule_on);
                 amzAfterDilGroiRulesChanged();
                 $('#amz-dil-groi-status').text(
                     saveAll === true && res && Array.isArray(res.channels)
@@ -4184,7 +4287,8 @@
          * Returns 0 until the saved modal has loaded, so a not-yet-read 0% is never pushed.
          */
         function amzClearanceDilActive(d) {
-            return amzIsClearanceSku(d)
+            // Clearance switch OFF: the Clearance Target NROI% no longer applies, the SKU is priced like any other SKU.
+            return amzRuleIsOn('clearance') && amzIsClearanceSku(d)
                 && typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
         }
         function amzClearanceDilPrice(d) {
@@ -4199,6 +4303,8 @@
         function amzClearanceHasPrice(d) {
             if (!amzIsClearanceSku(d)) return false;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                // Clearance switch OFF: a clearance SKU is priced through the normal Sprc Dil rules.
+                if (!amzRuleIsOn('clearance')) return true;
                 return amzClearanceDilPrice(d) > 0;
             }
             return typeof amzStdClearanceTarget === 'function' && amzStdClearanceTarget(d) != null;
@@ -5675,6 +5781,14 @@
                     $('#amz-dil-groi-save-btn').prop('disabled', false);
                 }
             });
+            // ON / OFF switch of a rule: it stops applying at once on this page (and on the server once saved).
+            $(document).off('change.amzRuleOn', '#amzDilGroiModal .amz-dg-rule-sw-in')
+                .on('change.amzRuleOn', '#amzDilGroiModal .amz-dg-rule-sw-in', function() {
+                    amzReadRuleOnFromModal();
+                    amzPaintRuleOnState();
+                    if ($('#amzDilGroiModal').hasClass('show')) renderAmzDilGroiPies();
+                    amzAfterDilGroiRulesChanged();
+                });
             $(document).off('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi')
                 .on('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi', function() {
                     amzPaintClearanceNroiText();

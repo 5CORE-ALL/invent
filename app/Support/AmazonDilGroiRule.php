@@ -1057,8 +1057,40 @@ class AmazonDilGroiRule
     }
 
     /**
+     * Blocks of the Amazon Sprc Dil modal that have an ON / OFF switch. A block switched OFF no longer applies:
+     * cvr = CVR overlay, age = Ageing Rule, diff = Diff rule, lmp = LMP Rule (cap), clearance = Clearance NROI%.
+     */
+    public const RULE_ON_KEYS = ['cvr', 'age', 'diff', 'lmp', 'clearance'];
+
+    /**
+     * ON / OFF switches of the Sprc Dil blocks. Everything is ON unless it was saved as off (false / 0 / "0" / "false"),
+     * so rows saved before the switches existed behave exactly as before.
+     *
+     * @param  mixed  $raw
+     * @return array{cvr:bool,age:bool,diff:bool,lmp:bool,clearance:bool}
+     */
+    public static function normalizeRuleOn($raw): array
+    {
+        $out = array_fill_keys(self::RULE_ON_KEYS, true);
+        if (! is_array($raw)) {
+            return $out;
+        }
+        foreach (self::RULE_ON_KEYS as $key) {
+            if (! array_key_exists($key, $raw)) {
+                continue;
+            }
+            $v = $raw[$key];
+            if ($v === false || $v === 0 || $v === '0' || $v === 'false' || $v === 'off') {
+                $out[$key] = false;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array<string, mixed>|null  $saved
-     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},diff_adj:array{gt_pct:float,points:float},age_adj:list<array{min:float,max:float,points:float}>}
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},diff_adj:array{gt_pct:float,points:float},age_adj:list<array{min:float,max:float,points:float}>,rule_on:array{cvr:bool,age:bool,diff:bool,lmp:bool,clearance:bool}}
      */
     public static function unpackStored(?array $saved): array
     {
@@ -1067,8 +1099,10 @@ class AmazonDilGroiRule
         $lmpCapRaw = null;
         $diffAdjRaw = null;
         $ageAdjRaw = null;
+        $ruleOnRaw = null;
         $clearanceNroi = null;
         if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
+            $ruleOnRaw = is_array($saved['rule_on'] ?? null) ? $saved['rule_on'] : null;
             $rulesRaw = $saved['rules'];
             $cvrRaw = is_array($saved['cvr_adj'] ?? null) ? $saved['cvr_adj'] : null;
             $lmpCapRaw = is_array($saved['lmp_cap'] ?? null) ? $saved['lmp_cap'] : null;
@@ -1088,6 +1122,7 @@ class AmazonDilGroiRule
             'lmp_cap' => self::normalizeLmpCap($lmpCapRaw),
             'diff_adj' => self::normalizeDiffAdj($diffAdjRaw),
             'age_adj' => self::normalizeAgeAdj($ageAdjRaw),
+            'rule_on' => self::normalizeRuleOn($ruleOnRaw),
         ];
     }
 

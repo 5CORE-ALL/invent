@@ -288,6 +288,7 @@ class MasterDilGroiSync
                 'lmp_cap' => $unpacked['lmp_cap'],
                 'diff_adj' => $unpacked['diff_adj'],
                 'age_adj' => $unpacked['age_adj'],
+                'rule_on' => $unpacked['rule_on'],
                 'is_default' => true,
             ];
         }
@@ -302,6 +303,7 @@ class MasterDilGroiSync
             'lmp_cap' => $unpacked['lmp_cap'],
             'diff_adj' => $unpacked['diff_adj'],
             'age_adj' => $unpacked['age_adj'],
+            'rule_on' => $unpacked['rule_on'],
             'is_default' => false,
         ];
     }
@@ -328,6 +330,9 @@ class MasterDilGroiSync
         }
         if (is_array($existing['age_adj'] ?? null)) {
             $visibility['age_adj'] = $existing['age_adj'];
+        }
+        if (is_array($existing['rule_on'] ?? null)) {
+            $visibility['rule_on'] = $existing['rule_on'];
         }
         if (isset($existing['clearance_nroi']) && is_numeric($existing['clearance_nroi'])) {
             $visibility['clearance_nroi'] = $existing['clearance_nroi'];

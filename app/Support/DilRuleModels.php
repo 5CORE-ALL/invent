@@ -106,6 +106,11 @@ final class DilRuleModels
         if (array_key_exists('clearance_nroi', $existing) && $existing['clearance_nroi'] !== null) {
             $out['clearance_nroi'] = $existing['clearance_nroi'];
         }
+        // ON / OFF switches belong to the page that has them (Amazon): Save All never copies them to another page,
+        // and a page that already saved its own keeps them.
+        if (is_array($targetStored) && is_array($targetStored['rule_on'] ?? null)) {
+            $out['rule_on'] = $existing['rule_on'];
+        }
 
         return $out;
     }

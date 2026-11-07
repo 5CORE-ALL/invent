@@ -1587,7 +1587,10 @@
             const lmp = lmpWithShipping(rowData);
             const s = parseFloat(sprice);
             if (!(lmp > 0) || !(s > 0) || s + 0.0001 < lmp) return false;
-            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') return true;
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                // LMP Rule switched OFF in the Sprc Dil modal: no LMP cap (Std Prc is still the maximum).
+                return !(typeof window.amzRuleIsOn === 'function' && !window.amzRuleIsOn('lmp'));
+            }
             const sgroiAtLmp = amazonSgroiAtPrice(rowData, lmp);
             if (sgroiAtLmp != null && sgroiAtLmp < 20) return false;
             return true;

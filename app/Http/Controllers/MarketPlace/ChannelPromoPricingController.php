@@ -1950,6 +1950,7 @@ class ChannelPromoPricingController extends Controller
                 'lmp_cap' => $unpacked['lmp_cap'],
                 'diff_adj' => $unpacked['diff_adj'],
                 'age_adj' => $unpacked['age_adj'],
+                'rule_on' => $unpacked['rule_on'],
             ]);
         }
 
@@ -1965,6 +1966,7 @@ class ChannelPromoPricingController extends Controller
             'lmp_cap' => $unpacked['lmp_cap'],
             'diff_adj' => $unpacked['diff_adj'],
             'age_adj' => $unpacked['age_adj'],
+            'rule_on' => $unpacked['rule_on'],
         ]);
     }
 
@@ -1996,6 +1998,7 @@ class ChannelPromoPricingController extends Controller
             'lmp_cap' => $config['lmp_cap'],
             'diff_adj' => $config['diff_adj'],
             'age_adj' => $config['age_adj'],
+            'rule_on' => $config['rule_on'],
             'clearance_nroi' => $config['visibility']['clearance_nroi'] ?? null,
         ]);
     }
@@ -2055,6 +2058,7 @@ class ChannelPromoPricingController extends Controller
             'lmp_cap' => $config['lmp_cap'],
             'diff_adj' => $config['diff_adj'],
             'age_adj' => $config['age_adj'],
+            'rule_on' => $config['rule_on'],
             'clearance_nroi' => $config['visibility']['clearance_nroi'] ?? null,
         ]);
     }
@@ -2125,7 +2129,17 @@ class ChannelPromoPricingController extends Controller
             ? AmazonDilGroiRule::normalizeAgeAdj($ageAdjIncoming)
             : $existing['age_adj'];
 
-        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap, 'diff_adj' => $diffAdj, 'age_adj' => $ageAdj];
+        // ON / OFF switches of the Sprc Dil blocks. A page that does not send them keeps what is saved.
+        $ruleOnIncoming = $request->input('rule_on');
+        if (is_string($ruleOnIncoming)) {
+            $decodedRuleOn = json_decode($ruleOnIncoming, true);
+            $ruleOnIncoming = is_array($decodedRuleOn) ? $decodedRuleOn : null;
+        }
+        $ruleOn = ($request->exists('rule_on') && is_array($ruleOnIncoming))
+            ? AmazonDilGroiRule::normalizeRuleOn($ruleOnIncoming)
+            : $existing['rule_on'];
+
+        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap, 'diff_adj' => $diffAdj, 'age_adj' => $ageAdj, 'rule_on' => $ruleOn];
         if ($request->exists('clearance_nroi')) {
             $rawNroi = $request->input('clearance_nroi');
             $visibility['clearance_nroi'] = is_numeric($rawNroi)
@@ -2142,6 +2156,7 @@ class ChannelPromoPricingController extends Controller
             'lmp_cap' => $lmpCap,
             'diff_adj' => $diffAdj,
             'age_adj' => $ageAdj,
+            'rule_on' => $ruleOn,
         ], null];
     }
 
