@@ -507,8 +507,19 @@
         .md-dot { display:inline-block; width:14px; height:14px; border-radius:50%; cursor:pointer; vertical-align:middle; box-shadow:0 0 0 2px rgba(0,0,0,.06); }
         .md-dot--red { background:#dc2626; }
         .md-dot--green { background:#16a34a; cursor:default; }
-        .md-overlay { position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:2000; display:flex; align-items:center; justify-content:center; padding:16px; }
-        .md-card { background:#fff; border-radius:10px; width:min(640px,100%); max-height:85vh; display:flex; flex-direction:column; box-shadow:0 20px 50px rgba(0,0,0,.3); }
+        .md-overlay { position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:2000; display:flex; align-items:stretch; justify-content:center; padding:0; }
+        .md-card { background:#fff; border-radius:0; width:min(760px,100%); height:100vh; display:flex; flex-direction:column; box-shadow:0 0 50px rgba(0,0,0,.3); }
+        .md-group-head { display:flex; align-items:center; gap:10px; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:6px 6px 0 0; padding:8px 12px; }
+        .md-group-head .md-group-title { margin:0; flex:1; }
+        .md-group-head a { font-size:12px; font-weight:600; color:#2563eb; text-decoration:none; white-space:nowrap; }
+        .md-group-head a:hover { text-decoration:underline; }
+        .md-rows { border:1px solid #e5e7eb; border-top:0; border-radius:0 0 6px 6px; }
+        .md-row { display:flex; align-items:center; gap:10px; padding:7px 12px; border-top:1px solid #f1f5f9; font-size:13px; }
+        .md-row:first-child { border-top:0; }
+        .md-row .md-num { width:26px; color:#9ca3af; font-size:12px; }
+        .md-row .md-name { flex:1; font-weight:600; color:#b91c1c; }
+        .md-row .md-flag { font-size:11px; font-weight:700; border-radius:999px; padding:2px 9px; background:#dc2626; color:#fff; }
+        .md-row .md-flag--opt { background:#fee2e2; color:#b91c1c; }
         .md-head { display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid #e5e7eb; }
         .md-head h5 { margin:0; font-size:16px; flex:1; }
         .md-head a.md-update { font-size:13px; font-weight:600; color:#2563eb; text-decoration:none; white-space:nowrap; }
@@ -913,20 +924,61 @@
             return Array.isArray(pair) && pair[1] > 0 ? pair : null;
         }
 
-        function fieldCountFormatter(which, label) {
+        function fieldCountFormatter(which, label, showMissing) {
             return function (cell) {
                 const data = cell.getRow().getData();
                 if (data.is_parent) return '';
                 if (fieldCountsState === 'loading') return '<span class="text-muted" title="Counting fields…">…</span>';
                 if (fieldCountsState === 'error') return '<span class="text-muted" title="Could not count the fields">—</span>';
                 const pair = fieldCountPair(data, which);
-                if (!pair) return '<span class="text-muted" title="No eBay category or no ' + label + ' for this SKU">—</span>';
+                if (!pair) {
+                    const entry = fieldCounts[fieldCountKey(data.sku)];
+                    let why = 'No ' + label + ' for this SKU.';
+                    if (!entry) {
+                        why = 'No Technical Specifications data for this SKU.';
+                    } else if (which === 'm') {
+                        why = !entry.cat
+                            ? 'No eBay category is set for this SKU, so eBay\u2019s mandatory fields are unknown. Set the category on Technical Specifications.'
+                            : 'eBay\u2019s mandatory fields could not be loaded for category "' + entry.cat + '" (category ID not found or eBay API keys missing on this server).';
+                    }
+                    return '<span class="text-muted" title="' + escapeHtml(why) + '">—</span>';
+                }
                 const full = pair[0] === pair[1];
                 const missing = pair[1] - pair[0];
+                // showMissing: "missing / total" (Missing column); otherwise "with data / total" (Mandatory column).
                 return '<span style="color:' + (full ? '#16a34a' : '#dc2626') + ';font-weight:700;" title="'
-                    + pair[0] + ' of ' + pair[1] + ' ' + label + ' have data' + (missing ? ' (' + missing + ' missing)' : '') + '">'
-                    + pair[0] + '/' + pair[1] + '</span>';
+                    + missing + ' missing of ' + pair[1] + ' ' + label + ' (' + pair[0] + ' have data)">'
+                    + (showMissing ? missing : pair[0]) + '/' + pair[1] + '</span>';
             };
+        }
+
+        // Header badge on the Missing column: missing fields / required fields over every listing in the table.
+        function updateFieldTotals() {
+            if (!ebayListingTable || fieldCountsState !== 'ready') return;
+            const col = ebayListingTable.getColumn('field_all');
+            if (!col) return;
+            let missing = 0, total = 0, listings = 0;
+            (ebayListingTable.getData() || []).forEach(function (row) {
+                if (row.is_parent) return;
+                const pair = fieldCountPair(row, 'a');
+                if (!pair) return;
+                listings += 1;
+                total += pair[1];
+                missing += pair[1] - pair[0];
+            });
+            const el = col.getElement();
+            const titleEl = el && el.querySelector('.tabulator-col-title');
+            if (!titleEl) return;
+            let badge = titleEl.querySelector('.fc-total');
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.className = 'fc-total';
+                badge.style.cssText = 'font-size:11px;font-weight:700;margin-top:2px;';
+                titleEl.appendChild(badge);
+            }
+            badge.style.color = missing ? '#b91c1c' : '#15803d';
+            badge.textContent = missing + '/' + total;
+            badge.title = 'Total: ' + missing + ' fields missing of ' + total + ' required fields across ' + listings + ' listings';
         }
 
         // Sorts by how many fields are missing.
@@ -992,12 +1044,25 @@
                 buckets[group].push(name);
             });
 
+            // Groups holding eBay-required fields first, "Other fields" last.
+            const hasRequired = function (group) { return buckets[group].some(function (n) { return requiredSet[specNameKey(n)]; }); };
+            order.sort(function (a, b) {
+                if (a === 'Other fields') return 1;
+                if (b === 'Other fields') return -1;
+                return (hasRequired(b) ? 1 : 0) - (hasRequired(a) ? 1 : 0);
+            });
+
+            // Every group is filled in on Technical Specifications; the eBay data page edits the same item specifics per eBay account.
             const body = order.map(function (group) {
-                const chips = buckets[group].map(function (name) {
+                const rows = buckets[group].map(function (name, i) {
                     const req = requiredSet[specNameKey(name)];
-                    return '<span class="md-chip' + (req ? ' md-chip--req' : '') + '" title="' + (req ? 'Required by eBay' : 'Not required') + '">' + escapeHtml(name) + '</span>';
+                    return '<div class="md-row"><span class="md-num">' + (i + 1) + '</span><span class="md-name">' + escapeHtml(name) + '</span>'
+                        + '<span class="md-flag' + (req ? '' : ' md-flag--opt') + '">' + (req ? 'Required by eBay' : 'Optional') + '</span></div>';
                 }).join('');
-                return '<div class="md-group"><div class="md-group-title">' + escapeHtml(group) + ' (' + buckets[group].length + ')</div>' + chips + '</div>';
+                return '<div class="md-group"><div class="md-group-head"><div class="md-group-title">' + escapeHtml(group) + ' (' + buckets[group].length + ')</div>'
+                    + '<a href="/technical-specifications" target="_blank" rel="noopener" title="Update this group\u2019s data on Technical Specifications">Update on Technical Specifications &rarr;</a>'
+                    + '<a href="/ebay1-data" target="_blank" rel="noopener" title="Edit the item specifics per eBay account">eBay data &rarr;</a></div>'
+                    + '<div class="md-rows">' + rows + '</div></div>';
             }).join('') || '<p class="text-muted mb-0">Nothing is missing.</p>';
 
             const old = document.getElementById('md-overlay');
@@ -1010,7 +1075,7 @@
                 + '<a class="md-update" href="/technical-specifications" target="_blank" rel="noopener">Update data &rarr;</a>'
                 + '<button type="button" class="md-close" aria-label="Close">&times;</button></div>'
                 + '<div class="md-body">' + body
-                + '<p class="text-muted mb-0" style="font-size:12px;">Red chips are required by eBay. Fill them on the Technical Specifications page.</p></div></div>';
+                + '</div></div>';
             el.addEventListener('click', function (e) {
                 if (e.target === el || e.target.closest('.md-close')) el.remove();
             });
@@ -1031,6 +1096,7 @@
                 .catch(function () { fieldCountsState = 'error'; })
                 .then(function () {
                     if (ebayListingTable) ebayListingTable.redraw(true);
+                    updateFieldTotals();
                 });
         }
 
@@ -1197,8 +1263,8 @@
                         headerHozAlign: 'center',
                         width: 110,
                         sorter: fieldCountSorter('a'),
-                        headerTooltip: 'Fields with data / all fields of the SKU category (required fields, fields saved for the category and UPC). Green when all have data, red when some are missing. Data is from our app (Technical Specifications).',
-                        formatter: fieldCountFormatter('a', 'fields')
+                        headerTooltip: 'Fields missing / all fields of the SKU category (required fields, fields saved for the category and UPC). Green when none are missing, red when some are. The number under the title is the total across all listings. Data is from our app (Technical Specifications).',
+                        formatter: fieldCountFormatter('a', 'fields', true)
                     },
                     {
                         title: 'Missing data',
@@ -1219,6 +1285,7 @@
             ebayListingTable.on('dataProcessed', function () {
                 hideLoader();
                 loadFieldCounts();
+                updateFieldTotals();
                 // /listing-ebay?missing=1 (link from the Missing L counts) opens on the Missing L list.
                 if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__ebayMissingApplied) {
                     window.__ebayMissingApplied = true;
@@ -1354,6 +1421,6 @@
             publishUrl: '/listing_ebay/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v={{ @filemtime(public_path('js/listing-page-tools.js')) }}"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261108-draft-{{ @filemtime(public_path('js/listing-page-tools.js')) ?: 0 }}"></script>
 @include('partials.listing-sku-search')
 @endsection

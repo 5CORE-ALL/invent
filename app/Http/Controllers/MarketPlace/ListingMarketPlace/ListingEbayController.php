@@ -89,7 +89,7 @@ class ListingEbayController extends Controller
                 $skipped = $hidden[(string) ($row['hide_scope'] ?? '')] ?? [];
                 $mandatory = $this->countFields((array) ($row['ebay_required_only'] ?? []), $row, $skipped, $sources);
                 $all = $this->countFields((array) ($row['ebay_required'] ?? []), $row, $skipped, $sources);
-                $out[strtoupper(trim(str_replace("\u{00a0}", ' ', $sku)))] = ['m' => $mandatory, 'a' => $all];
+                $out[strtoupper(trim(str_replace("\u{00a0}", ' ', $sku)))] = ['m' => $mandatory, 'a' => $all, 'cat' => trim((string) ($row['category_ebay'] ?? ''))];
             }
 
             return response()->json([
