@@ -51,6 +51,15 @@ class Ebay1PromotionService
     /** @var array<string, true> */
     private array $detachedListingIds = [];
 
+    /** Seconds the sale list / sale details are reused across SKUs in one worker run. */
+    private const MD_CACHE_TTL = 90;
+
+    /** @var array{0:int,1:list<string>}|null [fetchedAt, promotion ids] */
+    private ?array $mdIdsCache = null;
+
+    /** @var array<string, array{0:int,1:?array<string,mixed>}> promo api id => [fetchedAt, detail] */
+    private array $mdDetailCache = [];
+
     public function __construct(?EbayApiService $ebay = null, string $channel = 'ebay1')
     {
         $this->channel = strtolower(trim($channel)) ?: 'ebay1';
@@ -736,6 +745,8 @@ class Ebay1PromotionService
      */
     private function endMarkdownSale(string $token, string $promoId): array
     {
+        $this->forgetMarkdownCache($promoId);
+        $this->mdIdsCache = null;
         $detail = $this->getMarkdown($token, $promoId);
         if ($detail === null) {
             return ['success' => false, 'message' => 'Sale not found'];
@@ -966,7 +977,7 @@ class Ebay1PromotionService
         $foundOn = 0;
 
         foreach ($candidates as $promoId) {
-            $detail = $this->getMarkdown($token, $promoId);
+            $detail = $this->getMarkdownCached($token, $promoId);
             if ($detail === null) {
                 continue;
             }
@@ -983,6 +994,8 @@ class Ebay1PromotionService
             }
 
             $foundOn++;
+            // About to write: use a fresh copy, not the cached scan result.
+            $detail = $this->getMarkdown($token, $promoId) ?? $detail;
             $rm = $this->removeListingFromSale($token, $promoId, $itemId, $sku, $detail);
             if ($rm['success']) {
                 $removedFrom[] = $promoId;
@@ -1031,7 +1044,7 @@ class Ebay1PromotionService
         $withItem = null;
 
         foreach ($ids as $promoId) {
-            $detail = $this->getMarkdown($token, $promoId);
+            $detail = $this->getMarkdownCached($token, $promoId);
             if ($detail === null) {
                 continue;
             }
@@ -1075,6 +1088,20 @@ class Ebay1PromotionService
      * @return list<string>
      */
     private function listMarkdownIds(string $token): array
+    {
+        if ($this->mdIdsCache !== null && (time() - $this->mdIdsCache[0]) < self::MD_CACHE_TTL) {
+            return $this->mdIdsCache[1];
+        }
+        $ids = $this->fetchMarkdownIds($token);
+        $this->mdIdsCache = [time(), $ids];
+
+        return $ids;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function fetchMarkdownIds(string $token): array
     {
         $ids = [];
         $offset = 0;
@@ -1133,8 +1160,32 @@ class Ebay1PromotionService
             return null;
         }
         $json = $resp->json();
+        $detail = is_array($json) ? $json : null;
+        $this->mdDetailCache[$this->markdownApiId($promoId)] = [time(), $detail];
 
-        return is_array($json) ? $json : null;
+        return $detail;
+    }
+
+    /**
+     * Read-only scans (find / remove-from-other-tier) reuse recent sale details instead of
+     * re-fetching every sale for every SKU. Any write to a sale drops its cache entry.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function getMarkdownCached(string $token, string $promoId): ?array
+    {
+        $key = $this->markdownApiId($promoId);
+        $hit = $this->mdDetailCache[$key] ?? null;
+        if ($hit !== null && (time() - $hit[0]) < self::MD_CACHE_TTL && $hit[1] !== null) {
+            return $hit[1];
+        }
+
+        return $this->getMarkdown($token, $promoId);
+    }
+
+    private function forgetMarkdownCache(string $promoId): void
+    {
+        unset($this->mdDetailCache[$this->markdownApiId($promoId)]);
     }
 
     /**
@@ -1181,6 +1232,10 @@ class Ebay1PromotionService
         }
 
         $this->resumeIfNeeded($token, $promoId);
+        // New sale: add it to the cached list so later SKUs can join it without re-listing everything.
+        if ($this->mdIdsCache !== null) {
+            $this->mdIdsCache[1][] = $promoId;
+        }
 
         return [
             'success' => true,
@@ -1230,6 +1285,30 @@ class Ebay1PromotionService
 
         if ($resp->successful() || $resp->status() === 204) {
             return ['success' => true, 'message' => 'add item ok'];
+        }
+
+        // eBay locks a sale while another update is processing. Wait and retry (re-reading the sale so
+        // we never overwrite listings added in the meantime) instead of creating a duplicate sale.
+        for ($try = 1; $try <= 5 && $this->isUpdateBusy($resp); $try++) {
+            usleep((int) (1_500_000 * $try));
+            $fresh = $this->getMarkdown($token, $promoId);
+            if ($fresh === null) {
+                break;
+            }
+            if ($this->saleContainsSku($fresh, $sku, $itemId)) {
+                return ['success' => true, 'message' => 'add item ok'];
+            }
+            $freshIds = $this->saleListingIds($fresh);
+            if (! in_array($lid, array_map(fn ($id) => $this->markdownListingId((string) $id), $freshIds), true)) {
+                $freshIds[] = $lid;
+            }
+            $detail = $fresh;
+            $listingIds = $freshIds;
+            $payload = $this->saleWritePayload($fresh, $freshIds, null);
+            $resp = $this->putMarkdown($token, $promoId, $payload);
+            if ($resp->successful() || $resp->status() === 204) {
+                return ['success' => true, 'message' => 'add item ok'];
+            }
         }
 
         if ($wasRunning) {
@@ -1461,6 +1540,8 @@ class Ebay1PromotionService
      */
     private function putMarkdown(string $token, string $promoId, array $payload): Response
     {
+        $this->forgetMarkdownCache($promoId);
+
         return $this->http($token)
             ->put(
                 'https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($this->markdownApiId($promoId)),
@@ -1699,6 +1780,14 @@ class Ebay1PromotionService
         }
     }
 
+    private function isUpdateBusy(Response $resp): bool
+    {
+        $body = strtolower((string) $resp->body());
+
+        return str_contains($body, 'update already processing')
+            || str_contains($body, 'already processing');
+    }
+
     private function isVariationMarkdownError(Response $resp): bool
     {
         $body = strtolower($this->ebayErrorMessage($resp).' '.$resp->body());
@@ -1721,6 +1810,7 @@ class Ebay1PromotionService
      */
     private function ensureSalePaused(string $token, string $promoId): bool
     {
+        $this->forgetMarkdownCache($promoId);
         $detail = $this->getMarkdown($token, $promoId);
         $status = strtoupper((string) ($detail['promotionStatus'] ?? ''));
         if ($status === 'PAUSED') {
@@ -1832,6 +1922,7 @@ class Ebay1PromotionService
 
     private function resumeIfNeeded(string $token, string $promoId): void
     {
+        $this->forgetMarkdownCache($promoId);
         $url = 'https://api.ebay.com/sell/marketing/v1/item_price_markdown/'.rawurlencode($this->markdownApiId($promoId)).'/resume';
         try {
             $this->http($token)->timeout(30)->post($url);
