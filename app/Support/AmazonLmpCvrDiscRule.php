@@ -5,49 +5,62 @@ namespace App\Support;
 use App\Models\ChannelTabulatorColumnSetting;
 
 /**
- * Dynamic pricing rule (Amazon): LMP available AND CVR decreasing → add extra discount.
+ * Dynamic pricing rule (Amazon): LMP available AND CVR going down → extra discount, by how far CVR fell.
  *
- *   CVR decreasing = CVR L30 is below CVR L45 by more than `min_drop` points (and CVR L45 > 0, so a SKU that
- *                    never converted is not treated as "decreasing").
- *   Extra discount = base + step × (drop − min_drop), capped at `max`   (all in % off Std Prc)
+ *   Drop = CVR L45 − CVR L30 (in CVR points). CVR is "down" when the drop is more than 0.1 point
+ *   (same tolerance as the CVR arrow) and CVR L45 > 0.
  *
- * The bigger the CVR drop, the bigger the extra discount, so it follows the data on its own. Same formula
- * runs in the page (amazon-lmp-cvr-disc-rule partial) and in AmazonSprcDilAutoPushService.
+ *   Small  : drop < t1          → d1 %
+ *   Medium : t1 ≤ drop < t2     → d2 %
+ *   Large  : drop ≥ t2          → d3 %
+ *
+ * SKUs whose CVR is flat/up, or that have no LMP, get nothing from this rule. The same bands run in the page
+ * (amazon-lmp-cvr-disc-rule partial) and in AmazonSprcDilAutoPushService.
  */
 final class AmazonLmpCvrDiscRule
 {
     public const CHANNEL_KEY = 'amazon_lmp_cvr_disc_rule';
 
+    /** CVR must fall by more than this many points to count as "down". */
+    public const DOWN_TOLERANCE = 0.1;
+
     public const DEFAULTS = [
         'enabled' => false,
-        'base' => 2.0,
-        'step' => 1.0,
-        'max' => 10.0,
-        'min_drop' => 0.1,
+        't1' => 0.5,
+        't2' => 1.5,
+        'd1' => 2.0,
+        'd2' => 4.0,
+        'd3' => 6.0,
     ];
 
-    /** @return array{enabled:bool,base:float,step:float,max:float,min_drop:float} */
+    /** @return array{enabled:bool,t1:float,t2:float,d1:float,d2:float,d3:float} */
     public static function normalize(mixed $raw): array
     {
         $in = is_array($raw) ? $raw : [];
         $num = static function (string $key, float $lo, float $hi) use ($in): float {
             $v = $in[$key] ?? null;
-            $d = self::DEFAULTS[$key];
-            $n = is_numeric($v) ? (float) $v : (float) $d;
+            $n = is_numeric($v) ? (float) $v : (float) self::DEFAULTS[$key];
 
             return round(min($hi, max($lo, $n)), 2);
         };
 
+        $t1 = $num('t1', 0.0, 100.0);
+        $t2 = $num('t2', 0.0, 100.0);
+        if ($t2 < $t1) {
+            [$t1, $t2] = [$t2, $t1];
+        }
+
         return [
             'enabled' => filter_var($in['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
-            'base' => $num('base', 0.0, 50.0),
-            'step' => $num('step', 0.0, 50.0),
-            'max' => $num('max', 0.0, 80.0),
-            'min_drop' => $num('min_drop', 0.0, 50.0),
+            't1' => $t1,
+            't2' => $t2,
+            'd1' => $num('d1', 0.0, 80.0),
+            'd2' => $num('d2', 0.0, 80.0),
+            'd3' => $num('d3', 0.0, 80.0),
         ];
     }
 
-    /** @return array{enabled:bool,base:float,step:float,max:float,min_drop:float} */
+    /** @return array{enabled:bool,t1:float,t2:float,d1:float,d2:float,d3:float} */
     public static function config(): array
     {
         try {
@@ -59,7 +72,6 @@ final class AmazonLmpCvrDiscRule
         return self::normalize($row?->visibility);
     }
 
-    /** @param array{enabled:bool,base:float,step:float,max:float,min_drop:float} $cfg */
     public static function save(array $cfg): array
     {
         $payload = self::normalize($cfg);
@@ -72,12 +84,11 @@ final class AmazonLmpCvrDiscRule
     }
 
     /**
-     * Extra discount % for one SKU.
+     * Extra discount % for one SKU (0 when the rule is off, no LMP, or CVR is not down).
      *
      * @param  float  $lmp  Lowest marketplace price (> 0 means "LMP available")
      * @param  float  $cvr  CVR L30 %
      * @param  float  $cvr45  CVR L45 % (baseline)
-     * @param  array{enabled:bool,base:float,step:float,max:float,min_drop:float}|null  $cfg
      */
     public static function discount(float $lmp, float $cvr, float $cvr45, ?array $cfg = null): float
     {
@@ -86,11 +97,11 @@ final class AmazonLmpCvrDiscRule
             return 0.0;
         }
         $drop = $cvr45 - max(0.0, $cvr);
-        if (! ($drop > $cfg['min_drop'])) {
+        if (! ($drop > self::DOWN_TOLERANCE)) {
             return 0.0;
         }
-        $extra = $cfg['base'] + $cfg['step'] * ($drop - $cfg['min_drop']);
+        $band = $drop < $cfg['t1'] ? 'd1' : ($drop < $cfg['t2'] ? 'd2' : 'd3');
 
-        return round(min($cfg['max'], max(0.0, $extra)), 2);
+        return round(max(0.0, (float) $cfg[$band]), 2);
     }
 }

@@ -12,54 +12,63 @@
 
 @if($amzLmpCvrPart === 'modals' || $amzLmpCvrPart === 'all')
     <div class="modal fade" id="amzLmpCvrModal" tabindex="-1" aria-labelledby="amzLmpCvrModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <div>
-                        <h5 class="modal-title fs-6 mb-0" id="amzLmpCvrModalLabel"><i class="fas fa-chart-line me-1"></i> LMP + CVR Rule — extra discount</h5>
-                        <div class="text-muted" style="font-size:12px;">When a SKU has an LMP and its CVR L30 is below CVR L45, it gets <b>Base % + Step % × (extra points of drop)</b>, capped at Max %. The discount is added to the Sum Disc. and moves as CVR moves.</div>
+                        <h5 class="modal-title fs-6 mb-1" id="amzLmpCvrModalLabel"><i class="fas fa-chart-line me-1"></i> LMP + CVR Rule</h5>
+                        <div class="text-muted" style="font-size:13px;"><b>If</b> LMP is available <b>and CVR is going down</b> (CVR L30 below CVR L45), the S PRC discount goes up automatically. The bigger the CVR fall, the bigger the extra discount. SKUs whose CVR is not down are not touched.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="form-check form-switch mb-3">
                         <input class="form-check-input" type="checkbox" role="switch" id="amz-lmp-cvr-enabled">
-                        <label class="form-check-label fw-semibold" for="amz-lmp-cvr-enabled">Add this discount to the Sum Disc. (S PRC)</label>
+                        <label class="form-check-label fw-semibold" for="amz-lmp-cvr-enabled">Rule ON</label>
                     </div>
-                    <div class="row g-2 mb-3">
-                        <div class="col-6">
-                            <label class="form-label mb-0 small">Base discount %</label>
-                            <input type="number" min="0" max="100" step="0.1" class="form-control form-control-sm amz-lmp-cvr-in" id="amz-lmp-cvr-base">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label mb-0 small">Step % per CVR point dropped</label>
-                            <input type="number" min="0" max="100" step="0.1" class="form-control form-control-sm amz-lmp-cvr-in" id="amz-lmp-cvr-step">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label mb-0 small">Max discount %</label>
-                            <input type="number" min="0" max="100" step="0.1" class="form-control form-control-sm amz-lmp-cvr-in" id="amz-lmp-cvr-max">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label mb-0 small">Min CVR drop (points)</label>
-                            <input type="number" min="0" max="100" step="0.05" class="form-control form-control-sm amz-lmp-cvr-in" id="amz-lmp-cvr-mindrop">
-                        </div>
-                    </div>
-                    <table class="table table-sm mb-2">
+                    <table class="table table-bordered align-middle mb-2 text-center" style="font-size:14px;">
+                        <thead style="background:#dbe8fb;">
+                            <tr>
+                                <th class="text-start">CVR fall</th>
+                                <th>CVR fall (points)</th>
+                                <th>Extra discount %</th>
+                                <th>S PRC</th>
+                                <th>Count</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            <tr><td>SKUs in stock</td><td class="text-end fw-semibold" id="amz-lmp-cvr-s-total">0</td></tr>
-                            <tr><td>LMP available</td><td class="text-end fw-semibold" id="amz-lmp-cvr-s-lmp">0</td></tr>
-                            <tr><td>CVR decreasing</td><td class="text-end fw-semibold" id="amz-lmp-cvr-s-down">0</td></tr>
-                            <tr class="table-warning"><td><b>LMP available + CVR decreasing (rule hits)</b></td><td class="text-end fw-bold" id="amz-lmp-cvr-s-hit">0</td></tr>
+                            <tr>
+                                <td class="text-start">Small</td>
+                                <td><span class="text-muted me-1">&lt;</span><input type="number" min="0" step="0.1" class="form-control form-control-sm d-inline-block amz-lmp-cvr-in" style="width:80px;" id="amz-lmp-cvr-t1"></td>
+                                <td><input type="number" min="0" max="80" step="0.1" class="form-control form-control-sm d-inline-block amz-lmp-cvr-in" style="width:80px;" id="amz-lmp-cvr-d1"></td>
+                                <td class="text-muted">Std × <span id="amz-lmp-cvr-f1"></span></td>
+                                <td><b id="amz-lmp-cvr-c1">0</b> <span style="color:#2563eb;">&#9679;</span></td>
+                            </tr>
+                            <tr>
+                                <td class="text-start">Medium</td>
+                                <td class="text-muted"><span id="amz-lmp-cvr-mid"></span></td>
+                                <td><input type="number" min="0" max="80" step="0.1" class="form-control form-control-sm d-inline-block amz-lmp-cvr-in" style="width:80px;" id="amz-lmp-cvr-d2"></td>
+                                <td class="text-muted">Std × <span id="amz-lmp-cvr-f2"></span></td>
+                                <td><b id="amz-lmp-cvr-c2">0</b> <span style="color:#7c3aed;">&#9679;</span></td>
+                            </tr>
+                            <tr>
+                                <td class="text-start">Large</td>
+                                <td><span class="text-muted me-1">&ge;</span><input type="number" min="0" step="0.1" class="form-control form-control-sm d-inline-block amz-lmp-cvr-in" style="width:80px;" id="amz-lmp-cvr-t2"></td>
+                                <td><input type="number" min="0" max="80" step="0.1" class="form-control form-control-sm d-inline-block amz-lmp-cvr-in" style="width:80px;" id="amz-lmp-cvr-d3"></td>
+                                <td class="text-muted">Std × <span id="amz-lmp-cvr-f3"></span></td>
+                                <td><b id="amz-lmp-cvr-c3">0</b> <span style="color:#f97316;">&#9679;</span></td>
+                            </tr>
                         </tbody>
                     </table>
-                    <div class="small fw-semibold mb-1">Discount tiers (SKU count)</div>
-                    <div id="amz-lmp-cvr-tiers" class="small text-muted">—</div>
-                    <div class="text-muted mt-3" style="font-size:12px;">Counts update live as you change the numbers. "Apply" saves the rule; the S PRC column follows it. "Apply &amp; push S PRC" also writes S PRC for the rows it hits (selected rows, or all visible).</div>
+                    <div class="text-muted small">
+                        <b id="amz-lmp-cvr-s-hit">0</b> SKU(s) get extra discount now · LMP available: <b id="amz-lmp-cvr-s-lmp">0</b> · CVR down: <b id="amz-lmp-cvr-s-down">0</b> · In stock: <b id="amz-lmp-cvr-s-total">0</b>.
+                        Extra discount is added on top of the other discounts in Sum Disc. "CVR fall" = CVR L45 minus CVR L30.
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amz-lmp-cvr-apply">Apply</button>
-                    <button type="button" class="btn btn-sm btn-success" id="amz-lmp-cvr-apply-push">Apply &amp; push S PRC</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amz-lmp-cvr-apply" title="Save the rule. The S PRC column follows it.">Save</button>
+                    <button type="button" class="btn btn-sm btn-success" id="amz-lmp-cvr-apply-push" title="Save and also write S PRC for the SKUs this rule changes (selected rows, or all visible).">Save &amp; push S PRC</button>
                 </div>
             </div>
         </div>
@@ -86,16 +95,18 @@
             const lmp = typeof amzPefLmp === 'function' ? (Number(amzPefLmp(d)) || 0) : 0;
             const cvr = typeof amzPefCvrL30Live === 'function' ? (Number(amzPefCvrL30Live(d)) || 0) : 0;
             const cvr45 = typeof amzPefCvrL45Live === 'function' ? (Number(amzPefCvrL45Live(d)) || 0) : 0;
-            const minDrop = Math.max(0, Number(cfg.min_drop) || 0);
             const drop = cvr45 > 0 ? cvr45 - Math.max(0, cvr) : 0;
-            const decreasing = cvr45 > 0 && drop > minDrop;
+            const decreasing = cvr45 > 0 && drop > 0.1;
+            let band = 0;
             let disc = 0;
-            if (cfg.enabled && lmp > 0 && decreasing) {
-                const extra = (Number(cfg.base) || 0) + (Number(cfg.step) || 0) * (drop - minDrop);
-                disc = Math.round(Math.min(Number(cfg.max) || 0, Math.max(0, extra)) * 100) / 100;
-                if (typeof amzStdScaleDisc === 'function') disc = Number(amzStdScaleDisc(d && d.STANDARD_PRICE, disc)) || 0;
+            if (lmp > 0 && decreasing) {
+                band = drop < (Number(cfg.t1) || 0) ? 1 : (drop < (Number(cfg.t2) || 0) ? 2 : 3);
+                if (cfg.enabled) {
+                    disc = Math.max(0, Number(cfg['d' + band]) || 0);
+                    if (typeof amzStdScaleDisc === 'function') disc = Number(amzStdScaleDisc(d && d.STANDARD_PRICE, disc)) || 0;
+                }
             }
-            return { lmp: lmp, cvr: cvr, cvr45: cvr45, drop: drop, decreasing: decreasing, hasLmp: lmp > 0, disc: disc };
+            return { lmp: lmp, cvr: cvr, cvr45: cvr45, drop: drop, decreasing: decreasing, hasLmp: lmp > 0, band: band, disc: disc };
         }
         /** Discount % this rule adds to the Sum Disc. (0 when off / not matching). */
         function computeAmzLmpCvrDiscountPct(d) {
@@ -107,47 +118,48 @@
         function amzLmpCvrAllRows() {
             return (typeof table !== 'undefined' && table && table.getData) ? (table.getData('all') || []) : [];
         }
-        /** Count SKUs by LMP / CVR state (and discount tiers) for a rule (draft or saved; always evaluated as enabled). */
+        /** Count SKUs by LMP / CVR state and by band for a rule (draft or saved; always evaluated as enabled). */
         function amzLmpCvrStats(cfg) {
             const preview = Object.assign({}, cfg || amzLmpCvrRuleSafe() || {}, { enabled: true });
-            const out = { total: 0, lmp: 0, down: 0, hit: 0, tiers: {} };
+            const out = { total: 0, lmp: 0, down: 0, hit: 0, bands: [0, 0, 0, 0] };
             amzLmpCvrAllRows().forEach(function(d) {
                 const info = amzLmpCvrInfo(d, preview);
                 if (!info) return;
                 out.total++;
                 if (info.hasLmp) out.lmp++;
                 if (info.decreasing) out.down++;
-                if (info.hasLmp && info.decreasing) {
-                    out.hit++;
-                    const k = (Math.round(info.disc * 10) / 10).toFixed(1);
-                    out.tiers[k] = (out.tiers[k] || 0) + 1;
-                }
+                if (info.band) { out.hit++; out.bands[info.band]++; }
             });
             return out;
         }
         function amzLmpCvrReadDraft() {
             const num = function(id, def) {
                 const v = parseFloat($(id).val());
-                return isFinite(v) ? Math.min(100, Math.max(0, v)) : def;
+                return isFinite(v) ? Math.max(0, v) : def;
             };
+            let t1 = num('#amz-lmp-cvr-t1', 0.5);
+            let t2 = num('#amz-lmp-cvr-t2', 1.5);
+            if (t2 < t1) { const x = t1; t1 = t2; t2 = x; }
             return {
                 enabled: $('#amz-lmp-cvr-enabled').is(':checked'),
-                base: num('#amz-lmp-cvr-base', 0),
-                step: num('#amz-lmp-cvr-step', 0),
-                max: num('#amz-lmp-cvr-max', 0),
-                min_drop: num('#amz-lmp-cvr-mindrop', 0)
+                t1: t1, t2: t2,
+                d1: Math.min(80, num('#amz-lmp-cvr-d1', 0)),
+                d2: Math.min(80, num('#amz-lmp-cvr-d2', 0)),
+                d3: Math.min(80, num('#amz-lmp-cvr-d3', 0))
             };
         }
         function amzLmpCvrPaintModalStats() {
-            const s = amzLmpCvrStats(amzLmpCvrReadDraft());
+            const d = amzLmpCvrReadDraft();
+            const s = amzLmpCvrStats(d);
             $('#amz-lmp-cvr-s-total').text(s.total.toLocaleString());
             $('#amz-lmp-cvr-s-lmp').text(s.lmp.toLocaleString());
             $('#amz-lmp-cvr-s-down').text(s.down.toLocaleString());
             $('#amz-lmp-cvr-s-hit').text(s.hit.toLocaleString());
-            const keys = Object.keys(s.tiers).sort(function(a, b) { return parseFloat(a) - parseFloat(b); });
-            $('#amz-lmp-cvr-tiers').html(keys.length
-                ? keys.map(function(k) { return '<span class="badge bg-light text-dark border me-1 mb-1">' + k + '% · ' + s.tiers[k].toLocaleString() + '</span>'; }).join('')
-                : '—');
+            for (let i = 1; i <= 3; i++) {
+                $('#amz-lmp-cvr-c' + i).text(s.bands[i].toLocaleString());
+                $('#amz-lmp-cvr-f' + i).text((Math.round((1 - d['d' + i] / 100) * 1000) / 1000));
+            }
+            $('#amz-lmp-cvr-mid').text(d.t1 + ' – ' + d.t2);
         }
         /** Button badges: ON flag + live count of SKUs with LMP available and CVR decreasing. */
         function amzLmpCvrPaintState() {
@@ -189,7 +201,7 @@
                 headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' }
             }).done(function(res) {
                 if (!res || !res.success) { amzPefToast('error', 'Could not save LMP+CVR Rule'); return; }
-                amzLmpCvr = { enabled: !!res.enabled, base: res.base, step: res.step, max: res.max, min_drop: res.min_drop };
+                amzLmpCvr = { enabled: !!res.enabled, t1: res.t1, t2: res.t2, d1: res.d1, d2: res.d2, d3: res.d3 };
                 amzLmpCvrPaintState();
                 if (typeof amzTableRedrawPreserveScroll === 'function') amzTableRedrawPreserveScroll(true);
                 else if (typeof table !== 'undefined' && table) table.redraw(true);
@@ -211,10 +223,11 @@
                 e.preventDefault();
                 const cfg = amzLmpCvrRuleSafe() || {};
                 $('#amz-lmp-cvr-enabled').prop('checked', !!cfg.enabled);
-                $('#amz-lmp-cvr-base').val(cfg.base != null ? cfg.base : 2);
-                $('#amz-lmp-cvr-step').val(cfg.step != null ? cfg.step : 1);
-                $('#amz-lmp-cvr-max').val(cfg.max != null ? cfg.max : 10);
-                $('#amz-lmp-cvr-mindrop').val(cfg.min_drop != null ? cfg.min_drop : 0.1);
+                $('#amz-lmp-cvr-t1').val(cfg.t1 != null ? cfg.t1 : 0.5);
+                $('#amz-lmp-cvr-t2').val(cfg.t2 != null ? cfg.t2 : 1.5);
+                $('#amz-lmp-cvr-d1').val(cfg.d1 != null ? cfg.d1 : 2);
+                $('#amz-lmp-cvr-d2').val(cfg.d2 != null ? cfg.d2 : 4);
+                $('#amz-lmp-cvr-d3').val(cfg.d3 != null ? cfg.d3 : 6);
                 amzLmpCvrPaintModalStats();
                 const el = document.getElementById('amzLmpCvrModal');
                 if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).show();
