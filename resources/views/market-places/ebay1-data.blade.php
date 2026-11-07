@@ -140,6 +140,10 @@
         .e1d-job-note { font-size: .78rem; color: #dc2626; margin-top: .4rem; white-space: pre-line; }
         .e1d-job-note:empty { display: none; }
         .e1d-job-icon .fa-spin { color: #2c6ed5; }
+        .e1d-editfields { display: flex; flex-direction: column; gap: .5rem; max-height: 38vh; overflow-y: auto; padding-right: 2px; }
+        .e1d-editfields:empty::before { content: 'Tick a column first'; color: #94a3b8; font-size: .85rem; padding: .35rem .1rem; }
+        .e1d-editfield label { font-size: .74rem; font-weight: 600; color: #475569; margin: 0 0 .15rem; display: block; }
+        .e1d-editfield input { width: 100%; }
         .e1d-modal-box { position: relative; }
         .e1d-x { position: absolute; top: 1.1rem; right: 1.1rem; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #f1f5f9; color: #475569; display: flex; align-items: center; justify-content: center; transition: background .12s; }
         .e1d-x:hover { background: #e2e8f0; color: #0f172a; }
@@ -211,7 +215,7 @@
                         <button type="button" class="btn btn-sm btn-info text-white" id="e1dSrcBtn" title="Source Data: choose which Technical Specifications column a column of this tab always reads from" aria-label="Source Data" disabled>
                             <i class="fas fa-link"></i>
                         </button>
-                        <button type="button" class="btn btn-sm btn-warning" id="e1dEditCol" title="Edit Column: set one column to the same value on every row of the open tab, or only on the ticked rows" aria-label="Edit Column" disabled>
+                        <button type="button" class="btn btn-sm btn-warning" id="e1dEditCol" title="Edit Column: set one or more columns to a value on every row of the open tab, or only on the ticked rows" aria-label="Edit Column" disabled>
                             <i class="fas fa-edit"></i>
                         </button>
                         <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete Column: delete one item-specific column of the open category tab, here and on the live eBay 1 listings" aria-label="Delete Column" disabled>
@@ -288,13 +292,13 @@
         <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dEditTitle">
             <h5 id="e1dEditTitle" class="mb-2"><i class="fas fa-edit text-warning"></i> Edit Column</h5>
             <p class="small text-muted mb-2" id="e1dEditIntro"></p>
-            <label class="form-label small fw-bold" for="e1dEditSearch">1. Search the column to edit</label>
+            <label class="form-label small fw-bold" for="e1dEditSearch">1. Search and tick the columns to edit</label>
             <input type="text" id="e1dEditSearch" class="form-control form-control-sm mb-1" placeholder="Quick search a column…" autocomplete="off">
+            <label class="e1d-addopt fw-bold border-bottom mb-1"><input type="checkbox" id="e1dEditAll"> Columns shown (tick one or more)</label>
             <div class="e1d-addlist" id="e1dEditList" role="listbox"></div>
             <div class="small my-2 fw-bold" id="e1dEditPicked"></div>
-            <label class="form-label small fw-bold" for="e1dEditValue">2. New data for the column</label>
-            <input type="text" id="e1dEditValue" class="form-control form-control-sm mb-1" list="e1dEditValues" placeholder="Pick a column first" autocomplete="off" disabled>
-            <datalist id="e1dEditValues"></datalist>
+            <label class="form-label small fw-bold">2. New data for each ticked column</label>
+            <div class="e1d-editfields" id="e1dEditFields"></div>
             <div class="small my-2" id="e1dEditHint"></div>
             <div class="d-flex justify-content-end gap-2">
                 <button type="button" class="btn btn-sm btn-light" id="e1dEditCancel">Cancel</button>
@@ -1044,7 +1048,7 @@
 
             // ---- Edit Column: one value for a whole column, or for the ticked rows only ----
             const E1_AUTOFILLED = ['brand', 'manufacturer', 'condition', 'countryoforigin', 'mpn', 'model', 'upc'];
-            let editPicked = '';
+            const editPicked = new Map();
             let editBusy = false;
             let editRow = null; // set when the pen button of one row opened the window
 
@@ -1077,28 +1081,16 @@
                 return { selected: selected.length > 0, targets: base };
             }
 
-            function renderEditList() {
+            // Columns ticked in the window, each with the data typed for it (name -> value) and its suggestions.
+            function visibleEditNames() {
                 const q = String(document.getElementById('e1dEditSearch').value || '').trim().toLowerCase();
-                const names = editNames().filter(function (n) { return !q || n.toLowerCase().indexOf(q) !== -1; });
-                document.getElementById('e1dEditList').innerHTML = names.map(function (n) {
-                    return '<button type="button" data-name="' + esc(n) + '"' + (n === editPicked ? ' class="active"' : '') + '>' + esc(n) + '</button>';
-                }).join('');
-                const scope = editScope();
-                document.getElementById('e1dEditPicked').textContent = editPicked ? 'Column: ' + editPicked : 'No column picked yet.';
-                const value = document.getElementById('e1dEditValue');
-                value.disabled = !editPicked || editBusy;
-                value.placeholder = editPicked ? 'Type the data for ' + editPicked : 'Pick a column first';
-                document.getElementById('e1dEditHint').textContent = editPicked
-                    ? (scope.single
-                        ? 'Changes only ' + editRow.sku + '.'
-                        : 'Changes ' + scope.targets.length + (scope.selected ? ' ticked' : '') + ' row' + (scope.targets.length === 1 ? '' : 's') + '.')
-                        + ' Nothing is sent to eBay until you press Push.'
-                    : '';
-                document.getElementById('e1dEditGo').disabled = !editPicked || editBusy || scope.targets.length === 0;
+                return editNames()
+                    .slice()
+                    .sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); })
+                    .filter(function (n) { return !q || n.toLowerCase().indexOf(q) !== -1; });
             }
 
-            function pickEditColumn(name) {
-                editPicked = name;
+            function editSuggestions(name) {
                 const values = new Map();
                 const sample = editRow ? rows.filter(function (r) { return (r.category || '') === (editRow.category || ''); }) : editScope().targets;
                 sample.forEach(function (row) {
@@ -1108,18 +1100,95 @@
                         if (gKey(k) === gKey(name) && v !== '') values.set(v, (values.get(v) || 0) + 1);
                     });
                 });
-                document.getElementById('e1dEditValues').innerHTML = Array.from(values.keys()).sort(function (a, b) { return values.get(b) - values.get(a); }).slice(0, 40)
-                    .map(function (v) { return '<option value="' + esc(v) + '"></option>'; }).join('');
-                // A single row starts with its own current value.
-                let current = '';
-                if (editRow) {
-                    const spec = editRow.specifics && !Array.isArray(editRow.specifics) ? editRow.specifics : {};
-                    const own = Object.keys(spec).find(function (k) { return gKey(k) === gKey(name); });
-                    current = own ? String(spec[own] || '') : '';
+                return Array.from(values.keys()).sort(function (a, b) { return values.get(b) - values.get(a); }).slice(0, 40);
+            }
+
+            function renderEditFields() {
+                const box = document.getElementById('e1dEditFields');
+                const names = Array.from(editPicked.keys());
+                box.innerHTML = '';
+                names.forEach(function (name, i) {
+                    const wrap = document.createElement('div');
+                    wrap.className = 'e1d-editfield';
+                    const label = document.createElement('label');
+                    label.textContent = name;
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.className = 'form-control form-control-sm';
+                    input.autocomplete = 'off';
+                    input.placeholder = 'Type the data for ' + name;
+                    input.value = editPicked.get(name) || '';
+                    input.disabled = editBusy;
+                    const listId = 'e1dEditDl' + i;
+                    input.setAttribute('list', listId);
+                    const dl = document.createElement('datalist');
+                    dl.id = listId;
+                    dl.innerHTML = editSuggestions(name).map(function (v) { return '<option value="' + esc(v) + '"></option>'; }).join('');
+                    input.addEventListener('input', function () { editPicked.set(name, input.value); });
+                    input.addEventListener('keydown', function (e) {
+                        if (e.key === 'Enter') { e.preventDefault(); runEditColumn(); }
+                    });
+                    wrap.appendChild(label);
+                    wrap.appendChild(input);
+                    wrap.appendChild(dl);
+                    box.appendChild(wrap);
+                });
+            }
+
+            function refreshEditState() {
+                const scope = editScope();
+                const n = editPicked.size;
+                document.getElementById('e1dEditPicked').textContent = n ? n + ' column' + (n === 1 ? '' : 's') + ' ticked' : 'No column ticked yet.';
+                document.getElementById('e1dEditHint').textContent = n
+                    ? (scope.single
+                        ? 'Changes only ' + editRow.sku + '.'
+                        : 'Changes ' + scope.targets.length + (scope.selected ? ' ticked' : '') + ' row' + (scope.targets.length === 1 ? '' : 's') + '.')
+                        + ' Nothing is sent to eBay until you press Push.'
+                    : '';
+                document.getElementById('e1dEditGo').disabled = !n || editBusy || scope.targets.length === 0;
+                const visible = visibleEditNames();
+                const ticked = visible.filter(function (name) { return editPicked.has(name); }).length;
+                const all = document.getElementById('e1dEditAll');
+                all.checked = visible.length > 0 && ticked === visible.length;
+                all.indeterminate = ticked > 0 && ticked < visible.length;
+            }
+
+            // A column's starting value: a single row starts with its own current value.
+            function startingEditValue(name) {
+                if (!editRow) return '';
+                const spec = editRow.specifics && !Array.isArray(editRow.specifics) ? editRow.specifics : {};
+                const own = Object.keys(spec).find(function (k) { return gKey(k) === gKey(name); });
+                return own ? String(spec[own] || '') : '';
+            }
+
+            function toggleEditColumn(name, on) {
+                if (on) {
+                    if (!editPicked.has(name)) editPicked.set(name, startingEditValue(name));
+                } else {
+                    editPicked.delete(name);
                 }
-                document.getElementById('e1dEditValue').value = current;
-                renderEditList();
-                document.getElementById('e1dEditValue').focus();
+                renderEditFields();
+                refreshEditState();
+            }
+
+            function renderEditList() {
+                const list = document.getElementById('e1dEditList');
+                const names = visibleEditNames();
+                list.innerHTML = '';
+                if (!names.length) list.innerHTML = '<div class="small text-muted p-2">No matching column.</div>';
+                names.forEach(function (name) {
+                    const row = document.createElement('label');
+                    row.className = 'e1d-addopt';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.checked = editPicked.has(name);
+                    cb.disabled = editBusy;
+                    cb.addEventListener('change', function () { toggleEditColumn(name, cb.checked); });
+                    row.appendChild(cb);
+                    row.appendChild(document.createTextNode(' ' + name));
+                    list.appendChild(row);
+                });
+                refreshEditState();
             }
 
             // Without a row: the whole open tab (or the ticked rows). With a row (pen button): that row only.
@@ -1137,15 +1206,15 @@
                     window.alert('There are no editable item specifics for ' + sku + '. Pull the item specifics first.');
                     return;
                 }
-                editPicked = '';
+                editPicked.clear();
                 document.getElementById('e1dEditSearch').value = '';
-                document.getElementById('e1dEditValue').value = '';
                 document.getElementById('e1dEditIntro').textContent = scope.single
                     ? 'Editing the data of ' + editRow.sku + ' only.'
                     : (scope.selected
                         ? 'Only the ' + scope.targets.length + ' ticked row' + (scope.targets.length === 1 ? '' : 's') + ' will change.'
                         : 'Every row shown in this tab (' + scope.targets.length + ') will change. Tick rows first to change only those.');
                 document.getElementById('e1dEditModal').hidden = false;
+                renderEditFields();
                 renderEditList();
                 document.getElementById('e1dEditSearch').focus();
             }
@@ -1156,29 +1225,40 @@
             }
 
             async function runEditColumn() {
-                if (editBusy || !editPicked) return;
+                if (editBusy || !editPicked.size) return;
                 const scope = editScope();
-                const value = String(document.getElementById('e1dEditValue').value || '').trim();
                 if (!scope.targets.length) return;
-                if (value === '' && !window.confirm('Clear ' + editPicked + ' on ' + scope.targets.length + ' row' + (scope.targets.length === 1 ? '' : 's') + '?')) return;
+                const edits = Array.from(editPicked.entries()).map(function (e) { return { column: e[0], value: String(e[1] || '').trim() }; });
+                const blank = edits.filter(function (e) { return e.value === ''; });
+                if (blank.length && !window.confirm('Clear ' + (blank.length === 1 ? blank[0].column : blank.length + ' columns') + ' on ' + scope.targets.length + ' row' + (scope.targets.length === 1 ? '' : 's') + '?')) return;
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 const skus = scope.targets.map(function (row) { return row.sku; });
                 const go = document.getElementById('e1dEditGo');
+                const saved = [];
                 editBusy = true;
                 renderEditList();
+                renderEditFields();
                 try {
-                    for (let i = 0; i < skus.length; i += 300) {
-                        go.textContent = 'Saving ' + Math.min(i + 300, skus.length) + ' / ' + skus.length + '…';
-                        const res = await fetch('/ebay1-data/edit-column', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
-                            body: JSON.stringify({ column: editPicked, value: value, skus: skus.slice(i, i + 300) }),
-                        });
-                        let json = {};
-                        try { json = await res.json(); } catch (e) {}
-                        if (!res.ok || json.success === false) throw new Error(json.message || 'Could not save');
+                    for (let c = 0; c < edits.length; c++) {
+                        const edit = edits[c];
+                        for (let i = 0; i < skus.length; i += 300) {
+                            go.textContent = 'Saving ' + (c + 1) + ' / ' + edits.length + '…';
+                            const res = await fetch('/ebay1-data/edit-column', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                                body: JSON.stringify({ column: edit.column, value: edit.value, skus: skus.slice(i, i + 300) }),
+                            });
+                            let json = {};
+                            try { json = await res.json(); } catch (e) {}
+                            if (!res.ok || json.success === false) throw new Error(edit.column + ': ' + (json.message || 'Could not save'));
+                        }
+                        saved.push(edit);
                     }
-                    const field = specKey(editPicked);
+                } catch (e) {
+                    window.alert((saved.length ? 'Saved ' + saved.length + ' of ' + edits.length + ' columns. ' : '') + (e.message || 'Could not save the columns'));
+                }
+                // Show what was saved, even when a later column failed.
+                if (saved.length) {
                     const bySku = new Map();
                     table.getRows().forEach(function (tRow) { bySku.set(String(tRow.getData().sku), tRow); });
                     table.blockRedraw();
@@ -1187,23 +1267,30 @@
                             const tRow = bySku.get(String(row.sku));
                             const data = tRow ? tRow.getData() : row;
                             const spec = data.specifics && !Array.isArray(data.specifics) ? data.specifics : {};
-                            const existing = Object.keys(spec).find(function (k) { return gKey(k) === gKey(editPicked); });
-                            spec[existing || editPicked] = value;
-                            if (tRow) tRow.update({ specifics: spec, [field]: value });
-                            else { row.specifics = spec; row[field] = value; }
+                            const patch = {};
+                            saved.forEach(function (edit) {
+                                const existing = Object.keys(spec).find(function (k) { return gKey(k) === gKey(edit.column); });
+                                spec[existing || edit.column] = edit.value;
+                                patch[specKey(edit.column)] = edit.value;
+                            });
+                            patch.specifics = spec;
+                            if (tRow) tRow.update(patch);
+                            else Object.assign(row, patch);
                         });
                     } finally {
                         table.restoreRedraw();
                     }
-                    editBusy = false;
+                }
+                editBusy = false;
+                go.textContent = 'Apply';
+                if (saved.length === edits.length) {
                     document.getElementById('e1dEditModal').hidden = true;
                     refreshAll();
-                } catch (e) {
-                    window.alert(e.message || 'Could not save the column');
-                } finally {
-                    editBusy = false;
-                    go.textContent = 'Apply';
+                } else {
+                    saved.forEach(function (edit) { editPicked.delete(edit.column); });
                     renderEditList();
+                    renderEditFields();
+                    if (saved.length) refreshAll();
                 }
             }
 
@@ -1709,12 +1796,14 @@
                 document.getElementById('e1dEditCancel').addEventListener('click', closeEditModal);
                 document.getElementById('e1dEditGo').addEventListener('click', runEditColumn);
                 document.getElementById('e1dEditSearch').addEventListener('input', renderEditList);
-                document.getElementById('e1dEditList').addEventListener('click', function (e) {
-                    const btn = e.target.closest('button[data-name]');
-                    if (btn) pickEditColumn(btn.dataset.name);
-                });
-                document.getElementById('e1dEditValue').addEventListener('keydown', function (e) {
-                    if (e.key === 'Enter') { e.preventDefault(); runEditColumn(); }
+                document.getElementById('e1dEditAll').addEventListener('change', function () {
+                    const on = this.checked;
+                    visibleEditNames().forEach(function (name) {
+                        if (on) { if (!editPicked.has(name)) editPicked.set(name, startingEditValue(name)); }
+                        else editPicked.delete(name);
+                    });
+                    renderEditList();
+                    renderEditFields();
                 });
                 document.getElementById('e1dRefresh').addEventListener('click', loadData);
                 document.getElementById('e1dPush').addEventListener('click', pushToEbay);
