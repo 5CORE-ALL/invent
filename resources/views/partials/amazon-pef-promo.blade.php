@@ -463,10 +463,13 @@
         #amzDilGroiModal .amz-dg-panel-tables .amz-dg-panel-body { padding: 0; overflow-y: auto; }
         #amzDilGroiModal .amz-dg-grid {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            /* horizontal: every rule card sits side by side in one row (scrolls sideways on narrow screens) */
+            grid-auto-flow: column;
+            grid-auto-columns: minmax(300px, 1fr);
             gap: 8px;
             align-items: start;
             align-content: start;
+            overflow-x: auto;
         }
         #amzDilGroiModal .amz-dg-card {
             background: #fff;
@@ -491,12 +494,12 @@
         #amzDilGroiModal .amz-dg-card .amz-dg-diffrow .form-control-sm { width: 58px !important; max-width: 58px; }
         #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap .form-control-sm { width: 80px !important; }
         #amzDilGroiModal .amz-dg-card .table-responsive { overflow-x: hidden; }
-        #amzDilGroiModal #amz-dil-groi-status { grid-column: 1 / -1; margin: 0 !important; }
+        #amzDilGroiModal #amz-dil-groi-status { margin: 4px 0 0 !important; }
         @media (min-width: 992px) {
             #amzDilGroiModal .modal-dialog { height: calc(100vh - 1rem); margin: .5rem auto; }
         }
         @media (max-width: 991.98px) {
-            #amzDilGroiModal .amz-dg-grid { grid-template-columns: 1fr; }
+            #amzDilGroiModal .amz-dg-grid { grid-auto-columns: minmax(300px, 85vw); }
             #amzDilGroiModal .amz-dg-rules { column-count: 1; }
             #amzDilGroiModal .amz-dg-panel-tables .amz-dg-panel-body { overflow: visible; }
         }
@@ -1045,6 +1048,8 @@
                             </tbody>
                         </table>
                     </div>
+                    </div>
+                    <div class="amz-dg-card">
                     <div class="amz-dg-rules-title mt-2"
                         title="Each age band (days in stock) adds its points to the Dil slab Target NROI, after the CVR overlay and before the Diff rule. Count = SKUs (INV &gt; 0) whose age is in that band.">
                         Ageing Rule
@@ -1137,10 +1142,12 @@
                             </tbody>
                         </table>
                     </div>
+                    </div>
+                    <div class="amz-dg-card">
                     @include('partials.amazon-lmp-cvr-disc-rule', ['amzLmpCvrPart' => 'section'])
                     </div>
-                    <div class="small text-muted mt-1" id="amz-dil-groi-status"></div>
                     </div>
+                    <div class="small text-muted mt-1" id="amz-dil-groi-status"></div>
                     </div>
                     </div>
                 </div>
