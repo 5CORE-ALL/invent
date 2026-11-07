@@ -72,13 +72,36 @@ class DarController extends Controller
      */
     public function comparison(Request $request)
     {
-        $days = (int) $request->query('days', 30);
-        $days = min(max($days, 1), 366);
         $userId = (int) $request->query('user_id', 0);
 
+        // Range: today | yesterday | custom (from/to) | last N days (default 30).
+        // "Today" follows the office (Pacific) calendar, same as the task windows.
         $tz = 'America/Los_Angeles';
-        $to = Carbon::today($tz);
-        $from = $to->copy()->subDays($days - 1);
+        $range = (string) $request->query('range', '');
+        $today = Carbon::today($tz);
+
+        if ($range === 'today') {
+            $from = $today->copy();
+            $to = $today->copy();
+        } elseif ($range === 'yesterday') {
+            $from = $today->copy()->subDay();
+            $to = $from->copy();
+        } elseif ($range === 'custom'
+            && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('from'))
+            && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('to'))) {
+            $from = Carbon::parse($request->query('from'), $tz)->startOfDay();
+            $to = Carbon::parse($request->query('to'), $tz)->startOfDay();
+            if ($from->gt($to)) {
+                [$from, $to] = [$to, $from];
+            }
+            if ($from->diffInDays($to) > 365) {
+                $from = $to->copy()->subDays(365);
+            }
+        } else {
+            $days = min(max((int) $request->query('days', 30), 1), 366);
+            $to = $today->copy();
+            $from = $to->copy()->subDays($days - 1);
+        }
         $fromDate = $from->toDateString();
         $toDate = $to->toDateString();
 
@@ -95,9 +118,25 @@ class DarController extends Controller
         $grid = [];
         $cell = function (string $date, int $uid) use (&$grid): void {
             if (! isset($grid[$date][$uid])) {
-                $grid[$date][$uid] = ['etc' => 0.0, 'atc' => 0.0, 'done' => 0, 'work' => 0];
+                $grid[$date][$uid] = ['etc' => 0.0, 'atc' => 0.0, 'done' => 0, 'work' => 0, 'dar' => 0];
             }
         };
+
+        // DAR filed? (number of DAR entries per day)
+        $darQuery = Dar::query()
+            ->whereDate('report_date', '>=', $fromDate)
+            ->whereDate('report_date', '<=', $toDate);
+        if ($userId > 0) {
+            $darQuery->where('user_id', $userId);
+        }
+        foreach ($darQuery->get(['user_id', 'report_date']) as $row) {
+            $date = optional($row->report_date)->format('Y-m-d');
+            if (! $date || ! $row->user_id) {
+                continue;
+            }
+            $cell($date, (int) $row->user_id);
+            $grid[$date][(int) $row->user_id]['dar']++;
+        }
 
         // Done tasks (live + archived), credited to every assignee on the completion day
         $startAt = $from->copy()->startOfDay()->format('Y-m-d H:i:s');
@@ -201,18 +240,19 @@ class DarController extends Controller
         // One row per date (all selected users summed)
         $rows = [];
         foreach ($grid as $date => $byUser) {
-            $t = ['etc' => 0.0, 'atc' => 0.0, 'done' => 0, 'work' => 0];
+            $t = ['etc' => 0.0, 'atc' => 0.0, 'done' => 0, 'work' => 0, 'dar' => 0];
             foreach ($byUser as $m) {
                 foreach ($t as $k => $_) {
                     $t[$k] += $m[$k];
                 }
             }
-            if ($t['atc'] <= 0 && $t['etc'] <= 0 && $t['done'] <= 0 && $t['work'] <= 0) {
+            if ($t['atc'] <= 0 && $t['etc'] <= 0 && $t['done'] <= 0 && $t['work'] <= 0 && $t['dar'] <= 0) {
                 continue;
             }
             $rows[] = [
                 'id' => $date,
                 'report_date' => $date,
+                'dar_filed' => $t['dar'] > 0 ? 'Yes' : 'No',
                 'tasks_done' => $t['done'],
                 'atc_minutes' => round($t['atc'], 2),
                 'etc_minutes' => round($t['etc'], 2),
@@ -222,7 +262,7 @@ class DarController extends Controller
 
         usort($rows, fn (array $a, array $b): int => strcmp($b['report_date'], $a['report_date']));
 
-        return response()->json(['data' => $rows]);
+        return response()->json(['data' => $rows, 'from' => $fromDate, 'to' => $toDate]);
     }
 
     public function store(Request $request)

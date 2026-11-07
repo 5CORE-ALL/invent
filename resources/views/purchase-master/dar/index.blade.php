@@ -224,12 +224,17 @@
                                     @endforeach
                                 </select>
                                 <select id="darCmpDays" class="form-select form-select-sm" style="width:auto;" title="Date range">
+                                    <option value="today">Today</option>
+                                    <option value="yesterday">Yesterday</option>
                                     <option value="7">Last 7 days</option>
                                     <option value="15">Last 15 days</option>
                                     <option value="30" selected>Last 30 days</option>
                                     <option value="60">Last 60 days</option>
                                     <option value="90">Last 90 days</option>
+                                    <option value="custom">Custom</option>
                                 </select>
+                                <input type="date" id="darCmpFrom" class="form-control form-control-sm" style="width:auto;" title="From date">
+                                <input type="date" id="darCmpTo" class="form-control form-control-sm" style="width:auto;" title="To date">
                             </div>
                             <span class="dar-count-badge">
                                 <i class="fas fa-list me-1"></i>Rows: <strong id="darCmpCount">0</strong>
@@ -360,22 +365,6 @@
                 paginationSize: 25,
                 paginationSizeSelector: [10, 25, 50, 100],
                 placeholder: 'No DAR records yet. Click "Add" or the topbar DAR button to add one.',
-                // Group day-wise first, then per user within each day. Each group header
-                // shows the total time (hrs + minutes) for that scope.
-                groupBy: ['report_date', 'user_name'],
-                groupStartOpen: true,
-                groupHeader: [
-                    function (value, count, data) {
-                        const total = formatHrsMin(sumGroupMinutes(data));
-                        return '<i class="fas fa-calendar-day me-1 text-muted"></i>' + formatDateNoYear(value)
-                            + '<span style="margin-left:10px;color:#3730a3;font-weight:700;">Total: ' + total + '</span>';
-                    },
-                    function (value, count, data) {
-                        const total = formatHrsMin(sumGroupMinutes(data));
-                        return '<span class="dar-user-pill">' + esc(value || '\u2014') + '</span>'
-                            + ' <span style="color:#3730a3;font-weight:600;">(' + count + ' task(s) &middot; ' + total + ')</span>';
-                    }
-                ],
                 columns: [
                     {
                         title: '#',
@@ -405,16 +394,6 @@
                         vertAlign: 'middle',
                         headerSort: true,
                         formatter: userFormatter,
-                    },
-                    {
-                        title: 'Task',
-                        field: 'task',
-                        minWidth: 240,
-                        widthGrow: 2,
-                        hozAlign: 'left',
-                        vertAlign: 'middle',
-                        headerSort: false,
-                        formatter: taskFormatter,
                     },
                     {
                         title: 'Time',
@@ -472,7 +451,17 @@
             const cmpUrl = @json(route('dar.comparison'));
 
             function cmpParams() {
-                const params = { days: $('#darCmpDays').val() || 30 };
+                const preset = $('#darCmpDays').val() || '30';
+                const params = {};
+                if (preset === 'today' || preset === 'yesterday') {
+                    params.range = preset;
+                } else if (preset === 'custom') {
+                    params.range = 'custom';
+                    params.from = $('#darCmpFrom').val();
+                    params.to = $('#darCmpTo').val();
+                } else {
+                    params.days = preset;
+                }
                 const uid = $('#darCmpUser').val();
                 if (uid) params.user_id = uid;
                 return params;
@@ -491,6 +480,11 @@
                     ajaxURL: cmpUrl,
                     ajaxParams: cmpParams,
                     ajaxResponse: function (url, params, response) {
+                        // Reflect the resolved range (Today / Yesterday / Last N days) in the date boxes.
+                        if (response && response.from && response.to) {
+                            $('#darCmpFrom').val(response.from);
+                            $('#darCmpTo').val(response.to);
+                        }
                         return (response && response.data) ? response.data : [];
                     },
                     dataLoaded: function (data) {
@@ -511,6 +505,14 @@
                         {
                             title: 'Date', field: 'report_date', width: 120, hozAlign: 'center', vertAlign: 'middle',
                             formatter: function (cell) { return formatDateNoYear(cell.getValue()); },
+                        },
+                        {
+                            title: 'DAR File', field: 'dar_filed', width: 120, hozAlign: 'center', vertAlign: 'middle',
+                            formatter: function (cell) {
+                                return cell.getValue() === 'Yes'
+                                    ? '<span class="badge bg-success">Yes</span>'
+                                    : '<span class="badge bg-danger">No</span>';
+                            },
                         },
                         {
                             title: 'No of Task Done', field: 'tasks_done', hozAlign: 'center', vertAlign: 'middle',
@@ -546,6 +548,58 @@
             $('#darCmpUser, #darCmpDays').on('change', function () {
                 if (cmpTable) cmpTable.setData(cmpUrl, cmpParams());
             });
+            // Picking a date by hand switches the preset to "Custom".
+            $('#darCmpFrom, #darCmpTo').on('change', function () {
+                if (!$('#darCmpFrom').val() || !$('#darCmpTo').val()) return;
+                $('#darCmpDays').val('custom');
+                if (cmpTable) cmpTable.setData(cmpUrl, cmpParams());
+            });
+
+            // ---- Quick search for the user dropdowns ----
+            // Type to filter the list (or pick from it); clearing the box = All Users.
+            // The original <select> stays in the DOM (hidden) so existing logic keeps working.
+            function makeUserSearchable(selector) {
+                const $sel = $(selector);
+                if (!$sel.length) return;
+                const listId = $sel.attr('id') + 'Search';
+                const options = [];
+                $sel.find('option').each(function () {
+                    if (this.value) options.push({ id: this.value, name: $(this).text().trim() });
+                });
+
+                const $list = $('<datalist>').attr('id', listId);
+                options.forEach(function (o) { $list.append($('<option>').attr('value', o.name)); });
+
+                const selected = options.find(function (o) { return o.id === String($sel.val()); });
+                const $input = $('<input type="search" autocomplete="off">')
+                    .addClass('form-control form-control-sm')
+                    .attr({ list: listId, placeholder: '\uD83D\uDD0D Search user…', title: 'Type to search users' })
+                    .css({ minWidth: '200px' })
+                    .val(selected ? selected.name : '');
+
+                $sel.hide().after($list).after($input);
+
+                function apply() {
+                    const q = $input.val().trim().toLowerCase();
+                    let match = null;
+                    if (q === '') {
+                        match = { id: '' };
+                    } else {
+                        match = options.find(function (o) { return o.name.toLowerCase() === q; });
+                        if (!match) {
+                            const partial = options.filter(function (o) { return o.name.toLowerCase().indexOf(q) !== -1; });
+                            if (partial.length === 1) match = partial[0];
+                        }
+                    }
+                    if (match && String($sel.val() || '') !== String(match.id)) {
+                        $sel.val(match.id).trigger('change');
+                    }
+                }
+                $input.on('change search', apply);
+                $input.on('keydown', function (e) { if (e.key === 'Enter') apply(); });
+            }
+            makeUserSearchable('#darUserFilter');
+            makeUserSearchable('#darCmpUser');
 
             function deleteRow(id) {
                 if (!id || !confirm('Delete this DAR entry?')) return;
