@@ -306,7 +306,8 @@ class AmazonSprcDilAutoPushService
         $lmp = (float) ($row['lmp'] ?? 0);
 
         $ads = $adsPct ?? $this->amazonAdsPercent();
-        $dilRule = AmazonDilGroiRule::match($dil, $dilRules);
+        // Dil slabs switched OFF in the Sprc Dil modal: no slab matches, so no Dil price is calculated (same as a Dil outside every slab).
+        $dilRule = $this->dilRuleOn('dil') ? AmazonDilGroiRule::match($dil, $dilRules) : null;
         $dilPrice = null;
         $nroi = null;
         if ($dilRule !== null && $lp > 0) {
@@ -1343,8 +1344,8 @@ class AmazonSprcDilAutoPushService
     /** Clearance Target NROI% (last "clearance" row of the Sprc Dil modal); null = not saved (treated as 0). */
     private ?float $clearanceNroiCfg = null;
 
-    /** ON / OFF switches of the Sprc Dil blocks (cvr, age, diff, lmp, clearance). A block that is OFF no longer applies. */
-    private array $ruleOnCfg = ['cvr' => true, 'age' => true, 'diff' => true, 'lmp' => true, 'clearance' => true];
+    /** ON / OFF switches of the Sprc Dil blocks (dil, cvr, age, diff, lmp, clearance). A block that is OFF no longer applies. */
+    private array $ruleOnCfg = ['dil' => true, 'cvr' => true, 'age' => true, 'diff' => true, 'lmp' => true, 'clearance' => true];
 
     private function dilRuleOn(string $key): bool
     {

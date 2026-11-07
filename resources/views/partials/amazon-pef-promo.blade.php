@@ -1017,7 +1017,8 @@
                     <div class="amz-dg-card">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     <div class="amz-dg-card-title d-flex justify-content-between align-items-center">
-                        <span><i class="fas fa-layer-group me-1"></i> Dil slabs — Target NROI</span>
+                        <span class="d-inline-flex align-items-center gap-2"><span><i class="fas fa-layer-group me-1"></i> Dil slabs — Target NROI</span>
+                            <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Dil slabs no longer set a Target NROI, so Sprc Dil calculates no price from them."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="dil" checked><span class="amz-dg-rule-sw-txt">ON</span></label></span>
                         <button type="button" class="btn btn-sm btn-outline-primary amz-dg-add-btn py-0 px-2" id="amz-dil-groi-add-btn">
                             <i class="fas fa-plus me-1"></i> Add slab
                         </button>
@@ -1339,15 +1340,15 @@
         ];
         /**
          * ON / OFF switches of the Sprc Dil blocks (same keys as AmazonDilGroiRule::RULE_ON_KEYS). A block that is OFF no longer
-         * applies: cvr = CVR overlay, age = Ageing Rule, diff = Diff rule, lmp = LMP Rule (cap), clearance = Clearance NROI%.
+         * applies: dil = Dil slabs (Target NROI), cvr = CVR overlay, age = Ageing Rule, diff = Diff rule, lmp = LMP Rule (cap), clearance = Clearance NROI%.
          * Saved with Save Only / Save All and read by AmazonSprcDilAutoPushService, so the page and the cron agree.
          */
-        const AMZ_RULE_ON_KEYS = ['cvr', 'age', 'diff', 'lmp', 'clearance'];
-        let amzRuleOn = { cvr: true, age: true, diff: true, lmp: true, clearance: true };
+        const AMZ_RULE_ON_KEYS = ['dil', 'cvr', 'age', 'diff', 'lmp', 'clearance'];
+        let amzRuleOn = { dil: true, cvr: true, age: true, diff: true, lmp: true, clearance: true };
         function amzRuleIsOn(key) { return amzRuleOn[key] !== false; }
         window.amzRuleIsOn = amzRuleIsOn;
         function amzNormalizeRuleOn(raw) {
-            const out = { cvr: true, age: true, diff: true, lmp: true, clearance: true };
+            const out = { dil: true, cvr: true, age: true, diff: true, lmp: true, clearance: true };
             if (!raw || typeof raw !== 'object') return out;
             AMZ_RULE_ON_KEYS.forEach(function(k) {
                 const v = raw[k];
@@ -1363,7 +1364,8 @@
                 $sw.prop('checked', on);
                 $sw.siblings('.amz-dg-rule-sw-txt').text(on ? 'ON' : 'OFF');
                 let $parts = $();
-                if (k === 'cvr') $parts = $('#amz-cvr-groi-table').closest('.table-responsive');
+                if (k === 'dil') $parts = $('#amz-dil-groi-table').closest('.table-responsive').add('#amz-dil-groi-add-btn');
+                else if (k === 'cvr') $parts = $('#amz-cvr-groi-table').closest('.table-responsive');
                 else if (k === 'age') $parts = $('#amz-age-adj-table').closest('.table-responsive').prev('.small').add($('#amz-age-adj-table').closest('.table-responsive')).add('#amz-age-adj-add-btn');
                 else if (k === 'diff') $parts = $('#amzDilGroiModal .amz-dg-diffrow');
                 else if (k === 'lmp') $parts = $('#amz-lmp-cap-table').closest('.table-responsive').prev('.small').add($('#amz-lmp-cap-table').closest('.table-responsive'));
@@ -2705,6 +2707,8 @@
         }
         function amzDilGroiMetaForRow(d) {
             if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) return null;
+            // Dil slabs switched OFF: no slab applies, so no Dil price (same as a Dil outside every slab).
+            if (!amzRuleIsOn('dil')) return null;
             const dil = amzPefDil(d);
             const rule = amzDilGroiMatch(dil);
             if (!rule) return null;

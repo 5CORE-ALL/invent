@@ -1058,16 +1058,16 @@ class AmazonDilGroiRule
 
     /**
      * Blocks of the Amazon Sprc Dil modal that have an ON / OFF switch. A block switched OFF no longer applies:
-     * cvr = CVR overlay, age = Ageing Rule, diff = Diff rule, lmp = LMP Rule (cap), clearance = Clearance NROI%.
+     * dil = Dil slabs (Target NROI), cvr = CVR overlay, age = Ageing Rule, diff = Diff rule, lmp = LMP Rule (cap), clearance = Clearance NROI%.
      */
-    public const RULE_ON_KEYS = ['cvr', 'age', 'diff', 'lmp', 'clearance'];
+    public const RULE_ON_KEYS = ['dil', 'cvr', 'age', 'diff', 'lmp', 'clearance'];
 
     /**
      * ON / OFF switches of the Sprc Dil blocks. Everything is ON unless it was saved as off (false / 0 / "0" / "false"),
      * so rows saved before the switches existed behave exactly as before.
      *
      * @param  mixed  $raw
-     * @return array{cvr:bool,age:bool,diff:bool,lmp:bool,clearance:bool}
+     * @return array{dil:bool,cvr:bool,age:bool,diff:bool,lmp:bool,clearance:bool}
      */
     public static function normalizeRuleOn($raw): array
     {
@@ -1090,7 +1090,7 @@ class AmazonDilGroiRule
 
     /**
      * @param  array<string, mixed>|null  $saved
-     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},diff_adj:array{gt_pct:float,points:float},age_adj:list<array{min:float,max:float,points:float}>,rule_on:array{cvr:bool,age:bool,diff:bool,lmp:bool,clearance:bool}}
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},diff_adj:array{gt_pct:float,points:float},age_adj:list<array{min:float,max:float,points:float}>,rule_on:array{dil:bool,cvr:bool,age:bool,diff:bool,lmp:bool,clearance:bool}}
      */
     public static function unpackStored(?array $saved): array
     {
