@@ -504,6 +504,21 @@
             padding: 24px;
         }
 
+        .md-dot { display:inline-block; width:14px; height:14px; border-radius:50%; cursor:pointer; vertical-align:middle; box-shadow:0 0 0 2px rgba(0,0,0,.06); }
+        .md-dot--red { background:#dc2626; }
+        .md-dot--green { background:#16a34a; cursor:default; }
+        .md-overlay { position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:2000; display:flex; align-items:center; justify-content:center; padding:16px; }
+        .md-card { background:#fff; border-radius:10px; width:min(640px,100%); max-height:85vh; display:flex; flex-direction:column; box-shadow:0 20px 50px rgba(0,0,0,.3); }
+        .md-head { display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid #e5e7eb; }
+        .md-head h5 { margin:0; font-size:16px; flex:1; }
+        .md-head a.md-update { font-size:13px; font-weight:600; color:#2563eb; text-decoration:none; white-space:nowrap; }
+        .md-head a.md-update:hover { text-decoration:underline; }
+        .md-close { border:0; background:transparent; font-size:22px; line-height:1; cursor:pointer; color:#6b7280; }
+        .md-body { padding:14px 18px; overflow:auto; }
+        .md-group { margin-bottom:14px; }
+        .md-group-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#374151; margin-bottom:6px; }
+        .md-chip { display:inline-block; margin:0 6px 6px 0; padding:3px 10px; border-radius:999px; background:#fee2e2; color:#b91c1c; font-size:12px; font-weight:600; }
+        .md-chip--req { background:#dc2626; color:#fff; }
     </style>
 @endsection
 
@@ -925,6 +940,83 @@
             };
         }
 
+        // Missing data column: red dot per row, click opens the list of missing fields grouped like Technical Specifications.
+        let fieldGroups = [];
+
+        function missingDataFor(data) {
+            const entry = fieldCounts[fieldCountKey(data.sku)];
+            if (!entry) return null;
+            const all = (entry.a && entry.a[2]) || [];
+            const required = (entry.m && entry.m[2]) || [];
+            return { all: all, required: required };
+        }
+
+        function missingDataFormatter(cell) {
+            const data = cell.getRow().getData();
+            if (data.is_parent) return '';
+            if (fieldCountsState === 'loading') return '<span class="text-muted" title="Checking data…">…</span>';
+            if (fieldCountsState === 'error') return '<span class="text-muted" title="Could not check the data">—</span>';
+            const info = missingDataFor(data);
+            if (!info) return '<span class="text-muted" title="No eBay category or fields for this SKU">—</span>';
+            if (!info.all.length && !info.required.length) return '<span class="md-dot md-dot--green" title="Nothing missing"></span>';
+            const n = Math.max(info.all.length, info.required.length);
+            return '<span class="md-dot md-dot--red" title="' + n + ' missing — click to see what"></span>';
+        }
+
+        function specNameKey(name) {
+            return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+        }
+
+        function openMissingDataModal(data) {
+            const info = missingDataFor(data);
+            if (!info) return;
+            const requiredSet = {};
+            info.required.forEach(function (n) { requiredSet[specNameKey(n)] = true; });
+            const names = info.all.slice();
+            info.required.forEach(function (n) {
+                if (!names.some(function (x) { return specNameKey(x) === specNameKey(n); })) names.push(n);
+            });
+
+            const groupOf = {};
+            fieldGroups.forEach(function (g) {
+                (g.columns || []).forEach(function (col) {
+                    const k = specNameKey(col);
+                    if (k && !groupOf[k]) groupOf[k] = g.name;
+                });
+            });
+            const buckets = {};
+            const order = [];
+            names.forEach(function (name) {
+                const group = groupOf[specNameKey(name)] || (requiredSet[specNameKey(name)] ? 'Mandatory eBay fields' : 'Other fields');
+                if (!buckets[group]) { buckets[group] = []; order.push(group); }
+                buckets[group].push(name);
+            });
+
+            const body = order.map(function (group) {
+                const chips = buckets[group].map(function (name) {
+                    const req = requiredSet[specNameKey(name)];
+                    return '<span class="md-chip' + (req ? ' md-chip--req' : '') + '" title="' + (req ? 'Required by eBay' : 'Not required') + '">' + escapeHtml(name) + '</span>';
+                }).join('');
+                return '<div class="md-group"><div class="md-group-title">' + escapeHtml(group) + ' (' + buckets[group].length + ')</div>' + chips + '</div>';
+            }).join('') || '<p class="text-muted mb-0">Nothing is missing.</p>';
+
+            const old = document.getElementById('md-overlay');
+            if (old) old.remove();
+            const el = document.createElement('div');
+            el.id = 'md-overlay';
+            el.className = 'md-overlay';
+            el.innerHTML = '<div class="md-card" role="dialog" aria-modal="true">'
+                + '<div class="md-head"><h5>Missing data &mdash; ' + escapeHtml(data.sku) + '</h5>'
+                + '<a class="md-update" href="/technical-specifications" target="_blank" rel="noopener">Update data &rarr;</a>'
+                + '<button type="button" class="md-close" aria-label="Close">&times;</button></div>'
+                + '<div class="md-body">' + body
+                + '<p class="text-muted mb-0" style="font-size:12px;">Red chips are required by eBay. Fill them on the Technical Specifications page.</p></div></div>';
+            el.addEventListener('click', function (e) {
+                if (e.target === el || e.target.closest('.md-close')) el.remove();
+            });
+            document.body.appendChild(el);
+        }
+
         function loadFieldCounts() {
             if (fieldCountsRequested) return;
             fieldCountsRequested = true;
@@ -933,6 +1025,7 @@
                 .then(function (result) {
                     if (!result.ok || result.json.status !== 200) throw new Error(result.json.message || 'failed');
                     fieldCounts = result.json.data || {};
+                    fieldGroups = Array.isArray(result.json.groups) ? result.json.groups : [];
                     fieldCountsState = 'ready';
                 })
                 .catch(function () { fieldCountsState = 'error'; })
@@ -1106,6 +1199,19 @@
                         sorter: fieldCountSorter('a'),
                         headerTooltip: 'Fields with data / all fields of the SKU category (required fields, fields saved for the category and UPC). Green when all have data, red when some are missing. Data is from our app (Technical Specifications).',
                         formatter: fieldCountFormatter('a', 'fields')
+                    },
+                    {
+                        title: 'Missing data',
+                        field: 'field_missing_data',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 110,
+                        headerTooltip: 'Red dot = some data is missing. Click it to see what is missing, grouped.',
+                        formatter: missingDataFormatter,
+                        cellClick: function (e, cell) {
+                            if (e.target.closest && e.target.closest('.md-dot--red')) openMissingDataModal(cell.getRow().getData());
+                        }
                     }
                 ]
             });
@@ -1238,6 +1344,12 @@
             exportName: 'ebay_listing',
             channel: 'ebay',
             channelLabel: "eBay",
+            publishColumnTitle: 'Create draft',
+            publishButtonLabel: 'Create draft',
+            publishColumnBefore: 'field_all',
+            publishDraftAfter: 'field_missing_data',
+            createDraftUrl: '/listing_ebay/create-draft',
+            publishDraftUrl: '/listing_ebay/publish-draft',
             previewUrl: '/listing_ebay/save-status',
             publishUrl: '/listing_ebay/save-status'
         };
