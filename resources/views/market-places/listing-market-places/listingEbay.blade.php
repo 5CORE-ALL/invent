@@ -883,6 +883,64 @@
             return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no ebay item id">Missing L</span>`;
         }
 
+        // Mandatory / Missing columns: fields with data / fields, counted from our app data (Technical Specifications).
+        let fieldCounts = {};
+        let fieldCountsState = 'loading'; // loading | ready | error
+        let fieldCountsRequested = false;
+
+        function fieldCountKey(sku) {
+            return String(sku || '').replace(/\u00a0/g, ' ').trim().toUpperCase();
+        }
+
+        function fieldCountPair(data, which) {
+            const entry = fieldCounts[fieldCountKey(data.sku)];
+            const pair = entry && entry[which];
+            return Array.isArray(pair) && pair[1] > 0 ? pair : null;
+        }
+
+        function fieldCountFormatter(which, label) {
+            return function (cell) {
+                const data = cell.getRow().getData();
+                if (data.is_parent) return '';
+                if (fieldCountsState === 'loading') return '<span class="text-muted" title="Counting fields…">…</span>';
+                if (fieldCountsState === 'error') return '<span class="text-muted" title="Could not count the fields">—</span>';
+                const pair = fieldCountPair(data, which);
+                if (!pair) return '<span class="text-muted" title="No eBay category or no ' + label + ' for this SKU">—</span>';
+                const full = pair[0] === pair[1];
+                const missing = pair[1] - pair[0];
+                return '<span style="color:' + (full ? '#16a34a' : '#dc2626') + ';font-weight:700;" title="'
+                    + pair[0] + ' of ' + pair[1] + ' ' + label + ' have data' + (missing ? ' (' + missing + ' missing)' : '') + '">'
+                    + pair[0] + '/' + pair[1] + '</span>';
+            };
+        }
+
+        // Sorts by how many fields are missing.
+        function fieldCountSorter(which) {
+            return function (a, b, aRow, bRow) {
+                const gap = function (row) {
+                    const pair = fieldCountPair(row.getData(), which);
+                    return pair ? pair[1] - pair[0] : -1;
+                };
+                return gap(aRow) - gap(bRow);
+            };
+        }
+
+        function loadFieldCounts() {
+            if (fieldCountsRequested) return;
+            fieldCountsRequested = true;
+            fetch('/listing_ebay/field-counts', { headers: { Accept: 'application/json' } })
+                .then(function (res) { return res.json().then(function (json) { return { ok: res.ok, json: json }; }); })
+                .then(function (result) {
+                    if (!result.ok || result.json.status !== 200) throw new Error(result.json.message || 'failed');
+                    fieldCounts = result.json.data || {};
+                    fieldCountsState = 'ready';
+                })
+                .catch(function () { fieldCountsState = 'error'; })
+                .then(function () {
+                    if (ebayListingTable) ebayListingTable.redraw(true);
+                });
+        }
+
         $(document).ready(function () {
             showLoader();
 
@@ -1028,12 +1086,33 @@
                         width: 130,
                         headerTooltip: 'Automatic from ebay_2_metrics.item_id (same Missing Listing logic as /ebay2-tabulator-view)',
                         formatter: formatListed
+                    },
+                    {
+                        title: 'Mandatory',
+                        field: 'field_mandatory',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        width: 110,
+                        sorter: fieldCountSorter('m'),
+                        headerTooltip: 'Mandatory fields with data / mandatory fields: the eBay required fields of the SKU category. Green when all have data, red when some are missing. Data is from our app (Technical Specifications).',
+                        formatter: fieldCountFormatter('m', 'mandatory')
+                    },
+                    {
+                        title: 'Missing',
+                        field: 'field_all',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        width: 110,
+                        sorter: fieldCountSorter('a'),
+                        headerTooltip: 'Fields with data / all fields of the SKU category (required fields, fields saved for the category and UPC). Green when all have data, red when some are missing. Data is from our app (Technical Specifications).',
+                        formatter: fieldCountFormatter('a', 'fields')
                     }
                 ]
             });
 
             ebayListingTable.on('dataProcessed', function () {
                 hideLoader();
+                loadFieldCounts();
                 // /listing-ebay?missing=1 (link from the Missing L counts) opens on the Missing L list.
                 if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__ebayMissingApplied) {
                     window.__ebayMissingApplied = true;
