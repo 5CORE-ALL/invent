@@ -6875,7 +6875,7 @@
                 if (field === 'buss_discount') return 'B Disc';
                 if (field === 'zero_sold_discount') return '0 Sold';
                 if (field === 'cvr_discount') return 'CVR Disc.';
-                if (field === 'lmp_cvr_discount') return 'LMP+CVR';
+                if (field === 'lmp_cvr_discount') return 'CVR Trend';
                 if (field === 'review_discount') return 'Rev Disc.';
                 if (field === 'sum_discount') return 'Sum disc';
                 if (field === 'sum_discount_amt') return 'Sum Disc $';

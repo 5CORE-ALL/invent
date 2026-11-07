@@ -3566,31 +3566,39 @@
                     },
                 },
                 {
-                    title: 'LMP+CVR',
+                    title: 'CVR Trend',
                     field: 'lmp_cvr_discount',
-                    width: 72,
+                    width: 96,
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    headerTooltip: 'LMP+CVR Disc — extra % when LMP is available and CVR is decreasing (CVR L30 below CVR L45). Grows with the drop. Set it in the LMP+CVR Rule. Read-only.',
+                    headerTooltip: 'CVR Trend Disc — CVR trend (L30 vs L45) and the extra discount % it adds to S PRC. Set it in the CVR Trend Disc button. Read-only.',
+                    headerFilter: 'list',
+                    headerFilterParams: { values: { '': 'All', 'applied': 'Discounted', 'down': 'CVR down', 'up': 'CVR up', 'equal': 'CVR equal' }, clearable: true },
+                    headerFilterFunc: function(headerValue, rowValue, rowData) {
+                        if (!headerValue) return true;
+                        const info = (typeof amzLmpCvrInfo === 'function') ? amzLmpCvrInfo(rowData) : null;
+                        if (!info) return false;
+                        if (headerValue === 'applied') return info.disc !== 0;
+                        return info.trend === headerValue;
+                    },
                     sorter: function(a, b, aRow, bRow) {
                         const fn = typeof computeAmzLmpCvrDiscountPct === 'function' ? computeAmzLmpCvrDiscountPct : function() { return 0; };
                         return (Number(fn(aRow.getData())) || 0) - (Number(fn(bRow.getData())) || 0);
                     },
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
-                        if (!amzPefIsChildRow(d)) return '';
                         const info = (typeof amzLmpCvrInfo === 'function') ? amzLmpCvrInfo(d) : null;
-                        const pct = info ? info.disc : 0;
-                        let tip = 'LMP+CVR rule';
-                        if (info) {
-                            tip = (info.lmp > 0 ? ('LMP $' + info.lmp.toFixed(2)) : 'No LMP')
-                                + ' · CVR ' + info.cvr.toFixed(2) + '% vs L45 ' + info.cvr45.toFixed(2) + '%'
-                                + (info.decreasing ? (' (down ' + info.drop.toFixed(2) + ' pts)') : ' (not decreasing)')
-                                + ' → discount ' + (pct || 0) + '%';
-                        }
-                        return '<span title="' + amzPefEscAttr(tip) + '">'
-                            + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'cvr') : (pct || '—'))
+                        if (!info) return '';
+                        const arrow = info.trend === 'down' ? '▼' : (info.trend === 'up' ? '▲' : '＝');
+                        const color = info.trend === 'down' ? '#dc3545' : (info.trend === 'up' ? '#198754' : '#6c757d');
+                        const pct = info.disc;
+                        const tip = 'CVR ' + info.cvr.toFixed(2) + '% vs L45 ' + info.cvr45.toFixed(2) + '% → CVR ' + info.trend
+                            + (info.lmp > 0 ? (' · LMP $' + info.lmp.toFixed(2)) : ' · no LMP')
+                            + (pct ? (' → extra discount ' + pct + '%') : ' → no extra discount');
+                        return '<span title="' + amzPefEscAttr(tip) + '" style="white-space:nowrap;">'
+                            + '<span style="color:' + color + ';">' + arrow + '</span> '
+                            + (pct ? ('<b>' + (pct > 0 ? '+' : '') + pct + '%</b>') : '<span class="text-muted">—</span>')
                             + '</span>';
                     },
                 },
@@ -3651,7 +3659,7 @@
                             + ' + Rev ' + (stack.reviewDisc || 0)
                             + ' + B Disc ' + (stack.bussDisc || 0)
                             + ' + 0 Sold ' + (stack.zeroSoldDisc || 0)
-                            + ' + LMP+CVR ' + (stack.lmpCvrDisc || 0)
+                            + ' + CVR trend ' + (stack.lmpCvrDisc || 0)
                             + ' = ' + (pct || 0) + '%';
                         return '<span title="' + amzPefEscAttr(tip) + '">'
                             + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'sum') : (pct || '—'))
@@ -3856,7 +3864,7 @@
             if (plan.reviewDisc) parts.push('Rev Disc ' + plan.reviewDisc + '%');
             if (plan.bussDisc) parts.push('B Disc ' + plan.bussDisc + '%');
             if (plan.zeroSoldDisc) parts.push('0 Sold ' + plan.zeroSoldDisc + '%');
-            if (plan.lmpCvrDisc) parts.push('LMP+CVR ' + plan.lmpCvrDisc + '%');
+            if (plan.lmpCvrDisc) parts.push('CVR trend ' + plan.lmpCvrDisc + '%');
             if (plan.snroiCapped) parts.push('SNROI cap');
             if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
             else if (plan.stdCapped) parts.push('Std cap');
