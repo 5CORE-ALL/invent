@@ -1186,6 +1186,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/inv-days/nrp/bulk', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'bulkNrp'])->name('inv.days.nrp.bulk');
     Route::get('/inv-days/clearance/history', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'clearanceHistory'])->name('inv.days.clearance.history');
     Route::get('/inv-days/clearance/yes', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'clearanceYesSkus'])->name('inv.days.clearance.yes');
+    Route::get('/inv-days/clearance/count-history', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'clearanceCountHistory'])->name('inv.days.clearance.count-history');
     Route::get('/inv-change-L30', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'index'])->name('inv.change.l30');
     Route::get('/inv-change-L30/data', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'getData'])->name('inv.change.l30.data');
     Route::get('/inv-management-5core', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'index'])->name('inv.management.5core');

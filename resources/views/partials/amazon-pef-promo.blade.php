@@ -2306,7 +2306,11 @@
                 || { key: band, label: band, color: '#6f42c1' };
             const plot = amzDgPadHistoryDays(rows, 30);
             const labels = plot.map(function(r) { return r.label || r.date; });
-            const values = plot.map(function(r) { return Number(r[band]) || 0; });
+            // Clearance: a day with no saved number is a gap in the line, not a made-up 0.
+            const values = plot.map(function(r) {
+                if (chart === 'rule' && band === 'clearance' && (r[band] === undefined || r[band] === null)) return null;
+                return Number(r[band]) || 0;
+            });
             $('#amz-dg-hist-title').text((chart === 'rule' ? '' : (chart === 'cvr' ? 'CVR ' : 'Dil ')) + spec.label + ' count · last 30 days');
             $('#amz-dg-hist-wrap').addClass('is-open');
             const draw = function() {
@@ -2416,6 +2420,21 @@
             const drawLocal = function() {
                 amzDgDrawHist(chart, band, applyToday(amzDgLocalHistory(storeKey)));
             };
+            if (chart === 'rule' && band === 'clearance') {
+                // Clearance history is saved on the server every hour (clearance_daily_counts), so it has every day, not only the
+                // days somebody opened this page. This browser's own points only fill a day the server has no row for.
+                drawLocal();
+                $.ajax({ url: '/inv-days/clearance/count-history', method: 'GET', data: { days: 30 } }).done(function(res) {
+                    const server = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+                    const byDate = {};
+                    amzDgLocalHistory(storeKey).forEach(function(r) { if (r.clearance !== undefined) byDate[r.date] = { date: r.date, label: r.label, clearance: r.clearance }; });
+                    server.forEach(function(r) { byDate[r.date] = { date: r.date, label: r.label, clearance: r.count, inv: r.inv }; });
+                    const merged = Object.keys(byDate).sort().map(function(k) { return byDate[k]; });
+                    // With server data every day (today included) comes from the same source, so the line has no jump at today.
+                    amzDgDrawHist(chart, band, server.length ? amzDgPadHistoryDays(merged, 30) : applyToday(merged));
+                });
+                return;
+            }
             if (chart !== 'dil') {
                 drawLocal();
                 return;

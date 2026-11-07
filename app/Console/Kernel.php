@@ -253,6 +253,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('veeqo-sync-billing')
             ->appendOutputTo($log);
+        // Clearance count + INV history (graph in every Sprc Dil modal): refreshed hourly, so the day's last run is its closing number.
+        $schedule->command('clearance:snapshot --backfill=30')
+            ->hourlyAt(5)
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->name('clearance-snapshot')
+            ->appendOutputTo($log);
         $schedule->command('veeqo:sync-chargebacks --days=30')
             ->dailyAt('04:40')
             ->withoutOverlapping(60)

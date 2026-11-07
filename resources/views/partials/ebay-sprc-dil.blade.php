@@ -2593,7 +2593,11 @@
                 || { key: band, label: band, color: '#6f42c1' };
             const plot = ebayDgPadHistoryDays(rows, 30);
             const labels = plot.map(function(r) { return r.label || r.date; });
-            const values = plot.map(function(r) { return Number(r[band]) || 0; });
+            // Clearance: a day with no saved number is a gap in the line, not a made-up 0.
+            const values = plot.map(function(r) {
+                if (chart === 'clearance' && (r[band] === undefined || r[band] === null)) return null;
+                return Number(r[band]) || 0;
+            });
             $('#ebay-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : ((chart === 'clearance' || chart === 'rule') ? '' : 'Dil ')) + spec.label + ' count · last 30 days');
             const $wrap = $('#ebay-dg-hist-wrap').addClass('is-open');
             if ($wrap.length && $wrap[0].scrollIntoView) {
@@ -2708,6 +2712,20 @@
                 ebayDgDrawHist(chart, band, applyToday(ebayDgLocalHistory(storeKey)));
             };
             drawLocal();
+            if (chart === 'clearance') {
+                // Clearance history is saved on the server every hour (clearance_daily_counts), so it has every day, not only the
+                // days somebody opened this page. This browser's own points only fill a day the server has no row for.
+                $.ajax({ url: @json(route('inv.days.clearance.count-history')), method: 'GET', data: { days: 30 } }).done(function(res) {
+                    const server = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+                    const byDate = {};
+                    ebayDgLocalHistory(storeKey).forEach(function(r) { byDate[r.date] = { date: r.date, label: r.label, count: r.count }; });
+                    server.forEach(function(r) { byDate[r.date] = { date: r.date, label: r.label, count: r.count, inv: r.inv }; });
+                    const merged = Object.keys(byDate).sort().map(function(k) { return byDate[k]; });
+                    // With server data every day (today included) comes from the same source, so the line has no jump at today.
+                    ebayDgDrawHist(chart, band, server.length ? ebayDgPadHistoryDays(merged, 30) : applyToday(merged));
+                });
+                return;
+            }
             if (chart !== 'dil') return;
             $.ajax({
                 url: ebayDgRulesUrl() + '-history',

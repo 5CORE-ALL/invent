@@ -313,6 +313,18 @@ class InvDaysController extends Controller
         return response()->json(['skus' => $skus]);
     }
 
+    /** Daily Clearance SKU count + INV for the "Clearance count · last 30 days" graph of every Sprc Dil modal. */
+    public function clearanceCountHistory(Request $request)
+    {
+        $days = (int) $request->query('days', 30);
+
+        return response()->json([
+            'success' => true,
+            'days' => $days,
+            'data' => \App\Support\ClearanceHistory::history($days),
+        ]);
+    }
+
     public function clearanceHistory(Request $request)
     {
         $sku = trim((string) $request->query('sku', ''));
