@@ -440,6 +440,47 @@
             #amzDilGroiModal .amz-dg-cols { flex-wrap: wrap; flex-direction: column; }
             #amzDilGroiModal .amz-dg-panel-body { overflow: visible; }
         }
+        /* ---- Next-gen dashboard layout: every rule is a card in one grid, no scrolling on a normal screen ---- */
+        #amzDilGroiModal .modal-dialog { max-width: min(1800px, 98vw); }
+        #amzDilGroiModal .amz-dg-panel-rules { display: none; }
+        #amzDilGroiModal.amz-dg-show-rules .amz-dg-panel-rules { display: flex; flex: 0 0 30%; }
+        #amzDilGroiModal .amz-dg-panel-tables { flex: 1 1 100%; background: transparent; box-shadow: none; overflow: visible; }
+        #amzDilGroiModal .amz-dg-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            align-items: start;
+            align-content: start;
+            padding: 0;
+        }
+        #amzDilGroiModal .amz-dg-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+            padding: 8px 10px;
+            min-width: 0;
+        }
+        #amzDilGroiModal .amz-dg-card-title { font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 6px; }
+        #amzDilGroiModal .amz-dg-card > .amz-dg-rules-title:first-child { margin-top: 0 !important; }
+        #amzDilGroiModal .amz-dg-card .amz-dg-rules-title { font-size: 12px; margin-bottom: 4px; }
+        /* the long explanations stay in the title tooltips and the Rules button */
+        #amzDilGroiModal .amz-dg-card > .small.text-muted.mb-1 { display: none; }
+        #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap { margin-top: 8px !important; }
+        #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap .small.text-muted { display: none; }
+        #amzDilGroiModal .amz-dg-diffrow { color: #475569; line-height: 1.9; }
+        #amzDilGroiModal #amz-dil-groi-status { grid-column: 1 / -1; }
+        #amzDilGroiModal .amz-dg-pie-canvas-wrap { width: 84px; height: 84px; flex: 0 0 84px; }
+        #amzDilGroiModal .amz-dg-pie-legend { max-height: 90px; overflow-y: auto; }
+        @media (max-width: 1399.98px) {
+            #amzDilGroiModal .amz-dg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 991.98px) {
+            #amzDilGroiModal .amz-dg-grid { grid-template-columns: 1fr; }
+        }
+        @media (min-width: 992px) {
+            #amzDilGroiModal .amz-dg-panel-tables .amz-dg-panel-body { overflow-y: auto; }
+        }
         #amz-dil-groi-btn {
             background: #6f42c1;
             border-color: #6f42c1;
@@ -833,6 +874,8 @@
                     <h5 class="modal-title fs-6" id="amzDilGroiModalLabel">
                         <i class="fas fa-sliders-h me-1"></i> Dil vs Target NROI — Sprc Dil
                         <a href="{{ route('master.dil.rules') }}" class="btn btn-sm btn-outline-secondary ms-2" target="_blank" rel="noopener">Master</a>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="amz-dg-rules-toggle" title="Show / hide the written rules"
+                            onclick="document.getElementById('amzDilGroiModal').classList.toggle('amz-dg-show-rules')"><i class="fas fa-list-ul me-1"></i> Rules</button>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -873,13 +916,6 @@
                             apply that Adj NROI to the Dil slab Target NROI (Count updates as you edit).
                         </li>
                         <li>
-                            <strong>When</strong> the <strong>Std Diff</strong> column
-                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt;</strong>
-                            <input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle amz-diff-adj-input amz-diff-adj-gt" style="width:68px;" value="20" title="Diff threshold %">%:
-                            add <strong>+</strong><input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle amz-diff-adj-input amz-diff-adj-points" style="width:68px;" value="10" title="Points added to the Target NROI">
-                            to the Target NROI.
-                        </li>
-                        <li>
                             <strong>When</strong> a price is calculated from a Dil slab match:
                             it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
                         </li>
@@ -904,13 +940,14 @@
                     </ul>
                     </div>
                     <div class="amz-dg-panel amz-dg-panel-tables">
-                    <div class="amz-dg-panel-head d-flex justify-content-between align-items-center">
+                    <div class="amz-dg-panel-body amz-dg-grid">
+                    <div class="amz-dg-card">
+                    <div class="amz-dg-card-title d-flex justify-content-between align-items-center">
                         <span><i class="fas fa-layer-group me-1"></i> Dil slabs — Target NROI</span>
                         <button type="button" class="btn btn-sm btn-outline-primary amz-dg-add-btn py-0 px-2" id="amz-dil-groi-add-btn">
                             <i class="fas fa-plus me-1"></i> Add slab
                         </button>
                     </div>
-                    <div class="amz-dg-panel-body">
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-dil-groi-table">
                             <thead class="table-light">
@@ -950,6 +987,8 @@
                             <canvas id="amz-dg-hist"></canvas>
                         </div>
                     </div>
+                    </div>
+                    <div class="amz-dg-card">
                     <div class="amz-dg-rules-title mt-2">CVR overlay — Target NROI</div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-cvr-groi-table">
@@ -1013,6 +1052,16 @@
                     <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 mt-1" id="amz-age-adj-add-btn">
                         <i class="fas fa-plus me-1"></i> Add age band
                     </button>
+                    <div class="amz-dg-rules-title mt-2" title="Std Diff rule: when (Std Prc − Price) / Price is above the threshold, add points to the Target NROI.">Diff rule</div>
+                    <div class="small amz-dg-diffrow">
+                        <strong>When</strong> the <strong>Std Diff</strong> column
+                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt;</strong>
+                            <input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle amz-diff-adj-input amz-diff-adj-gt" style="width:68px;" value="20" title="Diff threshold %">%:
+                            add <strong>+</strong><input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle amz-diff-adj-input amz-diff-adj-points" style="width:68px;" value="10" title="Points added to the Target NROI">
+                            to the Target NROI.
+                    </div>
+                    </div>
+                    <div class="amz-dg-card">
                     <div class="amz-dg-rules-title mt-3"
                         title="If LMP is available and the calculated S PRC is at or above LMP: S PRC = LMP × (1 − x/100). x depends on the SKU's Dil band. Count = SKUs (INV &gt; 0) in that band whose calculated S PRC is at or above LMP.">
                         LMP Rule
@@ -1070,6 +1119,7 @@
                         </table>
                     </div>
                     @include('partials.amazon-lmp-cvr-disc-rule', ['amzLmpCvrPart' => 'section'])
+                    </div>
                     <div class="small text-muted mt-1" id="amz-dil-groi-status"></div>
                     </div>
                     </div>
