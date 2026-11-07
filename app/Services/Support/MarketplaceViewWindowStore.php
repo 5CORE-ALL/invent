@@ -268,7 +268,10 @@ class MarketplaceViewWindowStore
             if ($update === []) {
                 continue;
             }
-            DB::table($table)->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])->update($update);
+            // PHP turns an all-digit SKU array key into an int; bound as a number MySQL compares the
+            // sku column as DOUBLE and aborts the whole channel ("Truncated incorrect DOUBLE value").
+            // That stopped the eBay 2 / Temu / Temu 2 daily view store for every date.
+            DB::table($table)->whereRaw('UPPER(TRIM(sku)) = ?', [(string) $sku])->update($update);
         }
     }
 
