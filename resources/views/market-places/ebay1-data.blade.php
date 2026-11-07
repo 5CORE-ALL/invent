@@ -1077,19 +1077,16 @@
             }
 
             // ---- Edit Column: one value for a whole column, or for the ticked rows only ----
-            const E1_AUTOFILLED = ['brand', 'manufacturer', 'countryoforigin', 'mpn', 'model', 'upc'];
             const editPicked = new Map();
             let editBusy = false;
             let editRow = null; // set when the pen button of one row opened the window
 
-            // Item-specific columns of the open tab. Columns filled automatically or synced from a source are not editable.
+            // Every item-specific column of the open tab, including Brand, Country of Origin, UPC and sourced columns.
             function editableColumnNames() {
-                return specNamesForTab().filter(function (name) {
-                    return E1_AUTOFILLED.indexOf(gKey(name)) === -1 && !sourceFor(name);
-                });
+                return specNamesForTab();
             }
 
-            // Columns the window lists: those of the open tab, or the item specifics of the one row being edited.
+            // Columns the window lists: those of the open tab, or every item specific of the one row being edited.
             function editNames() {
                 if (!editRow) return editableColumnNames();
                 const spec = editRow.specifics && !Array.isArray(editRow.specifics) ? editRow.specifics : {};
@@ -1099,7 +1096,7 @@
                     const k = gKey(n);
                     if (!k || seen.has(k)) return;
                     seen.add(k);
-                    if (E1_AUTOFILLED.indexOf(k) === -1 && !sourceFor(n, editRow.category || '')) out.push(n);
+                    out.push(n);
                 });
                 return out.sort(function (a, b) { return a.localeCompare(b); });
             }
