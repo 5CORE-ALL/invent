@@ -3039,7 +3039,7 @@ class ChannelPromoPricingController extends Controller
             }
             $min = round((float) $item['min'], 2);
             $max = round((float) $item['max'], 2);
-            if ($min < 0 || $max <= $min) {
+            if ($min < 0 || $max < $min) {
                 continue;
             }
             $prmt = is_numeric($item['prmt'] ?? null) ? max(0.0, round((float) $item['prmt'], 2)) : 0.0;
@@ -3120,7 +3120,7 @@ class ChannelPromoPricingController extends Controller
                 $min = 0.0;
             }
             $max = is_numeric($item['max'] ?? null) ? round((float) $item['max'], 2) : null;
-            if ($min === null || $max === null || $min < 0 || $max <= $min) {
+            if ($min === null || $max === null || $min < 0 || $max < $min) {
                 if (! $deleted) {
                     continue;
                 }
@@ -3182,7 +3182,8 @@ class ChannelPromoPricingController extends Controller
                 if (! str_starts_with($key, self::DIL_PRMT_CUSTOM_PREFIX)) {
                     continue;
                 }
-                if (isset($c['min'], $c['max']) && $dil >= (float) $c['min'] && $dil < (float) $c['max']) {
+                if (isset($c['min'], $c['max']) && $dil >= (float) $c['min']
+                    && ((float) $c['max'] === (float) $c['min'] ? $dil <= (float) $c['max'] : $dil < (float) $c['max'])) {
                     return $key;
                 }
             }
@@ -3200,7 +3201,8 @@ class ChannelPromoPricingController extends Controller
                 if (! empty($c['deleted'])) {
                     continue; // deleted row: its range gets no PRMT
                 }
-                $inclusiveMax = $key === '24-25';
+                // Last slab (24-25) includes its upper bound; From = To (e.g. 0–0) means exactly that Dil.
+                $inclusiveMax = $key === '24-25' || (float) $c['max'] === (float) $c['min'];
                 if ($dil >= (float) $c['min'] && ($dil < (float) $c['max'] || ($inclusiveMax && $dil <= (float) $c['max']))) {
                     return $key;
                 }

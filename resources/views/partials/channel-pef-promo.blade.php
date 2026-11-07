@@ -4912,7 +4912,8 @@
                 if (r.min == null || r.max == null || r.min === '' || r.max === '') continue;
                 const lo = Number(r.min);
                 const hi = Number(r.max);
-                if (isFinite(lo) && isFinite(hi) && hi > lo && n >= lo && n < hi) return r.key;
+                // From = To (e.g. 0–0) means exactly that Dil value.
+                if (isFinite(lo) && isFinite(hi) && hi >= lo && n >= lo && (hi === lo ? n <= hi : n < hi)) return r.key;
             }
             return null;
         }
@@ -4940,7 +4941,9 @@
                 if (!r) continue;
                 const range = chPromoBuiltinDilRange(r);
                 if (!range) continue;
-                if (n >= range.min && (n < range.max || (r.key === '24-25' && n <= range.max))) return r.key;
+                // Last slab (24-25) includes its upper bound; From = To (e.g. 0–0) means exactly that Dil.
+                const inclusiveMax = r.key === '24-25' || range.max === range.min;
+                if (n >= range.min && (n < range.max || (inclusiveMax && n <= range.max))) return r.key;
             }
             return n > 25 ? 'gt-25' : 'none';
         }
@@ -4956,7 +4959,7 @@
             // Legacy saved default 0.01 for the first slab → starts at 0 so Dil 0% is covered.
             if (key === '0-3' && Math.abs(lo - 0.01) < 0.0001) lo = 0;
             if (r.max != null && r.max !== '' && isFinite(Number(r.max))) hi = Number(r.max);
-            if (!(hi > lo)) return null;
+            if (!(hi >= lo)) return null;
             return { min: lo, max: hi };
         }
         function chPromoPrmtForRuleKey(key) {
@@ -6030,7 +6033,7 @@
                     const hi = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="max"]').val());
                     rule.min = isFinite(lo) ? Math.max(0, lo) : null;
                     rule.max = isFinite(hi) ? hi : null;
-                    if (isFinite(rule.min) && isFinite(rule.max) && rule.max > rule.min) {
+                    if (isFinite(rule.min) && isFinite(rule.max) && rule.max >= rule.min) {
                         rule.label = chPromoFmtDilBound(rule.min) + '–' + chPromoFmtDilBound(rule.max) + '%';
                     }
                 }
@@ -6118,11 +6121,11 @@
             $('#ch-promo-dil-prmt-tbody tr').each(function() {
                 const lo = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="min"]').val());
                 const hi = parseFloat($(this).find('.ch-promo-dil-prmt-range[data-bound="max"]').val());
-                if (!isFinite(lo) || !isFinite(hi) || lo < 0 || hi <= lo) bad = true;
+                if (!isFinite(lo) || !isFinite(hi) || lo < 0 || hi < lo) bad = true;
             });
             chPromoRefreshDilPrmtCounts();
             if (bad) {
-                $('#ch-promo-dil-prmt-status').text('Each row needs a valid Dil% range (From ≥ 0 and To > From).');
+                $('#ch-promo-dil-prmt-status').text('Each row needs a valid Dil% range (From ≥ 0 and To ≥ From; From = To means exactly that Dil, e.g. 0–0).');
                 return;
             }
             chPromoSyncEbayPrmtColumnFromSlabs();
