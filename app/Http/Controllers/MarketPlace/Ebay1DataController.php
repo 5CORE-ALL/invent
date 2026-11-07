@@ -102,9 +102,10 @@ class Ebay1DataController extends Controller
                     }
                 }
 
-                // UPC is always the CP Master code: it replaces "Does not apply", "Not Applicable" and a blank cell,
-                // and every SKU with a CP Master UPC gets the column. No CP Master code leaves the cell as it was.
-                $upc = ($cpUpc[$sku]['source'] ?? '') === ProductUpc::SOURCE_CP_MASTER ? (string) $cpUpc[$sku]['upc'] : '';
+                // UPC is the CP Master code, else the barcode Amazon holds for the SKU (the same order Technical
+                // Specifications and Push use). It replaces "Does not apply", "Not Applicable" and a blank cell, and every
+                // SKU with a UPC gets the column. A SKU with no UPC anywhere leaves the cell as it was.
+                $upc = (string) ($cpUpc[$sku]['upc'] ?? '');
                 if ($upc !== '') {
                     $upcName = null;
                     foreach (array_keys($specifics) as $specName) {
@@ -640,7 +641,7 @@ class Ebay1DataController extends Controller
         if ($columnKey === '') {
             return response()->json(['success' => false, 'message' => 'Choose a column.'], 422);
         }
-        if (in_array($columnKey, ['brand', 'manufacturer', 'condition', 'countryoforigin', 'mpn', 'model', 'upc'], true)) {
+        if (in_array($columnKey, ['brand', 'manufacturer', 'countryoforigin', 'mpn', 'model', 'upc'], true)) {
             return response()->json(['success' => false, 'message' => $column.' is filled automatically on Technical Specifications and cannot be edited here.'], 422);
         }
         $value = trim((string) ($data['value'] ?? ''));

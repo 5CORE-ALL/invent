@@ -185,10 +185,26 @@ class ProductUpc
                 return [];
             }
 
-            foreach (array_chunk($skuKeys, 400) as $chunk) {
-                $rows = DB::table('product_master')
-                    ->whereIn(DB::raw("UPPER(TRIM(REPLACE(COALESCE(sku, ''), CHAR(160), ' ')))"), $chunk)
-                    ->get($columns);
+            // The SKU is matched in PHP, then the rows are loaded by the exact SKU.
+            // Comparing UPPER(sku) in SQL mixes two collations on the server and MySQL rejects the
+            // whole lookup, so every UPC came back empty.
+            $wanted = array_fill_keys($skuKeys, true);
+            $matchedSkus = [];
+            DB::table('product_master')
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->select(['id', 'sku'])
+                ->orderBy('id')
+                ->chunkById(1000, function ($rows) use (&$matchedSkus, $wanted) {
+                    foreach ($rows as $row) {
+                        if (isset($wanted[self::skuKey((string) $row->sku)])) {
+                            $matchedSkus[] = (string) $row->sku;
+                        }
+                    }
+                });
+
+            foreach (array_chunk($matchedSkus, 400) as $chunk) {
+                $rows = DB::table('product_master')->whereIn('sku', $chunk)->get($columns);
                 foreach ($rows as $row) {
                     $key = self::skuKey((string) $row->sku);
                     if (isset($found[$key])) {
