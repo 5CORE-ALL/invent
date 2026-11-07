@@ -442,12 +442,12 @@
         }
         /* ---- Next-gen dashboard layout: every rule is a card in one grid, no scrolling on a normal screen ---- */
         #amzDilGroiModal .modal-dialog { max-width: min(1800px, 98vw); }
-        #amzDilGroiModal .amz-dg-panel-rules { display: none; }
-        #amzDilGroiModal.amz-dg-show-rules .amz-dg-panel-rules { display: flex; flex: 0 0 30%; }
+        #amzDilGroiModal .amz-dg-panel-rules { display: flex; flex: 0 0 27%; }
+        #amzDilGroiModal.amz-dg-hide-rules .amz-dg-panel-rules { display: none; }
         #amzDilGroiModal .amz-dg-panel-tables { flex: 1 1 100%; background: transparent; box-shadow: none; overflow: visible; }
         #amzDilGroiModal .amz-dg-grid {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 10px;
             align-items: start;
             align-content: start;
@@ -464,16 +464,17 @@
         #amzDilGroiModal .amz-dg-card-title { font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 6px; }
         #amzDilGroiModal .amz-dg-card > .amz-dg-rules-title:first-child { margin-top: 0 !important; }
         #amzDilGroiModal .amz-dg-card .amz-dg-rules-title { font-size: 12px; margin-bottom: 4px; }
-        /* the long explanations stay in the title tooltips and the Rules button */
-        #amzDilGroiModal .amz-dg-card > .small.text-muted.mb-1 { display: none; }
+        #amzDilGroiModal .amz-dg-card > .small.text-muted.mb-1 { font-size: 11px; line-height: 1.3; }
         #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap { margin-top: 8px !important; }
-        #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap .small.text-muted { display: none; }
         #amzDilGroiModal .amz-dg-diffrow { color: #475569; line-height: 1.9; }
         #amzDilGroiModal #amz-dil-groi-status { grid-column: 1 / -1; }
         #amzDilGroiModal .amz-dg-pie-canvas-wrap { width: 84px; height: 84px; flex: 0 0 84px; }
         #amzDilGroiModal .amz-dg-pie-legend { max-height: 90px; overflow-y: auto; }
-        @media (max-width: 1399.98px) {
-            #amzDilGroiModal .amz-dg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        @media (min-width: 1600px) {
+            #amzDilGroiModal .amz-dg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+        @media (min-width: 1100px) {
+            #amzDilGroiModal.amz-dg-hide-rules .amz-dg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         }
         @media (max-width: 991.98px) {
             #amzDilGroiModal .amz-dg-grid { grid-template-columns: 1fr; }
@@ -874,8 +875,8 @@
                     <h5 class="modal-title fs-6" id="amzDilGroiModalLabel">
                         <i class="fas fa-sliders-h me-1"></i> Dil vs Target NROI — Sprc Dil
                         <a href="{{ route('master.dil.rules') }}" class="btn btn-sm btn-outline-secondary ms-2" target="_blank" rel="noopener">Master</a>
-                        <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="amz-dg-rules-toggle" title="Show / hide the written rules"
-                            onclick="document.getElementById('amzDilGroiModal').classList.toggle('amz-dg-show-rules')"><i class="fas fa-list-ul me-1"></i> Rules</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="amz-dg-rules-toggle" title="Show / hide the written rules panel (hide it for a wider grid)"
+                            onclick="document.getElementById('amzDilGroiModal').classList.toggle('amz-dg-hide-rules')"><i class="fas fa-list-ul me-1"></i> Rules</button>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
