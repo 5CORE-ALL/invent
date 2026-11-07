@@ -313,6 +313,34 @@
             return isFinite(target) ? target : null;
         }
 
+        /** CVR up / down rule (Sprc Dil modal): one hover step. null when the rule is off or the SKU is not a stocked child row. */
+        function amzRuleCvrUpDownStep(d, num, usedInPrice) {
+            const cfg = (typeof amzLmpCvrRuleSafe === 'function') ? amzLmpCvrRuleSafe() : null;
+            if (!cfg || !cfg.enabled || typeof amzLmpCvrInfo !== 'function') return null;
+            const info = amzLmpCvrInfo(d);
+            if (!info) return null;
+            const title = (num ? num + ' · ' : '') + 'CVR up / down rule';
+            const std = Number(d && d.STANDARD_PRICE) || 0;
+            const cvrTxt = info.cvr.toFixed(1) + '%';
+            if (!info.eligible) {
+                return temuRuleStep('skip', title, 'Needs an LMP and this SKU has none. No extra discount.');
+            }
+            if (!info.band) {
+                return temuRuleStep('skip', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow: no Down / Up row matches. No extra discount.');
+            }
+            const bandTxt = { down2: '&lt; ' + cfg.down2_lt + '%', down: '&lt; ' + cfg.down_lt + '%', up: '&gt; ' + cfg.up_gt + '%', up2: '&gt; ' + cfg.up2_gt + '%' }[info.band];
+            const pct = info.disc;
+            if (!pct) {
+                return temuRuleStep('skip', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ', its Disc % is 0. No extra discount.');
+            }
+            const amt = std > 0 ? (' = <b>' + temuRuleMoney(Math.round(std * pct) / 100) + '</b> off Std Prc') : '';
+            if (!usedInPrice) {
+                return temuRuleStep('skip', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ' → <b>' + (pct > 0 ? '+' : '') + pct + '%</b>' + amt
+                    + '. Not used in this price: Sprc Dil prices from the Target NROI. It applies in Std prc vs dil.');
+            }
+            return temuRuleStep('ok', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ' → <b>' + (pct > 0 ? '+' : '') + pct + '%</b>' + amt + ' (included in Sum disc).');
+        }
+
         /** S PRC on Amazon: every rule and exception behind the number. */
         function temuRuleExplainSprice(d) {
             const steps = [];
@@ -339,9 +367,11 @@
                 base = Number(amzDisplayedSprice(d)) || 0;
                 const disc = (typeof computeAmzSumDiscountPct === 'function') ? Number(computeAmzSumDiscountPct(d)) : NaN;
                 steps.push(temuRuleStep('info', '1 · Std prc vs dil (switch ON)',
-                    'S PRC = Std Prc ' + temuRuleMoney(std) + ' × (1 − Sum disc ' + (isFinite(disc) ? disc.toFixed(1) : '0') + '% (Age + Dil + B Disc + 0 Sold + CVR + Review discounts)) = <b>' + temuRuleMoney(base) + '</b>'));
+                    'S PRC = Std Prc ' + temuRuleMoney(std) + ' × (1 − Sum disc ' + (isFinite(disc) ? disc.toFixed(1) : '0') + '% (Age + Dil + B Disc + 0 Sold + CVR + Review + CVR up / down discounts)) = <b>' + temuRuleMoney(base) + '</b>'));
                 if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(d)) notes.push('Clearance SKU: priced only from the Clearance SNROI block (or shows "C" with no price).');
                 n = 2;
+                const cvrUdStep = amzRuleCvrUpDownStep(d, '2', true);
+                if (cvrUdStep) { steps.push(cvrUdStep); n = 3; }
             }
             const shouldCap = base > 0 && amazonShouldCapSpriceToLmp(d, base);
             const sg = (lmp > 0) ? amazonSgroiAtPrice(d, lmp) : null;
@@ -364,6 +394,10 @@
                 steps.push(temuRuleStep('ok', (n + 1) + ' · Std Prc maximum', 'Price is above Std Prc ' + temuRuleMoney(std) + ' → held at <b>' + temuRuleMoney(std) + '</b>.'));
             } else {
                 steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Price is within Std Prc ' + temuRuleMoney(std) + '. Not capped.'));
+            }
+            if (dilOn) {
+                const cvrUdStep = amzRuleCvrUpDownStep(d, String(n + 2), false);
+                if (cvrUdStep) steps.push(cvrUdStep);
             }
             if (lmp > 0 && std > 0 && lmp > std + 0.0001) notes.push('LMP ' + temuRuleMoney(lmp) + ' is above Std Prc ' + temuRuleMoney(std) + ': every price is capped at Std Prc. Review the Std price.');
             if (amzPefInv(d) <= 0) notes.push('INV is 0, so no S PRC is set for this SKU.');
