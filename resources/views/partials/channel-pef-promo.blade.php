@@ -663,6 +663,8 @@
                         <button type="button" class="btn btn-sm" id="ch-promo-dil-vs-prmt-btn"
                             title="Shared Dil vs PRMT (0.01–3 … 21–24, 24–25). PRMT% auto-applies when Dil slab changes. Save updates all marketplaces.">
                             <i class="fas fa-sliders-h"></i> {{ $channelPromoChannel === 'aliexpress' ? 'PRMT%' : 'Prmt%' }}
+                            <span class="badge bg-light text-dark ms-1" id="ch-promo-prmt-applied-badge"
+                                title="SKUs with PRMT% applied / total SKUs">…</span>
                         </button>
                         @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
                         <button type="button" class="btn btn-sm dropdown-toggle dropdown-toggle-split" id="ch-promo-prmt-menu-btn"
@@ -5119,6 +5121,7 @@
             } finally {
                 if (blocked) table.restoreRedraw();
             }
+            chPromoScheduleBadgeRefresh();
         }
         function chPromoDilColorBand(dil) {
             const n = Number(dil);
@@ -5984,7 +5987,50 @@
             chPromoDilPrmtDatasetRows().forEach(consider);
             return counts;
         }
+        /** Toolbar "Prmt%" badge: SKUs with PRMT% > 0 applied / total SKUs in the table. */
+        function chPromoRefreshPrmtAppliedBadge() {
+            const $b = $('#ch-promo-prmt-applied-badge');
+            if (!$b.length) return;
+            const seen = new Set();
+            let applied = 0;
+            let total = 0;
+            function consider(d) {
+                if (!d || !chPromoIsChildRow(d)) return;
+                const k = chPromoSkuKey(chPromoSku(d));
+                if (!k || seen.has(k)) return;
+                seen.add(k);
+                total++;
+                if (chPromoPrmtInt(d) > 0) applied++;
+            }
+            try {
+                if (typeof table !== 'undefined' && table && typeof chPromoEachTableRow === 'function') {
+                    chPromoEachTableRow(function(row, d) { consider(d); });
+                }
+                chPromoDilPrmtDatasetRows().forEach(consider);
+            } catch (e) { /* ignore */ }
+            if (!total) return;
+            $b.text(applied + '/' + total)
+                .attr('title', applied + ' of ' + total + ' SKUs have PRMT% applied');
+        }
+        let chPromoPrmtBadgeTimer = null;
+        function chPromoScheduleBadgeRefresh() {
+            clearTimeout(chPromoPrmtBadgeTimer);
+            chPromoPrmtBadgeTimer = setTimeout(chPromoRefreshPrmtAppliedBadge, 400);
+        }
+        (function bindPrmtAppliedBadge() {
+            if (typeof table === 'undefined' || !table || !table.on) {
+                setTimeout(bindPrmtAppliedBadge, 500);
+                return;
+            }
+            if (table._chPromoPrmtBadgeBound) return;
+            table._chPromoPrmtBadgeBound = true;
+            ['dataLoaded', 'renderComplete', 'cellEdited', 'rowUpdated'].forEach(function(ev) {
+                try { table.on(ev, chPromoScheduleBadgeRefresh); } catch (e) { /* ignore */ }
+            });
+            chPromoScheduleBadgeRefresh();
+        })();
         function chPromoRefreshDilPrmtCounts() {
+            chPromoScheduleBadgeRefresh();
             const $rows = $('#ch-promo-dil-prmt-tbody tr');
             if (!$rows.length) return;
             let counts;
