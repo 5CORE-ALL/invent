@@ -237,6 +237,15 @@ class Kernel extends ConsoleKernel
             ->name('tracking-sync-status-daily')
             ->appendOutputTo($log);
 
+        // Shopify Ads Master: keep the daily channel snapshot (trend chart + dots)
+        // current even on days nobody opens /shopify-ads-master.
+        $schedule->command('shopify-ads-master:snapshot')
+            ->everyThreeHours()
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->name('shopify-ads-master-snapshot')
+            ->appendOutputTo($log);
+
         // Veeqo Billing: orders updated since the last run (label charges per shipment).
         $schedule->command('veeqo:sync-billing')
             ->hourlyAt(25)
