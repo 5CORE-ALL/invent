@@ -73,12 +73,15 @@
         #ebay1-data-table .tabulator-cell.tabulator-frozen-left[tabulator-field="sku"],
         #ebay1-data-table .tabulator-col.tabulator-frozen-left[tabulator-field="sku"] { box-shadow: 3px 0 6px rgba(15,23,42,.15); }
         #ebay1-data-table .tabulator-frozen.tabulator-frozen-right { box-shadow: -3px 0 6px rgba(15,23,42,.15); z-index: 14; }
-        #ebay1-data-table .tabulator-col[tabulator-field="_edit"] .tabulator-col-title { writing-mode: horizontal-tb; transform: none; }
+        #ebay1-data-table .tabulator-col[tabulator-field="_edit"] .tabulator-col-title,
+        #ebay1-data-table .tabulator-col[tabulator-field="_copy"] .tabulator-col-title { writing-mode: horizontal-tb; transform: none; }
         /* Small pen button to save space. */
         #ebay1-data-table .tabulator-cell.e1d-edit-col { padding: 2px !important; }
         #ebay1-data-table .e1d-edit-btn { padding: 0 !important; width: 22px; height: 20px; line-height: 18px; font-size: 10px; border-radius: 4px; }
-        #ebay1-data-table .tabulator-col[tabulator-field="_edit"] .tabulator-col-content { padding: 8px 0 !important; }
-        #ebay1-data-table .tabulator-col[tabulator-field="_edit"] .tabulator-col-title i { font-size: 11px; transform: none; margin: 0; }
+        #ebay1-data-table .tabulator-col[tabulator-field="_edit"] .tabulator-col-content,
+        #ebay1-data-table .tabulator-col[tabulator-field="_copy"] .tabulator-col-content { padding: 8px 0 !important; }
+        #ebay1-data-table .tabulator-col[tabulator-field="_edit"] .tabulator-col-title i,
+        #ebay1-data-table .tabulator-col[tabulator-field="_copy"] .tabulator-col-title i { font-size: 11px; transform: none; margin: 0; }
         /* Every header is written vertically, reading bottom to top. */
         #ebay1-data-table .tabulator-header,
         #ebay1-data-table .tabulator-header .tabulator-headers,
@@ -91,7 +94,13 @@
         #ebay1-data-table .tabulator-col-title-holder { display: flex; align-items: center; justify-content: flex-end; }
         #ebay1-data-table .tabulator-col .tabulator-col-title {
             writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; overflow: hidden;
-            text-overflow: ellipsis; max-height: 90px; line-height: 1.15; letter-spacing: .02em; text-align: center;
+            text-overflow: ellipsis; max-height: 76px; line-height: 1.15; letter-spacing: .02em; text-align: center;
+        }
+        /* Red count of rows with no data, at the top of the header. */
+        #ebay1-data-table .tabulator-col .e1d-miss {
+            position: absolute; top: 4px; left: 50%; transform: translateX(-50%); z-index: 3; min-width: 18px; padding: 0 5px;
+            border-radius: 9px; background: #dc2626; color: #fff; border: 1px solid #fff; font-size: 10px; font-weight: 700;
+            line-height: 15px; text-align: center; pointer-events: auto; cursor: default;
         }
         #ebay1-data-table .tabulator-col .tabulator-col-title i { transform: rotate(90deg); display: inline-block; margin-top: 4px; }
         #ebay1-data-table .tabulator-row:nth-child(even) { background: #f8fafc; }
@@ -140,6 +149,9 @@
         .e1d-job-note { font-size: .78rem; color: #dc2626; margin-top: .4rem; white-space: pre-line; }
         .e1d-job-note:empty { display: none; }
         .e1d-job-icon .fa-spin { color: #2c6ed5; }
+        .e1d-sku-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: #64748b; font-weight: 600; }
+        .e1d-sku-list { display: flex; flex-wrap: wrap; gap: 4px; max-height: 88px; overflow: auto; margin: .25rem 0 .7rem; }
+        .e1d-sku-list span { background: #eef4ff; color: #1e40af; border-radius: 999px; padding: 2px 8px; font-size: .75rem; font-weight: 600; }
         .e1d-editfields { display: flex; flex-direction: column; gap: .5rem; max-height: 38vh; overflow-y: auto; padding-right: 2px; }
         .e1d-editfields:empty::before { content: 'Tick a column first'; color: #94a3b8; font-size: .85rem; padding: .35rem .1rem; }
         .e1d-editfield label { font-size: .74rem; font-weight: 600; color: #475569; margin: 0 0 .15rem; display: block; }
@@ -292,6 +304,7 @@
         <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dEditTitle">
             <h5 id="e1dEditTitle" class="mb-2"><i class="fas fa-edit text-warning"></i> Edit Column</h5>
             <p class="small text-muted mb-2" id="e1dEditIntro"></p>
+            <div id="e1dEditSkus"></div>
             <label class="form-label small fw-bold" for="e1dEditSearch">1. Search and tick the columns to edit</label>
             <input type="text" id="e1dEditSearch" class="form-control form-control-sm mb-1" placeholder="Quick search a column…" autocomplete="off">
             <label class="e1d-addopt fw-bold border-bottom mb-1"><input type="checkbox" id="e1dEditAll"> Columns shown (tick one or more)</label>
@@ -465,6 +478,47 @@
                 applyFilters();
                 updateDelButton();
                 updatePushButton();
+                updateMissingBadges();
+            }
+
+            // Red count on every header: how many rows of the open tab (after the filters) have no data in that column.
+            const E1_NO_MISS = new Set(['_edit', '_copy', 'nr_req', 'listed']);
+
+            function isMissingValue(value) {
+                if (value === null || value === undefined) return true;
+                if (Array.isArray(value)) return value.length === 0;
+                const text = String(value).trim();
+                return text === '' || text === '—';
+            }
+
+            function updateMissingBadges() {
+                if (!table || !tableReady) return;
+                const data = table.getData('active');
+                table.getColumns().forEach(function (col) {
+                    const field = col.getField();
+                    const el = col.getElement();
+                    if (!el) return;
+                    let badge = el.querySelector(':scope > .e1d-miss');
+                    if (!field || E1_NO_MISS.has(field)) {
+                        if (badge) badge.remove();
+                        return;
+                    }
+                    let missing = 0;
+                    for (let i = 0; i < data.length; i++) {
+                        if (isMissingValue(data[i][field])) missing++;
+                    }
+                    if (!missing) {
+                        if (badge) badge.remove();
+                        return;
+                    }
+                    if (!badge) {
+                        badge = document.createElement('span');
+                        badge.className = 'e1d-miss';
+                        el.appendChild(badge);
+                    }
+                    badge.textContent = missing > 999 ? '999+' : String(missing);
+                    badge.title = missing + ' of ' + data.length + ' rows have no data in this column';
+                });
             }
 
             // ---- Delete Column: removes one item specific from every SKU of the open tab, here and on eBay 1. ----
@@ -654,6 +708,7 @@
                 const base = selected.length ? selected : rows.filter(passesTab);
                 const targets = base.filter(function (row) {
                     if (!/^\d{9,15}$/.test(String(row.item_id || '').trim())) return false;
+                    if (row.title_pending && String(row.ebay_title || '').trim() !== '') return true;
                     const spec = row.specifics && !Array.isArray(row.specifics) ? row.specifics : {};
                     return Object.keys(spec).some(function (name) { return String(spec[name] || '').trim() !== ''; });
                 });
@@ -682,7 +737,7 @@
                 const where = scope.selected
                     ? todo.length + ' selected SKU' + (todo.length === 1 ? '' : 's')
                     : 'all ' + todo.length + ' SKUs of ' + (activeTab === ALL ? 'every category' : '"' + catLabel(activeTab) + '"');
-                if (!window.confirm('Push the item specifics of ' + where + ' to the live eBay 1 listings?\nBlank values are not sent and values already on eBay are left alone.')) return;
+                if (!window.confirm('Push the item specifics of ' + where + ' to the live eBay 1 listings?\nAn edited eBay title is sent too. Blank values are not sent and values already on eBay are left alone.')) return;
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 btn.dataset.busy = '1';
                 btn.disabled = true;
@@ -692,11 +747,13 @@
                 for (let i = 0; i < todo.length; i += size) {
                     const chunk = todo.slice(i, i + size).map(function (row) {
                         const specifics = {};
-                        Object.keys(row.specifics).forEach(function (name) {
+                        Object.keys(row.specifics || {}).forEach(function (name) {
                             const v = String(row.specifics[name] || '').trim();
                             if (v !== '') specifics[name] = v;
                         });
-                        return { sku: row.sku, item_id: String(row.item_id || '').trim(), specifics: specifics };
+                        const item = { sku: row.sku, item_id: String(row.item_id || '').trim(), specifics: specifics };
+                        if (row.title_pending) item.title = String(row.ebay_title || '').trim();
+                        return item;
                     });
                     status.textContent = 'Pushing ' + Math.min(i + size, todo.length) + ' / ' + todo.length + '…';
                     try {
@@ -717,7 +774,6 @@
                         failed += chunk.length;
                         problems.push(e.message || 'Request failed');
                     }
-                    jobShow('Deleting ' + label + '…', todo.length, done, failed, true, problems);
                 }
                 btn.dataset.busy = '0';
                 status.textContent = 'Pushed ' + pushed + ', unchanged ' + unchanged + (skipped ? ', skipped ' + skipped : '') + (failed ? ', failed ' + failed : '') + '.';
@@ -839,11 +895,8 @@
                 if (editBtn) editBtn.disabled = activeTab === ALL || editableColumnNames().length === 0;
                 const btn = document.getElementById('e1dDelCol');
                 if (!btn) return;
-                const has = activeTab !== ALL && specNamesForTab().length > 0;
-                btn.disabled = !has;
-                btn.title = has
-                    ? 'Delete one item-specific column of this category, here and on the live eBay 1 listings'
-                    : 'Open a category tab with pulled item specifics first';
+                btn.disabled = false;
+                btn.title = 'Hide a page column such as L7, or delete an item-specific column here and on the live eBay 1 listings';
             }
 
             // Columns ticked in the Delete Column window.
@@ -862,16 +915,36 @@
 
             function refreshDelWarning() {
                 const picked = Array.from(delPicked);
-                const n = picked.length ? delTargets(picked).length : 0;
-                const label = picked.length === 1 ? '<strong>' + esc(picked[0]) + '</strong>' : '<strong>' + picked.length + ' columns</strong>';
-                document.getElementById('e1dDelWarn').innerHTML = !picked.length
-                    ? 'Tick one or more columns.'
-                    : (n === 0
-                        ? 'No SKU in this category has ' + label + '. ' + (picked.length === 1 ? 'The column is' : 'The columns are') + ' only removed from this tab.'
+                const pagePicked = picked.filter(pageColumnByName);
+                const specPicked = picked.filter(function (name) { return !pageColumnByName(name); });
+                const parts = [];
+                if (!picked.length) parts.push('Tick one or more columns.');
+                if (pagePicked.length) {
+                    const hiding = pagePicked.filter(function (name) { return !hiddenFields.has(pageColumnByName(name).field); });
+                    const showing = pagePicked.filter(function (name) { return hiddenFields.has(pageColumnByName(name).field); });
+                    if (hiding.length) parts.push('Hides <strong>' + esc(hiding.join(', ')) + '</strong> on this page only. Nothing is sent to eBay. Search the name here again to show it.');
+                    if (showing.length) parts.push('Shows <strong>' + esc(showing.join(', ')) + '</strong> on this page again.');
+                }
+                if (specPicked.length) {
+                    const n = delTargets(specPicked).length;
+                    const label = specPicked.length === 1 ? '<strong>' + esc(specPicked[0]) + '</strong>' : '<strong>' + specPicked.length + ' columns</strong>';
+                    parts.push(n === 0
+                        ? 'No SKU in this category has ' + label + '. ' + (specPicked.length === 1 ? 'The column is' : 'The columns are') + ' only removed from this tab.'
                         : 'This removes ' + label + ' from <strong>' + n + '</strong> SKU' + (n === 1 ? '' : 's') + ' in this category: on the live eBay 1 listing where there is one, and always in the app. It cannot be undone here.');
+                }
+                document.getElementById('e1dDelWarn').innerHTML = parts.join(' ');
                 const go = document.getElementById('e1dDelGo');
                 go.disabled = !picked.length || delRunning;
-                go.textContent = picked.length > 1 ? 'Delete ' + picked.length + ' columns' : 'Delete column';
+                if (!specPicked.length && pagePicked.length) {
+                    const allHidden = pagePicked.every(function (name) { return hiddenFields.has(pageColumnByName(name).field); });
+                    go.textContent = allHidden
+                        ? (pagePicked.length > 1 ? 'Show ' + pagePicked.length + ' columns' : 'Show column')
+                        : (pagePicked.length > 1 ? 'Hide ' + pagePicked.length + ' columns' : 'Hide column');
+                } else if (pagePicked.length) {
+                    go.textContent = 'Apply';
+                } else {
+                    go.textContent = specPicked.length > 1 ? 'Delete ' + specPicked.length + ' columns' : 'Delete column';
+                }
                 const all = document.getElementById('e1dDelAll');
                 const visible = delVisibleNames();
                 const ticked = visible.filter(function (name) { return delPicked.has(name); }).length;
@@ -879,17 +952,50 @@
                 all.indeterminate = ticked > 0 && ticked < visible.length;
             }
 
+            // Page columns such as L7, Price and Views. Hiding one removes it from the table only.
+            const E1_HIDE_KEY = 'ebay1_data_hidden_fields_v1';
+            let hiddenFields = new Set();
+            try { hiddenFields = new Set(JSON.parse(localStorage.getItem(E1_HIDE_KEY) || '[]')); } catch (e) { hiddenFields = new Set(); }
+
+            function pageColumns() {
+                return baseColumns().filter(function (col) {
+                    return col.field && col.title && col.field !== '_edit' && col.field !== '_copy';
+                }).map(function (col) { return { name: String(col.title), field: col.field }; });
+            }
+
+            function pageColumnByName(name) {
+                const key = gKey(name);
+                return pageColumns().find(function (col) { return gKey(col.name) === key; }) || null;
+            }
+
+            function saveHiddenFields() {
+                try { localStorage.setItem(E1_HIDE_KEY, JSON.stringify(Array.from(hiddenFields))); } catch (e) {}
+            }
+
+            // Item specifics of the tab, plus every page column, so L7 and the rest can be found.
+            function allDeleteNames() {
+                const names = pageColumns().map(function (col) { return col.name; });
+                const seen = new Set(names.map(gKey));
+                specNamesForTab().forEach(function (name) {
+                    if (!seen.has(gKey(name))) {
+                        seen.add(gKey(name));
+                        names.push(name);
+                    }
+                });
+                return names;
+            }
+
             // Columns of the open tab, A to Z, narrowed by the quick search.
             function delVisibleNames() {
                 const q = String(document.getElementById('e1dDelSearch').value || '').trim().toLowerCase();
-                return specNamesForTab().slice()
+                return allDeleteNames().slice()
                     .sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); })
                     .filter(function (name) { return !q || name.toLowerCase().indexOf(q) !== -1; });
             }
 
             function renderDelList() {
-                const names = specNamesForTab();
-                delPicked = new Set(Array.from(delPicked).filter(function (name) { return names.indexOf(name) !== -1; }));
+                const names = allDeleteNames();
+                delPicked = new Set(Array.from(delPicked).filter(function (name) { return names.some(function (n) { return gKey(n) === gKey(name); }); }));
                 const list = document.getElementById('e1dDelList');
                 const delTotal = rows.filter(passesTab).length;
                 list.innerHTML = '';
@@ -907,12 +1013,21 @@
                     });
                     row.appendChild(cb);
                     row.appendChild(document.createTextNode(' ' + name + ' '));
-                    // available / total: SKUs of this tab that carry the column / all SKUs of this tab.
-                    const have = delTargets(name).length;
+                    const pageCol = pageColumnByName(name);
                     const count = document.createElement('span');
-                    count.className = 'e1d-cnt ' + (have === delTotal ? 'green' : 'red');
-                    count.textContent = have + '/' + delTotal;
-                    count.title = have + ' of ' + delTotal + ' SKUs in this category have this column';
+                    if (pageCol) {
+                        const hidden = hiddenFields.has(pageCol.field);
+                        count.className = 'e1d-cnt ' + (hidden ? 'red' : 'green');
+                        count.textContent = hidden ? 'hidden' : 'page';
+                        count.title = hidden
+                            ? 'Hidden on this page. Tick it and press the button to show it again.'
+                            : 'A column of this page. Hiding it does not change eBay.';
+                    } else {
+                        const have = delTargets(name).length;
+                        count.className = 'e1d-cnt ' + (have === delTotal ? 'green' : 'red');
+                        count.textContent = have + '/' + delTotal;
+                        count.title = have + ' of ' + delTotal + ' SKUs in this category have this column';
+                    }
                     row.appendChild(count);
                     list.appendChild(row);
                 });
@@ -920,8 +1035,7 @@
             }
 
             function openDelModal(keepPicked) {
-                const names = specNamesForTab();
-                if (activeTab === ALL || !names.length) return;
+                if (!allDeleteNames().length) return;
                 if (keepPicked !== true && !delRunning) delPicked = new Set();
                 document.getElementById('e1dDelSearch').value = '';
                 document.getElementById('e1dDelIntro').textContent = 'Category: ' + catLabel(activeTab);
@@ -953,14 +1067,36 @@
 
             async function runDelete() {
                 const names = Array.from(delPicked);
-                if (!names.length) return;
-                const todo = delTargets(names);
-                const label = names.length === 1 ? '"' + names[0] + '"' : names.length + ' columns';
-                if (delRunning) return;
+                if (!names.length || delRunning) return;
+                const pagePicked = names.filter(pageColumnByName);
+                const specPicked = names.filter(function (name) { return !pageColumnByName(name); });
+                const pageNote = pagePicked.map(function (name) {
+                    return (hiddenFields.has(pageColumnByName(name).field) ? 'Show ' : 'Hide ') + name;
+                }).join(', ');
+                const todo = specPicked.length ? delTargets(specPicked) : [];
+                const label = specPicked.length === 1 ? '"' + specPicked[0] + '"' : specPicked.length + ' columns';
+                const question = (pageNote ? pageNote + ' on this page?' : '')
+                    + (specPicked.length
+                        ? (pageNote ? '\n\n' : '') + (todo.length
+                            ? 'Delete ' + label + ' from ' + todo.length + ' SKUs (live eBay 1 listing where there is one, and the app)?'
+                            : 'Remove ' + label + ' from this tab?')
+                        : '');
+                if (!window.confirm(question)) return;
+                pagePicked.forEach(function (name) {
+                    const field = pageColumnByName(name).field;
+                    if (hiddenFields.has(field)) hiddenFields.delete(field);
+                    else hiddenFields.add(field);
+                });
+                if (pagePicked.length) {
+                    saveHiddenFields();
+                    applyColumnGroupVisibility();
+                }
+                if (!specPicked.length) {
+                    closeDelModal();
+                    return;
+                }
+                const namesForEbay = specPicked;
                 const category = activeTab === NO_CATEGORY ? '' : activeTab;
-                if (!window.confirm(todo.length
-                    ? 'Delete ' + label + ' from ' + todo.length + ' SKUs (live eBay 1 listing where there is one, and the app)?'
-                    : 'Remove ' + label + ' from this tab?')) return;
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 const goBtn = document.getElementById('e1dDelGo');
                 const progress = document.getElementById('e1dDelProgress');
@@ -979,7 +1115,7 @@
                         const res = await fetch('/ebay1-data/delete-specific', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
-                            body: JSON.stringify({ names: names, category: category, items: chunk }),
+                            body: JSON.stringify({ names: namesForEbay, category: category, items: chunk }),
                         });
                         const json = await res.json();
                         if (!res.ok || !json.success) throw new Error(json.message || 'Request failed');
@@ -1086,19 +1222,22 @@
                 return specNamesForTab();
             }
 
-            // Columns the window lists: those of the open tab, or every item specific of the one row being edited.
+            // eBay title is a page column, not an item specific, so it is added beside the specifics.
             function editNames() {
-                if (!editRow) return editableColumnNames();
-                const spec = editRow.specifics && !Array.isArray(editRow.specifics) ? editRow.specifics : {};
-                const seen = new Set();
-                const out = [];
-                Object.keys(spec).forEach(function (n) {
-                    const k = gKey(n);
-                    if (!k || seen.has(k)) return;
-                    seen.add(k);
-                    out.push(n);
+                const names = ['eBay title'];
+                editableColumnNames().forEach(function (name) {
+                    if (gKey(name) !== 'ebaytitle') names.push(name);
                 });
-                return out.sort(function (a, b) { return a.localeCompare(b); });
+                return names;
+            }
+
+            function renderEditSkus() {
+                const box = document.getElementById('e1dEditSkus');
+                const scope = editScope();
+                const skus = scope.targets.map(function (row) { return row.sku; }).filter(Boolean);
+                const head = scope.single ? 'SKU' : (scope.selected ? 'Selected SKUs' : 'SKUs in this tab');
+                box.innerHTML = '<div class="e1d-sku-label">' + esc(head) + ' (' + skus.length + ')</div>'
+                    + '<div class="e1d-sku-list">' + skus.map(function (sku) { return '<span>' + esc(sku) + '</span>'; }).join('') + '</div>';
             }
 
             function editScope() {
@@ -1120,6 +1259,13 @@
             function editSuggestions(name) {
                 const values = new Map();
                 const sample = editRow ? rows.filter(function (r) { return (r.category || '') === (editRow.category || ''); }) : editScope().targets;
+                if (gKey(name) === 'ebaytitle') {
+                    sample.forEach(function (row) {
+                        const v = String(row.ebay_title || '').trim();
+                        if (v !== '') values.set(v, (values.get(v) || 0) + 1);
+                    });
+                    return Array.from(values.keys()).sort(function (a, b) { return values.get(b) - values.get(a); }).slice(0, 40);
+                }
                 sample.forEach(function (row) {
                     const spec = row.specifics && !Array.isArray(row.specifics) ? row.specifics : {};
                     Object.keys(spec).forEach(function (k) {
@@ -1143,7 +1289,8 @@
                     input.type = 'text';
                     input.className = 'form-control form-control-sm';
                     input.autocomplete = 'off';
-                    input.placeholder = 'Type the data for ' + name;
+                    input.placeholder = gKey(name) === 'ebaytitle' ? 'eBay title, 80 characters' : 'Type the data for ' + name;
+                    if (gKey(name) === 'ebaytitle') input.maxLength = 80;
                     input.value = editPicked.get(name) || '';
                     input.disabled = editBusy;
                     const listId = 'e1dEditDl' + i;
@@ -1183,6 +1330,7 @@
             // A column's starting value: a single row starts with its own current value.
             function startingEditValue(name) {
                 if (!editRow) return '';
+                if (gKey(name) === 'ebaytitle') return String(editRow.ebay_title || '');
                 const spec = editRow.specifics && !Array.isArray(editRow.specifics) ? editRow.specifics : {};
                 const own = Object.keys(spec).find(function (k) { return gKey(k) === gKey(name); });
                 return own ? String(spec[own] || '') : '';
@@ -1227,20 +1375,20 @@
                     window.alert('There are no rows in this tab to edit.');
                     return;
                 }
-                if (editRow && !editNames().length) {
-                    const sku = editRow.sku;
+                if (!editNames().length) {
                     editRow = null;
-                    window.alert('There are no editable item specifics for ' + sku + '. Pull the item specifics first.');
+                    window.alert('There are no columns to edit on this tab.');
                     return;
                 }
                 editPicked.clear();
                 document.getElementById('e1dEditSearch').value = '';
                 document.getElementById('e1dEditIntro').textContent = scope.single
-                    ? 'Editing the data of ' + editRow.sku + ' only.'
+                    ? 'Editing this SKU only.'
                     : (scope.selected
-                        ? 'Only the ' + scope.targets.length + ' ticked row' + (scope.targets.length === 1 ? '' : 's') + ' will change.'
-                        : 'Every row shown in this tab (' + scope.targets.length + ') will change. Tick rows first to change only those.');
+                        ? 'Only the ticked rows will change.'
+                        : 'Every row shown in this tab will change. Tick rows first to change only those.');
                 document.getElementById('e1dEditModal').hidden = false;
+                renderEditSkus();
                 renderEditFields();
                 renderEditList();
                 document.getElementById('e1dEditSearch').focus();
@@ -1302,11 +1450,18 @@
                             const spec = data.specifics && !Array.isArray(data.specifics) ? data.specifics : {};
                             const patch = {};
                             saved.forEach(function (edit) {
+                                if (gKey(edit.column) === 'ebaytitle') {
+                                    patch.ebay_title = edit.value;
+                                    patch.title_pending = true;
+                                    return;
+                                }
                                 const existing = Object.keys(spec).find(function (k) { return gKey(k) === gKey(edit.column); });
                                 spec[existing || edit.column] = edit.value;
                                 patch[specKey(edit.column)] = edit.value;
                             });
                             patch.specifics = spec;
+                            const source = rows.find(function (r) { return String(r.sku) === String(row.sku); });
+                            if (source) Object.assign(source, patch);
                             if (tRow) tRow.update(patch);
                             else Object.assign(row, patch);
                         });
@@ -1426,7 +1581,12 @@
                 try {
                     table.getColumns().forEach(function (col) {
                         const field = col.getDefinition().field;
-                        if (!field || field === 'sku' || field === '_edit') return;
+                        if (!field || field === '_edit' || field === '_copy') return;
+                        if (hiddenFields.has(field)) {
+                            if (col.isVisible()) col.hide();
+                            return;
+                        }
+                        if (field === 'sku') return;
                         const want = !filtering || e1gSel.has(fieldKey.get(field));
                         if (want && !col.isVisible()) col.show();
                         else if (!want && col.isVisible()) col.hide();
@@ -1632,7 +1792,7 @@
                         formatter: textFormatter,
                     };
                 });
-                table.setColumns(baseColumns().concat(specColumns, [editColumn()]));
+                table.setColumns(baseColumns().concat(specColumns, [copyColumn(), editColumn()]));
                 applyColumnGroupVisibility();
             }
 
@@ -1660,6 +1820,158 @@
                         if (e.target.closest('.e1d-edit-btn')) openEditModal(cell.getRow().getData());
                     },
                 };
+            }
+
+            // ---- Copy row / paste: copy the shareable data of one row, paste it into the ticked rows (right click). ----
+            // Data that belongs to one SKU is never copied: SKU, parent, item id, UPC, MPN, model, EAN, GTIN, ISBN, serial and part numbers, title.
+            const E1_CLIP_KEY = 'ebay1_data_row_clip_v1';
+            const E1_UNIQUE_KEYS = new Set(['sku', 'parent', 'itemid', 'upc', 'ean', 'gtin', 'isbn', 'mpn', 'model', 'modelnumber', 'modelname',
+                'manufacturerpartnumber', 'partnumber', 'serialnumber', 'epid', 'ebaytitle', 'title']);
+            let rowClip = null;
+            let pasteBusy = false;
+            try { rowClip = JSON.parse(localStorage.getItem(E1_CLIP_KEY) || 'null'); } catch (e) { rowClip = null; }
+            if (!rowClip || !Array.isArray(rowClip.entries)) rowClip = null;
+
+            function copyRowData(row) {
+                const spec = row && row.specifics && !Array.isArray(row.specifics) ? row.specifics : {};
+                const entries = [];
+                Object.keys(spec).forEach(function (name) {
+                    const value = String(spec[name] == null ? '' : spec[name]).trim();
+                    if (value === '' || E1_UNIQUE_KEYS.has(gKey(name))) return;
+                    entries.push({ name: name, value: value });
+                });
+                const status = document.getElementById('e1dPullStatus');
+                if (!entries.length) {
+                    status.textContent = 'Nothing to copy from ' + row.sku + '.';
+                    rowToast('Nothing copied from ' + row.sku + ': it has no item-specific values to share. Pick a row that shows data in its columns (SKU, ID, UPC, MPN, Model and title are never copied).', false);
+                    return false;
+                }
+                rowClip = { sku: row.sku, entries: entries };
+                try { localStorage.setItem(E1_CLIP_KEY, JSON.stringify(rowClip)); } catch (e) {}
+                status.textContent = 'Copied ' + entries.length + ' values of ' + row.sku + '. Right click the rows to paste.';
+                rowToast('Copied ' + entries.length + ' values of ' + row.sku + '. Tick the rows, right click one and choose Paste.', true);
+                return true;
+            }
+
+            // A message that cannot be missed: shown at the bottom of the screen for a few seconds.
+            let rowToastTimer = null;
+            function rowToast(message, ok) {
+                let box = document.getElementById('e1dToast');
+                if (!box) {
+                    box = document.createElement('div');
+                    box.id = 'e1dToast';
+                    box.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:3000;max-width:min(560px,92vw);padding:10px 16px;border-radius:12px;color:#fff;font-size:13px;font-weight:600;box-shadow:0 10px 30px rgba(15,23,42,.3);';
+                    document.body.appendChild(box);
+                }
+                box.style.background = ok ? '#16a34a' : '#dc2626';
+                box.textContent = message;
+                box.style.display = 'block';
+                clearTimeout(rowToastTimer);
+                rowToastTimer = setTimeout(function () { box.style.display = 'none'; }, ok ? 3500 : 7000);
+            }
+
+            function pasteTargets(clickedRow) {
+                const selected = table && tableReady ? table.getSelectedData().filter(passesTab) : [];
+                const base = selected.length ? selected : (clickedRow ? [clickedRow] : []);
+                return base.filter(function (row) { return row.sku && (!rowClip || String(row.sku) !== String(rowClip.sku)); });
+            }
+
+            async function pasteRowData(targets) {
+                if (!rowClip || pasteBusy || !targets.length) return;
+                const entries = rowClip.entries;
+                if (!window.confirm('Paste ' + entries.length + ' values copied from ' + rowClip.sku + ' into ' + targets.length + ' row' + (targets.length === 1 ? '' : 's') + '?\nSKU, item ID, UPC, MPN, model and title are not touched. Nothing goes to eBay until you press Push.')) return;
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                const skus = targets.map(function (row) { return row.sku; });
+                const problems = [];
+                const saved = [];
+                let failed = 0;
+                pasteBusy = true;
+                for (let c = 0; c < entries.length; c++) {
+                    jobShow('Pasting ' + rowClip.sku + ' into ' + targets.length + ' rows…', entries.length, saved.length, failed, true, problems);
+                    try {
+                        for (let i = 0; i < skus.length; i += 300) {
+                            const res = await fetch('/ebay1-data/edit-column', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                                body: JSON.stringify({ column: entries[c].name, value: entries[c].value, skus: skus.slice(i, i + 300) }),
+                            });
+                            let json = {};
+                            try { json = await res.json(); } catch (e) {}
+                            if (!res.ok || json.success === false) throw new Error(json.message || 'Could not save');
+                        }
+                        saved.push(entries[c]);
+                    } catch (e) {
+                        failed++;
+                        problems.push(entries[c].name + ': ' + (e.message || 'failed'));
+                    }
+                }
+                if (saved.length) {
+                    const bySku = new Map();
+                    table.getRows().forEach(function (tRow) { bySku.set(String(tRow.getData().sku), tRow); });
+                    table.blockRedraw();
+                    try {
+                        targets.forEach(function (row) {
+                            const source = rows.find(function (r) { return String(r.sku) === String(row.sku); }) || row;
+                            const spec = source.specifics && !Array.isArray(source.specifics) ? source.specifics : {};
+                            const patch = {};
+                            saved.forEach(function (entry) {
+                                const existing = Object.keys(spec).find(function (k) { return gKey(k) === gKey(entry.name); });
+                                spec[existing || entry.name] = entry.value;
+                                patch[specKey(entry.name)] = entry.value;
+                            });
+                            patch.specifics = spec;
+                            Object.assign(source, patch);
+                            const tRow = bySku.get(String(row.sku));
+                            if (tRow) tRow.update(patch);
+                        });
+                    } finally {
+                        table.restoreRedraw();
+                    }
+                }
+                pasteBusy = false;
+                jobShow('Paste finished: ' + saved.length + ' of ' + entries.length + ' values into ' + targets.length + ' rows', entries.length, saved.length, failed, false, problems);
+                rowToast('Pasted ' + saved.length + ' of ' + entries.length + ' values into ' + targets.length + ' row' + (targets.length === 1 ? '' : 's') + (failed ? ', ' + failed + ' failed' : '') + '.', failed === 0);
+                refreshAll();
+            }
+
+            // Copy button, just before the pen. Frozen on the right with it.
+            function copyColumn() {
+                return {
+                    title: '', field: '_copy', width: 32, minWidth: 32, hozAlign: 'center', headerHozAlign: 'center',
+                    headerSort: false, resizable: false, frozen: true, download: false, cssClass: 'e1d-edit-col',
+                    headerTooltip: 'Copy this row (not SKU, ID or UPC). Right click rows to paste.',
+                    titleFormatter: function () { return '<i class="far fa-copy" title="Copy row"></i>'; },
+                    formatter: function () {
+                        return '<button type="button" class="btn btn-sm btn-outline-secondary e1d-edit-btn e1d-rowcopy-btn" title="Copy this row. Right click the rows to paste it."><i class="far fa-copy"></i></button>';
+                    },
+                    cellClick: function (e, cell) {
+                        const btn = e.target.closest('.e1d-rowcopy-btn');
+                        if (!btn) return;
+                        const ok = copyRowData(cell.getRow().getData());
+                        const icon = btn.querySelector('i');
+                        icon.className = ok ? 'fas fa-check' : 'fas fa-times';
+                        setTimeout(function () { icon.className = 'far fa-copy'; }, 1200);
+                    },
+                };
+            }
+
+            // Right click on a row: paste the copied data into the ticked rows (or the clicked row when none is ticked).
+            function rowMenu(e, component) {
+                const clicked = component.getData();
+                const targets = pasteTargets(clicked);
+                const items = [];
+                items.push({
+                    label: rowClip
+                        ? '<i class="fas fa-paste"></i> Paste ' + rowClip.entries.length + ' values from ' + esc(rowClip.sku) + ' into ' + targets.length + ' row' + (targets.length === 1 ? '' : 's')
+                        : '<i class="fas fa-paste"></i> Paste (copy a row first with the copy button)',
+                    disabled: !rowClip || !targets.length || pasteBusy,
+                    action: function () { pasteRowData(targets); },
+                });
+                items.push({
+                    label: '<i class="far fa-copy"></i> Copy data of ' + esc(clicked.sku),
+                    action: function () { copyRowData(clicked); },
+                });
+                return items;
             }
 
             function baseColumns() {
@@ -1759,13 +2071,15 @@
                     selectableRows: 'highlight',
                     // Header titles break at every space (<br>), so the vertical headers stay short.
                     columnDefaults: { titleFormatter: breakTitle, hozAlign: 'center', headerHozAlign: 'center' },
-                    columns: baseColumns().concat([editColumn()]),
+                    columns: baseColumns().concat([copyColumn(), editColumn()]),
+                    rowContextMenu: rowMenu,
                 });
                 table.on('rowSelectionChanged', function () { renderBadges(); updatePushButton(); });
                 table.on('tableBuilt', function () {
                     tableReady = true;
                     syncSpecColumns(true);
                     applyFilters();
+                    updateMissingBadges();
                 });
                 table.on('dataFiltered', function () { /* badges are computed from the same rules */ });
             }

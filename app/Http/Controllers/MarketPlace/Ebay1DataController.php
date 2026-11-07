@@ -95,6 +95,11 @@ class Ebay1DataController extends Controller
                     }
                 }
 
+                // A title typed in Edit Column waits here until Push. It wins over the metrics title,
+                // and it is not an item specific, so it must not become its own column.
+                $pendingTitle = trim((string) ($specifics['__ebay_title'] ?? ''));
+                unset($specifics['__ebay_title']);
+
                 // Brand is always 5 Core, as on Technical Specifications.
                 foreach (array_keys($specifics) as $specName) {
                     if ($this->aspectKey((string) $specName) === 'brand') {
@@ -131,7 +136,8 @@ class Ebay1DataController extends Controller
                     'listed' => (string) ($item->listed ?? 'Pending'),
                     'item_id' => $itemId,
                     'buyer_link' => (string) ($item->buyer_link ?? ($metric['ebay_link'] ?? '')),
-                    'ebay_title' => (string) ($metric['ebay_title'] ?? ''),
+                    'ebay_title' => $pendingTitle !== '' ? $pendingTitle : (string) ($metric['ebay_title'] ?? ''),
+                    'title_pending' => $pendingTitle !== '',
                     'ebay_price' => $this->num($metric['ebay_price'] ?? null),
                     'ebay_stock' => $this->num($metric['ebay_stock'] ?? null),
                     'ebay_l7' => $this->num($metric['ebay_l7'] ?? null),
@@ -148,6 +154,32 @@ class Ebay1DataController extends Controller
                     'specs_pulled' => $live !== null,
                     'specifics' => $specifics,
                 ];
+            }
+
+            // MPN and Model always carry the exact SKU of their own row. A category that has either column gets
+            // it on every SKU of that category, whatever eBay or an edit had there.
+            $skuColumns = ['mpn' => 'MPN', 'model' => 'Model'];
+            $present = [];
+            foreach ($data as $entry) {
+                foreach (array_keys($entry['specifics']) as $specName) {
+                    $k = $this->aspectKey((string) $specName);
+                    if (isset($skuColumns[$k])) {
+                        $present[$this->categoryHash((string) $entry['category'])][$k] = (string) $specName;
+                    }
+                }
+            }
+            foreach ($data as $i => $entry) {
+                $hash = $this->categoryHash((string) $entry['category']);
+                foreach ($present[$hash] ?? [] as $k => $columnName) {
+                    $target = $columnName;
+                    foreach (array_keys($entry['specifics']) as $specName) {
+                        if ($this->aspectKey((string) $specName) === $k) {
+                            $target = (string) $specName;
+                            break;
+                        }
+                    }
+                    $data[$i]['specifics'][$target] = (string) $entry['sku'];
+                }
             }
 
             return response()->json([
@@ -449,6 +481,7 @@ class Ebay1DataController extends Controller
             'items.*.sku' => 'required|string|max:191',
             'items.*.item_id' => 'required|string|max:64',
             'items.*.specifics' => 'nullable|array|max:300',
+            'items.*.title' => 'nullable|string|max:80',
         ]);
         @set_time_limit(300);
 
@@ -473,33 +506,38 @@ class Ebay1DataController extends Controller
                 }
                 $overrides[] = ['name' => $name, 'value' => $value];
             }
-            if ($overrides === []) {
+            $title = trim((string) ($entry['title'] ?? ''));
+            if ($overrides === [] && $title === '') {
                 $results[] = ['sku' => $sku, 'status' => 'skipped', 'message' => 'No values to send.'];
 
                 continue;
             }
 
+            $ctx = null;
+            $result = ['success' => true, 'message' => ''];
             try {
-                $item = $service->getItem($itemId);
-                if (! is_array($item)) {
-                    $why = trim((string) ($service->lastGetItemError ?? ''));
-                    $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
-
-                    continue;
-                }
                 $ctx = $service->tradingReviseContext();
-                $result = EbayTradingReviseItem::reviseTechnicalSpecifications(
-                    $ctx['endpoint'],
-                    $ctx['compatLevel'],
-                    $ctx['devId'],
-                    $ctx['appId'],
-                    $ctx['certId'],
-                    $ctx['siteId'],
-                    $ctx['authToken'],
-                    $item,
-                    $sku,
-                    $overrides
-                );
+                if ($overrides !== []) {
+                    $item = $service->getItem($itemId);
+                    if (! is_array($item)) {
+                        $why = trim((string) ($service->lastGetItemError ?? ''));
+                        $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
+
+                        continue;
+                    }
+                    $result = EbayTradingReviseItem::reviseTechnicalSpecifications(
+                        $ctx['endpoint'],
+                        $ctx['compatLevel'],
+                        $ctx['devId'],
+                        $ctx['appId'],
+                        $ctx['certId'],
+                        $ctx['siteId'],
+                        $ctx['authToken'],
+                        $item,
+                        $sku,
+                        $overrides
+                    );
+                }
             } catch (\Throwable $e) {
                 Log::warning('Ebay1Data: push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
                 $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $e->getMessage()];
@@ -514,7 +552,7 @@ class Ebay1DataController extends Controller
             }
 
             // The stored copy follows eBay once eBay accepted the values.
-            if (Schema::hasTable('ebay1_item_specifics')) {
+            if ($overrides !== [] && Schema::hasTable('ebay1_item_specifics')) {
                 $stored = DB::table('ebay1_item_specifics')->where('sku', $this->skuKey($sku))->first();
                 if ($stored) {
                     $decoded = json_decode((string) $stored->specifics, true);
@@ -536,8 +574,41 @@ class Ebay1DataController extends Controller
                 }
             }
 
-            $message = (string) ($result['message'] ?? '');
-            $unchanged = stripos($message, 'No values changed') === 0;
+            $titleMessage = '';
+            if ($title !== '') {
+                try {
+                    $titleResult = EbayTradingReviseItem::reviseListingTitle(
+                        $ctx['endpoint'],
+                        $ctx['compatLevel'],
+                        $ctx['devId'],
+                        $ctx['appId'],
+                        $ctx['certId'],
+                        $ctx['siteId'],
+                        $ctx['authToken'],
+                        $itemId,
+                        $title,
+                        $sku
+                    );
+                } catch (\Throwable $e) {
+                    Log::warning('Ebay1Data: title push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+                    $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $e->getMessage()];
+
+                    continue;
+                }
+                if (! ($titleResult['success'] ?? false)) {
+                    $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => (string) ($titleResult['message'] ?? 'eBay rejected the title.')];
+
+                    continue;
+                }
+                $this->clearPendingTitle($sku);
+                if (Schema::hasTable('ebay_metrics') && Schema::hasColumn('ebay_metrics', 'ebay_title')) {
+                    DB::table('ebay_metrics')->where('sku', $sku)->update(['ebay_title' => $title]);
+                }
+                $titleMessage = (string) ($titleResult['message'] ?? '');
+            }
+
+            $message = trim((string) ($result['message'] ?? '').($titleMessage !== '' ? ' '.$titleMessage : ''));
+            $unchanged = $title === '' && stripos((string) ($result['message'] ?? ''), 'No values changed') === 0;
             $results[] = ['sku' => $sku, 'status' => $unchanged ? 'unchanged' : 'pushed', 'message' => $message];
         }
 
@@ -648,6 +719,9 @@ class Ebay1DataController extends Controller
             array_map('trim', $data['skus']),
             static fn ($s) => $s !== '' && stripos($s, 'PARENT') === false
         )));
+        if ($columnKey === 'ebaytitle') {
+            return $this->saveEbayTitles($skus, $value);
+        }
 
         $specsUpdated = 0;
         if (Schema::hasColumn('product_master', 'description_v2_specifications')) {
@@ -1012,6 +1086,70 @@ class Ebay1DataController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Keeps an edited eBay title on the SKU until Push sends it. eBay allows 80 characters.
+     */
+    private function saveEbayTitles(array $skus, string $value)
+    {
+        if ($value === '') {
+            return response()->json(['success' => false, 'message' => 'eBay title cannot be blank.'], 422);
+        }
+        if (mb_strlen($value) > 80) {
+            return response()->json(['success' => false, 'message' => 'eBay title can be at most 80 characters.'], 422);
+        }
+
+        if (Schema::hasTable('ebay_metrics') && Schema::hasColumn('ebay_metrics', 'ebay_title')) {
+            DB::table('ebay_metrics')->whereIn('sku', $skus)->update(['ebay_title' => $value]);
+        }
+
+        $copiesUpdated = 0;
+        if (Schema::hasTable('ebay1_item_specifics')) {
+            foreach ($skus as $sku) {
+                $key = $this->skuKey($sku);
+                $stored = DB::table('ebay1_item_specifics')->where('sku', $key)->first();
+                $decoded = $stored ? json_decode((string) $stored->specifics, true) : [];
+                $decoded = is_array($decoded) ? $decoded : [];
+                $decoded['__ebay_title'] = $value;
+                $payload = [
+                    'specifics' => json_encode($decoded, JSON_UNESCAPED_UNICODE),
+                    'updated_at' => now(),
+                ];
+                if ($stored) {
+                    DB::table('ebay1_item_specifics')->where('sku', $key)->update($payload);
+                } else {
+                    DB::table('ebay1_item_specifics')->insert($payload + [
+                        'sku' => $key,
+                        'created_at' => now(),
+                    ]);
+                }
+                $copiesUpdated++;
+            }
+        }
+
+        return response()->json(['success' => true, 'skus' => count($skus), 'specs_updated' => 0, 'copies_updated' => $copiesUpdated]);
+    }
+
+    private function clearPendingTitle(string $sku): void
+    {
+        if (! Schema::hasTable('ebay1_item_specifics')) {
+            return;
+        }
+        $key = $this->skuKey($sku);
+        $stored = DB::table('ebay1_item_specifics')->where('sku', $key)->first();
+        if (! $stored) {
+            return;
+        }
+        $decoded = json_decode((string) $stored->specifics, true);
+        if (! is_array($decoded) || ! array_key_exists('__ebay_title', $decoded)) {
+            return;
+        }
+        unset($decoded['__ebay_title']);
+        DB::table('ebay1_item_specifics')->where('sku', $key)->update([
+            'specifics' => json_encode($decoded, JSON_UNESCAPED_UNICODE),
+            'updated_at' => now(),
+        ]);
     }
 
     private function skuKey(string $sku): string
