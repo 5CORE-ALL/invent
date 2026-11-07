@@ -299,12 +299,13 @@ class YesterdayViewsService
         }
 
         // Temu / Temu 2 L30 pages use sheet product_clicks, not the thinner metrics L30.
-        // Sheet clicks ÷ 30 is only an average, so it fills a gap or improves another estimate
-        // but never replaces a real L1 figure.
+        // Sheet clicks ÷ 30 is only an average, so it fills a gap or replaces another estimate
+        // (the metrics L30 ÷ 30 is a different, much larger clicks number: it made the Temu cell jump
+        // from 873 to 5,710) but never replaces a real L1 figure.
         if (Schema::hasTable('temu_view_data') && Schema::hasColumn('temu_view_data', 'product_clicks')) {
             $clicks = (int) DB::table('temu_view_data')->sum('product_clicks');
             $est = (int) round($clicks / 30);
-            if ($est > ($map['temu'] ?? 0) && (! isset($map['temu']) || isset($this->estimatedKeys['temu']))) {
+            if ($est > 0 && (! isset($map['temu']) || isset($this->estimatedKeys['temu']))) {
                 $map['temu'] = $est;
                 $this->estimatedKeys['temu'] = true;
             }
@@ -312,7 +313,7 @@ class YesterdayViewsService
         if (Schema::hasTable('temu2_view_data') && Schema::hasColumn('temu2_view_data', 'product_clicks')) {
             $clicks = (int) DB::table('temu2_view_data')->sum('product_clicks');
             $est = (int) round($clicks / 30);
-            if ($est > ($map['temu2'] ?? 0) && (! isset($map['temu2']) || isset($this->estimatedKeys['temu2']))) {
+            if ($est > 0 && (! isset($map['temu2']) || isset($this->estimatedKeys['temu2']))) {
                 $map['temu2'] = $est;
                 $this->estimatedKeys['temu2'] = true;
             }
