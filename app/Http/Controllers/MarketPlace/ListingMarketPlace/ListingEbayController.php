@@ -166,7 +166,7 @@ class ListingEbayController extends Controller
     private function fixedFieldValue(array $row, string $name): ?string
     {
         $key = $this->specKey($name);
-        $fixed = ['brand' => '5 Core', 'manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China'];
+        $fixed = ['brand' => '5 Core', 'manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China', 'durabilityguarantee' => 'Yes'];
         if (isset($fixed[$key])) {
             return $fixed[$key];
         }
@@ -321,6 +321,32 @@ class ListingEbayController extends Controller
 
             return response()->json(['success' => false, 'message' => 'Publish failed: '.$e->getMessage()], 500);
         }
+    }
+
+    /**
+     * GET /listing_ebay/drafts: SKU (upper case) => draft status, for SKUs that already have an eBay draft
+     * waiting (draft / ready / queued / failed). The Create draft column shows a green tick for them.
+     */
+    public function getDrafts()
+    {
+        $channelId = $this->ebayChannelId();
+        if ($channelId === null || ! \Illuminate\Support\Facades\Schema::hasTable('listing_manager_channel_drafts')) {
+            return response()->json(['status' => 200, 'data' => (object) []]);
+        }
+
+        $out = [];
+        \App\Models\ListingManagerChannelDraft::query()
+            ->where('channel_id', $channelId)
+            ->whereIn('status', ['draft', 'ready', 'queued', 'failed'])
+            ->get(['seller_sku', 'status'])
+            ->each(function ($row) use (&$out) {
+                $key = strtoupper(trim(str_replace("\u{00a0}", ' ', (string) $row->seller_sku)));
+                if ($key !== '') {
+                    $out[$key] = (string) $row->status;
+                }
+            });
+
+        return response()->json(['status' => 200, 'data' => (object) $out]);
     }
 
     private function isLiveOnEbay(string $sku): bool

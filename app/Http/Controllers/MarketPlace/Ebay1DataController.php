@@ -102,10 +102,13 @@ class Ebay1DataController extends Controller
                 $pendingPrice = is_numeric($specifics['__ebay_price'] ?? null) ? round((float) $specifics['__ebay_price'], 2) : null;
                 unset($specifics['__ebay_title'], $specifics['__ebay_price']);
 
-                // Brand is always 5 Core, as on Technical Specifications.
+                // Brand is always 5 Core, and Durability Guarantee is always Yes, as on Technical Specifications.
                 foreach (array_keys($specifics) as $specName) {
-                    if ($this->aspectKey((string) $specName) === 'brand') {
+                    $aspect = $this->aspectKey((string) $specName);
+                    if ($aspect === 'brand') {
                         $specifics[$specName] = '5 Core';
+                    } elseif ($aspect === 'durabilityguarantee') {
+                        $specifics[$specName] = 'Yes';
                     }
                 }
 

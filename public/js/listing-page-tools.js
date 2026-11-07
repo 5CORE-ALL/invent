@@ -204,6 +204,12 @@
         }
         const sku = String(data.sku || '').trim();
         if (!sku) return '';
+        // A page that tracks drafts (listingPageConfig.draftStatusFor) shows a green tick once the SKU has one.
+        const draftState = typeof cfg().draftStatusFor === 'function' ? String(cfg().draftStatusFor(sku) || '') : '';
+        if (draftState) {
+            return '<span class="listing-draft-ok" style="color:#16a34a;font-weight:700;white-space:nowrap;" title="Draft exists (' +
+                escapeHtml(draftState) + ')"><i class="fas fa-check-circle"></i> Draft</span>';
+        }
         const label = escapeHtml(cfg().channelLabel || 'marketplace');
         return '<button type="button" class="listing-mp-publish-btn" data-sku="' + escapeHtml(sku) +
             '" title="Choose single listing or your own variation group for ' +
@@ -259,7 +265,12 @@
     }
 
     function createDraftFor(sku) {
-        postDraftAction(cfg().createDraftUrl, sku, 'Creating draft…', 'Creating a draft for ' + sku + '. Nothing is sent to ' + (cfg().channelLabel || 'the marketplace') + '.', 'Draft saved', 'Draft failed');
+        postDraftAction(cfg().createDraftUrl, sku, 'Creating draft…', 'Creating a draft for ' + sku + '. Nothing is sent to ' + (cfg().channelLabel || 'the marketplace') + '.', 'Draft saved', 'Draft failed', function (json) {
+            const state = String(json.status || '');
+            if (['draft', 'ready', 'queued', 'failed'].indexOf(state) !== -1 && typeof cfg().onDraftCreated === 'function') {
+                cfg().onDraftCreated(sku, state);
+            }
+        });
     }
 
     function publishDraftFor(sku) {

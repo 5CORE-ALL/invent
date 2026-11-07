@@ -6316,6 +6316,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-clear-sprice', [EbayController::class, 'clearEbaySprice']);
     Route::post('/ebay/save-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
 
+    Route::get('/listing_ebay/drafts', [ListingEbayController::class, 'getDrafts']);
     Route::post('/listing_ebay/create-draft', [ListingEbayController::class, 'createDraft']);
     Route::post('/listing_ebay/publish-draft', [ListingEbayController::class, 'publishDraft']);
     Route::post('/listing_ebay/save-status', [ListingEbayController::class, 'updateStatus']);

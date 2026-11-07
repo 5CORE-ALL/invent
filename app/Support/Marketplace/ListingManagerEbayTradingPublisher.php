@@ -552,6 +552,19 @@ class ListingManagerEbayTradingPublisher
             ? EbayCategoryAspects::variationAspect($aspects, self::variationAspectName($variations))
             : '';
         $aspectNames = array_map(static fn ($a) => strtolower($a['name']), $aspects);
+        // Durability Guarantee is always Yes on categories that ask for it.
+        foreach ($aspects as $aspect) {
+            $aspectName = (string) ($aspect['name'] ?? '');
+            if (strtolower(preg_replace('/[^a-z0-9]+/i', '', $aspectName) ?? '') !== 'durabilityguarantee') {
+                continue;
+            }
+            foreach (array_keys($specifics) as $existing) {
+                if (strtolower(preg_replace('/[^a-z0-9]+/i', '', (string) $existing) ?? '') === 'durabilityguarantee') {
+                    unset($specifics[$existing]);
+                }
+            }
+            $specifics[$aspectName] = 'Yes';
+        }
         if (in_array('model', $aspectNames, true) && strcasecmp($variationAspect, 'Model') !== 0 && trim((string) ($specifics['Model'] ?? '')) === '') {
             $specifics['Model'] = $sku;
         }
