@@ -3,10 +3,18 @@
 namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
+use App\Models\AttendanceDailySummary;
 use App\Models\Dar;
+use App\Models\DeletedTask;
+use App\Models\Task;
+use App\Models\TeamLoggerDailyHours;
 use App\Models\User;
+use App\Services\TeamSalaryCalculator;
+use App\Support\AttL30Metrics;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 
 class DarController extends Controller
 {
@@ -51,6 +59,182 @@ class DarController extends Controller
                     'updated_at' => optional($row->updated_at)->format('Y-m-d H:i'),
                 ];
             });
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * Comparison grid: one row per user per day showing
+     *  - DAR time (sum of DAR time_taken, minutes)
+     *  - ATC done time (sum of etc_done minutes of tasks marked Done that same day)
+     *  - number of tasks done that day
+     *  - working hours that day (attendance active time, Team Logger for its users)
+     */
+    public function comparison(Request $request)
+    {
+        $days = (int) $request->query('days', 30);
+        $days = min(max($days, 1), 366);
+        $userId = (int) $request->query('user_id', 0);
+
+        $tz = 'America/Los_Angeles';
+        $to = Carbon::today($tz);
+        $from = $to->copy()->subDays($days - 1);
+        $fromDate = $from->toDateString();
+        $toDate = $to->toDateString();
+
+        $users = User::query()->get(['id', 'name', 'email'])->keyBy('id');
+        $idByEmail = [];
+        foreach ($users as $u) {
+            $key = strtolower(trim((string) $u->email));
+            if ($key !== '') {
+                $idByEmail[$key] = (int) $u->id;
+            }
+        }
+
+        // [date][user_id] => ['dar' => min, 'atc' => min, 'done' => n, 'work' => seconds]
+        $grid = [];
+        $cell = function (string $date, int $uid) use (&$grid): void {
+            if (! isset($grid[$date][$uid])) {
+                $grid[$date][$uid] = ['dar' => 0.0, 'atc' => 0.0, 'done' => 0, 'work' => 0];
+            }
+        };
+
+        // DAR minutes
+        $darQuery = Dar::query()
+            ->whereDate('report_date', '>=', $fromDate)
+            ->whereDate('report_date', '<=', $toDate);
+        if ($userId > 0) {
+            $darQuery->where('user_id', $userId);
+        }
+        foreach ($darQuery->get(['user_id', 'report_date', 'time_taken']) as $row) {
+            $date = optional($row->report_date)->format('Y-m-d');
+            if (! $date || ! $row->user_id) {
+                continue;
+            }
+            $cell($date, (int) $row->user_id);
+            $grid[$date][(int) $row->user_id]['dar'] += (float) $row->time_taken;
+        }
+
+        // Done tasks (live + archived), credited to every assignee on the completion day
+        $startAt = $from->copy()->startOfDay()->format('Y-m-d H:i:s');
+        $endAt = $to->copy()->endOfDay()->format('Y-m-d H:i:s');
+        $seen = [];
+        $addTask = function ($task, bool $archived) use (&$grid, &$seen, $cell, $idByEmail, $userId): void {
+            if (empty($task->completion_date)) {
+                return;
+            }
+            $taskKey = $archived ? (int) ($task->original_task_id ?? 0) : (int) $task->id;
+            if ($taskKey > 0) {
+                if ($archived && isset($seen[$taskKey])) {
+                    return; // live copy already counted
+                }
+                $seen[$taskKey] = true;
+            }
+            $date = Carbon::parse($task->completion_date)->toDateString();
+            foreach (array_filter(array_map('trim', explode(',', (string) ($task->assign_to ?? '')))) as $email) {
+                $uid = $idByEmail[strtolower($email)] ?? 0;
+                if ($uid <= 0 || ($userId > 0 && $uid !== $userId)) {
+                    continue;
+                }
+                $cell($date, $uid);
+                $grid[$date][$uid]['done']++;
+                $grid[$date][$uid]['atc'] += (float) ($task->etc_done ?? 0);
+            }
+        };
+
+        Task::query()
+            ->where('status', 'Done')
+            ->whereBetween('completion_date', [$startAt, $endAt])
+            ->get(['id', 'assign_to', 'completion_date', 'etc_done'])
+            ->each(fn ($t) => $addTask($t, false));
+
+        DeletedTask::query()
+            ->where('status', 'Done')
+            ->whereBetween('completion_date', [$startAt, $endAt])
+            ->get(['original_task_id', 'assign_to', 'completion_date', 'etc_done'])
+            ->each(fn ($t) => $addTask($t, true));
+
+        // Working hours (attendance active seconds)
+        if (Schema::hasTable('attendance_daily_summaries')) {
+            $q = AttendanceDailySummary::query()
+                ->whereDate('work_date', '>=', $fromDate)
+                ->whereDate('work_date', '<=', $toDate);
+            if ($userId > 0) {
+                $q->where('user_id', $userId);
+            }
+            foreach ($q->get(['user_id', 'work_date', 'active_seconds']) as $row) {
+                $date = optional($row->work_date)->format('Y-m-d');
+                if (! $date || (int) $row->active_seconds <= 0) {
+                    continue;
+                }
+                $cell($date, (int) $row->user_id);
+                $grid[$date][(int) $row->user_id]['work'] = max($grid[$date][(int) $row->user_id]['work'], (int) $row->active_seconds);
+            }
+        }
+
+        // Team Logger users (e.g. Shobha, Mariya) clock time there instead
+        if (Schema::hasTable('team_logger_daily_hours')) {
+            $mapper = new TeamSalaryCalculator();
+            $hoursByEmailDate = [];
+            TeamLoggerDailyHours::query()
+                ->whereDate('work_date', '>=', $fromDate)
+                ->whereDate('work_date', '<=', $toDate)
+                ->get(['employee_email', 'work_date', 'active_hours', 'productive_hours'])
+                ->each(function ($r) use (&$hoursByEmailDate) {
+                    $email = strtolower(trim((string) $r->employee_email));
+                    $date = optional($r->work_date)->format('Y-m-d');
+                    if ($email === '' || ! $date) {
+                        return;
+                    }
+                    $h = (float) $r->active_hours;
+                    if ($h <= 0) {
+                        $h = (float) $r->productive_hours;
+                    }
+                    $hoursByEmailDate[$email][$date] = max($hoursByEmailDate[$email][$date] ?? 0, $h);
+                });
+
+            foreach ($users as $u) {
+                if (! AttL30Metrics::usesTeamLogger($u->name, $u->email)) {
+                    continue;
+                }
+                if ($userId > 0 && (int) $u->id !== $userId) {
+                    continue;
+                }
+                $appEmail = strtolower(trim((string) $u->email));
+                $tlEmail = strtolower($mapper->teamLoggerEmail((string) $u->email));
+                $byDate = $hoursByEmailDate[$tlEmail] ?? $hoursByEmailDate[$appEmail] ?? [];
+                foreach ($byDate as $date => $hours) {
+                    if ($hours <= 0) {
+                        continue;
+                    }
+                    $cell($date, (int) $u->id);
+                    $grid[$date][(int) $u->id]['work'] = max($grid[$date][(int) $u->id]['work'], (int) round($hours * 3600));
+                }
+            }
+        }
+
+        $rows = [];
+        foreach ($grid as $date => $byUser) {
+            foreach ($byUser as $uid => $m) {
+                if ($m['dar'] <= 0 && $m['atc'] <= 0 && $m['done'] <= 0 && $m['work'] <= 0) {
+                    continue;
+                }
+                $rows[] = [
+                    'id' => $date.'|'.$uid,
+                    'report_date' => $date,
+                    'user_id' => $uid,
+                    'user_name' => optional($users->get($uid))->name,
+                    'dar_minutes' => round($m['dar'], 2),
+                    'atc_minutes' => round($m['atc'], 2),
+                    'tasks_done' => $m['done'],
+                    'working_minutes' => (int) round($m['work'] / 60),
+                ];
+            }
+        }
+
+        usort($rows, function (array $a, array $b): int {
+            return [$b['report_date'], (string) $a['user_name']] <=> [$a['report_date'], (string) $b['user_name']];
+        });
 
         return response()->json(['data' => $rows]);
     }

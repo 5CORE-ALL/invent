@@ -3803,6 +3803,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(DarReportController::class)->group(function () {
         Route::get('/dar', 'index')->name('dar.index');
         Route::get('/dar/data', 'data')->name('dar.data');
+        Route::get('/dar/comparison', 'comparison')->name('dar.comparison');
         Route::post('/dar/store', 'store')->name('dar.store');
         Route::post('/dar/update/{id}', 'update')->name('dar.update');
         Route::post('/dar/delete/{id}', 'destroy')->name('dar.delete');

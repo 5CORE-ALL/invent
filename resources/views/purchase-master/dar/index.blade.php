@@ -7,16 +7,23 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         /* Tabulator header — teal pill so it matches the reference design. */
-        #darTable .tabulator-header {
+        #darTable .tabulator-header,
+        #darComparisonTable .tabulator-header {
             background: #1abc9c;
         }
 
-        #darTable .tabulator-header .tabulator-col {
+        #darTable .tabulator-header .tabulator-col,
+        #darComparisonTable .tabulator-header .tabulator-col {
             background: #1abc9c;
             border-right: 1px solid rgba(255, 255, 255, 0.25);
         }
 
-        #darTable .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+        #darComparisonTable .tabulator-cell {
+            padding: 8px 14px !important;
+        }
+
+        #darTable .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
+        #darComparisonTable .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             color: #000000;
             font-weight: 700;
             font-size: 13px;
@@ -165,6 +172,20 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
+                    <ul class="nav nav-tabs mb-3" id="darTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="dar-tab-btn" data-bs-toggle="tab" data-bs-target="#darTabPane" type="button" role="tab" aria-controls="darTabPane" aria-selected="true">
+                                <i class="fas fa-clipboard-list me-1"></i>DAR
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="dar-comparison-tab-btn" data-bs-toggle="tab" data-bs-target="#darComparisonPane" type="button" role="tab" aria-controls="darComparisonPane" aria-selected="false">
+                                <i class="fas fa-scale-balanced me-1"></i>Comparison
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                    <div class="tab-pane fade show active" id="darTabPane" role="tabpanel" aria-labelledby="dar-tab-btn">
                     <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
                         <button type="button" class="dar-page-add-btn" id="darPageAddBtn" title="Add Daily Activity Report">
                             <i class="fas fa-clipboard-list"></i>
@@ -190,6 +211,33 @@
                         </span>
                     </div>
                     <div id="darTable"></div>
+                    </div>
+
+                    {{-- Comparison: DAR time vs same-day done ATC, tasks done and working hours --}}
+                    <div class="tab-pane fade" id="darComparisonPane" role="tabpanel" aria-labelledby="dar-comparison-tab-btn">
+                        <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
+                            <div class="d-flex gap-2 flex-wrap">
+                                <select id="darCmpUser" class="form-select form-select-sm" style="min-width:200px;" title="Filter by user">
+                                    <option value="">All Users</option>
+                                    @foreach($users as $u)
+                                        <option value="{{ $u->id }}" @selected((int) ($filterUserId ?? 0) === (int) $u->id)>{{ $u->name }}</option>
+                                    @endforeach
+                                </select>
+                                <select id="darCmpDays" class="form-select form-select-sm" style="width:auto;" title="Date range">
+                                    <option value="7">Last 7 days</option>
+                                    <option value="15">Last 15 days</option>
+                                    <option value="30" selected>Last 30 days</option>
+                                    <option value="60">Last 60 days</option>
+                                    <option value="90">Last 90 days</option>
+                                </select>
+                            </div>
+                            <span class="dar-count-badge">
+                                <i class="fas fa-list me-1"></i>Rows: <strong id="darCmpCount">0</strong>
+                            </span>
+                        </div>
+                        <div id="darComparisonTable"></div>
+                    </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -417,6 +465,90 @@
             // stay consistent with the optional last-N-days window.
             $('#darUserFilter').on('change', function () {
                 table.setData(dataUrl, ajaxParams());
+            });
+
+            // ---- Comparison tab (lazy-built the first time it is shown) ----
+            let cmpTable = null;
+            const cmpUrl = @json(route('dar.comparison'));
+
+            function cmpParams() {
+                const params = { days: $('#darCmpDays').val() || 30 };
+                const uid = $('#darCmpUser').val();
+                if (uid) params.user_id = uid;
+                return params;
+            }
+
+            function minsCell(cell) {
+                const v = cell.getValue();
+                if (v === null || v === undefined || Number(v) <= 0) {
+                    return '<span class="dar-time-pill is-empty">&mdash;</span>';
+                }
+                return '<span class="dar-time-pill">' + formatHrsMin(v) + '</span>';
+            }
+
+            function buildComparisonTable() {
+                cmpTable = new Tabulator('#darComparisonTable', {
+                    ajaxURL: cmpUrl,
+                    ajaxParams: cmpParams,
+                    ajaxResponse: function (url, params, response) {
+                        return (response && response.data) ? response.data : [];
+                    },
+                    dataLoaded: function (data) {
+                        $('#darCmpCount').text(Array.isArray(data) ? data.length : 0);
+                    },
+                    dataFiltered: function (filters, rows) {
+                        $('#darCmpCount').text(Array.isArray(rows) ? rows.length : 0);
+                    },
+                    layout: 'fitColumns',
+                    rowHeight: 46,
+                    pagination: 'local',
+                    paginationSize: 25,
+                    paginationSizeSelector: [10, 25, 50, 100],
+                    initialSort: [{ column: 'report_date', dir: 'desc' }],
+                    placeholder: 'No DAR / task / attendance data for this range.',
+                    columns: [
+                        { title: '#', formatter: 'rownum', width: 60, hozAlign: 'center', vertAlign: 'middle', headerSort: false },
+                        {
+                            title: 'Date', field: 'report_date', width: 120, hozAlign: 'center', vertAlign: 'middle',
+                            formatter: function (cell) { return formatDateNoYear(cell.getValue()); },
+                        },
+                        {
+                            title: 'User', field: 'user_name', minWidth: 160, widthGrow: 1, vertAlign: 'middle',
+                            formatter: userFormatter,
+                        },
+                        {
+                            title: 'DAR Time', field: 'dar_minutes', hozAlign: 'center', vertAlign: 'middle',
+                            sorter: 'number', formatter: minsCell,
+                        },
+                        {
+                            title: 'ATC Done (Same Day)', field: 'atc_minutes', hozAlign: 'center', vertAlign: 'middle',
+                            sorter: 'number', formatter: minsCell,
+                        },
+                        {
+                            title: 'Tasks Done', field: 'tasks_done', hozAlign: 'center', vertAlign: 'middle',
+                            sorter: 'number', width: 130,
+                            formatter: function (cell) {
+                                const n = Number(cell.getValue()) || 0;
+                                return n > 0 ? '<span class="dar-time-pill">' + n + '</span>' : '<span class="dar-time-pill is-empty">&mdash;</span>';
+                            },
+                        },
+                        {
+                            title: 'Working Hours', field: 'working_minutes', hozAlign: 'center', vertAlign: 'middle',
+                            sorter: 'number', formatter: minsCell,
+                        },
+                    ],
+                });
+            }
+
+            document.getElementById('dar-comparison-tab-btn').addEventListener('shown.bs.tab', function () {
+                if (!cmpTable) {
+                    buildComparisonTable();
+                } else {
+                    cmpTable.redraw(true);
+                }
+            });
+            $('#darCmpUser, #darCmpDays').on('change', function () {
+                if (cmpTable) cmpTable.setData(cmpUrl, cmpParams());
             });
 
             function deleteRow(id) {
