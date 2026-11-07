@@ -3570,13 +3570,13 @@
                     },
                 },
                 {
-                    title: 'CVR Trend',
+                    title: 'CVR Disc $',
                     field: 'lmp_cvr_discount',
-                    width: 96,
+                    width: 86,
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    headerTooltip: 'CVR Trend Disc — CVR trend (L30 vs L45) and the extra discount % it adds to S PRC. Set it in the CVR Trend Disc button. Read-only.',
+                    headerTooltip: 'CVR up / down extra discount in dollars: Std Prc × the rule discount %. Set the % in Sprc Dil (CVR up / down section). Read-only.',
                     headerFilter: 'list',
                     headerFilterParams: { values: { '': 'All', 'applied': 'Discounted', 'down': 'Arrow down', 'up': 'Arrow up' }, clearable: true },
                     headerFilterFunc: function(headerValue, rowValue, rowData) {
@@ -3587,23 +3587,25 @@
                         return info.trend === headerValue;
                     },
                     sorter: function(a, b, aRow, bRow) {
-                        const fn = typeof computeAmzLmpCvrDiscountPct === 'function' ? computeAmzLmpCvrDiscountPct : function() { return 0; };
-                        return (Number(fn(aRow.getData())) || 0) - (Number(fn(bRow.getData())) || 0);
+                        const amt = function(d) {
+                            const std = Number(d && d.STANDARD_PRICE) || 0;
+                            const fn = typeof computeAmzLmpCvrDiscountPct === 'function' ? computeAmzLmpCvrDiscountPct : function() { return 0; };
+                            return std * (Number(fn(d)) || 0) / 100;
+                        };
+                        return amt(aRow.getData()) - amt(bRow.getData());
                     },
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         const info = (typeof amzLmpCvrInfo === 'function') ? amzLmpCvrInfo(d) : null;
                         if (!info) return '';
-                        const arrow = info.trend === 'down' ? '▼' : (info.trend === 'up' ? '▲' : '–');
-                        const color = info.trend === 'down' ? '#dc3545' : (info.trend === 'up' ? '#198754' : '#6c757d');
+                        const std = Number(d.STANDARD_PRICE) || 0;
                         const pct = info.disc;
-                        const tip = 'CVR ' + info.cvr.toFixed(2) + '% vs L45 ' + info.cvr45.toFixed(2) + '% → CVR ' + info.trend
-                            + (info.lmp > 0 ? (' · LMP $' + info.lmp.toFixed(2)) : ' · no LMP')
-                            + (pct ? (' → extra discount ' + pct + '%') : ' → no extra discount');
-                        return '<span title="' + amzPefEscAttr(tip) + '" style="white-space:nowrap;">'
-                            + '<span style="color:' + color + ';">' + arrow + '</span> '
-                            + (pct ? ('<b>' + (pct > 0 ? '+' : '') + pct + '%</b>') : '<span class="text-muted">—</span>')
-                            + '</span>';
+                        if (!pct || !(std > 0)) return '<span class="text-muted" title="No extra discount from the CVR up / down rule">—</span>';
+                        const amt = Math.round(std * pct) / 100;
+                        const tip = pct + '% of Std Prc $' + std.toFixed(2) + ' = $' + amt.toFixed(2)
+                            + ' · CVR ' + info.cvr.toFixed(2) + '% vs L45 ' + info.cvr45.toFixed(2) + '%'
+                            + (info.lmp > 0 ? (' · LMP $' + info.lmp.toFixed(2)) : ' · no LMP');
+                        return '<span title="' + amzPefEscAttr(tip) + '" style="font-weight:600;white-space:nowrap;">$' + amt.toFixed(2) + '</span>';
                     },
                 },
                 {
