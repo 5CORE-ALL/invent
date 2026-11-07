@@ -859,6 +859,7 @@
 
                     @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'buttons'])
                     @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'buttons'])
+                    @include('partials.amazon-lmp-cvr-disc-rule', ['amzLmpCvrPart' => 'buttons'])
 
                     <!-- Selected Rows Count -->
                     <span class="badge bg-primary fs-6 p-2 ms-2" id="selected-rows-count" style="display: none;">
@@ -1409,6 +1410,7 @@
 
     @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'modals'])
     @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'modals'])
+    @include('partials.amazon-lmp-cvr-disc-rule', ['amzLmpCvrPart' => 'modals'])
 
 @endsection
 
@@ -1460,6 +1462,7 @@
 
         @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'script'])
         @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'script'])
+        @include('partials.amazon-lmp-cvr-disc-rule', ['amzLmpCvrPart' => 'script'])
         @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'amazon'])
 
         function amazonNormalizeSkuKey(sku) {
@@ -6872,6 +6875,7 @@
                 if (field === 'buss_discount') return 'B Disc';
                 if (field === 'zero_sold_discount') return '0 Sold';
                 if (field === 'cvr_discount') return 'CVR Disc.';
+                if (field === 'lmp_cvr_discount') return 'LMP+CVR';
                 if (field === 'review_discount') return 'Rev Disc.';
                 if (field === 'sum_discount') return 'Sum disc';
                 if (field === 'sum_discount_amt') return 'Sum Disc $';
@@ -6885,7 +6889,7 @@
             function classifyAmazonColumn(field, title) {
                 const f = String(field || '');
                 // Every discount column goes under one Discounts header.
-                if (/^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f)) return 'discounts';
+                if (/^(age|dil|lmp|lmp_cvr|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f)) return 'discounts';
                 const t = String(title || field || '').toLowerCase();
                 const fl = f.toLowerCase();
 

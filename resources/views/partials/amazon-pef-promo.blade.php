@@ -25,6 +25,7 @@
         .tabulator-row .tabulator-cell[tabulator-field="buss_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="zero_sold_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="cvr_discount"],
+        .tabulator-row .tabulator-cell[tabulator-field="lmp_cvr_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="review_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="sum_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="sum_discount_amt"],
@@ -3565,6 +3566,35 @@
                     },
                 },
                 {
+                    title: 'LMP+CVR',
+                    field: 'lmp_cvr_discount',
+                    width: 72,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    headerTooltip: 'LMP+CVR Disc — extra % when LMP is available and CVR is decreasing (CVR L30 below CVR L45). Grows with the drop. Set it in the LMP+CVR Rule. Read-only.',
+                    sorter: function(a, b, aRow, bRow) {
+                        const fn = typeof computeAmzLmpCvrDiscountPct === 'function' ? computeAmzLmpCvrDiscountPct : function() { return 0; };
+                        return (Number(fn(aRow.getData())) || 0) - (Number(fn(bRow.getData())) || 0);
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (!amzPefIsChildRow(d)) return '';
+                        const info = (typeof amzLmpCvrInfo === 'function') ? amzLmpCvrInfo(d) : null;
+                        const pct = info ? info.disc : 0;
+                        let tip = 'LMP+CVR rule';
+                        if (info) {
+                            tip = (info.lmp > 0 ? ('LMP $' + info.lmp.toFixed(2)) : 'No LMP')
+                                + ' · CVR ' + info.cvr.toFixed(2) + '% vs L45 ' + info.cvr45.toFixed(2) + '%'
+                                + (info.decreasing ? (' (down ' + info.drop.toFixed(2) + ' pts)') : ' (not decreasing)')
+                                + ' → discount ' + (pct || 0) + '%';
+                        }
+                        return '<span title="' + amzPefEscAttr(tip) + '">'
+                            + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'cvr') : (pct || '—'))
+                            + '</span>';
+                    },
+                },
+                {
                     title: 'Rev Disc.',
                     field: 'review_discount',
                     width: 70,
@@ -3621,6 +3651,7 @@
                             + ' + Rev ' + (stack.reviewDisc || 0)
                             + ' + B Disc ' + (stack.bussDisc || 0)
                             + ' + 0 Sold ' + (stack.zeroSoldDisc || 0)
+                            + ' + LMP+CVR ' + (stack.lmpCvrDisc || 0)
                             + ' = ' + (pct || 0) + '%';
                         return '<span title="' + amzPefEscAttr(tip) + '">'
                             + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'sum') : (pct || '—'))
@@ -3784,12 +3815,16 @@
             const zeroSoldDisc = (typeof amzStdDisc === 'function')
                 ? amzStdDisc(typeof computeAmzZeroSoldDiscountPct === 'function' ? computeAmzZeroSoldDiscountPct(d) : 0)
                 : (Number(typeof computeAmzZeroSoldDiscountPct === 'function' ? computeAmzZeroSoldDiscountPct(d) : 0) || 0);
+            // Dynamic rule: LMP available + CVR decreasing → extra discount (amazon-lmp-cvr-disc-rule partial).
+            const lmpCvrDisc = (typeof computeAmzLmpCvrDiscountPct === 'function')
+                ? (Number(computeAmzLmpCvrDiscountPct(d)) || 0)
+                : 0;
             const zeroSold = typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(d);
             const dilGroiMeta = (typeof amzDilGroiMetaForRow === 'function')
                 ? amzDilGroiMetaForRow(d)
                 : null;
             const dilGroi = !!(dilGroiMeta && dilGroiMeta.sprc > 0);
-            const totalDisc = amzPefRound2(Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + reviewDisc + bussDisc + zeroSoldDisc)));
+            const totalDisc = amzPefRound2(Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + reviewDisc + bussDisc + zeroSoldDisc + lmpCvrDisc)));
             return {
                 prmt: 0,
                 ageDisc: ageDisc,
@@ -3798,6 +3833,7 @@
                 reviewDisc: reviewDisc,
                 bussDisc: bussDisc,
                 zeroSoldDisc: zeroSoldDisc,
+                lmpCvrDisc: lmpCvrDisc,
                 roiDisc: 0,
                 cvrUpDn: 0,
                 zeroSold: !!zeroSold,
@@ -3820,6 +3856,7 @@
             if (plan.reviewDisc) parts.push('Rev Disc ' + plan.reviewDisc + '%');
             if (plan.bussDisc) parts.push('B Disc ' + plan.bussDisc + '%');
             if (plan.zeroSoldDisc) parts.push('0 Sold ' + plan.zeroSoldDisc + '%');
+            if (plan.lmpCvrDisc) parts.push('LMP+CVR ' + plan.lmpCvrDisc + '%');
             if (plan.snroiCapped) parts.push('SNROI cap');
             if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
             else if (plan.stdCapped) parts.push('Std cap');
@@ -3894,6 +3931,7 @@
                 reviewDisc: stack.reviewDisc,
                 bussDisc: stack.bussDisc,
                 zeroSoldDisc: stack.zeroSoldDisc,
+                lmpCvrDisc: stack.lmpCvrDisc,
                 roiDisc: stack.roiDisc,
                 cvrUpDn: stack.cvrUpDn,
                 zeroSold: stack.zeroSold,

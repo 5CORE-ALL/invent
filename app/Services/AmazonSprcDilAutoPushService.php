@@ -416,7 +416,20 @@ class AmazonSprcDilAutoPushService
         $zeroSoldDisc = (! self::stdRulePaused($stdPromo, 'zs') && ! ($aL30Sold > 0))
             ? StdPrcVsDilPricer::scaleRuleDisc((float) ($stdPromo['zero_sold_disc'] ?? 0), $std)
             : 0.0;
-        $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc)), 2);
+        // Dynamic rule: LMP available and CVR decreasing (L30 below L45) → extra discount that grows with the drop.
+        $lmpCvrDisc = 0.0;
+        if ($lmp > 0) {
+            $sessA30 = (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0);
+            $sessA60 = (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0);
+            $unitsA60 = (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0);
+            $cvrNow = AmazonDilGroiRule::cvrL30($aL30Sold, $sessA30);
+            $cvrBase = AmazonDilGroiRule::cvrL45($aL30Sold, $sessA30, $unitsA60, $sessA60);
+            $lmpCvrDisc = StdPrcVsDilPricer::scaleRuleDisc(
+                \App\Support\AmazonLmpCvrDiscRule::discount($lmp, $cvrNow, $cvrBase),
+                $std
+            );
+        }
+        $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc + $lmpCvrDisc)), 2);
 
         if (! ($std > 0)) {
             return null;
@@ -502,6 +515,7 @@ class AmazonSprcDilAutoPushService
             'review_disc' => $reviewDisc,
             'buss_disc' => $bussDisc,
             'zero_sold_disc' => $zeroSoldDisc,
+            'lmp_cvr_disc' => $lmpCvrDisc,
             'roi_disc' => 0.0,
             'dil_disc' => $dilDisc,
             'age_disc' => $ageDisc,
