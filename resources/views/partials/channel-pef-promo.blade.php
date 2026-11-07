@@ -5000,7 +5000,7 @@
         function chPromoEbaySlabPrmt(d) {
             if (!d || d.is_parent_summary) return null;
             if (!chPromoIsChildRow(d)) return null;
-            if (chPromoInv(d) === 0) return 0;
+            if (chPromoInv(d) === 0 && !chPromoIsEbayChannel()) return 0;
             if (chPromoDilPrmtSaleGated() && chPromoIsEbayChannel()
                 && typeof chPromoIsZeroSoldRow === 'function'
                 && chPromoIsZeroSoldRow(d)) {
@@ -5011,7 +5011,26 @@
                 && !chPromoHasSaleQty(d)) {
                 return null;
             }
+            // eBay: one markdown sale per listing → same listing-wise Dil (Σ OV L30 ÷ Σ INV by item id)
+            // that Save & Apply uses, so every variation (e.g. CAPO AL BLACK) carries the same PRMT%
+            // the Push PRmt % button sends (parent PRMT or first child).
+            if (chPromoIsEbayChannel()) {
+                const agg = chPromoListingDilAgg(d);
+                if (agg) return agg.inv > 0 ? chPromoPrmtForDil(agg.dil) : 0;
+                if (chPromoInv(d) === 0) return 0;
+            }
             return chPromoPrmtForDil(chPromoDil(d));
+        }
+        /** Listing aggregate { dil, inv } for the row's variation item id, or null. */
+        function chPromoListingDilAgg(d) {
+            if (!d) return null;
+            try {
+                const cache = chPromoListingDilMap();
+                const k = cache.keyOf(d);
+                return k ? (cache.byKey[k] || null) : null;
+            } catch (e) {
+                return null;
+            }
         }
         /** cvr % the CVR vs CPN slabs produce for this row. INV=0 or CVR=0 (no 0% slab) → 0. */
         function chPromoEbaySlabCpn(d) {
