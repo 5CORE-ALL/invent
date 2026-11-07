@@ -9,6 +9,7 @@ use App\Models\ProductMaster;
 use App\Services\EbayApiService;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Support\Marketplace\AutomatedListingPage;
+use App\Support\Marketplace\EbaySpricePush;
 use App\Support\Marketplace\ProductUpc;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -98,7 +99,8 @@ class Ebay1DataController extends Controller
                 // A title typed in Edit Column waits here until Push. It wins over the metrics title,
                 // and it is not an item specific, so it must not become its own column.
                 $pendingTitle = trim((string) ($specifics['__ebay_title'] ?? ''));
-                unset($specifics['__ebay_title']);
+                $pendingPrice = is_numeric($specifics['__ebay_price'] ?? null) ? round((float) $specifics['__ebay_price'], 2) : null;
+                unset($specifics['__ebay_title'], $specifics['__ebay_price']);
 
                 // Brand is always 5 Core, as on Technical Specifications.
                 foreach (array_keys($specifics) as $specName) {
@@ -138,7 +140,8 @@ class Ebay1DataController extends Controller
                     'buyer_link' => (string) ($item->buyer_link ?? ($metric['ebay_link'] ?? '')),
                     'ebay_title' => $pendingTitle !== '' ? $pendingTitle : (string) ($metric['ebay_title'] ?? ''),
                     'title_pending' => $pendingTitle !== '',
-                    'ebay_price' => $this->num($metric['ebay_price'] ?? null),
+                    'ebay_price' => $pendingPrice !== null ? $pendingPrice : $this->num($metric['ebay_price'] ?? null),
+                    'price_pending' => $pendingPrice !== null,
                     'ebay_stock' => $this->num($metric['ebay_stock'] ?? null),
                     'ebay_l7' => $this->num($metric['ebay_l7'] ?? null),
                     'ebay_l30' => $this->num($metric['ebay_l30'] ?? null),
@@ -482,6 +485,7 @@ class Ebay1DataController extends Controller
             'items.*.item_id' => 'required|string|max:64',
             'items.*.specifics' => 'nullable|array|max:300',
             'items.*.title' => 'nullable|string|max:80',
+            'items.*.price' => 'nullable|numeric|min:0.01|max:100000',
         ]);
         @set_time_limit(300);
 
@@ -507,7 +511,8 @@ class Ebay1DataController extends Controller
                 $overrides[] = ['name' => $name, 'value' => $value];
             }
             $title = trim((string) ($entry['title'] ?? ''));
-            if ($overrides === [] && $title === '') {
+            $price = is_numeric($entry['price'] ?? null) ? round((float) $entry['price'], 2) : 0.0;
+            if ($overrides === [] && $title === '' && $price <= 0) {
                 $results[] = ['sku' => $sku, 'status' => 'skipped', 'message' => 'No values to send.'];
 
                 continue;
@@ -607,8 +612,35 @@ class Ebay1DataController extends Controller
                 $titleMessage = (string) ($titleResult['message'] ?? '');
             }
 
-            $message = trim((string) ($result['message'] ?? '').($titleMessage !== '' ? ' '.$titleMessage : ''));
-            $unchanged = $title === '' && stripos((string) ($result['message'] ?? ''), 'No values changed') === 0;
+            $priceMessage = '';
+            if ($price > 0) {
+                try {
+                    $priceResult = $service->reviseFixedPriceItem($itemId, $price, null, null);
+                    if (! (is_array($priceResult) && ! empty($priceResult['success'])) && EbaySpricePush::looksMultiVariation($priceResult)) {
+                        $priceResult = $service->reviseFixedPriceItem($itemId, $price, null, $sku);
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Ebay1Data: price push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+                    $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => 'Price: '.$e->getMessage()];
+
+                    continue;
+                }
+                if (! (is_array($priceResult) && ! empty($priceResult['success']))) {
+                    $why = is_array($priceResult) ? (string) ($priceResult['message'] ?? 'eBay rejected the price.') : 'eBay rejected the price.';
+                    if (is_array($priceResult) && ! empty($priceResult['errors'])) {
+                        $why .= ': '.(is_string($priceResult['errors']) ? $priceResult['errors'] : json_encode($priceResult['errors']));
+                    }
+                    $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => 'Price: '.$why];
+
+                    continue;
+                }
+                $this->clearPendingPrice($sku);
+                EbaySpricePush::storeAcceptedPriceFor('ebay1', $sku, $price);
+                $priceMessage = 'Price set to '.number_format($price, 2).'.';
+            }
+
+            $message = trim((string) ($result['message'] ?? '').($titleMessage !== '' ? ' '.$titleMessage : '').($priceMessage !== '' ? ' '.$priceMessage : ''));
+            $unchanged = $title === '' && $price <= 0 && stripos((string) ($result['message'] ?? ''), 'No values changed') === 0;
             $results[] = ['sku' => $sku, 'status' => $unchanged ? 'unchanged' : 'pushed', 'message' => $message];
         }
 
@@ -721,6 +753,9 @@ class Ebay1DataController extends Controller
         )));
         if ($columnKey === 'ebaytitle') {
             return $this->saveEbayTitles($skus, $value);
+        }
+        if ($columnKey === 'price') {
+            return $this->saveEbayPrices($skus, $value);
         }
 
         $specsUpdated = 0;
@@ -1104,6 +1139,24 @@ class Ebay1DataController extends Controller
             DB::table('ebay_metrics')->whereIn('sku', $skus)->update(['ebay_title' => $value]);
         }
 
+        return $this->storePending($skus, '__ebay_title', $value);
+    }
+
+    /**
+     * Keeps an edited price on the SKU until Push sends it. The live price on the metrics row is not touched.
+     */
+    private function saveEbayPrices(array $skus, string $value)
+    {
+        $clean = str_replace([',', '$', ' '], '', $value);
+        if (! is_numeric($clean) || (float) $clean < 0.01 || (float) $clean > 100000) {
+            return response()->json(['success' => false, 'message' => 'Price must be a number above 0.'], 422);
+        }
+
+        return $this->storePending($skus, '__ebay_price', number_format((float) $clean, 2, '.', ''));
+    }
+
+    private function storePending(array $skus, string $field, string $value)
+    {
         $copiesUpdated = 0;
         if (Schema::hasTable('ebay1_item_specifics')) {
             foreach ($skus as $sku) {
@@ -1111,7 +1164,7 @@ class Ebay1DataController extends Controller
                 $stored = DB::table('ebay1_item_specifics')->where('sku', $key)->first();
                 $decoded = $stored ? json_decode((string) $stored->specifics, true) : [];
                 $decoded = is_array($decoded) ? $decoded : [];
-                $decoded['__ebay_title'] = $value;
+                $decoded[$field] = $value;
                 $payload = [
                     'specifics' => json_encode($decoded, JSON_UNESCAPED_UNICODE),
                     'updated_at' => now(),
@@ -1131,7 +1184,7 @@ class Ebay1DataController extends Controller
         return response()->json(['success' => true, 'skus' => count($skus), 'specs_updated' => 0, 'copies_updated' => $copiesUpdated]);
     }
 
-    private function clearPendingTitle(string $sku): void
+    private function clearPending(string $sku, string $field): void
     {
         if (! Schema::hasTable('ebay1_item_specifics')) {
             return;
@@ -1142,14 +1195,24 @@ class Ebay1DataController extends Controller
             return;
         }
         $decoded = json_decode((string) $stored->specifics, true);
-        if (! is_array($decoded) || ! array_key_exists('__ebay_title', $decoded)) {
+        if (! is_array($decoded) || ! array_key_exists($field, $decoded)) {
             return;
         }
-        unset($decoded['__ebay_title']);
+        unset($decoded[$field]);
         DB::table('ebay1_item_specifics')->where('sku', $key)->update([
             'specifics' => json_encode($decoded, JSON_UNESCAPED_UNICODE),
             'updated_at' => now(),
         ]);
+    }
+
+    private function clearPendingTitle(string $sku): void
+    {
+        $this->clearPending($sku, '__ebay_title');
+    }
+
+    private function clearPendingPrice(string $sku): void
+    {
+        $this->clearPending($sku, '__ebay_price');
     }
 
     private function skuKey(string $sku): string
