@@ -1428,12 +1428,22 @@ final class EbayTradingReviseItem
         }
 
         $result = self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $kept, 'ReviseItem', 'ReviseItemRequest', null, null);
+        // A listing with no valid shipping service rejects every revise, including one that only
+        // removes item specifics. Retry once with the eBay 1 shipping policy so the delete can land.
+        if (! ($result['success'] ?? false) && self::isMissingShippingError((string) ($result['message'] ?? ''))) {
+            $result = self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $kept, 'ReviseItem', 'ReviseItemRequest', null, null, true);
+        }
 
         return [
             'success' => (bool) ($result['success'] ?? false),
             'removed' => (bool) ($result['success'] ?? false),
             'message' => (string) ($result['message'] ?? ''),
         ];
+    }
+
+    private static function isMissingShippingError(string $message): bool
+    {
+        return (bool) preg_match('/shipping service|21915409/i', $message);
     }
 
     /**
@@ -1454,6 +1464,7 @@ final class EbayTradingReviseItem
         string $root,
         ?string $variationSku,
         ?string $specificsNode,
+        bool $ensureShippingPolicy = false,
     ): array {
         $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><'.$root.' xmlns="urn:ebay:apis:eBLBaseComponents"/>');
         $creds = $xml->addChild('RequesterCredentials');
@@ -1462,6 +1473,20 @@ final class EbayTradingReviseItem
         $xml->addChild('WarningLevel', 'High');
         $itemNode = $xml->addChild('Item');
         $itemNode->addChild('ItemID', $itemId);
+        if ($ensureShippingPolicy) {
+            $policyName = trim((string) config('listing_manager.ebay1_defaults.shipping_policy_name', 'As Per Weight'));
+            $policyId = trim((string) config('listing_manager.ebay1_defaults.shipping_policy_id', ''));
+            if ($policyName !== '' || $policyId !== '') {
+                $profile = $itemNode->addChild('SellerProfiles')->addChild('SellerShippingProfile');
+                if ($policyId !== '') {
+                    $profile->addChild('ShippingProfileID', $policyId);
+                } else {
+                    $profile->addChild('ShippingProfileName', htmlspecialchars($policyName, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+                }
+                // Drop the old shipping block. An empty or retired service is what eBay is rejecting.
+                $xml->addChild('DeletedField', 'Item.ShippingDetails');
+            }
+        }
         $specParent = $itemNode;
         if ($variationSku !== null && $specificsNode !== null) {
             $variation = $itemNode->addChild('Variations')->addChild('Variation');
