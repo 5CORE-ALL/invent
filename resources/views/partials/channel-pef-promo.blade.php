@@ -7176,11 +7176,43 @@
             }
             try {
                 await applyChPromoDilPrmtToTargets(targets, label);
+                // eBay: push every applied SKU's PRMT% as a markdown sale (not only the ones whose % changed).
+                await chPromoPushAllPrmtAfterApply(targets);
             } catch (xhr) {
                 chPromoToast('error', 'Apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
             } finally {
                 $btn.prop('disabled', false).html(html);
             }
+        }
+
+        /**
+         * After Save & Apply on eBay 1/2/3: queue Push PRMT% for EVERY applied SKU.
+         * eBay only accepts 5–80%, so 1–4% rows are counted and skipped; 0% only removes SKUs that are on a sale.
+         */
+        async function chPromoPushAllPrmtAfterApply(targets) {
+            if (!chPromoPushPrmtQueueEnabled) return;
+            const seen = new Set();
+            const rows = [];
+            let belowMin = 0;
+            (targets || []).forEach(function(t) {
+                const row = t && t.row;
+                if (!row || typeof row.getData !== 'function' || typeof row.update !== 'function') return;
+                const d = row.getData() || {};
+                if (!chPromoIsChildRow(d)) return;
+                const sku = chPromoSku(d);
+                const k = chPromoSkuKey(sku);
+                if (!sku || !k || seen.has(k)) return;
+                seen.add(k);
+                const prmt = chPromoPrmtInt(d);
+                if (prmt > 0 && (prmt < 5 || prmt > 80)) { belowMin++; return; }
+                if (prmt === 0 && chPromoLastSalePct(d) < 5 && String(d.PUSH_SALE_STATUS || '') !== 'error') return;
+                rows.push({ row: row, d: d, prmt: prmt });
+            });
+            if (belowMin) {
+                chPromoToast('info', belowMin + ' SKU(s) have PRMT% 1–4 (eBay needs 5–80) — not pushed');
+            }
+            if (!rows.length) return;
+            await queueChannelPushPrmtRows(rows);
         }
 
         async function saveChPromoDilPrmtRulesOnly() {
