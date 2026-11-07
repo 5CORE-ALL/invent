@@ -45,4 +45,11 @@ class ShopifySkuLookupTest extends TestCase
             $this->assertContains($col, ShopifySku::LOOKUP_COLUMNS);
         }
     }
+
+    public function test_lookup_columns_include_views_for_google_shopping_bgt_views(): void
+    {
+        foreach (['views', 'views_l7'] as $col) {
+            $this->assertContains($col, ShopifySku::LOOKUP_COLUMNS);
+        }
+    }
 }

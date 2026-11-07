@@ -121,6 +121,9 @@ class ShopifySku extends Model
         'on_hand',
         'unavailable',
         'incoming',
+        // Shopify page views (L30 / L7). Google Shopping Bgt Views reads these; without them they come back NULL.
+        'views',
+        'views_l7',
     ];
 
     /**

@@ -35,7 +35,7 @@ final class GoogleShoppingBgtSkuMetrics
      */
     public static function resolver(): \Closure
     {
-        $payload = Cache::remember('gads_shopping_bgt_sku_metrics_v4', 900, static function (): array {
+        $payload = Cache::remember('gads_shopping_bgt_sku_metrics_v5', 900, static function (): array {
             $allPm = ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
