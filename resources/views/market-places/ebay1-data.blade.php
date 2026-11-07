@@ -1014,6 +1014,36 @@
                 };
             }
 
+            // Copy icon of a cell: copies the full cell value (clipboard API, with a fallback for plain http).
+            function copyCellClick(e, cell) {
+                const target = e.target.closest ? e.target.closest('.e1d-copy') : null;
+                if (!target) return;
+                e.stopPropagation();
+                const text = String(cell.getValue() || '').trim();
+                const icon = target.querySelector('i');
+                const done = function (ok) {
+                    if (icon) icon.className = ok ? 'fas fa-check' : 'fas fa-times';
+                    setTimeout(function () { if (icon) icon.className = 'far fa-copy'; }, 1200);
+                };
+                const fallback = function () {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    let ok = false;
+                    try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+                    document.body.removeChild(ta);
+                    done(ok);
+                };
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+                } else {
+                    fallback();
+                }
+            }
+
             function textFormatter(cell) {
                 const v = String(cell.getValue() || '').trim();
                 return v ? esc(v) : '<span class="e1d-muted">—</span>';
@@ -1639,7 +1669,12 @@
                         // The select box and SKU stay side by side on the left while scrolling; Parent follows them.
                         {
                             title: 'SKU', field: 'sku', hozAlign: 'left', minWidth: 110, frozen: true,
-                            formatter: function (cell) { return '<strong>' + esc(cell.getValue()) + '</strong>'; },
+                            formatter: function (cell) {
+                                const v = String(cell.getValue() || '').trim();
+                                if (!v) return '<span class="e1d-muted">—</span>';
+                                return '<span class="e1d-copy" title="Copy SKU"><i class="far fa-copy"></i></span><strong>' + esc(v) + '</strong>';
+                            },
+                            cellClick: copyCellClick,
                         },
                         { title: 'Parent', field: 'parent', hozAlign: 'left', formatter: textFormatter },
                         { title: 'INV', field: 'inv', formatter: numberFormatter(0) },
@@ -1689,32 +1724,7 @@
                                 return '<span class="e1d-copy" title="Copy title"><i class="far fa-copy"></i></span>'
                                     + '<span class="e1d-title-text" title="' + esc(v) + '">' + esc(shown) + '</span>';
                             },
-                            cellClick: function (e, cell) {
-                                if (!e.target.closest || !e.target.closest('.e1d-copy')) return;
-                                const text = String(cell.getValue() || '').trim();
-                                const icon = e.target.closest('.e1d-copy').querySelector('i');
-                                const done = function (ok) {
-                                    if (icon) icon.className = ok ? 'fas fa-check' : 'fas fa-times';
-                                    setTimeout(function () { if (icon) icon.className = 'far fa-copy'; }, 1200);
-                                };
-                                const fallback = function () {
-                                    const ta = document.createElement('textarea');
-                                    ta.value = text;
-                                    ta.style.position = 'fixed';
-                                    ta.style.opacity = '0';
-                                    document.body.appendChild(ta);
-                                    ta.select();
-                                    let ok = false;
-                                    try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
-                                    document.body.removeChild(ta);
-                                    done(ok);
-                                };
-                                if (navigator.clipboard && window.isSecureContext) {
-                                    navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
-                                } else {
-                                    fallback();
-                                }
-                            },
+                            cellClick: copyCellClick,
                         },
                         { title: 'Price', field: 'ebay_price', formatter: numberFormatter(2) },
                         { title: 'Stock', field: 'ebay_stock', formatter: numberFormatter(0) },
