@@ -1258,9 +1258,15 @@
                 if (editBusy || !editPicked.size) return;
                 const scope = editScope();
                 if (!scope.targets.length) return;
-                const edits = Array.from(editPicked.entries()).map(function (e) { return { column: e[0], value: String(e[1] || '').trim() }; });
+                let edits = Array.from(editPicked.entries()).map(function (e) { return { column: e[0], value: String(e[1] || '').trim() }; });
                 const blank = edits.filter(function (e) { return e.value === ''; });
-                if (blank.length && !window.confirm('Clear ' + (blank.length === 1 ? blank[0].column : blank.length + ' columns') + ' on ' + scope.targets.length + ' row' + (scope.targets.length === 1 ? '' : 's') + '?')) return;
+                // A ticked column left empty is skipped, so filling the others does not ask to clear it.
+                // The question only comes up when every ticked column is empty, which really is a clear.
+                if (blank.length === edits.length) {
+                    if (!window.confirm('Clear ' + (blank.length === 1 ? blank[0].column : blank.length + ' columns') + ' on ' + scope.targets.length + ' row' + (scope.targets.length === 1 ? '' : 's') + '?')) return;
+                } else {
+                    edits = edits.filter(function (e) { return e.value !== ''; });
+                }
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 const skus = scope.targets.map(function (row) { return row.sku; });
                 const go = document.getElementById('e1dEditGo');
