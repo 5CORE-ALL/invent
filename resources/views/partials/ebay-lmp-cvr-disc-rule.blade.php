@@ -1,9 +1,10 @@
 {{--
-  eBay 1 / 2 / 3: "CVR up / down — extra discount on S PRC" (the same rule Amazon has in its Sprc Dil modal).
+  eBay 1 / 2 / 3 and Temu 1 / 2 / 3: "CVR up / down — extra discount on S PRC" (the same rule Amazon has in its Sprc Dil modal).
   Parts: section (card block inside #ebayDilGroiModal), script (page JS, after the Sprc Dil script).
-  Arrow = the arrow of the CVR 30 column (CVR 30 vs CVR 60, +/- 0.1). Only arrow Down / Up bands apply, a flat arrow gets nothing.
+  Arrow = the arrow of the CVR 30 column (CVR 30 vs CVR 60, +/- 0.1; on Temu a CVR 30 of 0 is Down). Only arrow Down / Up bands apply, a flat arrow gets nothing.
   The discount (Disc % of Std Prc, Std under $15 halved) comes off S PRC AFTER the LMP cap and the Std Prc maximum, in both
-  Std prc vs dil and Sprc Dil. Server twin: App\Support\EbayRuleSprice::price().
+  Std prc vs dil and Sprc Dil. Server twins: App\Support\EbayRuleSprice::price() (eBay), NewTemutwoSprcDilAutoPushService (Temu 2),
+  DilRuleSpriceApplyService (Temu 1 / Temu 3).
 --}}
 @php
     $ebayLmpCvrPart = $ebayLmpCvrPart ?? 'all';
@@ -74,6 +75,16 @@
         // ---- eBay 1 / 2 / 3 rule: extra discount on the CVR 30 arrow (Down / Up) bands. Edited inside the Sprc Dil modal. ----
         const EBAY_LMP_CVR_CHANNEL = @json($ebayLmpCvrChannel);
         let ebayLmpCvr = @json(\App\Support\AmazonLmpCvrDiscRule::config($ebayLmpCvrChannel));
+        // Temu pages: rows carry cvr_30 / cvr_60 / INV / STANDARD_PRICE and a CVR 30 of 0 is a Down arrow. Temu 2 shows the S PRC the
+        // server saved (the server job already took the rule off), so the page only explains it and never takes it off a second time.
+        const EBAY_LMP_CVR_IS_TEMU = @json(in_array($ebayLmpCvrChannel, \App\Support\AmazonLmpCvrDiscRule::TEMU_CHANNELS, true));
+        const EBAY_LMP_CVR_SERVER_OWNED = @json($ebayLmpCvrChannel === 'newtemutwo');
+        function ebayLmpCvrScale(std, disc) {
+            const n = Number(disc);
+            if (!isFinite(n)) return 0;
+            const s = Number(std);
+            return (isFinite(s) && s > 0 && s < 15) ? Math.round(n * 0.5 * 100) / 100 : n;
+        }
 
         function ebayLmpCvrRuleSafe() {
             try { return ebayLmpCvr || null; } catch (e) { return null; }
@@ -84,19 +95,35 @@
          * rows with no stock and clearance SKUs (they are priced from the Clearance Target NROI% only).
          */
         function ebayLmpCvrInfo(d, cfgOv) {
-            if (typeof ebayDgIsChild !== 'function' || !ebayDgIsChild(d)) return null;
-            if (typeof ebayDgInv === 'function' && !(ebayDgInv(d) > 0)) return null;
-            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) return null;
+            let lmp, cvr, cvr60, std, trend;
+            if (EBAY_LMP_CVR_IS_TEMU) {
+                if (!d || d.is_parent_summary || d._nto_agg || d.is_parent === true || d.is_parent === 1 || d.is_parent === '1') return null;
+                const sku = String(d.sku || d['(Child) sku'] || '').trim().toUpperCase();
+                if (sku === '' || sku.indexOf('PARENT') !== -1) return null;
+                const inv = parseFloat(d.INV != null && d.INV !== '' ? d.INV : (d.inventory != null ? d.inventory : d.inv)) || 0;
+                if (!(inv > 0)) return null;
+                if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) return null;
+                lmp = typeof temuLmpRefPrice === 'function' ? (Number(temuLmpRefPrice(d)) || 0) : (parseFloat(d.lmp_raw != null ? d.lmp_raw : d.lmp) || 0);
+                cvr = parseFloat(d.cvr_30 != null && d.cvr_30 !== '' ? d.cvr_30 : d.cvr_percent) || 0;
+                cvr60 = parseFloat(d.cvr_60) || 0;
+                std = parseFloat(d.STANDARD_PRICE) || 0;
+                // Same arrow as the CVR 30 column: CVR 30 vs CVR 60, +/- 0.1, and CVR 30 = 0 is Down.
+                trend = (cvr === 0 || cvr < cvr60 - 0.1) ? 'down' : (cvr > cvr60 + 0.1 ? 'up' : 'flat');
+            } else {
+                if (typeof ebayDgIsChild !== 'function' || !ebayDgIsChild(d)) return null;
+                if (typeof ebayDgInv === 'function' && !(ebayDgInv(d) > 0)) return null;
+                if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) return null;
+                lmp = typeof ebayEffectiveLmp === 'function' ? (Number(ebayEffectiveLmp(d)) || 0)
+                    : (typeof ebayDgRowLmp === 'function' ? (Number(ebayDgRowLmp(d)) || 0) : 0);
+                cvr = parseFloat(d && d.SCVR) || 0;
+                const hasC60 = !!(d && d.CVR_60 != null && d.CVR_60 !== '');
+                cvr60 = hasC60 ? (parseFloat(d.CVR_60) || 0) : (parseFloat(d && d.CVR_45) || 0);
+                std = parseFloat(d && d.STANDARD_PRICE) || 0;
+                // Same arrow as the CVR 30 column: CVR 30 vs CVR 60, +/- 0.1 (CVR 0 against 0 is flat).
+                trend = cvr < cvr60 - 0.1 ? 'down' : (cvr > cvr60 + 0.1 ? 'up' : 'flat');
+            }
             const cfg = cfgOv || ebayLmpCvrRuleSafe();
             if (!cfg) return null;
-            const lmp = typeof ebayEffectiveLmp === 'function' ? (Number(ebayEffectiveLmp(d)) || 0)
-                : (typeof ebayDgRowLmp === 'function' ? (Number(ebayDgRowLmp(d)) || 0) : 0);
-            const cvr = parseFloat(d && d.SCVR) || 0;
-            const hasC60 = !!(d && d.CVR_60 != null && d.CVR_60 !== '');
-            const cvr60 = hasC60 ? (parseFloat(d.CVR_60) || 0) : (parseFloat(d && d.CVR_45) || 0);
-            // Same arrow as the CVR 30 column: CVR 30 vs CVR 60, +/- 0.1 (CVR 0 against 0 is flat).
-            const tol = 0.1;
-            const trend = cvr < cvr60 - tol ? 'down' : (cvr > cvr60 + tol ? 'up' : 'flat');
             let band = null;
             if (trend === 'down') {
                 const slabs = [{ k: 'down2', v: Number(cfg.down2_lt) || 0 }, { k: 'down', v: Number(cfg.down_lt) || 0 }]
@@ -108,12 +135,11 @@
                 for (let i = 0; i < slabs.length; i++) if (cvr > slabs[i].v) { band = slabs[i].k; break; }
             }
             const eligible = !cfg.need_lmp || lmp > 0;
-            const std = parseFloat(d && d.STANDARD_PRICE) || 0;
             let disc = 0;
             if (cfg.enabled && eligible && band) {
                 disc = Number(cfg[band + '_disc']) || 0;
                 // Std Prc under $15 halves every rule discount (same as the server).
-                if (disc && typeof chStdScaleDisc === 'function') disc = Number(chStdScaleDisc(std, disc)) || 0;
+                if (disc) disc = Number(ebayLmpCvrScale(std, disc)) || 0;
             }
             return { lmp: lmp, cvr: cvr, cvr60: cvr60, trend: trend, band: band, eligible: eligible, disc: disc, std: std };
         }
@@ -125,7 +151,7 @@
         /** S PRC after the rule: the price already capped at LMP / Std, minus Disc % of Std Prc. Same maths as EbayRuleSprice::price(). */
         function ebayLmpCvrApplyToPrice(d, price) {
             const p = Number(price) || 0;
-            if (!(p > 0)) return p;
+            if (!(p > 0) || EBAY_LMP_CVR_SERVER_OWNED) return p;
             const info = ebayLmpCvrInfo(d);
             if (!info || !(info.std > 0) || Math.abs(info.disc) < 0.01) return p;
             const after = ebayLmpCvrRound2(p - (info.std * info.disc / 100));
@@ -216,6 +242,8 @@
             if (ebayLmpCvrSaveTimer) { clearTimeout(ebayLmpCvrSaveTimer); ebayLmpCvrSaveTimer = null; }
             const payload = ebayLmpCvrReadDraft();
             ebayLmpCvr = Object.assign({}, payload);
+            // Temu pages memoize the S PRC chain per row: forget it so the new rule is used at once.
+            if (typeof temuClearCapMemo === 'function') { try { temuClearCapMemo(); } catch (e) { /* ignore */ } }
             if (typeof redrawEbaySprcDilColumn === 'function') redrawEbaySprcDilColumn();
             const body = Object.assign({}, payload, { enabled: payload.enabled ? 1 : 0, need_lmp: payload.need_lmp ? 1 : 0, all: saveAll === true ? 1 : 0 });
             return $.ajax({
@@ -224,6 +252,12 @@
                 data: JSON.stringify(body),
                 contentType: 'application/json',
                 headers: { 'X-CSRF-TOKEN': (typeof ebayDgCsrf === 'function' ? ebayDgCsrf() : ''), 'Accept': 'application/json' }
+            }).done(function() {
+                // Temu 2 shows the S PRC the server saved. The server re-saves it right after this response, so reload the rows
+                // a little later to show the new S PRC.
+                if (EBAY_LMP_CVR_SERVER_OWNED && typeof chStdReloadPageRows === 'function') {
+                    [8000, 30000, 90000].forEach(function(ms) { setTimeout(function() { try { chStdReloadPageRows(); } catch (e) { /* ignore */ } }, ms); });
+                }
             }).fail(function() {
                 if (typeof ebayDgToast === 'function') ebayDgToast('error', 'Could not save the CVR up / down discount');
             });

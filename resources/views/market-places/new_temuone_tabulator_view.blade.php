@@ -1191,6 +1191,11 @@
             const stdMax = ntoRowSpriceStart(row) || 0;
             if (stdMax > 0 && sprice > stdMax + 0.0001) sprice = +stdMax.toFixed(2);
         }
+        // CVR up / down rule (Sprc Dil modal): Disc % of Std Prc comes off the final S PRC, after the LMP cap and the Std Prc maximum.
+        if (typeof window.ebayLmpCvrApplyToPrice === 'function') {
+            const ruled = Number(window.ebayLmpCvrApplyToPrice(row, sprice));
+            if (isFinite(ruled) && ruled > 0) sprice = ruled;
+        }
         return { sprice: +sprice.toFixed(2), labels: [], lmpAlert: lmpAlert, lmp: lmp };
     }
 

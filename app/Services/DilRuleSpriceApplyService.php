@@ -283,6 +283,97 @@ class DilRuleSpriceApplyService
      */
     public function computeTarget(array $row, array $dilRules, ?array $cvrAdj, float $margin): ?array
     {
+        $res = $this->computeTargetBeforeRule($row, $dilRules, $cvrAdj, $margin);
+
+        return $res === null ? null : $this->withLmpCvrRule($res, $row);
+    }
+
+    /** @var array<string,mixed>|null CVR up / down rule saved for this page (Temu 1 / Temu 3), loaded once. */
+    private ?array $lmpCvrCfg = null;
+
+    /** @var array<string,array{0:float,1:float}>|null SKU → [CVR 30, CVR 60] as the page shows them. */
+    private ?array $lmpCvrBySku = null;
+
+    /**
+     * CVR up / down rule (Temu 1 and Temu 3): Disc % of Std Prc off the final S PRC, after the LMP cap and Std maximum,
+     * the same as the page. Clearance SKUs are priced only by the Clearance Target NROI%.
+     *
+     * @param  array{sprice: float, groi?: float}  $res
+     * @param  array<string, mixed>  $row
+     * @return array{sprice: float, groi?: float}
+     */
+    protected function withLmpCvrRule(array $res, array $row): array
+    {
+        if (! in_array($this->channel, ['temu', 'temu3'], true)) {
+            return $res;
+        }
+        $this->lmpCvrCfg ??= \App\Support\AmazonLmpCvrDiscRule::config($this->channel);
+        if (empty($this->lmpCvrCfg['enabled'])) {
+            return $res;
+        }
+        if ((new \App\Support\StdPrcVsDilPricer([], $this->channel))->isClearanceRow($row)) {
+            return $res;
+        }
+        $cvr = ($this->lmpCvrBySku ??= $this->loadLmpCvrBySku())[strtoupper(trim((string) ($row['sku'] ?? '')))] ?? null;
+        if ($cvr === null) {
+            return $res;
+        }
+        [$after, $pct] = \App\Support\AmazonLmpCvrDiscRule::applyToPrice(
+            (float) $res['sprice'],
+            (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0),
+            (float) ($row['inv'] ?? 0),
+            (float) ($row['lmp'] ?? 0),
+            $cvr[0],
+            $cvr[1],
+            $this->lmpCvrCfg
+        );
+        if ($pct != 0.0) {
+            $res['sprice'] = $after;
+            $res['lmp_cvr_disc'] = $pct;
+        }
+
+        return $res;
+    }
+
+    /**
+     * CVR 30 / CVR 60 per SKU, taken from the same rows the page shows (this service's rows carry no CVR 60).
+     *
+     * @return array<string,array{0:float,1:float}>
+     */
+    protected function loadLmpCvrBySku(): array
+    {
+        $out = [];
+        try {
+            if ($this->channel === 'temu') {
+                $res = app(\App\Http\Controllers\MarketPlace\NewTemuoneController::class)->dataJson();
+                $rows = method_exists($res, 'getData') ? $res->getData(true) : [];
+            } else {
+                $res = app(\App\Http\Controllers\MarketPlace\Temu3Controller::class)->getTemu3DecreaseData(new \Illuminate\Http\Request());
+                $payload = method_exists($res, 'getData') ? $res->getData(true) : [];
+                $rows = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+            }
+            foreach (is_array($rows) ? $rows : [] as $r) {
+                if (! is_array($r) || ! empty($r['is_parent_summary'])) {
+                    continue;
+                }
+                $sku = strtoupper(trim((string) ($r['sku'] ?? $r['(Child) sku'] ?? '')));
+                if ($sku === '' || isset($out[$sku])) {
+                    continue;
+                }
+                $out[$sku] = [
+                    (float) ($r['cvr_30'] ?? $r['cvr_percent'] ?? 0),
+                    (float) ($r['cvr_60'] ?? 0),
+                ];
+            }
+        } catch (Throwable $e) {
+            Log::warning('[DilRuleSpriceApply] CVR rule rows failed', ['channel' => $this->channel, 'error' => $e->getMessage()]);
+        }
+
+        return $out;
+    }
+
+    protected function computeTargetBeforeRule(array $row, array $dilRules, ?array $cvrAdj, float $margin): ?array
+    {
         if ((new \App\Support\StdPrcVsDilPricer([], $this->channel))->isClearanceRow($row)) {
             // Channels not moved over yet: no S PRC from any rule, nothing is saved or pushed.
             if (! in_array($this->channel, self::CLEARANCE_NROI_CHANNELS, true)) {

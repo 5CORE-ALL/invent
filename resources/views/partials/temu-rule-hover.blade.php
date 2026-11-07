@@ -241,6 +241,11 @@
                     + temuRuleMoney(ntoRowSPromoBasePrc(d)) + '</b> (what Push sends).')
                     : ('S Promo Prc is above $30, so no shipping discount. S Promo Base Prc = ' + temuRuleMoney(ntoRowSPromoBasePrc(d)) + '.')));
 
+            // CVR up / down rule (Sprc Dil modal). New Temu Two saves S PRC from the server job, which takes the rule off the final price.
+            if (typeof window.ebayLmpCvrStep === 'function') {
+                const cvrStep = window.ebayLmpCvrStep(d, (typeof ntoSavedSprice === 'function') ? ntoSavedSprice(d) : 0);
+                if (cvrStep) steps.push(temuRuleStep(cvrStep.state, (dilOn ? '10' : '6') + ' · ' + cvrStep.title, cvrStep.detail));
+            }
             if (lmp > 0 && std > 0 && lmp > std + 0.0001) notes.push('LMP ' + temuRuleMoney(lmp) + ' is above Std Prc ' + temuRuleMoney(std) + '. Review the Std price.');
             if (inv <= 0 && dilOn) notes.push('INV is 0, so Sprc Dil does not price this SKU.');
             return {
@@ -1008,6 +1013,11 @@
             temuRuleLmpStep(steps, { n: dilOn ? '6' : '2', base: rulePrice, lmp: lmp, sgroiAtLmp: sg, pct: temuRuleBandPct(d), after: after });
             const zeroSold = typeof chPromoTemuZeroSoldOwnsSprice === 'function' && chPromoTemuZeroSoldOwnsSprice(d);
             if (zeroSold) notes.push('0 Sold SKU: the 0 Sold rule owns S PRC, so the LMP rule is skipped.');
+            // CVR up / down rule (Sprc Dil modal): Disc % of Std Prc taken off after the LMP and Std Prc steps. Only when the rule is ON.
+            if (typeof window.ebayLmpCvrStep === 'function') {
+                const cvrStep = window.ebayLmpCvrStep(d, final);
+                if (cvrStep) steps.push(temuRuleStep(cvrStep.state, (dilOn ? '7' : '3') + ' · ' + cvrStep.title, cvrStep.detail));
+            }
             if (lmp > 0 && std > 0 && lmp > std + 0.0001) notes.push('LMP ' + temuRuleMoney(lmp) + ' is above Std Prc ' + temuRuleMoney(std) + '. Review the Std price.');
             return {
                 title: 'S PRC ' + temuRuleMoney(final),

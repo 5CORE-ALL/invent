@@ -40,8 +40,8 @@
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     // Pages that share this page's rule model (same Dil blocks). Save All writes to all of them; Save Only to this page.
     $ebaySprcDilModel = \App\Support\DilRuleModels::modelFor($ebaySprcDilChannel);
-    // eBay 1 / 2 / 3: next-gen one-screen modal (3 rule cards side by side) + the "CVR up / down" extra-discount rule.
-    $ebaySprcDilNg = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true);
+    // eBay 1 / 2 / 3 and Temu 1 / 2 / 3: next-gen one-screen modal (3 rule cards side by side) + the "CVR up / down" extra-discount rule.
+    $ebaySprcDilNg = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemutwo', 'temu3'], true);
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'vinted', 'instagram', 'depop', 'alibaba'], true);
     // eBay rules that Temu now shares: Diff +10 to the Target, and the LMP cap % by Dil band.

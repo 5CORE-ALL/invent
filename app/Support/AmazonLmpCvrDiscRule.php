@@ -62,6 +62,45 @@ final class AmazonLmpCvrDiscRule
     /** eBay pages that carry the same rule (each keeps its own saved copy). */
     public const EBAY_CHANNELS = ['ebay1', 'ebay2', 'ebay3'];
 
+    /** Temu pages that carry the same rule: Temu 1 (new-temuone), Temu 2 (new-temu2), Temu 3 (temu3-decrease). */
+    public const TEMU_CHANNELS = ['temu', 'newtemutwo', 'temu3'];
+
+    /** Every page (besides Amazon) that has its own saved copy of the rule. */
+    public static function pageChannels(): array
+    {
+        return array_merge(self::EBAY_CHANNELS, self::TEMU_CHANNELS);
+    }
+
+    /** The pages "Save All" writes together (eBay 1/2/3 or Temu 1/2/3). */
+    public static function groupFor(string $channel): array
+    {
+        return in_array($channel, self::TEMU_CHANNELS, true) ? self::TEMU_CHANNELS : self::EBAY_CHANNELS;
+    }
+
+    /**
+     * Take the rule's Disc % of Std Prc off an already-capped S PRC (after the LMP cap and the Std Prc maximum).
+     * Same arithmetic as the pages (JS) so a saved S PRC never fights what the page shows.
+     *
+     * @return array{0: float, 1: float}  [S PRC after the rule, Disc % applied (0 = rule did not apply)]
+     */
+    public static function applyToPrice(float $price, float $std, float $inv, float $lmp, float $cvr, float $cvr60, ?array $cfg, ?string $trend = null): array
+    {
+        if ($cfg === null || empty($cfg['enabled']) || ! ($price > 0) || ! ($std > 0) || ! ($inv > 0)) {
+            return [$price, 0.0];
+        }
+        $pct = self::discount($lmp, $cvr, $cvr60, $cfg, $trend);
+        if ($pct == 0.0) {
+            return [$price, 0.0];
+        }
+        $pct = StdPrcVsDilPricer::scaleRuleDisc($pct, $std);
+        if (abs($pct) < 0.01) {
+            return [$price, 0.0];
+        }
+        $after = round($price - ($std * $pct / 100), 2);
+
+        return $after >= 0.01 ? [$after, $pct] : [$price, 0.0];
+    }
+
     /** Storage key of a page's rule row. Amazon keeps its original key. */
     public static function keyFor(?string $channel = null): string
     {

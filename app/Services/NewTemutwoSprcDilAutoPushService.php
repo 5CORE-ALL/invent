@@ -7,6 +7,7 @@ use App\Http\Controllers\MarketPlace\TemuController;
 use App\Services\Support\ChannelPushSpriceRunner;
 use App\Services\Support\NewTemutwoSuggestedPriceStore;
 use App\Support\AmazonDilGroiRule;
+use App\Support\AmazonLmpCvrDiscRule;
 use App\Support\StdPrcVsDilPricer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -200,6 +201,41 @@ class NewTemutwoSprcDilAutoPushService
      * @return array{sprice:float,uncapped:float,lmp_capped:bool,snroi_capped:bool,labels:list<string>,base:float,full:float}|null
      */
     public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null): ?array
+    {
+        $res = $this->computeTargetBeforeRule($row, $pricer);
+        if ($res === null) {
+            return null;
+        }
+        // CVR up / down rule (Sprc Dil modal): Disc % of Std Prc off the final S PRC, after the LMP cap and Std maximum.
+        // Clearance SKUs are priced only by the Clearance Target NROI%, no rule applies.
+        if ((new StdPrcVsDilPricer([], 'newtemutwo'))->isClearanceRow($row)) {
+            return $res;
+        }
+        $this->lmpCvrCfg ??= AmazonLmpCvrDiscRule::config('newtemutwo');
+        [$after, $pct] = AmazonLmpCvrDiscRule::applyToPrice(
+            (float) $res['sprice'],
+            (float) ($row['standard_price'] ?? 0),
+            (float) ($row['inv'] ?? 0),
+            (float) ($row['lmp'] ?? 0),
+            (float) ($row['cvr'] ?? 0),
+            (float) ($row['cvr_60'] ?? 0),
+            $this->lmpCvrCfg
+        );
+        if ($pct != 0.0) {
+            $res['sprice'] = $after;
+            $res['base'] = $after;
+            $res['promo_base'] = $after;
+            $res['full'] = round(TemuShopifySalesService::computeFullTemuPrice($after), 2);
+            $res['lmp_cvr_disc'] = $pct;
+        }
+
+        return $res;
+    }
+
+    /** @var array<string,mixed>|null CVR up / down rule saved for this page (loaded once per run). */
+    private ?array $lmpCvrCfg = null;
+
+    protected function computeTargetBeforeRule(array $row, ?StdPrcVsDilPricer $pricer = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
