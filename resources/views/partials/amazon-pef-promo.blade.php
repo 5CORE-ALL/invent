@@ -462,13 +462,11 @@
         #amzDilGroiModal .amz-dg-panel-tables { flex: 1 1 auto; min-height: 0; background: transparent; box-shadow: none; overflow: visible; }
         #amzDilGroiModal .amz-dg-panel-tables .amz-dg-panel-body { padding: 0; overflow-y: auto; }
         #amzDilGroiModal .amz-dg-grid {
-            display: grid;
+            display: flex;
             /* horizontal: every rule card sits side by side in one row (scrolls sideways on narrow screens) */
-            grid-auto-flow: column;
-            grid-auto-columns: minmax(300px, 1fr);
+            flex-wrap: nowrap;
             gap: 8px;
-            align-items: start;
-            align-content: start;
+            align-items: flex-start;
             overflow-x: auto;
         }
         #amzDilGroiModal .amz-dg-card {
@@ -477,10 +475,31 @@
             border-radius: 10px;
             box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
             padding: 6px 8px;
-            min-width: 0;
+            min-width: 300px;
+            flex: 1 1 300px;
+            position: relative;
+        }
+        #amzDilGroiModal .amz-dg-min-btn {
+            position: absolute; top: 5px; right: 6px; z-index: 2;
+            border: 0; background: #f1f5f9; color: #334155;
+            width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-weight: 700;
+        }
+        #amzDilGroiModal .amz-dg-min-btn:hover { background: #e2e8f0; }
+        #amzDilGroiModal .amz-dg-card > .amz-dg-card-title,
+        #amzDilGroiModal .amz-dg-card > .amz-dg-min-btn + .amz-dg-rules-title { padding-right: 28px; }
+        /* minimized: a slim strip with the title written vertically; click it to restore */
+        #amzDilGroiModal .amz-dg-card.is-min { flex: 0 0 40px; min-width: 40px; width: 40px; padding: 6px 4px; cursor: pointer; overflow: hidden; }
+        #amzDilGroiModal .amz-dg-card.is-min > :not(.amz-dg-min-btn):not(.amz-dg-card-title):not(.amz-dg-min-btn + .amz-dg-rules-title) { display: none !important; }
+        #amzDilGroiModal .amz-dg-card.is-min .amz-dg-add-btn { display: none !important; }
+        #amzDilGroiModal .amz-dg-card.is-min > .amz-dg-min-btn { right: 9px; }
+        #amzDilGroiModal .amz-dg-card.is-min > .amz-dg-card-title,
+        #amzDilGroiModal .amz-dg-card.is-min > .amz-dg-min-btn + .amz-dg-rules-title {
+            display: block !important; writing-mode: vertical-rl; transform: rotate(180deg);
+            white-space: nowrap; padding: 0; margin: 28px 0 0 0 !important; /* clears the button */
+            overflow: hidden; text-overflow: ellipsis; max-height: 260px;
         }
         #amzDilGroiModal .amz-dg-card-title { font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 4px; }
-        #amzDilGroiModal .amz-dg-card > .amz-dg-rules-title:first-child { margin-top: 0 !important; }
+        #amzDilGroiModal .amz-dg-card > .amz-dg-min-btn + .amz-dg-rules-title { margin-top: 0 !important; }
         #amzDilGroiModal .amz-dg-card .amz-dg-rules-title { font-size: 12px; margin-top: 6px !important; margin-bottom: 2px; }
         #amzDilGroiModal .amz-dg-card > .small.text-muted.mb-1 { font-size: 10.5px; line-height: 1.25; margin-bottom: 3px !important; }
         #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap { margin-top: 6px !important; }
@@ -499,7 +518,6 @@
             #amzDilGroiModal .modal-dialog { height: calc(100vh - 1rem); margin: .5rem auto; }
         }
         @media (max-width: 991.98px) {
-            #amzDilGroiModal .amz-dg-grid { grid-auto-columns: minmax(300px, 85vw); }
             #amzDilGroiModal .amz-dg-rules { column-count: 1; }
             #amzDilGroiModal .amz-dg-panel-tables .amz-dg-panel-body { overflow: visible; }
         }
@@ -964,6 +982,7 @@
                     <div class="amz-dg-panel amz-dg-panel-tables">
                     <div class="amz-dg-panel-body amz-dg-grid">
                     <div class="amz-dg-card">
+                    <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     <div class="amz-dg-card-title d-flex justify-content-between align-items-center">
                         <span><i class="fas fa-layer-group me-1"></i> Dil slabs — Target NROI</span>
                         <button type="button" class="btn btn-sm btn-outline-primary amz-dg-add-btn py-0 px-2" id="amz-dil-groi-add-btn">
@@ -1011,6 +1030,7 @@
                     </div>
                     </div>
                     <div class="amz-dg-card">
+                    <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     <div class="amz-dg-rules-title mt-2">CVR overlay — Target NROI</div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-cvr-groi-table">
@@ -1050,6 +1070,7 @@
                     </div>
                     </div>
                     <div class="amz-dg-card">
+                    <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     <div class="amz-dg-rules-title mt-2"
                         title="Each age band (days in stock) adds its points to the Dil slab Target NROI, after the CVR overlay and before the Diff rule. Count = SKUs (INV &gt; 0) whose age is in that band.">
                         Ageing Rule
@@ -1086,6 +1107,7 @@
                     </div>
                     </div>
                     <div class="amz-dg-card">
+                    <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     <div class="amz-dg-rules-title mt-3"
                         title="If LMP is available and the calculated S PRC is at or above LMP: S PRC = LMP × (1 − x/100). x depends on the SKU's Dil band. Count = SKUs (INV &gt; 0) in that band whose calculated S PRC is at or above LMP.">
                         LMP Rule
@@ -1144,6 +1166,7 @@
                     </div>
                     </div>
                     <div class="amz-dg-card">
+                    <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     @include('partials.amazon-lmp-cvr-disc-rule', ['amzLmpCvrPart' => 'section'])
                     </div>
                     </div>
@@ -1182,6 +1205,26 @@
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
         @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'script'])
         @include('partials.amazon-ship-slabs', ['amazonShipPart' => 'script'])
+        // Sprc Dil modal: minimize / restore a rule card
+        function amzDgSetCardMin(card, on) {
+            card.classList.toggle('is-min', on);
+            const btn = card.querySelector(':scope > .amz-dg-min-btn');
+            if (btn) {
+                btn.textContent = on ? '+' : '−';
+                btn.title = on ? 'Restore' : 'Minimize';
+                btn.setAttribute('aria-label', btn.title);
+            }
+        }
+        $(document).off('click.amzdgmin').on('click.amzdgmin', '#amzDilGroiModal .amz-dg-min-btn', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const card = this.closest('.amz-dg-card');
+            amzDgSetCardMin(card, !card.classList.contains('is-min'));
+        });
+        $(document).off('click.amzdgmincard').on('click.amzdgmincard', '#amzDilGroiModal .amz-dg-card.is-min', function (e) {
+            if ($(e.target).closest('.amz-dg-min-btn').length) return;
+            amzDgSetCardMin(this, false);
+        });
         // ==================== CVR Disc / Rev Disc / Sprc Dil ====================
         const AMZ_CVR_DISC_DEFAULTS = [
             { key: '0.01-1', label: '0.01–1%', disc: 9 },
