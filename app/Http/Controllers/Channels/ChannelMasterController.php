@@ -15908,7 +15908,10 @@ class ChannelMasterController extends Controller
         $l30 = $empty;
         $l60 = $empty;
 
-        $latestSaleDate = VintedSalesData::whereNotNull('sale_date')->max('sale_date');
+        // Rolling windows end at Pacific yesterday (same as Vinted Y / L7 and the live overlay).
+        $latestSaleDate = VintedSalesData::whereNotNull('sale_date')->exists()
+            ? Carbon::yesterday('America/Los_Angeles')->toDateString()
+            : null;
         if ($latestSaleDate) {
             $latestCarbon = \Carbon\Carbon::parse($latestSaleDate);
             $l30Start = $latestCarbon->copy()->subDays(29)->format('Y-m-d');

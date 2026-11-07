@@ -2275,9 +2275,10 @@ class UpdateMarketplaceDailyMetrics extends Command
     {
         // Single source of truth: the same L30 figures Active Channel shows for Depop
         // (/depop/sheet rows, rolling 30 days through Pacific yesterday, PFT = sale × margin − LP × qty).
-        // An explicit --date backfills a window ending on that date instead.
+        // An explicit --date backfills the snapshot of that day, which (like a normal run on that
+        // day) covers the 30 days ending the day before it.
         $end = $this->option('date')
-            ? Carbon::parse($date)->toDateString()
+            ? Carbon::parse($date)->subDay()->toDateString()
             : null;
         $start = $end ? Carbon::parse($end)->subDays(29)->toDateString() : null;
 
@@ -2310,56 +2311,39 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateVintedMetrics($date)
     {
-        $endDate = Carbon::parse($date)->endOfDay();
-        $startDate = Carbon::parse($date)->subDays(29)->startOfDay();
+        // Single source of truth: the same L30 figures Active Channel shows for Vinted
+        // (/vinted/sheet rows, rolling 30 days through Pacific yesterday, PFT = sale × margin − LP × qty).
+        // An explicit --date backfills the snapshot of that day, which (like a normal run on that
+        // day) covers the 30 days ending the day before it.
+        $end = $this->option('date')
+            ? Carbon::parse($date)->subDay()->toDateString()
+            : null;
+        $start = $end ? Carbon::parse($end)->subDays(29)->toDateString() : null;
 
-        $rows = VintedSalesData::whereBetween('sale_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])->get();
-        if ($rows->isEmpty()) {
+        $badge = app(\App\Http\Controllers\Sales\VintedSalesController::class)
+            ->dailySalesBadgeTotals($start, $end);
+        if ($badge === null || ((int) $badge['orders'] === 0 && (int) $badge['l30'] === 0)) {
             return null;
         }
 
-        // Margin from marketplace_percentages where marketplace = Vinted
-        $margin = VintedController::marginFactor();
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalRevenue = 0;
-        $totalWeightedPrice = 0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($rows as $row) {
-            $quantity = (int) ($row->quantity ?: 1);
-            $unitPrice = (float) $row->item_price;
-            $saleAmount = $unitPrice * $quantity;
-
-            $totalOrders++;
-            $totalQuantity += $quantity;
-            $totalRevenue += $saleAmount;
-
-            if ($quantity > 0 && $unitPrice > 0) {
-                $totalWeightedPrice += $unitPrice * $quantity;
-                $totalQuantityForPrice += $quantity;
-            }
-        }
-
-        $totalPft = $totalRevenue * $margin;
-        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $sales = (float) $badge['l30'];
+        $qty = (int) $badge['qty'];
 
         return [
-            'total_orders' => $totalOrders,
-            'total_quantity' => $totalQuantity,
-            'total_revenue' => $totalRevenue,
-            'total_sales' => $totalRevenue,
-            'total_cogs' => 0,
-            'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => 0,
-            'avg_price' => $avgPrice,
-            'l30_sales' => $totalRevenue,
+            'total_orders' => (int) $badge['orders'],
+            'total_quantity' => $qty,
+            'total_revenue' => $sales,
+            'total_sales' => $sales,
+            'total_cogs' => (float) $badge['cogs'],
+            'total_pft' => (float) $badge['pft'],
+            'pft_percentage' => (float) $badge['gpft'],
+            'roi_percentage' => (float) $badge['groi'],
+            'avg_price' => $qty > 0 ? $sales / $qty : 0,
+            'l30_sales' => $sales,
             'kw_spent' => 0,
             'pmt_spent' => 0,
-            'n_pft' => $totalPft,
-            'n_roi' => 0,
+            'n_pft' => (float) $badge['pft'],
+            'n_roi' => (float) $badge['groi'],
         ];
     }
 
