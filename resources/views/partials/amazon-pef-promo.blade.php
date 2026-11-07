@@ -440,47 +440,65 @@
             #amzDilGroiModal .amz-dg-cols { flex-wrap: wrap; flex-direction: column; }
             #amzDilGroiModal .amz-dg-panel-body { overflow: visible; }
         }
-        /* ---- Next-gen dashboard layout: every rule is a card in one grid, no scrolling on a normal screen ---- */
-        #amzDilGroiModal .modal-dialog { max-width: min(1800px, 98vw); }
-        #amzDilGroiModal .amz-dg-panel-rules { display: flex; flex: 0 0 27%; }
+        /* ---- Next-gen one-screen layout: pies strip, rules band (3 text columns), then 3 rule cards side by side ---- */
+        #amzDilGroiModal .modal-dialog { max-width: 99vw; }
+        #amzDilGroiModal .modal-header { padding-top: 6px; padding-bottom: 6px; }
+        #amzDilGroiModal .modal-body { padding: 8px 10px; }
+        #amzDilGroiModal .modal-footer { padding-top: 6px; padding-bottom: 6px; }
+        /* pies: slim strip */
+        #amzDilGroiModal .amz-dg-pies { margin: 0 0 8px; gap: 8px; }
+        #amzDilGroiModal .amz-dg-pie-wrap { padding: 4px 10px; gap: 8px; }
+        #amzDilGroiModal .amz-dg-pie-canvas-wrap { width: 68px; height: 68px; flex: 0 0 68px; }
+        #amzDilGroiModal .amz-dg-pie-legend { max-height: 72px; overflow-y: auto; }
+        #amzDilGroiModal .amz-dg-pie-row { font-size: 10px; }
+        /* stack: rules band on top, cards below */
+        #amzDilGroiModal .amz-dg-cols { flex-direction: column; gap: 8px; }
+        #amzDilGroiModal .amz-dg-panel-rules { flex: 0 0 auto; }
         #amzDilGroiModal.amz-dg-hide-rules .amz-dg-panel-rules { display: none; }
-        #amzDilGroiModal .amz-dg-panel-tables { flex: 1 1 100%; background: transparent; box-shadow: none; overflow: visible; }
+        #amzDilGroiModal .amz-dg-panel-rules .amz-dg-panel-head { padding: 3px 10px; font-size: 11px; }
+        #amzDilGroiModal .amz-dg-panel-rules .amz-dg-panel-body { max-height: 165px; overflow-y: auto; padding: 4px 10px; }
+        #amzDilGroiModal .amz-dg-rules { column-count: 3; column-gap: 22px; padding-left: 10px; margin: 0; }
+        #amzDilGroiModal .amz-dg-rules li { break-inside: avoid; font-size: 10.5px; line-height: 1.28; margin-bottom: 3px; }
+        #amzDilGroiModal .amz-dg-panel-tables { flex: 1 1 auto; min-height: 0; background: transparent; box-shadow: none; overflow: visible; }
+        #amzDilGroiModal .amz-dg-panel-tables .amz-dg-panel-body { padding: 0; overflow-y: auto; }
         #amzDilGroiModal .amz-dg-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
             align-items: start;
             align-content: start;
-            padding: 0;
         }
         #amzDilGroiModal .amz-dg-card {
             background: #fff;
             border: 1px solid #e2e8f0;
             border-radius: 10px;
             box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
-            padding: 8px 10px;
+            padding: 6px 8px;
             min-width: 0;
         }
-        #amzDilGroiModal .amz-dg-card-title { font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 6px; }
+        #amzDilGroiModal .amz-dg-card-title { font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 4px; }
         #amzDilGroiModal .amz-dg-card > .amz-dg-rules-title:first-child { margin-top: 0 !important; }
-        #amzDilGroiModal .amz-dg-card .amz-dg-rules-title { font-size: 12px; margin-bottom: 4px; }
-        #amzDilGroiModal .amz-dg-card > .small.text-muted.mb-1 { font-size: 11px; line-height: 1.3; }
-        #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap { margin-top: 8px !important; }
-        #amzDilGroiModal .amz-dg-diffrow { color: #475569; line-height: 1.9; }
-        #amzDilGroiModal #amz-dil-groi-status { grid-column: 1 / -1; }
-        #amzDilGroiModal .amz-dg-pie-canvas-wrap { width: 84px; height: 84px; flex: 0 0 84px; }
-        #amzDilGroiModal .amz-dg-pie-legend { max-height: 90px; overflow-y: auto; }
-        @media (min-width: 1600px) {
-            #amzDilGroiModal .amz-dg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        }
-        @media (min-width: 1100px) {
-            #amzDilGroiModal.amz-dg-hide-rules .amz-dg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        #amzDilGroiModal .amz-dg-card .amz-dg-rules-title { font-size: 12px; margin-top: 6px !important; margin-bottom: 2px; }
+        #amzDilGroiModal .amz-dg-card > .small.text-muted.mb-1 { font-size: 10.5px; line-height: 1.25; margin-bottom: 3px !important; }
+        #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap { margin-top: 6px !important; }
+        #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap .small.text-muted { font-size: 10.5px; line-height: 1.25; }
+        #amzDilGroiModal .amz-dg-diffrow { color: #475569; font-size: 11px; line-height: 1.7; }
+        /* tables fit the card: no fixed column widths, narrow inputs */
+        #amzDilGroiModal .amz-dg-card .table { width: 100%; margin-bottom: 0; }
+        #amzDilGroiModal .amz-dg-card .table th { width: auto !important; white-space: nowrap; }
+        #amzDilGroiModal .amz-dg-card .table td { white-space: nowrap; }
+        #amzDilGroiModal .amz-dg-card .table .form-control-sm { min-width: 0; width: 100%; max-width: 74px; padding-left: 4px; padding-right: 4px; margin-left: auto; margin-right: auto; }
+        #amzDilGroiModal .amz-dg-card .amz-dg-diffrow .form-control-sm { width: 58px !important; max-width: 58px; }
+        #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap .form-control-sm { width: 80px !important; }
+        #amzDilGroiModal .amz-dg-card .table-responsive { overflow-x: hidden; }
+        #amzDilGroiModal #amz-dil-groi-status { grid-column: 1 / -1; margin: 0 !important; }
+        @media (min-width: 992px) {
+            #amzDilGroiModal .modal-dialog { height: calc(100vh - 1rem); margin: .5rem auto; }
         }
         @media (max-width: 991.98px) {
             #amzDilGroiModal .amz-dg-grid { grid-template-columns: 1fr; }
-        }
-        @media (min-width: 992px) {
-            #amzDilGroiModal .amz-dg-panel-tables .amz-dg-panel-body { overflow-y: auto; }
+            #amzDilGroiModal .amz-dg-rules { column-count: 1; }
+            #amzDilGroiModal .amz-dg-panel-tables .amz-dg-panel-body { overflow: visible; }
         }
         #amz-dil-groi-btn {
             background: #6f42c1;
@@ -3647,16 +3665,25 @@
                     },
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
-                        const info = (typeof amzLmpCvrInfo === 'function') ? amzLmpCvrInfo(d) : null;
+                        if (typeof amzLmpCvrInfo !== 'function') return '';
+                        const cfg = (typeof amzLmpCvrRuleSafe === 'function') ? amzLmpCvrRuleSafe() : null;
+                        const ruleOn = !!(cfg && cfg.enabled);
+                        // Rule off: show what it WOULD give (grey), so the column is never just blank.
+                        const info = ruleOn ? amzLmpCvrInfo(d) : amzLmpCvrInfo(d, Object.assign({}, cfg || {}, { enabled: true }));
                         if (!info) return '';
                         const std = Number(d.STANDARD_PRICE) || 0;
                         const pct = info.disc;
-                        if (!pct || !(std > 0)) return '<span class="text-muted" title="No extra discount from the CVR up / down rule">—</span>';
+                        if (!pct || !(std > 0)) {
+                            const why = !info.eligible ? 'No LMP (rule needs an LMP)' : (!info.band ? ('CVR ' + info.cvr.toFixed(1) + '% with ' + info.trend + ' arrow: no Down / Up row matches') : 'Matching row has Disc % 0');
+                            return '<span class="text-muted" title="' + amzPefEscAttr(why + (ruleOn ? '' : ' · rule is OFF')) + '">—</span>';
+                        }
                         const amt = Math.round(std * pct) / 100;
                         const tip = pct + '% of Std Prc $' + std.toFixed(2) + ' = $' + amt.toFixed(2)
                             + ' · CVR ' + info.cvr.toFixed(2) + '% vs L45 ' + info.cvr45.toFixed(2) + '%'
-                            + (info.lmp > 0 ? (' · LMP $' + info.lmp.toFixed(2)) : ' · no LMP');
-                        return '<span title="' + amzPefEscAttr(tip) + '" style="font-weight:600;white-space:nowrap;">$' + amt.toFixed(2) + '</span>';
+                            + (info.lmp > 0 ? (' · LMP $' + info.lmp.toFixed(2)) : ' · no LMP')
+                            + (ruleOn ? '' : ' · rule is OFF (turn it on in Sprc Dil → CVR up / down)');
+                        return '<span title="' + amzPefEscAttr(tip) + '" style="font-weight:600;white-space:nowrap;'
+                            + (ruleOn ? '' : 'color:#94a3b8;font-style:italic;') + '">$' + amt.toFixed(2) + '</span>';
                     },
                 },
                 {
