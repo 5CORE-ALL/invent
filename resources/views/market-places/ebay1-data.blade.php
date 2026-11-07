@@ -159,6 +159,12 @@
         .e1d-modal-box { position: relative; }
         .e1d-x { position: absolute; top: 1.1rem; right: 1.1rem; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #f1f5f9; color: #475569; display: flex; align-items: center; justify-content: center; transition: background .12s; }
         .e1d-x:hover { background: #e2e8f0; color: #0f172a; }
+        .e1d-hdrrow { display: flex; align-items: center; gap: 8px; padding: .35rem .6rem; border-bottom: 1px solid #f1f5f9; }
+        .e1d-hdrrow .e1d-hdrorig { flex: 0 0 38%; font-size: .78rem; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .e1d-hdrrow input { flex: 1 1 auto; min-width: 0; }
+        .e1d-hdrrow input.changed { border-color: #0284c7; background: #f0f9ff; }
+        .e1d-hdrrow .e1d-hdrundo { border: 0; background: transparent; color: #94a3b8; padding: 0 .3rem; }
+        .e1d-hdrrow .e1d-hdrundo:hover { color: #dc2626; }
         .e1d-addopt:last-child { border-bottom: 0; }
         .e1d-addopt:hover { background: #f5f8ff; }
         .e1d-addopt input[type=checkbox] { width: 16px; height: 16px; accent-color: #2c6ed5; flex: 0 0 auto; }
@@ -229,6 +235,9 @@
                         </button>
                         <button type="button" class="btn btn-sm btn-warning" id="e1dEditCol" title="Edit Column: set one or more columns to a value on every row of the open tab, or only on the ticked rows" aria-label="Edit Column" disabled>
                             <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary" id="e1dHdrBtn" title="Edit Column Header: rename the header of any column of this table" aria-label="Edit Column Header">
+                            <i class="fas fa-heading"></i>
                         </button>
                         <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete Column: delete one item-specific column of the open category tab, here and on the live eBay 1 listings" aria-label="Delete Column" disabled>
                             <i class="fas fa-trash-alt"></i>
@@ -316,6 +325,23 @@
             <div class="d-flex justify-content-end gap-2">
                 <button type="button" class="btn btn-sm btn-light" id="e1dEditCancel">Cancel</button>
                 <button type="button" class="btn btn-sm btn-warning" id="e1dEditGo" disabled>Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="e1d-modal" id="e1dHdrModal" hidden>
+        <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dHdrTitle">
+            <h5 id="e1dHdrTitle" class="mb-2"><i class="fas fa-heading text-secondary"></i> Edit Column Header</h5>
+            <p class="small text-muted mb-2" id="e1dHdrIntro"></p>
+            <input type="text" id="e1dHdrSearch" class="form-control form-control-sm mb-2" placeholder="Quick search a column…" autocomplete="off">
+            <div class="e1d-addlist mb-2" id="e1dHdrList"></div>
+            <div class="small text-muted mb-2">Only the name shown in the table header changes. Item specific names on eBay and the data stay as they are. Saved in this browser.</div>
+            <div class="d-flex justify-content-between gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="e1dHdrReset" title="Put every header back to its original name">Reset all</button>
+                <span class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-light" id="e1dHdrCancel">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="e1dHdrGo">Save</button>
+                </span>
             </div>
         </div>
     </div>
@@ -481,7 +507,7 @@
                 updateMissingBadges();
             }
 
-            // Red count on every header: how many rows of the open tab (after the filters) have no data in that column.
+            // Red count on every header: how many rows of the open tab have no data in that column, missing listings included.
             const E1_NO_MISS = new Set(['_edit', '_copy', 'nr_req', 'listed']);
 
             function isMissingValue(value) {
@@ -493,7 +519,9 @@
 
             function updateMissingBadges() {
                 if (!table || !tableReady) return;
-                const data = table.getData('active');
+                // Every row of the open tab counts, listed or not: search, listing-state, REQ/NRL and stock filters
+                // do not hide the rows of missing listings from the count.
+                const data = rows.filter(passesTab);
                 table.getColumns().forEach(function (col) {
                     const field = col.getField();
                     const el = col.getElement();
@@ -517,7 +545,7 @@
                         el.appendChild(badge);
                     }
                     badge.textContent = missing > 999 ? '999+' : String(missing);
-                    badge.title = missing + ' of ' + data.length + ' rows have no data in this column';
+                    badge.title = missing + ' of ' + data.length + ' rows of this tab have no data in this column (missing listings included)';
                 });
             }
 
@@ -709,6 +737,7 @@
                 const targets = base.filter(function (row) {
                     if (!/^\d{9,15}$/.test(String(row.item_id || '').trim())) return false;
                     if (row.title_pending && String(row.ebay_title || '').trim() !== '') return true;
+                    if (row.price_pending && Number(row.ebay_price) > 0) return true;
                     const spec = row.specifics && !Array.isArray(row.specifics) ? row.specifics : {};
                     return Object.keys(spec).some(function (name) { return String(spec[name] || '').trim() !== ''; });
                 });
@@ -737,7 +766,7 @@
                 const where = scope.selected
                     ? todo.length + ' selected SKU' + (todo.length === 1 ? '' : 's')
                     : 'all ' + todo.length + ' SKUs of ' + (activeTab === ALL ? 'every category' : '"' + catLabel(activeTab) + '"');
-                if (!window.confirm('Push the item specifics of ' + where + ' to the live eBay 1 listings?\nAn edited eBay title is sent too. Blank values are not sent and values already on eBay are left alone.')) return;
+                if (!window.confirm('Push the item specifics of ' + where + ' to the live eBay 1 listings?\nAn edited eBay title and an edited price are sent too (a pushed price can be replaced later by the saved S PRC sync). Blank values are not sent and values already on eBay are left alone.')) return;
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 btn.dataset.busy = '1';
                 btn.disabled = true;
@@ -753,6 +782,7 @@
                         });
                         const item = { sku: row.sku, item_id: String(row.item_id || '').trim(), specifics: specifics };
                         if (row.title_pending) item.title = String(row.ebay_title || '').trim();
+                        if (row.price_pending && Number(row.ebay_price) > 0) item.price = Number(row.ebay_price);
                         return item;
                     });
                     status.textContent = 'Pushing ' + Math.min(i + size, todo.length) + ' / ' + todo.length + '…';
@@ -1222,13 +1252,31 @@
                 return specNamesForTab();
             }
 
-            // eBay title is a page column, not an item specific, so it is added beside the specifics.
+            // eBay title and Price are page columns, not item specifics, so they are added beside the specifics.
             function editNames() {
-                const names = ['eBay title'];
+                const names = ['eBay title', 'Price'];
                 editableColumnNames().forEach(function (name) {
-                    if (gKey(name) !== 'ebaytitle') names.push(name);
+                    if (gKey(name) !== 'ebaytitle' && gKey(name) !== 'price') names.push(name);
                 });
                 return names;
+            }
+
+            // What a saved title or price changes on a row. Item specifics return null.
+            function pagePatch(name, value) {
+                const k = gKey(name);
+                if (k === 'ebaytitle') return { ebay_title: value, title_pending: true };
+                if (k === 'price') {
+                    const n = parseFloat(String(value).replace(/[,$\s]/g, ''));
+                    return isNaN(n) ? null : { ebay_price: n, price_pending: true };
+                }
+                return null;
+            }
+
+            function pageValue(row, name) {
+                const k = gKey(name);
+                if (k === 'ebaytitle') return String(row.ebay_title || '');
+                if (k === 'price') return row.ebay_price == null || row.ebay_price === '' ? '' : String(row.ebay_price);
+                return null;
             }
 
             function renderEditSkus() {
@@ -1259,9 +1307,9 @@
             function editSuggestions(name) {
                 const values = new Map();
                 const sample = editRow ? rows.filter(function (r) { return (r.category || '') === (editRow.category || ''); }) : editScope().targets;
-                if (gKey(name) === 'ebaytitle') {
+                if (pageValue({}, name) !== null) {
                     sample.forEach(function (row) {
-                        const v = String(row.ebay_title || '').trim();
+                        const v = String(pageValue(row, name) || '').trim();
                         if (v !== '') values.set(v, (values.get(v) || 0) + 1);
                     });
                     return Array.from(values.keys()).sort(function (a, b) { return values.get(b) - values.get(a); }).slice(0, 40);
@@ -1289,7 +1337,7 @@
                     input.type = 'text';
                     input.className = 'form-control form-control-sm';
                     input.autocomplete = 'off';
-                    input.placeholder = gKey(name) === 'ebaytitle' ? 'eBay title, 80 characters' : 'Type the data for ' + name;
+                    input.placeholder = gKey(name) === 'ebaytitle' ? 'eBay title, 80 characters' : (gKey(name) === 'price' ? 'Price, for example 24.99' : 'Type the data for ' + name);
                     if (gKey(name) === 'ebaytitle') input.maxLength = 80;
                     input.value = editPicked.get(name) || '';
                     input.disabled = editBusy;
@@ -1330,7 +1378,7 @@
             // A column's starting value: a single row starts with its own current value.
             function startingEditValue(name) {
                 if (!editRow) return '';
-                if (gKey(name) === 'ebaytitle') return String(editRow.ebay_title || '');
+                if (pageValue(editRow, name) !== null) return pageValue(editRow, name);
                 const spec = editRow.specifics && !Array.isArray(editRow.specifics) ? editRow.specifics : {};
                 const own = Object.keys(spec).find(function (k) { return gKey(k) === gKey(name); });
                 return own ? String(spec[own] || '') : '';
@@ -1450,9 +1498,9 @@
                             const spec = data.specifics && !Array.isArray(data.specifics) ? data.specifics : {};
                             const patch = {};
                             saved.forEach(function (edit) {
-                                if (gKey(edit.column) === 'ebaytitle') {
-                                    patch.ebay_title = edit.value;
-                                    patch.title_pending = true;
+                                const page = pagePatch(edit.column, edit.value);
+                                if (page) {
+                                    Object.assign(patch, page);
                                     return;
                                 }
                                 const existing = Object.keys(spec).find(function (k) { return gKey(k) === gKey(edit.column); });
@@ -1802,8 +1850,123 @@
                 const at = raw.indexOf(' <i ');
                 const text = at === -1 ? raw : raw.slice(0, at);
                 const icon = at === -1 ? '' : raw.slice(at);
+                // A header renamed with Edit Column Header shows its own name. The column itself keeps its real name.
+                const holder = document.createElement('div');
+                holder.innerHTML = text;
+                const custom = headerLabels[gKey(holder.textContent)];
+                if (custom) return esc(custom).trim().split(/\s+/).join('<br>') + icon;
                 const safe = at === -1 && /<[a-z]/i.test(raw) ? raw : text.trim().split(/\s+/).join('<br>');
                 return safe + icon;
+            }
+
+            // ---- Edit Column Header: rename the header text of any column (this browser only). ----
+            const E1_HDR_KEY = 'ebay1_data_header_names_v1';
+            let headerLabels = {};
+            try {
+                const parsed = JSON.parse(localStorage.getItem(E1_HDR_KEY) || '{}');
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) headerLabels = parsed;
+            } catch (e) { headerLabels = {}; }
+            const hdrDraft = new Map(); // column key -> { orig, text }
+
+            function hdrNames() {
+                return allDeleteNames().slice().sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); });
+            }
+
+            function hdrVisible() {
+                const q = String(document.getElementById('e1dHdrSearch').value || '').trim().toLowerCase();
+                return hdrNames().filter(function (name) {
+                    if (!q) return true;
+                    const d = hdrDraft.get(gKey(name));
+                    return name.toLowerCase().indexOf(q) !== -1 || (d && d.text.toLowerCase().indexOf(q) !== -1);
+                });
+            }
+
+            function renderHdrList() {
+                const list = document.getElementById('e1dHdrList');
+                hdrNames().forEach(function (name) {
+                    const key = gKey(name);
+                    if (!hdrDraft.has(key)) hdrDraft.set(key, { orig: name, text: headerLabels[key] || name });
+                });
+                list.innerHTML = '';
+                const shown = hdrVisible();
+                if (!shown.length) list.innerHTML = '<div class="small text-muted p-2">No matching column.</div>';
+                shown.forEach(function (name) {
+                    const key = gKey(name);
+                    const draft = hdrDraft.get(key);
+                    const row = document.createElement('div');
+                    row.className = 'e1d-hdrrow';
+                    const orig = document.createElement('span');
+                    orig.className = 'e1d-hdrorig';
+                    orig.textContent = name;
+                    orig.title = name;
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.maxLength = 60;
+                    input.className = 'form-control form-control-sm' + (draft.text !== name ? ' changed' : '');
+                    input.value = draft.text;
+                    input.addEventListener('input', function () {
+                        draft.text = input.value;
+                        input.classList.toggle('changed', draft.text.trim() !== name);
+                    });
+                    input.addEventListener('keydown', function (e) {
+                        if (e.key === 'Enter') { e.preventDefault(); saveHdrNames(); }
+                    });
+                    const undo = document.createElement('button');
+                    undo.type = 'button';
+                    undo.className = 'e1d-hdrundo';
+                    undo.title = 'Back to "' + name + '"';
+                    undo.innerHTML = '<i class="fas fa-undo"></i>';
+                    undo.addEventListener('click', function () {
+                        draft.text = name;
+                        input.value = name;
+                        input.classList.remove('changed');
+                    });
+                    row.appendChild(orig);
+                    row.appendChild(input);
+                    row.appendChild(undo);
+                    list.appendChild(row);
+                });
+            }
+
+            function openHdrModal() {
+                hdrDraft.clear();
+                document.getElementById('e1dHdrSearch').value = '';
+                document.getElementById('e1dHdrIntro').textContent = activeTab === ALL
+                    ? 'Page columns. Open a category tab to also rename its item-specific columns.'
+                    : 'Category: ' + catLabel(activeTab);
+                document.getElementById('e1dHdrModal').hidden = false;
+                renderHdrList();
+                document.getElementById('e1dHdrSearch').focus();
+            }
+
+            function closeHdrModal() {
+                document.getElementById('e1dHdrModal').hidden = true;
+            }
+
+            function redrawHeaders() {
+                if (!table || !tableReady) return;
+                syncSpecColumns(true);
+                updateMissingBadges();
+            }
+
+            function saveHdrNames() {
+                hdrDraft.forEach(function (d, key) {
+                    const text = String(d.text || '').replace(/\s+/g, ' ').trim();
+                    if (text === '' || text === d.orig) delete headerLabels[key];
+                    else headerLabels[key] = text;
+                });
+                try { localStorage.setItem(E1_HDR_KEY, JSON.stringify(headerLabels)); } catch (e) {}
+                closeHdrModal();
+                redrawHeaders();
+            }
+
+            function resetHdrNames() {
+                if (!Object.keys(headerLabels).length) return;
+                if (!window.confirm('Put every column header back to its original name?')) return;
+                headerLabels = {};
+                try { localStorage.removeItem(E1_HDR_KEY); } catch (e) {}
+                closeHdrModal();
+                redrawHeaders();
             }
 
             // Pen button, always the last column and frozen on the right whatever the horizontal scroll.
@@ -1823,10 +1986,11 @@
             }
 
             // ---- Copy row / paste: copy the shareable data of one row, paste it into the ticked rows (right click). ----
-            // Data that belongs to one SKU is never copied: SKU, parent, item id, UPC, MPN, model, EAN, GTIN, ISBN, serial and part numbers, title.
-            const E1_CLIP_KEY = 'ebay1_data_row_clip_v1';
+            // Data that belongs to one SKU is never copied: SKU, parent, item id, UPC, MPN, model, EAN, GTIN, ISBN, serial and part numbers.
+            // The eBay title and the price are copied with the item specifics.
+            const E1_CLIP_KEY = 'ebay1_data_row_clip_v2';
             const E1_UNIQUE_KEYS = new Set(['sku', 'parent', 'itemid', 'upc', 'ean', 'gtin', 'isbn', 'mpn', 'model', 'modelnumber', 'modelname',
-                'manufacturerpartnumber', 'partnumber', 'serialnumber', 'epid', 'ebaytitle', 'title']);
+                'manufacturerpartnumber', 'partnumber', 'serialnumber', 'epid', 'ebaytitle', 'title', 'price']);
             let rowClip = null;
             let pasteBusy = false;
             try { rowClip = JSON.parse(localStorage.getItem(E1_CLIP_KEY) || 'null'); } catch (e) { rowClip = null; }
@@ -1840,10 +2004,14 @@
                     if (value === '' || E1_UNIQUE_KEYS.has(gKey(name))) return;
                     entries.push({ name: name, value: value });
                 });
+                const title = String(row.ebay_title || '').trim();
+                if (title !== '') entries.push({ name: 'eBay title', value: title.slice(0, 80) });
+                const price = Number(row.ebay_price);
+                if (row.ebay_price !== null && row.ebay_price !== '' && price > 0) entries.push({ name: 'Price', value: price.toFixed(2) });
                 const status = document.getElementById('e1dPullStatus');
                 if (!entries.length) {
                     status.textContent = 'Nothing to copy from ' + row.sku + '.';
-                    rowToast('Nothing copied from ' + row.sku + ': it has no item-specific values to share. Pick a row that shows data in its columns (SKU, ID, UPC, MPN, Model and title are never copied).', false);
+                    rowToast('Nothing copied from ' + row.sku + ': it has no item-specific values to share. Pick a row that shows data in its columns (SKU, ID, UPC, MPN and Model are never copied).', false);
                     return false;
                 }
                 rowClip = { sku: row.sku, entries: entries };
@@ -1879,7 +2047,7 @@
             async function pasteRowData(targets) {
                 if (!rowClip || pasteBusy || !targets.length) return;
                 const entries = rowClip.entries;
-                if (!window.confirm('Paste ' + entries.length + ' values copied from ' + rowClip.sku + ' into ' + targets.length + ' row' + (targets.length === 1 ? '' : 's') + '?\nSKU, item ID, UPC, MPN, model and title are not touched. Nothing goes to eBay until you press Push.')) return;
+                if (!window.confirm('Paste ' + entries.length + ' values copied from ' + rowClip.sku + ' into ' + targets.length + ' row' + (targets.length === 1 ? '' : 's') + '?\nSKU, item ID, UPC, MPN and model are not touched. The eBay title and price are changed too. Nothing goes to eBay until you press Push.')) return;
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 const skus = targets.map(function (row) { return row.sku; });
                 const problems = [];
@@ -1915,6 +2083,11 @@
                             const spec = source.specifics && !Array.isArray(source.specifics) ? source.specifics : {};
                             const patch = {};
                             saved.forEach(function (entry) {
+                                const page = pagePatch(entry.name, entry.value);
+                                if (page) {
+                                    Object.assign(patch, page);
+                                    return;
+                                }
                                 const existing = Object.keys(spec).find(function (k) { return gKey(k) === gKey(entry.name); });
                                 spec[existing || entry.name] = entry.value;
                                 patch[specKey(entry.name)] = entry.value;
@@ -2160,6 +2333,11 @@
                     renderDelList();
                 });
                 document.getElementById('e1dDelSearch').addEventListener('input', renderDelList);
+                document.getElementById('e1dHdrBtn').addEventListener('click', openHdrModal);
+                document.getElementById('e1dHdrCancel').addEventListener('click', closeHdrModal);
+                document.getElementById('e1dHdrGo').addEventListener('click', saveHdrNames);
+                document.getElementById('e1dHdrReset').addEventListener('click', resetHdrNames);
+                document.getElementById('e1dHdrSearch').addEventListener('input', renderHdrList);
                 document.getElementById('e1dDelGo').addEventListener('click', runDelete);
                 document.getElementById('e1dJobClose').addEventListener('click', function () { document.getElementById('e1dJob').hidden = true; });
                 // Click outside a side panel, or Esc, does the same as its Cancel button.
