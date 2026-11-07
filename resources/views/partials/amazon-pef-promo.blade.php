@@ -1069,6 +1069,7 @@
                             </tbody>
                         </table>
                     </div>
+                    @include('partials.amazon-lmp-cvr-disc-rule', ['amzLmpCvrPart' => 'section'])
                     <div class="small text-muted mt-1" id="amz-dil-groi-status"></div>
                     </div>
                     </div>
@@ -2774,6 +2775,8 @@
             const diffAdj = amzDiffAdjNow();
             amzDiffAdj = diffAdj;
             const ageAdj = amzAgeAdjPayload();
+            // CVR up / down extra discount lives in this modal too: save it with the rest.
+            if (typeof window.amzLmpCvrSaveQuiet === 'function') window.amzLmpCvrSaveQuiet();
             return $.ajax({
                 url: '/channel-promo-pricing/amazon/dil-groi' + (saveAll === true ? '/save-all' : ''),
                 method: 'POST',
@@ -2813,6 +2816,7 @@
             renderAmzDilGroiModalTable();
             amzRenderAgeAdjTable();
             loadAmzDilGroiRules();
+            if (typeof window.amzLmpCvrFillForm === 'function') window.amzLmpCvrFillForm();
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
         }
         window.amzSprcDilForRow = amzSprcDilForRow;

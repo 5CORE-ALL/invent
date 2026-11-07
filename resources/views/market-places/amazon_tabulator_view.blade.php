@@ -859,7 +859,6 @@
 
                     @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'buttons'])
                     @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'buttons'])
-                    @include('partials.amazon-lmp-cvr-disc-rule', ['amzLmpCvrPart' => 'buttons'])
 
                     <!-- Selected Rows Count -->
                     <span class="badge bg-primary fs-6 p-2 ms-2" id="selected-rows-count" style="display: none;">
@@ -1410,7 +1409,6 @@
 
     @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'modals'])
     @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'modals'])
-    @include('partials.amazon-lmp-cvr-disc-rule', ['amzLmpCvrPart' => 'modals'])
 
 @endsection
 
