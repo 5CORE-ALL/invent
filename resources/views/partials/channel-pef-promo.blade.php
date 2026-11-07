@@ -2184,9 +2184,24 @@
                 if (d && typeof d === 'object') Object.assign(d, patch);
             } catch (e) { /* ignore */ }
         }
+        let chPromoPrmtTaskSig = '';
         function applyChannelPushPrmtTaskStatusesToTable(tasks) {
             if (typeof table === 'undefined' || !table || !Array.isArray(tasks)) return;
             chPromoPushPrmtLastTasks = tasks;
+            // Polled every second: skip when nothing changed (avoids needless re-render / scroll jumps).
+            const sig = tasks.length + '|' + tasks.map(function(t) {
+                return (t && t.sku ? t.sku : '') + ':' + (t && t.status ? t.status : '');
+            }).join(',');
+            if (sig === chPromoPrmtTaskSig) return;
+            chPromoPrmtTaskSig = sig;
+            // Keep the user's horizontal / vertical scroll across the re-render below.
+            let holder = null;
+            let keepLeft = 0;
+            let keepTop = 0;
+            try {
+                holder = table.element && table.element.querySelector('.tabulator-tableholder');
+                if (holder) { keepLeft = holder.scrollLeft; keepTop = holder.scrollTop; }
+            } catch (e) { holder = null; }
             const bySku = {};
             tasks.forEach(function(t) {
                 if (t && t.sku) bySku[chPromoSkuKey(t.sku)] = t;
@@ -2227,6 +2242,13 @@
                 }
             });
             chPromoSyncParentPushButtons('prmt');
+            if (holder) {
+                const restore = function() {
+                    try { holder.scrollLeft = keepLeft; holder.scrollTop = keepTop; } catch (e) { /* ignore */ }
+                };
+                restore();
+                requestAnimationFrame(restore);
+            }
         }
         function stopChannelPushPrmtPoll() {
             if (chPromoPushPrmtPollTimer) {
@@ -6028,6 +6050,7 @@
             }
             if (t._chPromoPrmtBadgeBound) return;
             t._chPromoPrmtBadgeBound = true;
+            try { t.on('dataLoaded', function() { chPromoPrmtTaskSig = ''; }); } catch (e) { /* ignore */ }
             ['dataLoaded', 'renderComplete', 'cellEdited', 'rowUpdated'].forEach(function(ev) {
                 try { t.on(ev, chPromoScheduleBadgeRefresh); } catch (e) { /* ignore */ }
             });
