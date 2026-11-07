@@ -68,6 +68,12 @@ class AmazonAdsYesterdayBadgeHistoryTest extends TestCase
         $this->assertSame([
             ['date' => '2026-10-14', 'yspend' => 12.5],
         ], AmazonAdsYesterdayBadgeHistory::chartPoints($series, 'yspend'));
-        $this->assertSame(31.0, AmazonAdsYesterdayBadgeHistory::chartPoints($series, 'yacos')[0]['yacos']);
+        $this->assertSame(31.25, AmazonAdsYesterdayBadgeHistory::chartPoints($series, 'yacos')[0]['yacos']);
+    }
+
+    public function test_acos_change_of_one_tenth_point_is_not_gray(): void
+    {
+        $this->assertSame('red', AmazonAdsYesterdayBadgeHistory::tone('yacos', 33.1, 33.0));
+        $this->assertSame('green', AmazonAdsYesterdayBadgeHistory::tone('yacos', 32.9, 33.0));
     }
 }

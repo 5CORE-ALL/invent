@@ -5517,7 +5517,7 @@
                 if (amzHistoryKind === 'kpi') return amzKpiFmt(amzCpcAvgRow.kpiKey || '', n);
                 if (amzHistoryKind === 'count') return Math.round(n).toLocaleString('en-US');
                 if (amzCpcAvgRow && amzCpcAvgRow.badgeHistory) {
-                    if (amzHistoryIsPercent()) return Math.round(n) + '%';
+                    if (amzHistoryIsPercent()) return n.toFixed(1) + '%';
                     return '$' + Math.round(n).toLocaleString('en-US');
                 }
                 if (amzHistoryIsPercent()) return n.toFixed(1) + '%';

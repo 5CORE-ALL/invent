@@ -44,7 +44,8 @@ final class AmazonAdsYesterdayBadgeHistory
         if ($sales > 0) {
             $v = ($spend / $sales) * 100;
 
-            return is_finite($v) ? (float) round($v, 0) : 0.0;
+            // Keep decimals: a 0.1 point change must still show as up/down (not gray). Whole numbers are only for display.
+            return is_finite($v) ? (float) round($v, 2) : 0.0;
         }
         if ($spend > 0) {
             return 100.0;
