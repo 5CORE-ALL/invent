@@ -156,7 +156,8 @@ class ChannelListingRegistry
             'shein' => [
                 'dataView' => \App\Models\SheinDataView::class,
                 'status' => \App\Models\SheinListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => SheinMetric::class, 'column' => 'shein_sku_code', 'reject_sku' => true],
+                // A Shein product that is inactive / disabled / delisted / deleted is Missing L again, even with its old sku code stored.
+                'listed' => ['type' => 'column', 'model' => SheinMetric::class, 'column' => 'shein_sku_code', 'reject_sku' => true, 'status_column' => 'status', 'hide_statuses' => ['inactive', 'disabled', 'delisted', 'deleted']],
                 'id_field' => 'listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -527,7 +528,8 @@ class ChannelListingRegistry
                 $skus,
                 (string) ($listed['column'] ?? 'item_id'),
                 (bool) ($listed['reject_sku'] ?? false),
-                (array) ($listed['hide_statuses'] ?? [])
+                (array) ($listed['hide_statuses'] ?? []),
+                (string) ($listed['status_column'] ?? 'listing_status')
             ),
             'price' => ListingCountsEngine::listedIdsFromPrice(
                 (string) ($listed['model'] ?? ''),

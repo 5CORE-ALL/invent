@@ -53,7 +53,11 @@ class ListingChannelRefresher
             'temu3' => [$link('Temu 3 link map', 'temu3:sync-link-map')],
             'aliexpress' => [$link('AliExpress link map', 'aliexpress:sync-link-map')],
             'alibaba' => [$link('Alibaba link map', 'alibaba:sync-link-map')],
-            'shein' => [$link('Shein link map', 'shein:sync-link-map')],
+            'shein' => [
+                // Products, status (active / inactive) and stock first, so an inactive product is Missing L again.
+                ['type' => 'artisan', 'label' => 'Shein products, status and stock', 'command' => 'shein:fetch', 'args' => ['type' => 'sync'], 'force' => false],
+                $link('Shein link map', 'shein:sync-link-map'),
+            ],
             'tiktokshop' => [['type' => 'tiktok', 'label' => 'TikTok Shop products', 'channel' => 'tiktok']],
             'tiktokshop2' => [['type' => 'tiktok', 'label' => 'TikTok 2 products', 'channel' => 'tiktok2']],
             'macys' => [$catalog('macy', "Macy's catalog")],
@@ -188,7 +192,7 @@ class ListingChannelRefresher
                     return [true, 'TikTok products synced.'];
 
                 case 'artisan':
-                    $params = [];
+                    $params = (array) ($step['args'] ?? []);
                     if ($manual && ! empty($step['force'])) {
                         $params['--force'] = true;
                     }

@@ -898,7 +898,7 @@ class ListingCountsEngine
      * @param  list<string>  $skus
      * @return array<string, string>
      */
-    public static function listedIdsFromColumn(string $modelClass, array $skus, string $column, bool $rejectSkuAsId = false, array $hideStatuses = []): array
+    public static function listedIdsFromColumn(string $modelClass, array $skus, string $column, bool $rejectSkuAsId = false, array $hideStatuses = [], string $statusColumn = 'listing_status'): array
     {
         $hide = [];
         foreach ($hideStatuses as $status) {
@@ -918,8 +918,8 @@ class ListingCountsEngine
         $columns = ['sku', $column];
         $hasStatus = false;
         $table = (new $modelClass)->getTable();
-        if (Schema::hasColumn($table, 'listing_status') && $column !== 'listing_status') {
-            $columns[] = 'listing_status';
+        if (Schema::hasColumn($table, $statusColumn) && $column !== $statusColumn) {
+            $columns[] = $statusColumn;
             $hasStatus = true;
         }
         $modelClass::query()
@@ -928,17 +928,17 @@ class ListingCountsEngine
             ->whereNotNull($column)
             ->where($column, '!=', '')
             ->get($columns)
-            ->each(function ($row) use (&$byKey, $column, $rejectSkuAsId, $wanted, $hasStatus, $hide) {
+            ->each(function ($row) use (&$byKey, $column, $rejectSkuAsId, $wanted, $hasStatus, $hide, $statusColumn) {
                 $sku = trim((string) $row->sku);
                 $id = trim((string) ($row->{$column} ?? ''));
                 if ($sku === '' || $id === '') {
                     return;
                 }
-                if ($hasStatus && self::listingStatusHidesId($row->listing_status ?? null, $id, $sku)) {
+                if ($hasStatus && self::listingStatusHidesId($row->{$statusColumn} ?? null, $id, $sku)) {
                     return;
                 }
                 if ($hasStatus && $hide !== []) {
-                    $status = str_replace([' ', '-'], '_', strtolower(trim((string) ($row->listing_status ?? ''))));
+                    $status = str_replace([' ', '-'], '_', strtolower(trim((string) ($row->{$statusColumn} ?? ''))));
                     if (isset($hide[$status])) {
                         return;
                     }
