@@ -18664,10 +18664,12 @@ class ChannelMasterController extends Controller
                 // Y / T Orders, Views, CVR cells: the graph's newest point must be the number
                 // the cell shows (same idea as pinAllYSalesChartLastPoint for Y Sales), so a
                 // graph and its cell can never disagree on the latest day.
-                if ($metric === 'y_ads_pct' && $live !== null && $live !== '' && is_numeric($live)) {
-                    // The Y Ads% cell is Pacific yesterday's rate (Y Ad Spend ÷ Y Total Sales), but the
-                    // newest saved point can be an older day. Pin the cell to yesterday's own point
-                    // (or add it) instead of overwriting whichever day happens to be last.
+                if (in_array($metric, ['y_ads_pct', 'y_orders', 'y_views', 'y_cvr'], true)
+                    && $live !== null && $live !== '' && is_numeric($live)) {
+                    // Y cells are Pacific yesterday's value, but the newest saved point can be an
+                    // older day (Amazon views settle late, a channel's save can lag). Pin the cell
+                    // to yesterday's own point (or add it) instead of overwriting whichever day
+                    // happens to be last, which put yesterday's number on the wrong date.
                     $yLabel = now(\App\Models\BadgeDataHistory::TZ)->subDay()->format('M j');
                     $pinned = false;
                     foreach ($points as $i => $p) {
@@ -22452,8 +22454,9 @@ class ChannelMasterController extends Controller
             $date = $row->snapshot_date instanceof \DateTimeInterface
                 ? $row->snapshot_date->format('Y-m-d')
                 : (string) $row->snapshot_date;
-            // Amazon: 0 means the SP-API day had not settled yet, not zero views.
-            if ($key === 'amazon' && (int) $row->views <= 0) {
+            // 0 means no traffic data was pulled for that day (Amazon SP-API not settled, Temu /
+            // Walmart empty pull), not zero views.
+            if ((int) $row->views <= 0) {
                 continue;
             }
             $map[$key][$date] = (int) $row->views;

@@ -67,6 +67,20 @@ class MarketplaceViewWindowStore
         return $out;
     }
 
+    /**
+     * One day's views for a SKU from two consecutive cumulative snapshots.
+     * A previous snapshot of 0 means that SKU was missed (partial capture), so today's whole
+     * counter is not a day's traffic: counting it made eBay 2 jump from ~300 to 3,671 views.
+     */
+    public static function viewDelta(int $current, int $previous): int
+    {
+        if ($previous <= 0) {
+            return 0;
+        }
+
+        return max(0, $current - $previous);
+    }
+
     /** @var array<string, array{l1: int, l7: int}> */
     private array $lastSkuWindows = [];
 
@@ -153,11 +167,11 @@ class MarketplaceViewWindowStore
             $deltas = [];
             for ($i = 0; $i < count($keys); $i++) {
                 $dk = $keys[$i];
-                $deltas[$dk] = $i === 0 ? 0 : max(0, (int) $days[$dk] - (int) $days[$keys[$i - 1]]);
+                $deltas[$dk] = $i === 0 ? 0 : self::viewDelta((int) $days[$dk], (int) $days[$keys[$i - 1]]);
             }
             $l1 = (int) ($deltas[$date] ?? 0);
             if ($l1 === 0 && isset($days[$date], $days[$prev])) {
-                $l1 = max(0, (int) $days[$date] - (int) $days[$prev]);
+                $l1 = self::viewDelta((int) $days[$date], (int) $days[$prev]);
             }
             $l7 = 0;
             foreach ($deltas as $d => $v) {
@@ -211,11 +225,11 @@ class MarketplaceViewWindowStore
             $deltas = [];
             for ($i = 0; $i < count($keys); $i++) {
                 $dk = $keys[$i];
-                $deltas[$dk] = $i === 0 ? 0 : max(0, (int) $days[$dk] - (int) $days[$keys[$i - 1]]);
+                $deltas[$dk] = $i === 0 ? 0 : self::viewDelta((int) $days[$dk], (int) $days[$keys[$i - 1]]);
             }
             $l1 = (int) ($deltas[$date] ?? 0);
             if ($l1 === 0 && isset($days[$date], $days[$prev])) {
-                $l1 = max(0, (int) $days[$date] - (int) $days[$prev]);
+                $l1 = self::viewDelta((int) $days[$date], (int) $days[$prev]);
             }
             $l7 = 0;
             foreach ($deltas as $d => $v) {

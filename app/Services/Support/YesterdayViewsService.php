@@ -504,6 +504,8 @@ class YesterdayViewsService
         $dates = $settledDates;
         try {
             $dates = array_merge($dates, \App\Support\Marketplace\AmmColumnHistory::purgeUnbackedAmazonYViews());
+            // 0-view points (no data pulled) and Temu / Temu 2 / Walmart points no dated source backs.
+            $dates = array_merge($dates, \App\Support\Marketplace\AmmColumnHistory::purgeUnbackedYViews());
             // Doba has no views source at all: it must not keep invented history points.
             // (Reverb is excluded: it saves its real daily page-view points below.)
             $dates = array_merge($dates, \App\Support\Marketplace\AmmColumnHistory::purgeChannelYViews('doba'));
@@ -778,7 +780,7 @@ class YesterdayViewsService
             if (! isset($days[$date], $days[$prev])) {
                 continue;
             }
-            $sum += max(0, (int) $days[$date] - (int) $days[$prev]);
+            $sum += MarketplaceViewWindowStore::viewDelta((int) $days[$date], (int) $days[$prev]);
         }
 
         return $sum;

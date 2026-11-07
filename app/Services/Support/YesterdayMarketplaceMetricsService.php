@@ -1962,8 +1962,10 @@ class YesterdayMarketplaceMetricsService
             return null;
         }
 
-        // Amazon traffic for a recent day is "not available yet", not 0 views.
-        if ($lookup === 'amazon' && $this->viewsByDateCache[$lookup][$ymd] <= 0) {
+        // A stored 0 means "no traffic data pulled for that day" (Amazon not settled yet, Temu /
+        // Walmart pull returned nothing), not zero views. Saving it plotted a false 0 on the
+        // Y Views graph and dropped the All-channels total.
+        if ($this->viewsByDateCache[$lookup][$ymd] <= 0) {
             return null;
         }
 

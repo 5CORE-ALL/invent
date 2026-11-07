@@ -2414,11 +2414,14 @@
                 const cellVal = cell.getValue();
                 let liveVal = (cellVal === null || cellVal === undefined || cellVal === '' || !isFinite(Number(cellVal)))
                     ? null : Number(cellVal);
-                // An estimate (Reverb L30 ÷ 30) or an older settled day (Amazon) is not this
-                // day's real value, so it must not be pinned as the chart's newest point.
+                // An older settled day (Amazon) is not yesterday's value, so it must not be pinned
+                // as the chart's newest point. An L30 ÷ 30 estimate (TikTok, Temu, ...) is what the
+                // cell shows and is saved under yesterday the same way, so it is pinned and the
+                // graph's newest point equals the cell. Reverb's estimate is never saved: skip it.
                 if ($(e.target).data('metric') === 'y_views') {
                     const rd = cell.getRow().getData();
-                    if (rd['Y Views Est'] || rd['Y Views As Of']) liveVal = null;
+                    const chKey = String(rd['Channel '] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                    if (rd['Y Views As Of'] || (rd['Y Views Est'] && chKey === 'reverb')) liveVal = null;
                 }
                 openChart($(e.target).data('channel'), $(e.target).data('metric'), liveVal);
             }

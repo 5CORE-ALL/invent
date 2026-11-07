@@ -373,6 +373,7 @@ class AmmColumnHistory
         $totOrders = 0.0;
         $totViews = 0.0;
         $totViewQty = 0.0;
+        $totRealViews = 0.0;
         $anyOrders = false;
         $anyViews = false;
         $totAdSpend = 0.0;
@@ -392,14 +393,25 @@ class AmmColumnHistory
             }
             $views = $row['views'] ?? null;
             // Views carried from an older settled day (Amazon) belong to that day's history point.
-            if (! empty($row['views_as_of']) || ! empty($row['views_estimate'])) {
+            if (! empty($row['views_as_of'])) {
                 $views = null;
             }
-            if ($views !== null && $views !== '') {
+            // Channels with no real one-day views feed (TikTok, TikTok 2, Temu while its clicks pull is
+            // stale, Wayfair, eBay 3) show L30 ÷ 30 in the Y Views cell. Save that same number under
+            // yesterday so the graph's newest point equals the cell instead of the graph freezing on
+            // the last day a real figure existed. (Reverb estimates are never saved: it has its own
+            // real page-view series.) Estimates never feed Y CVR.
+            $isEstimate = ! empty($row['views_estimate']);
+            if ($isEstimate && $key === 'reverb') {
+                $views = null;
+            }
+            // 0 / negative = no traffic data for that day, never a real one-day figure.
+            if ($views !== null && $views !== '' && (float) $views > 0) {
                 $data['y_views'] = (float) $views;
                 $totViews += (float) $views;
                 $anyViews = true;
-                if ((float) $views > 0) {
+                if (! $isEstimate) {
+                    $totRealViews += (float) $views;
                     $totViewQty += (float) ($row['qty'] ?? 0);
                     $data['y_cvr'] = round(((float) ($row['qty'] ?? 0) / (float) $views) * 100, 4);
                 }
@@ -432,8 +444,8 @@ class AmmColumnHistory
         }
         if ($anyViews) {
             $all['y_views'] = $totViews;
-            if ($totViews > 0) {
-                $all['y_cvr'] = round(($totViewQty / $totViews) * 100, 4);
+            if ($totRealViews > 0) {
+                $all['y_cvr'] = round(($totViewQty / $totRealViews) * 100, 4);
             }
         }
         if ($all !== []) {
@@ -441,7 +453,125 @@ class AmmColumnHistory
             $written += count($all);
         }
 
+        // The all-channels Y Views point must equal the sum of the channel points saved for that
+        // day. Saving it from only the rows of one run left it short whenever a channel's value
+        // arrived or was corrected later (Amazon settles ~3 days late, Temu / eBay refills).
+        if ($anyViews && self::reconcileAllYViews($day)) {
+            $written++;
+        }
+
         return $written;
+    }
+
+    /**
+     * Rewrite the all-channels Y Views point for a Pacific day as the sum of the saved
+     * per-channel Y Views points of the active channels.
+     *
+     * @return bool true when the all-channels point was written
+     */
+    public static function reconcileAllYViews(Carbon $day): bool
+    {
+        try {
+            $pages = \App\Models\ChannelMaster::query()
+                ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                ->pluck('channel')
+                ->map(fn ($name) => self::PAGE_PREFIX.AllMarketplaceMasterBadgeCalculator::snapshotKey((string) $name))
+                ->filter(fn ($page) => $page !== self::PAGE_PREFIX)
+                ->unique()
+                ->values()
+                ->all();
+            if ($pages === []) {
+                return false;
+            }
+
+            $sum = (float) BadgeDataHistory::query()
+                ->whereIn('page_name', $pages)
+                ->where('field', 'y_views')
+                ->whereDate('snapshot_date', $day->toDateString())
+                ->where('value', '>', 0)
+                ->sum('value');
+            if ($sum <= 0) {
+                return false;
+            }
+
+            BadgeDataHistory::recordPage(self::ALL_PAGE, ['y_views' => $sum], $day);
+
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Remove saved Y Views / Y CVR points that no longer mean anything:
+     *  - a value of 0 (no traffic data was pulled that day) for any channel;
+     *  - Y Views spikes on the channels that fall back to an L30 ÷ 30 estimate (Temu, Temu 2, TikTok,
+     *    TikTok 2): a point above 5× the channel's own median is a bad daily-delta glitch
+     *    (Temu saved 15,195 against ~1,200 either side), not traffic.
+     *
+     * @return list<string> Pacific dates changed (their all-channel totals need re-saving)
+     */
+    public static function purgeUnbackedYViews(int $days = 45): array
+    {
+        try {
+            $since = now(BadgeDataHistory::TZ)->subDays($days)->toDateString();
+            $dates = [];
+
+            $zero = BadgeDataHistory::query()
+                ->where('page_name', 'like', self::PAGE_PREFIX.'%')
+                ->whereIn('field', ['y_views', 'y_cvr'])
+                ->whereDate('snapshot_date', '>=', $since)
+                ->where('value', '<=', 0);
+            $dates = array_merge($dates, self::distinctDates($zero));
+            $zero->delete();
+
+            foreach (['temu', 'temu2', 'tiktok', 'tiktokshop', 'tiktok2', 'tiktokshop2'] as $channel) {
+                $page = self::PAGE_PREFIX.$channel;
+                $values = BadgeDataHistory::query()
+                    ->where('page_name', $page)
+                    ->where('field', 'y_views')
+                    ->whereDate('snapshot_date', '>=', $since)
+                    ->where('value', '>', 0)
+                    ->pluck('value')
+                    ->map(fn ($v) => (float) $v)
+                    ->sort()
+                    ->values()
+                    ->all();
+                if (count($values) < 8) {
+                    continue;
+                }
+                $median = $values[(int) floor((count($values) - 1) / 2)];
+                $bad = self::distinctDates(BadgeDataHistory::query()
+                    ->where('page_name', $page)
+                    ->where('field', 'y_views')
+                    ->whereDate('snapshot_date', '>=', $since)
+                    ->where('value', '>', $median * 5));
+                if ($bad === []) {
+                    continue;
+                }
+                BadgeDataHistory::query()
+                    ->where('page_name', $page)
+                    ->whereIn('field', ['y_views', 'y_cvr'])
+                    ->whereIn('snapshot_date', $bad)
+                    ->delete();
+                $dates = array_merge($dates, $bad);
+            }
+
+            return array_values(array_unique($dates));
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<BadgeDataHistory>  $q
+     * @return list<string>
+     */
+    private static function distinctDates($q): array
+    {
+        return (clone $q)->distinct()->pluck('snapshot_date')
+            ->map(fn ($d) => $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : substr((string) $d, 0, 10))
+            ->all();
     }
 
     /**
