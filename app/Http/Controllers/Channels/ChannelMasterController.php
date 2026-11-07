@@ -15759,7 +15759,10 @@ class ChannelMasterController extends Controller
         $l30 = $empty;
         $l60 = $empty;
 
-        $latestSaleDate = DepopSalesData::whereNotNull('sale_date')->max('sale_date');
+        // Rolling windows end at Pacific yesterday (same as Depop Y / L7 / charts and the live overlay).
+        $latestSaleDate = DepopSalesData::whereNotNull('sale_date')->exists()
+            ? Carbon::yesterday('America/Los_Angeles')->toDateString()
+            : null;
         if ($latestSaleDate) {
             $latestCarbon = Carbon::parse($latestSaleDate);
             $l30Start = $latestCarbon->copy()->subDays(29)->format('Y-m-d');

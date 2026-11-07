@@ -98,8 +98,14 @@ class DepopSalesController extends Controller
      *
      * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: string, groi: float}|null
      */
-    public function dailySalesBadgeTotals(): ?array
+    public function dailySalesBadgeTotals(?string $startDate = null, ?string $endDate = null): ?array
     {
+        // Active Channel L30 = rolling 30 days through Pacific yesterday (same window as
+        // Y/L7 and the Depop charts). Summing every sheet row made L30 show all-time sales.
+        $yesterday = \Illuminate\Support\Carbon::yesterday('America/Los_Angeles');
+        $endDate = $endDate ?? $yesterday->toDateString();
+        $startDate = $startDate ?? $yesterday->copy()->subDays(29)->toDateString();
+
         $response = $this->getData(request());
         if ($response->getStatusCode() >= 400) {
             return null;
@@ -113,10 +119,16 @@ class DepopSalesController extends Controller
         $pft = 0.0;
         $cogs = 0.0;
         $qty = 0;
+        $kept = 0;
         foreach ($payload as $row) {
             if (! is_array($row)) {
                 continue;
             }
+            $saleDate = (string) ($row['sale_date'] ?? '');
+            if ($saleDate === '' || $saleDate < $startDate || $saleDate > $endDate) {
+                continue;
+            }
+            $kept++;
             $qty += (int) ($row['quantity'] ?? 0);
             $sales += (float) ($row['sale_amount'] ?? 0);
             $pft += (float) ($row['t_pft'] ?? 0);
@@ -128,7 +140,7 @@ class DepopSalesController extends Controller
 
         return [
             'l30' => (int) round($sales),
-            'orders' => count($payload),
+            'orders' => $kept,
             'qty' => $qty,
             'pft' => (int) round($pft),
             'cogs' => (int) round($cogs),
