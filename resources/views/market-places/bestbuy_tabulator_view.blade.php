@@ -2935,16 +2935,20 @@
             let blueTriangleCount = 0;
             let amzCapCount = 0;
             let clearanceCount = 0;
+            let clearanceInv = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (bestbuyHasBlueTriangle(row)) blueTriangleCount++;
                 if (bestbuyHasAmzCap(row)) amzCapCount++;
-                if (!isBestbuyParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) clearanceCount++;
+                if (!isBestbuyParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) {
+                    clearanceCount++;
+                    clearanceInv += parseFloat(row.INV != null ? row.INV : row.inv) || 0;
+                }
             });
             $('#bestbuy-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             $('#bestbuy-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
-            $('#bestbuy-clearance-badge').text('C ' + clearanceCount.toLocaleString());
+            $('#bestbuy-clearance-badge').text('C ' + clearanceCount.toLocaleString() + ' · INV ' + Math.round(clearanceInv).toLocaleString());
             (function() {
                 let shown = 0, total = 0;
                 try {

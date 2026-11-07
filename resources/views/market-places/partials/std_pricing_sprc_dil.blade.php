@@ -29,6 +29,7 @@
         #std-dil-groi-table .std-dg-count { font-weight: 700; text-align: center; white-space: nowrap; }
         #std-dil-groi-table .std-dg-del { border: none; background: none; color: #dc3545; cursor: pointer; line-height: 1; }
         #std-dg-clearance-block .std-dg-clearance-count,
+        #std-dg-clearance-block .std-dg-clearance-inv,
         #std-dg-clearance-block .std-dg-clearance-nroi { color: #dc3545; font-weight: 700; }
         #std-dg-clearance-block .std-dg-clearance-nroi { margin-left: 0.35rem; }
         #std-cvr-groi-table .std-cvr-input { max-width: 72px; display: inline-block; text-align: right; font-weight: 600; }
@@ -98,7 +99,7 @@
                     <div id="std-dg-clearance-block" class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
                         <span class="fw-semibold">Clearance</span>
                         <span title="INV &gt; 0 and Clearance Yes on Inv Days. Count and Target NROI% in red.">
-                            <span class="std-dg-clearance-count">0</span><span class="std-dg-clearance-nroi">0%</span>
+                            <span class="std-dg-clearance-count">0</span><span class="small text-muted ms-2 me-1" title="Total INV (units in stock) of those clearance SKUs">INV</span><span class="std-dg-clearance-inv">0</span><span class="std-dg-clearance-nroi">0%</span>
                         </span>
                         <span class="d-flex align-items-center gap-2">
                             <label class="small mb-0 text-muted" for="std-dg-clearance-input">Target NROI%</label>
@@ -419,6 +420,7 @@
             }
             function paintClearance() {
                 const el = document.querySelector('#std-dg-clearance-block .std-dg-clearance-count');
+                const invEl = document.querySelector('#std-dg-clearance-block .std-dg-clearance-inv');
                 const nroiEl = document.querySelector('#std-dg-clearance-block .std-dg-clearance-nroi');
                 const raw = parseFloat(document.querySelector('#std-dg-clearance-block .std-dg-clearance-groi')?.value);
                 if (isFinite(raw) && raw >= 0) clearanceNroi = round2(raw);
@@ -426,12 +428,15 @@
                 if (!el) return;
                 if (!clearanceSet) {
                     el.textContent = '…';
+                    if (invEl) invEl.textContent = '…';
                     ensureClearance().then(paintClearance);
                     return;
                 }
                 let n = 0;
-                eachInvRow(function (d) { if (clearanceSet[skuKey(d.sku)]) n++; });
+                let invTotal = 0;
+                eachInvRow(function (d) { if (clearanceSet[skuKey(d.sku)]) { n++; invTotal += parseFloat(d.inv) || 0; } });
                 el.textContent = String(n);
+                if (invEl) invEl.textContent = Math.round(invTotal).toLocaleString();
             }
             function renderTable() {
                 const tb = document.getElementById('std-dil-groi-tbody');

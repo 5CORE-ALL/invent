@@ -45,6 +45,20 @@ class TaskPolicyDeletePermissionTest extends TestCase
         $this->assertTrue(TaskPolicy::userCanDeleteTask($user, $this->task('priya@5core.com')));
     }
 
+    public function test_assignor_can_reassign_their_task_but_others_cannot(): void
+    {
+        $assignor = $this->user('priya@5core.com', 'Priya Sharma');
+        $other = $this->user('other@5core.com', 'Other Person');
+        $president = $this->user('president@5core.com', 'President');
+        $task = $this->task('priya@5core.com');
+
+        $this->assertTrue(TaskPolicy::userCanReassignTaskAssignor($assignor, $task));
+        $this->assertTrue(TaskPolicy::userCanReassignTaskAssignor($president, $task));
+        $this->assertFalse(TaskPolicy::userCanReassignTaskAssignor($other, $task));
+        // Choosing another assignor while creating stays president-only.
+        $this->assertFalse(TaskPolicy::userCanChangeTaskAssignor($assignor));
+    }
+
     public function test_non_assignor_cannot_delete_someone_elses_task(): void
     {
         $user = $this->user('other@5core.com', 'Other Person');

@@ -6671,6 +6671,7 @@
                 let totalViewsAll = 0;
                 let blueTriangleCount = 0;
                 let clearanceCount = 0;
+                let clearanceInv = 0;
                 let couponCount = 0;
                 allData.forEach(row => {
                     if (!row['is_parent_summary']) {
@@ -6689,12 +6690,15 @@
                         }
                     }
                     if (amazonHasBlueTriangle(row)) blueTriangleCount++;
-                    if (amazonIsClearanceChildRow(row)) clearanceCount++;
+                    if (amazonIsClearanceChildRow(row)) {
+                        clearanceCount++;
+                        clearanceInv += parseFloat(row['INV']) || 0;
+                    }
                 });
                 $('#amazon-clearance-badge').text(
                     (typeof amzStdClearanceSet !== 'undefined' && !amzStdClearanceSet)
                         ? 'C …'
-                        : 'C ' + clearanceCount.toLocaleString()
+                        : 'C ' + clearanceCount.toLocaleString() + ' · INV ' + Math.round(clearanceInv).toLocaleString()
                 );
                 const avgCVR = totalViewsAll > 0 ? (SERVER_AMZ_QTY_L30 / totalViewsAll * 100) : 0;
                 setAmzSummaryBadge($('#avg-cvr-badge'), 'CVR: ' + avgCVR.toFixed(1) + '%');

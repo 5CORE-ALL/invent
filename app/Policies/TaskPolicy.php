@@ -107,12 +107,21 @@ class TaskPolicy
     }
 
     /**
-     * May set a task's assignor to someone else.
-     * President only — reassigning the assignor hands over edit/delete rights.
+     * May pick a different assignor when CREATING a task.
+     * President only — everyone else is always the assignor of what they create.
      */
     public static function userCanChangeTaskAssignor(?User $user): bool
     {
         return self::userIsPresident($user);
+    }
+
+    /**
+     * May hand an EXISTING task over to a different assignor: whoever can fully
+     * edit it (its current assignor, or the president).
+     */
+    public static function userCanReassignTaskAssignor(?User $user, Task $task): bool
+    {
+        return $user !== null && self::userCanEditTask($user, $task);
     }
 
     public static function taskIsCorrectiveAction(Task $task): bool

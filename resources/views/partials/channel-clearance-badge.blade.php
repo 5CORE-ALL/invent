@@ -141,9 +141,11 @@
                 var $b = $('#' + ctx.badgeId);
                 // Keep the history dot (it sits before the label) when the page gave the badge one.
                 var $dot = $b.find('.summary-trend-dot').detach();
-                $b.text('C ' + n.toLocaleString() + (ctx.showInv ? ' · INV ' + Math.round(inv).toLocaleString() : ''));
+                // INV (units in stock of the clearance SKUs) sits beside the SKU count on every page. Pass showInv: false to hide it.
+                var showInv = ctx.showInv !== false;
+                $b.text('C ' + n.toLocaleString() + (showInv ? ' · INV ' + Math.round(inv).toLocaleString() : ''));
                 if ($dot.length) $b.prepend($dot);
-                if (ctx.showInv) {
+                if (showInv) {
                     $b.attr('title', 'C = Clearance SKUs (Inv days clearance = YES): ' + n.toLocaleString() + ' SKUs holding '
                         + Math.round(inv).toLocaleString() + ' units of INV. Click to show only those SKUs. Click again to clear. Click dot for rolling history.');
                 }

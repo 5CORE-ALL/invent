@@ -1167,16 +1167,20 @@
             let blueTriangleCount = 0;
             let amzCapCount = 0;
             let clearanceCount = 0;
+            let clearanceInv = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (ppHasBlueTriangle(row)) blueTriangleCount++;
                 if (ppHasAmzCap(row)) amzCapCount++;
-                if (!ppIsParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) clearanceCount++;
+                if (!ppIsParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) {
+                    clearanceCount++;
+                    clearanceInv += parseFloat(row.INV != null ? row.INV : row.inv) || 0;
+                }
             });
             $('#pp-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             $('#pp-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
-            $('#pp-clearance-badge').text('C ' + clearanceCount.toLocaleString());
+            $('#pp-clearance-badge').text('C ' + clearanceCount.toLocaleString() + ' · INV ' + Math.round(clearanceInv).toLocaleString());
             (function() {
                 let shown = 0, total = 0;
                 try {

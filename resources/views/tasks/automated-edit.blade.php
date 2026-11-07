@@ -87,7 +87,8 @@
                             <div class="row">
                                 <div class="col-md-6 mb-2">
                                     <label for="assignor_id" class="form-label fw-bold" style="font-size: 13px;">Assignor</label>
-                                    @if(strtolower(Auth::user()->role ?? '') === 'admin')
+                                    {{-- Anyone who can edit this template (its assignor or the president) may reassign it. --}}
+                                    @if(true)
                                         <select class="form-select form-select-sm select2 @error('assignor_id') is-invalid @enderror" 
                                                 id="assignor_id" name="assignor_id">
                                             @foreach($users as $user)

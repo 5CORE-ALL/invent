@@ -3243,17 +3243,14 @@
                 </div>
                 <div class="mb-2">
                     <label for="tf_assignor_id" class="form-label fw-bold" style="font-size: 12px;">Assignor <span class="text-danger">*</span></label>
-                    @if(!empty($canChangeTaskAssignor))
-                        <select class="form-select form-select-sm tf-select2" id="tf_assignor_id" name="assignor_id">
-                            <option value="">Please Select</option>
-                            @foreach($users as $user)
-                                <option value="{{ $user->id }}">{{ $user->name }}</option>
-                            @endforeach
-                        </select>
-                    @else
-                        <input type="text" class="form-control form-control-sm" id="tf_assignor_display" readonly>
-                        <input type="hidden" id="tf_assignor_id" name="assignor_id" value="{{ Auth::id() }}">
-                    @endif
+                    {{-- Always a dropdown: when editing, the task's assignor (or president) may reassign it.
+                         When adding, only the president may pick someone else (JS locks it otherwise). --}}
+                    <select class="form-select form-select-sm tf-select2" id="tf_assignor_id" name="assignor_id">
+                        <option value="">Please Select</option>
+                        @foreach($users as $user)
+                            <option value="{{ $user->id }}">{{ $user->name }}</option>
+                        @endforeach
+                    </select>
                 </div>
                 <div class="mb-2">
                     <label for="tf_tid" class="form-label fw-bold" style="font-size: 12px;">TID</label>
@@ -3340,6 +3337,7 @@
             var canDeleteOthersTasks = {{ !empty($canDeleteOthersTasks) ? 'true' : 'false' }};
             var canDeleteCorrectiveTasks = {{ !empty($canDeleteCorrectiveTasks) ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
+            var canChangeTaskAssignorOnAdd = {{ !empty($canChangeTaskAssignor) ? 'true' : 'false' }};
             var currentUserEmail = {!! json_encode(Auth::user()->email) !!};
             var currentUserName = {!! json_encode(Auth::user()->name) !!};
             var suppressAssignFilterApply = false;
@@ -7387,13 +7385,11 @@
                     width: '100%',
                     dropdownParent: $('#taskFormOffcanvas')
                 });
-                if ($('#tf_assignor_id').is('select')) {
-                    $('#tf_assignor_id').select2({
-                        theme: 'bootstrap-5',
-                        placeholder: 'Please Select',
-                        dropdownParent: $('#taskFormOffcanvas')
-                    });
-                }
+                $('#tf_assignor_id').select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Please Select',
+                    dropdownParent: $('#taskFormOffcanvas')
+                });
                 tfSelect2Ready = true;
             }
 
@@ -7539,12 +7535,10 @@
                     tfSetVal('tf_etc_minutes', 10);
                     $('#tf_is_corrective_action').prop('checked', false);
                     $('#tf_priority').val('normal');
-                    if ($('#tf_assignor_id').is('select')) {
-                        $('#tf_assignor_id').val(String(currentUserId)).trigger('change');
-                    } else {
-                        $('#tf_assignor_display').val(currentUserName);
-                        $('#tf_assignor_id').val(String(currentUserId));
+                    if (!$('#tf_assignor_id option[value="' + currentUserId + '"]').length) {
+                        $('#tf_assignor_id').append(new Option(currentUserName, String(currentUserId), false, false));
                     }
+                    $('#tf_assignor_id').val(String(currentUserId)).trigger('change');
                     tfSetVal('tf_tid', tfNowLocal());
                     ['tf_l1','tf_l2','tf_training_link','tf_video_link','tf_form_report_link','tf_checklist_link'].forEach(function(id){ tfSetVal(id, ''); });
                     tfResetScreenshots();
@@ -7570,12 +7564,10 @@
                     tfSetVal('tf_etc_minutes', rowData.eta_time || rowData.etc_minutes || 10);
                     $('#tf_is_corrective_action').prop('checked', !!(rowData.is_corrective_action === true || rowData.is_corrective_action === 1 || rowData.is_corrective_action === '1'));
                     $('#tf_priority').val(rowData.priority || 'normal');
-                    if ($('#tf_assignor_id').is('select')) {
-                        $('#tf_assignor_id').val(rowData.assignor_id ? String(rowData.assignor_id) : '').trigger('change');
-                    } else {
-                        $('#tf_assignor_display').val(rowData.assignor_name || currentUserName);
-                        $('#tf_assignor_id').val(rowData.assignor_id ? String(rowData.assignor_id) : String(currentUserId));
+                    if (rowData.assignor_id && !$('#tf_assignor_id option[value="' + rowData.assignor_id + '"]').length) {
+                        $('#tf_assignor_id').append(new Option(rowData.assignor_name || String(rowData.assignor_id), String(rowData.assignor_id), false, false));
                     }
+                    $('#tf_assignor_id').val(rowData.assignor_id ? String(rowData.assignor_id) : '').trigger('change');
                     tfSetVal('tf_tid', tfToLocalDatetime(rowData.start_date || rowData.tid));
                     tfSetVal('tf_l1', rowData.link1);
                     tfSetVal('tf_l2', rowData.link2);
@@ -7600,6 +7592,10 @@
                 // Lock non-link fields for assignee-only edit; unlock otherwise.
                 $('.tf-lockable').prop('disabled', lock);
                 $('#tf_assignee_id').prop('disabled', lock).trigger('change.select2');
+                // Assignor: editable when editing as owner; on add only the president may choose.
+                $('#tf_assignor_id').prop('disabled', lock).trigger('change.select2');
+                var lockAssignorOnAdd = (mode === 'add') && !canChangeTaskAssignorOnAdd;
+                $('#tf_assignor_id').next('.select2-container').css('pointer-events', lockAssignorOnAdd ? 'none' : '').css('opacity', lockAssignorOnAdd ? '0.65' : '');
                 $('#tf-split-wrap').toggle(!lock);
                 $('.tf-image-wrap').toggle(!lock); // assignees can't change the image
 

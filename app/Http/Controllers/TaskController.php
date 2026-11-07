@@ -3499,7 +3499,7 @@ class TaskController extends Controller
         $editor = Auth::user();
         $canDeleteCorrectiveTasks = TaskPolicy::userCanDeleteCorrectiveTasks($editor);
         $canDeleteThisTask = TaskPolicy::userCanDeleteTask($editor, $taskModel);
-        $canChangeTaskAssignor = TaskPolicy::userCanChangeTaskAssignor($editor);
+        $canChangeTaskAssignor = TaskPolicy::userCanReassignTaskAssignor($editor, $taskModel);
 
         return view('tasks.edit', compact('task', 'users', 'canEditAll', 'canDeleteCorrectiveTasks', 'canDeleteThisTask', 'canChangeTaskAssignor'));
     }
@@ -3572,8 +3572,8 @@ class TaskController extends Controller
         $keepAssigneeId = null;
 
         if ($canEditAll) {
-            // Get assignor email
-            if (TaskPolicy::userCanChangeTaskAssignor($user) && $request->has('assignor_id')) {
+            // Get assignor email (the current assignor or president may reassign it)
+            if (TaskPolicy::userCanReassignTaskAssignor($user, $task) && $request->has('assignor_id')) {
                 $assignorUser = User::find($validated['assignor_id']);
                 $assignorEmail = $assignorUser ? $assignorUser->email : $task->assignor;
             } else {
@@ -5696,9 +5696,9 @@ class TaskController extends Controller
             return redirect()->route('tasks.automated')->with('error', 'You are not allowed to edit this automated task.');
         }
 
-        // Only the president may reassign ownership. Everyone else keeps the current assignor.
+        // Whoever may modify this template (its assignor or the president) can hand it to another assignor.
         $assignorEmail = $existing->assignor ?? $user->email;
-        if (TaskPolicy::userCanChangeTaskAssignor($user) && $request->filled('assignor_id')) {
+        if ($request->filled('assignor_id')) {
             $assignorUser = User::find($validated['assignor_id']);
             $assignorEmail = $assignorUser ? $assignorUser->email : $assignorEmail;
         }

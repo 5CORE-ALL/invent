@@ -213,6 +213,7 @@
             text-align: center;
         }
         #amz-dg-clearance-block .amz-dg-clearance-count,
+        #amz-dg-clearance-block .amz-dg-clearance-inv,
         #amz-dg-clearance-block .amz-dg-clearance-nroi {
             color: #dc3545;
             font-weight: 700;
@@ -988,7 +989,7 @@
                         <div id="amz-dg-clearance-block" class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
                             <span class="fw-semibold">Clearance</span>
                             <span title="INV &gt; 0 and Clearance Yes on Inv Days. Count and Target NROI% in red.">
-                                <span class="amz-dg-clearance-count">0</span><span class="amz-dg-clearance-nroi">0%</span>
+                                <span class="amz-dg-clearance-count">0</span><span class="small text-muted ms-2 me-1" title="Total INV (units in stock) of those clearance SKUs">INV</span><span class="amz-dg-clearance-inv">0</span><span class="amz-dg-clearance-nroi">0%</span>
                             </span>
                             <span class="d-flex align-items-center gap-2">
                                 <label class="small mb-0 text-muted">Target NROI%</label>
@@ -2237,7 +2238,7 @@
                 const $host = $(selHost).first();
                 amzDgPutRuleDot($host, $host.find(selAfter).first(), key, spec[key].label, spec[key].color);
             };
-            put('#amz-dg-clearance-block', '.amz-dg-clearance-count', 'clearance');
+            put('#amz-dg-clearance-block', '.amz-dg-clearance-inv', 'clearance');
             put('#amz-cvr-groi-table tr[data-row="down"] .amz-dg-count', '.amz-cvr-groi-down-count', 'cvr-down');
             put('#amz-cvr-groi-table tr[data-row="up"] .amz-dg-count', '.amz-cvr-groi-up-count', 'cvr-up');
             put('#amz-lmp-cap-table tr[data-row="low"] .amz-dg-count', '.amz-lmp-cap-low-count', 'lmp-low');
@@ -2649,22 +2650,31 @@
             return amzClearanceYesLoading;
         }
         function amzClearanceYesCount() {
+            return amzClearanceYesTotals().count;
+        }
+        /** Clearance SKUs (INV > 0, Clearance Yes on Inv Days): how many, and their total INV (units). */
+        function amzClearanceYesTotals() {
             const set = amzClearanceYesSet || {};
             let n = 0;
+            let inv = 0;
             amzDgEachInvChild(function(d) {
-                if (set[amzClearanceSkuKey(amzPefSku(d))]) n++;
+                if (set[amzClearanceSkuKey(amzPefSku(d))]) { n++; inv += Number(amzPefInv(d)) || 0; }
             });
-            return n;
+            return { count: n, inv: Math.round(inv) };
         }
         function amzPaintClearanceSlabCount() {
             const el = document.querySelector('#amz-dg-clearance-block .amz-dg-clearance-count');
+            const invEl = document.querySelector('#amz-dg-clearance-block .amz-dg-clearance-inv');
             if (!el) return;
             if (!amzClearanceYesSet) {
                 el.textContent = '…';
+                if (invEl) invEl.textContent = '…';
                 amzEnsureClearanceYesSet().then(function() { amzPaintClearanceSlabCount(); });
                 return;
             }
-            el.textContent = String(amzClearanceYesCount());
+            const clrTotals = amzClearanceYesTotals();
+            el.textContent = String(clrTotals.count);
+            if (invEl) invEl.textContent = clrTotals.inv.toLocaleString();
             amzPaintClearanceNroiText();
             if ($('#amzDilGroiModal').hasClass('show')) amzDgSnapRuleCounts();
             amzPaintRuleHistDots();

@@ -1612,14 +1612,18 @@
                 : (table && typeof table.getData === 'function' ? (table.getData('all') || table.getData() || []) : rows);
             let blueTriangleCount = 0;
             let clearanceCount = 0;
+            let clearanceInv = 0;
             (blueSrc || []).forEach(function(row) {
                 if (frHasBlueTriangle(row)) blueTriangleCount++;
-                if (frIsClearance(row)) clearanceCount++;
+                if (frIsClearance(row)) {
+                    clearanceCount++;
+                    clearanceInv += parseFloat(row.INV != null ? row.INV : row.inv) || 0;
+                }
             });
             $('#faire-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
-            $('#faire-clearance-badge').text('C ' + clearanceCount.toLocaleString());
+            $('#faire-clearance-badge').text('C ' + clearanceCount.toLocaleString() + ' · INV ' + Math.round(clearanceInv).toLocaleString());
             if (typeof syncFrTriangleBadgeState === 'function') syncFrTriangleBadgeState();
         
             if (window.AnalyticsDilBadge) {

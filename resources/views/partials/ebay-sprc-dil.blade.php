@@ -217,6 +217,7 @@
             cursor: pointer;
         }
         #ebay-dg-clearance-block .ebay-dg-clearance-count,
+        #ebay-dg-clearance-block .ebay-dg-clearance-inv,
         #ebay-dg-clearance-block .ebay-dg-clearance-nroi {
             color: #dc3545;
             font-weight: 700;
@@ -811,6 +812,7 @@
                             <span class="fw-semibold">Clearance</span>
                             <span class="ebay-dg-count" title="Count of SKUs with INV &gt; 0 and Clearance Yes on Inv Days. Click the dot for the daily history. Stored on this page only.">
                                 <span class="small text-muted me-1">Count</span><span class="ebay-dg-clearance-count">0</span>
+                                <span class="small text-muted ms-2 me-1" title="Total INV (units in stock) of those clearance SKUs">INV</span><span class="ebay-dg-clearance-inv">0</span>
                                 <span class="ebay-dg-clearance-dot-slot"></span>
                             </span>
                             <span class="d-flex align-items-center gap-2">
@@ -2782,15 +2784,20 @@
             return ebayClearanceYesLoading;
         }
         function ebayClearanceYesCount() {
+            return ebayClearanceYesTotals().count;
+        }
+        /** Clearance SKUs (INV > 0, Clearance Yes on Inv Days): how many, and their total INV (units). */
+        function ebayClearanceYesTotals() {
             const set = ebayClearanceYesSet || {};
             let n = 0;
+            let inv = 0;
             ebayDgEachInvChild(function(d) {
                 const sku = (typeof chPromoSku === 'function')
                     ? chPromoSku(d)
                     : (d && (d['(Child) sku'] || d.sku));
-                if (set[ebayClearanceSkuKey(sku)]) n++;
+                if (set[ebayClearanceSkuKey(sku)]) { n++; inv += Number(ebayDgInv(d)) || 0; }
             });
-            return n;
+            return { count: n, inv: Math.round(inv) };
         }
         function ebayClearanceNroiNow() {
             const raw = parseFloat($('#ebay-dg-clearance-block .ebay-dg-clearance-groi').val());
@@ -2819,15 +2826,19 @@
         }
         function ebayPaintClearanceSlabCount() {
             const el = document.querySelector('#ebay-dg-clearance-block .ebay-dg-clearance-count');
+            const invEl = document.querySelector('#ebay-dg-clearance-block .ebay-dg-clearance-inv');
             if (!el) return;
             ebayPaintClearanceNroiText();
             if (!ebayClearanceYesSet) {
                 el.textContent = '…';
+                if (invEl) invEl.textContent = '…';
                 ebayEnsureClearanceYesSet().then(function() { ebayPaintClearanceSlabCount(); });
                 return;
             }
-            const n = ebayClearanceYesCount();
+            const totals = ebayClearanceYesTotals();
+            const n = totals.count;
             el.textContent = String(n);
+            if (invEl) invEl.textContent = totals.inv.toLocaleString();
             ebayDgClearanceLiveCounts = { count: n };
             // Daily history dot (same graph as the slab counts). Only a loaded page counts: a half-loaded table would save a wrong day.
             if (window._ebayDilRulesLoaded === true) ebayDgSnapLocal(ebayDgHistKey('clr'), ebayDgClearanceLiveCounts);
