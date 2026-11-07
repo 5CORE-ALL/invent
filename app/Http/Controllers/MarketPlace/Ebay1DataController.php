@@ -641,7 +641,7 @@ class Ebay1DataController extends Controller
         if ($columnKey === '') {
             return response()->json(['success' => false, 'message' => 'Choose a column.'], 422);
         }
-        if (in_array($columnKey, ['brand', 'manufacturer', 'condition', 'countryoforigin', 'mpn', 'model', 'upc'], true)) {
+        if (in_array($columnKey, ['brand', 'manufacturer', 'countryoforigin', 'mpn', 'model', 'upc'], true)) {
             return response()->json(['success' => false, 'message' => $column.' is filled automatically on Technical Specifications and cannot be edited here.'], 422);
         }
         $value = trim((string) ($data['value'] ?? ''));

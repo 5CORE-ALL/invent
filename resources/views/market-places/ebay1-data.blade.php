@@ -1077,7 +1077,7 @@
             }
 
             // ---- Edit Column: one value for a whole column, or for the ticked rows only ----
-            const E1_AUTOFILLED = ['brand', 'manufacturer', 'condition', 'countryoforigin', 'mpn', 'model', 'upc'];
+            const E1_AUTOFILLED = ['brand', 'manufacturer', 'countryoforigin', 'mpn', 'model', 'upc'];
             const editPicked = new Map();
             let editBusy = false;
             let editRow = null; // set when the pen button of one row opened the window
