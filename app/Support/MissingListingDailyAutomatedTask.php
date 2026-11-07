@@ -26,9 +26,25 @@ class MissingListingDailyAutomatedTask
 
     public const LINK = 'https://inventory.5coremanagement.com/missing-listing';
 
+    /**
+     * The daily "Missing Listing" task to Tannistha is switched off. Set to true to bring it back.
+     * While off, ensureTemplate() archives the template instead of re-activating it, and
+     * the daily generator skips it, so it can no longer be created.
+     */
+    public const ENABLED = false;
+
     public static function ensureTemplate(): void
     {
         if (! Schema::hasTable('automate_tasks') || ! Schema::hasColumn('automate_tasks', 'link8')) {
+            return;
+        }
+
+        if (! self::ENABLED) {
+            DB::table('automate_tasks')
+                ->where('link8', self::MARKER)
+                ->where('status', '!=', 'Archived')
+                ->update(['status' => 'Archived', 'updated_at' => now()]);
+
             return;
         }
 
@@ -96,6 +112,10 @@ class MissingListingDailyAutomatedTask
     public static function createTodayIfMissing(): ?int
     {
         self::ensureTemplate();
+        if (! self::ENABLED) {
+            return null;
+        }
+
         $template = DB::table('automate_tasks')->where('link8', self::MARKER)->first();
         if (! $template) {
             return null;

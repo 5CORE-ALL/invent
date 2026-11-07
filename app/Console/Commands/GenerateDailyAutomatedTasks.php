@@ -66,6 +66,11 @@ class GenerateDailyAutomatedTasks extends Command
             $query = DB::table('automate_tasks')
                 ->whereRaw('LOWER(schedule_type) = ?', ['daily'])
                 ->whereNotIn('status', ['Done', 'Archived']);
+            if (! MissingListingDailyAutomatedTask::ENABLED && Schema::hasColumn('automate_tasks', 'link8')) {
+                $query->where(function ($q) {
+                    $q->whereNull('link8')->orWhere('link8', '!=', MissingListingDailyAutomatedTask::MARKER);
+                });
+            }
             if (Schema::hasColumn('automate_tasks', 'parent_task_id')) {
                 $query->where(function ($q) {
                     $q->whereNull('parent_task_id')->orWhere('parent_task_id', 0);
