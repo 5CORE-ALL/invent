@@ -52,17 +52,17 @@ class ListingManagerPublishStatus
         }
 
         if (in_array($key, ['ebay2', 'ebaytwo'], true) && Schema::hasTable('ebay_2_metrics')) {
-            $id = self::idFromColumn(Ebay2Metric::class, $sku, 'item_id', true);
+            $id = self::ebayLiveId(Ebay2Metric::class, $sku);
 
             return ['listed' => $id !== null, 'listing_id' => $id, 'source' => 'ebay_2_metrics.item_id'];
         }
         if (in_array($key, ['ebay', 'ebay1', 'ebayone'], true) && class_exists(EbayMetric::class)) {
-            $id = self::idFromColumn(EbayMetric::class, $sku, 'item_id', true);
+            $id = self::ebayLiveId(EbayMetric::class, $sku);
 
             return ['listed' => $id !== null, 'listing_id' => $id, 'source' => 'ebay_metrics.item_id'];
         }
         if (in_array($key, ['ebay3', 'ebaythree'], true) && class_exists(Ebay3Metric::class)) {
-            $id = self::idFromColumn(Ebay3Metric::class, $sku, 'item_id', true);
+            $id = self::ebayLiveId(Ebay3Metric::class, $sku);
 
             return ['listed' => $id !== null, 'listing_id' => $id, 'source' => 'ebay_3_metrics.item_id'];
         }
@@ -300,6 +300,34 @@ class ListingManagerPublishStatus
     /**
      * @param  class-string  $model
      */
+    /**
+     * eBay item id of the SKU's live listing. An ended, unsold, deleted or missing listing is not live
+     * even while its old item id is still stored (same rule as the Missing L tab).
+     *
+     * @param  class-string  $model
+     */
+    private static function ebayLiveId(string $model, string $sku): ?string
+    {
+        try {
+            $row = EbayListingEnded::preferredRow($model, $sku);
+        } catch (\Throwable) {
+            $row = null;
+        }
+        if (! $row) {
+            return null;
+        }
+        $status = strtoupper(trim((string) ($row->listing_status ?? '')));
+        if (EbayListingEnded::isEnded($status) || EbayListingEnded::isNotListed($status)) {
+            return null;
+        }
+        $id = trim((string) ($row->item_id ?? ''));
+        if ($id === '' || strcasecmp($id, $sku) === 0 || str_starts_with(strtoupper($id), 'UNSOLD-')) {
+            return null;
+        }
+
+        return $id;
+    }
+
     private static function idFromColumn(string $model, string $sku, string $column, bool $rejectSku): ?string
     {
         $row = $model::query()

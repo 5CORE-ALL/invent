@@ -231,13 +231,22 @@ class ListingEbayController extends Controller
         }
 
         $draft = $this->findEbayDraft($channelId, $sku);
+        $wasReset = false;
         if ($draft && $draft->status === 'listed') {
-            return response()->json(['success' => true, 'message' => $sku.' is already listed on eBay.', 'draft_id' => $draft->id, 'status' => 'listed']);
+            // The draft says listed, but the SKU is on the Missing L tab: the listing was ended or deleted on eBay.
+            if ($this->isLiveOnEbay($sku)) {
+                return response()->json(['success' => true, 'message' => $sku.' is already listed on eBay.', 'draft_id' => $draft->id, 'status' => 'listed']);
+            }
+            $this->resetStaleDraft($draft);
+            $draft->refresh();
+            $wasReset = true;
         }
         if ($draft) {
             return response()->json([
                 'success' => true,
-                'message' => 'A draft for '.$sku.' already exists ('.$draft->status.'). Use Publish to update it with the latest data and publish.',
+                'message' => $wasReset
+                    ? 'The old eBay listing of '.$sku.' no longer exists, so its draft was moved back to Drafts and the old item id was cleared ('.$draft->status.'). Use Publish to update it and publish.'
+                    : 'A draft for '.$sku.' already exists ('.$draft->status.'). Use Publish to update it with the latest data and publish.',
                 'draft_id' => $draft->id,
                 'status' => (string) $draft->status,
             ]);
@@ -281,6 +290,11 @@ class ListingEbayController extends Controller
         try {
             $manager = app(\App\Http\Controllers\MarketPlace\ListingManagerController::class);
             $draft = $this->findEbayDraft($channelId, $sku);
+            if ($draft && $draft->status === 'listed' && ! $this->isLiveOnEbay($sku)) {
+                // Ended or deleted on eBay: the stale "listed" draft would otherwise answer "already published".
+                $this->resetStaleDraft($draft);
+                $draft->refresh();
+            }
             if (! $draft) {
                 $this->addEbayDraft($channelId, $sku);
                 $draft = $this->findEbayDraft($channelId, $sku);
@@ -307,6 +321,21 @@ class ListingEbayController extends Controller
 
             return response()->json(['success' => false, 'message' => 'Publish failed: '.$e->getMessage()], 500);
         }
+    }
+
+    private function isLiveOnEbay(string $sku): bool
+    {
+        return (bool) (\App\Support\Marketplace\ListingManagerPublishStatus::check('ebay', $sku)['listed'] ?? false);
+    }
+
+    private function resetStaleDraft(\App\Models\ListingManagerChannelDraft $draft): void
+    {
+        $draft->loadMissing('channel:id,channel');
+        \App\Support\Marketplace\EbayStaleDrafts::reset(
+            $draft,
+            (string) ($draft->channel->channel ?? 'eBay'),
+            'eBay has no live listing for this SKU (ended or deleted)'
+        );
     }
 
     private function ebayChannelId(): ?int

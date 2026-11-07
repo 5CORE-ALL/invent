@@ -3557,6 +3557,9 @@ class ListingManagerController extends Controller
                     $draft->listed_at = null;
                     $draft->external_listing_id = null;
                     $draft->notes = trim((string) $draft->notes."\nMoved back to Drafts: not published from Listing Manager.");
+                } elseif ($draft->status === 'listed' && in_array(ListingChannelCounts::normalize($channelName), \App\Support\Marketplace\EbayStaleDrafts::CHANNEL_KEYS, true)) {
+                    // eBay: the listing was ended or deleted, so the draft is no longer listed.
+                    \App\Support\Marketplace\EbayStaleDrafts::reset($draft, $channelName, 'eBay has no live listing for this SKU (ended or deleted)');
                 } elseif ($draft->status === 'listed') {
                     // keep listed if we had an id before unless explicitly cleared
                 } elseif ($draft->status === 'queued' && Cache::has(self::backgroundPublishLockKey((int) $draft->id))) {
