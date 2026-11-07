@@ -5144,6 +5144,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-dynamic-ads-rule', [OverallAmazonController::class, 'amazonDynamicAdsRuleSave'])->name('amazon.dynamic-ads-rule.save');
     Route::get('/amazon-lmp-cvr-disc-rule', [OverallAmazonController::class, 'amazonLmpCvrDiscRuleGet'])->name('amazon.lmp-cvr-disc-rule');
     Route::post('/amazon-lmp-cvr-disc-rule', [OverallAmazonController::class, 'amazonLmpCvrDiscRuleSave'])->name('amazon.lmp-cvr-disc-rule.save');
+    Route::get('/channel-lmp-cvr-disc-rule/{channel}', [\App\Http\Controllers\MarketPlace\ChannelLmpCvrDiscRuleController::class, 'get'])->name('channel.lmp-cvr-disc-rule');
+    Route::post('/channel-lmp-cvr-disc-rule/{channel}', [\App\Http\Controllers\MarketPlace\ChannelLmpCvrDiscRuleController::class, 'save'])->name('channel.lmp-cvr-disc-rule.save');
     Route::get('/amazon-std-prc-vs-dil-history', [OverallAmazonController::class, 'amazonStdPrcVsDilHistory'])->name('amazon.std-prc-vs-dil.history');
     Route::post('/amazon-std-prc-vs-dil-history', [OverallAmazonController::class, 'amazonStdPrcVsDilSaveHistory'])->name('amazon.std-prc-vs-dil.history.save');
     Route::post('/push-shopify-b2c-price', [OverallAmazonController::class, 'pushShopifyB2CPrice'])->name('push.shopify.b2c.price');

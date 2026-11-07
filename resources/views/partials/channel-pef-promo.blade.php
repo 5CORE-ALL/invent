@@ -9785,6 +9785,16 @@
                     const b2bShown = Number(window.shopifyB2bDisplayedSprice(d)) || 0;
                     return b2bShown > 0 ? chPromoRound2(b2bShown) : 0;
                 }
+                // eBay 1 / 2 / 3 with the CVR up / down rule hitting this SKU: send the S PRC the page shows (LMP cap, Std Prc maximum, then the rule).
+                if (typeof window.ebayLmpCvrDiscPct === 'function' && Math.abs(Number(window.ebayLmpCvrDiscPct(d)) || 0) >= 0.01) {
+                    const shownFnNames = ['ebayDisplayedSprice', 'ebay2DisplayedSprice', 'ebay3DisplayedSprice'];
+                    for (let i = 0; i < shownFnNames.length; i++) {
+                        const fn = window[shownFnNames[i]];
+                        if (typeof fn !== 'function') continue;
+                        const ruleShown = Number(fn(d)) || 0;
+                        if (ruleShown > 0) return chPromoRound2(ruleShown);
+                    }
+                }
                 if (typeof ebaySprcDilForRow === 'function') {
                     const dilShown = Number(ebaySprcDilForRow(d)) || 0;
                     return dilShown > 0 ? chPromoRound2(dilShown) : 0;

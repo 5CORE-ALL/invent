@@ -40,6 +40,8 @@
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     // Pages that share this page's rule model (same Dil blocks). Save All writes to all of them; Save Only to this page.
     $ebaySprcDilModel = \App\Support\DilRuleModels::modelFor($ebaySprcDilChannel);
+    // eBay 1 / 2 / 3: next-gen one-screen modal (3 rule cards side by side) + the "CVR up / down" extra-discount rule.
+    $ebaySprcDilNg = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true);
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'vinted', 'instagram', 'depop', 'alibaba'], true);
     // eBay rules that Temu now shares: Diff +10 to the Target, and the LMP cap % by Dil band.
@@ -413,6 +415,66 @@
             border-color: #6f42c1;
             color: #fff;
         }
+@if($ebaySprcDilNg)
+        /* ---- eBay 1 / 2 / 3 next-gen one-screen layout: pies strip, rules band (3 text columns), then 3 rule cards side by side ---- */
+        #ebayDilGroiModal.ebay-dg-ng .modal-dialog { max-width: 99vw; }
+        #ebayDilGroiModal.ebay-dg-ng .modal-header { padding-top: 6px; padding-bottom: 6px; }
+        #ebayDilGroiModal.ebay-dg-ng .modal-body { padding: 8px 10px; }
+        #ebayDilGroiModal.ebay-dg-ng .modal-footer { padding-top: 6px; padding-bottom: 6px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-pies { margin: 0 0 8px; gap: 8px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-pie-wrap { padding: 4px 10px; gap: 8px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-pie-canvas-wrap { width: 68px; height: 68px; flex: 0 0 68px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-pie-legend { max-height: 72px; overflow-y: auto; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-pie-row { font-size: 10px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-cols { flex-direction: column; gap: 8px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-panel-rules { flex: 0 0 auto; }
+        #ebayDilGroiModal.ebay-dg-ng.ebay-dg-hide-rules .ebay-dg-panel-rules { display: none; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-panel-rules .ebay-dg-panel-head { padding: 3px 10px; font-size: 11px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-panel-rules .ebay-dg-panel-body { max-height: 165px; overflow-y: auto; padding: 4px 10px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-rules { column-count: 3; column-gap: 22px; padding-left: 10px; margin: 0; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-rules li { break-inside: avoid; font-size: 10.5px; line-height: 1.28; margin-bottom: 3px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-panel-tables { flex: 1 1 auto; min-height: 0; background: transparent; box-shadow: none; overflow: visible; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-panel-tables .ebay-dg-panel-body { padding: 0; overflow-y: auto; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            align-items: start;
+            align-content: start;
+        }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+            padding: 6px 8px;
+            min-width: 0;
+        }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card-title { font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 4px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card > .ebay-dg-rules-title:first-child { margin-top: 0 !important; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card .ebay-dg-rules-title { font-size: 12px; margin-top: 6px !important; margin-bottom: 2px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card .ebay-dg-rules-title.d-flex { margin-top: 0 !important; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card > .small.text-muted.mb-1,
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card .ebay-dg-clearance-wrap .small.text-muted { font-size: 10.5px; line-height: 1.25; margin-bottom: 3px !important; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card .ebay-dg-clearance-wrap { margin-top: 6px !important; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-diffrow { color: #475569; font-size: 11px; line-height: 1.7; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card .table { width: 100%; margin-bottom: 0; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card .table th { width: auto !important; white-space: nowrap; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card .table td { white-space: nowrap; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card .table .form-control-sm { min-width: 0; width: 100%; max-width: 74px; padding-left: 4px; padding-right: 4px; margin-left: auto; margin-right: auto; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card .ebay-dg-diffrow .form-control-sm { width: 58px !important; max-width: 58px; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card .ebay-dg-clearance-wrap .form-control-sm { width: 80px !important; }
+        #ebayDilGroiModal.ebay-dg-ng .ebay-dg-card .table-responsive { overflow-x: hidden; }
+        #ebayDilGroiModal.ebay-dg-ng #ebay-dil-groi-status { grid-column: 1 / -1; margin: 0 !important; }
+        @media (min-width: 992px) {
+            #ebayDilGroiModal.ebay-dg-ng .modal-dialog { height: calc(100vh - 1rem); margin: .5rem auto; }
+        }
+        @media (max-width: 991.98px) {
+            #ebayDilGroiModal.ebay-dg-ng .ebay-dg-grid { grid-template-columns: 1fr; }
+            #ebayDilGroiModal.ebay-dg-ng .ebay-dg-rules { column-count: 1; }
+            #ebayDilGroiModal.ebay-dg-ng .ebay-dg-panel-tables .ebay-dg-panel-body { overflow: visible; }
+        }
+@endif
 @endif
 
 @if($ebaySprcDilPart === 'buttons' || $ebaySprcDilPart === 'all')
@@ -424,13 +486,17 @@
 @endif
 
 @if($ebaySprcDilPart === 'modals' || $ebaySprcDilPart === 'all')
-    <div class="modal fade" id="ebayDilGroiModal" tabindex="-1" aria-labelledby="ebayDilGroiModalLabel" aria-hidden="true">
+    <div class="modal fade{{ $ebaySprcDilNg ? ' ebay-dg-ng' : '' }}" id="ebayDilGroiModal" tabindex="-1" aria-labelledby="ebayDilGroiModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="ebayDilGroiModalLabel">
                         <i class="fas fa-sliders-h me-1"></i> Dil vs Target {{ $ebaySprcDilTargetLabel }} — Sprc Dil
                         <a href="{{ route('master.dil.rules') }}" class="btn btn-sm btn-outline-secondary ms-2" target="_blank" rel="noopener">Master</a>
+                        @if($ebaySprcDilNg)
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="ebay-dg-rules-toggle" title="Show / hide the written rules panel (hide it for a wider grid)"
+                            onclick="document.getElementById('ebayDilGroiModal').classList.toggle('ebay-dg-hide-rules')"><i class="fas fa-list-ul me-1"></i> Rules</button>
+                        @endif
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -493,9 +559,13 @@
                         <li>
                             <strong>When</strong> the <strong>Diff</strong> column
                             (<code>(LMP − Price) / Price</code>; Std Prc when the SKU has no LMP) is <strong>&gt;</strong>
+                            @if($ebaySprcDilNg)
+                            the threshold in the <strong>Diff rule</strong> box: add its points to the Target {{ $ebaySprcDilTargetLabel }}.
+                            @else
                             <input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-gt" style="width:68px;" value="20" title="Diff threshold %">%:
                             add <strong>+</strong><input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-points" style="width:68px;" value="10" title="Points added to the Target">
                             to the Target {{ $ebaySprcDilTargetLabel }}.
+                            @endif
                         </li>
                         @endif
                         @if(!empty($ebaySprcDilUsesAmzFloor))
@@ -574,9 +644,13 @@
                         <li>
                             <strong>When</strong> the <strong>Diff</strong> column
                             (<code>(LMP − Price) / Price</code>; Std Prc when the SKU has no LMP) is <strong>&gt;</strong>
+                            @if($ebaySprcDilNg)
+                            the threshold in the <strong>Diff rule</strong> box: add its points to the Target {{ $ebaySprcDilTargetLabel }}.
+                            @else
                             <input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-gt" style="width:68px;" value="20" title="Diff threshold %">%:
                             add <strong>+</strong><input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-points" style="width:68px;" value="10" title="Points added to the Target">
                             to the Target {{ $ebaySprcDilTargetLabel }}.
+                            @endif
                         </li>
                         @endif
                         @if(!empty($ebaySprcDilIsMacys))
@@ -631,6 +705,13 @@
                             <code>S PRC = (LP × (1 + {{ $ebaySprcDilTargetLabel }}%/100)) / margin</code> (Ship not used).
                         </li>
 @endif
+                        @if($ebaySprcDilNg)
+                        <li>
+                            <strong>When</strong> the <strong>CVR 30 arrow</strong> is Down or Up and CVR is inside a row of <strong>CVR up / down</strong>
+                            (Rule ON; with “Only when LMP is available”, only SKUs that have an LMP):
+                            <strong>that row's Disc % of Std Prc comes off S PRC</strong>, after the LMP and Std Prc steps, in Std prc vs dil and in Sprc Dil. A flat arrow is not changed.
+                        </li>
+                        @endif
                         <li>
                             <strong>When</strong> LMP is not there:
                             <strong>Std Prc</strong> is the maximum S PRC on every marketplace blade.
@@ -688,6 +769,16 @@
                     </ul>
                     </div>
                     <div class="ebay-dg-panel ebay-dg-panel-tables">
+                    @if($ebaySprcDilNg)
+                    <div class="ebay-dg-panel-body ebay-dg-grid">
+                    <div class="ebay-dg-card">
+                    <div class="ebay-dg-card-title d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-layer-group me-1"></i> Dil slabs — Target {{ $ebaySprcDilTargetLabel }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary ebay-dg-add-btn py-0 px-2" id="ebay-dil-groi-add-btn">
+                            <i class="fas fa-plus me-1"></i> Add slab
+                        </button>
+                    </div>
+                    @else
                     <div class="ebay-dg-panel-head d-flex justify-content-between align-items-center">
                         <span><i class="fas fa-layer-group me-1"></i> Dil slabs — Target {{ $ebaySprcDilTargetLabel }}</span>
                         <button type="button" class="btn btn-sm btn-outline-primary ebay-dg-add-btn py-0 px-2" id="ebay-dil-groi-add-btn">
@@ -695,6 +786,7 @@
                         </button>
                     </div>
                     <div class="ebay-dg-panel-body">
+                    @endif
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="ebay-dil-groi-table">
                             <thead class="table-light">
@@ -736,6 +828,10 @@
                             <canvas id="ebay-dg-hist"></canvas>
                         </div>
                     </div>
+                    @if($ebaySprcDilNg)
+                    </div>
+                    <div class="ebay-dg-card">
+                    @endif
                     @if(!empty($ebaySprcDilCvrGroiAdj))
                     <div class="ebay-dg-rules-title mt-2 d-flex justify-content-between align-items-center">
                         <span>CVR overlay — Target {{ $ebaySprcDilTargetLabel }}</span>
@@ -791,6 +887,18 @@
                         <i class="fas fa-plus me-1"></i> Add age band
                     </button>
                     @endif
+                    @if($ebaySprcDilNg)
+                    <div class="ebay-dg-rules-title mt-2" title="Diff rule: when (LMP − Price) / Price is above the threshold, add points to the Target {{ $ebaySprcDilTargetLabel }}.">Diff rule</div>
+                    <div class="small ebay-dg-diffrow">
+                        <strong>When</strong> the <strong>Diff</strong> column
+                        (<code>(LMP − Price) / Price</code>; Std Prc when no LMP) is <strong>&gt;</strong>
+                        <input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-gt" style="width:68px;" value="20" title="Diff threshold %">%:
+                        add <strong>+</strong><input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle ebay-diff-adj-input ebay-diff-adj-points" style="width:68px;" value="10" title="Points added to the Target">
+                        to the Target {{ $ebaySprcDilTargetLabel }}.
+                    </div>
+                    </div>
+                    <div class="ebay-dg-card">
+                    @endif
                     @if(!empty($ebaySprcDilLmpCapOn))
                     <div class="ebay-dg-rules-title mt-2"
                         title="When the calculated price reaches LMP (and SNROI at LMP ≥ 20%): S PRC = LMP × (1 − x/100). x depends on the SKU's Dil.">
@@ -843,6 +951,10 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                    @endif
+                    @if($ebaySprcDilNg)
+                    @include('partials.ebay-lmp-cvr-disc-rule', ['ebayLmpCvrPart' => 'section', 'ebayLmpCvrChannel' => $ebaySprcDilChannel])
                     </div>
                     @endif
                     <div class="small text-muted mt-1" id="ebay-dil-groi-status"></div>
@@ -3789,6 +3901,7 @@
             if (!modalEl) return;
             renderEbayDilGroiModalTable();
             loadEbayDilGroiRules();
+            if (typeof window.ebayLmpCvrFillForm === 'function') window.ebayLmpCvrFillForm();
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
         }
         window.openEbayDilGroiModal = openEbayDilGroiModal;
@@ -3812,6 +3925,7 @@
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
                 try {
                     await saveEbayDilGroiRules(false);
+                    if (typeof window.ebayLmpCvrSave === 'function') window.ebayLmpCvrSave(false);
                     const applied = await ebayDgApplyAfterRulesSaved();
                     if (applied > 0) {
                         $('#ebay-dil-groi-status').text('Saved. S PRC updated on ' + applied + ' SKU(s) from the targets (not pushed).');
@@ -3841,6 +3955,7 @@
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving all…');
                 try {
                     const res = await saveEbayDilGroiRules(true);
+                    if (typeof window.ebayLmpCvrSave === 'function') window.ebayLmpCvrSave(true);
                     await ebayDgApplyAfterRulesSaved();
                     ebayDgToast('success', 'Dil rules saved on ' + (res && res.channels ? res.channels.length : 'all') + ' pages of the shared model');
                 } catch (xhr) {
@@ -3950,6 +4065,7 @@
             $('#ebayDilGroiModal').off('shown.bs.modal.ebaydg').on('shown.bs.modal.ebaydg', function() {
                 ebayDgRuleSnapPending = true;
                 setTimeout(function() { renderEbayDilGroiPies(); }, 50);
+                if (typeof window.ebayLmpCvrFillForm === 'function') setTimeout(window.ebayLmpCvrFillForm, 80);
             });
             $('#ebayDilGroiModal').off('hidden.bs.modal.ebaydg').on('hidden.bs.modal.ebaydg', function() {
                 destroyEbayDilGroiPies();
@@ -3977,4 +4093,7 @@
             bindEbaySprcDilAutofill();
         });
         @include('partials.sprc-dil-nroi-npft')
+        @if($ebaySprcDilNg)
+        @include('partials.ebay-lmp-cvr-disc-rule', ['ebayLmpCvrPart' => 'script', 'ebayLmpCvrChannel' => $ebaySprcDilChannel])
+        @endif
 @endif

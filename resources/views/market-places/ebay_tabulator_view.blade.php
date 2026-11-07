@@ -1769,7 +1769,9 @@
                     const isClr = (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData));
                     const capped = isClr ? raw : Number(ebayCapSpriceToLmp(rowData, raw));
                     const live = (isFinite(capped) && capped > 0) ? capped : raw;
-                    return Math.round(live * 100) / 100;
+                    // CVR up / down rule (Sprc Dil modal): Disc % of Std Prc comes off after the LMP and Std Prc steps. Server twin: EbayRuleSprice::price().
+                    const afterRule = (!isClr && typeof window.ebayLmpCvrApplyToPrice === 'function') ? Number(window.ebayLmpCvrApplyToPrice(rowData, live)) : live;
+                    return Math.round(((isFinite(afterRule) && afterRule > 0) ? afterRule : live) * 100) / 100;
                 }
             } catch (e) { /* use the saved price */ }
             return saved;
@@ -3102,6 +3104,11 @@
                 }
             }
 
+            // CVR up / down discount (Sprc Dil modal): Disc % of Std Prc comes off after the LMP and Std Prc steps.
+            if (typeof window.ebayLmpCvrStep === 'function') {
+                const cvrStep = window.ebayLmpCvrStep(d, saved);
+                if (cvrStep) steps.push(ebayRuleStep(cvrStep.state, cvrStep.title, cvrStep.detail));
+            }
             if (lmp > 0 && std > 0 && lmp > std + 0.0001) {
                 notes.push('LMP ' + ebayRuleMoney(lmp) + ' is above Std Prc ' + ebayRuleMoney(std) + ': every price is capped at Std Prc. Review the Std price.');
             }

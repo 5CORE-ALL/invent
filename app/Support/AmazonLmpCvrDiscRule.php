@@ -59,11 +59,22 @@ final class AmazonLmpCvrDiscRule
         ];
     }
 
+    /** eBay pages that carry the same rule (each keeps its own saved copy). */
+    public const EBAY_CHANNELS = ['ebay1', 'ebay2', 'ebay3'];
+
+    /** Storage key of a page's rule row. Amazon keeps its original key. */
+    public static function keyFor(?string $channel = null): string
+    {
+        $channel = strtolower(trim((string) $channel));
+
+        return ($channel === '' || $channel === 'amazon') ? self::CHANNEL_KEY : $channel.'_lmp_cvr_disc_rule';
+    }
+
     /** @return array<string,mixed> */
-    public static function config(): array
+    public static function config(?string $channel = null): array
     {
         try {
-            $row = ChannelTabulatorColumnSetting::query()->where('channel_name', self::CHANNEL_KEY)->first();
+            $row = ChannelTabulatorColumnSetting::query()->where('channel_name', self::keyFor($channel))->first();
         } catch (\Throwable $e) {
             $row = null;
         }
@@ -71,11 +82,11 @@ final class AmazonLmpCvrDiscRule
         return self::normalize($row?->visibility);
     }
 
-    public static function save(array $cfg): array
+    public static function save(array $cfg, ?string $channel = null): array
     {
         $payload = self::normalize($cfg);
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
-            ['channel_name' => self::CHANNEL_KEY],
+            ['channel_name' => self::keyFor($channel)],
             ['visibility' => $payload, 'column_order' => ['rule']]
         );
 
@@ -86,9 +97,9 @@ final class AmazonLmpCvrDiscRule
      * Band a SKU falls in: 'down2' | 'down' | 'up2' | 'up', or null (flat arrow / outside every band).
      * Uses the same arrow as the CVR L30 column.
      */
-    public static function band(float $cvr, float $cvr45, array $cfg): ?string
+    public static function band(float $cvr, float $cvr45, array $cfg, ?string $trend = null): ?string
     {
-        $trend = AmazonDilGroiRule::cvrTrend($cvr, $cvr45);
+        $trend = $trend ?? AmazonDilGroiRule::cvrTrend($cvr, $cvr45);
         if ($trend === 'down') {
             $slabs = [];
             if ($cfg['down2_lt'] > 0) {
@@ -122,8 +133,9 @@ final class AmazonLmpCvrDiscRule
      * @param  float  $lmp  Lowest marketplace price (> 0 means "LMP available")
      * @param  float  $cvr  CVR L30 %
      * @param  float  $cvr45  CVR L45 % (baseline)
+     * @param  string|null  $trend  'down' | 'up' | 'flat' when the page's arrow is not the Amazon one (eBay: CVR 30 vs CVR 60, 0 is not Down)
      */
-    public static function discount(float $lmp, float $cvr, float $cvr45, ?array $cfg = null): float
+    public static function discount(float $lmp, float $cvr, float $cvr45, ?array $cfg = null, ?string $trend = null): float
     {
         $cfg = $cfg ?? self::config();
         if (empty($cfg['enabled']) || ! is_finite($cvr) || ! is_finite($cvr45)) {
@@ -132,7 +144,7 @@ final class AmazonLmpCvrDiscRule
         if (! empty($cfg['need_lmp']) && ! ($lmp > 0)) {
             return 0.0;
         }
-        $key = self::band($cvr, $cvr45, $cfg);
+        $key = self::band($cvr, $cvr45, $cfg, $trend);
 
         return $key === null ? 0.0 : round((float) ($cfg[$key . '_disc'] ?? 0), 2);
     }

@@ -472,4 +472,55 @@ class EbayRuleSpriceTest extends TestCase
         // Bad override → generic trend: CVR 5, CVR 60 5 → flat 1%.
         $this->assertSame(99.0, EbayRuleSprice::price($pricer, $this->input(['cvr_trend' => 'sideways']))['sprice']);
     }
+    /** @return array<string,mixed> */
+    private function lmpCvrCtx(array $over = []): array
+    {
+        return ['rule' => 'std', 'dil' => null, 'lmp_cvr' => array_merge(\App\Support\AmazonLmpCvrDiscRule::DEFAULTS, ['enabled' => true], $over)];
+    }
+
+    public function test_column_cvr_trend_is_the_arrow_of_the_cvr_30_column(): void
+    {
+        $this->assertSame('flat', EbayRuleSprice::columnCvrTrend(0, 0));
+        $this->assertSame('down', EbayRuleSprice::columnCvrTrend(0, 3));
+        $this->assertSame('down', EbayRuleSprice::columnCvrTrend(2, 2.5));
+        $this->assertSame('up', EbayRuleSprice::columnCvrTrend(2.5, 2));
+        $this->assertSame('flat', EbayRuleSprice::columnCvrTrend(4.55, 4.5));
+    }
+
+    public function test_cvr_up_down_rule_takes_disc_pct_of_std_off_after_the_caps(): void
+    {
+        $pricer = $this->pricer();
+        // Std prc vs dil, no discounts: rule price = Std 100. CVR 2 vs CVR 60 5 → Down, < 4 → 6% of Std = $6.00 off.
+        $input = $this->input(['cvr' => 2, 'cvr_60' => 5, 'lmp_cvr_trend' => 'down', 'lmp' => 90, 'lp' => 10]);
+        $priced = EbayRuleSprice::price($pricer, $input, $this->lmpCvrCtx());
+        // LMP cap: price 100 >= LMP 90 and SGROI at LMP >= 20% → S PRC = LMP 90, then 6% of Std 100 off → 84.
+        $this->assertSame(84.0, $priced['sprice']);
+        $this->assertSame(6.0, $priced['lmp_cvr_disc']);
+    }
+
+    public function test_cvr_up_down_rule_needs_lmp_when_asked_and_ignores_a_flat_arrow(): void
+    {
+        $pricer = $this->pricer();
+        $down = $this->input(['cvr' => 2, 'cvr_60' => 5, 'lmp_cvr_trend' => 'down', 'lmp' => 0]);
+        $this->assertSame(100.0, EbayRuleSprice::price($pricer, $down, $this->lmpCvrCtx())['sprice']);
+        $this->assertSame(94.0, EbayRuleSprice::price($pricer, $down, $this->lmpCvrCtx(['need_lmp' => false]))['sprice']);
+        $flat = $this->input(['cvr' => 2, 'cvr_60' => 2, 'lmp_cvr_trend' => 'flat', 'lmp' => 90]);
+        $this->assertSame(90.0, EbayRuleSprice::price($pricer, $flat, $this->lmpCvrCtx())['sprice']);
+    }
+
+    public function test_cvr_up_down_rule_is_off_by_default_and_when_disabled(): void
+    {
+        $pricer = $this->pricer();
+        $input = $this->input(['cvr' => 2, 'cvr_60' => 5, 'lmp_cvr_trend' => 'down', 'lmp' => 90]);
+        $this->assertSame(90.0, EbayRuleSprice::price($pricer, $input)['sprice']);
+        $this->assertSame(90.0, EbayRuleSprice::price($pricer, $input, $this->lmpCvrCtx(['enabled' => false]))['sprice']);
+    }
+
+    public function test_cvr_up_down_rule_halves_under_15_std(): void
+    {
+        $pricer = $this->pricer();
+        $input = $this->input(['std' => 10, 'cvr' => 2, 'cvr_60' => 5, 'lmp_cvr_trend' => 'down', 'lmp' => 9, 'lp' => 1]);
+        // 6% halved = 3% of Std 10 = $0.30 off the LMP price 9.00.
+        $this->assertSame(8.7, EbayRuleSprice::price($pricer, $input, $this->lmpCvrCtx())['sprice']);
+    }
 }

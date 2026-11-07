@@ -44,6 +44,46 @@ class EbayRuleSprice
         return ((float) ($row['SCVR'] ?? 0) + (float) ($row['CVR_60'] ?? 0)) / 2;
     }
 
+    /** The arrow in the eBay CVR 30 column: CVR 30 vs CVR 60, +/- 0.1. Unlike cvrTrend(), CVR 0 against 0 is flat. */
+    public static function columnCvrTrend(float $cvr30, float $cvr60, float $tol = 0.1): string
+    {
+        if ($cvr30 < $cvr60 - $tol) {
+            return 'down';
+        }
+        if ($cvr30 > $cvr60 + $tol) {
+            return 'up';
+        }
+
+        return 'flat';
+    }
+
+    /**
+     * CVR up / down discount % for one SKU (0 = off / no band / no LMP when required), Std under $15 halved like every rule disc.
+     *
+     * @param  array<string, mixed>  $input
+     * @param  array<string, mixed>|null  $context
+     */
+    public static function lmpCvrDiscPct(array $input, ?array $context): float
+    {
+        $cfg = is_array($context['lmp_cvr'] ?? null) ? $context['lmp_cvr'] : null;
+        if ($cfg === null || empty($cfg['enabled'])) {
+            return 0.0;
+        }
+        $std = (float) ($input['std'] ?? 0);
+        if (! ($std > 0) || ! ((float) ($input['inv'] ?? 0) > 0)) {
+            return 0.0;
+        }
+        $pct = AmazonLmpCvrDiscRule::discount(
+            (float) ($input['lmp'] ?? 0),
+            (float) ($input['cvr'] ?? 0),
+            (float) ($input['cvr_60'] ?? 0),
+            $cfg,
+            in_array($input['lmp_cvr_trend'] ?? null, ['down', 'up', 'flat'], true) ? $input['lmp_cvr_trend'] : null
+        );
+
+        return $pct == 0.0 ? 0.0 : StdPrcVsDilPricer::scaleRuleDisc($pct, $std);
+    }
+
     /**
      * Same as ebayEffectiveLmp(): lowest non-ignored competitor, else the stored lmp_price.
      *
@@ -99,6 +139,8 @@ class EbayRuleSprice
             'cvr' => $cvr30,
             'cvr_60' => $cvr45,
             'cvr_trend' => self::cvrTrend($cvr30, $cvr45),
+            // CVR up / down discount rule: the arrow of the CVR 30 column (CVR 30 vs CVR 60, +/- 0.1). CVR 0 with nothing to fall from is flat.
+            'lmp_cvr_trend' => self::columnCvrTrend($cvr30, isset($row['CVR_60']) && is_numeric($row['CVR_60']) ? (float) $row['CVR_60'] : $cvr45),
             'ebay_l30' => (float) ($row['eBay L30'] ?? 0),
             'lp' => (float) ($row['LP_productmaster'] ?? 0),
             'ship' => (float) ($row['Ship_productmaster'] ?? 0),
@@ -156,14 +198,16 @@ class EbayRuleSprice
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
         // Clearance Target NROI% (last row of the Sprc Dil modal). It prices clearance SKUs in BOTH modes.
         $clearanceNroi = is_numeric($unpacked['clearance_nroi'] ?? null) ? max(0.0, (float) $unpacked['clearance_nroi']) : 0.0;
+        // CVR up / down discount rule (Sprc Dil modal). Applies in both modes, after the LMP cap and the Std Prc maximum.
+        $lmpCvr = in_array($channel, self::CHANNELS, true) ? AmazonLmpCvrDiscRule::config($channel) : null;
         if (SpriceActiveRule::forChannel($channel) !== 'dil') {
-            return ['rule' => 'std', 'dil' => null, 'clearance_nroi' => $clearanceNroi];
+            return ['rule' => 'std', 'dil' => null, 'clearance_nroi' => $clearanceNroi, 'lmp_cvr' => $lmpCvr];
         }
         $rules = $unpacked['rules'] === []
             ? AmazonDilGroiRule::defaultsForChannel($channel)
             : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
 
-        return ['rule' => 'dil', 'clearance_nroi' => $clearanceNroi, 'dil' => [
+        return ['rule' => 'dil', 'clearance_nroi' => $clearanceNroi, 'lmp_cvr' => $lmpCvr, 'dil' => [
             'rules' => $rules,
             'cvr_adj' => $unpacked['cvr_adj'],
             'lmp_cap' => $unpacked['lmp_cap'],
@@ -296,7 +340,7 @@ class EbayRuleSprice
      *
      * @param  array<string, mixed>  $input  from inputFromTabulatorRow()
      * @param  array{rule: string, dil: array|null}|null  $context  from context(); null = Std prc vs dil
-     * @return array{sprice:float,rule_price:float,lmp_capped:bool,std_capped:bool}|null
+     * @return array{sprice:float,rule_price:float,lmp_capped:bool,std_capped:bool,lmp_cvr_disc?:float}|null
      */
     public static function price(StdPrcVsDilPricer $pricer, array $input, ?array $context = null): ?array
     {
@@ -311,12 +355,23 @@ class EbayRuleSprice
             return null;
         }
         [$afterLmp, $final] = self::capChain($rulePrice, $input, $context, $dilOn);
+        // CVR up / down rule: Disc % of Std Prc comes off after the LMP cap and the Std Prc maximum (the page does the same).
+        $cvrDiscPct = self::lmpCvrDiscPct($input, $context);
+        $cvrDiscOff = 0.0;
+        if (abs($cvrDiscPct) >= 0.01) {
+            $afterDisc = round($final - ((float) $input['std'] * $cvrDiscPct / 100), 2);
+            if ($afterDisc >= 0.01) {
+                $cvrDiscOff = round($final - $afterDisc, 2);
+                $final = $afterDisc;
+            }
+        }
 
         return [
             'sprice' => round($final, 2),
             'rule_price' => round($rulePrice, 2),
             'lmp_capped' => abs($afterLmp - $rulePrice) > 0.009,
-            'std_capped' => abs($final - $afterLmp) > 0.009,
+            'std_capped' => abs(($final + $cvrDiscOff) - $afterLmp) > 0.009,
+            'lmp_cvr_disc' => $cvrDiscPct,
         ];
     }
 
