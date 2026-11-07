@@ -6017,18 +6017,23 @@
             clearTimeout(chPromoPrmtBadgeTimer);
             chPromoPrmtBadgeTimer = setTimeout(chPromoRefreshPrmtAppliedBadge, 400);
         }
-        (function bindPrmtAppliedBadge() {
-            if (typeof table === 'undefined' || !table || !table.on) {
+        // `table` is a let/const declared later in this script — touching it (even via typeof) before
+        // then throws "Cannot access 'table' before initialization", so defer and guard with try/catch.
+        function bindPrmtAppliedBadge() {
+            let t = null;
+            try { t = (typeof table !== 'undefined') ? table : null; } catch (e) { t = null; }
+            if (!t || !t.on) {
                 setTimeout(bindPrmtAppliedBadge, 500);
                 return;
             }
-            if (table._chPromoPrmtBadgeBound) return;
-            table._chPromoPrmtBadgeBound = true;
+            if (t._chPromoPrmtBadgeBound) return;
+            t._chPromoPrmtBadgeBound = true;
             ['dataLoaded', 'renderComplete', 'cellEdited', 'rowUpdated'].forEach(function(ev) {
-                try { table.on(ev, chPromoScheduleBadgeRefresh); } catch (e) { /* ignore */ }
+                try { t.on(ev, chPromoScheduleBadgeRefresh); } catch (e) { /* ignore */ }
             });
             chPromoScheduleBadgeRefresh();
-        })();
+        }
+        setTimeout(bindPrmtAppliedBadge, 0);
         function chPromoRefreshDilPrmtCounts() {
             chPromoScheduleBadgeRefresh();
             const $rows = $('#ch-promo-dil-prmt-tbody tr');
