@@ -5,12 +5,13 @@ namespace App\Support;
 use App\Models\ChannelTabulatorColumnSetting;
 
 /**
- * Dynamic pricing rule (Amazon): extra S PRC discount by CVR trend (Down / Up / Equal).
+ * Dynamic pricing rule (Amazon): extra S PRC discount on the CVR arrow (Down / Up) bands.
  *
- *   Diff = CVR L30 − CVR L45 (in CVR points).
- *   Down  : diff < −0.1   → `down` %
- *   Up    : diff >  0.1   → `up` %
- *   Equal : otherwise     → `equal` %
+ * Same bands as the "CVR up / down" panel, but only for SKUs whose CVR L30 arrow is Down or Up
+ * (a flat arrow gets nothing from this rule):
+ *
+ *   Arrow Down : CVR L30 < down2_lt → down2_disc %,  else CVR L30 < down_lt → down_disc %
+ *   Arrow Up   : CVR L30 > up2_gt   → up2_disc %,    else CVR L30 > up_gt   → up_disc %
  *
  * With `need_lmp` on (default) a SKU only gets the discount when an LMP is available. The discount is added to
  * the Sum Disc. The same logic runs in the page (amazon-lmp-cvr-disc-rule partial) and in
@@ -20,38 +21,45 @@ final class AmazonLmpCvrDiscRule
 {
     public const CHANNEL_KEY = 'amazon_lmp_cvr_disc_rule';
 
-    /** CVR must move by more than this many points to count as Up / Down (same tolerance as the CVR arrow). */
-    public const TOLERANCE = 0.1;
-
     public const DEFAULTS = [
         'enabled' => false,
         'need_lmp' => true,
-        'down' => 4.0,
-        'up' => 0.0,
-        'equal' => 0.0,
+        'down2_lt' => 4.0,
+        'down2_disc' => 6.0,
+        'down_lt' => 7.0,
+        'down_disc' => 4.0,
+        'up_gt' => 13.0,
+        'up_disc' => 0.0,
+        'up2_gt' => 15.0,
+        'up2_disc' => 0.0,
     ];
 
-    /** @return array{enabled:bool,need_lmp:bool,down:float,up:float,equal:float} */
+    /** @return array<string,mixed> */
     public static function normalize(mixed $raw): array
     {
         $in = is_array($raw) ? $raw : [];
-        $num = static function (string $key) use ($in): float {
+        $num = static function (string $key, float $lo, float $hi) use ($in): float {
             $v = $in[$key] ?? null;
             $n = is_numeric($v) ? (float) $v : (float) self::DEFAULTS[$key];
 
-            return round(min(80.0, max(-50.0, $n)), 2);
+            return round(min($hi, max($lo, $n)), 2);
         };
 
         return [
             'enabled' => filter_var($in['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'need_lmp' => filter_var($in['need_lmp'] ?? true, FILTER_VALIDATE_BOOLEAN),
-            'down' => $num('down'),
-            'up' => $num('up'),
-            'equal' => $num('equal'),
+            'down2_lt' => $num('down2_lt', 0.0, 100.0),
+            'down2_disc' => $num('down2_disc', -50.0, 80.0),
+            'down_lt' => $num('down_lt', 0.0, 100.0),
+            'down_disc' => $num('down_disc', -50.0, 80.0),
+            'up_gt' => $num('up_gt', 0.0, 100.0),
+            'up_disc' => $num('up_disc', -50.0, 80.0),
+            'up2_gt' => $num('up2_gt', 0.0, 100.0),
+            'up2_disc' => $num('up2_disc', -50.0, 80.0),
         ];
     }
 
-    /** @return array{enabled:bool,need_lmp:bool,down:float,up:float,equal:float} */
+    /** @return array<string,mixed> */
     public static function config(): array
     {
         try {
@@ -74,22 +82,42 @@ final class AmazonLmpCvrDiscRule
         return $payload;
     }
 
-    /** 'down' | 'up' | 'equal' */
-    public static function trend(float $cvr, float $cvr45): string
+    /**
+     * Band a SKU falls in: 'down2' | 'down' | 'up2' | 'up', or null (flat arrow / outside every band).
+     * Uses the same arrow as the CVR L30 column.
+     */
+    public static function band(float $cvr, float $cvr45, array $cfg): ?string
     {
-        $diff = $cvr - $cvr45;
-        if ($diff < -self::TOLERANCE) {
-            return 'down';
-        }
-        if ($diff > self::TOLERANCE) {
-            return 'up';
+        $trend = AmazonDilGroiRule::cvrTrend($cvr, $cvr45);
+        if ($trend === 'down') {
+            $slabs = [];
+            if ($cfg['down2_lt'] > 0) {
+                $slabs[] = ['down2', $cfg['down2_lt']];
+            }
+            if ($cfg['down_lt'] > 0) {
+                $slabs[] = ['down', $cfg['down_lt']];
+            }
+            usort($slabs, fn ($a, $b) => $a[1] <=> $b[1]);
+            foreach ($slabs as [$key, $lt]) {
+                if ($cvr < $lt) {
+                    return $key;
+                }
+            }
+        } elseif ($trend === 'up') {
+            $slabs = [['up', $cfg['up_gt']], ['up2', $cfg['up2_gt']]];
+            usort($slabs, fn ($a, $b) => $b[1] <=> $a[1]);
+            foreach ($slabs as [$key, $gt]) {
+                if ($cvr > $gt) {
+                    return $key;
+                }
+            }
         }
 
-        return 'equal';
+        return null;
     }
 
     /**
-     * Extra discount % for one SKU (0 when the rule is off, or LMP is required and missing).
+     * Extra discount % for one SKU (0 when the rule is off, LMP is required and missing, or no band matches).
      *
      * @param  float  $lmp  Lowest marketplace price (> 0 means "LMP available")
      * @param  float  $cvr  CVR L30 %
@@ -104,7 +132,8 @@ final class AmazonLmpCvrDiscRule
         if (! empty($cfg['need_lmp']) && ! ($lmp > 0)) {
             return 0.0;
         }
+        $key = self::band($cvr, $cvr45, $cfg);
 
-        return round((float) ($cfg[self::trend($cvr, $cvr45)] ?? 0), 2);
+        return $key === null ? 0.0 : round((float) ($cfg[$key . '_disc'] ?? 0), 2);
     }
 }

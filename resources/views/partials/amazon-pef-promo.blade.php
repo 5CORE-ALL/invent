@@ -3574,7 +3574,7 @@
                     headerSort: true,
                     headerTooltip: 'CVR Trend Disc — CVR trend (L30 vs L45) and the extra discount % it adds to S PRC. Set it in the CVR Trend Disc button. Read-only.',
                     headerFilter: 'list',
-                    headerFilterParams: { values: { '': 'All', 'applied': 'Discounted', 'down': 'CVR down', 'up': 'CVR up', 'equal': 'CVR equal' }, clearable: true },
+                    headerFilterParams: { values: { '': 'All', 'applied': 'Discounted', 'down': 'Arrow down', 'up': 'Arrow up' }, clearable: true },
                     headerFilterFunc: function(headerValue, rowValue, rowData) {
                         if (!headerValue) return true;
                         const info = (typeof amzLmpCvrInfo === 'function') ? amzLmpCvrInfo(rowData) : null;
@@ -3590,7 +3590,7 @@
                         const d = cell.getRow().getData() || {};
                         const info = (typeof amzLmpCvrInfo === 'function') ? amzLmpCvrInfo(d) : null;
                         if (!info) return '';
-                        const arrow = info.trend === 'down' ? '▼' : (info.trend === 'up' ? '▲' : '＝');
+                        const arrow = info.trend === 'down' ? '▼' : (info.trend === 'up' ? '▲' : '–');
                         const color = info.trend === 'down' ? '#dc3545' : (info.trend === 'up' ? '#198754' : '#6c757d');
                         const pct = info.disc;
                         const tip = 'CVR ' + info.cvr.toFixed(2) + '% vs L45 ' + info.cvr45.toFixed(2) + '% → CVR ' + info.trend

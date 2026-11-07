@@ -3339,9 +3339,14 @@ class OverallAmazonController extends Controller
         $payload = \App\Support\AmazonLmpCvrDiscRule::save([
             'enabled' => $request->input('enabled'),
             'need_lmp' => $request->input('need_lmp'),
-            'down' => $request->input('down'),
-            'up' => $request->input('up'),
-            'equal' => $request->input('equal'),
+            'down2_lt' => $request->input('down2_lt'),
+            'down2_disc' => $request->input('down2_disc'),
+            'down_lt' => $request->input('down_lt'),
+            'down_disc' => $request->input('down_disc'),
+            'up_gt' => $request->input('up_gt'),
+            'up_disc' => $request->input('up_disc'),
+            'up2_gt' => $request->input('up2_gt'),
+            'up2_disc' => $request->input('up2_disc'),
         ]);
 
         return response()->json(['success' => true] + $payload);
