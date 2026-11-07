@@ -64,10 +64,10 @@ class DarController extends Controller
     }
 
     /**
-     * Comparison grid: one row per user per day showing
-     *  - DAR time (sum of DAR time_taken, minutes)
-     *  - ATC done time (sum of etc_done minutes of tasks marked Done that same day)
+     * Comparison grid: one row per day showing
      *  - number of tasks done that day
+     *  - ATC (sum of etc_done minutes of tasks marked Done that day)
+     *  - ETC (sum of eta_time minutes of those same tasks)
      *  - working hours that day (attendance active time, Team Logger for its users)
      */
     public function comparison(Request $request)
@@ -95,25 +95,9 @@ class DarController extends Controller
         $grid = [];
         $cell = function (string $date, int $uid) use (&$grid): void {
             if (! isset($grid[$date][$uid])) {
-                $grid[$date][$uid] = ['dar' => 0.0, 'atc' => 0.0, 'done' => 0, 'work' => 0];
+                $grid[$date][$uid] = ['etc' => 0.0, 'atc' => 0.0, 'done' => 0, 'work' => 0];
             }
         };
-
-        // DAR minutes
-        $darQuery = Dar::query()
-            ->whereDate('report_date', '>=', $fromDate)
-            ->whereDate('report_date', '<=', $toDate);
-        if ($userId > 0) {
-            $darQuery->where('user_id', $userId);
-        }
-        foreach ($darQuery->get(['user_id', 'report_date', 'time_taken']) as $row) {
-            $date = optional($row->report_date)->format('Y-m-d');
-            if (! $date || ! $row->user_id) {
-                continue;
-            }
-            $cell($date, (int) $row->user_id);
-            $grid[$date][(int) $row->user_id]['dar'] += (float) $row->time_taken;
-        }
 
         // Done tasks (live + archived), credited to every assignee on the completion day
         $startAt = $from->copy()->startOfDay()->format('Y-m-d H:i:s');
@@ -139,19 +123,20 @@ class DarController extends Controller
                 $cell($date, $uid);
                 $grid[$date][$uid]['done']++;
                 $grid[$date][$uid]['atc'] += (float) ($task->etc_done ?? 0);
+                $grid[$date][$uid]['etc'] += (float) ($task->eta_time ?? 0);
             }
         };
 
         Task::query()
             ->where('status', 'Done')
             ->whereBetween('completion_date', [$startAt, $endAt])
-            ->get(['id', 'assign_to', 'completion_date', 'etc_done'])
+            ->get(['id', 'assign_to', 'completion_date', 'etc_done', 'eta_time'])
             ->each(fn ($t) => $addTask($t, false));
 
         DeletedTask::query()
             ->where('status', 'Done')
             ->whereBetween('completion_date', [$startAt, $endAt])
-            ->get(['original_task_id', 'assign_to', 'completion_date', 'etc_done'])
+            ->get(['original_task_id', 'assign_to', 'completion_date', 'etc_done', 'eta_time'])
             ->each(fn ($t) => $addTask($t, true));
 
         // Working hours (attendance active seconds)
@@ -213,28 +198,29 @@ class DarController extends Controller
             }
         }
 
+        // One row per date (all selected users summed)
         $rows = [];
         foreach ($grid as $date => $byUser) {
-            foreach ($byUser as $uid => $m) {
-                if ($m['dar'] <= 0 && $m['atc'] <= 0 && $m['done'] <= 0 && $m['work'] <= 0) {
-                    continue;
+            $t = ['etc' => 0.0, 'atc' => 0.0, 'done' => 0, 'work' => 0];
+            foreach ($byUser as $m) {
+                foreach ($t as $k => $_) {
+                    $t[$k] += $m[$k];
                 }
-                $rows[] = [
-                    'id' => $date.'|'.$uid,
-                    'report_date' => $date,
-                    'user_id' => $uid,
-                    'user_name' => optional($users->get($uid))->name,
-                    'dar_minutes' => round($m['dar'], 2),
-                    'atc_minutes' => round($m['atc'], 2),
-                    'tasks_done' => $m['done'],
-                    'working_minutes' => (int) round($m['work'] / 60),
-                ];
             }
+            if ($t['atc'] <= 0 && $t['etc'] <= 0 && $t['done'] <= 0 && $t['work'] <= 0) {
+                continue;
+            }
+            $rows[] = [
+                'id' => $date,
+                'report_date' => $date,
+                'tasks_done' => $t['done'],
+                'atc_minutes' => round($t['atc'], 2),
+                'etc_minutes' => round($t['etc'], 2),
+                'working_minutes' => (int) round($t['work'] / 60),
+            ];
         }
 
-        usort($rows, function (array $a, array $b): int {
-            return [$b['report_date'], (string) $a['user_name']] <=> [$a['report_date'], (string) $b['user_name']];
-        });
+        usort($rows, fn (array $a, array $b): int => strcmp($b['report_date'], $a['report_date']));
 
         return response()->json(['data' => $rows]);
     }

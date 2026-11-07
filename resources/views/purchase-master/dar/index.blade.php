@@ -513,24 +513,20 @@
                             formatter: function (cell) { return formatDateNoYear(cell.getValue()); },
                         },
                         {
-                            title: 'User', field: 'user_name', minWidth: 160, widthGrow: 1, vertAlign: 'middle',
-                            formatter: userFormatter,
-                        },
-                        {
-                            title: 'DAR Time', field: 'dar_minutes', hozAlign: 'center', vertAlign: 'middle',
-                            sorter: 'number', formatter: minsCell,
-                        },
-                        {
-                            title: 'ATC Done (Same Day)', field: 'atc_minutes', hozAlign: 'center', vertAlign: 'middle',
-                            sorter: 'number', formatter: minsCell,
-                        },
-                        {
-                            title: 'Tasks Done', field: 'tasks_done', hozAlign: 'center', vertAlign: 'middle',
-                            sorter: 'number', width: 130,
+                            title: 'No of Task Done', field: 'tasks_done', hozAlign: 'center', vertAlign: 'middle',
+                            sorter: 'number',
                             formatter: function (cell) {
                                 const n = Number(cell.getValue()) || 0;
                                 return n > 0 ? '<span class="dar-time-pill">' + n + '</span>' : '<span class="dar-time-pill is-empty">&mdash;</span>';
                             },
+                        },
+                        {
+                            title: 'That Day ATC', field: 'atc_minutes', hozAlign: 'center', vertAlign: 'middle',
+                            sorter: 'number', formatter: minsCell,
+                        },
+                        {
+                            title: 'That Day ETC', field: 'etc_minutes', hozAlign: 'center', vertAlign: 'middle',
+                            sorter: 'number', formatter: minsCell,
                         },
                         {
                             title: 'Working Hours', field: 'working_minutes', hozAlign: 'center', vertAlign: 'middle',

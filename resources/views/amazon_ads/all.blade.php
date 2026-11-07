@@ -4251,8 +4251,9 @@
                 var el = document.getElementById(id);
                 if (!el) return;
                 el.classList.remove('is-up', 'is-down', 'is-flat', 'is-none');
-                var map = { green: 'is-up', up: 'is-up', red: 'is-down', down: 'is-down', flat: 'is-flat', none: 'is-none' };
-                el.classList.add(map[tone] || 'is-flat');
+                // The Y SPEND / Y SALES / Y ACOS endpoint returns 'gray' for "unchanged or no prior day" (same as the chart line); keep it gray, not yellow.
+                var map = { green: 'is-up', up: 'is-up', red: 'is-down', down: 'is-down', flat: 'is-flat', gray: 'is-none', grey: 'is-none', none: 'is-none' };
+                el.classList.add(map[tone] || 'is-none');
             }
             function amzRefreshYesterdayBadgeTones() {
                 var req = ++amzYesterdayToneReq;
